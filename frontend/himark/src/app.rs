@@ -417,10 +417,9 @@ impl Application {
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
         crate::Navigators::register(&mut store, crate::navigation::EditorNavigator);
-        crate::OpenDocuments::install_hook(
-            &mut store,
-            Arc::new(crate::locations::LocationsWashHook),
-        );
+        // The locations wash hook is no longer boot-global: the
+        // family ceremony installs one per session, wired with its
+        // lists collection (docs/entities.md law 4).
 
         let workshop = Arc::new(::editor::Workshop::new(
             ::editor::env::Fonts::of(&store),

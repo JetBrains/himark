@@ -115,50 +115,150 @@ pub struct LocationsFeedRow {
         rpds::HashTrieMapSync<crate::DocumentId, (crate::MarkupId, rpds::VectorSync<(u32, u32)>)>,
 }
 
-#[derive(Clone, Default)]
-pub struct LocationsFeeds(rpds::HashTrieMapSync<FeedId, LocationsFeedRow>);
+/// The session's location lists — a COLLECTION (docs/entities.md
+/// law 1): the feed rows are its private schema, addressed by
+/// `(Id<LocationLists>, FeedId)`, wired to the family's documents at
+/// the mint. The Search dock front and the pending wash notes are
+/// collection state too, not store components.
+#[derive(Clone)]
+pub struct LocationLists {
+    /// The documents the washes land in — wired at the family mint
+    /// (law 4): the wash and dispose roads read it instead of
+    /// re-deriving scope from a window that may have moved on.
+    documents: imba::store::Id<crate::OpenDocuments>,
 
-impl LocationsFeeds {
-    pub fn row(store: &Store, feed: FeedId) -> Option<LocationsFeedRow> {
-        store
-            .get::<LocationsFeeds>()
-            .and_then(|feeds| feeds.0.get(&feed).cloned())
-    }
+    feeds: rpds::HashTrieMapSync<FeedId, LocationsFeedRow>,
 
-    pub fn row_ref(store: &Store, feed: FeedId) -> Option<&LocationsFeedRow> {
-        store
-            .get::<LocationsFeeds>()
-            .and_then(|feeds| feeds.0.get(&feed))
-    }
+    /// Which feed fronts the Search dock tab.
+    search: Option<FeedId>,
 
-    pub fn put(store: &mut Store, feed: FeedId, row: LocationsFeedRow) {
-        store.update::<LocationsFeeds>(|feeds| {
-            feeds.0.insert_mut(feed, row);
-        });
-    }
-
-    pub fn remove(store: &mut Store, feed: FeedId) {
-        store.update::<LocationsFeeds>(|feeds| {
-            feeds.0.remove_mut(&feed);
-        });
-    }
+    /// Search-originated opens awaiting registration: the pick notes
+    /// the location; the wash hook converts it into a wash when the
+    /// open lands.
+    pending_washes: rpds::HashTrieMapSync<ResourceLocation, FeedId>,
 }
 
-/// Which feed fronts the Search dock tab, per session.
-#[derive(Clone, Default)]
-pub struct SessionSearchFeeds(rpds::HashTrieMapSync<crate::SessionId, FeedId>);
-
-impl SessionSearchFeeds {
-    pub fn feed(store: &Store, session: &crate::SessionId) -> Option<FeedId> {
-        store
-            .get::<SessionSearchFeeds>()
-            .and_then(|feeds| feeds.0.get(session).copied())
+impl LocationLists {
+    /// A collection wired to the documents its washes land in —
+    /// minted by the family ceremony.
+    pub fn wired(documents: imba::store::Id<crate::OpenDocuments>) -> Self {
+        Self {
+            documents,
+            feeds: rpds::HashTrieMapSync::new_sync(),
+            search: None,
+            pending_washes: rpds::HashTrieMapSync::new_sync(),
+        }
     }
 
-    pub fn put(store: &mut Store, session: crate::SessionId, feed: FeedId) {
-        store.update::<SessionSearchFeeds>(|feeds| {
-            feeds.0.insert_mut(session, feed);
+    pub fn row(
+        store: &Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+    ) -> Option<LocationsFeedRow> {
+        Self::row_ref(store, lists, feed).cloned()
+    }
+
+    pub fn row_ref(
+        store: &Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+    ) -> Option<&LocationsFeedRow> {
+        store.entity::<LocationLists>(lists)?.feeds.get(&feed)
+    }
+
+    pub fn put(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+        row: LocationsFeedRow,
+    ) {
+        Self::update(store, lists, |held| {
+            held.feeds.insert_mut(feed, row);
         });
+    }
+
+    pub fn remove(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
+        Self::update(store, lists, |held| {
+            held.feeds.remove_mut(&feed);
+        });
+    }
+
+    /// The feed fronting the Search dock tab.
+    pub fn search(store: &Store, lists: imba::store::Id<LocationLists>) -> Option<FeedId> {
+        store.entity::<LocationLists>(lists)?.search
+    }
+
+    pub fn set_search(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
+        Self::update(store, lists, |held| held.search = Some(feed));
+    }
+
+    /// The documents collection this one's washes land in.
+    pub(crate) fn documents_of(
+        store: &Store,
+        lists: imba::store::Id<LocationLists>,
+    ) -> Option<imba::store::Id<crate::OpenDocuments>> {
+        Some(store.entity::<LocationLists>(lists)?.documents)
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.feeds.is_empty() && self.search.is_none() && self.pending_washes.is_empty()
+    }
+
+    pub fn note_wash(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        location: ResourceLocation,
+        feed: FeedId,
+    ) {
+        Self::update(store, lists, |held| {
+            held.pending_washes.insert_mut(location, feed);
+        });
+    }
+
+    fn take_wash(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        location: &ResourceLocation,
+    ) -> Option<FeedId> {
+        let feed = store
+            .entity::<LocationLists>(lists)?
+            .pending_washes
+            .get(location)
+            .copied();
+        if feed.is_some() {
+            Self::update(store, lists, |held| {
+                held.pending_washes.remove_mut(location);
+            });
+        }
+        feed
+    }
+
+    fn sweep_washes(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
+        Self::update(store, lists, |held| {
+            let stale: Vec<ResourceLocation> = held
+                .pending_washes
+                .iter()
+                .filter(|(_, held)| **held == feed)
+                .map(|(location, _)| location.clone())
+                .collect();
+            for location in stale {
+                held.pending_washes.remove_mut(&location);
+            }
+        });
+    }
+
+    /// Mutate in place; a gone collection takes no write — never
+    /// minted from `Default` (a dangling id must not resurrect).
+    fn update(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        mutate: impl FnOnce(&mut LocationLists),
+    ) {
+        let Some(mut held) = store.entity::<LocationLists>(lists).cloned() else {
+            return;
+        };
+        mutate(&mut held);
+        store.put_entity(lists, held);
     }
 }
 
@@ -166,9 +266,16 @@ impl SessionSearchFeeds {
 /// IMMEDIATELY; the stream attaches when the ask lands
 /// (`AttachFeedStream`). A failed ask resolves the row cut-off in
 /// plain sight instead of a silent no-op.
-pub fn open_feed(store: &mut Store, feed: FeedId, title: String, query: String) {
-    LocationsFeeds::put(
+pub fn open_feed(
+    store: &mut Store,
+    lists: imba::store::Id<LocationLists>,
+    feed: FeedId,
+    title: String,
+    query: String,
+) {
+    LocationLists::put(
         store,
+        lists,
         feed,
         LocationsFeedRow {
             title,
@@ -183,6 +290,7 @@ pub fn open_feed(store: &mut Store, feed: FeedId, title: String, query: String) 
 /// the feed's own pump, view-independent. Pushed through
 /// `AppRequests` by whichever surface asked.
 pub struct AttachFeedStream {
+    pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
     pub outcome: Result<crate::LocationsChannel, String>,
 }
@@ -203,7 +311,7 @@ impl crate::DynamicCommand for AttachFeedStream {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
         match self.outcome.clone() {
@@ -211,12 +319,12 @@ impl crate::DynamicCommand for AttachFeedStream {
                 row.done = true;
                 row.truncated = true;
                 row.generation += 1;
-                LocationsFeeds::put(store, self.feed, row);
+                LocationLists::put(store, self.lists, self.feed, row);
             }
             Ok(channel) => {
                 row.channel = Some(channel.clone());
-                LocationsFeeds::put(store, self.feed, row);
-                let feed = self.feed;
+                LocationLists::put(store, self.lists, self.feed, row);
+                let (lists, feed) = (self.lists, self.feed);
                 let _ = fx.push(
                     imba::effect::AnyEffect::new(crate::higent::SubscribeLocationsEffect {
                         seat: channel.seat,
@@ -226,6 +334,7 @@ impl crate::DynamicCommand for AttachFeedStream {
                         crate::AppCommand::Landing(
                             window,
                             Box::new(FeedBatch {
+                                lists,
                                 feed,
                                 batches: outcome.map(|snapshot| vec![snapshot]),
                             }),
@@ -239,6 +348,7 @@ impl crate::DynamicCommand for AttachFeedStream {
 
 /// The pump's landing: fold, then poll again while the stream runs.
 struct FeedBatch {
+    lists: imba::store::Id<LocationLists>,
     feed: FeedId,
     batches: Result<Vec<himark_ahp_ext_types::LocationList>, String>,
 }
@@ -251,7 +361,7 @@ impl crate::LandingCommand for FeedBatch {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return; // disposed while in flight — the unsubscribe ran
         };
         let Some(channel) = row.channel.clone() else {
@@ -274,7 +384,7 @@ impl crate::LandingCommand for FeedBatch {
         }
         row.generation += 1;
         let running = !row.done;
-        let feed = self.feed;
+        let (lists, feed) = (self.lists, self.feed);
         if running {
             let token = fx.push(
                 imba::effect::AnyEffect::new(crate::higent::PollLocationsEffect {
@@ -285,6 +395,7 @@ impl crate::LandingCommand for FeedBatch {
                     crate::AppCommand::Landing(
                         window,
                         Box::new(FeedBatch {
+                            lists,
                             feed,
                             batches: Ok(batches),
                         }),
@@ -295,52 +406,17 @@ impl crate::LandingCommand for FeedBatch {
         } else {
             row.poll = None;
         }
-        LocationsFeeds::put(store, self.feed, row);
-    }
-}
-
-/// Search-originated opens awaiting registration: the pick notes
-/// the location; the document hook converts it into a wash when the
-/// open lands.
-#[derive(Clone, Default)]
-pub struct PendingWashes(rpds::HashTrieMapSync<ResourceLocation, FeedId>);
-
-impl PendingWashes {
-    pub fn note(store: &mut Store, location: ResourceLocation, feed: FeedId) {
-        store.update::<PendingWashes>(|pending| {
-            pending.0.insert_mut(location, feed);
-        });
-    }
-
-    fn take(store: &mut Store, location: &ResourceLocation) -> Option<FeedId> {
-        let feed = store
-            .get::<PendingWashes>()
-            .and_then(|pending| pending.0.get(location).copied());
-        if feed.is_some() {
-            store.update::<PendingWashes>(|pending| {
-                pending.0.remove_mut(location);
-            });
-        }
-        feed
-    }
-
-    fn sweep(store: &mut Store, feed: FeedId) {
-        store.update::<PendingWashes>(|pending| {
-            let stale: Vec<ResourceLocation> = pending
-                .0
-                .iter()
-                .filter(|(_, held)| **held == feed)
-                .map(|(location, _)| location.clone())
-                .collect();
-            for location in stale {
-                pending.0.remove_mut(&location);
-            }
-        });
+        LocationLists::put(store, self.lists, self.feed, row);
     }
 }
 
 /// The registration hook: a search-picked document opened — wash it.
-pub struct LocationsWashHook;
+/// WIRED: minted by the family ceremony with the lists collection in
+/// hand, installed SCOPED to the family's documents (docs/entities.md
+/// law 4) — fires only for its own collection, dies with it.
+pub struct LocationsWashHook {
+    pub lists: imba::store::Id<LocationLists>,
+}
 
 impl crate::DocumentHook for LocationsWashHook {
     fn opened(
@@ -353,8 +429,16 @@ impl crate::DocumentHook for LocationsWashHook {
         let Some(location) = location else {
             return;
         };
-        if let Some(feed) = PendingWashes::take(store, location) {
-            crate::AppRequests::push(store, std::sync::Arc::new(WashDocument { feed, document }));
+        if let Some(feed) = LocationLists::take_wash(store, self.lists, location) {
+            let lists = self.lists;
+            crate::AppRequests::push(
+                store,
+                std::sync::Arc::new(WashDocument {
+                    lists,
+                    feed,
+                    document,
+                }),
+            );
         }
     }
 
@@ -376,6 +460,7 @@ impl crate::DocumentHook for LocationsWashHook {
 /// LIVE text and shift with edits like all markup; the wash leaves
 /// with the feed (`DisposeFeed`).
 pub struct WashDocument {
+    pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
     pub document: crate::DocumentId,
 }
@@ -393,19 +478,19 @@ impl crate::DynamicCommand for WashDocument {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
         if row.washes.contains_key(&self.document) {
             return;
         }
-        let Some(documents) =
-            crate::Windows::session_family(store, window).map(|family| family.documents())
-        else {
+        // The collection's wired sibling, not the window's current
+        // family — the window may have moved on since the pick.
+        let Some(documents) = LocationLists::documents_of(store, self.lists) else {
             return;
         };
         let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
@@ -465,7 +550,7 @@ impl crate::DynamicCommand for WashDocument {
                     .collect(),
             ),
         );
-        LocationsFeeds::put(store, self.feed, row);
+        LocationLists::put(store, self.lists, self.feed, row);
     }
 }
 
@@ -501,6 +586,7 @@ fn remove_washes(
 /// Stop a feed's stream, keeping what landed: cancel the pump,
 /// unsubscribe (the host-side cancel), resolve the row cut-off.
 pub struct StopFeed {
+    pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
 }
 
@@ -520,7 +606,7 @@ impl crate::DynamicCommand for StopFeed {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
         if let Some(token) = row.poll.take() {
@@ -540,13 +626,14 @@ impl crate::DynamicCommand for StopFeed {
             row.truncated = true;
         }
         row.generation += 1;
-        LocationsFeeds::put(store, self.feed, row);
+        LocationLists::put(store, self.lists, self.feed, row);
     }
 }
 
 /// Dispose a feed: cancel its pump, unsubscribe its channel (the
 /// host-side cancel), drop the row. Pushed through `AppRequests`.
 pub struct DisposeFeed {
+    pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
 }
 
@@ -567,15 +654,15 @@ impl crate::DynamicCommand for DisposeFeed {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(row) = LocationsFeeds::row(store, self.feed) else {
+        let Some(row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
-        if let Some(documents) =
-            crate::Windows::session_family(store, window).map(|family| family.documents())
-        {
+        // The collection's wired sibling, not the window's current
+        // family — the window may have moved on since the feed opened.
+        if let Some(documents) = LocationLists::documents_of(store, self.lists) {
             remove_washes(store, documents, ui, &row, fx);
         }
-        PendingWashes::sweep(store, self.feed);
+        LocationLists::sweep_washes(store, self.lists, self.feed);
         if let Some(token) = row.poll {
             fx.cancel(token);
         }
@@ -588,7 +675,7 @@ impl crate::DynamicCommand for DisposeFeed {
                 .map(move |()| crate::AppCommand::Landing(window, Box::new(NothingLanded))),
             );
         }
-        LocationsFeeds::remove(store, self.feed);
+        LocationLists::remove(store, self.lists, self.feed);
     }
 }
 

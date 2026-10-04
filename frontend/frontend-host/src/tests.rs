@@ -8141,15 +8141,19 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             .command;
     assert!(engine.app.perform_command(command));
 
+    let lists = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("the window entity")
+        .family()
+        .lists();
     settle_until(&mut engine, "the stream resolved into the feed", |engine| {
-        himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
-            .and_then(|feed| himark::locations::LocationsFeeds::row(engine.app.store(), feed))
+        himark::locations::LocationLists::search(engine.app.store(), lists)
+            .and_then(|feed| himark::locations::LocationLists::row(engine.app.store(), lists, feed))
             .is_some_and(|row| row.done)
     });
-    let feed = himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+    let feed = himark::locations::LocationLists::search(engine.app.store(), lists)
         .expect("the session fronts the feed");
-    let row =
-        himark::locations::LocationsFeeds::row(engine.app.store(), feed).expect("the feed row");
+    let row = himark::locations::LocationLists::row(engine.app.store(), lists, feed)
+        .expect("the feed row");
     assert!(!row.truncated, "the ask answered whole");
     assert_eq!(
         row.locations.len(),
@@ -8180,19 +8184,19 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             .command;
     assert!(engine.app.perform_command(command));
     settle_until(&mut engine, "the references resolved", |engine| {
-        himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
-            .and_then(|next| himark::locations::LocationsFeeds::row(engine.app.store(), next))
+        himark::locations::LocationLists::search(engine.app.store(), lists)
+            .and_then(|next| himark::locations::LocationLists::row(engine.app.store(), lists, next))
             .is_some_and(|row| row.done && row.title.starts_with("References"))
     });
-    let referenced = himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+    let referenced = himark::locations::LocationLists::search(engine.app.store(), lists)
         .expect("the session fronts the references feed");
     assert_ne!(referenced, feed, "a fresh feed displaced the old one");
-    let row = himark::locations::LocationsFeeds::row(engine.app.store(), referenced)
+    let row = himark::locations::LocationLists::row(engine.app.store(), lists, referenced)
         .expect("the references feed row");
     assert!(!row.truncated, "the references ask answered whole");
     assert_eq!(row.locations.len(), 2, "the fake's two references landed");
     settle_until(&mut engine, "the displaced feed disposed", |engine| {
-        himark::locations::LocationsFeeds::row(engine.app.store(), feed).is_none()
+        himark::locations::LocationLists::row(engine.app.store(), lists, feed).is_none()
     });
 }
 

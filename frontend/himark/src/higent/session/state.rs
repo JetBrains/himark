@@ -67,6 +67,8 @@ pub struct SessionState {
 
     documents: Id<crate::OpenDocuments>,
 
+    lists: Id<crate::locations::LocationLists>,
+
     scratch_names: Id<documents::ScratchMint>,
 }
 
@@ -103,6 +105,10 @@ impl SessionState {
         self.documents
     }
 
+    pub fn lists(&self) -> Id<crate::locations::LocationLists> {
+        self.lists
+    }
+
     pub fn scratch_names(&self) -> Id<documents::ScratchMint> {
         self.scratch_names
     }
@@ -117,6 +123,7 @@ impl SessionState {
             comments: Id::mint(),
             terminals: Id::mint(),
             documents: Id::mint(),
+            lists: Id::mint(),
             scratch_names: Id::mint(),
         }
     }
@@ -137,6 +144,7 @@ impl SessionState {
             && empty(store, self.comments, |it| it.is_empty())
             && empty(store, self.terminals, |it| it.is_empty())
             && empty(store, self.documents, |it| it.is_empty())
+            && empty(store, self.lists, |it| it.is_empty())
             && empty(store, self.scratch_names, |it| it.is_empty())
     }
 
@@ -154,6 +162,9 @@ impl SessionState {
         // then its `destroy` retracts what it owns (law 6). The others
         // follow as they convert.
         store.dispose(self.documents);
+        // The lists' live streams die with the row: the poll tokens
+        // and channel ends drop with it (the Terminals precedent).
+        store.retract(self.lists);
         store.retract(self.scratch_names);
     }
 }
@@ -411,6 +422,17 @@ impl Hosts {
             family.documents,
             std::sync::Arc::new(crate::hicomments::AddComment {
                 comments: family.comments,
+            }),
+        );
+        store.put_entity(
+            family.lists,
+            crate::locations::LocationLists::wired(family.documents),
+        );
+        crate::OpenDocuments::install_scoped_hook(
+            store,
+            family.documents,
+            std::sync::Arc::new(crate::locations::LocationsWashHook {
+                lists: family.lists,
             }),
         );
         store.put_entity(family.chats, crate::higent::Chats::wired(family.recents));

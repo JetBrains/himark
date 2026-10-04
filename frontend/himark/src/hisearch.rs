@@ -3,7 +3,7 @@
 
 //! The Search dock tab (docs/ui/location-list.md §6): a query input
 //! over the locations tree. The tab is a FACE over a store-level
-//! feed (`locations::LocationsFeeds`, addressed by id): the feed and
+//! feed (`locations::LocationLists`, addressed by id): the feed and
 //! its pump outlive the face, results keep landing while the dock is
 //! closed, and a peek promotes its feed here without asking again.
 
@@ -23,8 +23,8 @@ use skia_safe::Size;
 use crate::forest::{ForestList, ForestSearcher};
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
-    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey,
-    LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
+    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey, LocationLists,
+    LocationsFeedRow, StopFeed,
 };
 use crate::modal::RequestSlot;
 use crate::tree_item::{tree_toggle, TreeListCommand};
@@ -83,6 +83,9 @@ impl std::fmt::Display for SearchCommand {
 pub struct SearchView {
     window: WindowId,
     session: SessionId,
+    /// The session's lists collection — stamped at open from the
+    /// window's family (docs/entities.md law 3).
+    lists: imba::store::Id<LocationLists>,
     input: EditorView,
     search: ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>,
     focus: SearchArea,
@@ -109,6 +112,7 @@ impl Clone for SearchView {
         Self {
             window: self.window,
             session: self.session.clone(),
+            lists: self.lists,
             input: self.input.clone(),
             search: self.search.clone(),
             focus: self.focus,
@@ -125,13 +129,20 @@ impl Clone for SearchView {
 impl SearchView {
     /// The face over the session's fronting feed: reopening seeds
     /// the input with the feed's query and shows what stands.
-    pub fn open(store: &Store, ui: &UiCtx, window: WindowId, session: SessionId) -> Self {
-        let row = SessionSearchFeeds::feed(store, &session)
-            .and_then(|feed| LocationsFeeds::row(store, feed))
+    pub fn open(
+        store: &Store,
+        ui: &UiCtx,
+        window: WindowId,
+        session: SessionId,
+        lists: imba::store::Id<LocationLists>,
+    ) -> Self {
+        let row = LocationLists::search(store, lists)
+            .and_then(|feed| LocationLists::row(store, lists, feed))
             .unwrap_or_default();
         let mut view = Self {
             window,
             session,
+            lists,
             input: seeded_input(store, ui, &row.query),
             search: ListKeyboardController::searchable(
                 ForestList::new(store),
@@ -164,12 +175,12 @@ impl SearchView {
     }
 
     fn feed(&self, store: &Store) -> Option<FeedId> {
-        SessionSearchFeeds::feed(store, &self.session)
+        LocationLists::search(store, self.lists)
     }
 
     fn row(&self, store: &Store) -> LocationsFeedRow {
         self.feed(store)
-            .and_then(|feed| LocationsFeeds::row(store, feed))
+            .and_then(|feed| LocationLists::row(store, self.lists, feed))
             .unwrap_or_default()
     }
 
@@ -218,18 +229,30 @@ impl SearchView {
         self.last_query = query.clone();
 
         if let Some(previous) = self.feed(store) {
-            AppRequests::push(store, Arc::new(DisposeFeed { feed: previous }));
+            AppRequests::push(
+                store,
+                Arc::new(DisposeFeed {
+                    lists: self.lists,
+                    feed: previous,
+                }),
+            );
         }
         let feed = FeedId::mint();
-        open_feed(store, feed, format!("Search: {query}"), query.clone());
-        SessionSearchFeeds::put(store, self.session.clone(), feed);
+        open_feed(
+            store,
+            self.lists,
+            feed,
+            format!("Search: {query}"),
+            query.clone(),
+        );
+        LocationLists::set_search(store, self.lists, feed);
 
         let folders = crate::higent::session_folders(store, &self.session);
         let launches = query.trim().len() >= MIN_QUERY && !folders.is_empty();
         if !launches {
-            let mut row = LocationsFeeds::row(store, feed).unwrap_or_default();
+            let mut row = LocationLists::row(store, self.lists, feed).unwrap_or_default();
             row.done = true;
-            LocationsFeeds::put(store, feed, row);
+            LocationLists::put(store, self.lists, feed, row);
             self.rebuild(store, ui);
             return;
         }
@@ -253,7 +276,7 @@ impl SearchView {
             .copied()
             .and_then(|index| {
                 self.feed(store)
-                    .and_then(|feed| LocationsFeeds::row_ref(store, feed))
+                    .and_then(|feed| LocationLists::row_ref(store, self.lists, feed))
                     .and_then(|row| row.locations.get(index))
             })
             .cloned()
@@ -268,7 +291,7 @@ impl SearchView {
                 Arc::new(OpenFoundLocation {
                     location: found.location,
                     target,
-                    feed: self.feed(store),
+                    feed: self.feed(store).map(|feed| (self.lists, feed)),
                     focus,
                 }),
             )));
@@ -297,7 +320,7 @@ pub(crate) struct OpenFoundLocation {
     pub(crate) target: std::ops::Range<crate::LineCol>,
     /// Set for search-view picks: the opened editor gets the feed's
     /// find-results wash — every occurrence in the file highlighted.
-    pub(crate) feed: Option<FeedId>,
+    pub(crate) feed: Option<(imba::store::Id<LocationLists>, FeedId)>,
     /// A deliberate jump (click, Enter) moves the keyboard to the
     /// editor; a selection move browsing results just shows it.
     pub(crate) focus: bool,
@@ -322,13 +345,19 @@ impl crate::DynamicCommand for OpenFoundLocation {
         let documents = crate::Windows::session_family(store, window)
             .expect("search runs in a window with a session")
             .documents();
-        if let Some(feed) = self.feed {
+        if let Some((lists, feed)) = self.feed {
             match crate::OpenDocuments::by_location(store, documents, &self.location) {
                 Some(document) => crate::AppRequests::push(
                     store,
-                    Arc::new(crate::locations::WashDocument { feed, document }),
+                    Arc::new(crate::locations::WashDocument {
+                        lists,
+                        feed,
+                        document,
+                    }),
                 ),
-                None => crate::locations::PendingWashes::note(store, self.location.clone(), feed),
+                None => {
+                    LocationLists::note_wash(store, lists, self.location.clone(), feed);
+                }
             }
         }
         let _ = fx.push(crate::open_by_location_effect(
@@ -459,13 +488,26 @@ impl View for SearchView {
             }
             SearchCommand::Cancel => {
                 if let Some(feed) = self.feed(store) {
-                    AppRequests::push(store, Arc::new(StopFeed { feed }));
+                    AppRequests::push(
+                        store,
+                        Arc::new(StopFeed {
+                            lists: self.lists,
+                            feed,
+                        }),
+                    );
                 }
             }
             SearchCommand::Dismiss => self.request.file(ModalRequest::Close),
             SearchCommand::Refresh => self.rebuild(store, ui),
             SearchCommand::Asked { feed, outcome } => {
-                AppRequests::push(store, Arc::new(AttachFeedStream { feed, outcome }));
+                AppRequests::push(
+                    store,
+                    Arc::new(AttachFeedStream {
+                        lists: self.lists,
+                        feed,
+                        outcome,
+                    }),
+                );
             }
         }
     }
@@ -493,7 +535,7 @@ impl View for SearchView {
             let mut panel = imba::container::container(arena, size);
 
             let feed = self.feed(store);
-            let row = feed.and_then(|feed| LocationsFeeds::row_ref(store, feed));
+            let row = feed.and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
             let (hits, done, truncated, generation) = row
                 .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
                 .unwrap_or((0, true, false, 0));
@@ -781,11 +823,71 @@ impl crate::ModalView for SearchView {
     }
 }
 
+/// An LSP locations ask opening the Search dock tab at ASK time —
+/// the whole chain in ONE window command: the window's family names
+/// the lists collection, the feed is minted and fronted here, and
+/// the ask's landing arrives with `(lists, feed)` stamped at launch
+/// (docs/entities.md law 3) — no payload re-entry through the
+/// editor command, no scope re-derived later.
+pub struct OpenLspFeed {
+    pub kind: crate::LspLocationsKind,
+    pub title: String,
+    pub location: crate::ResourceLocation,
+    pub position: crate::LineCol,
+}
+
+impl crate::DynamicCommand for OpenLspFeed {
+    fn id(&self) -> &'static str {
+        "search.open-lsp-feed"
+    }
+
+    fn name(&self) -> String {
+        "Stream Locations into Search".to_owned()
+    }
+
+    fn perform(
+        &self,
+        app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(lists) =
+            crate::Windows::window_ref(store, window).map(|entity| entity.family().lists())
+        else {
+            return;
+        };
+        let feed = FeedId::mint();
+        open_feed(store, lists, feed, self.title.clone(), String::new());
+        ShowFeedInDock { lists, feed }.perform(app, store, window, fx);
+        let _ = fx.push(
+            imba::effect::AnyEffect::new(crate::LspLocationsEffect {
+                location: self.location.clone(),
+                position: self.position,
+                kind: self.kind,
+            })
+            .map(move |outcome| {
+                crate::AppCommand::Dynamic(
+                    window,
+                    Arc::new(AttachFeedStream {
+                        lists,
+                        feed,
+                        outcome,
+                    }),
+                )
+            }),
+        );
+    }
+}
+
 /// Front a feed in the Search dock tab — the one door every producer
 /// uses: a references ask opening the tab at ASK time, and the
 /// peek's promote button, which reuses the standing feed instead of
 /// asking again.
 pub struct ShowFeedInDock {
+    /// The feed's HOME collection — carried with the feed so a
+    /// promote fronts the right rows even if the window moved on.
+    pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
 }
 
@@ -809,18 +911,24 @@ impl crate::DynamicCommand for ShowFeedInDock {
             return;
         };
         let session = entity.current_session();
-        if let Some(previous) = SessionSearchFeeds::feed(store, &session) {
+        if let Some(previous) = LocationLists::search(store, self.lists) {
             if previous != self.feed {
-                AppRequests::push(store, Arc::new(DisposeFeed { feed: previous }));
+                AppRequests::push(
+                    store,
+                    Arc::new(DisposeFeed {
+                        lists: self.lists,
+                        feed: previous,
+                    }),
+                );
             }
         }
-        SessionSearchFeeds::put(store, session.clone(), self.feed);
+        LocationLists::set_search(store, self.lists, self.feed);
 
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = SearchView::open(store, &app.ui_ctx(), window, session);
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session, self.lists);
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
@@ -860,7 +968,8 @@ impl crate::DynamicCommand for ToggleSearchView {
         );
 
         let session = entity.current_session();
-        let panel = SearchView::open(store, &app.ui_ctx(), window, session);
+        let lists = entity.family().lists();
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session, lists);
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
@@ -1006,23 +1115,31 @@ mod tests {
         }
     }
 
+    /// The production road: the family ceremony mints the lists
+    /// collection the tests write into.
+    fn lists(store: &mut Store) -> imba::store::Id<LocationLists> {
+        crate::higent::Hosts::ensure_family(store, &session()).lists()
+    }
+
     fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) -> FeedId {
-        let feed = SessionSearchFeeds::feed(store, &session()).unwrap_or_else(|| {
+        let lists = lists(store);
+        let feed = LocationLists::search(store, lists).unwrap_or_else(|| {
             let minted = FeedId::mint();
-            SessionSearchFeeds::put(store, session(), minted);
+            LocationLists::set_search(store, lists, minted);
             minted
         });
-        let mut row = LocationsFeeds::row(store, feed).unwrap_or_default();
+        let mut row = LocationLists::row(store, lists, feed).unwrap_or_default();
         row.generation += 1;
         row.locations = rows.iter().cloned().collect();
         row.done = done;
-        LocationsFeeds::put(store, feed, row);
+        LocationLists::put(store, lists, feed, row);
         feed
     }
 
     fn view(store: &mut Store, ui: &UiCtx) -> SearchView {
         let window = crate::WindowId::from_raw(77);
-        SearchView::open(store, ui, window, session())
+        let lists = lists(store);
+        SearchView::open(store, ui, window, session(), lists)
     }
 
     #[test]

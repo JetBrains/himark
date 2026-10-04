@@ -258,15 +258,13 @@ impl himark::DocumentCommand for GoReferences {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
+        let _ = (payload, fx);
         stream_navigation(
             himark::LspLocationsKind::References,
-            self.id(),
             store,
             document,
             editor,
             location,
-            payload,
-            fx,
         );
     }
 }
@@ -292,79 +290,49 @@ impl himark::DocumentCommand for GoImplementations {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
+        let _ = (payload, fx);
         stream_navigation(
             himark::LspLocationsKind::Implementations,
-            self.id(),
             store,
             document,
             editor,
             location,
-            payload,
-            fx,
         );
     }
 }
 
-/// The channel outcome riding the two-phase editor-command re-entry.
-struct StreamOutcome {
-    feed: himark::locations::FeedId,
-    outcome: Result<himark::LocationsChannel, String>,
-}
-
 /// References and implementations stream into the Search dock tab
-/// (docs/ui/location-list.md §7) through a store-level FEED: phase
-/// one mints the feed and fronts it in the dock IMMEDIATELY — the
-/// tab shows "searching…" before the ask answers, so a failing ask
-/// resolves in plain sight; phase two attaches the landed channel.
-/// No target document is fetched before navigation.
-#[allow(clippy::too_many_arguments)]
+/// (docs/ui/location-list.md §7) through the session's lists
+/// collection: this border only names WHAT to ask — the window
+/// command (`hisearch::OpenLspFeed`) owns the whole chain, minting
+/// the feed against its family and stamping the landing with it
+/// (docs/entities.md law 3). No payload re-entry, no second phase.
 fn stream_navigation(
     kind: himark::LspLocationsKind,
-    id: &'static str,
     store: &mut Store,
     document: &mut Document,
     editor: himark::EditorId,
     location: &ResourceLocation,
-    payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-    fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
 ) {
-    let Some(payload) = payload else {
-        let caret = document.caret_byte(editor) as usize;
-        let mut view = document.text().view();
-        let position = line_col_at(&mut view, caret);
-        let ident = identifier_at(&mut view, caret);
-        let title = match (kind, ident.is_empty()) {
-            (himark::LspLocationsKind::References, false) => format!("References to `{ident}`"),
-            (himark::LspLocationsKind::References, true) => "References".to_owned(),
-            (himark::LspLocationsKind::Implementations, false) => {
-                format!("Implementations of `{ident}`")
-            }
-            (himark::LspLocationsKind::Implementations, true) => "Implementations".to_owned(),
-        };
-        let feed = himark::locations::FeedId::mint();
-        himark::locations::open_feed(store, feed, title, String::new());
-        himark::AppRequests::push(store, Arc::new(himark::hisearch::ShowFeedInDock { feed }));
-        let _ = fx.push(
-            imba::effect::AnyEffect::new(himark::LspLocationsEffect {
-                location: location.clone(),
-                position,
-                kind,
-            })
-            .map(move |outcome| himark::EditorCommand::Dynamic {
-                id,
-                payload: Some(himark::DynPayload::new(StreamOutcome { feed, outcome })),
-            }),
-        );
-        return;
-    };
-    let Ok(landed) = payload.downcast::<StreamOutcome>() else {
-        return;
+    let caret = document.caret_byte(editor) as usize;
+    let mut view = document.text().view();
+    let position = line_col_at(&mut view, caret);
+    let ident = identifier_at(&mut view, caret);
+    let title = match (kind, ident.is_empty()) {
+        (himark::LspLocationsKind::References, false) => format!("References to `{ident}`"),
+        (himark::LspLocationsKind::References, true) => "References".to_owned(),
+        (himark::LspLocationsKind::Implementations, false) => {
+            format!("Implementations of `{ident}`")
+        }
+        (himark::LspLocationsKind::Implementations, true) => "Implementations".to_owned(),
     };
     himark::AppRequests::push(
         store,
-        Arc::new(himark::locations::AttachFeedStream {
-            feed: landed.feed,
-            outcome: landed.outcome,
+        Arc::new(himark::hisearch::OpenLspFeed {
+            kind,
+            title,
+            location: location.clone(),
+            position,
         }),
     );
 }

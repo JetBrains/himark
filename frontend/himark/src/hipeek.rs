@@ -4,7 +4,7 @@
 //! Go-to reference peek (docs/ui/location-list.md §8): an
 //! `InlayMode::Under` master–detail card under the caret's line —
 //! the quick random-access interface. The card is a FACE over a
-//! store-level feed (`locations::LocationsFeeds`): the master is a
+//! store-level feed (`locations::LocationLists`): the master is a
 //! tree of locations grouped by file; the detail lazily fetches ONLY
 //! the selected location's document and shows it whole in its own
 //! scrollable editor. Enter navigates and dismisses; Escape
@@ -28,7 +28,7 @@ use crate::forest::ForestList;
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
     files_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation, LocationKey,
-    LocationsFeeds,
+    LocationLists,
 };
 use crate::tree_item::{tree_toggle, TreeListCommand};
 use crate::{
@@ -83,6 +83,7 @@ pub struct PeekView {
     host: Option<crate::DocumentId>,
     key: Option<InlayKey>,
     width: f32,
+    lists: imba::store::Id<LocationLists>,
     feed: FeedId,
 
     tree: ListKeyboardController<ForestList<LocationKey>>,
@@ -104,11 +105,18 @@ pub struct PeekView {
 }
 
 impl PeekView {
-    fn new(store: &Store, host: Option<crate::DocumentId>, width: f32, feed: FeedId) -> Self {
+    fn new(
+        store: &Store,
+        host: Option<crate::DocumentId>,
+        width: f32,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+    ) -> Self {
         Self {
             host,
             key: None,
             width,
+            lists,
             feed,
             tree: ListKeyboardController::new(ForestList::new(store)).with_folds(),
             targets: rpds::HashTrieMapSync::new_sync(),
@@ -128,12 +136,12 @@ impl PeekView {
     }
 
     fn row(&self, store: &Store) -> crate::locations::LocationsFeedRow {
-        LocationsFeeds::row(store, self.feed).unwrap_or_default()
+        LocationLists::row(store, self.lists, self.feed).unwrap_or_default()
     }
 
     fn found(&self, store: &Store, key: &LocationKey) -> Option<FoundLocation> {
         let index = self.targets.get(key).copied()?;
-        LocationsFeeds::row_ref(store, self.feed)
+        LocationLists::row_ref(store, self.lists, self.feed)
             .and_then(|row| row.locations.get(index))
             .cloned()
     }
@@ -203,7 +211,7 @@ impl PeekView {
         let Some(index) = self.targets.get(&key).copied() else {
             return;
         };
-        let Some(found) = LocationsFeeds::row_ref(store, self.feed)
+        let Some(found) = LocationLists::row_ref(store, self.lists, self.feed)
             .and_then(|row| row.locations.get(index))
             .cloned()
         else {
@@ -292,7 +300,7 @@ impl PeekView {
         index: usize,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
-        let Some(found) = LocationsFeeds::row_ref(store, self.feed)
+        let Some(found) = LocationLists::row_ref(store, self.lists, self.feed)
             .and_then(|row| row.locations.get(index))
             .cloned()
         else {
@@ -383,7 +391,13 @@ impl PeekView {
     /// on (the promote path fronts it in the dock instead).
     fn close(&mut self, store: &mut Store, keep_feed: bool) {
         if !keep_feed {
-            AppRequests::push(store, Arc::new(DisposeFeed { feed: self.feed }));
+            AppRequests::push(
+                store,
+                Arc::new(DisposeFeed {
+                    lists: self.lists,
+                    feed: self.feed,
+                }),
+            );
         }
         if let (Some(host), Some(key)) = (self.host, self.key) {
             AppRequests::push(
@@ -483,7 +497,10 @@ impl View for PeekView {
             PeekCommand::Promote => {
                 AppRequests::push(
                     store,
-                    Arc::new(crate::hisearch::ShowFeedInDock { feed: self.feed }),
+                    Arc::new(crate::hisearch::ShowFeedInDock {
+                        lists: self.lists,
+                        feed: self.feed,
+                    }),
                 );
                 self.close(store, true);
             }
@@ -499,7 +516,7 @@ impl View for PeekView {
                 let Some(text) = text else {
                     return;
                 };
-                let Some(location) = LocationsFeeds::row_ref(store, self.feed)
+                let Some(location) = LocationLists::row_ref(store, self.lists, self.feed)
                     .and_then(|row| row.locations.get(index))
                     .map(|found| found.location.clone())
                 else {
@@ -559,7 +576,7 @@ impl View for PeekView {
 
             // The header: the feed's title and stream state, plus the
             // promote chip fronting the SAME feed in the Search tab.
-            let row = LocationsFeeds::row_ref(store, self.feed);
+            let row = LocationLists::row_ref(store, self.lists, self.feed);
             let (hits, done, truncated, title) = row
                 .map(|row| {
                     (
@@ -618,7 +635,7 @@ impl View for PeekView {
             // The refresh probe: a 1px leaf whose own paint files
             // Refresh when the feed moved — the CARD keeps painting;
             // hijacking the card's Paint blanked a frame per batch.
-            let stale = LocationsFeeds::row_ref(store, self.feed)
+            let stale = LocationLists::row_ref(store, self.lists, self.feed)
                 .is_some_and(|row| row.generation != self.shown);
             if stale {
                 card.place(
@@ -753,17 +770,36 @@ impl documents::DocumentCommand for GoToReference {
         // Phase two: the channel landed — attach it to the feed the
         // card already fronts.
         if let Some(payload) = payload {
-            let Ok(landed) = payload.downcast::<(FeedId, Result<LocationsChannel, String>)>()
-            else {
+            let Ok(landed) = payload.downcast::<(
+                imba::store::Id<LocationLists>,
+                FeedId,
+                Result<LocationsChannel, String>,
+            )>() else {
                 return;
             };
-            let (feed, outcome) = *landed;
-            AppRequests::push(store, Arc::new(AttachFeedStream { feed, outcome }));
+            let (lists, feed, outcome) = *landed;
+            AppRequests::push(
+                store,
+                Arc::new(AttachFeedStream {
+                    lists,
+                    feed,
+                    outcome,
+                }),
+            );
             return;
         }
 
         // Phase one: mint the feed, mount the card NOW — the ask's
         // outcome lands into the visible card, never into silence.
+        // The lists collection is the documents' sibling — a catalog
+        // consult at a DocumentCommand border, the save.rs/fsroute
+        // debt class: burns when generic document commands learn
+        // their family (the gating keeps this one boot-global).
+        let Some(lists) = crate::higent::Hosts::family_of_documents(store, _documents)
+            .map(|family| family.lists())
+        else {
+            return;
+        };
         let caret = document.caret_byte(editor);
         let Some(anchor) = caret_anchor(document, caret) else {
             return;
@@ -773,7 +809,7 @@ impl documents::DocumentCommand for GoToReference {
             crate::line_col_at(&mut view, caret as usize)
         };
         let feed = FeedId::mint();
-        open_feed(store, feed, "References".to_owned(), String::new());
+        open_feed(store, lists, feed, "References".to_owned(), String::new());
 
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
@@ -782,7 +818,7 @@ impl documents::DocumentCommand for GoToReference {
             _ => FALLBACK_WIDTH,
         };
         let host = Some(document_id);
-        let view = PeekView::new(store, host, width, feed);
+        let view = PeekView::new(store, host, width, lists, feed);
         let markup = peek_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -806,7 +842,7 @@ impl documents::DocumentCommand for GoToReference {
             })
             .map(move |outcome| EditorCommand::Dynamic {
                 id: "code.go-to-reference",
-                payload: Some(::editor::DynPayload::new((feed, outcome))),
+                payload: Some(::editor::DynPayload::new((lists, feed, outcome))),
             }),
         );
     }
@@ -860,7 +896,20 @@ mod tests {
         }
     }
 
-    fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) -> FeedId {
+    fn lists(store: &mut Store) -> imba::store::Id<LocationLists> {
+        let session = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("peek-test"),
+        };
+        crate::higent::Hosts::ensure_family(store, &session).lists()
+    }
+
+    fn feed(
+        store: &mut Store,
+        rows: &[FoundLocation],
+        done: bool,
+    ) -> (imba::store::Id<LocationLists>, FeedId) {
+        let lists = lists(store);
         let feed = FeedId::mint();
         let mut row = crate::locations::LocationsFeedRow {
             title: "References".to_owned(),
@@ -869,15 +918,15 @@ mod tests {
             ..Default::default()
         };
         row.locations = rows.iter().cloned().collect();
-        LocationsFeeds::put(store, feed, row);
-        feed
+        LocationLists::put(store, lists, feed, row);
+        (lists, feed)
     }
 
     #[test]
     fn the_master_groups_by_file_and_navigates_on_pick() {
         let mut store = Store::new();
         let ui = ::editor::test_document::test_ui();
-        let feed = feed(
+        let (lists, feed) = feed(
             &mut store,
             &[
                 found("a.rs", 1, "  let x = y;"),
@@ -886,7 +935,7 @@ mod tests {
             ],
             true,
         );
-        let mut view = PeekView::new(&store, None, 600.0, feed);
+        let mut view = PeekView::new(&store, None, 600.0, lists, feed);
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
 
@@ -913,7 +962,7 @@ mod tests {
         let requests = store.get::<crate::AppRequests>().expect("requests");
         assert!(!requests.is_empty(), "the pick navigated through the door");
         assert!(
-            LocationsFeeds::row(&store, feed).is_some(),
+            LocationLists::row(&store, lists, feed).is_some(),
             "disposal rides AppRequests, not the view"
         );
     }
@@ -922,8 +971,8 @@ mod tests {
     fn a_single_settled_result_navigates_without_a_card() {
         let mut store = Store::new();
         let ui = ::editor::test_document::test_ui();
-        let feed = feed(&mut store, &[found("a.rs", 3, "only")], true);
-        let mut view = PeekView::new(&store, None, 600.0, feed);
+        let (lists, feed) = feed(&mut store, &[found("a.rs", 3, "only")], true);
+        let mut view = PeekView::new(&store, None, 600.0, lists, feed);
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
         assert!(view.navigated, "the trivial case went straight through");

@@ -7124,9 +7124,7 @@ unrelated
 
 mod wash_tests {
     use super::*;
-    use crate::locations::{
-        DisposeFeed, FeedId, FoundLocation, LocationsFeedRow, LocationsFeeds, PendingWashes,
-    };
+    use crate::locations::{DisposeFeed, FeedId, FoundLocation, LocationLists, LocationsFeedRow};
     use crate::{AppCommand, AppFonts, Application, OpenedDocument};
     use std::sync::Arc;
 
@@ -7138,7 +7136,16 @@ mod wash_tests {
         )
     }
 
-    fn seeded_feed(app: &mut Application, name: &str) -> FeedId {
+    fn family_lists(app: &Application) -> imba::store::Id<LocationLists> {
+        let window = app.sole_window();
+        crate::Windows::window_ref(app.store(), window)
+            .expect("the window entity")
+            .family()
+            .lists()
+    }
+
+    fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {
+        let lists = family_lists(app);
         let feed = FeedId::mint();
         let mut row = LocationsFeedRow {
             title: "Search: needle".to_owned(),
@@ -7164,8 +7171,8 @@ mod wash_tests {
             context: "needle".to_owned(),
             context_column_start: 0,
         });
-        LocationsFeeds::put(&mut app.store_mut(), feed, row);
-        feed
+        LocationLists::put(&mut app.store_mut(), lists, feed, row);
+        (lists, feed)
     }
 
     #[test]
@@ -7184,7 +7191,7 @@ mod wash_tests {
                 focus: false,
             },
         )));
-        let feed = seeded_feed(&mut app, "hit.md");
+        let (lists, feed) = seeded_feed(&mut app, "hit.md");
 
         // The already-open pick path: the wash lands through the
         // drained request, resolved against live text.
@@ -7193,7 +7200,7 @@ mod wash_tests {
             Arc::new(crate::hisearch::OpenFoundLocation {
                 location: located("hit.md"),
                 target: crate::LineCol { line: 1, col: 4 }..crate::LineCol { line: 1, col: 10 },
-                feed: Some(feed),
+                feed: Some((lists, feed)),
                 focus: true,
             }),
         )));
@@ -7202,7 +7209,7 @@ mod wash_tests {
             window,
             crate::WindowCommand::Focus(crate::LayerFocus::Content),
         )));
-        let row = LocationsFeeds::row(app.store(), feed).expect("the feed");
+        let row = LocationLists::row(app.store(), lists, feed).expect("the feed");
         assert_eq!(row.washes.size(), 1, "the opened document is washed");
         let (document, (_, pushed)) = row.washes.iter().next().expect("the wash");
         let ranges: Vec<(u32, u32)> = pushed.iter().copied().collect();
@@ -7213,8 +7220,11 @@ mod wash_tests {
         );
 
         // Disposal removes the wash and survives the walk.
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(DisposeFeed { feed }),)));
-        assert!(LocationsFeeds::row(app.store(), feed).is_none());
+        assert!(app.perform_command(AppCommand::Dynamic(
+            window,
+            Arc::new(DisposeFeed { lists, feed }),
+        )));
+        assert!(LocationLists::row(app.store(), lists, feed).is_none());
         assert!(
             crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), *document)
                 .is_some(),
@@ -7226,11 +7236,11 @@ mod wash_tests {
     fn a_pick_before_the_open_washes_at_registration() {
         let mut app = Application::new(AppFonts::embedded());
         let window = app.add_window();
-        let feed = seeded_feed(&mut app, "late.md");
+        let (lists, feed) = seeded_feed(&mut app, "late.md");
 
         // The async-open path: the pick notes the pending wash; the
         // document hook converts it when registration lands.
-        PendingWashes::note(&mut app.store_mut(), located("late.md"), feed);
+        LocationLists::note_wash(&mut app.store_mut(), lists, located("late.md"), feed);
         assert!(app.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
@@ -7247,7 +7257,7 @@ mod wash_tests {
             window,
             crate::WindowCommand::Focus(crate::LayerFocus::Content),
         )));
-        let row = LocationsFeeds::row(app.store(), feed).expect("the feed");
+        let row = LocationLists::row(app.store(), lists, feed).expect("the feed");
         assert_eq!(
             row.washes.size(),
             1,
