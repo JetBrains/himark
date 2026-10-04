@@ -291,8 +291,8 @@ impl SearchView {
         };
         self.navigated = Some(key);
         let target = found.target();
-        self.request
-            .file(ModalRequest::Perform(crate::AppCommand::Dynamic(
+        self.request.file(ModalRequest::Perform(crate::shell_verb(
+            crate::AppCommand::Dynamic(
                 self.window,
                 Arc::new(OpenFoundLocation {
                     location: found.location,
@@ -300,7 +300,8 @@ impl SearchView {
                     feed: self.feed(store).map(|feed| (self.lists, feed)),
                     focus,
                 }),
-            )));
+            ),
+        )));
     }
 
     /// Selection IS navigation: the keyboard cursor landing on a file
@@ -1225,10 +1226,7 @@ mod tests {
         view.pick(&store, hit, true);
         let request = crate::ModalView::take_request(&mut view);
         assert!(
-            matches!(
-                request,
-                Some(ModalRequest::Perform(crate::AppCommand::Dynamic(_, _)))
-            ),
+            matches!(request, Some(ModalRequest::Perform(_))),
             "a hit pick performs the located open"
         );
 

@@ -444,7 +444,10 @@ impl crate::PanelView for DiffPanelView {
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
         let pane = self.pane.content();
-        Some(crate::FamilyRow::Pair(pane.documents, pane.id))
+        Some(crate::FamilyRow::new(crate::PairRow(
+            pane.documents,
+            pane.id,
+        )))
     }
 
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
@@ -463,7 +466,7 @@ impl crate::PanelView for DiffPanelView {
         &mut self,
         store: &mut Store,
         place: &DiffPlace,
-        _fx: &mut crate::AppFx<'_>,
+        _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         let Some(pair) = crate::OpenDocuments::diff_view_ref(
             store,
@@ -568,17 +571,14 @@ pub fn diff_panel(
 }
 
 pub fn pair_row_minter() -> std::sync::Arc<crate::RowMinter> {
-    std::sync::Arc::new(|store, row| match row {
-        // The row carries its collection: the pane is minted off the
-        // ids while the pair still stands.
-        crate::FamilyRow::Pair(documents, id) => {
-            crate::OpenDocuments::diff_view_ref(store, *documents, *id).map(|_| {
-                Box::new(DiffPanelView::over(*documents, *id)) as Box<dyn crate::DynPanelView>
-            })
-        }
-        // Canvases open through the NAVIGATION road (CanvasNavigator)
-        // — reuse is a store lookup, not a mint.
-        _ => None,
+    // The row carries its collection: the pane is minted off the ids
+    // while the pair still stands. Canvases open through the
+    // NAVIGATION road (CanvasNavigator) — reuse is a store lookup,
+    // not a mint.
+    std::sync::Arc::new(|store, row| {
+        let crate::PairRow(documents, id) = *row.row::<crate::PairRow>()?;
+        crate::OpenDocuments::diff_view_ref(store, documents, id)
+            .map(|_| Box::new(DiffPanelView::over(documents, id)) as Box<dyn crate::DynPanelView>)
     })
 }
 

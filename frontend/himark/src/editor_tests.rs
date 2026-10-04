@@ -3570,10 +3570,12 @@ mod toc {
                 &mut imba::effect::Batch::new().effects(),
             );
         }
-        let Some(crate::ModalRequest::Perform(command)) = crate::ModalView::take_request(&mut view)
+        let Some(crate::ModalRequest::Perform(verb)) = crate::ModalView::take_request(&mut view)
         else {
             panic!("the pick performs the jump");
         };
+        let command =
+            crate::app::verb_command(app.sole_window(), verb).expect("a performable verb");
         assert!(app.perform_command(command));
         let (document_id, editor_id) = app.focused_editor_id();
         let caret =
@@ -5361,9 +5363,11 @@ mod dock_tests {
         );
         assert!(panel.add_host_text().is_none(), "Enter clears the input");
         let request = crate::ModalView::take_request(&mut panel).expect("the dispatch request");
-        let crate::ModalRequest::Perform(command) = request else {
+        let crate::ModalRequest::Perform(verb) = request else {
             panic!("Enter dispatches a Perform request");
         };
+        let command =
+            crate::app::verb_command(app.sole_window(), verb).expect("a performable verb");
         assert!(app.perform_batch(vec![command]));
         assert_eq!(
             received.lock().expect("recorder").as_deref(),

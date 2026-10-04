@@ -644,15 +644,17 @@ impl OutlineView {
         else {
             return;
         };
-        self.request = Some(ModalRequest::Perform(crate::AppCommand::Dynamic(
-            self.window,
-            Arc::new(NavigateToPlace {
-                place: crate::EditorPlace {
-                    location: self.location.clone(),
-                    caret: range.start,
-                    scroll_y: 0.0,
-                },
-            }),
+        self.request = Some(ModalRequest::Perform(crate::shell_verb(
+            crate::AppCommand::Dynamic(
+                self.window,
+                Arc::new(NavigateToPlace {
+                    place: crate::EditorPlace {
+                        location: self.location.clone(),
+                        caret: range.start,
+                        scroll_y: 0.0,
+                    },
+                }),
+            ),
         )));
     }
 }

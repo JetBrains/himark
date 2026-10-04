@@ -1138,9 +1138,10 @@ impl Window {
             let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
                 return;
             };
-            let Some(pane) =
-                crate::family_rows::mint(store, &crate::FamilyRow::Chat(chats, chat.clone()))
-            else {
+            let Some(pane) = crate::family_rows::mint(
+                store,
+                &crate::FamilyRow::new(crate::ChatRow(chats, chat.clone())),
+            ) else {
                 return;
             };
             self.workbench_mut().dock_chat(Panel::Plugin(pane));
@@ -1179,8 +1180,10 @@ impl Window {
                 self.workbench_mut().dock_chat(Panel::Plugin(pane));
             }
         }
-        if let Some(crate::FamilyRow::Chat(chats, chat)) = row {
-            boot_chat_feed(store, chats, chat);
+        if let Some(crate::ChatRow(chats, chat)) =
+            row.as_ref().and_then(|row| row.row::<crate::ChatRow>())
+        {
+            boot_chat_feed(store, *chats, chat.clone());
         }
         self.workbench_mut().focus_chat(true);
         self.content.focus = LayerFocus::Content;
@@ -1466,7 +1469,10 @@ impl Window {
     ) -> bool {
         // A chat pane has ONE home, whatever road carried it here:
         // the workbench's chat slot, never a tree leaf.
-        if matches!(panel.family_row(), Some(crate::FamilyRow::Chat(..))) {
+        if panel
+            .family_row()
+            .is_some_and(|row| row.row::<crate::ChatRow>().is_some())
+        {
             return self.open_chat_panel(store, ui, panel, fx);
         }
         if self.has_modal() {

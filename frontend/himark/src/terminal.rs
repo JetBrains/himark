@@ -197,14 +197,13 @@ impl crate::Navigator for TerminalNavigator {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
-        _window: crate::WindowId,
         place: &TerminalPlace,
-        _fx: &mut crate::AppFx<'_>,
-    ) -> Option<crate::Panel> {
-        Some(crate::Panel::Plugin(crate::family_rows::mint(
+        _fx: &mut imba::command::Fx<'_>,
+    ) -> Option<Box<dyn crate::DynPanelView>> {
+        crate::family_rows::mint(
             store,
-            &crate::FamilyRow::Terminal(place.terminals, place.id),
-        )?))
+            &crate::FamilyRow::new(crate::TerminalRow(place.terminals, place.id)),
+        )
     }
 }
 
@@ -222,7 +221,7 @@ impl PanelView for TerminalView {
         &mut self,
         _store: &mut Store,
         place: &TerminalPlace,
-        _fx: &mut crate::AppFx<'_>,
+        _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         place.terminals == self.terminals && place.id == self.id
     }
@@ -245,7 +244,10 @@ impl PanelView for TerminalView {
     }
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Terminal(self.terminals, self.id))
+        Some(crate::FamilyRow::new(crate::TerminalRow(
+            self.terminals,
+            self.id,
+        )))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

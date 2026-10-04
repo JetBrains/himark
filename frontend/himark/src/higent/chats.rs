@@ -398,14 +398,13 @@ impl crate::Navigator for ChatNavigator {
         &self,
         store: &mut Store,
         _ui: &UiCtx,
-        _window: WindowId,
         place: &ChatPlace,
-        _fx: &mut crate::AppFx<'_>,
-    ) -> Option<crate::Panel> {
-        Some(crate::Panel::Plugin(crate::family_rows::mint(
+        _fx: &mut imba::command::Fx<'_>,
+    ) -> Option<Box<dyn crate::DynPanelView>> {
+        crate::family_rows::mint(
             store,
-            &crate::FamilyRow::Chat(place.chats, place.chat.clone()),
-        )?))
+            &crate::FamilyRow::new(crate::ChatRow(place.chats, place.chat.clone())),
+        )
     }
 }
 
@@ -413,7 +412,10 @@ impl crate::PanelView for ChatPane {
     type Place = ChatPlace;
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Chat(self.chats, self.chat.clone()))
+        Some(crate::FamilyRow::new(crate::ChatRow(
+            self.chats,
+            self.chat.clone(),
+        )))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<ChatPlace> {
@@ -427,7 +429,7 @@ impl crate::PanelView for ChatPane {
         &mut self,
         _store: &mut Store,
         place: &ChatPlace,
-        _fx: &mut crate::AppFx<'_>,
+        _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         place.chats == self.chats && place.chat == self.chat
     }

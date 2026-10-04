@@ -9,7 +9,7 @@ use imba::store::Store;
 use crate::app::AppFx;
 use crate::Panel;
 
-pub trait Place: Clone + PartialEq + Send + Sync + 'static {}
+pub use hikit::{NavigationLocation, Navigator, NoPlace, Place};
 
 #[derive(Clone, Debug)]
 pub struct EditorPlace {
@@ -26,49 +26,10 @@ impl PartialEq for EditorPlace {
 
 impl Place for EditorPlace {}
 
-#[derive(Clone, PartialEq)]
-pub enum NoPlace {}
-
-impl Place for NoPlace {}
-
-trait ErasedPlace: Send + Sync {
-    fn as_any(&self) -> &dyn Any;
-    fn same(&self, other: &dyn Any) -> bool;
-}
-
-impl<P: Place> ErasedPlace for P {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn same(&self, other: &dyn Any) -> bool {
-        other.downcast_ref::<P>().is_some_and(|other| other == self)
-    }
-}
-
-#[derive(Clone)]
-pub struct NavigationLocation {
-    place_type: TypeId,
-    payload: Arc<dyn ErasedPlace>,
-}
-
-impl NavigationLocation {
-    pub fn new<P: Place>(place: P) -> Self {
-        Self {
-            place_type: TypeId::of::<P>(),
-            payload: Arc::new(place),
-        }
-    }
-
-    pub fn place<P: Place>(&self) -> Option<&P> {
-        self.payload.as_any().downcast_ref::<P>()
-    }
-
-    pub fn same(&self, other: &NavigationLocation) -> bool {
-        self.payload.same(other.payload.as_any())
-    }
-}
-
-pub trait Navigator: Send + Sync + 'static {
+/// The WINDOWED navigators — the editor and diff OPEN roads, which
+/// resolve the window's family and land panes into it. Shell-side by
+/// nature; they shrink away as opening becomes content-addressed.
+pub trait WindowedNavigator: Send + Sync + 'static {
     type Place: Place;
 
     fn navigate(
@@ -97,7 +58,27 @@ type ErasedNavigate = Arc<
 pub struct Navigators(pub(crate) rpds::HashTrieMapSync<TypeId, ErasedNavigate>);
 
 impl Navigators {
+    /// Register a WINDOWLESS navigator (the kit trait): its verbs
+    /// fold into the app stream; its pane lands wherever the shell
+    /// decides.
     pub fn register<N: Navigator>(store: &mut Store, navigator: N) {
+        let navigator = Arc::new(navigator);
+        let erased: ErasedNavigate = Arc::new(move |store, ui, _window, location, fx| {
+            let place = location.place::<N::Place>()?;
+            fx.scope(crate::AppCommand::Verb, |fx| {
+                navigator.navigate(store, ui, place, fx)
+            })
+            .map(Panel::Plugin)
+        });
+        crate::registry::Registry::update(store, |registry| {
+            registry
+                .navigators
+                .0
+                .insert_mut(TypeId::of::<N::Place>(), erased);
+        });
+    }
+
+    pub fn register_windowed<N: WindowedNavigator>(store: &mut Store, navigator: N) {
         let navigator = Arc::new(navigator);
         let erased: ErasedNavigate = Arc::new(move |store, ui, window, location, fx| {
             let place = location.place::<N::Place>()?;
@@ -121,7 +102,7 @@ impl Navigators {
         let entry = crate::registry::Registry::of(store)?
             .navigators
             .0
-            .get(&location.place_type)
+            .get(&location.place_type())
             .cloned()?;
         entry(store, ui, window, location, fx)
     }
@@ -177,7 +158,7 @@ impl RecentLocations {
 
 pub(crate) struct EditorNavigator;
 
-impl Navigator for EditorNavigator {
+impl WindowedNavigator for EditorNavigator {
     type Place = EditorPlace;
 
     fn navigate(

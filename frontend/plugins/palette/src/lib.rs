@@ -210,7 +210,7 @@ impl View for PaletteView {
                     .matches
                     .get(row)
                     .and_then(|&index| self.entries[index].command.lock().unwrap().take())
-                    .map(ModalRequest::Perform)
+                    .map(|command| ModalRequest::Perform(himark::shell_verb(command)))
                     .unwrap_or(ModalRequest::Close);
                 self.request.file(picked);
             }

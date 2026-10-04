@@ -118,7 +118,7 @@ pub fn install_open_handlers(
         shop.clone(),
     ));
     app.register_handler::<himark::OpenDiffPairEffect>(OpenDiffPairHandler(shop));
-    app.register_navigator(DiffNavigator);
+    app.register_windowed_navigator(DiffNavigator);
 }
 
 /// The ONE off-thread step both diff roads share (docs/editor/diff-canvas.md
@@ -228,7 +228,7 @@ impl EffectHandler<himark::OpenDiffPairEffect> for OpenDiffPairHandler {
 
 pub struct DiffNavigator;
 
-impl himark::Navigator for DiffNavigator {
+impl himark::navigation::WindowedNavigator for DiffNavigator {
     type Place = himark::DiffPlace;
 
     fn navigate(

@@ -476,12 +476,14 @@ impl AgentsPanel {
             AgentKey::Session(server, session) => {
                 self.list.inner_mut().content_mut().select_only(key.clone());
 
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(OpenSessionRow {
-                        server: *server,
-                        session: session.clone(),
-                    }),
+                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                    AppCommand::Dynamic(
+                        self.window,
+                        Arc::new(OpenSessionRow {
+                            server: *server,
+                            session: session.clone(),
+                        }),
+                    ),
                 )));
             }
             AgentKey::NewSession(server) => {
@@ -492,9 +494,8 @@ impl AgentsPanel {
                         host: Some(*server),
                     }),
                 };
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    command,
+                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                    AppCommand::Dynamic(self.window, command),
                 )));
             }
             AgentKey::Note(_) => {}
@@ -780,9 +781,8 @@ impl View for AgentsPanel {
                     return;
                 }
 
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(AddHost { url }),
+                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                    AppCommand::Dynamic(self.window, Arc::new(AddHost { url })),
                 )));
             }
             AgentsCommand::CancelAddHost => {

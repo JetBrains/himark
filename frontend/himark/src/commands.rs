@@ -64,6 +64,12 @@ impl Commands {
     }
 }
 
+/// A window-coupled deferred ask carried through the kit's panel
+/// requests — the drain adds the window.
+pub fn shell_ask(command: Arc<dyn DynamicCommand>) -> crate::PanelRequest {
+    crate::PanelRequest::Shell(Arc::new(command))
+}
+
 #[derive(Clone, Default)]
 pub struct AppRequests(Vec<Arc<dyn DynamicCommand>>);
 

@@ -144,6 +144,32 @@ pub use documents::DocumentsCommand;
 
 pub use imba::command::{Addressed, Verb};
 
+/// Wrap a shell command for the verb lane — the opaque escape a kit
+/// request rides when it must name the application (a window-coupled
+/// gesture). Interpreted by the drains below, never by `Verb::run`.
+pub fn shell_verb(command: AppCommand) -> Verb {
+    Verb::Shell(Box::new(command))
+}
+
+/// A drained verb back into the app stream: shell payloads unwrap
+/// (an `AppCommand`, or a deferred dynamic ask that takes the
+/// draining window); everything else rides the Verb arm.
+pub(crate) fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
+    match verb {
+        Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
+            Ok(command) => Some(*command),
+            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::DynamicCommand>>() {
+                Ok(command) => Some(AppCommand::Dynamic(window, *command)),
+                Err(_) => {
+                    eprintln!("[app] an unknown shell verb payload was dropped");
+                    None
+                }
+            },
+        },
+        verb => Some(AppCommand::Verb(verb)),
+    }
+}
+
 impl AppCommand {
     /// The one addressed-command constructor: every launch stamp and
     /// every landing re-wrap goes through here.
@@ -333,7 +359,7 @@ impl Application {
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
-        crate::Navigators::register(&mut store, crate::navigation::EditorNavigator);
+        crate::Navigators::register_windowed(&mut store, crate::navigation::EditorNavigator);
         // The locations wash hook is no longer boot-global: the
         // family ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
@@ -520,6 +546,13 @@ impl Application {
         E::Result: Send + Sync,
     {
         self.handlers.register::<E>(handler);
+    }
+
+    pub fn register_windowed_navigator<N: crate::navigation::WindowedNavigator>(
+        &mut self,
+        navigator: N,
+    ) {
+        self.setup(|store| crate::Navigators::register_windowed(store, navigator));
     }
 
     pub fn register_navigator<N: crate::Navigator>(&mut self, navigator: N) {
@@ -1266,13 +1299,15 @@ impl Application {
                         );
                         crate::Windows::put(store, window, entity);
                     }
-                    Some(ModalRequest::Perform(command)) => {
+                    Some(ModalRequest::Perform(verb)) => {
                         fx.scope(
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         crate::Windows::put(store, window, entity);
-                        self.perform(store, ui, command, fx);
+                        if let Some(command) = verb_command(window, verb) {
+                            self.perform(store, ui, command, fx);
+                        }
                     }
                     Some(ModalRequest::ShowDocument(document)) => {
                         fx.scope(
@@ -1318,9 +1353,11 @@ impl Application {
                         ModalRequest::Close => {
                             crate::Windows::put(store, window, entity);
                         }
-                        ModalRequest::Perform(command) => {
+                        ModalRequest::Perform(verb) => {
                             crate::Windows::put(store, window, entity);
-                            self.perform(store, ui, command, fx);
+                            if let Some(command) = verb_command(window, verb) {
+                                self.perform(store, ui, command, fx);
+                            }
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
@@ -1352,9 +1389,11 @@ impl Application {
                             );
                             crate::Windows::put(store, window, entity);
                         }
-                        ModalRequest::Perform(command) => {
+                        ModalRequest::Perform(verb) => {
                             crate::Windows::put(store, window, entity);
-                            self.perform(store, ui, command, fx);
+                            if let Some(command) = verb_command(window, verb) {
+                                self.perform(store, ui, command, fx);
+                            }
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
@@ -1379,7 +1418,16 @@ impl Application {
                         crate::open_locations(store, ui, window, &locations, fx);
                     }
                     Some(crate::PanelRequest::Perform(command)) => {
-                        self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                        self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);
+                    }
+                    Some(crate::PanelRequest::Shell(payload)) => {
+                        match payload.downcast_ref::<std::sync::Arc<dyn crate::DynamicCommand>>() {
+                            Some(command) => {
+                                let command = command.clone();
+                                self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                            }
+                            None => eprintln!("[app] an unknown panel shell ask was dropped"),
+                        }
                     }
                     None => {}
                 }

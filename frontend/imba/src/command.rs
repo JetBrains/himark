@@ -41,6 +41,13 @@ pub enum Verb {
     Dynamic(Arc<dyn DynamicCommand>),
 
     Once(Box<dyn DynamicOnceCommand>),
+
+    /// The OPAQUE escape: a shell-level payload (an application
+    /// command, a window-coupled ask) carried through the verb lane.
+    /// Built and interpreted only by the shell — the generic runner
+    /// never sees one; a shell folds it back into its own stream
+    /// before `run`.
+    Shell(Box<dyn std::any::Any + Send + Sync>),
 }
 
 impl Verb {
@@ -55,6 +62,10 @@ impl Verb {
             Verb::At(addressed) => addressed.run(store, ui, fx),
             Verb::Dynamic(command) => command.perform(store, ui, fx),
             Verb::Once(command) => command.perform(store, ui, fx),
+            Verb::Shell(_) => {
+                debug_assert!(false, "a shell verb reached the generic runner");
+                eprintln!("[imba] a shell verb reached the generic runner — dropped");
+            }
         }
     }
 }
@@ -65,6 +76,7 @@ impl fmt::Display for Verb {
             Verb::At(addressed) => addressed.fmt(out),
             Verb::Dynamic(command) => out.write_str(command.id()),
             Verb::Once(_) => out.write_str("once"),
+            Verb::Shell(_) => out.write_str("shell"),
         }
     }
 }

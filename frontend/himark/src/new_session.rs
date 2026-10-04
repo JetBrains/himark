@@ -603,7 +603,7 @@ impl NewSessionView {
             return;
         }
         self.asked = Some(inputs);
-        self.request = Some(crate::PanelRequest::Perform(Arc::new(ComposerAsk {
+        self.request = Some(crate::commands::shell_ask(Arc::new(ComposerAsk {
             host,
             provider,
             working_directory,
@@ -695,18 +695,16 @@ impl NewSessionView {
                     config
                 }),
             });
-        self.request = Some(crate::PanelRequest::Perform(Arc::new(
-            StartComposedSession {
-                server,
-                working_directories,
-                options: SessionOptions {
-                    provider: Some(provider),
-                    config: Some(self.config_values()),
-                    model,
-                },
-                prompt: self.prompt().trim().to_owned(),
+        self.request = Some(crate::commands::shell_ask(Arc::new(StartComposedSession {
+            server,
+            working_directories,
+            options: SessionOptions {
+                provider: Some(provider),
+                config: Some(self.config_values()),
+                model,
             },
-        )));
+            prompt: self.prompt().trim().to_owned(),
+        })));
     }
 }
 
@@ -861,7 +859,7 @@ impl View for NewSessionView {
                     self.prefill.dir = None;
                     if self.dir.value().map(|option| option.id) == Some(PICK_FOLDER.to_owned()) {
                         self.request =
-                            Some(crate::PanelRequest::Perform(Arc::new(PickSessionFolder)));
+                            Some(crate::commands::shell_ask(Arc::new(PickSessionFolder)));
                     } else {
                         self.file_ask();
                     }

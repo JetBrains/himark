@@ -330,12 +330,14 @@ impl CommentsView {
             Some(RowItem::Comment(id)) => {
                 self.list.inner_mut().list_mut().select_only(key.clone());
 
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(NavigateToComment {
-                        comments: self.comments,
-                        annotation: id,
-                    }),
+                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                    AppCommand::Dynamic(
+                        self.window,
+                        Arc::new(NavigateToComment {
+                            comments: self.comments,
+                            annotation: id,
+                        }),
+                    ),
                 )));
             }
             Some(RowItem::Note) | None => {}
@@ -433,12 +435,14 @@ impl View for CommentsView {
                 if ids.is_empty() {
                     return;
                 }
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::hicomments::SendComments {
-                        comments: self.comments,
-                        ids,
-                    }),
+                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                    AppCommand::Dynamic(
+                        self.window,
+                        Arc::new(crate::hicomments::SendComments {
+                            comments: self.comments,
+                            ids,
+                        }),
+                    ),
                 )));
             }
             CommentsViewCommand::Dismiss => {

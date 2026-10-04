@@ -25,7 +25,7 @@ mod keymap;
 pub mod locations;
 pub mod menu;
 mod modal;
-mod navigation;
+pub mod navigation;
 pub mod new_session;
 mod registry;
 mod save;
@@ -71,7 +71,10 @@ pub use crate::diffs::{
     sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
     DiffView, DiffViewId, StripeBaseResolver, StripeBases, OPEN_HALF_WIDTH,
 };
-pub use crate::family_rows::{mint, mint_unfronted, FamilyRow, RowMinter, RowMinters};
+pub use crate::family_rows::{
+    mint, mint_unfronted, CanvasRow, ChatRow, FamilyRow, PairRow, RowMinter, RowMinters,
+    TerminalRow,
+};
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument,
     CreateDocumentEffect, DeleteResourceEffect, DiffSide, DiffSideInput, FindEffect,

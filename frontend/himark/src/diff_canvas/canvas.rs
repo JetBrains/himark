@@ -1343,7 +1343,7 @@ impl Canvas {
         match action {
             HeaderAction::OpenFile => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                    self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
                         crate::diff_canvas::OpenCanvasFile {
                             location: file.new.clone(),
                             // Land on the caret the row's diff editor
@@ -1357,7 +1357,7 @@ impl Canvas {
             }
             HeaderAction::OpenPane => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                    self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
                         crate::hichanges::OpenDiffForPair {
                             old: file.old.clone(),
                             new: file.new.clone(),
@@ -1571,7 +1571,7 @@ impl Canvas {
                         let text = self.composer_text().unwrap_or_default();
                         let history = Changes::of(store, self.changes).map(|held| held.history());
                         if let (false, Some(history)) = (text.trim().is_empty(), history) {
-                            self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                            self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
                                 crate::hihistory::CommitHistory {
                                     history,
                                     folder: self.source.folder().clone(),
@@ -3066,15 +3066,14 @@ impl crate::Navigator for CanvasNavigator {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
-        _window: crate::WindowId,
         place: &CanvasPlace,
-        _fx: &mut crate::AppFx<'_>,
-    ) -> Option<crate::Panel> {
+        _fx: &mut imba::command::Fx<'_>,
+    ) -> Option<Box<dyn crate::DynPanelView>> {
         let view = DiffCanvasView::over(store, place.changes, place.source.clone());
         if let Some(key) = &place.reveal {
             Canvases::set_reveal(store, view.changes, view.id(), key.clone());
         }
-        Some(crate::Panel::Plugin(Box::new(view)))
+        Some(Box::new(view))
     }
 }
 
@@ -3082,7 +3081,7 @@ impl crate::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Canvas(self.source.clone()))
+        Some(crate::FamilyRow::new(crate::CanvasRow(self.source.clone())))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
@@ -3097,7 +3096,7 @@ impl crate::PanelView for DiffCanvasView {
         &mut self,
         store: &mut Store,
         place: &CanvasPlace,
-        _fx: &mut crate::AppFx<'_>,
+        _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         if place.source != self.source {
             return false;

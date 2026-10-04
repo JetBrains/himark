@@ -1,26 +1,49 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The session family's RE-MINTABLE rows: which panes a family can
+//! stand back up (terminals, chats, tracked pairs, canvases), erased
+//! behind `hikit::FamilyRow`. The typed rows live here while their
+//! features still do; each moves out with its feature crate.
+
 use std::sync::Arc;
 
 use imba::store::Store;
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum FamilyRow {
-    Terminal(
-        imba::store::Id<crate::terminal::Terminals>,
-        crate::terminal::TerminalId,
-    ),
+pub use hikit::FamilyRow;
 
-    Pair(imba::store::Id<crate::OpenDocuments>, crate::DiffViewId),
+/// A terminal pane's row: the collection and the terminal.
+#[derive(Clone, PartialEq)]
+pub struct TerminalRow(
+    pub imba::store::Id<crate::terminal::Terminals>,
+    pub crate::terminal::TerminalId,
+);
 
-    Chat(
-        imba::store::Id<crate::higent::Chats>,
-        crate::higent::ChatUri,
-    ),
+impl hikit::Row for TerminalRow {}
 
-    Canvas(crate::diff_canvas::CanvasSource),
-}
+/// A chat pane's row: the collection and the conversation.
+#[derive(Clone, PartialEq)]
+pub struct ChatRow(
+    pub imba::store::Id<crate::higent::Chats>,
+    pub crate::higent::ChatUri,
+);
+
+impl hikit::Row for ChatRow {}
+
+/// A tracked diff pair's row: the documents collection and the view.
+#[derive(Clone, PartialEq)]
+pub struct PairRow(
+    pub imba::store::Id<crate::OpenDocuments>,
+    pub crate::DiffViewId,
+);
+
+impl hikit::Row for PairRow {}
+
+/// A diff canvas's row: its source names it.
+#[derive(Clone, PartialEq)]
+pub struct CanvasRow(pub crate::diff_canvas::CanvasSource);
+
+impl hikit::Row for CanvasRow {}
 
 pub type RowMinter =
     dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;
@@ -37,33 +60,33 @@ impl RowMinters {
 }
 
 pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
-    match row {
-        // A row carries its collection: the pane is minted off the id
-        // while the record still stands.
-        FamilyRow::Terminal(terminals, id) => store
+    // A row carries its collection: the pane is minted off the id
+    // while the record still stands.
+    if let Some(TerminalRow(terminals, id)) = row.row::<TerminalRow>() {
+        return store
             .entity(*terminals)
             .filter(|rows| rows.holds(*id))
             .map(|_| {
                 Box::new(crate::terminal::TerminalView::new(*terminals, *id))
                     as Box<dyn crate::DynPanelView>
-            }),
-        // The row carries its collection: a pane is minted off the id,
-        // and a dismantled chat has no home to walk back to.
-        FamilyRow::Chat(chats, chat) => {
-            store
-                .entity(*chats)
-                .filter(|rows| rows.holds(chat))
-                .map(|_| {
-                    Box::new(crate::higent::ChatPane::new(*chats, chat.clone()))
-                        as Box<dyn crate::DynPanelView>
-                })
-        }
-        row => crate::registry::Registry::of(store)?
-            .row_minters
-            .0
-            .iter()
-            .find_map(|minter| minter(store, row)),
+            });
     }
+    // The row carries its collection: a pane is minted off the id,
+    // and a dismantled chat has no home to walk back to.
+    if let Some(ChatRow(chats, chat)) = row.row::<ChatRow>() {
+        return store
+            .entity(*chats)
+            .filter(|rows| rows.holds(chat))
+            .map(|_| {
+                Box::new(crate::higent::ChatPane::new(*chats, chat.clone()))
+                    as Box<dyn crate::DynPanelView>
+            });
+    }
+    crate::registry::Registry::of(store)?
+        .row_minters
+        .0
+        .iter()
+        .find_map(|minter| minter(store, row))
 }
 
 /// The rows of one family that no pane fronts yet — the caller hands
@@ -78,17 +101,17 @@ pub fn mint_unfronted(
         rows.extend(
             crate::terminal::Terminals::list(store, family.terminals())
                 .into_iter()
-                .map(|id| FamilyRow::Terminal(family.terminals(), id)),
+                .map(|id| FamilyRow::new(TerminalRow(family.terminals(), id))),
         );
         rows.extend(
             crate::OpenDocuments::pair_ids(store, family.documents())
                 .into_iter()
-                .map(|pair| FamilyRow::Pair(family.documents(), pair)),
+                .map(|pair| FamilyRow::new(PairRow(family.documents(), pair))),
         );
         rows.extend(
             crate::higent::Chats::list(store, family.chats())
                 .into_iter()
-                .map(|chat| FamilyRow::Chat(family.chats(), chat)),
+                .map(|chat| FamilyRow::new(ChatRow(family.chats(), chat))),
         );
     }
     rows.retain(|row| !fronted.contains(row));
