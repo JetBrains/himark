@@ -94,7 +94,7 @@ type ErasedNavigate = Arc<
 >;
 
 #[derive(Clone, Default)]
-pub struct Navigators(rpds::HashTrieMapSync<TypeId, ErasedNavigate>);
+pub struct Navigators(pub(crate) rpds::HashTrieMapSync<TypeId, ErasedNavigate>);
 
 impl Navigators {
     pub fn register<N: Navigator>(store: &mut Store, navigator: N) {
@@ -103,8 +103,11 @@ impl Navigators {
             let place = location.place::<N::Place>()?;
             navigator.navigate(store, ui, window, place, fx)
         });
-        store.update::<Navigators>(|navigators| {
-            navigators.0.insert_mut(TypeId::of::<N::Place>(), erased);
+        crate::registry::Registry::update(store, |registry| {
+            registry
+                .navigators
+                .0
+                .insert_mut(TypeId::of::<N::Place>(), erased);
         });
     }
 
@@ -115,8 +118,8 @@ impl Navigators {
         location: &NavigationLocation,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel> {
-        let entry = store
-            .get::<Navigators>()?
+        let entry = crate::registry::Registry::of(store)?
+            .navigators
             .0
             .get(&location.place_type)
             .cloned()?;

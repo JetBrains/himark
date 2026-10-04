@@ -99,9 +99,6 @@ pub struct Comments {
     minted: u64,
 }
 
-#[derive(Clone, Default)]
-pub struct CommentsInstall;
-
 /// What the collection answers to behind its `At` address
 /// (docs/entities.md law 5): the annotations feed's landings and the
 /// send-turn's answer, each stamped with the collection id at launch.
@@ -266,11 +263,11 @@ impl crate::AppEntity for Comments {
 
 impl Comments {
     pub fn install(store: &mut Store) {
-        store.put(CommentsInstall);
+        crate::registry::Registry::update(store, |registry| registry.comments = true);
     }
 
     pub fn installed(store: &Store) -> bool {
-        store.get::<CommentsInstall>().is_some()
+        crate::registry::Registry::of(store).is_some_and(|registry| registry.comments)
     }
 
     fn channel_for(&self, session: &Uri) -> Option<&ChannelFeed> {

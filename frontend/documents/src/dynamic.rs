@@ -51,11 +51,13 @@ pub struct DocumentCommands {
 
 impl DocumentCommands {
     pub fn of(store: &Store) -> DocumentCommands {
-        store.get::<DocumentCommands>().cloned().unwrap_or_default()
+        crate::Registry::of(store)
+            .map(|registry| registry.commands.clone())
+            .unwrap_or_default()
     }
 
     pub fn register(store: &mut Store, command: Arc<dyn DocumentCommand>) {
-        store.update::<DocumentCommands>(|commands| commands.global.push(command));
+        crate::Registry::update(store, |registry| registry.commands.global.push(command));
     }
 
     pub fn register_scoped(
@@ -63,16 +65,21 @@ impl DocumentCommands {
         scope: imba::store::Id<OpenDocuments>,
         command: Arc<dyn DocumentCommand>,
     ) {
-        store.update::<DocumentCommands>(|commands| {
-            let mut entries = commands.scoped.get(&scope).cloned().unwrap_or_default();
+        crate::Registry::update(store, |registry| {
+            let mut entries = registry
+                .commands
+                .scoped
+                .get(&scope)
+                .cloned()
+                .unwrap_or_default();
             entries.push(command);
-            commands.scoped.insert_mut(scope, entries);
+            registry.commands.scoped.insert_mut(scope, entries);
         });
     }
 
     pub(crate) fn retire_scope(store: &mut Store, scope: imba::store::Id<OpenDocuments>) {
-        store.update::<DocumentCommands>(|commands| {
-            commands.scoped.remove_mut(&scope);
+        crate::Registry::update(store, |registry| {
+            registry.commands.scoped.remove_mut(&scope);
         });
     }
 

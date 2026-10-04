@@ -48,13 +48,18 @@ pub struct ToolbarButtons(pub(crate) Vec<ToolbarButton>);
 
 impl ToolbarButtons {
     pub fn of(store: &Store) -> ToolbarButtons {
-        store.get::<ToolbarButtons>().cloned().unwrap_or_default()
+        crate::registry::Registry::of(store)
+            .map(|registry| registry.toolbar_buttons.clone())
+            .unwrap_or_default()
     }
 
     pub(crate) fn register(store: &mut Store, button: ToolbarButton) {
-        store.update::<ToolbarButtons>(|buttons| {
-            buttons.0.push(button);
-            buttons.0.sort_by(|a, b| a.order.total_cmp(&b.order));
+        crate::registry::Registry::update(store, |registry| {
+            registry.toolbar_buttons.0.push(button);
+            registry
+                .toolbar_buttons
+                .0
+                .sort_by(|a, b| a.order.total_cmp(&b.order));
         });
     }
 

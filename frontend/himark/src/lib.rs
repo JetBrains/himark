@@ -30,6 +30,7 @@ pub mod menu;
 mod modal;
 mod navigation;
 pub mod new_session;
+mod registry;
 pub mod rows;
 mod save;
 mod startup_profile;

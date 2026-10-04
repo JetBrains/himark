@@ -12,16 +12,16 @@ use crate::{FetchDocumentEffect, OpenDocuments};
 use editor::ResourceLocation;
 use imba::effect::Effects;
 
-#[derive(Clone, Default)]
+/// The watch capability's doors — the flag is a `Registry` field.
 pub struct Watching;
 
 impl Watching {
     pub fn install(store: &mut Store) {
-        store.put(Watching);
+        crate::Registry::update(store, |registry| registry.watching = true);
     }
 
     pub fn installed(store: &Store) -> bool {
-        store.get::<Watching>().is_some()
+        crate::Registry::of(store).is_some_and(|registry| registry.watching)
     }
 }
 

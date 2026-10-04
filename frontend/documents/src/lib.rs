@@ -583,6 +583,28 @@ struct DocumentHooks {
     >,
 }
 
+/// The ONE closed home for this crate's registries (docs/entities.md
+/// law 3): commands, hooks, the stripe-base resolver and the watch
+/// capability are NAMED fields behind their modules' doors — never
+/// anonymous components grabbed from the store by type.
+#[derive(Clone, Default)]
+pub(crate) struct Registry {
+    pub(crate) commands: crate::DocumentCommands,
+    pub(crate) hooks: DocumentHooks,
+    pub(crate) stripe_bases: Option<std::sync::Arc<dyn crate::diffs::StripeBaseResolver>>,
+    pub(crate) watching: bool,
+}
+
+impl Registry {
+    pub(crate) fn of(store: &Store) -> Option<&Registry> {
+        store.get::<Registry>()
+    }
+
+    pub(crate) fn update(store: &mut Store, mutate: impl FnOnce(&mut Registry)) {
+        store.update::<Registry>(mutate);
+    }
+}
+
 impl OpenDocuments {
     pub fn register(
         store: &mut Store,
@@ -644,9 +666,7 @@ impl OpenDocuments {
     }
 
     pub fn install_hook(store: &mut Store, hook: std::sync::Arc<dyn DocumentHook>) {
-        let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
-        hooks.global.push_back_mut(hook);
-        store.put(hooks);
+        Registry::update(store, |registry| registry.hooks.global.push_back_mut(hook));
     }
 
     pub fn install_scoped_hook(
@@ -654,20 +674,25 @@ impl OpenDocuments {
         scope: imba::store::Id<OpenDocuments>,
         hook: std::sync::Arc<dyn DocumentHook>,
     ) {
-        let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
-        let mut entries = hooks.scoped.get(&scope).cloned().unwrap_or_default();
-        entries.push_back_mut(hook);
-        hooks.scoped.insert_mut(scope, entries);
-        store.put(hooks);
+        Registry::update(store, |registry| {
+            let mut entries = registry
+                .hooks
+                .scoped
+                .get(&scope)
+                .cloned()
+                .unwrap_or_default();
+            entries.push_back_mut(hook);
+            registry.hooks.scoped.insert_mut(scope, entries);
+        });
     }
 
     /// Retire everything the ceremony wired to this collection: its
     /// scoped hooks and scoped commands. The owner calls this from
     /// its `destroy` — teardown cascades by ownership (law 6).
     pub fn retire_scope(store: &mut Store, scope: imba::store::Id<OpenDocuments>) {
-        let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
-        hooks.scoped.remove_mut(&scope);
-        store.put(hooks);
+        Registry::update(store, |registry| {
+            registry.hooks.scoped.remove_mut(&scope);
+        });
         crate::DocumentCommands::retire_scope(store, scope);
     }
 
@@ -675,7 +700,7 @@ impl OpenDocuments {
         store: &Store,
         scope: imba::store::Id<OpenDocuments>,
     ) -> Vec<std::sync::Arc<dyn DocumentHook>> {
-        let Some(hooks) = store.get::<DocumentHooks>() else {
+        let Some(hooks) = Registry::of(store).map(|registry| &registry.hooks) else {
             return Vec::new();
         };
         hooks

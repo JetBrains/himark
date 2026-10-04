@@ -26,12 +26,12 @@ pub type RowMinter =
     dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;
 
 #[derive(Clone, Default)]
-pub struct RowMinters(rpds::VectorSync<Arc<RowMinter>>);
+pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);
 
 impl RowMinters {
     pub fn register(store: &mut Store, minter: Arc<RowMinter>) {
-        store.update::<RowMinters>(|minters| {
-            minters.0.push_back_mut(minter);
+        crate::registry::Registry::update(store, |registry| {
+            registry.row_minters.0.push_back_mut(minter);
         });
     }
 }
@@ -60,8 +60,8 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
                         as Box<dyn crate::DynPanelView>
                 })
         }
-        row => store
-            .get::<RowMinters>()?
+        row => crate::registry::Registry::of(store)?
+            .row_minters
             .0
             .iter()
             .find_map(|minter| minter(store, row)),

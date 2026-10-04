@@ -52,15 +52,17 @@ pub trait DynamicCommand: Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct Commands(Vec<Arc<dyn DynamicCommand>>);
+pub struct Commands(pub(crate) Vec<Arc<dyn DynamicCommand>>);
 
 impl Commands {
     pub fn of(store: &Store) -> Commands {
-        store.get::<Commands>().cloned().unwrap_or_default()
+        crate::registry::Registry::of(store)
+            .map(|registry| registry.commands.clone())
+            .unwrap_or_default()
     }
 
     pub(crate) fn register(store: &mut Store, command: Arc<dyn DynamicCommand>) {
-        store.update::<Commands>(|commands| commands.0.push(command));
+        crate::registry::Registry::update(store, |registry| registry.commands.0.push(command));
     }
 
     pub fn find(&self, id: &str) -> Option<&Arc<dyn DynamicCommand>> {

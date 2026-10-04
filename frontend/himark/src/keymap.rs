@@ -158,24 +158,23 @@ impl Keymap {
     }
 }
 
-#[derive(Clone)]
-pub struct Keymaps(pub Keymap);
+/// The keymap's doors — the map itself is a `Registry` field.
+pub struct Keymaps;
 
 impl Keymaps {
     pub fn set(store: &mut Store, keymap: Keymap) {
-        store.put(Keymaps(keymap));
+        crate::registry::Registry::update(store, |registry| registry.keymap = Some(keymap));
     }
 
     pub fn of(store: &Store) -> Keymap {
-        store
-            .get::<Keymaps>()
-            .map(|keymaps| keymaps.0.clone())
+        crate::registry::Registry::of(store)
+            .and_then(|registry| registry.keymap.clone())
             .unwrap_or_else(Keymap::embedded)
     }
 
     pub fn binding_of(store: &Store, key: Key, mods: Modifiers) -> Option<Arc<str>> {
-        match store.get::<Keymaps>() {
-            Some(keymaps) => keymaps.0.binding(key, mods),
+        match crate::registry::Registry::of(store).and_then(|registry| registry.keymap.as_ref()) {
+            Some(keymap) => keymap.binding(key, mods),
             None => {
                 static EMBEDDED: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
                 EMBEDDED.get_or_init(Keymap::embedded).binding(key, mods)

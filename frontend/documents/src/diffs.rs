@@ -865,7 +865,7 @@ where
 
 impl StripeBases {
     pub fn install(store: &mut Store, resolve: std::sync::Arc<dyn StripeBaseResolver>) {
-        store.put(StripeBases(resolve));
+        crate::Registry::update(store, |registry| registry.stripe_bases = Some(resolve));
     }
 }
 
@@ -880,7 +880,9 @@ pub fn sync_stripe_bases<R: 'static>(
         &mut imba::effect::Effects<'_, R>,
     ),
 ) {
-    let Some(resolve) = store.get::<StripeBases>().map(|bases| bases.0.clone()) else {
+    let Some(resolve) =
+        crate::Registry::of(store).and_then(|registry| registry.stripe_bases.clone())
+    else {
         return;
     };
     let asks: Vec<(DocumentId, editor::ResourceLocation)> = OpenDocuments::list(store, documents)
