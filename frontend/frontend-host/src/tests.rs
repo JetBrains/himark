@@ -3482,6 +3482,10 @@ fn spawn_host_inner(
         .env("HIMARK_LOG_DIR", &home)
         .env("HIMARK_CLAUDE_BIN", claude_binary)
         .env("HIMARK_CLAUDE_HOME", dir.join("dot-claude"))
+        // Codex too: the host falls back to ~/.codex when unset (and
+        // `clean` keeps HOME), so a test host without this line LISTS
+        // THE USER'S REAL CODEX SESSIONS into its catalog.
+        .env("HIMARK_CODEX_HOME", dir.join("dot-codex"))
         .env("HIHOST_TRACE", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -8289,5 +8293,21 @@ fn input_reaches_a_second_window() {
     assert!(
         engine.mouse_down(b, 550.0, 400.0, 0, 1),
         "a click lands in the second window"
+    );
+}
+
+/// A test engine reaches NOTHING outward: the production entry alone
+/// registers the VS Code and discovered agent hosts. The resident
+/// sessions subscription dials every registered host at boot — a
+/// with_fonts engine that carried them would connect to the
+/// developer's REAL agent host and pull their session catalog into
+/// test drawers (it did, once).
+#[test]
+fn a_test_engine_registers_no_outward_hosts() {
+    let engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    assert_eq!(
+        ahp_session::session::agents::Agents::list(engine.app.store()).len(),
+        0,
+        "no host rows before a test registers its own"
     );
 }

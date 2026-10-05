@@ -431,6 +431,31 @@ impl HimarkEngine {
             let _ = host_discovery::autostart();
             engine.install_agent_host_filesystem(AgentHostFilesystemCapabilities::all());
         }
+        // The OUTWARD hosts belong to the production entry ALONE. The
+        // resident sessions subscription dials every registered host
+        // at boot — a test engine (`with_fonts`) that registered the
+        // discovered host would reach the machine's REAL agent host
+        // and pull the user's catalog into its drawers. Tests register
+        // their own scripted seats instead.
+        host_discovery::logging::init("app");
+        let connector: Arc<dyn ahp_wire::transport::Connector> =
+            Arc::new(desktop::connector::DesktopConnector);
+        engine.register_agent_server(
+            "VS Code Agent Host",
+            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::new(
+                engine.runtime(),
+                Arc::clone(&connector),
+            ))),
+        );
+        let local_backend = engine.register_agent_server(
+            "himark Agent Host",
+            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::discovered(
+                engine.runtime(),
+                Arc::clone(&connector),
+                himark_host_resolver(),
+            ))),
+        );
+        engine.set_local_backend(local_backend);
         engine
     }
 
@@ -523,32 +548,8 @@ impl HimarkEngine {
             })
         }));
 
-        host_discovery::logging::init("app");
         let connector: Arc<dyn ahp_wire::transport::Connector> =
             Arc::new(desktop::connector::DesktopConnector);
-
-        register_agent_server(
-            &mut app,
-            &clients,
-            "VS Code Agent Host",
-            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::new(
-                runtime.handle().clone(),
-                Arc::clone(&connector),
-            ))),
-        );
-
-        let local_backend = register_agent_server(
-            &mut app,
-            &clients,
-            "himark Agent Host",
-            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::discovered(
-                runtime.handle().clone(),
-                Arc::clone(&connector),
-                himark_host_resolver(),
-            ))),
-        );
-        clients.set_local(local_backend);
-        app.designate_local_host(local_backend);
 
         {
             let clients = clients.clone();

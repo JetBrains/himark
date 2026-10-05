@@ -83,8 +83,12 @@ fn connect(store: &mut Store, server: HostId, fx: &mut Fx<'_>) {
         return;
     }
     let Some(client) = Servers::client(store, server) else {
-        // No wire seat yet — stay Idle; the lane tries again once the
-        // client registers.
+        // A host row with no wire seat is not pending, it is
+        // unreachable — mark it so. Left Idle it would read
+        // "connecting…" forever (seats register before their rows are
+        // seeded, so none arrives later; an add-host retry re-enters
+        // here with the seat in place).
+        Agents::set_status(store, server, HostStatus::Failed("unregistered".to_owned()));
         return;
     };
     Agents::set_status(store, server, HostStatus::Connecting);

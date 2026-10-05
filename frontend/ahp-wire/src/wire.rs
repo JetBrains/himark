@@ -284,6 +284,36 @@ impl WireHost {
         })
     }
 
+    /// A fire-and-forget ask that rides the LIVE connection or is
+    /// DROPPED. These come straight from view perform code — a
+    /// keystroke into a terminal, a resize mid-paint — and the UI
+    /// thread must never wait out a reconnect, let alone dial one
+    /// (15 seconds at best; the 2026-10-05 deadlock at worst). A
+    /// gesture against a dead host asks nothing anyway — the
+    /// reconnect's resume re-subscribes the channel whole.
+    fn run_live<T, F>(&self, work: impl FnOnce(Arc<Active>) -> F + Send + 'static)
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, String>> + Send + 'static,
+    {
+        let Some(active) = self.try_active() else {
+            tracing::warn!(target: "ahp_wire", client = %self.tag, "ask DROPPED: connection down");
+            return;
+        };
+        let tag = self.tag.clone();
+        self.runtime.spawn(async move {
+            let died = Arc::clone(&active).died();
+            tokio::select! {
+                outcome = work(active) => {
+                    if let Err(error) = outcome {
+                        tracing::warn!(target: "ahp_wire", client = %tag, %error, "live ask failed");
+                    }
+                }
+                () = died => {}
+            }
+        });
+    }
+
     /// `run_ask` for a SUBSCRIBE: an ask the host answers the same
     /// however often it is made (one subscription per channel per
     /// connection). Died under a reconnect, it is made once more on
@@ -336,12 +366,32 @@ impl WireHost {
         })
     }
 
+    /// The LIVE connection or nothing — no reconnect, no waiting.
+    /// This is the only road a caller that must not block may take:
+    /// view perform code on the UI thread, anything on the runtime.
+    fn try_active(&self) -> Option<Arc<Active>> {
+        self.active
+            .lock()
+            .expect("wire active")
+            .as_ref()
+            .filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
+            .cloned()
+    }
+
     fn ensure_active(&self) -> Result<Arc<Active>, String> {
         let live = |active: &Arc<Active>| !active.dead.load(std::sync::atomic::Ordering::Relaxed);
-        if let Some(active) = self.active.lock().expect("wire active").as_ref() {
-            if live(active) {
-                return Ok(Arc::clone(active));
-            }
+        if let Some(active) = self.try_active() {
+            return Ok(active);
+        }
+        // A RUNTIME WORKER stops here: the dial below — and its
+        // timeout — are driven by this very runtime (one worker).
+        // Parking that worker on `reconnecting` freezes the reactor,
+        // the in-flight dial never resolves and never times out, and
+        // every other caller wedges behind the lock — the sampled
+        // 2026-10-05 deadlock (main thread included). The pollers all
+        // have an unconnected road; errors here ride the normal lanes.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            return Err("connection down — reconnect pending".to_owned());
         }
         // Dead or absent: ONE reconnect at a time. Whoever waited here
         // re-reads `active` — the reconnect they waited for is theirs,
@@ -2172,7 +2222,7 @@ impl TerminalClient for WireHost {
 
     fn terminal_input(&self, channel: &crate::client::ChannelUri, data: String) {
         let channel = channel.as_str().to_owned();
-        let _ = self.run_ask(move |active| async move {
+        self.run_live(move |active| async move {
             active
                 .client
                 .dispatch(
@@ -2186,7 +2236,7 @@ impl TerminalClient for WireHost {
 
     fn terminal_resize(&self, channel: &crate::client::ChannelUri, cols: u16, rows: u16) {
         let channel = channel.as_str().to_owned();
-        let _ = self.run_ask(move |active| async move {
+        self.run_live(move |active| async move {
             active
                 .client
                 .dispatch(
@@ -2203,7 +2253,7 @@ impl TerminalClient for WireHost {
 
     fn terminal_dispose(&self, channel: &crate::client::ChannelUri) {
         let channel = channel.as_str().to_owned();
-        let _ = self.run_ask(move |active| async move {
+        self.run_live(move |active| async move {
             let _: serde_json::Value = active
                 .client
                 .request(
@@ -2551,6 +2601,67 @@ fn uuid_v4() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connector that must never be reached: dialing from the wrong
+    /// thread IS the bug these tests pin.
+    struct NoDial;
+    impl crate::transport::Connector for NoDial {
+        fn dial(
+            &self,
+            _url: String,
+            _tag: String,
+            _dead: Arc<std::sync::atomic::AtomicBool>,
+        ) -> crate::transport::Dialing {
+            panic!("this road must not dial");
+        }
+    }
+
+    fn down_host(runtime: &tokio::runtime::Runtime) -> WireHost {
+        WireHost::at(runtime.handle().clone(), Arc::new(NoDial), "ws://nowhere:1/")
+    }
+
+    /// A RUNTIME WORKER never parks on the reconnect lock and never
+    /// dials: the dial and its own timeout are driven by this runtime
+    /// (one worker in production), so parking it freezes the reactor
+    /// and the in-flight dial never resolves NOR times out — the
+    /// 2026-10-05 deadlock: main thread (terminal resize mid-paint),
+    /// executor (mid-dial, holding the lock) and the sole worker all
+    /// wedged forever.
+    #[test]
+    fn a_runtime_worker_never_dials_or_parks_for_a_reconnect() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let host = down_host(&runtime);
+        let outcome = runtime.block_on(async { host.ensure_active() });
+        assert!(
+            outcome.is_err(),
+            "on the runtime, a dead connection is an ERROR, not a wait"
+        );
+    }
+
+    /// The gesture asks — a keystroke into a terminal, a resize
+    /// mid-paint — come synchronously from view perform code on the
+    /// UI thread. Against a down host they are DROPPED on the spot:
+    /// no dial (15 seconds), no parking behind someone else's.
+    #[test]
+    fn a_gesture_ask_against_a_down_host_is_dropped_not_waited() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let host = down_host(&runtime);
+        let channel = crate::client::ChannelUri::new("ahp-terminal:/t");
+        use crate::client::TerminalClient;
+        host.terminal_input(&channel, "ls\n".to_owned());
+        host.terminal_resize(&channel, 80, 24);
+        host.terminal_dispose(&channel);
+        // Still here, synchronously: nothing dialed (NoDial panics),
+        // nothing blocked.
+    }
 
     #[test]
     fn uuids_are_v4_shaped_and_distinct() {
