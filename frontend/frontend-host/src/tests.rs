@@ -3143,7 +3143,7 @@ fn drawer_rows(engine: &HimarkEngine) -> Option<Vec<(String, usize)>> {
     let panel = entity
         .side_panel()?
         .as_any()
-        .downcast_ref::<himark::higent::drawer::AgentsPanel>()?;
+        .downcast_ref::<ahp_session::session::drawer::AgentsPanel>()?;
     Some(panel.rows())
 }
 

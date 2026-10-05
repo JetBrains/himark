@@ -4,6 +4,7 @@
 pub mod agents;
 pub mod channel;
 pub mod folders;
+pub mod drawer;
 pub mod driver;
 pub mod state;
 pub mod summary;

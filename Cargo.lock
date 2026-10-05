@@ -200,6 +200,7 @@ dependencies = [
  "recents",
  "rpds",
  "serde_json",
+ "skia-safe",
  "terminals",
  "tokio",
 ]

@@ -5364,15 +5364,15 @@ mod dock_tests {
 
         let mut store = app.store_mut().clone();
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::drawer::AgentsPanel::open(&store, &ui, window);
+        let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, crate::higent::drawer::drawer_asks(window));
         {
-            let mut boot: imba::effect::Batch<crate::higent::drawer::AgentsCommand> =
+            let mut boot: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
                 imba::effect::Batch::new();
             imba::View::perform(
                 &mut panel,
                 &mut store,
                 &ui,
-                crate::higent::drawer::AgentsCommand::Boot,
+                ahp_session::session::drawer::AgentsCommand::Boot,
                 &mut boot.effects(),
             );
         }
@@ -5393,7 +5393,7 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::drawer::AgentsCommand::AddHostInput(::editor::editor_view::EditorCommand::InsertText {
+            ahp_session::session::drawer::AgentsCommand::AddHostInput(::editor::editor_view::EditorCommand::InsertText {
                 text: "ws://example:7/?tkn=t".to_owned(),
             }),
             &mut batch.effects(),
@@ -5401,7 +5401,7 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::drawer::AgentsCommand::SubmitAddHost,
+            ahp_session::session::drawer::AgentsCommand::SubmitAddHost,
             &mut batch.effects(),
         );
         assert!(panel.add_host_text().is_none(), "Enter clears the input");
@@ -5422,7 +5422,7 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::drawer::AgentsCommand::CancelAddHost,
+            ahp_session::session::drawer::AgentsCommand::CancelAddHost,
             &mut batch.effects(),
         );
         assert!(panel.add_host_text().is_none());
@@ -5495,14 +5495,14 @@ mod dock_tests {
         );
 
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::drawer::AgentsPanel::open(&store, &ui, window);
-        let mut batch: imba::effect::Batch<crate::higent::drawer::AgentsCommand> =
+        let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, crate::higent::drawer::drawer_asks(window));
+        let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
             imba::effect::Batch::new();
         use imba::View;
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::drawer::AgentsCommand::Boot,
+            ahp_session::session::drawer::AgentsCommand::Boot,
             &mut batch.effects(),
         );
 
@@ -5592,14 +5592,14 @@ mod dock_tests {
         ::workbench::window::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::drawer::AgentsPanel::open(&store, &ui, window);
-        let mut batch: imba::effect::Batch<crate::higent::drawer::AgentsCommand> =
+        let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, crate::higent::drawer::drawer_asks(window));
+        let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
             imba::effect::Batch::new();
         use imba::View;
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::drawer::AgentsCommand::Boot,
+            ahp_session::session::drawer::AgentsCommand::Boot,
             &mut batch.effects(),
         );
 
@@ -5649,20 +5649,20 @@ mod dock_tests {
         );
 
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::drawer::AgentsPanel::open(&store, &ui, window);
+        let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, crate::higent::drawer::drawer_asks(window));
         use imba::View;
-        let mut drive = |panel: &mut crate::higent::drawer::AgentsPanel,
+        let mut drive = |panel: &mut ahp_session::session::drawer::AgentsPanel,
                          command|
-         -> imba::effect::Batch<crate::higent::drawer::AgentsCommand> {
+         -> imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> {
             let mut batch = imba::effect::Batch::new();
             panel.perform(&mut store, &ui, command, &mut batch.effects());
             batch
         };
-        let _ = drive(&mut panel, crate::higent::drawer::AgentsCommand::Boot);
+        let _ = drive(&mut panel, ahp_session::session::drawer::AgentsCommand::Boot);
 
         let typing = drive(
             &mut panel,
-            crate::higent::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Input(
+            ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Input(
                 editor::editor_view::EditorCommand::InsertText {
                     text: "bet".to_owned(),
                 },
@@ -5683,7 +5683,7 @@ mod dock_tests {
         let matches = matches.expect("typing launched the filter");
         let landing = drive(
             &mut panel,
-            crate::higent::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Landed(matches)),
+            ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Landed(matches)),
         );
         // The first-match jump rides the announce round trip.
         if let Some(select) = crate::editor_tests::drain_announced(landing) {
@@ -5707,7 +5707,7 @@ mod dock_tests {
 
         let _ = drive(
             &mut panel,
-            crate::higent::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Clear),
+            ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Clear),
         );
         assert_eq!(panel.match_count(), 0, "cleared");
     }

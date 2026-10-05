@@ -26,6 +26,7 @@ locations = { path = "../locations" }
 recents = { path = "../recents" }
 rpds = "1"
 serde_json = "1"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 terminals = { path = "../terminals" }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 
