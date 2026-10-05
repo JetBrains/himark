@@ -10,16 +10,12 @@ use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, Cancellat
 use skia_safe::{Paint, Rect, Size};
 
 use hikit::combo::{Combo, ComboCommand, ComboItem, ComboOption};
-use ahp_wire::effects::ConnectServerEffect;
 use ahp_wire::client::HostId;
 use ahp_session::session::state::HostStatus;
 use ahp_session::session::state::Hosts;
-use ahp_wire::effects::ListSessionsEffect;
 use ahp_wire::effects::ResolveSessionConfigEffect;
-use ahp_wire::client::RootInfo;
 use ahp_wire::client::Servers;
 use ahp_wire::client::SessionOptions;
-use ahp_wire::client::SessionsPage;
 use editor::editor_view::EditorCommand;
 use editor::editor_view::EditorView;
 
@@ -1728,20 +1724,12 @@ impl crate::commands::WindowedCommand for ComposerAsk {
             return;
         };
 
-        let settled = Hosts::host_ref(store, host).is_some_and(|entry| {
-            matches!(entry.status, HostStatus::Connected | HostStatus::Connecting)
-        });
-        if !settled {
-            ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Connecting);
-            fx.push(
-                AnyEffect::new(ConnectServerEffect {
-                    client: client.session.clone(),
-                })
-                .map(move |result| {
-                    crate::app::AppCommand::Windowed(window, Arc::new(HostReady { host, result }))
-                }),
-            );
-        }
+        // Connecting and listing are the resident subscription's job
+        // (`ahp_session::session::driver`); the composer only nudges a
+        // failed or untried host when it opens on one.
+        fx.follow_up(crate::app::AppCommand::Verb(imba::command::Verb::Dynamic(
+            Arc::new(ahp_session::session::driver::ConnectHost(host)),
+        )));
 
         if let Some((_, token)) = store
             .get::<ComposerFeed>()
@@ -1784,98 +1772,6 @@ impl crate::commands::WindowedCommand for ComposerAsk {
             self.working_directory.clone(),
             fx,
         );
-    }
-}
-
-struct HostReady {
-    host: HostId,
-    result: Result<RootInfo, String>,
-}
-
-impl crate::commands::WindowedCommand for HostReady {
-    fn id(&self) -> &'static str {
-        "session.compose-host-ready"
-    }
-
-    fn name(&self) -> String {
-        "Session Host Ready".to_owned()
-    }
-
-    fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let host = self.host;
-        match &self.result {
-            Ok(info) => {
-                ahp_session::session::agents::Agents::set_agents(store, host, info.agents.clone());
-                ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Connected);
-                list_sessions(store, window, host, None, fx);
-            }
-            Err(error) => {
-                ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Failed(error.clone()));
-            }
-        }
-        bump_feed(store);
-    }
-}
-
-fn list_sessions(
-    store: &Store,
-    window: ::workbench::window::WindowId,
-    host: HostId,
-    cursor: Option<String>,
-    fx: &mut crate::app::AppFx<'_>,
-) {
-    let Some(client) = Servers::client(store, host) else {
-        return;
-    };
-    fx.push(
-        AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(move |result| {
-            crate::app::AppCommand::Windowed(window, Arc::new(SessionsListed { host, result }))
-        }),
-    );
-}
-
-struct SessionsListed {
-    host: HostId,
-    result: Result<SessionsPage, String>,
-}
-
-impl crate::commands::WindowedCommand for SessionsListed {
-    fn id(&self) -> &'static str {
-        "session.compose-sessions-listed"
-    }
-
-    fn name(&self) -> String {
-        "Session Catalog Listed".to_owned()
-    }
-
-    fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        match &self.result {
-            Ok(page) => {
-                ahp_session::session::agents::Agents::add_sessions(
-                    store,
-                    self.host,
-                    page.sessions.clone(),
-                    page.next_cursor.is_none(),
-                );
-                if page.next_cursor.is_some() {
-                    list_sessions(store, window, self.host, page.next_cursor.clone(), fx);
-                }
-            }
-            Err(error) => eprintln!("[new-session] listSessions failed: {error}"),
-        }
-        bump_feed(store);
     }
 }
 

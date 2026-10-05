@@ -7352,3 +7352,122 @@ mod wash_tests {
         );
     }
 }
+
+/// The sessions subscription is RESIDENT: a registered host connects,
+/// lists its sessions and drains its event stream off the batch tail
+/// alone — no drawer, no composer, no view of any kind is open here.
+#[test]
+fn the_sessions_subscription_runs_without_any_view() {
+    struct Seat;
+    macro_rules! off_road {
+        ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
+            $(fn $name(&self, $($arg: $ty),*) -> $out {
+                $(let _ = $arg;)*
+                unreachable!("the subscription never takes this road")
+            })*
+        };
+    }
+    impl ahp_wire::client::SessionClient for Seat {
+        fn connect(
+            &self,
+        ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>> {
+            Box::pin(std::future::ready(Ok(ahp_wire::client::RootInfo {
+                agents: Vec::new(),
+            })))
+        }
+
+        fn list_sessions(
+            &self,
+            cursor: Option<String>,
+        ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::SessionsPage, String>>
+        {
+            assert!(cursor.is_none(), "one page is the whole catalog here");
+            Box::pin(std::future::ready(Ok(ahp_wire::client::SessionsPage {
+                sessions: vec![ahp_types::state::SessionSummary {
+                    origin: None,
+                    provider: "test".to_owned(),
+                    title: "found by nobody looking".to_owned(),
+                    status: 0,
+                    activity: None,
+                    project: None,
+                    working_directories: None,
+                    annotations: None,
+                    resource: "test-session:/resident".to_owned(),
+                    created_at: String::new(),
+                    modified_at: String::new(),
+                    changes: None,
+                    meta: None,
+                }],
+                next_cursor: None,
+            })))
+        }
+
+        fn poll_root(
+            &self,
+        ) -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>> {
+            // The long poll parks: events are not this test's story.
+            Box::pin(std::future::pending())
+        }
+
+        off_road! {
+            create_session(dirs: Vec<String>, options: ahp_wire::client::SessionOptions) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::SessionUri, String>>;
+            resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> ahp_wire::client::ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
+            dispose_session(session: ahp_wire::client::SessionUri) -> ahp_wire::client::ClientFuture<Result<(), String>>;
+            subscribe_session(session: ahp_wire::client::SessionUri) -> ahp_wire::client::ClientFuture<Result<ahp_types::state::SessionState, String>>;
+            poll_session(session: ahp_wire::client::SessionUri) -> ahp_wire::client::ClientFuture<Vec<ahp_types::actions::StateAction>>;
+            dispatch_action(channel: ahp_wire::client::ChannelUri, action: ahp_types::actions::StateAction) -> ahp_wire::client::ClientFuture<Result<(), String>>;
+        }
+    }
+
+    use crate::app::Application;
+    use crate::app::AppFonts;
+    let mut app = Application::new(AppFonts::embedded());
+    let _ = app.add_window();
+    crate::hiahp::register_all(&mut app);
+
+    let (posted, arriving) = std::sync::mpsc::channel();
+    let runner = app.attach_host(
+        std::sync::Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        std::sync::Arc::new(|| {}),
+    );
+
+    let host = app.register_client(ahp_wire::client::Client {
+        session: std::sync::Arc::new(Seat),
+        ..ahp_wire::client::inert()
+    });
+    ahp_session::session::agents::Agents::seed(&mut app.store_mut(), host, "Resident Host");
+
+    // Any batch at all — its tail is where the subscription lives.
+    assert!(app.perform_batch(vec![crate::app::AppCommand::Verb(
+        imba::command::Verb::Dynamic(std::sync::Arc::new(
+            ahp_session::session::driver::RetryHosts
+        ))
+    )]));
+    for _ in 0..20 {
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+    }
+
+    let record =
+        ahp_session::session::agents::Agents::record(app.store(), host).expect("the host record");
+    assert!(
+        matches!(
+            record.status,
+            ahp_session::session::state::HostStatus::Connected
+        ),
+        "the host connected with no view open"
+    );
+    assert_eq!(
+        record
+            .sessions
+            .iter()
+            .map(|summary| summary.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["found by nobody looking"],
+        "and its sessions are in the catalog"
+    );
+}

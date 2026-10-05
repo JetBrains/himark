@@ -175,10 +175,33 @@ impl ahp_wire::client::SessionClient for ScriptedSeat {
         Box::pin(std::future::ready(Ok(())))
     }
 
+    // The resident sessions subscription connects every host at the
+    // first batch tail — the scripted seat answers with an empty
+    // catalog and parks the drain, so the chat flow under test is
+    // undisturbed.
+    fn connect(
+        &self,
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>> {
+        Box::pin(std::future::ready(Ok(ahp_wire::client::RootInfo {
+            agents: Vec::new(),
+        })))
+    }
+
+    fn list_sessions(
+        &self,
+        _cursor: Option<String>,
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::SessionsPage, String>> {
+        Box::pin(std::future::ready(Ok(ahp_wire::client::SessionsPage {
+            sessions: Vec::new(),
+            next_cursor: None,
+        })))
+    }
+
+    fn poll_root(&self) -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>> {
+        Box::pin(std::future::pending())
+    }
+
     unreached! {
-        connect() -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>>;
-        list_sessions(cursor: Option<String>) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::SessionsPage, String>>;
-        poll_root() -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>>;
         create_session(dirs: Vec<String>, options: ahp_wire::client::SessionOptions) -> ahp_wire::client::ClientFuture<Result<SessionUri, String>>;
         resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> ahp_wire::client::ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
         dispose_session(session: SessionUri) -> ahp_wire::client::ClientFuture<Result<(), String>>;

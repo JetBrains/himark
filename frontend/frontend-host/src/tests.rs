@@ -6879,17 +6879,18 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         let host_at = rows
             .iter()
             .position(|(label, depth)| *depth == 0 && label == "himark Host");
-        // Sessions with a folder list at depth 2 under the folder row;
-        // only folderless strays stay at depth 1.
+        // Sessions with a folder list at depth 2 under the folder row.
+        // The catalog is recency-ordered and the subscription may have
+        // listed MANY sessions by now (it runs from boot) — the one
+        // this test created is the freshest, so it is the FIRST
+        // session row under the host.
         session_row = host_at.and_then(|index| {
             let under_host = rows.iter().enumerate().skip(index + 1);
             under_host
-                .filter(|(_, (label, depth))| {
-                    (*depth == 1 || *depth == 2)
-                        && label != "+ New Session…"
-                        && !label.contains("connecting")
+                .take_while(|(_, (_, depth))| *depth != 0)
+                .find(|(_, (label, depth))| {
+                    *depth == 2 && !label.contains("connecting")
                 })
-                .max_by_key(|(_, (_, depth))| *depth)
                 .map(|(at, _)| at)
         });
         if session_row.is_some() {

@@ -844,6 +844,12 @@ impl Application {
 
         {
             let mut fx = batch.effects();
+            // The resident sessions subscription: hosts connect, list
+            // and drain whether or not any view shows them — the
+            // catalog stays true at all times (views only dress it).
+            fx.scope(AppCommand::Verb, |fx| {
+                ahp_session::session::driver::sync_sessions_lane(&mut store, fx)
+            });
             // The lanes run over EVERY session: each drains its own
             // pending queue, so a clean session costs map reads — and a
             // landing's session gets its sweep THIS batch whatever the

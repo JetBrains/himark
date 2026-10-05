@@ -4,13 +4,7 @@
 use std::sync::Arc;
 
 use ahp_wire::client::SessionUri;
-use ahp_wire::effects::ConnectServerEffect;
 use ahp_wire::client::HostId;
-use ahp_wire::effects::ListSessionsEffect;
-use ahp_wire::effects::PollServerEffect;
-use ahp_wire::client::RootInfo;
-use ahp_wire::client::ServerEvent;
-use ahp_wire::client::SessionsPage;
 use imba::list::ActivateTrigger;
 use crate::app::AppCommand;
 use hikit::list_keyboard::ListKeyCommand;
@@ -22,7 +16,7 @@ use hikit::tree_item::TreeListCommand;
 use hikit::forest::TreeRow;
 use ahp_types::state::SessionSummary;
 use imba::list::ListOps;
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
 use crate::higent::session::open::OpenSessionRow;
@@ -85,15 +79,11 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
 pub enum AgentsCommand {
     Rows(ListKeyCommand<TreeListCommand>),
 
+    /// The paint-side ask: the panel's rows lag the catalog — rebuild
+    /// them. The catalog itself is kept true by the resident
+    /// subscription (`ahp_session::session::driver`); the drawer only
+    /// dresses it.
     Boot,
-    Connected(HostId, Result<RootInfo, String>),
-    Listed {
-        server: HostId,
-        first: bool,
-        result: Result<SessionsPage, String>,
-    },
-
-    Events(HostId, Vec<ServerEvent>),
 
     Dismiss,
 
@@ -110,9 +100,6 @@ impl std::fmt::Display for AgentsCommand {
             AgentsCommand::Rows(command) => command.fmt(out),
             AgentsCommand::AddHostInput(command) => command.fmt(out),
             AgentsCommand::Boot => out.write_str("agents boot"),
-            AgentsCommand::Connected(..) => out.write_str("agents connected"),
-            AgentsCommand::Listed { .. } => out.write_str("agents listed"),
-            AgentsCommand::Events(..) => out.write_str("agents events"),
             AgentsCommand::Dismiss => out.write_str("agents dismiss"),
             AgentsCommand::SubmitAddHost => out.write_str("submit add host"),
             AgentsCommand::CancelAddHost => out.write_str("cancel add host"),
@@ -123,12 +110,12 @@ impl std::fmt::Display for AgentsCommand {
 pub struct AgentsPanel {
     list: ListKeyboardController<TreeList, SessionSearcher>,
     window: ::workbench::window::WindowId,
-    booted: bool,
+    /// The catalog generation the rows were last built from — the
+    /// paint-side ask fires while this lags `Hosts::generation`.
+    seen: Option<u64>,
 
     collapsed: rpds::HashTrieSetSync<HostId>,
     folded: rpds::HashTrieSetSync<(HostId, Vec<String>)>,
-
-    polls: rpds::HashTrieMapSync<HostId, CancellationToken>,
 
     adding: Option<EditorView>,
     request: Option<ModalRequest>,
@@ -139,10 +126,9 @@ impl Clone for AgentsPanel {
         Self {
             list: self.list.clone(),
             window: self.window,
-            booted: self.booted,
+            seen: self.seen,
             collapsed: self.collapsed.clone(),
             folded: self.folded.clone(),
-            polls: self.polls.clone(),
             adding: self.adding.clone(),
 
             request: None,
@@ -162,10 +148,9 @@ impl AgentsPanel {
             )
             .with_folds(),
             window,
-            booted: false,
+            seen: None,
             collapsed: rpds::HashTrieSetSync::new_sync(),
             folded: rpds::HashTrieSetSync::new_sync(),
-            polls: rpds::HashTrieMapSync::new_sync(),
             adding: None,
             request: None,
         };
@@ -368,59 +353,6 @@ impl AgentsPanel {
             .then(|| AgentKey::Session(open.host, open.session))
     }
 
-    fn connect(&mut self, store: &mut Store, server: HostId, fx: &mut Effects<'_, AgentsCommand>) {
-        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
-            Agents::set_status(store, server, HostStatus::Failed("unregistered".to_owned()));
-            return;
-        };
-        Agents::set_status(store, server, HostStatus::Connecting);
-        fx.push(
-            AnyEffect::new(ConnectServerEffect { client: client.session.clone() })
-                .map(move |result| AgentsCommand::Connected(server, result)),
-        );
-    }
-
-    fn list_sessions(
-        &mut self,
-        store: &Store,
-        server: HostId,
-        cursor: Option<String>,
-        fx: &mut Effects<'_, AgentsCommand>,
-    ) {
-        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
-            return;
-        };
-        let first = cursor.is_none();
-        fx.push(
-            AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(move |result| {
-                AgentsCommand::Listed {
-                    server,
-                    first,
-                    result,
-                }
-            }),
-        );
-    }
-
-    fn relaunch_poll(
-        &mut self,
-        store: &Store,
-        server: HostId,
-        fx: &mut Effects<'_, AgentsCommand>,
-    ) {
-        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
-            return;
-        };
-        if let Some(token) = self.polls.get(&server).copied() {
-            fx.cancel(token);
-        }
-        let token = fx.push(
-            AnyEffect::new(PollServerEffect { client: client.session.clone() })
-                .map(move |events| AgentsCommand::Events(server, events)),
-        );
-        self.polls.insert_mut(server, token);
-    }
-
     pub fn activate(
         &mut self,
         store: &mut Store,
@@ -439,7 +371,7 @@ impl AgentsPanel {
         store: &mut Store,
         ui: &UiCtx,
         key: &AgentKey,
-        fx: &mut Effects<'_, AgentsCommand>,
+        _fx: &mut Effects<'_, AgentsCommand>,
     ) {
         match key {
             AgentKey::Server(server) => {
@@ -456,7 +388,11 @@ impl AgentsPanel {
                     Some(HostStatus::Failed(_)) | Some(HostStatus::Idle)
                 ) && !self.collapsed.contains(server)
                 {
-                    self.connect(store, *server, fx);
+                    // The nudge rides the verb drain: connecting is the
+                    // resident subscription's job, not the drawer's.
+                    self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
+                        std::sync::Arc::new(ahp_session::session::driver::ConnectHost(*server)),
+                    )));
                 }
                 self.refresh(store, ui);
             }
@@ -582,10 +518,6 @@ impl View for AgentsPanel {
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        for (_, token) in self.polls.iter() {
-            fx.cancel(*token);
-        }
-        self.polls = rpds::HashTrieMapSync::new_sync();
         fx.scope(AgentsCommand::Rows, |fx| self.list.destroy(store, fx));
     }
 
@@ -598,56 +530,11 @@ impl View for AgentsPanel {
     ) {
         match command {
             AgentsCommand::Boot => {
-                if self.booted {
+                let generation = ahp_session::session::state::Hosts::generation(store);
+                if self.seen == Some(generation) {
                     return;
                 }
-                self.booted = true;
-                for (server, record) in Agents::list(store) {
-                    if matches!(record.status, HostStatus::Connected) {
-                        self.list_sessions(store, server, None, fx);
-                        self.relaunch_poll(store, server, fx);
-                    } else {
-                        self.connect(store, server, fx);
-                    }
-                }
-                self.refresh(store, ui);
-            }
-            AgentsCommand::Connected(server, result) => {
-                match result {
-                    Ok(info) => {
-                        Agents::set_agents(store, server, info.agents);
-                        Agents::set_status(store, server, HostStatus::Connected);
-                        self.list_sessions(store, server, None, fx);
-                        self.relaunch_poll(store, server, fx);
-                    }
-                    Err(error) => {
-                        Agents::set_status(store, server, HostStatus::Failed(error));
-                    }
-                }
-                self.refresh(store, ui);
-            }
-            AgentsCommand::Listed {
-                server,
-                first,
-                result,
-            } => {
-                match result {
-                    Ok(page) => {
-                        let next = page.next_cursor.clone();
-                        Agents::add_sessions(store, server, page.sessions, first);
-                        if next.is_some() {
-                            self.list_sessions(store, server, next, fx);
-                        }
-                    }
-                    Err(error) => eprintln!("[higent] listSessions failed: {error}"),
-                }
-                self.refresh(store, ui);
-            }
-            AgentsCommand::Events(server, events) => {
-                for event in events {
-                    Agents::apply_event(store, server, event);
-                }
-                self.relaunch_poll(store, server, fx);
+                self.seen = Some(generation);
                 self.refresh(store, ui);
             }
             AgentsCommand::Rows(command) => {
@@ -861,7 +748,8 @@ impl View for AgentsPanel {
             );
             overlay.place(0.0, 0.0, keymap);
 
-            let boot = !self.booted;
+            let boot =
+                self.seen != Some(ahp_session::session::state::Hosts::generation(store));
             overlay.wrap(move |inner| BootShell { inner, boot })
         })
     }
@@ -978,6 +866,11 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
+        // Opening the drawer is the retry nudge a failed host waits
+        // for — the subscription itself never hammers one.
+        fx.follow_up(crate::app::AppCommand::Verb(imba::command::Verb::Dynamic(
+            std::sync::Arc::new(ahp_session::session::driver::RetryHosts),
+        )));
         let panel = AgentsPanel::open(store, ui, window);
         fx.scope(
             move |command| crate::app::AppCommand::Content(window, command),

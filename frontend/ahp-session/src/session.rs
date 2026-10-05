@@ -3,6 +3,7 @@
 
 pub mod agents;
 pub mod folders;
+pub mod driver;
 pub mod state;
 pub mod summary;
 
