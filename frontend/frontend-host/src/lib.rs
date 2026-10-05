@@ -1119,7 +1119,7 @@ impl HimarkEngine {
             self.app
                 .register_document_command(Arc::new(hicode::GoImplementations));
             self.app
-                .register_document_command(Arc::new(himark::hipeek::GoToReference));
+                .register_document_command(himark::hipeek::go_to_reference());
             self.app
                 .register_document_command(Arc::new(host::OpenWorkingCopy));
         }

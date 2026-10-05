@@ -949,3 +949,118 @@ mod tests {
         }
     }
 }
+
+const GOTO_FALLBACK_WIDTH: f32 = 600.0;
+
+fn peek_markup() -> editor::markup::MarkupId {
+    static ID: std::sync::OnceLock<editor::markup::MarkupId> = std::sync::OnceLock::new();
+    *ID.get_or_init(editor::markup::MarkupId::mint)
+}
+
+/// Go-to reference's ENTRY: the document command that mints the feed,
+/// mounts the card NOW (the ask's outcome lands into the visible
+/// card, never into silence) and fires the LSP ask. The shell injects
+/// the three things only it knows: which lists collection a documents
+/// id belongs to (the catalog consult stays with the catalog's
+/// owner), how a deliberate open reaches a window, and how the feed
+/// fronts in the dock.
+pub struct GoToReference {
+    /// The documents collection's sibling lists — the session row
+    /// linkage, answered by whoever owns the catalog.
+    pub lists: Arc<
+        dyn Fn(&Store, imba::store::Id<documents::OpenDocuments>) -> Option<imba::store::Id<LocationLists>>
+            + Send
+            + Sync,
+    >,
+    /// The card's deliberate open — a windowed ask the shell queues.
+    pub open: Arc<
+        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
+            + Send
+            + Sync,
+    >,
+    /// Front the SAME feed in the shell's dock — no re-ask.
+    pub promote: Arc<dyn Fn(&mut Store, imba::store::Id<LocationLists>, FeedId) + Send + Sync>,
+}
+
+/// Closes over the pane's ids (docs/entities.md law 3): the card's
+/// host is the document the command runs in, no owner is resolved.
+impl documents::dynamic::DocumentCommand for GoToReference {
+    fn id(&self) -> &'static str {
+        "code.go-to-reference"
+    }
+
+    fn name(&self) -> String {
+        "Go to Reference".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        documents: imba::store::Id<documents::OpenDocuments>,
+        document_id: documents::DocumentId,
+        document: &mut Document,
+        editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
+        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        fx: &mut imba::effect::Effects<'_, EditorCommand>,
+    ) {
+        let _ = payload;
+        // Phase one: mint the feed, mount the card.
+        let Some(lists) = (self.lists)(store, documents) else {
+            return;
+        };
+        let caret = document.caret_byte(editor);
+        let Some(anchor) = caret_anchor(document, caret) else {
+            return;
+        };
+        let position = {
+            let mut view = document.text().view();
+            documents::text_ext::line_col_at(&mut view, caret as usize)
+        };
+        let feed = FeedId::mint();
+        crate::open_feed(store, lists, feed, "References".to_owned(), String::new());
+
+        let fonts = ::editor::env::Fonts::of(store)();
+        let theme = ::editor::env::Themes::of(store);
+        let width = match document.layout_width(editor) {
+            width if width > 1.0 => width,
+            _ => GOTO_FALLBACK_WIDTH,
+        };
+        let host = Some(document_id);
+        let open = Arc::clone(&self.open);
+        let promote_road = Arc::clone(&self.promote);
+        let promote: Arc<dyn Fn(&mut Store) + Send + Sync> =
+            Arc::new(move |store| promote_road(store, lists, feed));
+        let view = PeekView::new(store, host, width, lists, feed, promote, open);
+        let markup = peek_markup();
+        document.ensure_document_markup(markup);
+        let key = document.push_inlay(
+            markup,
+            anchor.clone(),
+            editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone()),
+            store,
+            ui,
+            &fonts,
+            &theme,
+            fx,
+        );
+        document.swap_inlay(
+            key,
+            anchor,
+            editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.keyed(key)),
+        );
+        document.set_focus(editor, editor::editor_view::EditorFocus::Inlay(key));
+
+        LocationLists::ask(
+            store,
+            lists,
+            LocationsAsk::Lsp {
+                feed,
+                kind: crate::LspKind::References,
+                location: location.clone(),
+                position,
+            },
+        );
+    }
+}
