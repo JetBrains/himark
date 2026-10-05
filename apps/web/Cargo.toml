@@ -74,6 +74,11 @@ serde_json = "1"
 host-discovery = { path = "../../protocol/host-discovery" }
 himark = { path = "../../frontend/himark" }
 editor = { path = "../../frontend/editor" }
+canvas = { path = "../../frontend/canvas" }
+comments = { path = "../../frontend/comments" }
+documents = { path = "../../frontend/documents" }
+hikit = { path = "../../frontend/hikit" }
+text = { path = "../../frontend/text" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
 skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl", "textlayout"] }

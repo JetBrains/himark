@@ -61,3 +61,20 @@ fn folder_location(
     )
     .filter(|location| !location.path().is_empty())
 }
+
+/// A folder's short name — the last path segment, which is what a row
+/// has room for. Trailing slashes are not a segment.
+pub fn folder_label(folder: &str) -> String {
+    let trimmed = folder.trim_end_matches('/');
+    let name = trimmed.rsplit('/').next().filter(|name| !name.is_empty());
+    name.unwrap_or(trimmed).to_owned()
+}
+
+/// The short names of a session's folders, in order.
+pub fn folders_label(folders: &[String]) -> String {
+    folders
+        .iter()
+        .map(|folder| folder_label(folder))
+        .collect::<Vec<_>>()
+        .join(", ")
+}

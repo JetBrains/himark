@@ -87,15 +87,23 @@ fn a_sessions_chats_are_its_own() {
 }
 
 /// The batch-tail sweep collects a session whose every collection
-/// emptied — and spares one a live window holds.
+/// EMPTIED — and spares one a live window holds.
 #[test]
 fn the_sweep_collects_all_empty_sessions_unless_a_window_holds_them() {
     let mut store = store();
     let empty = session("s-empty");
     let held = session("s-held");
 
-    Hosts::ensure_state(&mut store, &empty);
-    Hosts::ensure_state(&mut store, &held);
+    // Both held content, so both are subject to the sweep: a row is
+    // garbage when what it held goes away.
+    put(&mut store, &empty, "chat:gone");
+    put(&mut store, &held, "chat:gone");
+    Hosts::sweep_empty(&mut store);
+    for scope in [&empty, &held] {
+        let chats = Hosts::ensure_state(&mut store, scope).chats();
+        store.retract(chats);
+    }
+
     let kept = held.clone();
     store.put(WindowGrip(std::sync::Arc::new(move |_, scope| {
         *scope == kept
@@ -111,6 +119,36 @@ fn the_sweep_collects_all_empty_sessions_unless_a_window_holds_them() {
         Hosts::state(&store, &held).is_some(),
         "a held session is not garbage, however empty"
     );
+}
+
+/// A NEWBORN row is empty because nothing landed in it yet, not
+/// because its content went away — and the sweep runs between the
+/// mint and the fill (every guard drop, every window transaction,
+/// every batch tail). Collecting it there would pull the ids out from
+/// under the caller mid-setup: the mint door hands back a row whose
+/// collections are already retracted, and the fill lands in a
+/// collection nothing can reach.
+#[test]
+fn the_sweep_spares_a_row_that_has_not_been_filled_yet() {
+    let mut store = store();
+    let fresh = session("s-fresh");
+
+    let chats = Hosts::ensure_state(&mut store, &fresh).chats();
+    Hosts::sweep_empty(&mut store);
+
+    assert!(
+        Hosts::state(&store, &fresh).is_some(),
+        "the newborn row survives the sweep that lands before its content"
+    );
+
+    let uri = put(&mut store, &fresh, "chat:1");
+    assert_eq!(
+        Hosts::ensure_state(&mut store, &fresh).chats(),
+        chats,
+        "and it is the SAME row — the ids the caller took still name it"
+    );
+    Hosts::sweep_empty(&mut store);
+    assert!(chat_in(&store, &fresh, &uri), "the fill stuck");
 }
 
 /// The session is the LIFETIME of its chats.

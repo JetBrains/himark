@@ -4,5 +4,6 @@
 pub mod agents;
 pub mod folders;
 pub mod state;
+pub mod summary;
 
 

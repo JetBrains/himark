@@ -32,6 +32,12 @@ pub struct Host {
 
     rows: rpds::HashTrieMapSync<SessionUri, SessionState>,
 
+    /// The rows the sweep has SEEN hold content. A newborn row is
+    /// empty because nothing landed in it yet, not because its
+    /// content went away — only a row that once held something is
+    /// garbage when it reads empty again (`sweep_empty`).
+    filled: rpds::HashTrieSetSync<SessionUri>,
+
     uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
 }
 
@@ -220,6 +226,7 @@ impl Host {
             sessions: rpds::VectorSync::new_sync(),
             states: rpds::HashTrieMapSync::new_sync(),
             rows: rpds::HashTrieMapSync::new_sync(),
+            filled: rpds::HashTrieSetSync::new_sync(),
             uris: None,
         }
     }
@@ -329,43 +336,93 @@ impl Hosts {
     /// and nothing comes back — the store is single and global, and
     /// the table IS the data.
     pub fn sweep_empty(store: &mut Store) {
+        /// What the sweep makes of one session row.
+        enum Verdict {
+            /// It holds content — LATCH it, so the next time it reads
+            /// empty we know the content went away.
+            Filled,
+            /// Empty but not garbage: either nothing has landed in it
+            /// yet (a newborn row, mid-setup) or a live window holds
+            /// it across a retraction it may yet walk back from.
+            Spared,
+            /// Filled once, empty now, unheld — garbage.
+            Collect,
+        }
+
         let mut hosts = store.take::<Hosts>().unwrap_or_default();
-        let targets: Vec<ahp_wire::SessionId> = hosts
+        let rows: Vec<(ahp_wire::SessionId, SessionState, bool)> = hosts
             .entries
             .iter()
-            .flat_map(|(host, row)| {
-                row.rows.keys().map(move |session| ahp_wire::SessionId {
-                    host: *host,
-                    session: session.clone(),
+            .flat_map(|(host, entry)| {
+                entry.rows.iter().map(move |(session, row)| {
+                    let scope = ahp_wire::SessionId {
+                        host: *host,
+                        session: session.clone(),
+                    };
+                    (scope, row.clone(), entry.filled.contains(session))
                 })
             })
             .collect();
-        for scope in &targets {
-            let Some(rows) = hosts
-                .entries
-                .get(&scope.host)
-                .and_then(|host| host.rows.get(&scope.session))
-                .cloned()
-            else {
-                continue;
-            };
-            // A session a live window HOLDS is not garbage, however
-            // empty: fresh sessions start with nothing open (the chat
-            // owns the workbench), and the window's grip is what keeps
-            // the row's ids valid until content arrives.
-            let held = store
-                .get::<WindowGrip>()
-                .is_some_and(|grip| (grip.0)(store, scope));
-            if rows.is_empty(store) && !held {
-                rows.retract_all(store);
-                if let Some(host) = hosts.entries.get(&scope.host) {
-                    let mut host = host.clone();
-                    host.rows.remove_mut(&scope.session);
-                    hosts.entries.insert_mut(scope.host, host);
+
+        // DECIDE first, over the table as it stands: no row's verdict
+        // can depend on another's, since rows name disjoint ids.
+        let verdicts: Vec<(ahp_wire::SessionId, SessionState, Verdict)> = rows
+            .into_iter()
+            .map(|(scope, row, filled)| {
+                let verdict = if !row.is_empty(store) {
+                    Verdict::Filled
+                } else if !filled || Self::held_by_a_window(store, &scope) {
+                    Verdict::Spared
+                } else {
+                    Verdict::Collect
+                };
+                (scope, row, verdict)
+            })
+            .collect();
+
+        // Then APPLY.
+        for (scope, row, verdict) in verdicts {
+            match verdict {
+                Verdict::Spared => {}
+                Verdict::Filled => hosts.latch(&scope),
+                Verdict::Collect => {
+                    row.retract_all(store);
+                    hosts.drop_row(&scope);
                 }
             }
         }
         store.put(hosts);
+    }
+
+    fn held_by_a_window(store: &Store, scope: &ahp_wire::SessionId) -> bool {
+        store
+            .get::<WindowGrip>()
+            .is_some_and(|grip| (grip.0)(store, scope))
+    }
+
+    /// Record that a row HAS held content — the sweep's latch, which
+    /// is what tells an emptied row apart from a newborn one.
+    fn latch(&mut self, scope: &ahp_wire::SessionId) {
+        let Some(host) = self.entries.get(&scope.host) else {
+            return;
+        };
+        if host.filled.contains(&scope.session) {
+            return;
+        }
+        let mut host = host.clone();
+        host.filled.insert_mut(scope.session.clone());
+        self.entries.insert_mut(scope.host, host);
+    }
+
+    /// Drop a collected row from the catalog.
+    fn drop_row(&mut self, scope: &ahp_wire::SessionId) {
+        let Some(host) = self.entries.get(&scope.host) else {
+            return;
+        };
+        let mut host = host.clone();
+        host.rows.remove_mut(&scope.session);
+        host.filled.remove_mut(&scope.session);
+        self.entries.insert_mut(scope.host, host);
     }
 
 

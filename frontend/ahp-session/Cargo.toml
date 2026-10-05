@@ -20,6 +20,7 @@ documents = { path = "../documents" }
 editor = { path = "../editor" }
 filetree = { path = "../filetree" }
 hikit = { path = "../hikit" }
+humantime = "2"
 imba = { path = "../imba" }
 locations = { path = "../locations" }
 rpds = "1"

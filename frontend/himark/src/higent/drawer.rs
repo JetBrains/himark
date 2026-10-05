@@ -28,6 +28,7 @@ use skia_safe::{Rect, Size};
 use crate::higent::session::open::OpenSessionRow;
 use ahp_session::session::agents::Agents;
 use ahp_session::session::state::HostStatus;
+use ahp_session::session::summary::{self, SessionActivity};
 use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
 
 const PANEL_WIDTH: f32 = hikit::rows::DRAWER_WIDTH;
@@ -279,10 +280,10 @@ impl AgentsPanel {
                         }
                     }
                     for (_, sessions) in groups.iter_mut() {
-                        sessions.sort_by_key(|summary| std::cmp::Reverse(modified_stamp(summary)));
+                        sessions.sort_by_key(|summary| std::cmp::Reverse(summary::modified_stamp(summary)));
                     }
                     groups.sort_by_key(|(_, sessions)| {
-                        std::cmp::Reverse(sessions.first().map(|first| modified_stamp(first)))
+                        std::cmp::Reverse(sessions.first().map(|first| summary::modified_stamp(first)))
                     });
                     for (folder, sessions) in groups {
                         let depth = match &folder {
@@ -292,7 +293,7 @@ impl AgentsPanel {
                                 slice.push_keyed(
                                     AgentKey::Folder(server, folder.clone()),
                                     hikit::tree_item::TreeItemView::branch(
-                                        TreeLabel::new(folders_label(folder), false, false),
+                                        TreeLabel::new(ahp_session::session::folders::folders_label(folder), false, false),
                                         1,
                                         expanded,
                                     )
@@ -314,7 +315,7 @@ impl AgentsPanel {
                                     SessionUri::new(summary.resource.clone()),
                                 ),
                                 hikit::tree_item::TreeItemView::leaf(
-                                    TreeLabel::new(session_label(summary), true, false)
+                                    TreeLabel::new(summary::label(summary), true, false)
                                         .with_badge(session_badge(summary, accent, stop, dim))
                                         .with_trail(age_trail(now, dim, summary)),
                                     depth,
@@ -514,95 +515,37 @@ impl AgentsPanel {
     }
 }
 
+/// The age trail a row shows, dressed: the session's own words for
+/// how long ago it moved (`summary::age`), in the dim ink.
 fn age_trail(
     now: std::time::SystemTime,
     dim: skia_safe::Color,
     summary: &SessionSummary,
 ) -> Vec<(String, skia_safe::Color)> {
-    let Ok(stamp) = humantime::parse_rfc3339_weak(&summary.modified_at) else {
-        return Vec::new();
-    };
-    let Ok(elapsed) = now.duration_since(stamp) else {
-        return Vec::new();
-    };
-    let seconds = elapsed.as_secs();
-    let age = match seconds {
-        0..=59 => "now".to_owned(),
-        60..=3599 => format!("{}m", seconds / 60),
-        3600..=86_399 => format!("{}h", seconds / 3600),
-        _ => format!("{}d", seconds / 86_400),
-    };
-    vec![(age, dim)]
-}
-
-/// The stamp the recency order runs on — the summary's modified_at
-/// moves on every message, ours or the agent's. Unparseable stamps
-/// sink to the epoch, so fresh sessions never hide below them.
-fn modified_stamp(summary: &SessionSummary) -> std::time::SystemTime {
-    humantime::parse_rfc3339_weak(&summary.modified_at).unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-}
-
-fn folder_label(folder: &str) -> String {
-    let trimmed = folder.trim_end_matches('/');
-    let name = trimmed.rsplit('/').next().filter(|name| !name.is_empty());
-    name.unwrap_or(trimmed).to_owned()
-}
-
-fn folders_label(folders: &[String]) -> String {
-    folders
-        .iter()
-        .map(|folder| folder_label(folder))
-        .collect::<Vec<_>>()
-        .join(", ")
+    summary::age(now, summary)
+        .map(|age| vec![(age, dim)])
+        .unwrap_or_default()
 }
 
 /// The session's activity mark: one glyph in one color, leading the
 /// row. Circles tell the session's own pace (○ hollow while a turn is
 /// still cooking, ● filled once an answer stands unviewed);
 /// punctuation flags the states that want the user (? blocked on an
-/// answer, ! the last turn failed).
+/// answer, ! the last turn failed). What the states ARE is the
+/// session's to say (`summary::activity`) — this is only their dress.
 fn session_badge(
     summary: &SessionSummary,
     accent: skia_safe::Color,
     stop: skia_safe::Color,
     dim: skia_safe::Color,
 ) -> Option<(String, skia_safe::Color)> {
-    let status = summary.status;
-    // InputNeeded contains the InProgress bit — ask before running.
-    if status & 24 == 24 {
-        return Some(("?".to_owned(), accent));
+    match summary::activity(summary) {
+        SessionActivity::Blocked => Some(("?".to_owned(), accent)),
+        SessionActivity::Working => Some(("○".to_owned(), accent)),
+        SessionActivity::Failed => Some(("!".to_owned(), stop)),
+        SessionActivity::Unviewed => Some(("●".to_owned(), dim)),
+        SessionActivity::Quiet => None,
     }
-    if status & 8 != 0 {
-        return Some(("○".to_owned(), accent));
-    }
-    if status & 2 != 0 {
-        return Some(("!".to_owned(), stop));
-    }
-    if status & 32 == 0 {
-        return Some(("●".to_owned(), dim));
-    }
-    None
-}
-
-fn session_label(summary: &SessionSummary) -> String {
-    let mut label = String::new();
-    label.push_str(&summary.title);
-    if let Some(activity) = summary
-        .activity
-        .as_ref()
-        .filter(|_| summary.status & 8 != 0)
-    {
-        label.push_str(" · ");
-        label.push_str(activity);
-    }
-    if let Some(changes) = &summary.changes {
-        if let (Some(additions), Some(deletions)) = (changes.additions, changes.deletions) {
-            if additions > 0 || deletions > 0 {
-                label.push_str(&format!("  +{additions} -{deletions}"));
-            }
-        }
-    }
-    label
 }
 
 impl View for AgentsPanel {

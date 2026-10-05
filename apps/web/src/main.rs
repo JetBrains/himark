@@ -312,7 +312,7 @@ mod app {
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
             state.register_command(std::sync::Arc::new(himark::diff_pane::OpenDiff));
             state.register_row_minter(canvas::diff_pane::pair_row_minter());
-            state.register_navigator(himark::diff_canvas::canvas::CanvasNavigator);
+            state.register_navigator(canvas::canvas::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
 
             comments::install(&mut state.store_mut());
