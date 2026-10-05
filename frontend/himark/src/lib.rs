@@ -13,7 +13,6 @@ pub mod hifiles;
 pub mod higent;
 pub mod hihistory;
 pub mod find;
-pub mod grip;
 pub mod hipeek;
 pub mod pane_services;
 pub mod hisearch;

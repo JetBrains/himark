@@ -31,9 +31,9 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
             ::workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let workspace = crate::grip::entity_session(&entity);
-        let changes = crate::grip::entity_state(&entity).changes();
-        let wire = crate::grip::entity_state(&entity).changes_wire();
+        let workspace = crate::workspace::entity_session(&entity);
+        let changes = crate::workspace::entity_state(&entity).changes();
+        let wire = crate::workspace::entity_state(&entity).changes_wire();
         let folders = ahp_session::session::folders::session_folders(store, &workspace);
         fx.scope(crate::app::AppCommand::Verb, |fx| {
             ahp_changes::changes::ensure(store, wire, folders, fx)

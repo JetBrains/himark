@@ -116,7 +116,7 @@ impl WindowedCommand for NewScratch {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let state = crate::grip::session_state(store, window)
+        let state = crate::workspace::session_state(store, window)
             .expect("a scratch opens into a window with a session");
         let location = documents::next_scratch_location(store, state.scratch_names());
         fx.push(crate::app::open_effect(
@@ -336,7 +336,7 @@ impl WindowedCommand for CompletionTrigger {
                 ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
-            let documents = crate::grip::session_state(store, window)
+            let documents = crate::workspace::session_state(store, window)
                 .expect("completion runs in a window with a session")
                 .documents();
             let location = documents::OpenDocuments::location(store, documents, id)
@@ -661,7 +661,7 @@ impl WindowedCommand for AddFolder {
         let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
-        let current = crate::grip::entity_session(&entity);
+        let current = crate::workspace::entity_session(&entity);
         if ahp_wire::client::Servers::client(store, current.host).is_none() {
             return;
         }

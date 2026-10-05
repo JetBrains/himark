@@ -1834,7 +1834,7 @@ fn dispose_placeholder(
 ) {
     let live = ::workbench::window::Windows::list(store).into_iter().any(|id| {
         ::workbench::window::Windows::window_ref(store, id).is_some_and(|entity| {
-            let current = crate::grip::entity_session(&entity);
+            let current = crate::workspace::entity_session(&entity);
             current.host == host && current.session == session
         })
     });
@@ -2181,10 +2181,10 @@ impl crate::commands::WindowedCommand for PlaceholderCreated {
             session: session.clone(),
         };
         if let Some(mut entity) = ::workbench::window::Windows::window(store, window) {
-            let previous = crate::grip::entity_session(&entity);
-            // The name changes, the ids do not: the rekeyed grip
+            let previous = crate::workspace::entity_session(&entity);
+            // The name changes, the ids do not: the rekeyed workspace
             // carries the same bundle under the new key.
-            let rekeyed = crate::grip::grip(key.clone(), crate::grip::entity_state(&entity));
+            let rekeyed = crate::workspace::SessionWorkspace::boxed(key.clone(), crate::workspace::entity_state(&entity));
             if entity.rekey_current(rekeyed) {
                 // The name changed, the ids did not: the window keeps
                 // its bundle and the catalog row moves under the new key.
@@ -2260,7 +2260,7 @@ impl crate::commands::WindowedCommand for OpenNewSession {
         let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
-        let current = crate::grip::entity_session(&entity);
+        let current = crate::workspace::entity_session(&entity);
 
         // Seed the composer from the session the user is looking at, unless
         // it targets a different host than the one explicitly requested.

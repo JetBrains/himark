@@ -305,7 +305,7 @@ fn references_stream_into_the_search_dock() {
         Some(himark::hisearch::OWNER),
         "the Search tab activated"
     );
-    let lists = himark::grip::entity_state(&entity).lists();
+    let lists = himark::workspace::entity_state(&entity).lists();
     let feed = locations::LocationLists::search(app.store(), lists)
         .expect("the session fronts the feed");
     let row =

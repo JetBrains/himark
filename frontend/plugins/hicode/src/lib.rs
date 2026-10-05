@@ -163,7 +163,7 @@ fn navigate(
     fx: &mut AppFx<'_>,
 ) {
     let Some(documents) =
-        himark::grip::session_state(store, window).map(|state| state.documents())
+        himark::workspace::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };

@@ -51,7 +51,7 @@ impl WindowedCommand for SaveAll {
 
 pub(crate) fn save_all(store: &mut Store, window: ::workbench::window::WindowId, fx: &mut AppFx<'_>) {
     let Some(documents) =
-        crate::grip::session_state(store, window).map(|state| state.documents())
+        crate::workspace::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -111,7 +111,7 @@ impl WindowedCommand for SyncWatches {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        if let Some(state) = crate::grip::session_state(store, window) {
+        if let Some(state) = crate::workspace::session_state(store, window) {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });

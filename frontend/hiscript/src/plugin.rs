@@ -403,7 +403,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             .next()
             .and_then(|window| {
                 let entity = workbench::window::Windows::window_ref(store, window)?;
-                let session = himark::grip::entity_session(&entity);
+                let session = himark::workspace::entity_session(&entity);
                 if !session.names_session() {
                     return None;
                 }

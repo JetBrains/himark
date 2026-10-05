@@ -1399,7 +1399,7 @@ fn two_windows_edit_independently() {
 
     let focused_text = |app: &Application, window: ::workbench::window::WindowId| -> Option<String> {
         let store = &app.window_store(window);
-        let session = crate::grip::window_session(store, window)?;
+        let session = crate::workspace::window_session(store, window)?;
         let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
         let document = documents::OpenDocuments::document_ref(
             store,
@@ -2154,7 +2154,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let mut app = crate::app::Application::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = crate::grip::entity_session(
+    let first = crate::workspace::entity_session(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
     );
 
@@ -2167,7 +2167,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
 
     let second = switch(&mut app, None);
     assert_eq!(
-        crate::grip::entity_session(
+        crate::workspace::entity_session(
             ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
         ),
         second
@@ -2205,7 +2205,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(app.pane_count(), 2);
     assert_eq!(
-        crate::grip::entity_session(
+        crate::workspace::entity_session(
             ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
         ),
         first
@@ -2297,7 +2297,7 @@ fn switching_dismisses_the_overlays_first() {
         entity.plugin_modal().is_none() && entity.side_panel().is_none(),
         "the switch dismissed the overlays"
     );
-    assert_eq!(crate::grip::entity_session(&entity), second);
+    assert_eq!(crate::workspace::entity_session(&entity), second);
 }
 
 #[test]
@@ -4777,7 +4777,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = crate::grip::session_state(store, window).expect("state");
+                let state = crate::workspace::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
                     state.documents(),
@@ -4879,7 +4879,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = crate::grip::session_state(store, window).expect("state");
+                let state = crate::workspace::session_state(store, window).expect("state");
                 let document = crate::app::markdown_scratch();
                 let id = documents::OpenDocuments::register(
                     store,
@@ -5050,7 +5050,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = crate::grip::session_state(store, window).expect("state");
+                let state = crate::workspace::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
                     state.documents(),
@@ -5323,7 +5323,7 @@ mod dock_tests {
                 })
         };
         let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        assert!(crate::grip::entity_session(&entity).names_session());
+        assert!(crate::workspace::entity_session(&entity).names_session());
         assert!(chat_mounted(&app), "the chat panel stands");
 
         assert!(app.perform_command(AppCommand::Windowed(
@@ -5333,9 +5333,9 @@ mod dock_tests {
         settle(&mut app, &mut surface);
         let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
         assert!(
-            !crate::grip::entity_session(&entity).names_session(),
+            !crate::workspace::entity_session(&entity).names_session(),
             "the previous session is still current: {:?}",
-            crate::grip::entity_session(&entity)
+            crate::workspace::entity_session(&entity)
         );
         assert!(
             !chat_mounted(&app),
@@ -5593,7 +5593,7 @@ mod dock_tests {
             session: ahp_wire::client::SessionUri::new("test-session:/beta"),
         };
         let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &beta);
-        let _ = entity.switch_to(crate::grip::grip(beta, state));
+        let _ = entity.switch_to(crate::workspace::SessionWorkspace::boxed(beta, state));
         ::workbench::window::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
@@ -5912,7 +5912,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx);
             }
         }
-        let first = crate::grip::entity_session(&entity(&app));
+        let first = crate::workspace::entity_session(&entity(&app));
         let minted = std::sync::Arc::new(Mutex::new(None));
         assert!(app.perform_command(AppCommand::Windowed(
             window,
@@ -6125,7 +6125,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let mut app = crate::app::Application::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = crate::grip::entity_session(
+    let first = crate::workspace::entity_session(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
     );
     let first_chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
@@ -7211,7 +7211,7 @@ mod wash_tests {
 
     fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
         let window = app.sole_window();
-        crate::grip::entity_state(
+        crate::workspace::entity_state(
             ::workbench::window::Windows::window_ref(app.store(), window)
                 .expect("the window entity"),
         )
@@ -7220,7 +7220,7 @@ mod wash_tests {
 
     fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
         let window = app.sole_window();
-        crate::grip::entity_state(
+        crate::workspace::entity_state(
             ::workbench::window::Windows::window_ref(app.store(), window)
                 .expect("the window entity"),
         )

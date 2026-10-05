@@ -20,7 +20,7 @@ use skia_safe::Rect;
 pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
     Arc::new(DrawerAsks {
         open_session: Arc::new(move |store| {
-            Some(crate::grip::window_session(store, window)?)
+            Some(crate::workspace::window_session(store, window)?)
         }),
         open_row: Arc::new(move |server, session| {
             crate::app::shell_verb(AppCommand::Windowed(

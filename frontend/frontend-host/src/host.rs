@@ -410,9 +410,9 @@ impl WindowedCommand for OpenPicked {
             .partition(|location| location.kind().is_directory());
         if !folders.is_empty() {
             let workspace = workbench::window::Windows::window_ref(store, window)
-                .map(|entity| himark::grip::entity_session(&entity))
+                .map(|entity| himark::workspace::entity_session(&entity))
                 .unwrap_or_else(|| ahp_wire::SessionId::local_default(store));
-            let state = himark::grip::session_state(store, window);
+            let state = himark::workspace::session_state(store, window);
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 for folder in folders {
@@ -686,7 +686,7 @@ impl WindowedCommand for OpenTerminal {
         let Some(entity) = workbench::window::Windows::window(store, window) else {
             return;
         };
-        let workspace = himark::grip::entity_session(&entity);
+        let workspace = himark::workspace::entity_session(&entity);
         workbench::window::Windows::put(store, window, entity);
         let resolved = ahp_session::session::agents::Agents::live_session(store, &workspace)
             .and_then(|key| {
@@ -726,7 +726,7 @@ impl WindowedCommand for OpenTerminal {
         // The terminal files into the WINDOW's session — the collection
         // the pane is minted against, carried from here to the landing.
         let Some(terminals) =
-            himark::grip::session_state(store, window).map(|state| state.terminals())
+            himark::workspace::session_state(store, window).map(|state| state.terminals())
         else {
             return;
         };

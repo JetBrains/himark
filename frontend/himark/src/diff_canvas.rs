@@ -106,7 +106,7 @@ impl crate::commands::WindowedCommand for OpenCanvasFile {
         // Honor the caret: the canvas row's document is registered
         // (docs/editor/diff-canvas.md §7), so this is a show at target;
         // fall back to a targeted fetch if it somehow is not.
-        let documents = crate::grip::session_state(store, window)
+        let documents = crate::workspace::session_state(store, window)
             .expect("canvas navigation runs in a window with a session")
             .documents();
         match documents::OpenDocuments::by_location(store, documents, &self.location) {

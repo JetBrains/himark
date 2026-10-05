@@ -12,7 +12,7 @@ use imba::store::Store;
 use ahp_chat::chat::OpenEditedRoad;
 
 /// Install the SHELL roads the protocol crate asks through — the
-/// window grip for the session sweep, the catalog-actions apply, and
+/// window hold for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
     // The chat ROW's minter: the row carries its collection, a pane
@@ -29,7 +29,7 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
         }),
     );
     store.put(ahp_session::session::state::WindowGrip(Arc::new(|store, scope| {
-        crate::grip::any_window_holds(store, scope)
+        crate::workspace::any_window_holds(store, scope)
     })));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
@@ -96,7 +96,7 @@ impl crate::commands::WindowedCommand for OpenEditedFile {
         };
         // The file opens WHERE the user is: the window's own documents.
         let Some(documents) =
-            crate::grip::session_state(store, window).map(|state| state.documents())
+            crate::workspace::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

@@ -69,7 +69,7 @@ impl crate::commands::WindowedCommand for OpenPicked {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(documents) =
-            crate::grip::session_state(store, window).map(|state| state.documents())
+            crate::workspace::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

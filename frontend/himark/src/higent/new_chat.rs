@@ -14,7 +14,7 @@ use imba::effect::AnyEffect;
 use imba::store::Store;
 
 fn current_session(store: &Store, window: ::workbench::window::WindowId) -> Option<SessionId> {
-    Some(crate::grip::window_session(store, window)?)
+    Some(crate::workspace::window_session(store, window)?)
 }
 
 pub struct NewChat;
@@ -88,11 +88,11 @@ impl WindowedCommand for OpenCreatedChat {
         };
 
         let mut entity = Windows::window(store, window).expect("the window entity");
-        let session = crate::grip::entity_session(&entity).session;
+        let session = crate::workspace::entity_session(&entity).session;
         let pane = ahp_chat::chats::Chats::open(
             store,
             ui,
-            crate::grip::entity_state(&entity).chats(),
+            crate::workspace::entity_state(&entity).chats(),
             self.server,
             session,
             chat,

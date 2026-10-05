@@ -82,7 +82,7 @@ pub fn open_locations(
     fx: &mut AppFx<'_>,
 ) {
     let folders = ::workbench::window::Windows::window_ref(store, window)
-        .map(|entity| ahp_session::session::folders::session_folders(store, &crate::grip::entity_session(&entity)))
+        .map(|entity| ahp_session::session::folders::session_folders(store, &crate::workspace::entity_session(&entity)))
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
         .iter()
@@ -105,7 +105,7 @@ pub fn open_locations(
         .collect();
     let mut primary = true;
     let Some(documents) =
-        crate::grip::session_state(store, window).map(|state| state.documents())
+        crate::workspace::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -147,7 +147,7 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
         place: &hikit::navigation::EditorPlace,
         fx: &mut imba::command::Fx<'_>,
     ) -> Option<::workbench::workbench_node::Panel> {
-        let documents = crate::grip::session_state(store, window)
+        let documents = crate::workspace::session_state(store, window)
             .expect("navigation runs in a window with a session")
             .documents();
         let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {
@@ -202,4 +202,166 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
         pane.set_scroll_y(place.scroll_y);
         Some(::workbench::workbench_node::Panel::Editor(pane))
     }
+}
+
+/// --- The SESSION AS WORKSPACE ---------------------------------------
+/// What a window shows is a session: here the workbench's opaque
+/// `Workspace` learns to say so. The bundle pairs the session's NAME
+/// (the `SessionId` — rekeys move it) with its id bundle (the
+/// `SessionState` — wired at session entry, stable for the session's
+/// life). Identity is the name: two workspaces are the same when
+/// their sessions match.
+
+use std::any::Any;
+
+use ahp_session::session::state::SessionState;
+use ahp_wire::SessionId;
+use workbench::window::{Window, WindowId, Windows, Workspace};
+
+pub struct SessionWorkspace {
+    pub session: SessionId,
+    pub state: SessionState,
+}
+
+impl SessionWorkspace {
+    /// The one constructor every window boards through.
+    pub fn boxed(session: SessionId, state: SessionState) -> Box<dyn Workspace> {
+        Box::new(SessionWorkspace { session, state })
+    }
+}
+
+/// The local-host rekey payload (`Window::adopt_workspaces`).
+pub struct AdoptLocalHost(pub ahp_wire::client::HostId);
+
+impl Workspace for SessionWorkspace {
+    fn documents(&self) -> imba::store::Id<documents::OpenDocuments> {
+        self.state.documents()
+    }
+
+    fn touched(&self, store: &mut Store, target: &hikit::navigation::NavigationLocation) {
+        if let Some(place) = target.place::<hikit::navigation::EditorPlace>() {
+            recents::RecentLocations::touch(store, self.state.recents(), &place.location);
+        }
+    }
+
+    fn front_chat_pane(
+        &self,
+        store: &mut Store,
+    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
+        let chats = self.state.chats();
+        let chat = ahp_chat::chats::Chats::list(store, chats).into_iter().next()?;
+        let pane = ::workbench::rows::mint(
+            store,
+            &hikit::pane_row::PaneRow::new(ahp_chat::chats::ChatRow(chats, chat.clone())),
+        )?;
+        boot_chat_feed(store, chats, chat);
+        Some(pane)
+    }
+
+    fn is_chat_pane(&self, pane: &dyn hikit::panel::DynPanelView) -> bool {
+        pane.pane_row()
+            .is_some_and(|row| row.row::<ahp_chat::chats::ChatRow>().is_some())
+    }
+
+    fn boot_chat(&self, store: &mut Store, pane: &dyn hikit::panel::DynPanelView) {
+        if let Some(ahp_chat::chats::ChatRow(chats, chat)) = pane
+            .pane_row()
+            .as_ref()
+            .and_then(|row| row.row::<ahp_chat::chats::ChatRow>())
+        {
+            boot_chat_feed(store, *chats, chat.clone());
+        }
+    }
+
+    fn same(&self, other: &dyn Workspace) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<SessionWorkspace>()
+            .is_some_and(|other| other.session == self.session)
+    }
+
+    fn clone_workspace(&self) -> Box<dyn Workspace> {
+        Box::new(SessionWorkspace {
+            session: self.session.clone(),
+            state: self.state.clone(),
+        })
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn adopt(&mut self, payload: &dyn Any) -> bool {
+        let Some(AdoptLocalHost(host)) = payload.downcast_ref::<AdoptLocalHost>() else {
+            return false;
+        };
+        if self.session.session.as_str() == ahp_wire::LOCAL_FS_SESSION && self.session.host != *host
+        {
+            self.session.host = *host;
+            return true;
+        }
+        false
+    }
+}
+
+/// The chat connects the moment it is OPEN, painted or not — its
+/// feed is addressed by id, like any panel's commands.
+fn boot_chat_feed(
+    store: &mut Store,
+    chats: imba::store::Id<ahp_chat::chats::Chats>,
+    chat: ahp_wire::client::ChatUri,
+) {
+    imba::command::Requests::push(
+        store,
+        std::sync::Arc::new(ahp_chat::chats::BootChat { chats, chat }),
+    );
+}
+
+/// The session a window shows.
+pub fn entity_session(entity: &Window) -> SessionId {
+    entity
+        .workspace()
+        .as_any()
+        .downcast_ref::<SessionWorkspace>()
+        .expect("every himark window grips a session")
+        .session
+        .clone()
+}
+
+/// The id bundle of the session a window shows — read from the
+/// window's OWN record (docs/entities.md law 3): the bundle is wired
+/// at session entry, so no catalog consult and no ambient scope.
+pub fn entity_state(entity: &Window) -> SessionState {
+    entity
+        .workspace()
+        .as_any()
+        .downcast_ref::<SessionWorkspace>()
+        .expect("every himark window grips a session")
+        .state
+        .clone()
+}
+
+pub fn session_state(store: &Store, window: WindowId) -> Option<SessionState> {
+    Some(entity_state(Windows::window_ref(store, window)?))
+}
+
+pub fn window_session(store: &Store, window: WindowId) -> Option<SessionId> {
+    Some(entity_session(Windows::window_ref(store, window)?))
+}
+
+/// Does any window hold this session — showing it or stashing it?
+/// What the all-empty sweep spares.
+pub fn any_window_holds(store: &Store, session: &SessionId) -> bool {
+    let Some(windows) = store.get::<Windows>() else {
+        return false;
+    };
+    windows.ids().into_iter().any(|id| {
+        windows.entity(id).is_some_and(|window| {
+            window.workspaces().any(|workspace| {
+                workspace.as_any()
+                    .downcast_ref::<SessionWorkspace>()
+                    .is_some_and(|workspace| workspace.session == *session)
+            })
+        })
+    })
 }

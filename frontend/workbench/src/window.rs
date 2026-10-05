@@ -760,9 +760,9 @@ impl Windows {
 
     /// Does ANY window hold this workspace — showing it or stashing
     /// it? The hold is what the shell's housekeeping spares.
-    pub fn any_window_holds(store: &imba::store::Store, grip: &dyn Grip) -> bool {
+    pub fn any_window_holds(store: &imba::store::Store, workspace: &dyn Workspace) -> bool {
         store.get::<Windows>().is_some_and(|windows| {
-            windows.entries.values().any(|window| window.holds(grip))
+            windows.entries.values().any(|window| window.holds(workspace))
         })
     }
 
@@ -810,12 +810,12 @@ impl Windows {
     }
 }
 
-/// The window's WORKSPACE grip — what the window shows, OPAQUE to
+/// The window's WORKSPACE — what the window shows, OPAQUE to
 /// the shell. The workbench compares, clones and stashes by it, asks
 /// it for the few things a window needs from its workspace (the
 /// documents collection, the chat pane, the recency note); what it
 /// NAMES — a session, its collections — is the app's business alone.
-pub trait Grip: Send + Sync {
+pub trait Workspace: Send + Sync {
     /// The documents collection this workspace reads through.
     fn documents(&self) -> imba::store::Id<documents::OpenDocuments>;
 
@@ -832,9 +832,9 @@ pub trait Grip: Send + Sync {
     /// A chat pane is about to dock — boot whatever feed it rides.
     fn boot_chat(&self, store: &mut Store, pane: &dyn hikit::panel::DynPanelView);
 
-    fn same(&self, other: &dyn Grip) -> bool;
+    fn same(&self, other: &dyn Workspace) -> bool;
 
-    fn clone_grip(&self) -> Box<dyn Grip>;
+    fn clone_workspace(&self) -> Box<dyn Workspace>;
 
     fn as_any(&self) -> &dyn std::any::Any;
 
@@ -849,14 +849,14 @@ pub struct Window {
     viewport_size: Size,
 
     /// The workspace shown NOW.
-    grip: Box<dyn Grip>,
+    workspace: Box<dyn Workspace>,
 
     dock_width: f32,
 
     /// Workbenches stashed per workspace — restored whole on a walk
-    /// back. Keyed by grip identity (`Grip::same`); the stash count is
+    /// back. Keyed by workspace identity (`Workspace::same`); the stash count is
     /// a handful, the walk linear.
-    workbenches: Vec<(Box<dyn Grip>, Workbench)>,
+    workbenches: Vec<(Box<dyn Workspace>, Workbench)>,
 
     focused_location: Option<editor::location::ResourceLocation>,
     focus_generation: u64,
@@ -867,12 +867,12 @@ impl Clone for Window {
         Self {
             content: self.content.clone(),
             viewport_size: self.viewport_size,
-            grip: self.grip.clone_grip(),
+            workspace: self.workspace.clone_workspace(),
             dock_width: self.dock_width,
             workbenches: self
                 .workbenches
                 .iter()
-                .map(|(grip, workbench)| (grip.clone_grip(), workbench.clone()))
+                .map(|(workspace, workbench)| (workspace.clone_workspace(), workbench.clone()))
                 .collect(),
             focused_location: self.focused_location.clone(),
             focus_generation: self.focus_generation,
@@ -896,7 +896,7 @@ impl Window {
         }
     }
 
-    pub fn new(root: WorkbenchNode, grip: Box<dyn Grip>) -> Self {
+    pub fn new(root: WorkbenchNode, workspace: Box<dyn Workspace>) -> Self {
         Self {
             content: Layers {
                 toolbar: crate::toolbar::Toolbar::default(),
@@ -907,36 +907,36 @@ impl Window {
             },
             viewport_size: Size::new(1.0, 1.0),
             dock_width: crate::dock::DOCK_WIDTH,
-            grip,
+            workspace,
             workbenches: Vec::new(),
             focused_location: None,
             focus_generation: 0,
         }
     }
 
-    /// The workspace grip, read in place. The shell DOWNCASTS this to
+    /// The workspace, read in place. The shell DOWNCASTS this to
     /// whatever it installed; the workbench only compares and carries.
-    pub fn grip(&self) -> &dyn Grip {
-        self.grip.as_ref()
+    pub fn workspace(&self) -> &dyn Workspace {
+        self.workspace.as_ref()
     }
 
-    /// Every grip this window keeps alive: the shown workspace and
+    /// Every workspace this window keeps alive: the shown workspace and
     /// every stashed one.
-    pub fn grips(&self) -> impl Iterator<Item = &dyn Grip> + '_ {
-        std::iter::once(self.grip.as_ref())
-            .chain(self.workbenches.iter().map(|(grip, _)| grip.as_ref()))
+    pub fn workspaces(&self) -> impl Iterator<Item = &dyn Workspace> + '_ {
+        std::iter::once(self.workspace.as_ref())
+            .chain(self.workbenches.iter().map(|(workspace, _)| workspace.as_ref()))
     }
 
     /// Does this window hold the workspace — showing it or keeping
     /// its stashed workbench? The hold is what spares a workspace
     /// from the shell's housekeeping.
-    pub fn holds(&self, grip: &dyn Grip) -> bool {
-        self.grips().any(|held| held.same(grip))
+    pub fn holds(&self, workspace: &dyn Workspace) -> bool {
+        self.workspaces().any(|held| held.same(workspace))
     }
 
     #[must_use = "the displaced workspace is the caller's to retire"]
-    pub fn switch_to(&mut self, grip: Box<dyn Grip>) -> Option<Box<dyn Grip>> {
-        if self.grip.same(grip.as_ref()) {
+    pub fn switch_to(&mut self, workspace: Box<dyn Workspace>) -> Option<Box<dyn Workspace>> {
+        if self.workspace.same(workspace.as_ref()) {
             return None;
         }
 
@@ -946,13 +946,13 @@ impl Window {
         let restored = self
             .workbenches
             .iter()
-            .position(|(held, _)| held.same(grip.as_ref()));
+            .position(|(held, _)| held.same(workspace.as_ref()));
         let Some(at) = restored else {
-            return Some(std::mem::replace(&mut self.grip, grip));
+            return Some(std::mem::replace(&mut self.workspace, workspace));
         };
         let (_, restored) = self.workbenches.remove(at);
         let stashed = std::mem::replace(&mut self.content.workbench, restored);
-        let previous = std::mem::replace(&mut self.grip, grip);
+        let previous = std::mem::replace(&mut self.workspace, workspace);
         self.workbenches.push((previous, stashed));
         self.content.workbench.settle_dock();
         None
@@ -960,41 +960,41 @@ impl Window {
 
     /// A rekey changes the workspace's NAME, not its identity: the
     /// bundle stays — the caller moves the catalog row with it.
-    pub fn rekey_current(&mut self, grip: Box<dyn Grip>) -> bool {
-        if self.grip.same(grip.as_ref()) {
+    pub fn rekey_current(&mut self, workspace: Box<dyn Workspace>) -> bool {
+        if self.workspace.same(workspace.as_ref()) {
             return true;
         }
         if self
             .workbenches
             .iter()
-            .any(|(held, _)| held.same(grip.as_ref()))
+            .any(|(held, _)| held.same(workspace.as_ref()))
         {
             return false;
         }
-        self.grip = grip;
+        self.workspace = workspace;
         true
     }
 
-    pub fn install_fresh(&mut self, previous: Box<dyn Grip>, fresh: Workbench) {
+    pub fn install_fresh(&mut self, previous: Box<dyn Workspace>, fresh: Workbench) {
         let stashed = std::mem::replace(&mut self.content.workbench, fresh);
         self.workbenches.push((previous, stashed));
     }
 
-    /// Hand an opaque adoption payload to every grip this window
+    /// Hand an opaque adoption payload to every workspace this window
     /// keeps (the shell's local-host rekey); answers whether anything
     /// changed.
     pub fn adopt_workspaces(&mut self, payload: &dyn std::any::Any) -> bool {
-        let mut changed = self.grip.adopt(payload);
-        for (grip, _) in &mut self.workbenches {
-            changed |= grip.adopt(payload);
+        let mut changed = self.workspace.adopt(payload);
+        for (workspace, _) in &mut self.workbenches {
+            changed |= workspace.adopt(payload);
         }
         changed
     }
 
-    pub fn stashed_workbenches(&self) -> impl Iterator<Item = (&dyn Grip, &Workbench)> + '_ {
+    pub fn stashed_workbenches(&self) -> impl Iterator<Item = (&dyn Workspace, &Workbench)> + '_ {
         self.workbenches
             .iter()
-            .map(|(grip, workbench)| (grip.as_ref(), workbench))
+            .map(|(workspace, workbench)| (workspace.as_ref(), workbench))
     }
 
     pub fn viewport_size(&self) -> Size {
@@ -1119,7 +1119,7 @@ impl Window {
             return;
         }
         if self.workbench().chat().is_none() {
-            let Some(pane) = self.grip.front_chat_pane(store) else {
+            let Some(pane) = self.workspace.front_chat_pane(store) else {
                 return;
             };
             self.workbench_mut().dock_chat(Panel::Plugin(pane));
@@ -1147,7 +1147,7 @@ impl Window {
         if self.has_modal() {
             return false;
         }
-        self.grip.boot_chat(store, pane.as_ref());
+        self.workspace.boot_chat(store, pane.as_ref());
         match self.workbench_mut().chat_mut() {
             Some(chat) => {
                 let displaced = chat.replace_panel(Panel::Plugin(pane));
@@ -1441,7 +1441,7 @@ impl Window {
     ) -> bool {
         // A chat pane has ONE home, whatever road carried it here:
         // the workbench's chat slot, never a tree leaf.
-        if self.grip.is_chat_pane(panel.as_ref()) {
+        if self.workspace.is_chat_pane(panel.as_ref()) {
             return self.open_chat_panel(store, ui, panel, fx);
         }
         if self.has_modal() {
@@ -1504,7 +1504,7 @@ impl Window {
         let document_id = entity.document();
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::workbench::fallback_pane_editor_width(store));
-        let documents = self.grip.documents();
+        let documents = self.workspace.documents();
         let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1586,7 +1586,7 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                self.grip.touched(store, target);
+                self.workspace.touched(store, target);
                 // The focused pane absorbed the location — a landing
                 // all the same: the fronted chat hands the window back.
                 self.workbench_mut().yield_chat();
@@ -1597,7 +1597,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        self.grip.touched(store, target);
+        self.workspace.touched(store, target);
         true
     }
 
@@ -1647,7 +1647,7 @@ impl Window {
             let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        self.grip.touched(store, target);
+        self.workspace.touched(store, target);
         true
     }
 
@@ -1838,7 +1838,7 @@ impl Window {
         // The document lands in the tree — the window comes back from
         // the chat.
         self.workbench_mut().yield_chat();
-        let documents = self.grip.documents();
+        let documents = self.workspace.documents();
         let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1904,7 +1904,7 @@ impl Window {
         }
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::workbench::fallback_pane_editor_width(store));
-        let documents = self.grip.documents();
+        let documents = self.workspace.documents();
         let editor_id = fx.scope(
             move |command| {
                 imba::command::Verb::at(

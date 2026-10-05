@@ -935,7 +935,7 @@ pub fn build(
         let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         let viewport = entity.viewport_size();
 
-        let recents = recents::RecentLocations::list(store, himark::grip::entity_state(&entity).recents());
+        let recents = recents::RecentLocations::list(store, himark::workspace::entity_state(&entity).recents());
 
         let mut widgets = entity.unmount_all_widgets();
         let fronted: Vec<hikit::pane_row::PaneRow> = widgets
@@ -943,15 +943,15 @@ pub fn build(
             .filter_map(|(_, widget)| widget.pane_row())
             .collect();
 
-        let state = himark::grip::entity_state(&entity).clone();
+        let state = himark::workspace::entity_state(&entity).clone();
         widgets.extend(
             himark::pane_rows::mint_unfronted(store, &state, &fronted)
                 .into_iter()
                 .map(|widget| (WidgetOrigin::Row, widget)),
         );
-        let folders = ahp_session::session::folders::session_folders(store, &himark::grip::entity_session(&entity));
+        let folders = ahp_session::session::folders::session_folders(store, &himark::workspace::entity_session(&entity));
 
-        let documents = himark::grip::entity_state(&entity).documents();
+        let documents = himark::workspace::entity_state(&entity).documents();
         let peeker = fx.scope(himark::modal::modal_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<PeekerCommand>, |fx| {
                 Peeker::open(

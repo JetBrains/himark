@@ -37,9 +37,9 @@ impl crate::commands::WindowedCommand for ToggleCommentsView {
             ::workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let workspace = crate::grip::entity_session(&entity);
-        let comments = crate::grip::entity_state(&entity).comments();
-        let wire = crate::grip::entity_state(&entity).comments_wire();
+        let workspace = crate::workspace::entity_session(&entity);
+        let comments = crate::workspace::entity_state(&entity).comments();
+        let wire = crate::workspace::entity_state(&entity).comments_wire();
         let folders = ahp_session::session::folders::session_folders(store, &workspace);
         fx.scope(crate::app::AppCommand::Verb, |fx| {
             for folder in folders {

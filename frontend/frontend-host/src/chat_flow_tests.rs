@@ -472,7 +472,7 @@ impl himark::commands::WindowedCommand for OpenScripted {
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
-    himark::grip::entity_state(
+    himark::workspace::entity_state(
         workbench::window::Windows::window_ref(engine.app.store(), window)
         .expect("the window entity"),
         )

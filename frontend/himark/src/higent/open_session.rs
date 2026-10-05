@@ -139,7 +139,7 @@ impl WindowedCommand for EnterSessionWork {
             session: self.session.clone(),
         };
         let folders = ahp_session::session::folders::session_folders(store, &key);
-        if let Some(state) = crate::grip::session_state(store, window) {
+        if let Some(state) = crate::workspace::session_state(store, window) {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 ahp_changes::changes::ensure(store, state.changes_wire(), folders.clone(), fx)
             });
@@ -165,14 +165,14 @@ impl WindowedCommand for EnterSessionWork {
             // The window switched to this session a batch ago; if it
             // has moved on since, the entry is abandoned — the chat
             // must not be filed into whatever session is there now.
-            if crate::grip::entity_session(&entity) != key {
+            if crate::workspace::entity_session(&entity) != key {
                 Windows::put(store, window, entity);
                 return;
             }
             let pane = ahp_chat::chats::Chats::open_with(
                 store,
                 ui,
-                crate::grip::entity_state(&entity).chats(),
+                crate::workspace::entity_state(&entity).chats(),
                 self.server,
                 self.session.clone(),
                 chat,

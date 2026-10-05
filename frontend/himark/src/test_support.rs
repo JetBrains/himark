@@ -125,7 +125,7 @@ impl Application {
     /// The session the sole window is working in — the owner a test
     /// names when it reaches session-addressed state.
     pub fn sole_window_session(&self) -> ahp_wire::SessionId {
-        crate::grip::entity_session(
+        crate::workspace::entity_session(
             ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
                 .expect("the window entity"),
         )
@@ -134,7 +134,7 @@ impl Application {
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
     pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
-        crate::grip::session_state(self.store(), self.sole_window())
+        crate::workspace::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
 

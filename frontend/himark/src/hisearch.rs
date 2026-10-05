@@ -53,7 +53,7 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some((lists, wire)) = ::workbench::window::Windows::window_ref(store, window)
-            .map(|entity| { let state = crate::grip::entity_state(entity); (state.lists(), state.locations_wire()) })
+            .map(|entity| { let state = crate::workspace::entity_state(entity); (state.lists(), state.locations_wire()) })
         else {
             return;
         };
@@ -160,8 +160,8 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
             |fx| entity.dismiss_modal(store, fx),
         );
 
-        let session = crate::grip::entity_session(&entity);
-        let lists = crate::grip::entity_state(&entity).lists();
+        let session = crate::workspace::entity_session(&entity);
+        let lists = crate::workspace::entity_state(&entity).lists();
         let folders = ahp_session::session::folders::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, ui, lists);
