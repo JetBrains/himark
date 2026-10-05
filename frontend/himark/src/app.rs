@@ -151,7 +151,7 @@ pub fn shell_verb(command: AppCommand) -> Verb {
 /// A drained verb back into the app stream: shell payloads unwrap
 /// (an `AppCommand`, or a deferred dynamic ask that takes the
 /// draining window); everything else rides the Verb arm.
-pub(crate) fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
+pub fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
     match verb {
         Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
             Ok(command) => Some(*command),
@@ -308,7 +308,7 @@ impl crate::commands::WindowedCommand for EnterFreshSession {
     }
 }
 
-pub(crate) fn markdown_scratch() -> Document {
+pub fn markdown_scratch() -> Document {
     Document::new(Text::from_string_exact(""), Markup::new())
         .with_syntax(::editor::markup::Syntax::new("markdown", None, Markup::new()), &[])
 }

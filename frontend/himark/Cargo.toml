@@ -34,6 +34,7 @@ toc = { path = "../toc" }
 workbench = { path = "../workbench" }
 editor = { path = "../editor" }
 filetree = { path = "../filetree" }
+findbar = { path = "../findbar" }
 myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }
 operation = { path = "../operation" }

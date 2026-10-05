@@ -17,7 +17,7 @@ use imba::ui::UiCtx;
 use workbench::services::{PaneServices, ServiceState, ServiceTarget};
 use workbench::workbench_node::{PaneSlot, PanelCommand};
 
-use crate::find::{FindBar, FindCommand};
+use findbar::{FindBar, FindCommand};
 use ahp_chat::completion::{Completion, CompletionFound};
 
 /// One leaf's services: the bar when ⌘F stood one, the completion

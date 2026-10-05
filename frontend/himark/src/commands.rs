@@ -57,7 +57,7 @@ impl Commands {
             .unwrap_or_default()
     }
 
-    pub(crate) fn register(store: &mut Store, command: Arc<dyn WindowedCommand>) {
+    pub fn register(store: &mut Store, command: Arc<dyn WindowedCommand>) {
         crate::registry::Registry::update(store, |registry| registry.commands.0.push(command));
     }
 
@@ -456,7 +456,7 @@ impl WindowedCommand for FindOpen {
                     (Some(find), Some(seed)) => find.seed(store, ui, &seed),
                     (Some(find), None) => find.refocus(),
                     (None, seed) => {
-                        let mut find = crate::find::FindBar::new(store, ui);
+                        let mut find = findbar::FindBar::new(store, ui);
                         if let Some(seed) = &seed {
                             find.seed(store, ui, seed);
                         }
@@ -565,7 +565,7 @@ fn find_sync_slot(
     });
 }
 
-struct FindScanLanded(crate::find::Scan);
+struct FindScanLanded(findbar::Scan);
 
 impl WindowedCommand for FindScanLanded {
     fn id(&self) -> &'static str {

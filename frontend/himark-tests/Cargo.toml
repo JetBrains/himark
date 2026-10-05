@@ -1,0 +1,35 @@
+[package]
+name = "himark-tests"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+# The suite lives in tests/shell.rs; the lib is a stub.
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+himark = { path = "../himark", features = ["test-support"] }
+workbench = { path = "../workbench", features = ["test-support"] }
+ahp-chat = { path = "../ahp-chat" }
+ahp-locations = { path = "../ahp-locations" }
+ahp-session = { path = "../ahp-session" }
+ahp-types = "0.9"
+ahp-wire = { path = "../ahp-wire" }
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+hikit = { path = "../hikit" }
+imba = { path = "../imba" }
+ahp-lsp = { path = "../ahp-lsp" }
+locations = { path = "../locations" }
+myersdiff = { path = "../myersdiff" }
+operation = { path = "../operation" }
+recents = { path = "../recents" }
+rpds = "1"
+serde_json = "1"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+terminals = { path = "../terminals" }
+toc = { path = "../toc" }
+text = { path = "../text" }

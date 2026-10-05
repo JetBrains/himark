@@ -1,0 +1,14 @@
+[package]
+name = "findbar"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+hikit = { path = "../hikit" }
+regex = "1"
+imba = { path = "../imba" }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+text = { path = "../text" }

@@ -99,7 +99,7 @@ pub struct FindBar {
 }
 
 impl FindBar {
-    pub(crate) fn focus_data<'w>(
+    pub fn focus_data<'w>(
         &'w self,
         store: &'w imba::store::Store,
         ui: &'w imba::ui::UiCtx,
@@ -370,7 +370,7 @@ impl FindBar {
         documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
-    pub(crate) fn perform_input(
+    pub fn perform_input(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,

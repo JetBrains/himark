@@ -12,7 +12,6 @@ pub mod hicomments;
 pub mod hifiles;
 pub mod higent;
 pub mod hihistory;
-pub mod find;
 pub mod hipeek;
 pub mod pane_services;
 pub mod hisearch;
@@ -40,6 +39,3 @@ mod terminal_tests;
 pub mod workspace;
 
 
-#[cfg(test)]
-#[path = "editor_tests.rs"]
-pub mod editor_tests;
