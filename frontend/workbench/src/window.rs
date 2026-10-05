@@ -1730,11 +1730,11 @@ impl Window {
 
     fn touch_recent(
         store: &mut Store,
-        recents: imba::store::Id<ahp_chat::recents::RecentLocations>,
+        recents: imba::store::Id<recents::RecentLocations>,
         target: &hikit::navigation::NavigationLocation,
     ) {
         if let Some(place) = target.place::<hikit::navigation::EditorPlace>() {
-            ahp_chat::recents::RecentLocations::touch(store, recents, &place.location);
+            recents::RecentLocations::touch(store, recents, &place.location);
         }
     }
 

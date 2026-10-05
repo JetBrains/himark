@@ -19,7 +19,7 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
                 ahp_session::session::state::Hosts::owner_of_documents(store, documents)
                     .map(|state| state.recents())
             {
-                ahp_chat::recents::RecentLocations::replace(store, recents, from, to);
+                recents::RecentLocations::replace(store, recents, from, to);
             }
             crate::commands::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
         }),

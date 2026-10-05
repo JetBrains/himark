@@ -8,6 +8,7 @@ license = "Apache-2.0"
 workbench = { path = "../../workbench" }
 terminals = { path = "../../terminals" }
 locations = { path = "../../locations" }
+recents = { path = "../../recents" }
 ahp-locations = { path = "../../ahp-locations" }
 hikit = { path = "../../hikit" }
 documents = { path = "../../documents" }

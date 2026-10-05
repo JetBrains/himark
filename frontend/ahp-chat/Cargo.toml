@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 ahp-locations = { path = "../ahp-locations" }
+recents = { path = "../recents" }
 ahp-lsp = { path = "../ahp-lsp" }
 ahp-types = "0.9"
 canvas = { path = "../canvas" }

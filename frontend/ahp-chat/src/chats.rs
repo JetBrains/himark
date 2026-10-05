@@ -18,7 +18,7 @@ use ahp_wire::client::{ChatUri, SessionUri};
 pub struct Chats {
     /// The recents the composer's `@` completion lists — wired at the
     /// session mint (docs/entities.md law 4).
-    recents: imba::store::Id<crate::recents::RecentLocations>,
+    recents: imba::store::Id<recents::RecentLocations>,
 
     /// The catalog consults the chat needs, wired at the ceremony —
     /// the chat sits below the catalog and holds only these roads.
@@ -76,7 +76,7 @@ impl Chats {
     /// A collection wired to its sibling — minted by the session
     /// ceremony, and by tests that stand one up alone.
     pub fn wired(
-        recents: imba::store::Id<crate::recents::RecentLocations>,
+        recents: imba::store::Id<recents::RecentLocations>,
         catalog: Catalog,
     ) -> Self {
         Self {
@@ -92,7 +92,7 @@ impl Chats {
         Some(store.entity(chats)?.catalog.clone())
     }
 
-    pub fn recents(&self) -> imba::store::Id<crate::recents::RecentLocations> {
+    pub fn recents(&self) -> imba::store::Id<recents::RecentLocations> {
         self.recents
     }
 

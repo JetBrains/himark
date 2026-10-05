@@ -26,6 +26,7 @@ ahp-docsync = { path = "../ahp-docsync" }
 ahp-lsp = { path = "../ahp-lsp" }
 ahp-session = { path = "../ahp-session" }
 hikit = { path = "../hikit" }
+recents = { path = "../recents" }
 documents = { path = "../documents" }
 locations = { path = "../locations" }
 terminals = { path = "../terminals" }

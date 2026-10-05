@@ -177,7 +177,7 @@ fn disposal_retracts_every_session_entity() {
     let row = Hosts::ensure_state(&mut store, &home);
     store.update_entity(
         row.recents,
-        |_recents: &mut ahp_chat::recents::RecentLocations| {},
+        |_recents: &mut recents::RecentLocations| {},
     );
     store.update_entity(row.trees, |_trees| {});
     store.update_entity(row.terminals, |_terminals| {});

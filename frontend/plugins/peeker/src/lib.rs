@@ -935,7 +935,7 @@ pub fn build(
         let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         let viewport = entity.viewport_size();
 
-        let recents = ahp_chat::recents::RecentLocations::list(store, entity.state().recents());
+        let recents = recents::RecentLocations::list(store, entity.state().recents());
 
         let mut widgets = entity.unmount_all_widgets();
         let fronted: Vec<hikit::pane_row::PaneRow> = widgets

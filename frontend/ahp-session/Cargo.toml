@@ -23,6 +23,7 @@ hikit = { path = "../hikit" }
 humantime = "2"
 imba = { path = "../imba" }
 locations = { path = "../locations" }
+recents = { path = "../recents" }
 rpds = "1"
 serde_json = "1"
 terminals = { path = "../terminals" }

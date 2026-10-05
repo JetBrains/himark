@@ -217,7 +217,7 @@ pub(crate) fn fresh_workbench_root(
     let documents = state.documents();
     let location = documents::next_scratch_location(store, state.scratch_names());
     let name = location.name().to_owned();
-    ahp_chat::recents::RecentLocations::touch(store, state.recents(), &location);
+    recents::RecentLocations::touch(store, state.recents(), &location);
     let scratch_id =
         OpenDocuments::register(store, documents, scratch.clone(), Some(location), name, 0);
     let width = ::workbench::workbench::fallback_pane_editor_width(store);

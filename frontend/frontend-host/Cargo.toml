@@ -11,6 +11,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 workbench = { path = "../workbench" }
 hikit = { path = "../hikit" }
+recents = { path = "../recents" }
 filetree = { path = "../filetree" }
 locations = { path = "../locations" }
 canvas = { path = "../canvas" }

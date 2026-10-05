@@ -2420,7 +2420,7 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         folders: std::sync::Arc<Vec<editor::location::ResourceLocation>>,
-        recents: imba::store::Id<crate::recents::RecentLocations>,
+        recents: imba::store::Id<recents::RecentLocations>,
         command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {

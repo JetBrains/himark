@@ -2674,7 +2674,7 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
     });
     assert!(
         ahp_session::session::state::Hosts::state(engine.app.store(), &engine_session(&engine))
-            .map(|state| ahp_chat::recents::RecentLocations::list(engine.app.store(), state.recents()))
+            .map(|state| recents::RecentLocations::list(engine.app.store(), state.recents()))
             .unwrap_or_default()
             .contains(&picked),
         "the recents follow the re-point"

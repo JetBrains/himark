@@ -11,6 +11,7 @@ ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
 hikit = { path = "../hikit" }
+recents = { path = "../recents" }
 imba = { path = "../imba" }
 regex = "1"
 rpds = "1"

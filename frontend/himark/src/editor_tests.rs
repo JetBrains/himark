@@ -2890,7 +2890,7 @@ fn close_widget_walks_the_pane_history() {
         {
             let session = app.sole_window_session();
             ahp_session::session::state::Hosts::state(app.store(), &session)
-                .map(|state| ahp_chat::recents::RecentLocations::list(app.store(), state.recents()))
+                .map(|state| recents::RecentLocations::list(app.store(), state.recents()))
                 .unwrap_or_default()
         }[..2],
         [located("b.md"), located("a.md")],
@@ -2935,7 +2935,7 @@ fn close_widget_walks_the_pane_history() {
     let recents = {
         let session = app.sole_window_session();
         ahp_session::session::state::Hosts::state(app.store(), &session)
-            .map(|state| ahp_chat::recents::RecentLocations::list(app.store(), state.recents()))
+            .map(|state| recents::RecentLocations::list(app.store(), state.recents()))
             .unwrap_or_default()
     };
     assert!(

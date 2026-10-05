@@ -108,6 +108,7 @@ dependencies = [
  "imba",
  "myersdiff",
  "operation",
+ "recents",
  "rpds",
  "serde",
  "serde_json",
@@ -196,6 +197,7 @@ dependencies = [
  "humantime",
  "imba",
  "locations",
+ "recents",
  "rpds",
  "serde_json",
  "terminals",
@@ -1652,6 +1654,7 @@ dependencies = [
  "palette 0.1.0",
  "peeker",
  "rebase",
+ "recents",
  "serde",
  "serde_json",
  "skia-safe",
@@ -2362,6 +2365,7 @@ dependencies = [
  "myersdiff",
  "operation",
  "rebase",
+ "recents",
  "regex",
  "rpds",
  "serde",
@@ -4105,6 +4109,7 @@ dependencies = [
  "hirust",
  "imba",
  "locations",
+ "recents",
  "skia-safe",
  "terminals",
  "text",
@@ -4469,6 +4474,14 @@ dependencies = [
  "operation",
  "text",
  "tokio",
+]
+
+[[package]]
+name = "recents"
+version = "0.1.0"
+dependencies = [
+ "editor",
+ "imba",
 ]
 
 [[package]]
@@ -7179,6 +7192,7 @@ dependencies = [
  "editor",
  "hikit",
  "imba",
+ "recents",
  "regex",
  "rpds",
  "skia-safe",

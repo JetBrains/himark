@@ -15,7 +15,6 @@ pub mod composer;
 pub mod file_completion;
 pub mod file_edit;
 pub mod open;
-pub mod recents;
 pub mod session_toolbar;
 pub mod stack;
 pub mod tool_group;

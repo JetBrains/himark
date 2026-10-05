@@ -307,7 +307,7 @@ impl Completion {
         editor: ::editor::editor::EditorId,
         typed_at: Option<u32>,
         folders: Arc<Vec<ResourceLocation>>,
-        recents: imba::store::Id<crate::recents::RecentLocations>,
+        recents: imba::store::Id<recents::RecentLocations>,
         installed: Option<(documents::DocumentId, ::editor::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         wrap: W,
@@ -352,7 +352,7 @@ impl Completion {
         }
         self.source = SourceState::Path {
             folders,
-            recents: Arc::new(crate::recents::RecentLocations::list(store, recents)),
+            recents: Arc::new(recents::RecentLocations::list(store, recents)),
             found: Arc::new(Vec::new()),
             rows: Arc::new(Vec::new()),
         };

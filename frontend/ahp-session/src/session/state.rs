@@ -54,7 +54,7 @@ pub struct SessionState {
 
     pub trees: Id<filetree::SessionTree>,
 
-    pub recents: Id<ahp_chat::recents::RecentLocations>,
+    pub recents: Id<recents::RecentLocations>,
 
     pub changes: Id<changesview::hichanges::Changes>,
 
@@ -90,7 +90,7 @@ impl SessionState {
         self.trees
     }
 
-    pub fn recents(&self) -> Id<ahp_chat::recents::RecentLocations> {
+    pub fn recents(&self) -> Id<recents::RecentLocations> {
         self.recents
     }
 

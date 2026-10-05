@@ -1,6 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! A session's recently-visited locations, freshest first — fed by
+//! navigation, read by the composer's `@` completion, the peeker and
+//! rename repair. Its own crate because every layer touches it and
+//! none owns it: the session row MINTS one per session and hands the
+//! id down (docs/entities.md law 3).
+
 use imba::store::Store;
 
 #[derive(Clone, Default)]
