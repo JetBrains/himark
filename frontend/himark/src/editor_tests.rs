@@ -1399,7 +1399,7 @@ fn two_windows_edit_independently() {
 
     let focused_text = |app: &Application, window: ::workbench::window::WindowId| -> Option<String> {
         let store = &app.window_store(window);
-        let session = ::workbench::window::Windows::window_ref(store, window)?.current_session();
+        let session = crate::grip::window_session(store, window)?;
         let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
         let document = documents::OpenDocuments::document_ref(
             store,
@@ -2154,9 +2154,9 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let mut app = crate::app::Application::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = ::workbench::window::Windows::window_ref(app.store(), window)
-        .expect("window")
-        .current_session();
+    let first = crate::grip::entity_session(
+        ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
+    );
 
     assert!(app.perform_registered(window, "workbench.split-pane"));
     assert_eq!(app.pane_count(), 2);
@@ -2167,9 +2167,9 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
 
     let second = switch(&mut app, None);
     assert_eq!(
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("window")
-            .current_session(),
+        crate::grip::entity_session(
+            ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
+        ),
         second
     );
     assert_eq!(app.pane_count(), 1, "a fresh workbench for B");
@@ -2205,9 +2205,9 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(app.pane_count(), 2);
     assert_eq!(
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("window")
-            .current_session(),
+        crate::grip::entity_session(
+            ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
+        ),
         first
     );
 }
@@ -2297,7 +2297,7 @@ fn switching_dismisses_the_overlays_first() {
         entity.plugin_modal().is_none() && entity.side_panel().is_none(),
         "the switch dismissed the overlays"
     );
-    assert_eq!(entity.current_session(), second);
+    assert_eq!(crate::grip::entity_session(&entity), second);
 }
 
 #[test]
@@ -2980,12 +2980,8 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
 
     let matches_now = |app: &Application| -> Vec<std::ops::Range<u32>> {
         let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        entity
-            .workbench()
-            .root
-            .focused_slot()
-            .find
-            .as_ref()
+        crate::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
+            .and_then(|services| services.find.as_ref())
             .expect("the bar is open")
             .matches()
             .to_vec()
@@ -2995,12 +2991,8 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     {
         let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&mut store, window).expect("window");
-        entity
-            .workbench_mut()
-            .root
-            .focused_slot_mut()
-            .find
-            .as_mut()
+        crate::pane_services::EditorServices::of(entity.workbench_mut().root.focused_slot_mut(), &store)
+            .and_then(|services| services.find.as_mut())
             .expect("the bar is open")
             .focused = false;
         ::workbench::window::Windows::put(&mut store, window, entity);
@@ -3067,7 +3059,9 @@ fn find_bar_highlights_and_walks_occurrences() {
         f(entity.workbench().root.focused_slot());
     };
     with_slot(&app, &|slot| {
-        let find = slot.find.as_ref().expect("the bar is open");
+        let services =
+            crate::pane_services::EditorServices::of_ref(slot).expect("services stood");
+        let find = services.find.as_ref().expect("the bar is open");
         assert_eq!(find.query(), "alpha");
 
         assert_eq!(find.matches().len(), 3, "{:?}", find.matches());
@@ -3120,7 +3114,12 @@ fn find_bar_highlights_and_walks_occurrences() {
         imba::event::Modifiers::default()
     ));
     with_slot(&app, &|slot| {
-        assert!(slot.find.is_none(), "Escape closed the bar");
+        assert!(
+            crate::pane_services::EditorServices::of_ref(slot)
+                .and_then(|services| services.find.as_ref())
+                .is_none(),
+            "Escape closed the bar"
+        );
     });
     let document = documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
         .expect("the document");
@@ -3159,7 +3158,9 @@ fn find_bar_highlights_and_walks_occurrences() {
         }
     }
     with_slot(&app, &|slot| {
-        let find = slot.find.as_ref().expect("re-opened");
+        let services =
+            crate::pane_services::EditorServices::of_ref(slot).expect("services stood");
+        let find = services.find.as_ref().expect("re-opened");
         assert_eq!(find.query(), "beta", "the selection seeded the query");
         assert_eq!(find.matches().len(), 1);
     });
@@ -4245,6 +4246,10 @@ fn keymap_backspace_edits_the_find_bar_query() {
                 .workbench()
                 .root
                 .focused_slot()
+                .services
+                .as_ref()?
+                .state
+                .downcast_ref::<crate::pane_services::EditorServices>()?
                 .find
                 .as_ref()?
                 .query(),
@@ -4772,7 +4777,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = ::workbench::window::Windows::session_state(store, window).expect("state");
+                let state = crate::grip::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
                     state.documents(),
@@ -4874,7 +4879,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = ::workbench::window::Windows::session_state(store, window).expect("state");
+                let state = crate::grip::session_state(store, window).expect("state");
                 let document = crate::app::markdown_scratch();
                 let id = documents::OpenDocuments::register(
                     store,
@@ -5045,7 +5050,7 @@ mod dock_tests {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let state = ::workbench::window::Windows::session_state(store, window).expect("state");
+                let state = crate::grip::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
                     state.documents(),
@@ -5318,7 +5323,7 @@ mod dock_tests {
                 })
         };
         let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        assert!(entity.current_session().names_session());
+        assert!(crate::grip::entity_session(&entity).names_session());
         assert!(chat_mounted(&app), "the chat panel stands");
 
         assert!(app.perform_command(AppCommand::Windowed(
@@ -5328,9 +5333,9 @@ mod dock_tests {
         settle(&mut app, &mut surface);
         let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
         assert!(
-            !entity.current_session().names_session(),
+            !crate::grip::entity_session(&entity).names_session(),
             "the previous session is still current: {:?}",
-            entity.current_session()
+            crate::grip::entity_session(&entity)
         );
         assert!(
             !chat_mounted(&app),
@@ -5588,7 +5593,7 @@ mod dock_tests {
             session: ahp_wire::client::SessionUri::new("test-session:/beta"),
         };
         let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &beta);
-        let _ = entity.switch_to(beta, state);
+        let _ = entity.switch_to(crate::grip::grip(beta, state));
         ::workbench::window::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
@@ -5907,7 +5912,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx);
             }
         }
-        let first = entity(&app).current_session();
+        let first = crate::grip::entity_session(&entity(&app));
         let minted = std::sync::Arc::new(Mutex::new(None));
         assert!(app.perform_command(AppCommand::Windowed(
             window,
@@ -6120,9 +6125,9 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let mut app = crate::app::Application::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = ::workbench::window::Windows::window_ref(app.store(), window)
-        .expect("window")
-        .current_session();
+    let first = crate::grip::entity_session(
+        ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
+    );
     let first_chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
 
     {
@@ -6551,18 +6556,18 @@ fn the_at_completion_serves_markdown_panes() {
 
     let completion_open = |app: &Application| -> bool {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| entity.workbench().root.focused_slot().completion.open())
+            .map(|entity| {
+                crate::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
+                    .is_some_and(|services| services.completion.open())
+            })
             .unwrap_or(false)
     };
     let rows = |app: &Application| -> Vec<String> {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                entity
-                    .workbench()
-                    .root
-                    .focused_slot()
-                    .completion
-                    .row_labels()
+                crate::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
+                    .map(|services| services.completion.row_labels())
+                    .unwrap_or_default()
             })
             .unwrap_or_default()
     };
@@ -6730,18 +6735,18 @@ fn lsp_completion_serves_code_panes() {
 
     let completion_open = |app: &Application| -> bool {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| entity.workbench().root.focused_slot().completion.open())
+            .map(|entity| {
+                crate::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
+                    .is_some_and(|services| services.completion.open())
+            })
             .unwrap_or(false)
     };
     let rows = |app: &Application| -> Vec<String> {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                entity
-                    .workbench()
-                    .root
-                    .focused_slot()
-                    .completion
-                    .row_labels()
+                crate::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
+                    .map(|services| services.completion.row_labels())
+                    .unwrap_or_default()
             })
             .unwrap_or_default()
     };
@@ -7206,18 +7211,20 @@ mod wash_tests {
 
     fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
         let window = app.sole_window();
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("the window entity")
-            .state()
-            .lists()
+        crate::grip::entity_state(
+            ::workbench::window::Windows::window_ref(app.store(), window)
+                .expect("the window entity"),
+        )
+        .lists()
     }
 
     fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
         let window = app.sole_window();
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("the window entity")
-            .state()
-            .locations_wire()
+        crate::grip::entity_state(
+            ::workbench::window::Windows::window_ref(app.store(), window)
+                .expect("the window entity"),
+        )
+        .locations_wire()
     }
 
     fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {

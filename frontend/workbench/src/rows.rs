@@ -23,17 +23,6 @@ impl RowMinters {
 }
 
 pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn hikit::panel::DynPanelView>> {
-    // The row carries its collection: a pane is minted off the id,
-    // and a dismantled chat has no home to walk back to.
-    if let Some(ahp_chat::chats::ChatRow(chats, chat)) = row.row::<ahp_chat::chats::ChatRow>() {
-        return store
-            .entity(*chats)
-            .filter(|rows| rows.holds(chat))
-            .map(|_| {
-                Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
-                    as Box<dyn hikit::panel::DynPanelView>
-            });
-    }
     crate::registry::Registry::of(store)?
         .row_minters
         .0

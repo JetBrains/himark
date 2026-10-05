@@ -15,8 +15,21 @@ use ahp_chat::chat::OpenEditedRoad;
 /// window grip for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
+    // The chat ROW's minter: the row carries its collection, a pane
+    // is minted off the id — and a dismantled chat has no home to
+    // walk back to, so the holds-check gates the mint.
+    ::workbench::rows::RowMinters::register(
+        store,
+        Arc::new(|store, row| {
+            let ahp_chat::chats::ChatRow(chats, chat) = row.row::<ahp_chat::chats::ChatRow>()?;
+            store.entity(*chats).filter(|rows| rows.holds(chat)).map(|_| {
+                Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
+                    as Box<dyn hikit::panel::DynPanelView>
+            })
+        }),
+    );
     store.put(ahp_session::session::state::WindowGrip(Arc::new(|store, scope| {
-        ::workbench::window::Windows::any_window_holds(store, scope)
+        crate::grip::any_window_holds(store, scope)
     })));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
@@ -83,7 +96,7 @@ impl crate::commands::WindowedCommand for OpenEditedFile {
         };
         // The file opens WHERE the user is: the window's own documents.
         let Some(documents) =
-            ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
+            crate::grip::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

@@ -56,7 +56,7 @@ impl himark::commands::WindowedCommand for OpenMonsterDemo {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let documents = workbench::window::Windows::session_state(store, window)
+        let documents = himark::grip::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
         fx.push(himark::app::open_effect(
@@ -86,7 +86,7 @@ impl himark::commands::WindowedCommand for OpenWallOfTextDemo {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let documents = workbench::window::Windows::session_state(store, window)
+        let documents = himark::grip::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
         fx.push(himark::app::open_effect(

@@ -116,7 +116,7 @@ impl WindowedCommand for NewScratch {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let state = ::workbench::window::Windows::session_state(store, window)
+        let state = crate::grip::session_state(store, window)
             .expect("a scratch opens into a window with a session");
         let location = documents::next_scratch_location(store, state.scratch_names());
         fx.push(crate::app::open_effect(
@@ -336,7 +336,7 @@ impl WindowedCommand for CompletionTrigger {
                 ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
-            let documents = ::workbench::window::Windows::session_state(store, window)
+            let documents = crate::grip::session_state(store, window)
                 .expect("completion runs in a window with a session")
                 .documents();
             let location = documents::OpenDocuments::location(store, documents, id)
@@ -352,10 +352,13 @@ impl WindowedCommand for CompletionTrigger {
             let markdown =
                 document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
             if !markdown {
-                                let Some(documents) = slot.documents_id() else {
+                let Some(documents) = slot.documents_id() else {
                     return;
                 };
-                slot.completion.sync_lsp(
+                let Some(services) = crate::pane_services::EditorServices::of(slot, store) else {
+                    return;
+                };
+                services.completion.sync_lsp(
                     store,
                     &ui,
                     &mut document,
@@ -400,8 +403,10 @@ impl WindowedCommand for CompletionLanded {
             return;
         };
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
-            let mut discarded = imba::effect::Batch::new();
-            slot.land_completion(store, &ui, self.0.clone(), &mut discarded.effects());
+            let target = slot.service_target();
+            if let Some(services) = crate::pane_services::EditorServices::of(slot, store) {
+                services.land_completion(store, ui, target, self.0.clone());
+            }
         });
         ::workbench::window::Windows::put(store, window, entity);
     }
@@ -443,15 +448,19 @@ impl WindowedCommand for FindOpen {
                     (!text.contains('\n')).then_some(text)
                 });
                 let ui = ui;
-                match (&mut slot.find, seed) {
+                let Some(services) = crate::pane_services::EditorServices::of(slot, store) else {
+                    ::workbench::window::Windows::put(store, window, entity);
+                    return;
+                };
+                match (&mut services.find, seed) {
                     (Some(find), Some(seed)) => find.seed(store, ui, &seed),
                     (Some(find), None) => find.refocus(),
                     (None, seed) => {
-                        let mut find = ::workbench::find::FindBar::new(store, ui);
+                        let mut find = crate::find::FindBar::new(store, ui);
                         if let Some(seed) = &seed {
                             find.seed(store, ui, seed);
                         }
-                        slot.find = Some(find);
+                        services.find = Some(find);
                     }
                 }
                 find_sync_slot(slot, ui, store, window, fx);
@@ -489,7 +498,11 @@ impl WindowedCommand for FindStep {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let target = slot.find_target();
             let slot_documents = slot.documents_id();
-            if let (Some(find), Some((document, _))) = (&mut slot.find, target) {
+            let Some(services) = crate::pane_services::EditorServices::of(slot, store) else {
+                ::workbench::window::Windows::put(store, window, entity);
+                return;
+            };
+            if let (Some(find), Some((document, _))) = (&mut services.find, target) {
                 let fonts = ::editor::env::ui_collection(store, &ui);
                 let theme = ::editor::env::Themes::of(store);
                 let forward = self.0;
@@ -523,7 +536,10 @@ fn find_sync_slot(
 ) {
     let target = slot.find_target();
     let slot_documents = slot.documents_id();
-    let Some(find) = &mut slot.find else {
+    let Some(services) = crate::pane_services::EditorServices::of(slot, store) else {
+        return;
+    };
+    let Some(find) = &mut services.find else {
         return;
     };
     let Some((document, _)) = target else {
@@ -549,7 +565,7 @@ fn find_sync_slot(
     });
 }
 
-struct FindScanLanded(::workbench::find::Scan);
+struct FindScanLanded(crate::find::Scan);
 
 impl WindowedCommand for FindScanLanded {
     fn id(&self) -> &'static str {
@@ -573,7 +589,10 @@ impl WindowedCommand for FindScanLanded {
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
             let target = slot.find_target();
             let slot_documents = slot.documents_id();
-            let Some(find) = &mut slot.find else {
+            let Some(services) = crate::pane_services::EditorServices::of(slot, store) else {
+                return;
+            };
+            let Some(find) = &mut services.find else {
                 return;
             };
             let Some((document, _)) = target else {
@@ -642,7 +661,7 @@ impl WindowedCommand for AddFolder {
         let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
-        let current = entity.current_session();
+        let current = crate::grip::entity_session(&entity);
         if ahp_wire::client::Servers::client(store, current.host).is_none() {
             return;
         }

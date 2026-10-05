@@ -7,7 +7,7 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
         .into_iter()
         .next()
         .expect("a window");
-    workbench::window::Windows::session_state(store, window)
+    himark::grip::session_state(store, window)
         .expect("the window's state")
         .changes()
 }

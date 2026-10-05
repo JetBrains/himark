@@ -120,7 +120,7 @@ impl ::workbench::navigation::WindowedNavigator for DiffNavigator {
         // Resolve both sides on the UI thread — an open side hands over
         // its live snapshot; the prep runs off-thread and the landing
         // opens the dressed pane. Diffing never runs here.
-        let documents = ::workbench::window::Windows::session_state(store, window)
+        let documents = crate::grip::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old =

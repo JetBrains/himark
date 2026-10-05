@@ -5,19 +5,13 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-ahp-chat = { path = "../ahp-chat" }
-ahp-session = { path = "../ahp-session" }
-ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
 hikit = { path = "../hikit" }
-recents = { path = "../recents" }
 imba = { path = "../imba" }
-regex = "1"
 rpds = "1"
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
-toc = { path = "../toc" }
 
 [features]
 test-support = ["hikit/test-support"]

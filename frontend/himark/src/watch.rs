@@ -28,7 +28,7 @@ impl crate::commands::WindowedCommand for ReloadDocument {
         else {
             return;
         };
-        let Some(state) = ::workbench::window::Windows::session_state(store, window) else {
+        let Some(state) = crate::grip::session_state(store, window) else {
             return;
         };
         fx.scope(crate::app::AppCommand::Verb, |fx| {

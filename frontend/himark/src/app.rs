@@ -247,7 +247,7 @@ pub fn switch_session(
     let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
         return;
     };
-    if entity.current_session() == target {
+    if crate::grip::entity_session(&entity) == target {
         return;
     }
     fx.scope(
@@ -262,18 +262,20 @@ pub fn switch_session(
     // Session ENTRY: the one legitimate catalog consult — the bundle
     // is wired into the window's record here and read from it after.
     let state = ahp_session::session::state::Hosts::ensure_state(store, &target);
-    let owed = entity.switch_to(target, state);
+    let owed = entity.switch_to(crate::grip::grip(target, state));
     ::workbench::window::Windows::put(store, window, entity);
     if let Some(previous) = owed {
         fx.follow_up(AppCommand::Windowed(
             window,
-            std::sync::Arc::new(EnterFreshSession { previous }),
+            std::sync::Arc::new(EnterFreshSession {
+                previous: std::sync::Mutex::new(Some(previous)),
+            }),
         ));
     }
 }
 
 struct EnterFreshSession {
-    previous: ahp_wire::SessionId,
+    previous: std::sync::Mutex<Option<Box<dyn ::workbench::window::Grip>>>,
 }
 
 impl crate::commands::WindowedCommand for EnterFreshSession {
@@ -298,10 +300,10 @@ impl crate::commands::WindowedCommand for EnterFreshSession {
         // A fresh session starts with nothing open: the chat (once it
         // arrives) owns the whole workbench until a panel opens beside
         // it. Scratches are minted on demand (`workbench.new-document`).
-        entity.install_fresh(
-            self.previous.clone(),
-            Workbench::new(WorkbenchNode::vacant()),
-        );
+        let Some(previous) = self.previous.lock().expect("fresh grip").take() else {
+            return;
+        };
+        entity.install_fresh(previous, Workbench::new(WorkbenchNode::vacant()));
         ::workbench::window::Windows::put(store, window, entity);
     }
 }
@@ -346,17 +348,25 @@ impl Application {
                     crate::commands::AppRequests::push(store, command);
                 }
             }));
-            registry.outline_jump = Some(std::sync::Arc::new(|window, place| {
-                hikit::modal::ModalRequest::Perform(crate::app::shell_verb(
-                    crate::app::AppCommand::Windowed(
-                        window,
-                        std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
-                    ),
-                ))
-            }));
+            registry.outline = Some(std::sync::Arc::new(
+                |store, ui, documents, document, location, window| {
+                    let jump = std::sync::Arc::new(move |place| {
+                        hikit::modal::ModalRequest::Perform(crate::app::shell_verb(
+                            crate::app::AppCommand::Windowed(
+                                window,
+                                std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
+                            ),
+                        ))
+                    });
+                    Box::new(toc::OutlineView::new(
+                        store, ui, documents, document, location, jump,
+                    )) as Box<dyn hikit::modal::ModalView>
+                },
+            ));
             registry.drawer_button = Some(crate::toc::toolbar_button());
         });
         crate::higent::chat_roads::install_shell_roads(&mut store);
+        crate::pane_services::install(&mut store);
         // The locations wash hook is no longer boot-global: the
         // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
@@ -475,7 +485,9 @@ impl Application {
             ahp_session::session::state::Hosts::stamp_host_uris(store, host);
         });
         self.store
-            .update::<::workbench::window::Windows>(|windows| windows.adopt_local_host_all(host));
+            .update::<::workbench::window::Windows>(|windows| {
+                windows.adopt_workspaces_all(&crate::grip::AdoptLocalHost(host))
+            });
     }
 
 
@@ -485,7 +497,10 @@ impl Application {
         let mut discarded = AppEffects::new();
         let state = ahp_session::session::state::Hosts::ensure_state(&mut self.store, &workspace);
         let editors = fresh_workbench_root(&mut self.store, &state, &ui, &mut discarded.effects());
-        Windows::add(&mut self.store, Window::new(editors, workspace.clone(), state))
+        Windows::add(
+            &mut self.store,
+            Window::new(editors, crate::grip::grip(workspace.clone(), state)),
+        )
     }
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -1285,7 +1300,7 @@ impl Application {
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         ::workbench::window::Windows::put(store, window, entity);
-                        if let Some(state) = Windows::session_state(store, window) {
+                        if let Some(state) = crate::grip::session_state(store, window) {
                             fx.push(crate::workspace::open_by_location_effect(
                                 window,
                                 state.documents(),
@@ -1306,7 +1321,7 @@ impl Application {
                         });
                         ::workbench::window::Windows::put(store, window, entity);
 
-                        if let Some(state) = Windows::session_state(store, window) {
+                        if let Some(state) = crate::grip::session_state(store, window) {
                             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });
@@ -1358,7 +1373,7 @@ impl Application {
                             focus,
                         } => {
                             ::workbench::window::Windows::put(store, window, entity);
-                            if let Some(state) = Windows::session_state(store, window) {
+                            if let Some(state) = crate::grip::session_state(store, window) {
                                 fx.push(crate::workspace::open_by_location_effect(
                                     window,
                                     state.documents(),
@@ -1375,7 +1390,7 @@ impl Application {
                             });
                             ::workbench::window::Windows::put(store, window, entity);
 
-                            if let Some(state) = Windows::session_state(store, window) {
+                            if let Some(state) = crate::grip::session_state(store, window) {
                                 fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });
@@ -1422,7 +1437,7 @@ impl Application {
                             focus,
                         } => {
                             ::workbench::window::Windows::put(store, window, entity);
-                            if let Some(state) = Windows::session_state(store, window) {
+                            if let Some(state) = crate::grip::session_state(store, window) {
                                 fx.push(crate::workspace::open_by_location_effect(
                                     window,
                                     state.documents(),
@@ -1438,7 +1453,7 @@ impl Application {
                                 entity.show_document(store, ui, window, document, None, false, fx);
                             });
                             ::workbench::window::Windows::put(store, window, entity);
-                            if let Some(state) = Windows::session_state(store, window) {
+                            if let Some(state) = crate::grip::session_state(store, window) {
                                 fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });
@@ -1644,7 +1659,7 @@ impl Application {
             } => {
                 // The one synchronous moment of this road: bind the
                 // gesture's session here, before anything is in flight.
-                let documents = Windows::session_state(store, window)
+                let documents = crate::grip::session_state(store, window)
                     .expect("a document opens into a window with a session")
                     .documents();
                 fx.push(open_effect(

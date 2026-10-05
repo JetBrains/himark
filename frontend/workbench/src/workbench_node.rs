@@ -71,9 +71,9 @@ pub enum PanelCommand {
     Editor(PaneCommand),
     Plugin(imba::dyn_view::DynCommand),
 
-    Find(crate::find::FindCommand),
-
-    Completion(ahp_chat::completion::CompletionFound),
+    /// To the pane's SERVICES (find bar, completion) — an erased
+    /// command only the shell's face reads.
+    Service(imba::dyn_view::DynCommand),
 
     Hover(documents::hover::HoverFound),
 
@@ -85,8 +85,7 @@ impl std::fmt::Display for PanelCommand {
         match self {
             PanelCommand::Editor(command) => command.fmt(out),
             PanelCommand::Plugin(command) => command.fmt(out),
-            PanelCommand::Find(command) => command.fmt(out),
-            PanelCommand::Completion(_) => out.write_str("completion found"),
+            PanelCommand::Service(command) => command.fmt(out),
             PanelCommand::Hover(_) => out.write_str("hover found"),
             PanelCommand::HoverTick(_) => out.write_str("hover tick"),
         }
@@ -190,16 +189,15 @@ impl Panel {
                 if !document.has_outline() {
                     return None;
                 }
-                let road = crate::registry::Registry::of(store)?.outline_jump.clone()?;
-                let jump = std::sync::Arc::new(move |place| road(window, place));
-                Some(Box::new(toc::OutlineView::new(
+                let road = crate::registry::Registry::of(store)?.outline.clone()?;
+                Some(road(
                     store,
                     ui,
                     view.documents(),
                     view.document(),
                     location,
-                    jump,
-                )) as Box<dyn hikit::modal::ModalView>)
+                    window,
+                ))
             }
             Self::Plugin(view) => view.drawer_view_dyn(store, ui),
         }
@@ -480,9 +478,9 @@ pub struct PaneSlot {
 
     pub(crate) pending: Option<PendingWalk>,
 
-    pub find: Option<crate::find::FindBar>,
-
-    pub completion: ahp_chat::completion::Completion,
+    /// The pane's SERVICES seat (find bar, completion) — minted from
+    /// the registry's face on first need; its state is the shell's.
+    pub services: Option<crate::services::ServiceSeat>,
 
     pub(crate) hover: documents::hover::Hover,
 }
@@ -509,14 +507,15 @@ impl PaneSlot {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, PanelCommand> {
         let panel = self.panel.focus_data(store, ui);
-        match &self.find {
-            // A focused find bar filters the keyboard before the
-            // panel content; its input editor supplies the text client.
-            Some(find) if find.focused => find
-                .focus_data(store, ui)
-                .map(PanelCommand::Find)
-                .merge_over(panel),
-            _ => panel,
+        // A focused service (the find bar) filters the keyboard before
+        // the panel content; its input supplies the text client.
+        let service = self
+            .services
+            .as_ref()
+            .and_then(|seat| seat.face.focus_data(&seat.state, store, ui));
+        match service {
+            Some(data) => data.map(PanelCommand::Service).merge_over(panel),
+            None => panel,
         }
     }
 
@@ -526,8 +525,7 @@ impl PaneSlot {
             back: rpds::VectorSync::new_sync(),
             forward: rpds::VectorSync::new_sync(),
             pending: None,
-            find: None,
-            completion: ahp_chat::completion::Completion::new(),
+            services: None,
             hover: documents::hover::Hover::new(),
         }
     }
@@ -560,243 +558,52 @@ impl PaneSlot {
         self.panel.editor().map(|pane| pane.content().documents())
     }
 
-    pub(crate) fn sync_find(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        let target = self
-            .panel
-            .editor()
-            .map(|pane| (pane.content().document(), pane.content().editor()));
-        let target_documents = self.documents_id();
-        let Some(find) = &mut self.find else {
-            return;
-        };
-        let documents = match target_documents {
-            Some(documents) => documents,
-            None => return,
-        };
-        let fonts = ::editor::env::ui_collection(store, ui);
-        let theme = ::editor::env::Themes::of(store);
-        fx.scope(
-            |command| PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command)),
-            |fx| find.sync(store, documents, target, ui, &fonts, &theme, fx),
-        );
-
-        let Some(find) = &mut self.find else {
-            return;
-        };
-        fx.scope(PanelCommand::Find, |fx| {
-            find.launch(
-                store,
-                documents,
-                target,
-                fx,
-                crate::find::FindCommand::Scanned,
-            )
-        });
+    /// The leaf's service target: its documents collection and the
+    /// shown editor, if any.
+    pub fn service_target(&self) -> crate::services::ServiceTarget {
+        crate::services::ServiceTarget {
+            documents: self.documents_id(),
+            target: self.find_target(),
+        }
     }
 
-    fn completion_editor(command: ::editor::editor_view::EditorCommand) -> PanelCommand {
-        PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
-    }
-
-    pub(crate) fn intercept_completion(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: PanelCommand,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) -> Option<PanelCommand> {
-        use imba::scroll::ScrollCommand;
-        let PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
-            key,
-            command: inlay,
-        })) = command
+    /// The seat, minted from the registry's face on first need.
+    pub fn ensure_services(&mut self, store: &Store) -> bool {
+        if self.services.is_some() {
+            return true;
+        }
+        let Some(face) = crate::registry::Registry::of(store)
+            .and_then(|registry| registry.pane_services.clone())
         else {
-            return Some(command);
+            return false;
         };
-        let rewrap = |inlay| {
-            PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
-                key,
-                command: inlay,
-            }))
-        };
-        if Some(key) != self.completion.inlay_key() {
-            return Some(rewrap(inlay));
-        }
-        let popup = match inlay.downcast_ref::<ahp_chat::completion::CompletionCommand>() {
-            Some(_) => inlay
-                .downcast::<ahp_chat::completion::CompletionCommand>()
-                .expect("probed above"),
-            None => return Some(rewrap(inlay)),
-        };
-        use ahp_chat::completion::CompletionCommand;
-        let Some((id, editor)) = self.completion.installed() else {
-            return None;
-        };
-        let Some(documents) = self.documents_id() else {
-            return None;
-        };
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-            self.completion.clear();
-            return None;
-        };
-        match popup {
-            CompletionCommand::Select(delta) => {
-                self.completion.select(store, &mut document, editor, delta);
-            }
-            CompletionCommand::PickCursor => {
-                let row = self.completion.selected();
-                let _ = self.completion.apply_pick(
-                    store,
-                    ui,
-                    &mut document,
-                    editor,
-                    row,
-                    fx,
-                    Self::completion_editor,
-                );
-            }
-            CompletionCommand::Rows(rows) => {
-                let picked = self
-                    .completion
-                    .rows_command(store, ui, &mut document, editor, rows);
-                if let Some(row) = picked {
-                    let _ = self.completion.apply_pick(
-                        store,
-                        ui,
-                        &mut document,
-                        editor,
-                        row,
-                        fx,
-                        Self::completion_editor,
-                    );
-                }
-            }
-            CompletionCommand::Close => {
-                self.completion
-                    .drop_state(&mut document, store, ui, fx, Self::completion_editor);
-            }
-        }
-        documents::OpenDocuments::put_document(store, documents, id, document);
-        None
+        let state = face.mint();
+        self.services = Some(crate::services::ServiceSeat { face, state });
+        true
     }
 
-    pub(crate) fn sync_completion(
+    fn service_sync(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
         inserted: Option<&str>,
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
-        let target = self.find_target();
-        let Some(documents) = self.documents_id() else {
-            return;
-        };
-
-        if let Some(installed) = self.completion.installed() {
-            if target != Some(installed) {
-                match documents::OpenDocuments::document(store, documents, installed.0) {
-                    Some(mut old) => {
-                        self.completion.drop_state(
-                            &mut old,
-                            store,
-                            ui,
-                            fx,
-                            Self::completion_editor,
-                        );
-                        documents::OpenDocuments::put_document(store, documents, installed.0, old);
-                    }
-                    None => self.completion.clear(),
-                }
-            }
-        }
-        let Some((id, editor)) = target else { return };
-        if !self.completion.open() && inserted.is_none() {
+        if !self.ensure_services(store) {
             return;
         }
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-            return;
-        };
-
-        let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
-        if markdown {
-            let Some((session, state)) = ahp_session::session::state::Hosts::home_of_documents(store, documents)
-            else {
-                documents::OpenDocuments::put_document(store, documents, id, document);
-                return;
-            };
-            let typed_at =
-                (inserted == Some("@")).then(|| document.caret_byte(editor).saturating_sub(1));
-            self.completion.sync_path(
-                store,
-                ui,
-                &mut document,
-                editor,
-                typed_at,
-                std::sync::Arc::new(ahp_session::session::folders::session_folders(store, &session)),
-                state.recents(),
-                Some((id, editor)),
-                fx,
-                PanelCommand::Completion,
-                Self::completion_editor,
-            );
-        } else {
-            match documents::OpenDocuments::location(store, documents, id) {
-                Some(location) if !location.is_synthetic() => {
-                    self.completion.sync_lsp(
-                        store,
-                        ui,
-                        &mut document,
-                        editor,
-                        inserted,
-                        false,
-                        &location,
-                        Some((id, editor)),
-                        fx,
-                        PanelCommand::Completion,
-                        Self::completion_editor,
-                    );
-                }
-                _ if self.completion.open() => {
-                    self.completion.drop_state(
-                        &mut document,
-                        store,
-                        ui,
-                        fx,
-                        Self::completion_editor,
-                    );
-                }
-                _ => {}
-            }
+        let target = self.service_target();
+        if let Some(mut seat) = self.services.take() {
+            seat.face
+                .sync(&mut seat.state, target, store, ui, inserted, fx);
+            self.services = Some(seat);
         }
-        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
-    pub fn land_completion(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        found: ahp_chat::completion::CompletionFound,
-        _fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        let _ = ui;
-        let Some((id, editor)) = self.completion.installed() else {
-            return;
-        };
-        let Some(documents) = self.documents_id() else {
-            return;
-        };
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-            self.completion.clear();
-            return;
-        };
-        self.completion
-            .land(store, ui, &mut document, editor, found);
-        documents::OpenDocuments::put_document(store, documents, id, document);
+    /// Wrap an editor command back into the panel stream — the shape
+    /// every pane accessory answers the editor in.
+    fn wrap_editor(command: ::editor::editor_view::EditorCommand) -> PanelCommand {
+        PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
     }
 
     pub(crate) fn sync_hover(
@@ -816,7 +623,7 @@ impl PaneSlot {
                 match documents::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
                         self.hover
-                            .retract(store, ui, &mut old, fx, Self::completion_editor);
+                            .retract(store, ui, &mut old, fx, Self::wrap_editor);
                         documents::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.hover.clear(),
@@ -829,7 +636,7 @@ impl PaneSlot {
             if self.hover.open() {
                 if let Some(mut document) = documents::OpenDocuments::document(store, documents, id) {
                     self.hover
-                        .retract(store, ui, &mut document, fx, Self::completion_editor);
+                        .retract(store, ui, &mut document, fx, Self::wrap_editor);
                     documents::OpenDocuments::put_document(store, documents, id, document);
                 }
             }
@@ -857,7 +664,7 @@ impl PaneSlot {
             &location,
             Some((id, editor)),
             fx,
-            Self::completion_editor,
+            Self::wrap_editor,
         );
         documents::OpenDocuments::put_document(store, documents, id, document);
     }
@@ -905,74 +712,11 @@ impl PaneSlot {
             editor,
             found,
             fx,
-            Self::completion_editor,
+            Self::wrap_editor,
         );
         documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
-    pub(crate) fn perform_find(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: crate::find::FindCommand,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        use crate::find::FindCommand;
-        let fonts = ::editor::env::ui_collection(store, ui);
-        let theme = ::editor::env::Themes::of(store);
-        match command {
-            FindCommand::Input(command) => {
-                if let Some(find) = &mut self.find {
-                    fx.scope(PanelCommand::Find, |fx| {
-                        find.perform_input(store, ui, command, fx)
-                    });
-                }
-                self.sync_find(store, ui, fx);
-            }
-            FindCommand::Next | FindCommand::Previous => {
-                let forward = matches!(command, FindCommand::Next);
-                self.sync_find(store, ui, fx);
-                let Some(documents) = self.documents_id() else {
-                    return;
-                };
-                if let Some(find) = &mut self.find {
-                    fx.scope(
-                        |command| {
-                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
-                        },
-                        |fx| find.step(store, documents, forward, ui, &fonts, &theme, fx),
-                    );
-                }
-            }
-            FindCommand::Close => {
-                let Some(documents) = self.documents_id() else {
-                    return;
-                };
-                if let Some(mut find) = self.find.take() {
-                    fx.scope(
-                        |command| {
-                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
-                        },
-                        |fx| find.uninstall(store, documents, ui, &fonts, &theme, fx),
-                    );
-                }
-            }
-            FindCommand::Scanned(landed) => {
-                let target = self.find_target();
-                let Some(documents) = self.documents_id() else {
-                    return;
-                };
-                if let Some(find) = &mut self.find {
-                    fx.scope(
-                        |command| {
-                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
-                        },
-                        |fx| find.adopt(store, documents, target, &landed, ui, &fonts, &theme, fx),
-                    );
-                }
-            }
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -1186,11 +930,18 @@ impl View for WorkbenchNode {
                 }
                 let wrap = wrap_leaf(target);
                 match command {
-                    PanelCommand::Find(command) => {
-                        fx.scope(wrap, |fx| slot.perform_find(store, ui, command, fx))
-                    }
-                    PanelCommand::Completion(found) => {
-                        fx.scope(wrap, |fx| slot.land_completion(store, ui, found, fx))
+                    PanelCommand::Service(command) => {
+                        if !slot.ensure_services(store) {
+                            return;
+                        }
+                        let target = slot.service_target();
+                        if let Some(mut seat) = slot.services.take() {
+                            fx.scope(wrap, |fx| {
+                                seat.face
+                                    .command(&mut seat.state, target, store, ui, command, fx)
+                            });
+                            slot.services = Some(seat);
+                        }
                     }
                     PanelCommand::Hover(found) => {
                         fx.scope(wrap, |fx| slot.land_hover(store, ui, found, fx))
@@ -1200,13 +951,15 @@ impl View for WorkbenchNode {
                     }
                     command => {
                         if let (
-                            Some(find),
+                            Some(seat),
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
                                 ::editor::editor_view::EditorCommand::Click { .. },
                             )),
-                        ) = (&mut slot.find, &command)
+                        ) = (&mut slot.services, &command)
                         {
-                            find.focused = false;
+                            // A pointer press lands in the panel: the
+                            // bars lose the keyboard.
+                            seat.face.defocus(&mut seat.state);
                         }
 
                         if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
@@ -1217,8 +970,26 @@ impl View for WorkbenchNode {
                             return fx.scope(wrap, |fx| slot.sync_hover(store, ui, point, fx));
                         }
                         fx.scope(wrap, |fx| {
-                            let Some(command) = slot.intercept_completion(store, ui, command, fx)
-                            else {
+                            let command = {
+                                if !slot.ensure_services(store) {
+                                    Some(command)
+                                } else if let Some(mut seat) = slot.services.take() {
+                                    let target = slot.service_target();
+                                    let passed = seat.face.intercept(
+                                        &mut seat.state,
+                                        target,
+                                        store,
+                                        ui,
+                                        command,
+                                        fx,
+                                    );
+                                    slot.services = Some(seat);
+                                    passed
+                                } else {
+                                    Some(command)
+                                }
+                            };
+                            let Some(command) = command else {
                                 return;
                             };
 
@@ -1229,8 +1000,7 @@ impl View for WorkbenchNode {
                                 _ => None,
                             };
                             slot.panel.perform(store, ui, command, fx);
-                            slot.sync_find(store, ui, fx);
-                            slot.sync_completion(store, ui, inserted.as_deref(), fx);
+                            slot.service_sync(store, ui, inserted.as_deref(), fx);
 
                             slot.sync_hover(store, ui, None, fx);
                         })
@@ -1254,45 +1024,50 @@ impl View for WorkbenchNode {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let widget: imba::ThunkBox<'a, NodeCommand> = match self {
-                Self::Leaf(slot) => match &slot.find {
-                    None => imba::ThunkBox::new(
-                        arena,
-                        imba::layout::Layout::layout(
-                            slot.panel.display(arena, store, ui),
+                Self::Leaf(slot) => {
+                    let size = constraints.max;
+                    // The services' chrome above the editor — the find
+                    // bar — when a service stands one.
+                    let bar = slot.services.as_ref().and_then(|seat| {
+                        seat.face
+                            .bar(&seat.state, arena, store, ui, size.width)
+                            .map(|(height, widget)| (height.min(size.height), widget))
+                    });
+                    match bar {
+                        None => imba::ThunkBox::new(
                             arena,
-                            constraints,
-                        )
-                        .map(wrap_leaf(slot.panel_id())),
-                    ),
-
-                    Some(find) => {
-                        let leaf = wrap_leaf(slot.panel_id());
-                        let size = constraints.max;
-                        let chrome = ::editor::env::Themes::of(store).ui().search.clone();
-                        let bar_height = crate::find::FindBar::height(&chrome).min(size.height);
-                        let mut column = imba::container::container(arena, size);
-                        column.place(
-                            0.0,
-                            bar_height,
                             imba::layout::Layout::layout(
                                 slot.panel.display(arena, store, ui),
                                 arena,
-                                Constraints::tight(skia_safe::Size::new(
-                                    size.width,
-                                    (size.height - bar_height).max(1.0),
-                                )),
+                                constraints,
                             )
-                            .map(leaf),
-                        );
-                        column.place(
-                            0.0,
-                            0.0,
-                            find.layout(arena, store, ui, size.width)
-                                .map(move |command| leaf(PanelCommand::Find(command))),
-                        );
-                        imba::ThunkBox::new(arena, column)
+                            .map(wrap_leaf(slot.panel_id())),
+                        ),
+                        Some((bar_height, widget)) => {
+                            let leaf = wrap_leaf(slot.panel_id());
+                            let mut column = imba::container::container(arena, size);
+                            column.place(
+                                0.0,
+                                bar_height,
+                                imba::layout::Layout::layout(
+                                    slot.panel.display(arena, store, ui),
+                                    arena,
+                                    Constraints::tight(skia_safe::Size::new(
+                                        size.width,
+                                        (size.height - bar_height).max(1.0),
+                                    )),
+                                )
+                                .map(leaf),
+                            );
+                            column.place(
+                                0.0,
+                                0.0,
+                                widget.map(move |command| leaf(PanelCommand::Service(command))),
+                            );
+                            imba::ThunkBox::new(arena, column)
+                        }
                     }
-                },
+                }
 
                 Self::Split(split) => {
                     let divider = split.divider_rect(constraints.max);

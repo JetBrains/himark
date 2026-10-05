@@ -17,14 +17,20 @@ pub struct Registry {
     /// RunCommand arm fires a registered command by id without
     /// knowing the command registry's shape.
     pub run_command: Option<std::sync::Arc<dyn Fn(&mut Store, &str) + Send + Sync>>,
-    /// The outline JUMP road: the shell builds the window-addressed
-    /// perform; the workbench only mounts the outline with it.
-    pub outline_jump: Option<
+    /// The OUTLINE road: an editor pane's drawer view, built whole by
+    /// the shell (the outline is a component; the workbench only asks
+    /// for the drawer's face).
+    #[allow(clippy::type_complexity)]
+    pub outline: Option<
         std::sync::Arc<
             dyn Fn(
+                    &imba::store::Store,
+                    &imba::ui::UiCtx,
+                    imba::store::Id<documents::OpenDocuments>,
+                    documents::DocumentId,
+                    editor::location::ResourceLocation,
                     crate::window::WindowId,
-                    hikit::navigation::EditorPlace,
-                ) -> hikit::modal::ModalRequest
+                ) -> Box<dyn hikit::modal::ModalView>
                 + Send
                 + Sync,
         >,
@@ -32,6 +38,9 @@ pub struct Registry {
     /// The drawer-toggle button face, registered by the shell's toc
     /// glue.
     pub drawer_button: Option<crate::toolbar::ToolbarButton>,
+    /// The editor pane's services face (find bar, completion) — see
+    /// `crate::services`.
+    pub pane_services: Option<std::sync::Arc<dyn crate::services::PaneServices>>,
 }
 
 impl Registry {

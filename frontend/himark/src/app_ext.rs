@@ -89,7 +89,7 @@ impl AppExt for Application {
         // consumes the id and never re-asks the window.
         let documents = {
             let store = self.window_store(window);
-            let Some(state) = ::workbench::window::Windows::session_state(&store, window) else {
+            let Some(state) = crate::grip::session_state(&store, window) else {
                 return false;
             };
             state.documents()

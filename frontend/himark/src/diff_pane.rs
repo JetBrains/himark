@@ -75,7 +75,7 @@ impl crate::commands::WindowedCommand for OpenDiff {
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let Some(state) = ::workbench::window::Windows::session_state(store, window) else {
+        let Some(state) = crate::grip::session_state(store, window) else {
             return;
         };
         let documents = state.documents();

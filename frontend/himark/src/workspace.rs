@@ -82,7 +82,7 @@ pub fn open_locations(
     fx: &mut AppFx<'_>,
 ) {
     let folders = ::workbench::window::Windows::window_ref(store, window)
-        .map(|entity| ahp_session::session::folders::session_folders(store, &entity.current_session()))
+        .map(|entity| ahp_session::session::folders::session_folders(store, &crate::grip::entity_session(&entity)))
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
         .iter()
@@ -105,7 +105,7 @@ pub fn open_locations(
         .collect();
     let mut primary = true;
     let Some(documents) =
-        ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
+        crate::grip::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -147,7 +147,7 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
         place: &hikit::navigation::EditorPlace,
         fx: &mut imba::command::Fx<'_>,
     ) -> Option<::workbench::workbench_node::Panel> {
-        let documents = ::workbench::window::Windows::session_state(store, window)
+        let documents = crate::grip::session_state(store, window)
             .expect("navigation runs in a window with a session")
             .documents();
         let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {

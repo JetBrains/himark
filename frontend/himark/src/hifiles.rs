@@ -121,8 +121,8 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
             |fx| entity.dismiss_modal(store, fx),
         );
 
-        let workspace = entity.current_session();
-        let trees = entity.state().trees();
+        let workspace = crate::grip::entity_session(&entity);
+        let trees = crate::grip::entity_state(&entity).trees();
         let panel = fx.scope(crate::modal::dock_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
                 open_panel(

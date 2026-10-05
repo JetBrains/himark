@@ -361,19 +361,6 @@ impl View for Layers {
     }
 }
 
-/// The chat connects the moment it is OPEN, painted or not — its
-/// feed is addressed by id, like any panel's commands.
-fn boot_chat_feed(
-    store: &mut Store,
-    chats: imba::store::Id<ahp_chat::chats::Chats>,
-    chat: ahp_wire::client::ChatUri,
-) {
-    imba::command::Requests::push(
-        store,
-        std::sync::Arc::new(ahp_chat::chats::BootChat { chats, chat }),
-    );
-}
-
 fn below_layer<'a, Command: 'a>(
     arena: &'a Arena,
     size: Size,
@@ -754,18 +741,6 @@ pub struct Windows {
 }
 
 impl Windows {
-    /// The session of the session a WINDOW is working in — read off the
-    /// window's OWN record (docs/entities.md law 3): the bundle is
-    /// wired at session entry, so no catalog consult and no ambient
-    /// scope. The ids are stable where the `SessionId` is not
-    /// (placeholder and local-host rekeys move the key, never the ids).
-    pub fn session_state(
-        store: &Store,
-        window: crate::window::WindowId,
-    ) -> Option<ahp_session::session::state::SessionState> {
-        Some(Self::window_ref(store, window)?.state().clone())
-    }
-
     pub fn add(store: &mut imba::store::Store, entity: Window) -> WindowId {
         let mut windows = store.get::<Windows>().cloned().unwrap_or_default();
         let id = WindowId(windows.next);
@@ -783,12 +758,11 @@ impl Windows {
         store.get::<Windows>()?.entries.get(&id)
     }
 
-    pub fn any_window_holds(store: &imba::store::Store, session: &ahp_wire::SessionId) -> bool {
+    /// Does ANY window hold this workspace — showing it or stashing
+    /// it? The hold is what the shell's housekeeping spares.
+    pub fn any_window_holds(store: &imba::store::Store, grip: &dyn Grip) -> bool {
         store.get::<Windows>().is_some_and(|windows| {
-            windows
-                .entries
-                .values()
-                .any(|window| window.holds_session(session))
+            windows.entries.values().any(|window| window.holds(grip))
         })
     }
 
@@ -809,10 +783,6 @@ impl Windows {
         self.entries.keys().min_by_key(|id| id.0).copied()
     }
 
-    pub fn session_of(&self, id: WindowId) -> Option<ahp_wire::SessionId> {
-        self.entries.get(&id).map(|window| window.current_session())
-    }
-
     pub fn ids(&self) -> Vec<WindowId> {
         let mut ids: Vec<WindowId> = self.entries.keys().copied().collect();
         ids.sort_by_key(|id| id.0);
@@ -824,39 +794,90 @@ impl Windows {
     }
 
 
-    pub fn adopt_local_host_all(&mut self, host: ahp_wire::client::HostId) {
+    /// Hand an opaque adoption payload to every window's workspaces
+    /// (the shell's local-host rekey).
+    pub fn adopt_workspaces_all(&mut self, payload: &dyn std::any::Any) {
         let ids: Vec<WindowId> = self.entries.keys().copied().collect();
         for id in ids {
             let Some(entity) = self.entries.get(&id) else {
                 continue;
             };
             let mut entity = entity.clone();
-            if entity.adopt_local_host(host) {
+            if entity.adopt_workspaces(payload) {
                 self.entries.insert_mut(id, entity);
             }
         }
     }
 }
 
-#[derive(Clone)]
+/// The window's WORKSPACE grip — what the window shows, OPAQUE to
+/// the shell. The workbench compares, clones and stashes by it, asks
+/// it for the few things a window needs from its workspace (the
+/// documents collection, the chat pane, the recency note); what it
+/// NAMES — a session, its collections — is the app's business alone.
+pub trait Grip: Send + Sync {
+    /// The documents collection this workspace reads through.
+    fn documents(&self) -> imba::store::Id<documents::OpenDocuments>;
+
+    /// Note a visited location in the workspace's own bookkeeping.
+    fn touched(&self, store: &mut Store, target: &hikit::navigation::NavigationLocation);
+
+    /// The workspace's chat pane for a first front — minted and its
+    /// feed booted — or None when it has nothing to show yet.
+    fn front_chat_pane(&self, store: &mut Store) -> Option<Box<dyn hikit::panel::DynPanelView>>;
+
+    /// Is this pane a CHAT pane? One home: the chat slot.
+    fn is_chat_pane(&self, pane: &dyn hikit::panel::DynPanelView) -> bool;
+
+    /// A chat pane is about to dock — boot whatever feed it rides.
+    fn boot_chat(&self, store: &mut Store, pane: &dyn hikit::panel::DynPanelView);
+
+    fn same(&self, other: &dyn Grip) -> bool;
+
+    fn clone_grip(&self) -> Box<dyn Grip>;
+
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Apply an opaque adoption payload (the shell's local-host
+    /// rekey); answers whether anything changed.
+    fn adopt(&mut self, payload: &dyn std::any::Any) -> bool;
+}
+
 pub struct Window {
     content: Layers,
 
     viewport_size: Size,
 
-    current_session: ahp_wire::SessionId,
-
-    /// The id bundle of `current_session`'s collections, wired at
-    /// session ENTRY (creation and switch). Rekeys change the
-    /// `SessionId`, never this: the ids are the stable currency.
-    state: ahp_session::session::state::SessionState,
+    /// The workspace shown NOW.
+    grip: Box<dyn Grip>,
 
     dock_width: f32,
 
-    workbenches: rpds::HashTrieMapSync<ahp_wire::SessionId, Workbench>,
+    /// Workbenches stashed per workspace — restored whole on a walk
+    /// back. Keyed by grip identity (`Grip::same`); the stash count is
+    /// a handful, the walk linear.
+    workbenches: Vec<(Box<dyn Grip>, Workbench)>,
 
     focused_location: Option<editor::location::ResourceLocation>,
     focus_generation: u64,
+}
+
+impl Clone for Window {
+    fn clone(&self) -> Self {
+        Self {
+            content: self.content.clone(),
+            viewport_size: self.viewport_size,
+            grip: self.grip.clone_grip(),
+            dock_width: self.dock_width,
+            workbenches: self
+                .workbenches
+                .iter()
+                .map(|(grip, workbench)| (grip.clone_grip(), workbench.clone()))
+                .collect(),
+            focused_location: self.focused_location.clone(),
+            focus_generation: self.focus_generation,
+        }
+    }
 }
 
 impl Window {
@@ -875,11 +896,7 @@ impl Window {
         }
     }
 
-    pub fn new(
-        root: WorkbenchNode,
-        workspace: ahp_wire::SessionId,
-        state: ahp_session::session::state::SessionState,
-    ) -> Self {
+    pub fn new(root: WorkbenchNode, grip: Box<dyn Grip>) -> Self {
         Self {
             content: Layers {
                 toolbar: crate::toolbar::Toolbar::default(),
@@ -890,105 +907,94 @@ impl Window {
             },
             viewport_size: Size::new(1.0, 1.0),
             dock_width: crate::dock::DOCK_WIDTH,
-            current_session: workspace,
-            state,
-            workbenches: rpds::HashTrieMapSync::new_sync(),
+            grip,
+            workbenches: Vec::new(),
             focused_location: None,
             focus_generation: 0,
         }
     }
 
-    pub fn current_session(&self) -> ahp_wire::SessionId {
-        self.current_session.clone()
+    /// The workspace grip, read in place. The shell DOWNCASTS this to
+    /// whatever it installed; the workbench only compares and carries.
+    pub fn grip(&self) -> &dyn Grip {
+        self.grip.as_ref()
     }
 
-    /// The window holds a session while it shows it or keeps its
-    /// stashed workbench — the grip that spares the session from the
-    /// all-empty sweep.
-    pub(crate) fn holds_session(&self, session: &ahp_wire::SessionId) -> bool {
-        self.current_session == *session || self.workbenches.get(session).is_some()
+    /// Every grip this window keeps alive: the shown workspace and
+    /// every stashed one.
+    pub fn grips(&self) -> impl Iterator<Item = &dyn Grip> + '_ {
+        std::iter::once(self.grip.as_ref())
+            .chain(self.workbenches.iter().map(|(grip, _)| grip.as_ref()))
     }
 
-    pub fn state(&self) -> &ahp_session::session::state::SessionState {
-        &self.state
+    /// Does this window hold the workspace — showing it or keeping
+    /// its stashed workbench? The hold is what spares a workspace
+    /// from the shell's housekeeping.
+    pub fn holds(&self, grip: &dyn Grip) -> bool {
+        self.grips().any(|held| held.same(grip))
     }
 
-    #[must_use]
-    pub fn switch_to(
-        &mut self,
-        workspace: ahp_wire::SessionId,
-        state: ahp_session::session::state::SessionState,
-    ) -> Option<ahp_wire::SessionId> {
-        if workspace == self.current_session {
+    #[must_use = "the displaced workspace is the caller's to retire"]
+    pub fn switch_to(&mut self, grip: Box<dyn Grip>) -> Option<Box<dyn Grip>> {
+        if self.grip.same(grip.as_ref()) {
             return None;
         }
 
         if matches!(self.content.focus, LayerFocus::Dock) {
             self.content.focus = LayerFocus::Content;
         }
-        self.state = state;
-        let Some(stashed) = self.workbenches.get(&workspace) else {
-            return Some(std::mem::replace(&mut self.current_session, workspace));
+        let restored = self
+            .workbenches
+            .iter()
+            .position(|(held, _)| held.same(grip.as_ref()));
+        let Some(at) = restored else {
+            return Some(std::mem::replace(&mut self.grip, grip));
         };
-        let restored = stashed.clone();
-        self.workbenches.remove_mut(&workspace);
+        let (_, restored) = self.workbenches.remove(at);
         let stashed = std::mem::replace(&mut self.content.workbench, restored);
-        self.workbenches
-            .insert_mut(self.current_session.clone(), stashed);
-        self.current_session = workspace;
+        let previous = std::mem::replace(&mut self.grip, grip);
+        self.workbenches.push((previous, stashed));
         self.content.workbench.settle_dock();
         None
     }
 
-    /// A rekey changes the session's NAME, not its identity: the
-    /// session bundle stays — the caller moves the catalog row with it.
-    pub fn rekey_current(&mut self, workspace: ahp_wire::SessionId) -> bool {
-        if workspace == self.current_session {
+    /// A rekey changes the workspace's NAME, not its identity: the
+    /// bundle stays — the caller moves the catalog row with it.
+    pub fn rekey_current(&mut self, grip: Box<dyn Grip>) -> bool {
+        if self.grip.same(grip.as_ref()) {
             return true;
         }
-        if self.workbenches.get(&workspace).is_some() {
+        if self
+            .workbenches
+            .iter()
+            .any(|(held, _)| held.same(grip.as_ref()))
+        {
             return false;
         }
-        self.current_session = workspace;
+        self.grip = grip;
         true
     }
 
-    pub fn install_fresh(&mut self, previous: ahp_wire::SessionId, fresh: Workbench) {
+    pub fn install_fresh(&mut self, previous: Box<dyn Grip>, fresh: Workbench) {
         let stashed = std::mem::replace(&mut self.content.workbench, fresh);
-        self.workbenches.insert_mut(previous, stashed);
+        self.workbenches.push((previous, stashed));
     }
 
-    pub(crate) fn adopt_local_host(&mut self, host: ahp_wire::client::HostId) -> bool {
-        let is_stale_local = |id: &ahp_wire::SessionId| {
-            id.session.as_str() == ahp_wire::LOCAL_FS_SESSION && id.host != host
-        };
-        let mut changed = false;
-        if is_stale_local(&self.current_session) {
-            self.current_session.host = host;
-            changed = true;
-        }
-        let stale: Vec<ahp_wire::SessionId> = self
-            .workbenches
-            .iter()
-            .map(|(id, _)| id.clone())
-            .filter(|id| is_stale_local(id))
-            .collect();
-        for id in stale {
-            if let Some(stashed) = self.workbenches.get(&id).cloned() {
-                self.workbenches.remove_mut(&id);
-                let mut fresh = id;
-                fresh.host = host;
-                self.workbenches.insert_mut(fresh, stashed);
-            }
-            changed = true;
+    /// Hand an opaque adoption payload to every grip this window
+    /// keeps (the shell's local-host rekey); answers whether anything
+    /// changed.
+    pub fn adopt_workspaces(&mut self, payload: &dyn std::any::Any) -> bool {
+        let mut changed = self.grip.adopt(payload);
+        for (grip, _) in &mut self.workbenches {
+            changed |= grip.adopt(payload);
         }
         changed
     }
 
-    pub fn stashed_workbenches(
-        &self,
-    ) -> impl Iterator<Item = (&ahp_wire::SessionId, &Workbench)> + '_ {
-        self.workbenches.iter()
+    pub fn stashed_workbenches(&self) -> impl Iterator<Item = (&dyn Grip, &Workbench)> + '_ {
+        self.workbenches
+            .iter()
+            .map(|(grip, workbench)| (grip.as_ref(), workbench))
     }
 
     pub fn viewport_size(&self) -> Size {
@@ -1113,18 +1119,10 @@ impl Window {
             return;
         }
         if self.workbench().chat().is_none() {
-            let chats = self.state.chats();
-            let Some(chat) = ahp_chat::chats::Chats::list(store, chats).into_iter().next() else {
-                return;
-            };
-            let Some(pane) = crate::rows::mint(
-                store,
-                &hikit::pane_row::PaneRow::new(ahp_chat::chats::ChatRow(chats, chat.clone())),
-            ) else {
+            let Some(pane) = self.grip.front_chat_pane(store) else {
                 return;
             };
             self.workbench_mut().dock_chat(Panel::Plugin(pane));
-            boot_chat_feed(store, chats, chat);
         }
         // Cmd-I always brings the chat back from a maximize.
         self.workbench_mut().restore_chat();
@@ -1149,7 +1147,7 @@ impl Window {
         if self.has_modal() {
             return false;
         }
-        let row = pane.pane_row();
+        self.grip.boot_chat(store, pane.as_ref());
         match self.workbench_mut().chat_mut() {
             Some(chat) => {
                 let displaced = chat.replace_panel(Panel::Plugin(pane));
@@ -1158,11 +1156,6 @@ impl Window {
             None => {
                 self.workbench_mut().dock_chat(Panel::Plugin(pane));
             }
-        }
-        if let Some(ahp_chat::chats::ChatRow(chats, chat)) =
-            row.as_ref().and_then(|row| row.row::<ahp_chat::chats::ChatRow>())
-        {
-            boot_chat_feed(store, *chats, chat.clone());
         }
         self.workbench_mut().focus_chat(true);
         self.content.focus = LayerFocus::Content;
@@ -1448,10 +1441,7 @@ impl Window {
     ) -> bool {
         // A chat pane has ONE home, whatever road carried it here:
         // the workbench's chat slot, never a tree leaf.
-        if panel
-            .pane_row()
-            .is_some_and(|row| row.row::<ahp_chat::chats::ChatRow>().is_some())
-        {
+        if self.grip.is_chat_pane(panel.as_ref()) {
             return self.open_chat_panel(store, ui, panel, fx);
         }
         if self.has_modal() {
@@ -1514,7 +1504,7 @@ impl Window {
         let document_id = entity.document();
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::workbench::fallback_pane_editor_width(store));
-        let documents = self.state.documents();
+        let documents = self.grip.documents();
         let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1596,7 +1586,7 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                Self::touch_recent(store, self.state.recents(), target);
+                self.grip.touched(store, target);
                 // The focused pane absorbed the location — a landing
                 // all the same: the fronted chat hands the window back.
                 self.workbench_mut().yield_chat();
@@ -1607,7 +1597,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        Self::touch_recent(store, self.state.recents(), target);
+        self.grip.touched(store, target);
         true
     }
 
@@ -1657,7 +1647,7 @@ impl Window {
             let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        Self::touch_recent(store, self.state.recents(), target);
+        self.grip.touched(store, target);
         true
     }
 
@@ -1726,16 +1716,6 @@ impl Window {
             self.workbench_mut().focus_chat(true);
         }
         true
-    }
-
-    fn touch_recent(
-        store: &mut Store,
-        recents: imba::store::Id<recents::RecentLocations>,
-        target: &hikit::navigation::NavigationLocation,
-    ) {
-        if let Some(place) = target.place::<hikit::navigation::EditorPlace>() {
-            recents::RecentLocations::touch(store, recents, &place.location);
-        }
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -1858,7 +1838,7 @@ impl Window {
         // The document lands in the tree — the window comes back from
         // the chat.
         self.workbench_mut().yield_chat();
-        let documents = self.state.documents();
+        let documents = self.grip.documents();
         let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1924,7 +1904,7 @@ impl Window {
         }
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::workbench::fallback_pane_editor_width(store));
-        let documents = self.state.documents();
+        let documents = self.grip.documents();
         let editor_id = fx.scope(
             move |command| {
                 imba::command::Verb::at(

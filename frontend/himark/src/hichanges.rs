@@ -36,7 +36,7 @@ impl crate::commands::WindowedCommand for OpenDiffForPair {
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let documents = ::workbench::window::Windows::session_state(store, window)
+        let documents = crate::grip::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old = documents::diff_views::DiffSideInput::resolve(store, documents, self.old.clone());
@@ -74,9 +74,9 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         }
         // The pane closes over the window's session: its change sets
         // by id, the session only as the catalog's name for the folders.
-        let workspace = entity.current_session();
-        let changes = entity.state().changes();
-        let wire = entity.state().changes_wire();
+        let workspace = crate::grip::entity_session(&entity);
+        let changes = crate::grip::entity_state(&entity).changes();
+        let wire = crate::grip::entity_state(&entity).changes_wire();
         let folders = ahp_session::session::folders::session_folders(store, &workspace);
         fx.scope(crate::app::AppCommand::Verb, |fx| {
             ahp_changes::changes::ensure(store, wire, folders, fx)
@@ -151,7 +151,7 @@ impl crate::commands::WindowedCommand for RefetchChanges {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-        let Some(changes) = ::workbench::window::Windows::session_state(store, window)
+        let Some(changes) = crate::grip::session_state(store, window)
             .map(|state| state.changes())
             .or_else(|| {
                 // An addressed refetch (the view's chip) names its
