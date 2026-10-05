@@ -19,7 +19,7 @@ use imba::list::ListOps;
 use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
-use crate::higent::session::open::OpenSessionRow;
+use crate::higent::open_session::OpenSessionRow;
 use ahp_session::session::agents::Agents;
 use ahp_session::session::state::HostStatus;
 use ahp_session::session::summary::{self, SessionActivity};

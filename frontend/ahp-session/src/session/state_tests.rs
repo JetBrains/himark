@@ -9,7 +9,7 @@
 use imba::store::Store;
 
 use ahp_chat::chats::Chats;
-use ahp_session::session::state::{Hosts, WindowGrip};
+use super::state::{Hosts, WindowGrip};
 use ahp_wire::client::{ChatUri, HostId, SessionUri};
 
 fn session(uri: &str) -> ahp_wire::SessionId {

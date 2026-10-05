@@ -319,7 +319,7 @@ mod app {
             state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
             state.register_toolbar_button(himark::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::higent::drawer::ToggleAgentsView));
-            state.register_command(std::sync::Arc::new(himark::higent::session::new_chat::NewChat));
+            state.register_command(std::sync::Arc::new(himark::higent::new_chat::NewChat));
             state.register_toolbar_button(himark::higent::drawer::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::hichanges::ToggleChangesView));
             state.register_command(std::sync::Arc::new(

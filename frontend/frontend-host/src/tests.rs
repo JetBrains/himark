@@ -3027,7 +3027,7 @@ impl himark::commands::WindowedCommand for StubNewSession {
             .map(move |result| {
                 himark::app::AppCommand::Windowed(
                     window,
-                    std::sync::Arc::new(himark::higent::session::open::OpenCreatedSession {
+                    std::sync::Arc::new(himark::higent::open_session::OpenCreatedSession {
                         server,
                         open_chat: true,
                         initial_prompt: None,

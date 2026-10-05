@@ -463,7 +463,7 @@ impl himark::commands::WindowedCommand for OpenScripted {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        himark::higent::session::open::open_session(store, window, self.host, self.session.clone(), true, fx);
+        himark::higent::open_session::open_session(store, window, self.host, self.session.clone(), true, fx);
     }
 }
 

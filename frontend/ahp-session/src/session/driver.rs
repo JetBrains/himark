@@ -221,3 +221,46 @@ impl DynamicCommand for ConnectHost {
         connect(store, self.0, fx);
     }
 }
+
+/// The session MIRROR's lifeline: one standing long-poll per entered
+/// session, draining the wire's session-channel feed into the local
+/// mirror (`channel::apply_channel_actions`) and re-arming itself.
+/// The chain's one legitimate end is a disposed session.
+pub fn relaunch_session_poll(store: &Store, key: ahp_wire::SessionId, fx: &mut Fx<'_>) {
+    let Some(client) = Servers::client(store, key.host) else {
+        return;
+    };
+    fx.push(
+        AnyEffect::new(ahp_wire::effects::PollSessionEffect {
+            client: client.session.clone(),
+            session: key.session.clone(),
+        })
+        .map(move |actions| {
+            Verb::Once(Box::new(SessionActionsLanded {
+                key: key.clone(),
+                actions,
+            }))
+        }),
+    );
+}
+
+struct SessionActionsLanded {
+    key: ahp_wire::SessionId,
+    actions: Vec<ahp_types::actions::StateAction>,
+}
+
+impl DynamicOnceCommand for SessionActionsLanded {
+    fn perform(self: Box<Self>, store: &mut Store, _ui: &UiCtx, fx: &mut Fx<'_>) {
+        super::channel::apply_channel_actions(store, &self.key, &self.actions, fx);
+        if Agents::live_session(store, &self.key).is_some() {
+            relaunch_session_poll(store, self.key, fx);
+        } else {
+            // Anything else parked here is a mirror frozen for good,
+            // so the retirement leaves a trace.
+            eprintln!(
+                "[higent] session poll retired: {} is no longer live",
+                self.key.session.as_str()
+            );
+        }
+    }
+}

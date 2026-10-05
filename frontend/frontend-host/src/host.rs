@@ -363,7 +363,7 @@ fn open_folder_session(
             .map(|summary| ahp_wire::client::SessionUri::new(summary.resource.clone()))
     });
     match existing {
-        Some(session) => himark::higent::session::open::open_session(store, window, host, session, false, fx),
+        Some(session) => himark::higent::open_session::open_session(store, window, host, session, false, fx),
         None => {
             let _ = fx.push(
                 AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
@@ -374,7 +374,7 @@ fn open_folder_session(
                 .map(move |result| {
                     AppCommand::Windowed(
                         window,
-                        Arc::new(himark::higent::session::open::OpenCreatedSession {
+                        Arc::new(himark::higent::open_session::OpenCreatedSession {
                             initial_prompt: None,
                             server: host,
                             open_chat: false,

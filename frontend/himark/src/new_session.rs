@@ -1664,7 +1664,7 @@ impl crate::commands::WindowedCommand for StartComposedSession {
                     }),
                 );
             }
-            crate::higent::session::open::open_session_with(
+            crate::higent::open_session::open_session_with(
                 store,
                 window,
                 server,
@@ -1684,7 +1684,7 @@ impl crate::commands::WindowedCommand for StartComposedSession {
             .map(move |result| {
                 crate::app::AppCommand::Windowed(
                     window,
-                    Arc::new(crate::higent::session::open::OpenCreatedSession {
+                    Arc::new(crate::higent::open_session::OpenCreatedSession {
                         server,
                         open_chat: true,
                         initial_prompt: Some(prompt.clone()),
@@ -2193,7 +2193,7 @@ impl crate::commands::WindowedCommand for PlaceholderCreated {
             }
         }
 
-        crate::higent::session::open::open_session(store, window, self.host, session, false, fx);
+        crate::higent::open_session::open_session(store, window, self.host, session, false, fx);
         if let Some(directory) = row.pending {
             let host = self.host;
             ensure_placeholder(

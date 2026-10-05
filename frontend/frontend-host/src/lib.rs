@@ -494,7 +494,7 @@ impl HimarkEngine {
         app.register_toolbar_button(himark::hicomments::toolbar_button());
 
         app.register_command(Arc::new(himark::higent::drawer::ToggleAgentsView));
-        app.register_command(Arc::new(himark::higent::session::new_chat::NewChat));
+        app.register_command(Arc::new(himark::higent::new_chat::NewChat));
         app.register_toolbar_button(himark::higent::drawer::toolbar_button());
 
         app.register_toolbar_button(workbench::toolbar::composer_button());

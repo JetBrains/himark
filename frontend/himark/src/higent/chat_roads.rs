@@ -114,6 +114,9 @@ impl crate::commands::WindowedCommand for ApplyChannelActions {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        crate::higent::session::open::apply_channel_actions(store, window, &self.home, &self.actions, fx);
+        let _ = window;
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            ahp_session::session::channel::apply_channel_actions(store, &self.home, &self.actions, fx)
+        });
     }
 }
