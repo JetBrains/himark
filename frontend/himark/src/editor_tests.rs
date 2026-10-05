@@ -5553,6 +5553,59 @@ mod dock_tests {
                 ("+ Add Host…".to_owned(), 0),
             ],
         );
+
+        // Keyboard folding reaches directory groups too: Left folds the
+        // group under the cursor, Right unfolds it.
+        let docs = panel
+            .rows()
+            .iter()
+            .position(|(label, depth)| label == "docs" && *depth == 1)
+            .expect("the docs folder row stands");
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Inner(
+                crate::TreeListCommand::Content(imba::list::ListCommand::Select(docs)),
+            )),
+            &mut batch.effects(),
+        );
+        assert_eq!(
+            panel.selected_row(),
+            Some(docs),
+            "the cursor stands on the docs group"
+        );
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Fold {
+                index: docs,
+                expand: false,
+            }),
+            &mut batch.effects(),
+        );
+        assert!(
+            !panel
+                .rows()
+                .iter()
+                .any(|(label, _)| label == "! docs session"),
+            "Left folds the group under the cursor"
+        );
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Fold {
+                index: docs,
+                expand: true,
+            }),
+            &mut batch.effects(),
+        );
+        assert!(
+            panel
+                .rows()
+                .iter()
+                .any(|(label, _)| label == "! docs session"),
+            "Right unfolds it again"
+        );
     }
 
     #[test]
