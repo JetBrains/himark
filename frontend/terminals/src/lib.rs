@@ -88,6 +88,22 @@ impl Session {
         true
     }
 
+    /// Wipe the grid and the parser whole — the RE-ATTACH road. A
+    /// reconnect replays the host's snapshot from byte one, and
+    /// feeding that into a grid still holding the old copy would
+    /// double every line.
+    pub fn reset(&self) -> bool {
+        let (cols, rows) = *self.told.lock().expect("told lock");
+        let size = TermSize::new(cols as usize, rows as usize);
+        {
+            let mut term = self.term.lock();
+            *term = Term::new(Config::default(), &size, Collector(self.events.clone()));
+        }
+        *self.parser.lock().expect("parser lock") = Processor::new();
+        self.drain_events();
+        true
+    }
+
     /// The emulator, for the shell that paints the grid.
     pub fn term(&self) -> &FairMutex<Term<Collector>> {
         &self.term
@@ -302,6 +318,22 @@ mod tests {
         assert_eq!(*recorder.resizes.lock().unwrap(), vec![(120, 40)]);
         assert_eq!(session.term.lock().columns(), 120);
         assert_eq!(session.term.lock().screen_lines(), 40);
+    }
+
+    /// The re-attach replays the snapshot from byte one — the grid
+    /// must be EMPTY when it lands or every line arrives twice.
+    #[test]
+    fn reset_wipes_the_grid_for_the_replay() {
+        let recorder = Recorder::default();
+        let session = Session::new(Box::new(recorder.clone()));
+        session.resize(100, 30, 800.0, 900.0);
+        session.output(b"stale line");
+        assert!(session.reset());
+        assert_eq!(session.term.lock().columns(), 100, "the reset keeps the TOLD size");
+        assert_eq!(session.term.lock().screen_lines(), 30);
+        assert_eq!(row_text(&session, 0).trim_end(), "", "the stale copy is gone");
+        session.output(b"fresh");
+        assert_eq!(row_text(&session, 0), "fresh", "the replay lands on a clean grid");
     }
 
     #[test]

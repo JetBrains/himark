@@ -620,6 +620,11 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
                     ahp_wire::client::TerminalEvent::Exited(code) => {
                         let _ = session.exited(code.unwrap_or(-1));
                     }
+                    // A reconnect replays the host's snapshot from
+                    // byte one — wipe the grid first.
+                    ahp_wire::client::TerminalEvent::Reset => {
+                        let _ = session.reset();
+                    }
                 }
 
                 if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {

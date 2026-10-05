@@ -442,6 +442,9 @@ impl Client {
 pub enum TerminalEvent {
     Data(String),
     Exited(Option<i32>),
+    /// A RECONNECT is about to replay the host's snapshot from byte
+    /// one: wipe the grid, or every line lands twice.
+    Reset,
 }
 
 #[derive(Clone, Debug)]

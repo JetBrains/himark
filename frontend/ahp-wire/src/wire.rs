@@ -73,23 +73,132 @@ pub fn test_runtime() -> tokio::runtime::Handle {
         .clone()
 }
 
-pub struct WireHost {
-    active: Arc<Mutex<Option<Arc<Active>>>>,
+/// One open terminal's standing: the event road into its pane and
+/// the geometry last asked of it. What the HOST holds (the PTY, the
+/// content snapshot) survives a dropped connection; this is the
+/// client half the re-attach needs.
+#[derive(Clone)]
+struct TerminalSeat {
+    events: Arc<dyn Fn(crate::client::TerminalEvent) + Send + Sync>,
+    cols: u16,
+    rows: u16,
+}
 
-    /// Held for the whole of a reconnect. `active` is released while
-    /// the new connection dials (a dial blocks for seconds), and every
-    /// ask that lands meanwhile must WAIT for that one connection —
-    /// not dial its own: two dials are two connections, the second
-    /// carries no feeds, and whichever stores last orphans the
-    /// other's subscriptions.
-    reconnecting: Mutex<()>,
+/// The client's whole mutable surface, ONE persistent value behind
+/// ONE cell. Readers take a snapshot — an Arc clone under a
+/// pointer-wide lock — and work against an immutable world; writers
+/// derive the next value from the latest and swap it in whole, so a
+/// transition (a connection landing, an attempt failing, a seat
+/// retiring) is a single step carrying everything it implies. No
+/// field can race another field.
+#[derive(Clone, Default)]
+struct WireState {
+    active: Option<Arc<Active>>,
 
     /// Reconnect attempts, counted as they finish, with the last
     /// one's failure. An ask that waited out an attempt which then
     /// failed takes that failure instead of dialing again: a host
     /// that is down answers every waiter at once, not one dial
     /// (and one connect timeout) per waiter in a row.
-    attempts: Mutex<Attempts>,
+    attempts: Attempts,
+
+    /// The OPEN terminals, carried across connections like the feeds:
+    /// the host keeps a client-claimed PTY alive through a dropped
+    /// connection, so the reconnect re-attaches each seat — grid
+    /// reset, snapshot replayed whole, geometry re-told.
+    terminals: rpds::HashTrieMapSync<Uri, TerminalSeat>,
+
+    /// Terminals DISPOSED while no connection stood: the host still
+    /// runs their PTYs, so the next connection retires them instead
+    /// of re-attaching.
+    orphans: rpds::VectorSync<Uri>,
+}
+
+/// Derive the next state from the latest and swap it in — the one
+/// write door. The closure is pure bookkeeping: nothing in it may
+/// block or dial.
+fn swap_state<T>(
+    cell: &Mutex<Arc<WireState>>,
+    change: impl FnOnce(&mut WireState) -> T,
+) -> T {
+    let mut held = cell.lock().expect("wire state");
+    let mut next = (**held).clone();
+    let out = change(&mut next);
+    *held = Arc::new(next);
+    out
+}
+
+/// Subscribe a terminal channel on THIS connection and wire its event
+/// stream into the pane. `reset_first` is the re-attach flag: the
+/// snapshot replays from byte one, so a grid that already holds the
+/// old copy is wiped before it lands. Fresh opens pass false.
+async fn attach_terminal(
+    active: &Arc<Active>,
+    channel: Uri,
+    events: Arc<dyn Fn(crate::client::TerminalEvent) + Send + Sync>,
+    reset_first: bool,
+) -> Result<(), String> {
+    let (result, mut sub) = active
+        .client
+        .subscribe(channel.clone())
+        .await
+        .map_err(|error| format!("subscribe {channel}: {error}"))?;
+
+    if reset_first {
+        events(crate::client::TerminalEvent::Reset);
+    }
+    if let Some(SnapshotState::Terminal(state)) = result.snapshot.map(|s| s.state) {
+        for part in &state.content {
+            match part {
+                ahp_types::state::TerminalContentPart::Unclassified(part) => {
+                    events(crate::client::TerminalEvent::Data(part.value.clone()))
+                }
+                ahp_types::state::TerminalContentPart::Command(part) => {
+                    events(crate::client::TerminalEvent::Data(part.output.clone()))
+                }
+                _ => {}
+            }
+        }
+        if let ahp_types::state::TerminalLifecycleState::Exited(exited) = &state.lifecycle {
+            events(crate::client::TerminalEvent::Exited(
+                exited.exit_code.map(|code| code as i32),
+            ));
+        }
+    }
+    tokio::spawn(async move {
+        while let Some(event) = sub.recv().await {
+            if let ahp::SubscriptionEvent::Action(envelope) = event {
+                match envelope.action {
+                    StateAction::TerminalData(data) => {
+                        events(crate::client::TerminalEvent::Data(data.data))
+                    }
+                    StateAction::TerminalExited(exited) => {
+                        events(crate::client::TerminalEvent::Exited(
+                            exited.exit_code.map(|code| code as i32),
+                        ))
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+    Ok(())
+}
+
+pub struct WireHost {
+    /// THE state — see `WireState`. Everything else here is either
+    /// immutable wiring (runtime, connector, tag) or a synchronization
+    /// PRIMITIVE, not data: the reconnect token, the connected bell,
+    /// two counters.
+    state: Arc<Mutex<Arc<WireState>>>,
+
+    /// Held for the whole of a reconnect — a critical-section TOKEN,
+    /// not state. `active` is released while the new connection dials
+    /// (a dial blocks for seconds), and every ask that lands meanwhile
+    /// must WAIT for that one connection — not dial its own: two dials
+    /// are two connections, the second carries no feeds, and whichever
+    /// stores last orphans the other's subscriptions.
+    reconnecting: Mutex<()>,
 
     /// Rung when a connection becomes ACTIVE. Polls that found no
     /// connection wait on this (or a backoff) before re-arming.
@@ -108,7 +217,7 @@ pub struct WireHost {
     connector: Arc<dyn crate::transport::Connector>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Attempts {
     finished: u64,
     failed: Option<String>,
@@ -188,9 +297,8 @@ impl WireHost {
         let tag = format!("client#{}", CLIENT.fetch_add(1, Ordering::Relaxed));
         tracing::info!(target: "ahp_wire", client = %tag, ?discovery, "client opened");
         Self {
-            active: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new(Arc::new(WireState::default()))),
             reconnecting: Mutex::new(()),
-            attempts: Mutex::new(Attempts::default()),
             connected: Arc::new(tokio::sync::Notify::new()),
             next_turn: AtomicU64::new(1),
             discovery,
@@ -330,7 +438,7 @@ impl WireHost {
     {
         let tag = self.tag.clone();
         let connected = Arc::clone(&self.connected);
-        let slot = Arc::clone(&self.active);
+        let slot = Arc::clone(&self.state);
         self.run(move |active| async move {
             let died = Arc::clone(&active).died();
             let first = tokio::select! {
@@ -342,8 +450,10 @@ impl WireHost {
             tokio::pin!(up);
             up.as_mut().enable();
             let next = {
-                let held = slot.lock().expect("wire active").clone();
-                held.filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
+                let held = slot.lock().expect("wire state").clone();
+                held.active
+                    .clone()
+                    .filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
             };
             let active = match next {
                 Some(active) => active,
@@ -352,7 +462,7 @@ impl WireHost {
                     if waited.is_err() {
                         return first;
                     }
-                    match slot.lock().expect("wire active").clone() {
+                    match slot.lock().expect("wire state").active.clone() {
                         Some(active) => active,
                         None => return first,
                     }
@@ -366,16 +476,23 @@ impl WireHost {
         })
     }
 
+    /// The state as it stands — an immutable world to work against.
+    fn snapshot(&self) -> Arc<WireState> {
+        self.state.lock().expect("wire state").clone()
+    }
+
+    fn swap<T>(&self, change: impl FnOnce(&mut WireState) -> T) -> T {
+        swap_state(&self.state, change)
+    }
+
     /// The LIVE connection or nothing — no reconnect, no waiting.
     /// This is the only road a caller that must not block may take:
     /// view perform code on the UI thread, anything on the runtime.
     fn try_active(&self) -> Option<Arc<Active>> {
-        self.active
-            .lock()
-            .expect("wire active")
-            .as_ref()
+        self.snapshot()
+            .active
+            .clone()
             .filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
-            .cloned()
     }
 
     fn ensure_active(&self) -> Result<Arc<Active>, String> {
@@ -396,37 +513,29 @@ impl WireHost {
         // Dead or absent: ONE reconnect at a time. Whoever waited here
         // re-reads `active` — the reconnect they waited for is theirs,
         // its failure too.
-        let seen = self.attempts.lock().expect("wire attempts").finished;
+        let seen = self.snapshot().attempts.finished;
         let _reconnecting = self.reconnecting.lock().expect("wire reconnecting");
-        let previous = {
-            let mut held = self.active.lock().expect("wire active");
-            if let Some(active) = held.as_ref().filter(|active| live(active)) {
-                return Ok(Arc::clone(active));
-            }
-            // An attempt finished while this ask waited for the lock
-            // and the connection is still not live: that attempt
-            // failed, and this ask waited for it.
-            let attempts = self.attempts.lock().expect("wire attempts");
-            if attempts.finished > seen {
-                if let Some(error) = attempts.failed.clone() {
-                    return Err(error);
-                }
-            }
-            drop(attempts);
-            match held.take() {
-                Some(active) => {
-                    tracing::warn!(target: "ahp_wire", client = %self.tag, "connection DEAD — reconnecting");
-                    Some(active)
-                }
-                None => None,
-            }
-        };
-        let outcome = self.connect_fresh(&previous);
-        {
-            let mut attempts = self.attempts.lock().expect("wire attempts");
-            attempts.finished += 1;
-            attempts.failed = outcome.as_ref().err().cloned();
+        let world = self.snapshot();
+        if let Some(active) = world.active.as_ref().filter(|active| live(active)) {
+            return Ok(Arc::clone(active));
         }
+        // An attempt finished while this ask waited for the token and
+        // the connection is still not live: that attempt failed, and
+        // this ask waited for it.
+        if world.attempts.finished > seen {
+            if let Some(error) = world.attempts.failed.clone() {
+                return Err(error);
+            }
+        }
+        let previous = self.swap(|state| state.active.take());
+        if previous.is_some() {
+            tracing::warn!(target: "ahp_wire", client = %self.tag, "connection DEAD — reconnecting");
+        }
+        let outcome = self.connect_fresh(&previous);
+        self.swap(|state| {
+            state.attempts.finished += 1;
+            state.attempts.failed = outcome.as_ref().err().cloned();
+        });
         match outcome {
             Ok(active) => {
                 if let Some(previous) = previous {
@@ -437,7 +546,7 @@ impl WireHost {
             }
             Err(error) => {
                 if let Some(previous) = previous {
-                    *self.active.lock().expect("wire active") = Some(previous);
+                    self.swap(|state| state.active = Some(previous));
                 }
                 Err(error)
             }
@@ -471,8 +580,7 @@ impl WireHost {
     fn unsubscribe_channel(&self, channel: Uri) -> RunFuture<()> {
         let slot = OneShot::new();
         let live = {
-            let held = self.active.lock().expect("wire active");
-            match held.as_ref() {
+            match self.snapshot().active.as_ref() {
                 Some(active) if !active.dead.load(std::sync::atomic::Ordering::Relaxed) => {
                     Some(Arc::clone(active))
                 }
@@ -525,7 +633,7 @@ impl WireHost {
     /// out keepalive does — the next ask reconnects.
     #[doc(hidden)]
     pub fn mark_dead(&self) {
-        if let Some(active) = self.active.lock().expect("wire active").as_ref() {
+        if let Some(active) = self.snapshot().active.as_ref() {
             active.die();
         }
     }
@@ -674,7 +782,7 @@ impl WireHost {
             channels = active.feeds.lock().expect("wire feeds").len(),
             "connection ACTIVE"
         );
-        *self.active.lock().expect("wire active") = Some(Arc::clone(&active));
+        self.swap(|state| state.active = Some(Arc::clone(&active)));
         Ok(active)
     }
 
@@ -691,7 +799,11 @@ impl WireHost {
         if had_root {
             subscriptions.push(ROOT.to_owned());
         }
-        if subscriptions.is_empty() {
+        let idle_terminals = {
+            let world = self.snapshot();
+            world.terminals.is_empty() && world.orphans.is_empty()
+        };
+        if subscriptions.is_empty() && idle_terminals {
             return Ok(());
         }
 
@@ -824,6 +936,65 @@ impl WireHost {
                 self.tag.clone(),
                 Arc::clone(&active.dead),
             );
+        }
+
+        // The TERMINALS: the host kept their PTYs through the outage.
+        // Each seat re-attaches — grid wiped, the host's snapshot
+        // replayed whole, the recorded geometry re-told (resizes the
+        // outage dropped land here). A seat the host no longer knows
+        // exits its pane honestly instead of freezing it.
+        let seats: Vec<(Uri, TerminalSeat)> = self
+            .snapshot()
+            .terminals
+            .iter()
+            .map(|(channel, seat)| (channel.clone(), seat.clone()))
+            .collect();
+        for (channel, seat) in seats {
+            let (events, cols, rows) = (seat.events, seat.cols, seat.rows);
+            match attach_terminal(active, channel.clone(), Arc::clone(&events), true).await {
+                Ok(()) => {
+                    let _ = active
+                        .client
+                        .dispatch(
+                            channel,
+                            StateAction::TerminalResized(
+                                ahp_types::actions::TerminalResizedAction {
+                                    cols: cols as i64,
+                                    rows: rows as i64,
+                                },
+                            ),
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        target: "ahp_wire",
+                        client = %self.tag,
+                        %channel,
+                        %error,
+                        "terminal did not survive the reconnect — retiring its pane"
+                    );
+                    events(crate::client::TerminalEvent::Exited(None));
+                    self.swap(|state| state.terminals.remove_mut(&channel));
+                }
+            }
+        }
+        let orphans: Vec<Uri> = self.swap(|state| {
+            let drained = state.orphans.iter().cloned().collect();
+            state.orphans = rpds::VectorSync::new_sync();
+            drained
+        });
+        for channel in orphans {
+            let _: Result<serde_json::Value, _> = active
+                .client
+                .request(
+                    "disposeTerminal",
+                    ahp_types::commands::DisposeTerminalParams {
+                        meta: None,
+                        channel: channel.clone(),
+                    },
+                )
+                .await;
         }
         Ok(())
     }
@@ -2146,6 +2317,21 @@ impl TerminalClient for WireHost {
         events: Arc<dyn Fn(crate::client::TerminalEvent) + Send + Sync>,
     ) -> ClientFuture<Option<crate::client::TerminalHandle>> {
         let channel = channel.into_string();
+        // The seat is on record from the first ask: a reconnect that
+        // lands mid-open re-attaches it like any other (a failed open
+        // retires it on the spot below).
+        self.swap(|state| {
+            state.terminals.insert_mut(
+                channel.clone(),
+                TerminalSeat {
+                    events: Arc::clone(&events),
+                    cols,
+                    rows,
+                },
+            )
+        });
+        let cell = Arc::clone(&self.state);
+        let channel_for_cleanup = channel.clone();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
                 .client
@@ -2167,56 +2353,20 @@ impl TerminalClient for WireHost {
                 )
                 .await
                 .map_err(|error| format!("createTerminal: {error}"))?;
-            let (result, mut sub) = active
-                .client
-                .subscribe(channel.clone())
-                .await
-                .map_err(|error| format!("subscribe {channel}: {error}"))?;
-
-            if let Some(SnapshotState::Terminal(state)) = result.snapshot.map(|s| s.state) {
-                for part in &state.content {
-                    match part {
-                        ahp_types::state::TerminalContentPart::Unclassified(part) => {
-                            events(crate::client::TerminalEvent::Data(part.value.clone()))
-                        }
-                        ahp_types::state::TerminalContentPart::Command(part) => {
-                            events(crate::client::TerminalEvent::Data(part.output.clone()))
-                        }
-                        _ => {}
-                    }
-                }
-                if let ahp_types::state::TerminalLifecycleState::Exited(exited) = &state.lifecycle {
-                    events(crate::client::TerminalEvent::Exited(
-                        exited.exit_code.map(|code| code as i32),
-                    ));
-                }
-            }
-            tokio::spawn(async move {
-                while let Some(event) = sub.recv().await {
-                    if let ahp::SubscriptionEvent::Action(envelope) = event {
-                        match envelope.action {
-                            StateAction::TerminalData(data) => {
-                                events(crate::client::TerminalEvent::Data(data.data))
-                            }
-                            StateAction::TerminalExited(exited) => {
-                                events(crate::client::TerminalEvent::Exited(
-                                    exited.exit_code.map(|code| code as i32),
-                                ))
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            });
+            attach_terminal(&active, channel.clone(), events, false).await?;
             Ok(Some(crate::client::TerminalHandle {
                 channel: crate::client::ChannelUri::new(channel),
             }))
         });
         Box::pin(async move {
-            asked.await.unwrap_or_else(|error| {
-                eprintln!("[hiahp] {error}");
-                None
-            })
+            match asked.await {
+                Ok(handle) => handle,
+                Err(error) => {
+                    eprintln!("[hiahp] {error}");
+                    swap_state(&cell, |state| state.terminals.remove_mut(&channel_for_cleanup));
+                    None
+                }
+            }
         })
     }
 
@@ -2236,6 +2386,17 @@ impl TerminalClient for WireHost {
 
     fn terminal_resize(&self, channel: &crate::client::ChannelUri, cols: u16, rows: u16) {
         let channel = channel.as_str().to_owned();
+        // The geometry is RECORDED whatever the connection's state:
+        // a resize that cannot be sent now is re-told whole by the
+        // reconnect's re-attach — dropped off the wire, never lost.
+        self.swap(|state| {
+            if let Some(seat) = state.terminals.get(&channel) {
+                let mut seat = seat.clone();
+                seat.cols = cols;
+                seat.rows = rows;
+                state.terminals.insert_mut(channel.clone(), seat);
+            }
+        });
         self.run_live(move |active| async move {
             active
                 .client
@@ -2253,6 +2414,19 @@ impl TerminalClient for WireHost {
 
     fn terminal_dispose(&self, channel: &crate::client::ChannelUri) {
         let channel = channel.as_str().to_owned();
+        let down = self.try_active().is_none();
+        self.swap(|state| {
+            state.terminals.remove_mut(&channel);
+            if down {
+                // The host still runs this PTY and will keep it
+                // through the outage — the NEXT connection retires it
+                // instead of re-attaching.
+                state.orphans.push_back_mut(channel.clone());
+            }
+        });
+        if down {
+            return;
+        }
         self.run_live(move |active| async move {
             let _: serde_json::Value = active
                 .client
@@ -2661,6 +2835,47 @@ mod tests {
         host.terminal_dispose(&channel);
         // Still here, synchronously: nothing dialed (NoDial panics),
         // nothing blocked.
+    }
+
+    /// A resize against a down host is dropped off the WIRE, never
+    /// lost: the seat records the geometry and the reconnect's
+    /// re-attach re-tells it. A dispose while down queues the channel
+    /// for the next connection to retire (the host keeps the PTY
+    /// through an outage).
+    #[test]
+    fn a_down_hosts_terminal_keeps_its_geometry_and_queues_its_disposal() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let host = down_host(&runtime);
+        let channel = crate::client::ChannelUri::new("ahp-terminal:/t");
+        host.swap(|state| {
+            state.terminals.insert_mut(
+                channel.as_str().to_owned(),
+                TerminalSeat {
+                    events: Arc::new(|_| {}),
+                    cols: 80,
+                    rows: 24,
+                },
+            )
+        });
+        use crate::client::TerminalClient;
+        host.terminal_resize(&channel, 120, 40);
+        {
+            let world = host.snapshot();
+            let seat = world.terminals.get(channel.as_str()).expect("the seat");
+            assert_eq!((seat.cols, seat.rows), (120, 40), "geometry recorded while down");
+        }
+        host.terminal_dispose(&channel);
+        let world = host.snapshot();
+        assert!(world.terminals.is_empty(), "the seat retired at once");
+        assert_eq!(
+            world.orphans.iter().cloned().collect::<Vec<_>>(),
+            vec![channel.as_str().to_owned()],
+            "the host-side PTY is queued for the next connection to retire"
+        );
     }
 
     #[test]
