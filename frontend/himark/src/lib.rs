@@ -13,11 +13,11 @@ pub mod hifiles;
 pub mod higent;
 pub mod hihistory;
 pub mod hipeek;
-pub mod pane_services;
 pub mod hisearch;
 pub mod keymap;
 pub mod modal;
 pub mod new_session;
+pub mod pane_services;
 pub mod registry;
 pub mod save;
 pub mod startup_profile;
@@ -33,9 +33,7 @@ pub mod toc;
 pub mod diff_canvas;
 pub mod diff_pane;
 pub mod pane_rows;
-pub mod watch;
 #[cfg(test)]
 mod terminal_tests;
+pub mod watch;
 pub mod workspace;
-
-

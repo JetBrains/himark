@@ -71,7 +71,10 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
             fx.relaunch_erased(
                 &mut slot,
                 imba::effect::AnyEffect::new(launch.effect).map(move |outcome| {
-                    wrap(id, editor::editor_view::EditorCommand::ApplyScrollStripes(outcome))
+                    wrap(
+                        id,
+                        editor::editor_view::EditorCommand::ApplyScrollStripes(outcome),
+                    )
                 }),
             );
             document.note_scroll_stripe_token(editor, slot);

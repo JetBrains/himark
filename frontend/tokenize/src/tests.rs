@@ -4,7 +4,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use rope::{metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
+use rope::{cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope};
 
 use crate::{rewrite, Safepoint};
 

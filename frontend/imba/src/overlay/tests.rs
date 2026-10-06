@@ -5,7 +5,14 @@ use std::cell::RefCell;
 
 use skia_safe::{Point, Rect, Size};
 
-use crate::{arena::Arena, container::Container, event::{Event, EventResult, MouseButton}, leaf::leaf, thunk_ext::ThunkExt, Thunk, ThunkBox, Widget};
+use crate::{
+    arena::Arena,
+    container::Container,
+    event::{Event, EventResult, MouseButton},
+    leaf::leaf,
+    thunk_ext::ThunkExt,
+    Thunk, ThunkBox, Widget,
+};
 
 use super::OverlayHost;
 
@@ -463,7 +470,10 @@ fn a_lazy_subtree_mints_requests_only_for_what_realizes() {
 
 #[test]
 fn scroll_carries_anchors_by_the_scroll_offset() {
-    use crate::{constraints::Constraints, scroll::ScrollCommand, scroll::ScrollView, store::Store, ui::UiCtx, View};
+    use crate::{
+        constraints::Constraints, scroll::ScrollCommand, scroll::ScrollView, store::Store,
+        ui::UiCtx, View,
+    };
 
     struct Tall;
     impl View for Tall {

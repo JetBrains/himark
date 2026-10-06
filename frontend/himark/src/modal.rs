@@ -3,7 +3,6 @@
 
 use crate::app::AppCommand;
 
-
 pub fn modal_scope(
     window: ::workbench::window::WindowId,
 ) -> impl Fn(imba::dyn_view::DynCommand) -> AppCommand + Send + Clone + 'static {
@@ -16,9 +15,9 @@ pub fn dock_scope(
     move |command| {
         AppCommand::Content(
             window,
-            ::workbench::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(::workbench::dock::DockCommand::Content(
-                command,
-            ))),
+            ::workbench::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
+                ::workbench::dock::DockCommand::Content(command),
+            )),
         )
     }
 }

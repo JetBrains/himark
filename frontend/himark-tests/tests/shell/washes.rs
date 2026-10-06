@@ -1,13 +1,13 @@
 use super::*;
 use ahp_locations::driver::DisposeFeed;
-use locations::FeedId;
-use locations::FoundLocation;
-use locations::LocationLists;
-use locations::LocationsFeedRow;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Application;
 use himark::app::OpenedDocument;
+use locations::FeedId;
+use locations::FoundLocation;
+use locations::LocationLists;
+use locations::LocationsFeedRow;
 use std::sync::Arc;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
@@ -21,8 +21,7 @@ fn located(name: &str) -> editor::location::ResourceLocation {
 fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
     let window = app.sole_window();
     himark::workspace::entity_state(
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("the window entity"),
+        ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
     )
     .lists()
 }
@@ -30,8 +29,7 @@ fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
 fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
     let window = app.sole_window();
     himark::workspace::entity_state(
-        ::workbench::window::Windows::window_ref(app.store(), window)
-            .expect("the window entity"),
+        ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
     )
     .locations_wire()
 }

@@ -26,8 +26,12 @@ pub struct SaveDocument {
     /// The save-as aftermath: the document moved to a new location —
     /// the shell updates whatever tracks locations (recents, watches).
     relocated: Arc<
-        dyn Fn(&mut Store, imba::store::Id<crate::OpenDocuments>, &ResourceLocation, &ResourceLocation)
-            + Send
+        dyn Fn(
+                &mut Store,
+                imba::store::Id<crate::OpenDocuments>,
+                &ResourceLocation,
+                &ResourceLocation,
+            ) + Send
             + Sync,
     >,
 }
@@ -162,7 +166,9 @@ impl SaveDocument {
             })
             .map(move |stored| editor::editor_view::EditorCommand::Dynamic {
                 id: "file.save",
-                payload: Some(editor::dynamic::DynPayload::new((stored, revision, snapshot))),
+                payload: Some(editor::dynamic::DynPayload::new((
+                    stored, revision, snapshot,
+                ))),
             }),
         );
         if let Some(previous) = previous {

@@ -17,10 +17,10 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
 
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
 use ::canvas::diff_pane::*;
-use himark::diff_pane::*;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::app_ext::AppExt;
+use himark::diff_pane::*;
 use std::sync::{mpsc, Arc};
 
 fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
@@ -396,8 +396,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
             };
             landed += 1;
             app.perform_batch(vec![command]);
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             assert_pair_aligned(&app);
             if landed > 200 {
                 panic!("step {step}: landings never quiesce");
@@ -803,8 +802,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ =
-            app.draw_window_sized(app.sole_window(), surface.canvas(), small);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), small);
     }
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..60 {
@@ -812,8 +810,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ =
-            app.draw_window_sized(app.sole_window(), surface.canvas(), small);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), small);
     }
 
     settle(&mut app, &mut surface, 120);
@@ -844,8 +841,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ =
-            app.draw_window_sized(app.sole_window(), surface.canvas(), frame);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), frame);
     }
     settle(&mut app, &mut surface, 120);
     let mut unsettled = 0;
@@ -872,10 +868,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(),
-            surface.canvas(),
-            frame_size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), frame_size);
     }
     settle(&mut app, &mut surface, 120);
     let mut unsettled = 0;
@@ -1070,9 +1063,10 @@ fn washes_follow_the_scroll_into_deep_documents() {
             let Some(state) = panel.diff_state(app.store()) else {
                 return;
             };
-            ranges = documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
-                .expect("document")
-                .markup_styled_ranges(state.hunk_markup_oracle());
+            ranges =
+                documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                    .expect("document")
+                    .markup_styled_ranges(state.hunk_markup_oracle());
         });
         ranges
     };
@@ -1200,9 +1194,12 @@ fn scrolling_after_a_theme_toggle_converges() {
             let document =
                 documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
                     .expect("document");
-            document
-                .editor_ids()
-                .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
+            document.editor_ids().any(|editor| {
+                matches!(
+                    document.focus(editor),
+                    editor::editor_view::EditorFocus::Inlay(_)
+                )
+            })
         }
     };
     let mut focused = false;
@@ -1210,8 +1207,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         for x in [620, 680, 740, 800, 860, 920, 1000] {
             let y = 60.0 + dy as f32;
             himark::test_driver::click(&mut app, x as f32, y, 1100.0, 800.0);
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             if cell_focused(&app) {
                 focused = true;
                 break 'probe;
@@ -1411,19 +1407,24 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     'probe: for x in [760, 800, 840, 880] {
         for y in [95, 110, 125, 140] {
             himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let focused = {
-                let document =
-                    documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
-                        .expect("document");
-                document
-                    .editor_ids()
-                    .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
+                let document = documents::OpenDocuments::document_ref(
+                    app.store(),
+                    app.sole_documents(),
+                    info.0,
+                )
+                .expect("document");
+                document.editor_ids().any(|editor| {
+                    matches!(
+                        document.focus(editor),
+                        editor::editor_view::EditorFocus::Inlay(_)
+                    )
+                })
             };
             if focused {
                 cell_focused = true;
@@ -1479,8 +1480,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             landed += 1;
             assert!(landed < 300, "enter {step}: landings never quiesce");
             app.perform_batch(vec![command]);
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             assert_pair_aligned(&app);
         }
     }
@@ -1696,8 +1696,9 @@ fn document_text(app: &Application, name: &str) -> String {
         .into_iter()
         .find(|(_, info)| info.name() == name)
         .expect("the document is open");
-    let document = documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
-        .expect("document");
+    let document =
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+            .expect("document");
     let count = document.text().byte_count();
     document.text().view().byte_string(0, count)
 }
@@ -1742,18 +1743,23 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             "side".to_owned(),
             0,
         );
-        (id, pane, documents::entity_view::EditorIdView::new(test_docs(), id, editor))
+        (
+            id,
+            pane,
+            documents::entity_view::EditorIdView::new(test_docs(), id, editor),
+        )
     };
 
     let (old_doc, _, old_entity) = open("old side\n", false);
     let (new_doc, new_pane, new_entity) = open("new side\n", true);
 
-    let diff = documents::OpenDocuments::track_diff(&mut store, test_docs(), old_doc, new_doc, false)
-        .expect("both sides registered");
+    let diff =
+        documents::OpenDocuments::track_diff(&mut store, test_docs(), old_doc, new_doc, false)
+            .expect("both sides registered");
     let handle = documents::OpenDocuments::diff_handle(&store, test_docs(), diff).expect("tracked");
     let right_extras = {
-        let mut document =
-            documents::OpenDocuments::document(&mut store, test_docs(), new_doc).expect("registered");
+        let mut document = documents::OpenDocuments::document(&mut store, test_docs(), new_doc)
+            .expect("registered");
         let id = document.add_owned_markup(new_entity.editor());
         documents::OpenDocuments::put_document(&mut store, test_docs(), new_doc, document);
         id
@@ -1879,7 +1885,14 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     }
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
-        documents::OpenDocuments::register(&mut store, test_docs(), document, None, name.to_owned(), 0)
+        documents::OpenDocuments::register(
+            &mut store,
+            test_docs(),
+            document,
+            None,
+            name.to_owned(),
+            0,
+        )
     };
     let old = register(&format!("{middle}old tail\n"), "old");
     let new = register(&format!("{middle}new tail\n"), "new");
@@ -1923,7 +1936,14 @@ fn a_shared_pair_reuses_the_standing_entry() {
     let fonts = ::editor::test_document::test_fonts_collection();
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
-        documents::OpenDocuments::register(&mut store, test_docs(), document, None, name.to_owned(), 0)
+        documents::OpenDocuments::register(
+            &mut store,
+            test_docs(),
+            document,
+            None,
+            name.to_owned(),
+            0,
+        )
     };
     let old = register("one\ntwo\n", "old");
     let new = register("one\nTWO\n", "new");
@@ -2097,21 +2117,28 @@ fn the_unified_view_switches_between_split_and_inline() {
             .and_then(|pair| pair.state.clone())
             .expect("the pair's state row")
     };
-    assert_eq!(pair_state(&app).unified_layout(), editor::unified_diff::DiffLayout::Split);
+    assert_eq!(
+        pair_state(&app).unified_layout(),
+        editor::unified_diff::DiffLayout::Split
+    );
 
     let toggle = |app: &mut Application| {
-        let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
-            .into_iter()
-            .find(|presentable| presentable.id == "diff.toggle-layout")
-            .expect("the pane offers the layout toggle")
-            .command;
+        let command =
+            himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+                .into_iter()
+                .find(|presentable| presentable.id == "diff.toggle-layout")
+                .expect("the pane offers the layout toggle")
+                .command;
         assert!(app.perform_command(command));
     };
     toggle(&mut app);
     settle(&mut app, &mut surface);
 
     let state = pair_state(&app);
-    assert_eq!(state.unified_layout(), editor::unified_diff::DiffLayout::Inline);
+    assert_eq!(
+        state.unified_layout(),
+        editor::unified_diff::DiffLayout::Inline
+    );
     let inline_editor = state.inline_editor().expect("the inline editor minted");
     let pair = documents::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id)
         .expect("the pair");
@@ -2182,7 +2209,10 @@ fn the_unified_view_switches_between_split_and_inline() {
 
     toggle(&mut app);
     settle(&mut app, &mut surface);
-    assert_eq!(pair_state(&app).unified_layout(), editor::unified_diff::DiffLayout::Split);
+    assert_eq!(
+        pair_state(&app).unified_layout(),
+        editor::unified_diff::DiffLayout::Split
+    );
 }
 
 /// PERF REGRESSION (the DiffCanvas trace, 2026-09-17): painting the
@@ -2249,11 +2279,12 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     settle(&mut app, &mut surface);
 
-    let toggle = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
-        .into_iter()
-        .find(|presentable| presentable.id == "diff.toggle-layout")
-        .expect("the pane offers the layout toggle")
-        .command;
+    let toggle =
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            .into_iter()
+            .find(|presentable| presentable.id == "diff.toggle-layout")
+            .expect("the pane offers the layout toggle")
+            .command;
     assert!(app.perform_command(toggle));
     settle(&mut app, &mut surface);
 
@@ -2498,14 +2529,12 @@ fn folded_squash_paint_cost_is_size_independent() {
                 &mut app,
                 imba::anim::AnimationClock::from_millis(0.0),
             );
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
         let mut times = Vec::new();
         for _ in 0..10 {
             let started = std::time::Instant::now();
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
         times.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -2798,7 +2827,11 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let (rows, layouts, _) = probe(&app);
     assert_eq!(rows.len(), 1);
     assert!(rows[0].2 > 0.0, "the diff row stands expanded: {rows:?}");
-    assert_eq!(layouts[0].1, editor::unified_diff::DiffLayout::Inline, "mounted inline");
+    assert_eq!(
+        layouts[0].1,
+        editor::unified_diff::DiffLayout::Inline,
+        "mounted inline"
+    );
 
     // The header geometry, mirrored from HeaderFace::new: the chevron
     // strip at the left, the three buttons walking in from the right.
@@ -2864,7 +2897,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     // The focused row offers the open roads on the focus chain —
     // cmd-enter ("workbench.open-in-full") needs nothing more.
-    let offered = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
+    let offered =
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
     for id in ["workbench.open-in-full", "diff.open-pane"] {
         assert!(
             offered.iter().any(|presentable| presentable.id == id),
@@ -3333,7 +3367,10 @@ fn reconcile_follows_the_change_set_without_flashing() {
     };
     let canvas_file = |name: &str, updated: u64| ::canvas::diff_canvas::CanvasFile {
         title: name.to_owned(),
-        old: location(&format!("{name}.old"), editor::location::ResourceType::document()),
+        old: location(
+            &format!("{name}.old"),
+            editor::location::ResourceType::document(),
+        ),
         new: location(name, editor::location::ResourceType::document()),
         added: Some(1),
         removed: Some(1),
@@ -3477,8 +3514,14 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // Identical sides: the initial diff is the identity.
     let body = "hello\nworld\n";
-    let old = editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new());
-    let new = editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new());
+    let old = editor::document::Document::new(
+        text::text::Text::from_string_exact(body),
+        editor::markup::Markup::new(),
+    );
+    let new = editor::document::Document::new(
+        text::text::Text::from_string_exact(body),
+        editor::markup::Markup::new(),
+    );
     let file = ::canvas::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
         old: doc_loc("a.md.old"),
@@ -3532,8 +3575,10 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             })
             .expect("the row's diff is tracked on the registered document")
     };
-    let has_edit =
-        |op: &operation::operation::Operation| op.iter().any(|o| !matches!(o, operation::op::Op::Retain(_)));
+    let has_edit = |op: &operation::operation::Operation| {
+        op.iter()
+            .any(|o| !matches!(o, operation::op::Op::Retain(_)))
+    };
 
     settle(&mut app);
     let before = op_of(&app);
@@ -3548,8 +3593,8 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document =
-            documents::OpenDocuments::document(&store, app_docs, target_id).expect("target document");
+        let mut document = documents::OpenDocuments::document(&store, app_docs, target_id)
+            .expect("target document");
         let mut batch = imba::effect::Batch::new();
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
@@ -3760,7 +3805,10 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
         updated: 0,
     };
     let make = |body: &str| {
-        editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new())
+        editor::document::Document::new(
+            text::text::Text::from_string_exact(body),
+            editor::markup::Markup::new(),
+        )
     };
     let old = make("hello\n");
     let new = make("hello\n");
@@ -3909,7 +3957,10 @@ fn a_committed_change_set_empties_the_canvas() {
     );
 }
 
-fn canvas_file(key: &editor::location::ResourceLocation, updated: u64) -> ::canvas::diff_canvas::CanvasFile {
+fn canvas_file(
+    key: &editor::location::ResourceLocation,
+    updated: u64,
+) -> ::canvas::diff_canvas::CanvasFile {
     ::canvas::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
         old: editor::location::ResourceLocation::new(
@@ -3938,7 +3989,10 @@ fn seeded_working_canvas(
     );
     let file = canvas_file(&key, 1);
     let make = |body: &str| {
-        editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new())
+        editor::document::Document::new(
+            text::text::Text::from_string_exact(body),
+            editor::markup::Markup::new(),
+        )
     };
     let built = |old_body: &str, new_body: &str| {
         prepared_pair(
@@ -3998,8 +4052,12 @@ fn a_retired_file_leaves_no_orphan_row() {
         removed: Some(1),
         updated,
     };
-    let make =
-        |b: &str| editor::document::Document::new(text::text::Text::from_string_exact(b), editor::markup::Markup::new());
+    let make = |b: &str| {
+        editor::document::Document::new(
+            text::text::Text::from_string_exact(b),
+            editor::markup::Markup::new(),
+        )
+    };
     let built = |name: &str, o: &str, n: &str| {
         prepared_pair(
             loc(&format!("{name}.old")),

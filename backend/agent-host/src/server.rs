@@ -2669,10 +2669,11 @@ impl Host {
     async fn search(&self, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
         const DEFAULT_LIMIT: usize = 128;
         const LIMIT_CAP: usize = 1024;
-        let params: himark_ahp_ext_types::search::SearchParams = match serde_json::from_value(params) {
-            Ok(params) => params,
-            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
-        };
+        let params: himark_ahp_ext_types::search::SearchParams =
+            match serde_json::from_value(params) {
+                Ok(params) => params,
+                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+            };
         let folders = match self.search_folders(id, &params.channel, params.folders.as_ref()) {
             Ok(folders) => folders,
             Err(refusal) => return refusal,
@@ -2761,13 +2762,15 @@ impl Host {
                         Arc::clone(&cancel),
                     )
                     .await
-                    .map(|(paths, truncated)| himark_ahp_ext_types::search::SearchResult {
-                        hits: paths
-                            .iter()
-                            .map(|path| crate::uris::file_uri(path))
-                            .collect(),
-                        truncated,
-                    }),
+                    .map(
+                        |(paths, truncated)| himark_ahp_ext_types::search::SearchResult {
+                            hits: paths
+                                .iter()
+                                .map(|path| crate::uris::file_uri(path))
+                                .collect(),
+                            truncated,
+                        },
+                    ),
                 himark_ahp_ext_types::search::SearchTarget::Content => {
                     let collected = Arc::new(std::sync::Mutex::new(Vec::new()));
                     let sink = {
@@ -3283,11 +3286,13 @@ impl Host {
     }
 
     fn open_document(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
-        let params =
-            match serde_json::from_value::<himark_ahp_ext_types::documents::OpenDocumentParams>(params) {
-                Ok(params) => params,
-                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
-            };
+        let params = match serde_json::from_value::<
+            himark_ahp_ext_types::documents::OpenDocumentParams,
+        >(params)
+        {
+            Ok(params) => params,
+            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+        };
         if params.uri.is_some() && params.text.is_some() {
             return rpc::failure(id, INVALID_PARAMS, "uri and text are mutually exclusive");
         }
@@ -3483,7 +3488,8 @@ impl Host {
 
             state.server_seq += 1;
             let mut value = serde_json::to_value(&action).expect("a wire action");
-            value["type"] = Value::String(himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned());
+            value["type"] =
+                Value::String(himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned());
             let envelope = ahp_types::actions::ActionEnvelope {
                 channel: channel.clone(),
                 action: StateAction::Unknown(value),
@@ -3554,11 +3560,13 @@ impl Host {
     /// the write so the mirror watcher does not read the host's own
     /// write back as a foreign edit.
     fn store_document(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
-        let params =
-            match serde_json::from_value::<himark_ahp_ext_types::documents::StoreDocumentParams>(params) {
-                Ok(params) => params,
-                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
-            };
+        let params = match serde_json::from_value::<
+            himark_ahp_ext_types::documents::StoreDocumentParams,
+        >(params)
+        {
+            Ok(params) => params,
+            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+        };
         let Some(path) = crate::uris::file_path(&params.uri) else {
             return rpc::failure(id, INVALID_PARAMS, format!("unservable uri {}", params.uri));
         };
@@ -3600,16 +3608,19 @@ impl Host {
             state.sessions.insert_mut(owner, session);
         });
         self.changes_touched(&path);
-        rpc::success(id, himark_ahp_ext_types::documents::StoreDocumentResult { version })
+        rpc::success(
+            id,
+            himark_ahp_ext_types::documents::StoreDocumentResult { version },
+        )
     }
 
     fn document_dispatch(&self, channel: &Uri, value: Value) {
         if value["type"] != himark_ahp_ext_types::documents::DOCUMENT_APPLIED {
             return;
         }
-        let Ok(action) =
-            serde_json::from_value::<himark_ahp_ext_types::documents::DocumentApplied>(value.clone())
-        else {
+        let Ok(action) = serde_json::from_value::<himark_ahp_ext_types::documents::DocumentApplied>(
+            value.clone(),
+        ) else {
             return;
         };
         let feed = self.update(|state| {
@@ -3781,11 +3792,11 @@ impl Host {
         params: Value,
     ) -> JsonRpcMessage {
         const METHODS: &[&str] = &["textDocument/references", "textDocument/implementation"];
-        let params: himark_ahp_ext_types::locations::LspLocationsParams = match serde_json::from_value(params)
-        {
-            Ok(params) => params,
-            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
-        };
+        let params: himark_ahp_ext_types::locations::LspLocationsParams =
+            match serde_json::from_value(params) {
+                Ok(params) => params,
+                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+            };
         if !METHODS.contains(&params.method.as_str()) {
             return rpc::failure(
                 id,
@@ -4140,7 +4151,11 @@ impl Host {
         }
     }
 
-    fn fsp_feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::documents::TextOperation) {
+    fn fsp_feed_change(
+        &self,
+        uri: &str,
+        operation: &himark_ahp_ext_types::documents::TextOperation,
+    ) {
         if let Some(engine) = self.fsp_engine() {
             engine.feed_change(uri, operation);
         }

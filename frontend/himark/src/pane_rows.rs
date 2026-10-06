@@ -5,14 +5,12 @@
 //! behind `hikit::pane_row::PaneRow`. The typed rows live here while their
 //! features still do; each moves out with its feature crate.
 
+use ::ahp_chat::chats::ChatRow;
 use ::canvas::PairRow;
 use ::terminals::pane::TerminalRow;
 use hikit::pane_row::PaneRow;
-use ::ahp_chat::chats::ChatRow;
-
 
 use imba::store::Store;
-
 
 /// A chat pane's row: the collection and the conversation.
 
@@ -42,5 +40,7 @@ pub fn mint_unfronted(
         );
     }
     rows.retain(|row| !fronted.contains(row));
-    rows.iter().filter_map(|row| ::workbench::rows::mint(store, row)).collect()
+    rows.iter()
+        .filter_map(|row| ::workbench::rows::mint(store, row))
+        .collect()
 }

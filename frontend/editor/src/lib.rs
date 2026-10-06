@@ -37,10 +37,8 @@ pub mod unified_diff;
 pub mod viewport;
 pub(crate) mod width_tree;
 
-
 pub type FontSource =
     std::sync::Arc<dyn Fn() -> skia_safe::textlayout::FontCollection + Send + Sync>;
-
 
 #[doc(hidden)]
 pub mod test_document;
@@ -50,4 +48,3 @@ pub mod metrics_probe;
 
 #[cfg(test)]
 mod tests;
-

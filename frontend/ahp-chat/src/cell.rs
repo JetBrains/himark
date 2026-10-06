@@ -4,9 +4,18 @@
 use crate::tool_group::{
     ToolCallSpec, ToolGroup, ToolRowCommand, ToolRowKey, ToolRowsCommand, ToolUpdate,
 };
-use editor::{env, editor_view::EditorCommand, editor_view::EditorView};
+use editor::{editor_view::EditorCommand, editor_view::EditorView, env};
 use hikit::tree_item::TreeItemCommand;
-use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::Effects,
+    event::{Event, EventResult},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::{Paint, Rect, Size};
 
 type ChatChrome = editor::theme::ChatChrome;
@@ -530,13 +539,16 @@ impl Cell {
                     gutter_width: 0.0,
                     base: None,
                 };
-                let mut view =
-                    editor::unified_diff::UnifiedDiffView::new(editor::split_diff::SplitDiffView::new(left, right, state));
+                let mut view = editor::unified_diff::UnifiedDiffView::new(
+                    editor::split_diff::SplitDiffView::new(left, right, state),
+                );
                 fx.scope(CellCommand::Diff, |fx| {
                     view.perform(
                         store,
                         ui,
-                        editor::unified_diff::UnifiedDiffCommand::SetLayout(editor::unified_diff::DiffLayout::Inline),
+                        editor::unified_diff::UnifiedDiffCommand::SetLayout(
+                            editor::unified_diff::DiffLayout::Inline,
+                        ),
                         fx,
                     )
                 });
@@ -751,7 +763,9 @@ impl View for Cell {
                     if let Some(inline) = inline {
                         fx.scope(
                             |command: EditorCommand| {
-                                CellCommand::Diff(editor::unified_diff::UnifiedDiffCommand::Inline(command))
+                                CellCommand::Diff(editor::unified_diff::UnifiedDiffCommand::Inline(
+                                    command,
+                                ))
                             },
                             |fx| {
                                 view.split
@@ -765,7 +779,9 @@ impl View for Cell {
                         view.perform(
                             store,
                             ui,
-                            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
+                            editor::unified_diff::UnifiedDiffCommand::Split(
+                                editor::split_diff::SplitDiffCommand::Resync,
+                            ),
                             fx,
                         )
                     });
@@ -1046,12 +1062,14 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
                 CellBody::Diff { .. } => 0.0,
                 _ => chrome.pad,
             };
-            card = card.child(imba::layout::fixed(content).pad_insets(imba::layout::Insets {
-                left: body_pad,
-                top: header_h + chrome.pad,
-                right: 0.0,
-                bottom: 0.0,
-            }));
+            card = card.child(
+                imba::layout::fixed(content).pad_insets(imba::layout::Insets {
+                    left: body_pad,
+                    top: header_h + chrome.pad,
+                    right: 0.0,
+                    bottom: 0.0,
+                }),
+            );
         }
         if matches!(cell.kind, CellKind::User) {
             let bar_color = chrome.notice_color.0;
@@ -1066,7 +1084,10 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             card = card.child(
                 imba::layout::ZBox::new(arena)
                     .child(imba::layout::spacer(0.0, header_h))
-                    .child_aligned(imba::layout::Alignment::CenterStart, hikit::ui::text(&caps, "YOU"))
+                    .child_aligned(
+                        imba::layout::Alignment::CenterStart,
+                        hikit::ui::text(&caps, "YOU"),
+                    )
                     .pad_insets(imba::layout::Insets {
                         left: chrome.pad,
                         ..Default::default()

@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use ahp_wire::fs::ClientDirectory;
-use ahp_wire::client::SearchAsk;
-use himark_ahp_ext_types::search::{SearchKind, SearchTarget};
 use crate::FindEffect;
+use ahp_wire::client::SearchAsk;
+use ahp_wire::fs::ClientDirectory;
 use editor::{location::ResourceLocation, location::ResourceType};
+use himark_ahp_ext_types::search::{SearchKind, SearchTarget};
 use imba::effect::EffectHandler;
 
 const PATH_CAP: usize = 128;

@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use skia_safe::{Canvas, Rect, Size};
 
-use crate::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use crate::{
+    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
+};
 
 fn fontdb() -> &'static Arc<resvg::usvg::fontdb::Database> {
     static FONTDB: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();

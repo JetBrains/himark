@@ -5,9 +5,7 @@
 //! and the windowed jump — the views are the `toc` crate's (the UI
 //! lives with its machinery, docs/entities.md).
 
-use ::toc::{
-    OutlineView, TocView,
-};
+use ::toc::{OutlineView, TocView};
 
 use imba::store::Store;
 use skia_safe::Paint;
@@ -101,12 +99,11 @@ impl crate::commands::WindowedCommand for ToggleToc {
             ::workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let Some(panel) =
-            entity
-                .workbench()
-                .root
-                .focused_pane()
-                .drawer_view(store, ui, window)
+        let Some(panel) = entity
+            .workbench()
+            .root
+            .focused_pane()
+            .drawer_view(store, ui, window)
         else {
             ::workbench::window::Windows::put(store, window, entity);
             return;

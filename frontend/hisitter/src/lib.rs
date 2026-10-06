@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use editor::{markup::MarkupBuilder, theme::StyleId, reparse::SyntaxLanguage, reparse::SyntaxTree};
+use editor::{markup::MarkupBuilder, reparse::SyntaxLanguage, reparse::SyntaxTree, theme::StyleId};
 
 pub mod assist;
 pub mod caret_passes;
@@ -30,7 +30,10 @@ impl SyntaxTree for TsTree {
         fn point_at(view: &mut text::text_view::TextView, at: u32) -> (usize, usize) {
             let at = (at as usize).min(view.byte_count());
             let row = view.line_at(at).0;
-            (row, at - view.line_start_offset(text::line_number::LineNumber(row)))
+            (
+                row,
+                at - view.line_start_offset(text::line_number::LineNumber(row)),
+            )
         }
         let base_row = point_at(view, base).0;
         let local = |view: &mut text::text_view::TextView, offset: u32| -> Point {
@@ -263,7 +266,10 @@ impl SyntaxLanguage for TreeSitterLanguage {
         }
     }
 
-    fn assist(&self, request: &editor::reparse::AssistRequest<'_>) -> Option<editor::reparse::Assist> {
+    fn assist(
+        &self,
+        request: &editor::reparse::AssistRequest<'_>,
+    ) -> Option<editor::reparse::Assist> {
         assist::assist(request)
     }
 }
@@ -331,7 +337,11 @@ fn title_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
         })
 }
 
-fn outline_title(view: &mut text::text_view::TextView, syntax_start: usize, title: Range<u32>) -> String {
+fn outline_title(
+    view: &mut text::text_view::TextView,
+    syntax_start: usize,
+    title: Range<u32>,
+) -> String {
     let count = view.byte_count();
     let from = (syntax_start + title.start as usize).min(count);
     let to = (syntax_start + title.end as usize).min(count);
@@ -488,7 +498,8 @@ macro_rules! register_grammar {
                         ::std::sync::Arc::new(configure($crate::TreeSitterLanguage::new(
                             ($language).into(),
                             &loader_highlights(),
-                        ))) as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
+                        )))
+                            as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
                     )
                 }),
             );
@@ -510,7 +521,8 @@ macro_rules! register_grammar {
                     Some(
                         ::std::sync::Arc::new(configure($crate::TreeSitterLanguage::new(
                             language, &query,
-                        ))) as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
+                        )))
+                            as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
                     )
                 }),
             );

@@ -6,7 +6,10 @@ use std::sync::Arc;
 use ahp_wire::fs::{client_of, client_of_authority, served, ClientDirectory};
 
 use documents::watch::{SubscribeEffect, Subscription, UnsubscribeEffect};
-use documents::{CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect, MoveResourceEffect, StoreDocumentEffect};
+use documents::{
+    CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
+    MoveResourceEffect, StoreDocumentEffect,
+};
 use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 
@@ -20,7 +23,8 @@ impl EffectHandler<FetchDocumentEffect> for RouteFetch {
         if let Some((origin, raw)) = changesview::hichanges::raw_ref(&effect.location) {
             let (client, session) = client_of_authority(&self.directory, &origin)?;
             return client
-                .resources.resource_read(session, ahp_wire::client::ResourceUri::new(raw))
+                .resources
+                .resource_read(session, ahp_wire::client::ResourceUri::new(raw))
                 .await;
         }
         let (client, session) = client_of(&self.directory, &effect.location)?;
@@ -29,7 +33,9 @@ impl EffectHandler<FetchDocumentEffect> for RouteFetch {
         // a fetch for a not-yet-registered document (a diff side
         // being built) must not open a channel that adoption then
         // orphans (the 2026-09-15 double-subscription).
-        client.resources.resource_read(session, self.uris.uri_of(&effect.location))
+        client
+            .resources
+            .resource_read(session, self.uris.uri_of(&effect.location))
             .await
     }
 }
@@ -104,7 +110,9 @@ impl EffectHandler<StoreDocumentEffect> for RouteStore {
         let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        client.resources.resource_write(session, self.uris.uri_of(&effect.location), effect.text)
+        client
+            .resources
+            .resource_write(session, self.uris.uri_of(&effect.location), effect.text)
             .await
     }
 }
@@ -118,7 +126,8 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
     async fn handle(&self, effect: ListDirectoryEffect) -> Option<Vec<ResourceLocation>> {
         let (client, session) = client_of(&self.directory, &effect.location)?;
         let entries = client
-            .resources.resource_list(session, self.uris.uri_of(&effect.location))
+            .resources
+            .resource_list(session, self.uris.uri_of(&effect.location))
             .await?;
         Some(
             entries
@@ -145,7 +154,9 @@ impl EffectHandler<CreateDocumentEffect> for RouteCreate {
         let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        client.resources.resource_create(session, self.uris.uri_of(&effect.location))
+        client
+            .resources
+            .resource_create(session, self.uris.uri_of(&effect.location))
             .await
     }
 }
@@ -160,12 +171,14 @@ impl EffectHandler<DeleteResourceEffect> for RouteDelete {
         let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        client.resources.resource_delete(
-            session,
-            self.uris.uri_of(&effect.location),
-            effect.recursive,
-        )
-        .await
+        client
+            .resources
+            .resource_delete(
+                session,
+                self.uris.uri_of(&effect.location),
+                effect.recursive,
+            )
+            .await
     }
 }
 
@@ -180,12 +193,14 @@ impl EffectHandler<MoveResourceEffect> for RouteMove {
         let Some((client, session)) = client_of(&self.directory, &effect.from) else {
             return false;
         };
-        client.resources.resource_move(
-            session,
-            self.uris.uri_of(&effect.from),
-            self.uris.uri_of(&effect.to),
-        )
-        .await
+        client
+            .resources
+            .resource_move(
+                session,
+                self.uris.uri_of(&effect.from),
+                self.uris.uri_of(&effect.to),
+            )
+            .await
     }
 }
 

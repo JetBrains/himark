@@ -35,7 +35,6 @@ pub mod thunk_ext;
 pub mod tooltip;
 pub mod ui;
 
-
 use arena::Arena;
 use event::{Event, EventResult};
 use skia_safe::{Point, Rect, Size};
@@ -65,7 +64,6 @@ impl<Command> PresentableCommand<Command> {
         }
     }
 }
-
 
 /// What a command IS, wherever one routes — a view's, an entity's:
 /// printable (`Display` is the trace label), cloneable, and

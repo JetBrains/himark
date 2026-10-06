@@ -105,8 +105,12 @@ pub(crate) fn orphan(type_id: std::any::TypeId) {
 }
 
 pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::editor::env::Workshop>) {
-    handlers.register::<::editor::repair::RepairEffect>(::editor::repair::RepairHandler(Arc::clone(workshop)));
-    handlers.register::<::editor::reparse::ReparseEffect>(::editor::reparse::ReparseHandler(Arc::clone(workshop)));
+    handlers.register::<::editor::repair::RepairEffect>(::editor::repair::RepairHandler(
+        Arc::clone(workshop),
+    ));
+    handlers.register::<::editor::reparse::ReparseEffect>(::editor::reparse::ReparseHandler(
+        Arc::clone(workshop),
+    ));
     {
         let registry = Arc::downgrade(handlers);
         let caller = imba::effect::EffectCaller::new(Arc::new(move |type_id, payload| {
@@ -117,12 +121,14 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
             caller,
         });
     }
-    handlers
-        .register::<::editor::split_diff::RepairDiffEffect>(::editor::split_diff::RepairDiffHandler(Arc::clone(workshop)));
+    handlers.register::<::editor::split_diff::RepairDiffEffect>(
+        ::editor::split_diff::RepairDiffHandler(Arc::clone(workshop)),
+    );
     handlers.register::<::editor::scroll_stripe::ScrollStripeEffect>(
         ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(workshop)),
     );
-    handlers.register::<documents::diffs::DiffNormalizeEffect>(documents::diffs::DiffNormalizeHandler);
+    handlers
+        .register::<documents::diffs::DiffNormalizeEffect>(documents::diffs::DiffNormalizeHandler);
     handlers.register::<toc::OutlineEffect>(toc::OutlineHandler);
     handlers.register::<findbar::FindScanEffect>(findbar::FindScanHandler);
     handlers.register::<hikit::list_keyboard::SpeedSearchEffect>(

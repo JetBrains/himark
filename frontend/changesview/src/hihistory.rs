@@ -3,7 +3,10 @@
 
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyboardController};
+use hikit::{
+    forest::ForestList, forest::ForestNode, forest::ForestSearcher,
+    list_keyboard::ListKeyboardController,
+};
 use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, ui::UiCtx};
 
 const NOTE_KIND: &str = "changes-note";

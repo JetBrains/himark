@@ -3,7 +3,9 @@
 
 use std::ops::Range;
 
-use editor::{reparse::Assist, reparse::AssistKind, reparse::AssistRequest, reparse::SyntaxLanguage};
+use editor::{
+    reparse::Assist, reparse::AssistKind, reparse::AssistRequest, reparse::SyntaxLanguage,
+};
 use operation::op::Op;
 
 fn language() -> hisitter::TreeSitterLanguage {

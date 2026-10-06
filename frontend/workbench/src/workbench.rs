@@ -1,7 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View,
+};
 use skia_safe::{Contains as _, Rect, Size};
 
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};

@@ -1,7 +1,19 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult, MouseButton}, lazy::lazy, list::{ListCommand, ListView}, scroll::{ScrollCommand, ScrollView}, split::{Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, Thunk, View, Widget};
+use crate::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    event::{Event, EventResult, MouseButton},
+    lazy::lazy,
+    list::{ListCommand, ListView},
+    scroll::{ScrollCommand, ScrollView},
+    split::{Pane, SplitCommand, SplitView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    Thunk, View, Widget,
+};
 use skia_safe::{surfaces, Point, Rect, Size};
 use std::cell::{Cell, RefCell};
 
@@ -658,7 +670,7 @@ fn root_viewport() -> Rect {
 
 #[test]
 fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
-    use crate::{leaf::leaf, dyn_view::DynView};
+    use crate::{dyn_view::DynView, leaf::leaf};
     use std::rc::Rc;
 
     #[derive(Clone)]
@@ -697,7 +709,8 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
             _arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
-        ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a
+        {
             crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
                 leaf(10.0, 10.0).event(|_, event, _| match event {
                     Event::MouseDown { .. } => EventResult::Command(CounterCommand::Add(2)),

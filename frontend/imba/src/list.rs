@@ -6,10 +6,21 @@ use std::hash::Hash;
 use crate::anim::{Animation, AnimationClock, Easing, Motion};
 use crate::ui::UiCtx;
 use intervals::{Interval, IntervalQuery, Intervals, Order};
-use rope::{cursor::Cursor, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
+use rope::{
+    cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,
+    rope::Rope,
+};
 use skia_safe::{Color, Paint, Rect, Size};
 
-use crate::{arena::Arena, constraints::Constraints, container::viewport_for_child, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, View, Widget};
+use crate::{
+    arena::Arena,
+    constraints::Constraints,
+    container::viewport_for_child,
+    event::{Event, EventResult},
+    store::Store,
+    thunk_ext::ThunkExt,
+    Thunk, View, Widget,
+};
 
 const ROW_PX: MetricId = MetricId(0);
 

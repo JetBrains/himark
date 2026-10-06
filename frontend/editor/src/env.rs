@@ -17,7 +17,6 @@ impl Fonts {
     }
 }
 
-
 #[derive(Clone)]
 pub struct Parsers(pub std::sync::Arc<crate::reparse::SyntaxLanguages>);
 

@@ -11,14 +11,14 @@ use std::sync::Arc;
 
 use imba::dyn_view::DynCommand;
 use imba::effect::Effects;
-use imba::thunk_ext::ThunkExt as _;
 use imba::store::Store;
+use imba::thunk_ext::ThunkExt as _;
 use imba::ui::UiCtx;
 use workbench::services::{PaneServices, ServiceState, ServiceTarget};
 use workbench::workbench_node::{PaneSlot, PanelCommand};
 
-use findbar::{FindBar, FindCommand};
 use ahp_chat::completion::{Completion, CompletionFound};
+use findbar::{FindBar, FindCommand};
 
 /// One leaf's services: the bar when ⌘F stood one, the completion
 /// always ready to pop.
@@ -275,7 +275,16 @@ impl EditorServices {
                 };
                 if let Some(find) = &mut self.find {
                     fx.scope(wrap_editor, |fx| {
-                        find.adopt(store, documents, target.target, &landed, ui, &fonts, &theme, fx)
+                        find.adopt(
+                            store,
+                            documents,
+                            target.target,
+                            &landed,
+                            ui,
+                            &fonts,
+                            &theme,
+                            fx,
+                        )
                     });
                 }
             }
@@ -291,18 +300,22 @@ impl EditorServices {
         fx: &mut Effects<'_, PanelCommand>,
     ) -> Option<PanelCommand> {
         use imba::scroll::ScrollCommand;
-        let PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
-            key,
-            command: inlay,
-        })) = command
+        let PanelCommand::Editor(ScrollCommand::Content(
+            ::editor::editor_view::EditorCommand::Inlay {
+                key,
+                command: inlay,
+            },
+        )) = command
         else {
             return Some(command);
         };
         let rewrap = |inlay| {
-            PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
-                key,
-                command: inlay,
-            }))
+            PanelCommand::Editor(ScrollCommand::Content(
+                ::editor::editor_view::EditorCommand::Inlay {
+                    key,
+                    command: inlay,
+                },
+            ))
         };
         if Some(key) != self.completion.inlay_key() {
             return Some(rewrap(inlay));
@@ -330,18 +343,30 @@ impl EditorServices {
             }
             CompletionCommand::PickCursor => {
                 let row = self.completion.selected();
-                let _ = self
-                    .completion
-                    .apply_pick(store, ui, &mut document, editor, row, fx, wrap_editor);
+                let _ = self.completion.apply_pick(
+                    store,
+                    ui,
+                    &mut document,
+                    editor,
+                    row,
+                    fx,
+                    wrap_editor,
+                );
             }
             CompletionCommand::Rows(rows) => {
                 let picked = self
                     .completion
                     .rows_command(store, ui, &mut document, editor, rows);
                 if let Some(row) = picked {
-                    let _ = self
-                        .completion
-                        .apply_pick(store, ui, &mut document, editor, row, fx, wrap_editor);
+                    let _ = self.completion.apply_pick(
+                        store,
+                        ui,
+                        &mut document,
+                        editor,
+                        row,
+                        fx,
+                        wrap_editor,
+                    );
                 }
             }
             CompletionCommand::Close => {
@@ -368,14 +393,17 @@ impl EditorServices {
             if target.target != Some(installed) {
                 match documents::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
-                        self.completion.drop_state(&mut old, store, ui, fx, wrap_editor);
+                        self.completion
+                            .drop_state(&mut old, store, ui, fx, wrap_editor);
                         documents::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.completion.clear(),
                 }
             }
         }
-        let Some((id, editor)) = target.target else { return };
+        let Some((id, editor)) = target.target else {
+            return;
+        };
         if !self.completion.open() && inserted.is_none() {
             return;
         }
@@ -402,7 +430,9 @@ impl EditorServices {
                 &mut document,
                 editor,
                 typed_at,
-                std::sync::Arc::new(ahp_session::session::folders::session_folders(store, &session)),
+                std::sync::Arc::new(ahp_session::session::folders::session_folders(
+                    store, &session,
+                )),
                 state.recents(),
                 Some((id, editor)),
                 fx,
@@ -427,7 +457,8 @@ impl EditorServices {
                     );
                 }
                 _ if self.completion.open() => {
-                    self.completion.drop_state(&mut document, store, ui, fx, wrap_editor);
+                    self.completion
+                        .drop_state(&mut document, store, ui, fx, wrap_editor);
                 }
                 _ => {}
             }
@@ -452,9 +483,8 @@ impl EditorServices {
             self.completion.clear();
             return;
         };
-        self.completion.land(store, ui, &mut document, editor, found);
+        self.completion
+            .land(store, ui, &mut document, editor, found);
         documents::OpenDocuments::put_document(store, documents, id, document);
     }
 }
-
-

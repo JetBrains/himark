@@ -22,8 +22,9 @@ use ahp_types::state::{
 };
 
 use crate::client::{
-    AnnotationsClient, ChangesClient, ChatClient, DocumentsClient, HistoryClient, LocationsClient, LspClient,
-    ResourceClient, RootInfo, ClientFuture, ServerEvent, SessionClient, SessionsPage, TerminalClient,
+    AnnotationsClient, ChangesClient, ChatClient, ClientFuture, DocumentsClient, HistoryClient,
+    LocationsClient, LspClient, ResourceClient, RootInfo, ServerEvent, SessionClient, SessionsPage,
+    TerminalClient,
 };
 use crate::client::{FileEditContents, TurnsPage};
 
@@ -117,10 +118,7 @@ struct WireState {
 /// Derive the next state from the latest and swap it in — the one
 /// write door. The closure is pure bookkeeping: nothing in it may
 /// block or dial.
-fn swap_state<T>(
-    cell: &Mutex<Arc<WireState>>,
-    change: impl FnOnce(&mut WireState) -> T,
-) -> T {
+fn swap_state<T>(cell: &Mutex<Arc<WireState>>, change: impl FnOnce(&mut WireState) -> T) -> T {
     let mut held = cell.lock().expect("wire state");
     let mut next = (**held).clone();
     let out = change(&mut next);
@@ -1723,7 +1721,10 @@ impl AnnotationsClient for WireHost {
         }))
     }
 
-    fn poll_annotations(&self, session: crate::client::SessionUri) -> ClientFuture<Vec<StateAction>> {
+    fn poll_annotations(
+        &self,
+        session: crate::client::SessionUri,
+    ) -> ClientFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(annotations_channel(&session))
     }
@@ -1822,8 +1823,9 @@ impl DocumentsClient for WireHost {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             let mut value = serde_json::to_value(&action).expect("an action serializes");
-            value["type"] =
-                serde_json::Value::String(himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned());
+            value["type"] = serde_json::Value::String(
+                himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned(),
+            );
             active
                 .client
                 .dispatch(channel, StateAction::Unknown(value))
@@ -2363,7 +2365,9 @@ impl TerminalClient for WireHost {
                 Ok(handle) => handle,
                 Err(error) => {
                     eprintln!("[hiahp] {error}");
-                    swap_state(&cell, |state| state.terminals.remove_mut(&channel_for_cleanup));
+                    swap_state(&cell, |state| {
+                        state.terminals.remove_mut(&channel_for_cleanup)
+                    });
                     None
                 }
             }
@@ -2594,7 +2598,6 @@ impl Feed {
         drop(self.state.lock().expect("feed state"));
     }
 
-
     fn land(state: &mut FeedState, action: StateAction) {
         if let StateAction::ChatTurnsLoaded(loaded) = &action {
             if let Some(capture) = state.turns_capture.take() {
@@ -2791,7 +2794,11 @@ mod tests {
     }
 
     fn down_host(runtime: &tokio::runtime::Runtime) -> WireHost {
-        WireHost::at(runtime.handle().clone(), Arc::new(NoDial), "ws://nowhere:1/")
+        WireHost::at(
+            runtime.handle().clone(),
+            Arc::new(NoDial),
+            "ws://nowhere:1/",
+        )
     }
 
     /// A RUNTIME WORKER never parks on the reconnect lock and never
@@ -2866,7 +2873,11 @@ mod tests {
         {
             let world = host.snapshot();
             let seat = world.terminals.get(channel.as_str()).expect("the seat");
-            assert_eq!((seat.cols, seat.rows), (120, 40), "geometry recorded while down");
+            assert_eq!(
+                (seat.cols, seat.rows),
+                (120, 40),
+                "geometry recorded while down"
+            );
         }
         host.terminal_dispose(&channel);
         let world = host.snapshot();

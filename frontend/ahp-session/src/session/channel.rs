@@ -23,7 +23,11 @@ use super::agents::Agents;
 
 /// Adopt a subscribe answer whole: the host's session state becomes
 /// the channel mirror — chats, default chat, folders, config.
-pub fn adopt_subscribed(store: &mut Store, key: &SessionId, state: &ahp_types::state::SessionState) {
+pub fn adopt_subscribed(
+    store: &mut Store,
+    key: &SessionId,
+    state: &ahp_types::state::SessionState,
+) {
     Agents::set_channel(
         store,
         key,
@@ -165,4 +169,3 @@ fn merge_chat_summary(
         summary.modified_at = modified.clone();
     }
 }
-

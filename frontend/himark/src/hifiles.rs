@@ -5,7 +5,6 @@
 //! itself is the `filetree` crate's (the UI lives with its model,
 //! docs/entities.md).
 
-
 use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 
 use std::sync::Arc;
@@ -15,7 +14,6 @@ use imba::store::Store;
 use skia_safe::{Paint, PathBuilder};
 
 use editor::location::ResourceLocation;
-
 
 /// Build the shell closures and open the panel — the one door the
 /// dock toggle uses.
@@ -31,7 +29,9 @@ pub fn open_panel(
     let folders = ahp_session::session::folders::session_folders(store, &workspace);
     let mirror: Arc<dyn Fn(&Store) -> Vec<ResourceLocation> + Send + Sync> = {
         let workspace = workspace.clone();
-        Arc::new(move |store: &Store| ahp_session::session::folders::session_folders(store, &workspace))
+        Arc::new(move |store: &Store| {
+            ahp_session::session::folders::session_folders(store, &workspace)
+        })
     };
     let panel = SessionTreeView::open(
         store,
@@ -106,10 +106,11 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         // The focused location is a state walk over the views now —
         // nothing is laid to answer it.
         let reveal = {
-                        crate::focus::window_focus_data(store, &ui, window)
+            crate::focus::window_focus_data(store, &ui, window)
                 .and_then(|mut data| crate::focus::focused_location(&mut data))
         };
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
             ::workbench::window::Windows::put(store, window, entity);
@@ -125,15 +126,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         let trees = crate::workspace::entity_state(&entity).trees();
         let panel = fx.scope(crate::modal::dock_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
-                open_panel(
-                    store,
-                    ui,
-                    Some(window),
-                    workspace,
-                    trees,
-                    reveal,
-                    fx,
-                )
+                open_panel(store, ui, Some(window), workspace, trees, reveal, fx)
             })
         });
         let owner = self.id();

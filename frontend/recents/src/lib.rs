@@ -49,7 +49,10 @@ impl RecentLocations {
         self.0.is_empty()
     }
 
-    pub fn list(store: &Store, recents: imba::store::Id<Self>) -> Vec<editor::location::ResourceLocation> {
+    pub fn list(
+        store: &Store,
+        recents: imba::store::Id<Self>,
+    ) -> Vec<editor::location::ResourceLocation> {
         store
             .entity(recents)
             .map(|recents| recents.0.clone())

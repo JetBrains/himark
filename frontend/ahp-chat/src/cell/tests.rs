@@ -263,9 +263,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     let mut slice = imba::list::ListSlice::new();
     for (at, (cell, height)) in cells.into_iter().enumerate() {
         slice.push_keyed_sized(
-            crate::turn::CellKey::Part(crate::chat::model::PartId::new(format!(
-                "p{at}"
-            ))),
+            crate::turn::CellKey::Part(crate::chat::model::PartId::new(format!("p{at}"))),
             cell,
             height,
         );
@@ -344,7 +342,11 @@ fn a_resolved_edit_lands_as_an_inline_diff_with_folds() {
     let CellBody::Diff { view, .. } = &cell.body else {
         panic!("the resolve lands the diff face");
     };
-    assert_eq!(view.layout, editor::unified_diff::DiffLayout::Inline, "inline from birth");
+    assert_eq!(
+        view.layout,
+        editor::unified_diff::DiffLayout::Inline,
+        "inline from birth"
+    );
     let inline = view.inline_editor.expect("the inline face is minted");
 
     // The forty untouched lines hide behind a fold strip...

@@ -10,7 +10,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::{AnnotationId, CardWork, CommentRecord, Comments};
-use documents::{DocumentId, text_ext::LineCol};
+use documents::{text_ext::LineCol, DocumentId};
 use editor::markup::InlayKey;
 use imba::command::{Fx, Verb};
 use imba::store::Store;
@@ -198,9 +198,10 @@ fn materialize(
     let range = match &record.range {
         Some(range) => {
             let mut view = doc.text().view();
-            let start =
-                documents::text_ext::offset_at(&mut view, range.start).min(byte_count as usize) as u32;
-            let end = documents::text_ext::offset_at(&mut view, range.end).min(byte_count as usize) as u32;
+            let start = documents::text_ext::offset_at(&mut view, range.start)
+                .min(byte_count as usize) as u32;
+            let end = documents::text_ext::offset_at(&mut view, range.end).min(byte_count as usize)
+                as u32;
             start..end.max(start)
         }
         None => 0..byte_count,
@@ -242,7 +243,10 @@ fn materialize(
             doc.swap_inlay(
                 key,
                 range.clone(),
-                editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone().keyed(key)),
+                editor::markup::Inlay::new(
+                    editor::markup::InlayMode::Under,
+                    view.clone().keyed(key),
+                ),
             );
             minted = Some(key);
         },

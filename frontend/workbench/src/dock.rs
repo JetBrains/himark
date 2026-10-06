@@ -1,7 +1,18 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    anim::{Animation, AnimationClock, Easing, Motion},
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    event::{Event, EventResult},
+    leaf::leaf,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use hikit::modal::ModalRequest;
@@ -412,7 +423,10 @@ impl Dock {
 
     pub(crate) fn release_widgets(
         &mut self,
-    ) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
+    ) -> Vec<(
+        hikit::panel::WidgetOrigin,
+        Box<dyn hikit::panel::DynPanelView>,
+    )> {
         self.content.release_widgets()
     }
 }

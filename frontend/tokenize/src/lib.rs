@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::{cursor::Cursor, metrics::Measure, metrics::MetricId, rope::Rope, cursor::SeekMode};
+use rope::{cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, rope::Rope};
 
 pub trait Safepoint<T> {
     fn is_safepoint(&self, element: &T) -> bool;

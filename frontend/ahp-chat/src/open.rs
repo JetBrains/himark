@@ -165,7 +165,10 @@ impl EffectHandler<documents::diff_views::OpenDiffPairEffect> for OpenDiffPairHa
 /// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
 /// fetches, both documents, the Myers pass and the mark prep all run
 /// here, off the UI thread; the landing only mounts editors.
-pub struct BuildDocumentHandler(pub Arc<editor::env::Workshop>, pub Arc<editor::reparse::SyntaxLanguages>);
+pub struct BuildDocumentHandler(
+    pub Arc<editor::env::Workshop>,
+    pub Arc<editor::reparse::SyntaxLanguages>,
+);
 
 impl EffectHandler<documents::BuildDocumentEffect> for BuildDocumentHandler {
     async fn handle(&self, effect: documents::BuildDocumentEffect) -> documents::BuiltDocument {

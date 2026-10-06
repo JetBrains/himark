@@ -6,9 +6,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::cursor::{Cursor, CursorIter};
+use crate::metrics::Measure;
 use crate::node::{Child, MetricsWithLength, Node, BRANCHING_FACTOR, LEAVES_CAPACITY};
 use crate::zipper::Zipper;
-use crate::metrics::Measure;
 
 pub struct Rope<T: Clone, M: Measure<T>> {
     pub(crate) metrics: MetricsWithLength<M::Metrics>,

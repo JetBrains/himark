@@ -281,7 +281,11 @@ impl Engine {
         });
     }
 
-    pub(crate) fn feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::documents::TextOperation) {
+    pub(crate) fn feed_change(
+        &self,
+        uri: &str,
+        operation: &himark_ahp_ext_types::documents::TextOperation,
+    ) {
         let Some(fsp_uri) = fsp_uri(uri) else { return };
         // Non-utf-8 servers get whole-text sync: incremental ranges in
         // byte columns would land wrong (docs/file-search.md §5).

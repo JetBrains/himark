@@ -26,7 +26,10 @@ pub(crate) mod helpers {
         Arc::new(registry)
     }
 
-    pub(crate) fn settle(document: &mut editor::document::Document, registry: &Arc<SyntaxLanguages>) {
+    pub(crate) fn settle(
+        document: &mut editor::document::Document,
+        registry: &Arc<SyntaxLanguages>,
+    ) {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let outcome = editor::reparse::ReparseWork::capture(document, registry.clone())
@@ -51,7 +54,8 @@ pub(crate) mod helpers {
 
     impl RunReparse for editor::reparse::ReparseWork {
         fn run_reparse(self) -> editor::reparse::ReparseOutcome {
-            editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme())).reparse(self)
+            editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+                .reparse(self)
         }
     }
 }
@@ -183,10 +187,12 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
     assert!(is_diagram);
 
     let extras: Vec<_> = document.document_scoped_markups().collect();
-    assert!(editor::markup::OverlaidMarkup::new(document.markup(), &extras)
-        .block_marks_in(0..source.len() as u32)
-        .ids()
-        .contains(&editor::theme::StyleId::SourceCode));
+    assert!(
+        editor::markup::OverlaidMarkup::new(document.markup(), &extras)
+            .block_marks_in(0..source.len() as u32)
+            .ids()
+            .contains(&editor::theme::StyleId::SourceCode)
+    );
 }
 
 #[test]

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use ahp_locations::find::NativeFindHandler;
-use ahp_wire::fs::ClientDirectory;
-use ahp_wire::client as ahp;
-use editor::location::ResourceType;
 use ahp_locations::FindEffect;
+use ahp_wire::client as ahp;
+use ahp_wire::fs::ClientDirectory;
 use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 use imba::effect::EffectHandler;
 use std::sync::Arc;
 

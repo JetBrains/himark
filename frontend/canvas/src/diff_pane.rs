@@ -7,8 +7,14 @@
 //! from the dissolved hidiff plugin (docs/model-view.md stage C).
 
 use documents::{entity_view::EditorIdView, OpenDocuments};
-use editor::{split_diff::DiffViewState, split_diff::SplitDiffCommand, unified_diff::UnifiedDiffCommand, unified_diff::UnifiedDiffView};
-use imba::{arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, ui::UiCtx, View, Widget};
+use editor::{
+    split_diff::DiffViewState, split_diff::SplitDiffCommand, unified_diff::UnifiedDiffCommand,
+    unified_diff::UnifiedDiffView,
+};
+use imba::{
+    arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, ui::UiCtx, View,
+    Widget,
+};
 
 /// The pane holds IDS (docs/entities.md): the collection its pair
 /// lives in, and the pair's key within it.
@@ -214,7 +220,9 @@ fn pane_focus_data<'w>(
     // stale-true from before a face toggle, and checking them first
     // sent commands (cmd-enter's open-in-full among them) to an
     // editor whose caret was never placed.
-    let wrap: Option<fn(editor::editor_view::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
+    let wrap: Option<fn(editor::editor_view::EditorCommand) -> UnifiedDiffCommand> = match view
+        .layout
+    {
         editor::unified_diff::DiffLayout::Inline => {
             if view.inline_editor.is_some_and(|editor| {
                 view.split.right.document.focus(editor) != editor::editor_view::EditorFocus::None
@@ -539,7 +547,8 @@ pub fn pair_row_minter() -> std::sync::Arc<hikit::panel::RowMinter> {
     // not a mint.
     std::sync::Arc::new(|store, row| {
         let crate::PairRow(documents, id) = *row.row::<crate::PairRow>()?;
-        documents::OpenDocuments::diff_view_ref(store, documents, id)
-            .map(|_| Box::new(DiffPanelView::over(documents, id)) as Box<dyn hikit::panel::DynPanelView>)
+        documents::OpenDocuments::diff_view_ref(store, documents, id).map(|_| {
+            Box::new(DiffPanelView::over(documents, id)) as Box<dyn hikit::panel::DynPanelView>
+        })
     })
 }

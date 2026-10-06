@@ -8,7 +8,7 @@
 use imba::store::Store;
 use imba::ui::UiCtx;
 
-use crate::{pane_row::PaneRow, navigation::NavigationLocation, navigation::Place};
+use crate::{navigation::NavigationLocation, navigation::Place, pane_row::PaneRow};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetOrigin {
@@ -29,7 +29,10 @@ pub enum PanelRequest {
 
     /// Open a standalone diff pane over a pair of locations — the
     /// canvas header's other click; the shell supplies the window.
-    OpenDiff(editor::location::ResourceLocation, editor::location::ResourceLocation),
+    OpenDiff(
+        editor::location::ResourceLocation,
+        editor::location::ResourceLocation,
+    ),
 
     Perform(std::sync::Arc<dyn imba::command::DynamicCommand>),
 
@@ -112,7 +115,11 @@ pub trait DynPanelView: imba::dyn_view::CloneDynView {
         location: &NavigationLocation,
         fx: &mut imba::command::Fx<'_>,
     ) -> bool;
-    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::modal::ModalView>>;
+    fn drawer_view_dyn(
+        &self,
+        store: &Store,
+        ui: &UiCtx,
+    ) -> Option<Box<dyn crate::modal::ModalView>>;
 }
 
 impl<P: PanelView> DynPanelView for P {
@@ -157,7 +164,11 @@ impl<P: PanelView> DynPanelView for P {
             None => false,
         }
     }
-    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::modal::ModalView>> {
+    fn drawer_view_dyn(
+        &self,
+        store: &Store,
+        ui: &UiCtx,
+    ) -> Option<Box<dyn crate::modal::ModalView>> {
         self.drawer_view(store, ui)
     }
 }

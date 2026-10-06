@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
 use crate::app::AppCommand;
 use crate::higent::open_session::OpenSessionRow;
+use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
 use imba::store::Store;
 use skia_safe::Rect;
 
@@ -19,9 +19,7 @@ use skia_safe::Rect;
 /// window the drawer stands in.
 pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
     Arc::new(DrawerAsks {
-        open_session: Arc::new(move |store| {
-            Some(crate::workspace::window_session(store, window)?)
-        }),
+        open_session: Arc::new(move |store| Some(crate::workspace::window_session(store, window)?)),
         open_row: Arc::new(move |server, session| {
             crate::app::shell_verb(AppCommand::Windowed(
                 window,
@@ -91,7 +89,8 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.has_side_panel() {
             entity.roll_away_side_panel();
             ::workbench::window::Windows::put(store, window, entity);
@@ -171,8 +170,10 @@ impl crate::commands::WindowedCommand for ShareHost {
             return;
         };
         fx.push(
-            imba::effect::AnyEffect::new(ahp_wire::effects::ShareHostEffect { client: client.session.clone() })
-                .map(move |result| AppCommand::Windowed(window, Arc::new(SharedHost { result }))),
+            imba::effect::AnyEffect::new(ahp_wire::effects::ShareHostEffect {
+                client: client.session.clone(),
+            })
+            .map(move |result| AppCommand::Windowed(window, Arc::new(SharedHost { result }))),
         );
     }
 }

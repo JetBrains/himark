@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use hicode::FindDefinitionEffect;
 use editor::location::ResourceType;
+use hicode::FindDefinitionEffect;
 
 fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("backend home");
@@ -43,7 +43,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
     let root = dir.path().join("code").canonicalize().expect("canonical");
     std::fs::write(root.join("lib.rs"), "fn answer() -> u32 { 42 }\n").unwrap();
 
-    let seat= Arc::new(ahp_wire::wire::WireHost::at(
+    let seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),

@@ -15,7 +15,6 @@ pub mod peek;
 pub mod search;
 pub mod views;
 
-
 use editor::location::ResourceLocation;
 use imba::store::Store;
 

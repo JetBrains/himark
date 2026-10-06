@@ -12,7 +12,17 @@
 use std::any::Any;
 use std::hash::Hash;
 
-use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, CancellationToken, Effect, EffectHandler, Effects}, event::{Event, EventResult, Key as InputKey}, list::{Edge, ListOps}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::{AnyEffect, CancellationToken, Effect, EffectHandler, Effects},
+    event::{Event, EventResult, Key as InputKey},
+    list::{Edge, ListOps},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use editor::editor_view::EditorView;
@@ -545,9 +555,12 @@ where
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut root = imba::container::container(arena, size);
-            let inner =
-                imba::layout::Layout::layout(self.inner.display(arena, store, ui), arena, constraints)
-                    .map(ListKeyCommand::Inner);
+            let inner = imba::layout::Layout::layout(
+                self.inner.display(arena, store, ui),
+                arena,
+                constraints,
+            )
+            .map(ListKeyCommand::Inner);
             root.place(0.0, 0.0, inner);
 
             let searching = self.searching();

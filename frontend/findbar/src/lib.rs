@@ -3,9 +3,20 @@
 
 use std::ops::Range;
 
-use editor::{editor_view::EditorCommand, editor::EditorId, editor_view::EditorView, markup::MarkupId};
+use editor::{
+    editor::EditorId, editor_view::EditorCommand, editor_view::EditorView, markup::MarkupId,
+};
 use imba::effect::AnyEffect;
-use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult, Key}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::Effects,
+    event::{Event, EventResult, Key},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use documents::DocumentId;
@@ -141,7 +152,8 @@ impl FindBar {
     pub fn seed(&mut self, store: &imba::store::Store, ui: &imba::ui::UiCtx, query: &str) {
         let mut markup = editor::markup::Markup::new();
         markup.push_styled_covering(0..query.len() as u32, editor::theme::StyleId::Input);
-        let document = editor::document::Document::new(text::text::Text::from_string_exact(query), markup);
+        let document =
+            editor::document::Document::new(text::text::Text::from_string_exact(query), markup);
         let mut input = EditorView::of_document(
             document,
             600.0,

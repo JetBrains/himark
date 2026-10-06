@@ -3,11 +3,21 @@
 
 use hikit::rows::DRAWER_WIDTH;
 
-use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    anim::{Animation, AnimationClock, Easing, Motion},
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    event::{Event, EventResult},
+    leaf::leaf,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
-
 
 const SLIDE_MS: f64 = 160.0;
 
@@ -174,7 +184,12 @@ impl ModalView for Drawer {
         }
     }
 
-    fn release_widgets(&mut self) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
+    fn release_widgets(
+        &mut self,
+    ) -> Vec<(
+        hikit::panel::WidgetOrigin,
+        Box<dyn hikit::panel::DynPanelView>,
+    )> {
         self.content.release_widgets()
     }
 

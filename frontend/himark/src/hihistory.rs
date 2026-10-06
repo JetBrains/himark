@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-
 pub struct ToggleHistoryView;
 
 impl crate::commands::WindowedCommand for ToggleHistoryView {
@@ -25,7 +24,8 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
             ::workbench::window::Windows::put(store, window, entity);
@@ -40,16 +40,17 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
-        let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::app::shell_verb(crate::app::AppCommand::Windowed(
-                window,
-                Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                    changes,
-                    source,
-                    reveal,
-                }),
-            ))
-        });
+        let open_canvas: changesview::changes_view::CanvasOpener =
+            Arc::new(move |source, reveal| {
+                crate::app::shell_verb(crate::app::AppCommand::Windowed(
+                    window,
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        changes,
+                        source,
+                        reveal,
+                    }),
+                ))
+            });
         fx.scope(
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),

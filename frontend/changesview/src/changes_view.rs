@@ -23,12 +23,25 @@ use std::sync::Arc;
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
 use editor::location::ResourceLocation;
+use hikit::{
+    forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
+    list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand,
+};
 use imba::list::ActivateTrigger;
-use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand};
 use imba::list::ListOps;
 use imba::thunk_ext::ThunkExt;
 use imba::tooltip::{TooltipCommand, TooltipView};
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::Effects,
+    event::{Event, EventResult, Key as InputKey},
+    leaf::leaf,
+    store::Store,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::Size;
 
 const PANEL_PAD: f32 = 6.0;
@@ -651,7 +664,6 @@ impl ChangeSets {
             }
         });
     }
-
 
     /// Rebuild the join rows for one view from what it now displays
     /// — the view's code computes `displayed`; the join is model

@@ -11,13 +11,12 @@ use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit}
 use serde_json::json;
 
 use super::*;
-use changesview::changes_view::RowItem;
 use ahp_changes::changes::{digest_actions, digest_state, CatalogEntry};
-use hikit::forest::ForestNode;
+use changesview::changes_view::RowItem;
 use editor::location::Authority;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
-
+use hikit::forest::ForestNode;
 
 /// The collection the test's sets live in — wired to sibling ids
 /// nothing here resolves, the way the ceremony would wire them.
@@ -162,7 +161,9 @@ fn the_catalog_names_the_folders_channel() {
         FolderWire {
             client: ahp_wire::client::inert(),
             session: session.clone(),
-            channel: Some(ahp_wire::client::ChannelUri::new("hihost-changes://tmp/repo")),
+            channel: Some(ahp_wire::client::ChannelUri::new(
+                "hihost-changes://tmp/repo",
+            )),
             serial: 0,
         },
     );
@@ -526,8 +527,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     let ui = imba::ui::UiCtx::dont_use_too_slow();
     let _window = ::workbench::window::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
-    let history_wire: imba::store::Id<ahp_changes::history::HistoryWire> =
-        imba::store::Id::mint();
+    let history_wire: imba::store::Id<ahp_changes::history::HistoryWire> = imba::store::Id::mint();
     store.put_entity(changes_id(), wired());
     store.put_entity(
         wire_id,
@@ -540,7 +540,9 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
         FolderWire {
             client: ahp_wire::client::inert(),
             session: ahp_wire::client::SessionUri::new("hihost-fs:/local"),
-            channel: Some(ahp_wire::client::ChannelUri::new("hihost-changes://tmp/repo")),
+            channel: Some(ahp_wire::client::ChannelUri::new(
+                "hihost-changes://tmp/repo",
+            )),
             serial: 0,
         },
     );

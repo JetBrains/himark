@@ -3,13 +3,11 @@
 //! The shell half of the split-diff pane: the palette's "diff two
 //! recent documents" command. The faces live in the `canvas` crate.
 
-
 use ::canvas::diff_pane::*;
 
 use imba::store::Store;
 
 use documents::OpenDocuments;
-
 
 /// Resolve one opened side to a registered `DocumentId`: reuse the open
 /// one, or REGISTER the freshly-built one (register-at-display — a
@@ -30,7 +28,8 @@ pub fn open_opened_diff_pane(
         return false;
     };
     let panel = DiffPanelView::over(documents, id);
-    let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+    let mut entity =
+        ::workbench::window::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
     ::workbench::window::Windows::put(store, window, entity);
     opened
@@ -48,7 +47,8 @@ pub fn open_diff_documents(
     let Some(panel) = diff_panel(store, documents, ui, left, right) else {
         return false;
     };
-    let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+    let mut entity =
+        ::workbench::window::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
     ::workbench::window::Windows::put(store, window, entity);
     opened

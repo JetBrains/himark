@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use crate::node::{Node, BRANCHING_FACTOR, LEAVES_CAPACITY};
-use crate::{summary::Bias, summary::Dimension, summary::Item, summary::Seek, tree::Splice, tree::SumTree, summary::Summary};
+use crate::{
+    summary::Bias, summary::Dimension, summary::Item, summary::Seek, summary::Summary,
+    tree::Splice, tree::SumTree,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 struct Span {

@@ -4,7 +4,6 @@
 //! The adapter moved to the `hiahp` crate; the shell keeps the path
 //! alive plus the WINDOW rims the crate cannot hold.
 
-
 // ---------------------------------------------------------------
 // The WINDOW rims of the open roads: fetch-then-open lands an
 // AppCommand into a window; the crate keeps the windowless build
@@ -63,9 +62,9 @@ pub fn install_open_handlers(
         workshop,
         languages,
     };
-    app.register_handler::<crate::workspace::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
-        shop.clone(),
-    ));
+    app.register_handler::<crate::workspace::OpenDiffByLocationsEffect>(
+        OpenDiffByLocationsHandler(shop.clone()),
+    );
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
         ::ahp_chat::open::OpenDiffPairHandler(shop),
     );
@@ -170,8 +169,8 @@ impl WindowedCommand for OpenDiffPair {
             fx,
         );
         fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, self.documents, fx)
-            });
+            documents::lanes::sync_document_watches(store, self.documents, fx)
+        });
         fx.scope(AppCommand::Verb, |fx| {
             documents::lanes::sync_stripe_bases(store, self.documents, ui, fx)
         });
@@ -258,7 +257,9 @@ pub fn register_all(app: &mut crate::app::Application) {
     app.register_handler::<ahp_wire::effects::ListSessionsEffect>(
         ::ahp_wire::registry::HandleListSessions,
     );
-    app.register_handler::<ahp_wire::effects::PollServerEffect>(::ahp_wire::registry::HandlePollServer);
+    app.register_handler::<ahp_wire::effects::PollServerEffect>(
+        ::ahp_wire::registry::HandlePollServer,
+    );
     app.register_handler::<ahp_wire::effects::CreateSessionEffect>(
         ::ahp_wire::registry::HandleCreateSession,
     );
@@ -271,17 +272,27 @@ pub fn register_all(app: &mut crate::app::Application) {
     app.register_handler::<ahp_wire::effects::SubscribeSessionEffect>(
         ::ahp_wire::registry::HandleSubscribeSession,
     );
-    app.register_handler::<ahp_wire::effects::PollSessionEffect>(::ahp_wire::registry::HandlePollSession);
-    app.register_handler::<ahp_wire::effects::CreateChatEffect>(::ahp_wire::registry::HandleCreateChat);
+    app.register_handler::<ahp_wire::effects::PollSessionEffect>(
+        ::ahp_wire::registry::HandlePollSession,
+    );
+    app.register_handler::<ahp_wire::effects::CreateChatEffect>(
+        ::ahp_wire::registry::HandleCreateChat,
+    );
     app.register_handler::<ahp_wire::effects::SubscribeChatEffect>(
         ::ahp_wire::registry::HandleSubscribeChat,
     );
-    app.register_handler::<ahp_wire::effects::FetchTurnsEffect>(::ahp_wire::registry::HandleFetchTurns);
-    app.register_handler::<ahp_wire::effects::StartTurnEffect>(::ahp_wire::registry::HandleStartTurn);
+    app.register_handler::<ahp_wire::effects::FetchTurnsEffect>(
+        ::ahp_wire::registry::HandleFetchTurns,
+    );
+    app.register_handler::<ahp_wire::effects::StartTurnEffect>(
+        ::ahp_wire::registry::HandleStartTurn,
+    );
     app.register_handler::<ahp_wire::effects::PollChatActionsEffect>(
         ::ahp_wire::registry::HandlePollChatActions,
     );
-    app.register_handler::<ahp_wire::effects::CancelTurnEffect>(::ahp_wire::registry::HandleCancelTurn);
+    app.register_handler::<ahp_wire::effects::CancelTurnEffect>(
+        ::ahp_wire::registry::HandleCancelTurn,
+    );
     app.register_handler::<ahp_wire::effects::DispatchChatActionEffect>(
         ::ahp_wire::registry::HandleDispatchChatAction,
     );

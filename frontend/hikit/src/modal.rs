@@ -68,7 +68,12 @@ pub trait ModalView: imba::dyn_view::DynView + Send + Sync {
     ) {
     }
 
-    fn release_widgets(&mut self) -> Vec<(crate::panel::WidgetOrigin, Box<dyn crate::panel::DynPanelView>)> {
+    fn release_widgets(
+        &mut self,
+    ) -> Vec<(
+        crate::panel::WidgetOrigin,
+        Box<dyn crate::panel::DynPanelView>,
+    )> {
         Vec::new()
     }
 

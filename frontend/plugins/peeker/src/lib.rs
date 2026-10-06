@@ -1,20 +1,31 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::app::Application;
-use documents::BuildDocumentEffect;
-use documents::entity_view::EditorIdView;
-use workbench::workbench_node::EditorPane;
-use documents::FetchDocumentEffect;
 use ahp_locations::FindEffect;
-use hikit::modal::ModalRequest;
-use hikit::modal::ModalView;
-use workbench::workbench_node::PaneCommand;
-use hikit::panel::WidgetOrigin;
+use documents::entity_view::EditorIdView;
+use documents::BuildDocumentEffect;
+use documents::FetchDocumentEffect;
 use editor::document::Document;
 use editor::location::ResourceLocation;
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key}, leaf::leaf, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, layout::Layout as _, ui::UiCtx, View};
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use hikit::panel::WidgetOrigin;
+use himark::app::Application;
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, Key},
+    layout::Layout as _,
+    leaf::leaf,
+    scroll::ScrollView,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::{Paint, Rect, Size};
+use workbench::workbench_node::EditorPane;
+use workbench::workbench_node::PaneCommand;
 
 #[derive(Clone)]
 pub struct Peeker {
@@ -146,9 +157,9 @@ type RowsCommand = hikit::list_keyboard::ListKeyCommand<
 >;
 
 fn rows_list() -> Rows {
-    hikit::list_keyboard::ListKeyboardController::new(
-        imba::scroll::ScrollView::new(imba::list::ListView::empty()),
-    )
+    hikit::list_keyboard::ListKeyboardController::new(imba::scroll::ScrollView::new(
+        imba::list::ListView::empty(),
+    ))
 }
 
 impl Peeker {
@@ -168,7 +179,8 @@ impl Peeker {
             .map(|(_, widget)| widget.title(store))
             .collect();
         let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
-        let mut input = editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+        let mut input =
+            editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
 
         let mut peeker = Self {
@@ -375,7 +387,12 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn drop_preview(&mut self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut PeekerEffects<'_>) {
+    fn drop_preview(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        fx: &mut PeekerEffects<'_>,
+    ) {
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
             documents::lifecycle::close_editor(
@@ -401,7 +418,12 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn ensure_preview(&mut self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut PeekerEffects<'_>) {
+    fn ensure_preview(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        fx: &mut PeekerEffects<'_>,
+    ) {
         let documents = self.documents;
         let width = EditorIdView::editor_width(
             self.preview_width,
@@ -932,10 +954,14 @@ pub fn build(
     fx: &mut himark::app::AppFx<'_>,
 ) -> Box<dyn hikit::modal::ModalView> {
     {
-        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            workbench::window::Windows::window(store, window).expect("the window entity");
         let viewport = entity.viewport_size();
 
-        let recents = recents::RecentLocations::list(store, himark::workspace::entity_state(&entity).recents());
+        let recents = recents::RecentLocations::list(
+            store,
+            himark::workspace::entity_state(&entity).recents(),
+        );
 
         let mut widgets = entity.unmount_all_widgets();
         let fronted: Vec<hikit::pane_row::PaneRow> = widgets
@@ -949,7 +975,10 @@ pub fn build(
                 .into_iter()
                 .map(|widget| (WidgetOrigin::Row, widget)),
         );
-        let folders = ahp_session::session::folders::session_folders(store, &himark::workspace::entity_session(&entity));
+        let folders = ahp_session::session::folders::session_folders(
+            store,
+            &himark::workspace::entity_session(&entity),
+        );
 
         let documents = himark::workspace::entity_state(&entity).documents();
         let peeker = fx.scope(himark::modal::modal_scope(window), |fx| {
@@ -980,7 +1009,8 @@ impl himark::commands::WindowedCommand for TogglePeeker {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
+        let entity =
+            workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {
             // Toggle: any standing modal is dismissed; the peeker
             // opens only over a clear window.
@@ -994,7 +1024,8 @@ impl himark::commands::WindowedCommand for TogglePeeker {
         }
         let ui = ui;
         let modal = build(store, &ui, window, fx);
-        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
             move |command| himark::app::AppCommand::Content(window, command),
             |fx| entity.show_modal(store, modal, fx),

@@ -1,12 +1,24 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::app::AppCommand;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListOps, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, PresentableCommand, ui::UiCtx, View};
+use himark::app::AppCommand;
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, Key},
+    layout::Layout as _,
+    leaf::leaf,
+    list::{ListCommand, ListOps, ListView},
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    PresentableCommand, View,
+};
 use skia_safe::{Paint, Size};
 
 /// Keys-only controller over the raw label list — the palette's own
@@ -76,7 +88,8 @@ impl PaletteView {
                 command: std::sync::Arc::new(std::sync::Mutex::new(Some(presentable.command))),
             })
             .collect();
-        let mut input = editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+        let mut input =
+            editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
         let mut palette = Self {
             input,
@@ -128,8 +141,9 @@ impl PaletteView {
             .map(|&index| self.entries[index].shortcut.clone())
             .collect();
         let scroll_y = self.list.inner().scroll_y();
-        let mut list = ListView::from_slice(hikit::rows::label_slice(store, ui, &labels, &trails, None))
-            .with_selection(hikit::rows::selection_style(store));
+        let mut list =
+            ListView::from_slice(hikit::rows::label_slice(store, ui, &labels, &trails, None))
+                .with_selection(hikit::rows::selection_style(store));
         if !labels.is_empty() {
             list.select_only(selected);
         }
@@ -351,7 +365,11 @@ impl ModalView for PaletteView {
 /// Build the palette overlay: a plain z-stacked modal layer that
 /// OWNS its input. The command walk runs BEFORE the modal mounts, so
 /// the window's own commands are all collected.
-pub fn build(store: &mut Store, ui: &UiCtx, window: workbench::window::WindowId) -> Box<dyn ModalView> {
+pub fn build(
+    store: &mut Store,
+    ui: &UiCtx,
+    window: workbench::window::WindowId,
+) -> Box<dyn ModalView> {
     let commands = himark::commands::palette_commands(store, ui, window);
     Box::new(PaletteView::new(store, ui, commands))
 }
@@ -372,7 +390,8 @@ impl himark::commands::WindowedCommand for TogglePalette {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
+        let entity =
+            workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {
             let mut entity = entity.clone();
             fx.scope(
@@ -384,7 +403,8 @@ impl himark::commands::WindowedCommand for TogglePalette {
         }
         let ui = ui;
         let modal = build(store, &ui, window);
-        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
             move |command| himark::app::AppCommand::Content(window, command),
             |fx| entity.show_modal(store, modal, fx),

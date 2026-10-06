@@ -6,7 +6,13 @@ use std::marker::PhantomData;
 
 use skia_safe::{Canvas, Color, Contains, Paint, Rect, Size};
 
-use crate::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, store::Store, Thunk, View, Widget};
+use crate::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult},
+    store::Store,
+    Thunk, View, Widget,
+};
 
 #[derive(Clone, Copy, Default)]
 pub struct ScrollbarStyle {

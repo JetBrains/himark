@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::app_ext::AppExt;
 use editor::test_document::plain_document;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::app_ext::AppExt;
 
 fn boot() -> Application {
     let mut app = Application::new(AppFonts::embedded());

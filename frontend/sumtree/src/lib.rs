@@ -5,6 +5,5 @@ mod node;
 pub mod summary;
 pub mod tree;
 
-
 #[cfg(test)]
 mod tests;

@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn two_windows_edit_independently() {
     use himark::app::AppFonts;
@@ -16,18 +15,19 @@ fn two_windows_edit_independently() {
     app.draw_window_sized(first, surface.canvas(), Size::new(800.0, 600.0));
     app.draw_window_sized(second, surface.canvas(), Size::new(500.0, 400.0));
 
-    let focused_text = |app: &Application, window: ::workbench::window::WindowId| -> Option<String> {
-        let store = &app.window_store(window);
-        let session = himark::workspace::window_session(store, window)?;
-        let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
-        let document = documents::OpenDocuments::document_ref(
-            store,
-            documents,
-            ::workbench::window::Windows::window_ref(store, window)?.focused_document_id()?,
-        )?;
-        let end = document.text().byte_count().min(u32::MAX as usize) as u32;
-        Some(document.text().view().substring(0..end))
-    };
+    let focused_text =
+        |app: &Application, window: ::workbench::window::WindowId| -> Option<String> {
+            let store = &app.window_store(window);
+            let session = himark::workspace::window_session(store, window)?;
+            let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
+            let document = documents::OpenDocuments::document_ref(
+                store,
+                documents,
+                ::workbench::window::Windows::window_ref(store, window)?.focused_document_id()?,
+            )?;
+            let end = document.text().byte_count().min(u32::MAX as usize) as u32;
+            Some(document.text().view().substring(0..end))
+        };
 
     assert!(app.dispatch_timed(
         first,
@@ -64,7 +64,6 @@ fn two_windows_edit_independently() {
     assert_eq!(panes(&app, second), 2, "the second window split");
     assert_eq!(panes(&app, first), 1, "the first window did not");
 }
-
 
 #[test]
 fn closing_a_split_pane_collapses_to_the_sibling() {
@@ -109,7 +108,6 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     );
 }
 
-
 #[test]
 fn open_documents_list_recently_opened_first() {
     use documents::OpenDocuments;
@@ -148,7 +146,6 @@ fn open_documents_list_recently_opened_first() {
         .collect();
     assert_eq!(open_order, ["alpha", "beta"], "open order stays stable");
 }
-
 
 #[test]
 fn navigation_back_and_forward_walk_pane_history() {
@@ -246,7 +243,12 @@ fn navigation_back_and_forward_walk_pane_history() {
             document: plain_document("beta\n"),
             location: Some(located("b.md")),
             primary: true,
-            target: Some(documents::text_ext::LineCol { line: 0, col: 3 }..documents::text_ext::LineCol { line: 0, col: 4 }),
+            target: Some(
+                documents::text_ext::LineCol { line: 0, col: 3 }..documents::text_ext::LineCol {
+                    line: 0,
+                    col: 4
+                }
+            ),
             focus: false,
         },
     )));
@@ -259,7 +261,6 @@ fn navigation_back_and_forward_walk_pane_history() {
         "back returns to where the same-file jump left"
     );
 }
-
 
 #[test]
 fn close_widget_walks_the_pane_history() {
@@ -325,8 +326,9 @@ fn close_widget_walks_the_pane_history() {
         app.focused_document_text().is_none(),
         "history spent — the blank stays (a pristine scratch is not a place)"
     );
-    let a = documents::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("a.md"))
-        .expect("dirty: unsaved edits are never released");
+    let a =
+        documents::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("a.md"))
+            .expect("dirty: unsaved edits are never released");
     assert_eq!(
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), a)
             .expect("document")
@@ -354,7 +356,6 @@ fn close_widget_walks_the_pane_history() {
         "closing forgets documents, never places: {recents:?}"
     );
 }
-
 
 #[test]
 fn a_pane_documents_popup_paints_in_the_window() {
@@ -497,7 +498,6 @@ fn a_pane_documents_popup_paints_in_the_window() {
     assert_eq!(magenta(&mut surface), 0, "the popup left with its marker");
 }
 
-
 #[test]
 fn scroll_stripes_follow_the_diff_through_the_app() {
     let ui = ::editor::test_document::test_ui();
@@ -549,7 +549,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // A benign entity command: deliver drops it, the batch tails run.
     let home = app.sole_window_session();
-    let documents = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+    let documents =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
     let tick = move |app: &mut Application| {
         app.perform_batch(vec![himark::app::AppCommand::at(
             documents,
@@ -574,7 +575,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let theme = ::editor::env::Themes::of(app.store());
         let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = documents::OpenDocuments::document(&store, documents, target).expect("open");
+        let mut document =
+            documents::OpenDocuments::document(&store, documents, target).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
             &::operation::operation::Operation::insert_in(len, 0, "zero\n"),
@@ -610,7 +612,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
                 .expect("open");
         let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = documents::OpenDocuments::document(&store, documents, base).expect("open");
+        let mut document =
+            documents::OpenDocuments::document(&store, documents, base).expect("open");
         let catch_up = myersdiff::diff(
             document.text(),
             &::text::text::Text::from_string_exact(&target_text),
@@ -640,7 +643,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
-        let mut document = documents::OpenDocuments::document(&store, documents, base).expect("open");
+        let mut document =
+            documents::OpenDocuments::document(&store, documents, base).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
             &::operation::operation::Operation::insert_in(len, 0, "gone\n"),
@@ -661,13 +665,14 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // ...then land the new HEAD: a base equal to the target's text,
     // under its own location.
-    let target_text = documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
-        .map(|document| {
-            let mut view = document.text().view();
-            let count = view.byte_count();
-            view.byte_string(0, count)
-        })
-        .expect("open");
+    let target_text =
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
+            .map(|document| {
+                let mut view = document.text().view();
+                let count = view.byte_count();
+                view.byte_string(0, count)
+            })
+            .expect("open");
     let head = ::editor::location::ResourceLocation::new(
         ::editor::location::ResourceType::document(),
         ::editor::location::Authority::new("local"),
@@ -685,7 +690,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let home = app.sole_window_session();
         let documents =
-            ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+            ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home)
+                .documents();
         app.perform_batch(vec![himark::app::AppCommand::at(
             documents,
             documents::DocumentsCommand::BaseLocated {
@@ -728,17 +734,23 @@ unrelated
         "panel-base.md".to_owned(),
         0,
     );
-    let panel_diff =
-        documents::OpenDocuments::track_diff(&mut app.store_mut(), documents, snapshot, target, false)
-            .expect("the panel road tracks");
+    let panel_diff = documents::OpenDocuments::track_diff(
+        &mut app.store_mut(),
+        documents,
+        snapshot,
+        target,
+        false,
+    )
+    .expect("the panel road tracks");
     // The pane's own diff empties: HEAD catches up again.
-    let target_text = documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
-        .map(|document| {
-            let mut view = document.text().view();
-            let count = view.byte_count();
-            view.byte_string(0, count)
-        })
-        .expect("open");
+    let target_text =
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
+            .map(|document| {
+                let mut view = document.text().view();
+                let count = view.byte_count();
+                view.byte_string(0, count)
+            })
+            .expect("open");
     let head3 = ::editor::location::ResourceLocation::new(
         ::editor::location::ResourceType::document(),
         ::editor::location::Authority::new("local"),
@@ -756,7 +768,8 @@ unrelated
     {
         let home = app.sole_window_session();
         let documents =
-            ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+            ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home)
+                .documents();
         app.perform_batch(vec![himark::app::AppCommand::at(
             documents,
             documents::DocumentsCommand::BaseLocated {

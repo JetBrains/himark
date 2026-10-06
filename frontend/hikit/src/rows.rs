@@ -1,7 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, effect::Effects, event::{Event, EventResult}, list::{ListSlice, SelectionStyle}, store::Store, layout::LayoutExt as _, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    effect::Effects,
+    event::{Event, EventResult},
+    layout::LayoutExt as _,
+    list::{ListSlice, SelectionStyle},
+    store::Store,
+    ui::UiCtx,
+    View,
+};
 
 #[derive(Clone)]
 pub struct LabelRow {

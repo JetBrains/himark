@@ -4,7 +4,6 @@
 pub mod inlay;
 pub mod tree_demo;
 
-
 use editor::document::Document;
 
 const SAMPLE: &str = include_str!("../sample.md");

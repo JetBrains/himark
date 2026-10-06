@@ -49,11 +49,12 @@ pub struct Catalog {
             + Send
             + Sync,
     >,
-    pub note_turn: std::sync::Arc<
-        dyn Fn(&mut Store, ahp_wire::client::HostId, &ChatUri, &str) + Send + Sync,
-    >,
+    pub note_turn:
+        std::sync::Arc<dyn Fn(&mut Store, ahp_wire::client::HostId, &ChatUri, &str) + Send + Sync>,
     pub folders: std::sync::Arc<
-        dyn Fn(&Store, &ahp_wire::SessionId) -> Vec<editor::location::ResourceLocation> + Send + Sync,
+        dyn Fn(&Store, &ahp_wire::SessionId) -> Vec<editor::location::ResourceLocation>
+            + Send
+            + Sync,
     >,
 }
 
@@ -75,10 +76,7 @@ impl Catalog {
 impl Chats {
     /// A collection wired to its sibling — minted by the session
     /// ceremony, and by tests that stand one up alone.
-    pub fn wired(
-        recents: imba::store::Id<recents::RecentLocations>,
-        catalog: Catalog,
-    ) -> Self {
+    pub fn wired(recents: imba::store::Id<recents::RecentLocations>, catalog: Catalog) -> Self {
         Self {
             recents,
             catalog,
@@ -289,7 +287,11 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
         let chat = self.chat.clone();
         let landing = self.chat.clone();
         fx.push(
-            AnyEffect::new(ahp_wire::effects::SubscribeChatEffect { client: client.chat.clone(), chat }).map(move |result| {
+            AnyEffect::new(ahp_wire::effects::SubscribeChatEffect {
+                client: client.chat.clone(),
+                chat,
+            })
+            .map(move |result| {
                 imba::command::Verb::at(
                     chats,
                     ChatsCommand::Panel(landing.clone(), ChatPanelCommand::Snapshot(result)),
@@ -401,9 +403,10 @@ impl imba::View for ChatPane {
                     Chats::chat_ref(store, self.chats, &self.chat)
                         .and_then(|panel| panel.display_view(arena, store, ui, view))
                 }) {
-                    Some(laid) => {
-                        imba::ThunkBox::new(arena, imba::layout::Layout::layout(laid, arena, constraints))
-                    }
+                    Some(laid) => imba::ThunkBox::new(
+                        arena,
+                        imba::layout::Layout::layout(laid, arena, constraints),
+                    ),
 
                     // No view record yet (panes mint storeless): a
                     // blank frame whose paint asks for Boot — the

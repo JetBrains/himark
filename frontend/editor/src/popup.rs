@@ -5,7 +5,7 @@ use imba::arena::Arena;
 use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
-use imba::{Thunk, ui::UiCtx};
+use imba::{ui::UiCtx, Thunk};
 use skia_safe::{Point, Rect, Size};
 
 use crate::document::Document;

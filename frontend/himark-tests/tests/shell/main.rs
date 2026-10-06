@@ -4,10 +4,19 @@
 pub(crate) use imba::{store::Store, View};
 pub(crate) use std::str;
 
-pub(crate) use editor::{markup::inlay_anchors_line, test_document::{fenced_code_document, list_document, plain_document}, document::Document, editor_view::EditorCommand, editor_view::EditorFocus, editor_view::EditorView, markup::Inlay, markup::InlayMode};
+pub(crate) use editor::{
+    document::Document,
+    editor_view::EditorCommand,
+    editor_view::EditorFocus,
+    editor_view::EditorView,
+    markup::inlay_anchors_line,
+    markup::Inlay,
+    markup::InlayMode,
+    test_document::{fenced_code_document, list_document, plain_document},
+};
 
-pub(crate) use himark::app_ext::AppExt;
 pub(crate) use documents::entity_view::EditorIdView;
+pub(crate) use himark::app_ext::AppExt;
 
 fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
@@ -33,7 +42,10 @@ pub(crate) fn drain_announced<C: 'static>(batch: imba::effect::Batch<C>) -> Opti
             continue;
         };
         let (value, lift) = effect.into_payload().split();
-        if value.downcast::<hikit::list_keyboard::AnnounceSelect>().is_ok() {
+        if value
+            .downcast::<hikit::list_keyboard::AnnounceSelect>()
+            .is_ok()
+        {
             announced = lift(Box::new(()));
         }
     }
@@ -154,7 +166,12 @@ impl TestPane {
         );
     }
 
-    fn replace_inlay(&mut self, key: editor::markup::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
+    fn replace_inlay(
+        &mut self,
+        key: editor::markup::InlayKey,
+        range: std::ops::Range<u32>,
+        inlay: Inlay,
+    ) {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
@@ -349,5 +366,3 @@ mod toc;
 mod toolbar;
 mod washes;
 mod workspaces;
-
-

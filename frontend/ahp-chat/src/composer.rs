@@ -1,8 +1,20 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::{env, editor_view::EditorCommand, editor_view::EditorView};
-use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use editor::{editor_view::EditorCommand, editor_view::EditorView, env};
+use imba::{
+    anim::{Animation, AnimationClock, Easing, Motion},
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::Effects,
+    event::{Event, EventResult},
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Rect, Size};
 
 use crate::cell::document_text;
@@ -64,12 +76,14 @@ impl Clone for Composer {
 const EDITOR_CHILD: usize = 1;
 
 fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<EditorView> {
-    let document =
-        editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
-            .with_syntax(
-                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-                &[],
-            );
+    let document = editor::document::Document::new(
+        text::text::Text::from_string_exact(""),
+        editor::markup::Markup::new(),
+    )
+    .with_syntax(
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
+        &[],
+    );
     let fonts = hikit::fonts::source()();
     let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);

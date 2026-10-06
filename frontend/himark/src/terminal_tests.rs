@@ -6,11 +6,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::app_ext::AppExt;
 use ::terminals::pane::*;
 use ::terminals::*;
-use crate::app_ext::AppExt;
-use hikit::panel::PanelView;
 use alacritty_terminal::grid::Dimensions;
+use hikit::panel::PanelView;
 use imba::event::Modifiers;
 use imba::store::Store;
 
@@ -68,7 +68,8 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     assert!(app.new_scratch(app.sole_window()));
     let _ = app.draw_window(app.sole_window(), surface.canvas());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(
@@ -121,7 +122,8 @@ fn dump_terminal_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     let _ = app.draw_window(app.sole_window(), surface.canvas());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(

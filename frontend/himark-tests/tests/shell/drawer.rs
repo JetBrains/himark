@@ -1,7 +1,13 @@
 #![allow(unused_imports)]
-use super::*;
 use super::dock::{entity, located, settle, show_dock};
-use std::sync::{Arc, Mutex};
+use super::*;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use himark::app::AppCommand;
+use himark::app::AppFonts;
+use himark::app::Application;
+use himark::app_ext::AppExt;
+use himark::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -9,14 +15,7 @@ use imba::leaf::leaf;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{ui::UiCtx, View};
-use himark::test_driver;
-use himark::app::AppCommand;
-use himark::app_ext::AppExt;
-use himark::app::AppFonts;
-use himark::app::Application;
-use hikit::modal::ModalRequest;
-use hikit::modal::ModalView;
-
+use std::sync::{Arc, Mutex};
 
 /// The sessions subscription is RESIDENT: a registered host connects,
 /// lists its sessions and drains its event stream off the batch tail
@@ -67,9 +66,7 @@ fn the_sessions_subscription_runs_without_any_view() {
             })))
         }
 
-        fn poll_root(
-            &self,
-        ) -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>> {
+        fn poll_root(&self) -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>> {
             // The long poll parks: events are not this test's story.
             Box::pin(std::future::pending())
         }
@@ -84,8 +81,8 @@ fn the_sessions_subscription_runs_without_any_view() {
         }
     }
 
-    use himark::app::Application;
     use himark::app::AppFonts;
+    use himark::app::Application;
     let mut app = Application::new(AppFonts::embedded());
     let _ = app.add_window();
     himark::hiahp::register_all(&mut app);
@@ -137,7 +134,6 @@ fn the_sessions_subscription_runs_without_any_view() {
     );
 }
 
-
 #[test]
 fn the_add_host_row_takes_a_url_and_dispatches() {
     let mut app = Application::new(AppFonts::embedded());
@@ -157,7 +153,11 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
 
     let mut store = app.store_mut().clone();
     let ui = ::editor::test_document::test_ui();
-    let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, himark::higent::drawer::drawer_asks(window));
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        himark::higent::drawer::drawer_asks(window),
+    );
     {
         let mut boot: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
             imba::effect::Batch::new();
@@ -186,9 +186,11 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     panel.perform(
         &mut store,
         &ui,
-        ahp_session::session::drawer::AgentsCommand::AddHostInput(::editor::editor_view::EditorCommand::InsertText {
-            text: "ws://example:7/?tkn=t".to_owned(),
-        }),
+        ahp_session::session::drawer::AgentsCommand::AddHostInput(
+            ::editor::editor_view::EditorCommand::InsertText {
+                text: "ws://example:7/?tkn=t".to_owned(),
+            },
+        ),
         &mut batch.effects(),
     );
     panel.perform(
@@ -202,8 +204,7 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     let hikit::modal::ModalRequest::Perform(verb) = request else {
         panic!("Enter dispatches a Perform request");
     };
-    let command =
-        himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command = himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_batch(vec![command]));
     assert_eq!(
         received.lock().expect("recorder").as_deref(),
@@ -222,7 +223,6 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     assert!(hikit::modal::ModalView::take_request(&mut panel).is_none());
 }
 
-
 #[test]
 fn the_drawer_groups_sessions_by_folder_most_recent_first() {
     let mut app = Application::new(AppFonts::embedded());
@@ -231,7 +231,11 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
     let mut store = app.store_mut().clone();
     let host = ahp_wire::SessionId::local_default(&store).host;
     ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
-    ahp_session::session::agents::Agents::set_status(&mut store, host, ahp_session::session::state::HostStatus::Connected);
+    ahp_session::session::agents::Agents::set_status(
+        &mut store,
+        host,
+        ahp_session::session::state::HostStatus::Connected,
+    );
     let summary =
         |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
             origin: None,
@@ -289,7 +293,11 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
     );
 
     let ui = ::editor::test_document::test_ui();
-    let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, himark::higent::drawer::drawer_asks(window));
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        himark::higent::drawer::drawer_asks(window),
+    );
     let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
         imba::effect::Batch::new();
     use imba::View;
@@ -346,7 +354,6 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
     );
 }
 
-
 #[test]
 fn the_drawer_lands_on_the_window_s_open_session() {
     let mut app = Application::new(AppFonts::embedded());
@@ -355,7 +362,11 @@ fn the_drawer_lands_on_the_window_s_open_session() {
     let mut store = app.store_mut().clone();
     let host = ahp_wire::SessionId::local_default(&store).host;
     ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
-    ahp_session::session::agents::Agents::set_status(&mut store, host, ahp_session::session::state::HostStatus::Connected);
+    ahp_session::session::agents::Agents::set_status(
+        &mut store,
+        host,
+        ahp_session::session::state::HostStatus::Connected,
+    );
     let summary = |title: &str| ahp_types::state::SessionSummary {
         origin: None,
         provider: "test".to_owned(),
@@ -387,7 +398,11 @@ fn the_drawer_lands_on_the_window_s_open_session() {
     ::workbench::window::Windows::put(&mut store, window, entity);
 
     let ui = ::editor::test_document::test_ui();
-    let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, himark::higent::drawer::drawer_asks(window));
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        himark::higent::drawer::drawer_asks(window),
+    );
     let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
         imba::effect::Batch::new();
     use imba::View;
@@ -410,7 +425,6 @@ fn the_drawer_lands_on_the_window_s_open_session() {
     );
 }
 
-
 #[test]
 fn the_drawer_speed_search_filters_sessions() {
     use imba::effect::{block_on, EffectHandler, Message};
@@ -421,7 +435,11 @@ fn the_drawer_speed_search_filters_sessions() {
     let mut store = app.store_mut().clone();
     let host = ahp_wire::SessionId::local_default(&store).host;
     ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
-    ahp_session::session::agents::Agents::set_status(&mut store, host, ahp_session::session::state::HostStatus::Connected);
+    ahp_session::session::agents::Agents::set_status(
+        &mut store,
+        host,
+        ahp_session::session::state::HostStatus::Connected,
+    );
     let summary = |title: &str| ahp_types::state::SessionSummary {
         origin: None,
         provider: "test".to_owned(),
@@ -445,7 +463,11 @@ fn the_drawer_speed_search_filters_sessions() {
     );
 
     let ui = ::editor::test_document::test_ui();
-    let mut panel = ahp_session::session::drawer::AgentsPanel::open(&store, &ui, himark::higent::drawer::drawer_asks(window));
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        himark::higent::drawer::drawer_asks(window),
+    );
     use imba::View;
     let mut drive = |panel: &mut ahp_session::session::drawer::AgentsPanel,
                      command|
@@ -454,15 +476,20 @@ fn the_drawer_speed_search_filters_sessions() {
         panel.perform(&mut store, &ui, command, &mut batch.effects());
         batch
     };
-    let _ = drive(&mut panel, ahp_session::session::drawer::AgentsCommand::Boot);
+    let _ = drive(
+        &mut panel,
+        ahp_session::session::drawer::AgentsCommand::Boot,
+    );
 
     let typing = drive(
         &mut panel,
-        ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Input(
-            editor::editor_view::EditorCommand::InsertText {
-                text: "bet".to_owned(),
-            },
-        )),
+        ahp_session::session::drawer::AgentsCommand::Rows(
+            hikit::list_keyboard::ListKeyCommand::Input(
+                editor::editor_view::EditorCommand::InsertText {
+                    text: "bet".to_owned(),
+                },
+            ),
+        ),
     );
     let mut matches = None;
     for message in typing.drain() {
@@ -472,14 +499,18 @@ fn the_drawer_speed_search_filters_sessions() {
         let (value, _) = effect.into_payload().split();
         if let Ok(effect) = value.downcast::<hikit::list_keyboard::SpeedSearchEffect>() {
             matches = Some(block_on(Box::pin(async move {
-                hikit::list_keyboard::SpeedSearchHandler.handle(*effect).await
+                hikit::list_keyboard::SpeedSearchHandler
+                    .handle(*effect)
+                    .await
             })));
         }
     }
     let matches = matches.expect("typing launched the filter");
     let landing = drive(
         &mut panel,
-        ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Landed(matches)),
+        ahp_session::session::drawer::AgentsCommand::Rows(
+            hikit::list_keyboard::ListKeyCommand::Landed(matches),
+        ),
     );
     // The first-match jump rides the announce round trip.
     if let Some(select) = crate::drain_announced(landing) {
@@ -503,7 +534,9 @@ fn the_drawer_speed_search_filters_sessions() {
 
     let _ = drive(
         &mut panel,
-        ahp_session::session::drawer::AgentsCommand::Rows(hikit::list_keyboard::ListKeyCommand::Clear),
+        ahp_session::session::drawer::AgentsCommand::Rows(
+            hikit::list_keyboard::ListKeyCommand::Clear,
+        ),
     );
     assert_eq!(panel.match_count(), 0, "cleared");
 }

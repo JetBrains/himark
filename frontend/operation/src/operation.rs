@@ -9,8 +9,8 @@ use rope::rope::Rope;
 use crate::builder::OperationBuilder;
 use crate::iter::Iter;
 use crate::measure::{OperationMeasure, NEW_LEN, OLD_LEN};
-use crate::reader::Reader;
 use crate::op::Op;
+use crate::reader::Reader;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Bias {
@@ -143,7 +143,11 @@ impl Operation {
         }
         let mut cursor = self.rope.cursor();
 
-        if !cursor.seek(rope::metrics::MetricId(source), offset, rope::cursor::SeekMode::After) {
+        if !cursor.seek(
+            rope::metrics::MetricId(source),
+            offset,
+            rope::cursor::SeekMode::After,
+        ) {
             let target_total = totals.metric_at(rope::metrics::MetricId(target));
             return offset
                 .saturating_sub(source_total)
@@ -201,7 +205,11 @@ impl Operation {
             return None;
         }
         let mut cursor = self.rope.cursor();
-        if !cursor.seek(rope::metrics::MetricId(axis), offset, rope::cursor::SeekMode::After) {
+        if !cursor.seek(
+            rope::metrics::MetricId(axis),
+            offset,
+            rope::cursor::SeekMode::After,
+        ) {
             return None;
         }
         loop {
@@ -248,7 +256,11 @@ impl Operation {
             return empty(old_total, new_total);
         }
         let mut cursor = self.rope.cursor();
-        if !cursor.seek(rope::metrics::MetricId(axis), offset, rope::cursor::SeekMode::After) {
+        if !cursor.seek(
+            rope::metrics::MetricId(axis),
+            offset,
+            rope::cursor::SeekMode::After,
+        ) {
             return empty(old_total, new_total);
         }
         let position = cursor.position();
@@ -833,7 +845,11 @@ fn cut_rope(
     let start = start.min(total);
     let end = end.clamp(start, total);
     let mut cursor = rope.cursor();
-    let (from, mut at) = match cursor.seek(rope::metrics::MetricId(axis), start, rope::cursor::SeekMode::After) {
+    let (from, mut at) = match cursor.seek(
+        rope::metrics::MetricId(axis),
+        start,
+        rope::cursor::SeekMode::After,
+    ) {
         true => (cursor.index(), cursor.position().0[axis]),
 
         false => (rope.len() as u32, total),

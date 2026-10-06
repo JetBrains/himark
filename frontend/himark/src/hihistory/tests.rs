@@ -3,20 +3,18 @@
 
 use changesview::hihistory::{graph_node, CommitTip, FolderHistory, History};
 
-
 use serde_json::json;
 
-use changesview::changes_view::RowItem;
 use ahp_changes::history::{digest_deltas, digest_snapshot};
-use changesview::hichanges::ChangesStatus;
 use ahp_types::actions::StateAction;
 use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
+use changesview::changes_view::RowItem;
+use changesview::hichanges::ChangesStatus;
 use editor::location::Authority;
-use hikit::forest::ForestNode;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
+use hikit::forest::ForestNode;
 use himark_ahp_ext_types::history as history_wire;
-
 
 struct FileUris;
 

@@ -3,9 +3,9 @@
 
 use super::*;
 use ::editor::test_document::plain_document;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::app_ext::AppExt;
 
 #[derive(Clone)]
 struct StubWidget(&'static str);
@@ -64,7 +64,8 @@ fn seed_terminal_row(app: &mut Application, title: &str) -> terminals::TerminalI
     let id = terminals::TerminalId::mint();
     let _ = session.output(format!("\x1b]0;{title}\x07").as_bytes());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     terminals::Terminals::put(&mut app.store_mut(), terminals, id, session);
     id
 }
@@ -77,7 +78,8 @@ fn displaced_handles_drop_and_their_rows_survive() {
     app.draw_window(app.sole_window(), surface.canvas());
     let alpha = seed_terminal_row(&mut app, "alpha results");
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     assert!(app.open_panel(
         app.sole_window(),
         Box::new(terminals::pane::TerminalView::new(terminals, alpha))

@@ -23,13 +23,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ahp_types::actions::StateAction;
+use ahp_wire::client::AnnotationsClient as _;
 use ahp_wire::client::ChannelUri;
 use ahp_wire::client::ChatClient as _;
 use ahp_wire::client::ChatUri;
 use ahp_wire::client::ClientFuture;
-use ahp_wire::client::ServerEvent;
-use ahp_wire::client::AnnotationsClient as _;
 use ahp_wire::client::DocumentsClient as _;
+use ahp_wire::client::ServerEvent;
 use ahp_wire::client::SessionClient as _;
 use ahp_wire::client::SessionOptions;
 use ahp_wire::client::SessionUri;
@@ -123,7 +123,9 @@ impl Connector for ProbeConnector {
                 .clone()
                 .unwrap_or(url);
             let path = url.strip_prefix("unix:").expect("a unix url");
-            let inner = desktop::unix_transport::UnixTransport::connect(path, tag, Arc::clone(&dead)).await?;
+            let inner =
+                desktop::unix_transport::UnixTransport::connect(path, tag, Arc::clone(&dead))
+                    .await?;
             let link = Arc::new(Link::default());
             probe
                 .links
@@ -963,11 +965,11 @@ fn a_document_channel_across_a_cut_replays_every_edit_once() {
         actions
             .iter()
             .filter_map(|action| match action {
-                StateAction::Unknown(value) => {
-                    serde_json::from_value::<himark_ahp_ext_types::documents::DocumentApplied>(value.clone())
-                        .ok()
-                        .map(|applied| applied.id.0)
-                }
+                StateAction::Unknown(value) => serde_json::from_value::<
+                    himark_ahp_ext_types::documents::DocumentApplied,
+                >(value.clone())
+                .ok()
+                .map(|applied| applied.id.0),
                 _ => None,
             })
             .collect()

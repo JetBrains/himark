@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
 
 #[test]

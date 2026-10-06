@@ -4,7 +4,7 @@
 use std::fmt;
 
 use operation::{op::Op, operation::Operation};
-use rope::{rope::from_leaves_with_branching, cursor::Cursor, rope::Rope};
+use rope::{cursor::Cursor, rope::from_leaves_with_branching, rope::Rope};
 
 use crate::line_number::LineNumber;
 use crate::measure::{split_utf8_bytes, TextMeasure, BRANCH_FACTOR, LEAF_CAPACITY, NEWLINES};

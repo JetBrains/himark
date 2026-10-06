@@ -103,7 +103,10 @@ fn an_offer_of_the_same_state_lands_as_nothing() {
     document.record(&insert(0, "hello", 0), 0);
     let offer = Offer {
         seen_local: 1,
-        state: SyncState::new(text::text::Text::from_string_exact("hello"), document.clone()),
+        state: SyncState::new(
+            text::text::Text::from_string_exact("hello"),
+            document.clone(),
+        ),
     };
     assert!(offer_landing(&document, 1, 0, 0, 5, &offer).is_none());
 }

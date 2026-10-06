@@ -11,8 +11,8 @@ use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
-use ahp_wire::client::HostId;
 use ahp_session::session::state::Hosts;
+use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
 
 pub struct AddSessionFolders {

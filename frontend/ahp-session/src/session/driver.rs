@@ -9,7 +9,7 @@
 //! marked (`Connecting` on the record, a drain token in `HostFeeds`),
 //! so a quiet pass costs map reads.
 
-use ahp_wire::client::{HostId, Servers, ServerEvent, SessionsPage, RootInfo};
+use ahp_wire::client::{HostId, RootInfo, ServerEvent, Servers, SessionsPage};
 use ahp_wire::effects::{ConnectServerEffect, ListSessionsEffect, PollServerEffect};
 use imba::command::{DynamicCommand, DynamicOnceCommand, Fx, Verb};
 use imba::effect::{AnyEffect, CancellationToken};
@@ -93,8 +93,10 @@ fn connect(store: &mut Store, server: HostId, fx: &mut Fx<'_>) {
     };
     Agents::set_status(store, server, HostStatus::Connecting);
     fx.push(
-        AnyEffect::new(ConnectServerEffect { client: client.session.clone() })
-            .map(move |result| Verb::Once(Box::new(Connected { server, result }))),
+        AnyEffect::new(ConnectServerEffect {
+            client: client.session.clone(),
+        })
+        .map(move |result| Verb::Once(Box::new(Connected { server, result }))),
     );
 }
 
@@ -111,8 +113,10 @@ fn drain(store: &mut Store, server: HostId, fx: &mut Fx<'_>) {
     }
     if feeds.drains.get(&server).is_none() {
         let token = fx.push(
-            AnyEffect::new(PollServerEffect { client: client.session.clone() })
-                .map(move |events| Verb::Once(Box::new(Drained { server, events }))),
+            AnyEffect::new(PollServerEffect {
+                client: client.session.clone(),
+            })
+            .map(move |events| Verb::Once(Box::new(Drained { server, events }))),
         );
         HostFeeds::update(store, |feeds| {
             feeds.drains.insert_mut(server, token);
@@ -126,15 +130,17 @@ fn list_page(store: &mut Store, server: HostId, cursor: Option<String>, fx: &mut
     };
     let first = cursor.is_none();
     fx.push(
-        AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(
-            move |result| {
-                Verb::Once(Box::new(Listed {
-                    server,
-                    first,
-                    result,
-                }))
-            },
-        ),
+        AnyEffect::new(ListSessionsEffect {
+            client: client.session.clone(),
+            cursor,
+        })
+        .map(move |result| {
+            Verb::Once(Box::new(Listed {
+                server,
+                first,
+                result,
+            }))
+        }),
     );
 }
 

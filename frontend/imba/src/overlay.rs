@@ -6,7 +6,12 @@ use std::marker::PhantomData;
 
 use skia_safe::{Point, Rect, Size};
 
-use crate::{arena::Arena, container::{Container, RealizedContainer}, event::{Event, EventResult}, Thunk, ThunkBox, Widget, WidgetBox};
+use crate::{
+    arena::Arena,
+    container::{Container, RealizedContainer},
+    event::{Event, EventResult},
+    Thunk, ThunkBox, Widget, WidgetBox,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct OverlayHost(pub &'static str);

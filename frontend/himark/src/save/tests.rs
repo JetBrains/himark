@@ -6,10 +6,10 @@ use std::sync::{mpsc, Arc, Mutex};
 use imba::event::{Key, Modifiers};
 
 use super::*;
-use ::editor::test_document::plain_document;
-use crate::{test_driver};
-use crate::app_ext::AppExt;
 use crate::app::Application;
+use crate::app_ext::AppExt;
+use crate::test_driver;
+use ::editor::test_document::plain_document;
 use documents::OpenDocuments;
 
 type Writes = Arc<Mutex<Vec<(ResourceLocation, String)>>>;

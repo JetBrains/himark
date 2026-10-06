@@ -11,9 +11,7 @@
 //! current file's name — buttons included — stays planted while its
 //! diff scrolls; collapsing a file folds its diff row away.
 
-use crate::diff_canvas::{
-    canvas_files, canvas_generation, CanvasFile, CanvasListing,
-};
+use crate::diff_canvas::{canvas_files, canvas_generation, CanvasFile, CanvasListing};
 use editor::env;
 use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
@@ -21,7 +19,7 @@ use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
 use imba::scroll::{ScrollCommand, ScrollView};
 use imba::thunk_ext::ThunkExt;
-use imba::{arena::Arena, constraints::Constraints, store::Store, Thunk, ui::UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 const MIN_EST_LINES: i64 = 4;
@@ -1581,13 +1579,13 @@ impl Canvas {
                         let text = self.composer_text().unwrap_or_default();
                         let history = Changes::of(store, self.changes).map(|held| held.history());
                         if let (false, Some(history)) = (text.trim().is_empty(), history) {
-                            self.request = Some(hikit::panel::PanelRequest::Perform(std::sync::Arc::new(
-                                changesview::hihistory::CommitHistory {
+                            self.request = Some(hikit::panel::PanelRequest::Perform(
+                                std::sync::Arc::new(changesview::hihistory::CommitHistory {
                                     history,
                                     folder: self.source.folder().clone(),
                                     message: text,
-                                },
-                            )));
+                                }),
+                            ));
                         }
                     }
                     _ => {}
@@ -1644,12 +1642,16 @@ impl Canvas {
                 }
                 None => imba::ThunkBox::new(
                     arena,
-                    imba::layout::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
-                        .map(CanvasCommand::Rows)
-                        // The list plants its sticky headers here —
-                        // the canvas IS the pane face, so the band
-                        // spans it edge to edge.
-                        .overlay_host(imba::list::STICKY_HOST),
+                    imba::layout::Layout::layout(
+                        self.rows.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(CanvasCommand::Rows)
+                    // The list plants its sticky headers here —
+                    // the canvas IS the pane face, so the band
+                    // spans it edge to edge.
+                    .overlay_host(imba::list::STICKY_HOST),
                 ),
             };
             inner
@@ -1968,7 +1970,11 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_cover(&self, store: &Store, key: &editor::location::ResourceLocation) -> Option<usize> {
+    pub fn probe_cover(
+        &self,
+        store: &Store,
+        key: &editor::location::ResourceLocation,
+    ) -> Option<usize> {
         self.canvas(store)?.probe_cover(key)
     }
 
@@ -2152,17 +2158,19 @@ impl View for DiffCanvasView {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        imba::layout::laid(
-            move |arena: &'a Arena, constraints: Constraints| match self.canvas(store) {
-                Some(canvas) => {
-                    imba::layout::Layout::layout(canvas.display(arena, store, ui), arena, constraints)
-                }
+        imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
+            match self.canvas(store) {
+                Some(canvas) => imba::layout::Layout::layout(
+                    canvas.display(arena, store, ui),
+                    arena,
+                    constraints,
+                ),
                 None => imba::ThunkBox::new(
                     arena,
                     imba::leaf::leaf::<CanvasCommand>(constraints.max.width.max(1.0), 1.0),
                 ),
-            },
-        )
+            }
+        })
     }
 }
 
@@ -2302,7 +2310,10 @@ fn header_band(theme: &editor::theme::Theme) -> f32 {
 /// = pad × 0.75 above and below) and the TOOLBAR row under it, ruled
 /// off. The box grows UNBOUNDED with the message — a commit message
 /// is as long as its author wants it; the canvas just scrolls.
-fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::editor_view::EditorView>) -> f32 {
+fn composer_band(
+    theme: &editor::theme::Theme,
+    message: Option<&editor::editor_view::EditorView>,
+) -> f32 {
     let chat = theme.ui().chat.clone();
     let one_line = chat.title_size * 1.6;
     let grown = message
@@ -2318,13 +2329,16 @@ fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::editor_v
 fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_view::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let document =
-        editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
-            .with_syntax(
-                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-                &[],
-            );
-    let mut view = editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
+    let document = editor::document::Document::new(
+        text::text::Text::from_string_exact(""),
+        editor::markup::Markup::new(),
+    )
+    .with_syntax(
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
+        &[],
+    );
+    let mut view =
+        editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
 }
@@ -2489,7 +2503,9 @@ impl View for CanvasRow {
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if matches!(command, editor::editor_view::EditorCommand::Click { .. }) && !*focused {
+                        if matches!(command, editor::editor_view::EditorCommand::Click { .. })
+                            && !*focused
+                        {
                             *focused = true;
                             message.focus_text();
                         }
@@ -3146,7 +3162,9 @@ impl hikit::panel::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
     fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
-        Some(hikit::pane_row::PaneRow::new(crate::CanvasRow(self.source.clone())))
+        Some(hikit::pane_row::PaneRow::new(crate::CanvasRow(
+            self.source.clone(),
+        )))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {

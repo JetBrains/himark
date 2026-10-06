@@ -290,8 +290,8 @@ fn replace(text: &Text, range: &Range<u32>, insert: &str) -> Assist {
 #[cfg(test)]
 mod tests {
     use editor::reparse::AssistKind;
-use editor::reparse::AssistRequest;
-use editor::reparse::SyntaxLanguage;
+    use editor::reparse::AssistRequest;
+    use editor::reparse::SyntaxLanguage;
     use operation::op::Op;
 
     fn applied(source: &str, assist: &editor::reparse::Assist) -> String {

@@ -39,7 +39,6 @@ use documents::sync::{SyncEdit, SyncState};
 use editor::edit_log::EditIdentity;
 
 #[doc(hidden)]
-
 #[derive(Clone)]
 struct Client {
     edits: mpsc::UnboundedSender<Local<SyncEdit>>,
@@ -132,7 +131,10 @@ impl SyncClients {
 
     fn draining(store: &Store, location: &ResourceLocation) -> bool {
         store.get::<SyncClients>().is_some_and(|clients| {
-            matches!(clients.clients.get(location), Some(ClientState::Draining { .. }))
+            matches!(
+                clients.clients.get(location),
+                Some(ClientState::Draining { .. })
+            )
         })
     }
 
@@ -585,7 +587,9 @@ async fn life(
             };
             if actions.send(applied).await.is_err() {
                 server
-                    .unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone()))
+                    .unsubscribe_document(&ahp_wire::client::ChannelUri::new(
+                        opened.document.clone(),
+                    ))
                     .await;
                 return;
             }
@@ -878,7 +882,9 @@ impl imba::command::DynamicCommand for ApplyOffer {
             return;
         };
         let shown = document.text().byte_count().min(u32::MAX as usize) as u32;
-        if self.offer.seen_local != rules::sent(document.revision(), client.attached_at, client.taken) {
+        if self.offer.seen_local
+            != rules::sent(document.revision(), client.attached_at, client.taken)
+        {
             return;
         }
 

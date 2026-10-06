@@ -37,10 +37,7 @@ fn panel(store: &mut Store, chat: &str) -> ChatPanel {
     let chats = imba::store::Id::<crate::chats::Chats>::mint();
     store.put_entity(
         chats,
-        crate::chats::Chats::wired(
-            imba::store::Id::mint(),
-            crate::chats::Catalog::noop(),
-        ),
+        crate::chats::Chats::wired(imba::store::Id::mint(), crate::chats::Catalog::noop()),
     );
     let mut panel = ChatPanel::new(
         store,

@@ -9,15 +9,13 @@ pub mod fence_embed;
 pub mod image;
 pub mod table;
 
-
-
 use editor::document::Document;
 use editor::markup::Markup;
 use editor::markup::MarkupBuilder;
-use editor::theme::StyleId;
+use editor::markup::TextDecorationInterval;
 use editor::reparse::SyntaxLanguage;
 use editor::reparse::SyntaxTree;
-use editor::markup::TextDecorationInterval;
+use editor::theme::StyleId;
 use hisitter::TsTree;
 use text::text::Text;
 use tree_sitter::{Node, Tree};
@@ -34,7 +32,9 @@ pub fn document_from_markdown(
     document_from_tree_text(text, tree, store, ui, fonts, theme)
 }
 
-pub fn markdown_languages(mut languages: editor::reparse::SyntaxLanguages) -> editor::reparse::SyntaxLanguages {
+pub fn markdown_languages(
+    mut languages: editor::reparse::SyntaxLanguages,
+) -> editor::reparse::SyntaxLanguages {
     languages.register(&["markdown"], std::sync::Arc::new(MarkdownLanguage));
     languages
 }
@@ -88,7 +88,9 @@ impl editor::enrich::Enricher for TableEnricher {
                         builder.push_inlay(
                             block.range.clone(),
                             editor::markup::Inlay::editing(
-                                editor::markup::InlayMode::Instead(editor::markup::InsteadKind::FullLine),
+                                editor::markup::InlayMode::Instead(
+                                    editor::markup::InsteadKind::FullLine,
+                                ),
                                 cx.measure.with_ctx(|store, ui| {
                                     table::TableEditor::new(
                                         source.clone(),
@@ -158,7 +160,8 @@ fn document_from_tree_text(
     let markup = markup_from_tree(&text, &tree, fonts, theme);
     let sites = MarkdownLanguage.sites_impl(&text, &tree);
 
-    let mut syntax = editor::markup::Syntax::new("markdown", Some(Box::new(TsTree(tree.clone()))), markup);
+    let mut syntax =
+        editor::markup::Syntax::new("markdown", Some(Box::new(TsTree(tree.clone()))), markup);
     {
         let mut sections: Vec<(Range<u32>, Range<u32>)> = Vec::new();
         let full = 0..text.byte_count().min(u32::MAX as usize) as u32;
@@ -263,7 +266,10 @@ impl SyntaxLanguage for MarkdownLanguage {
         self.sites_impl(text, tree)
     }
 
-    fn assist(&self, request: &editor::reparse::AssistRequest<'_>) -> Option<editor::reparse::Assist> {
+    fn assist(
+        &self,
+        request: &editor::reparse::AssistRequest<'_>,
+    ) -> Option<editor::reparse::Assist> {
         let tree = TsTree::of(request.tree)?;
         assist::assist(
             request.text,
@@ -994,9 +1000,9 @@ fn keep_non_overlapping(tokens: Vec<InlineToken>) -> Vec<InlineToken> {
 }
 
 pub fn register_handlers(app: &mut himark::app::Application) {
-    app.register_handler::<table::TableRelayoutEffect>(table::TableRelayoutHandler(std::sync::Arc::clone(
-        app.workshop(),
-    )));
+    app.register_handler::<table::TableRelayoutEffect>(table::TableRelayoutHandler(
+        std::sync::Arc::clone(app.workshop()),
+    ));
 }
 
 #[cfg(test)]

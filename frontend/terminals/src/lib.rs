@@ -329,11 +329,23 @@ mod tests {
         session.resize(100, 30, 800.0, 900.0);
         session.output(b"stale line");
         assert!(session.reset());
-        assert_eq!(session.term.lock().columns(), 100, "the reset keeps the TOLD size");
+        assert_eq!(
+            session.term.lock().columns(),
+            100,
+            "the reset keeps the TOLD size"
+        );
         assert_eq!(session.term.lock().screen_lines(), 30);
-        assert_eq!(row_text(&session, 0).trim_end(), "", "the stale copy is gone");
+        assert_eq!(
+            row_text(&session, 0).trim_end(),
+            "",
+            "the stale copy is gone"
+        );
         session.output(b"fresh");
-        assert_eq!(row_text(&session, 0), "fresh", "the replay lands on a clean grid");
+        assert_eq!(
+            row_text(&session, 0),
+            "fresh",
+            "the replay lands on a clean grid"
+        );
     }
 
     #[test]

@@ -3,14 +3,14 @@
 
 use std::sync::Arc;
 
-use ahp_wire::client::ChatUri;
-use ahp_wire::client::SessionUri;
-use ahp_wire::client::HostId;
-use ahp_wire::effects::SubscribeSessionEffect;
 use crate::app::AppCommand;
 use crate::commands::WindowedCommand;
-use ahp_wire::SessionId;
 use ::workbench::window::Windows;
+use ahp_wire::client::ChatUri;
+use ahp_wire::client::HostId;
+use ahp_wire::client::SessionUri;
+use ahp_wire::effects::SubscribeSessionEffect;
+use ahp_wire::SessionId;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -40,7 +40,11 @@ pub fn open_session_with(
     };
     let landing = session.clone();
     fx.push(
-        AnyEffect::new(SubscribeSessionEffect { client: client.session.clone(), session }).map(move |result| {
+        AnyEffect::new(SubscribeSessionEffect {
+            client: client.session.clone(),
+            session,
+        })
+        .map(move |result| {
             AppCommand::Windowed(
                 window,
                 Arc::new(OpenSubscribedSession {

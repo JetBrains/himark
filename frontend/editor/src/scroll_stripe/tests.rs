@@ -52,7 +52,12 @@ fn tinted(
     id
 }
 
-fn retint(document: &mut Document, id: crate::markup::MarkupId, ranges: &[Range<u32>], style: StyleId) {
+fn retint(
+    document: &mut Document,
+    id: crate::markup::MarkupId,
+    ranges: &[Range<u32>],
+    style: StyleId,
+) {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let mut tints = Markup::new();

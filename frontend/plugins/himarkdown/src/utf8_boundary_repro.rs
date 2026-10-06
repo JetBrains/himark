@@ -42,7 +42,8 @@ fn the_search_design_doc_lays_out_completely() {
     let theme = editor::theme::Theme::embedded();
     let document = document_from_markdown(source, store, ui, &fonts, &theme);
     let width = theme.ui().window.first_pane_width;
-    let view = editor::editor_view::EditorView::complete(document, width, store, ui, &fonts, &theme);
+    let view =
+        editor::editor_view::EditorView::complete(document, width, store, ui, &fonts, &theme);
     assert!(
         view.find_misaligned_boundary().is_none(),
         "the layout tiles the text on char boundaries"

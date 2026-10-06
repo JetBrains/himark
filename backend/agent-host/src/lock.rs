@@ -3,7 +3,6 @@
 
 use std::path::Path;
 
-
 pub fn write(dir: &Path, socket: &Path) -> std::io::Result<()> {
     host_discovery::write(dir, socket, crate::PROTOCOL_VERSION)
 }

@@ -3,7 +3,11 @@
 
 use std::ops::Range;
 
-use editor::{enrich::ready as enrich_ready, enrich::EnrichCx, enrich::EnrichFuture, enrich::EnrichInput, enrich::Enricher, enrich::EnricherId, enrich::Enrichment, enrich::Interest, markup::Markup, theme::StyleId};
+use editor::{
+    enrich::ready as enrich_ready, enrich::EnrichCx, enrich::EnrichFuture, enrich::EnrichInput,
+    enrich::Enricher, enrich::EnricherId, enrich::Enrichment, enrich::Interest, markup::Markup,
+    theme::StyleId,
+};
 use tree_sitter::Node;
 
 use crate::TsTree;

@@ -4,12 +4,18 @@
 use std::ops::Range;
 
 use operation::{op::Op, operation::Operation};
-use rope::{cursor::Cursor, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
+use rope::{
+    cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,
+    rope::Rope,
+};
 use skia_safe::textlayout::{FontCollection, LineMetrics, Paragraph};
 use text::{text::Text, text_view::TextView};
 use tokenize::{rewrite, Safepoint};
 
-use crate::{markup::{BlockStyle, TextDecorationInterval}, shaped_line::{block_gap, paragraph, DisplayText}};
+use crate::{
+    markup::{BlockStyle, TextDecorationInterval},
+    shaped_line::{block_gap, paragraph, DisplayText},
+};
 
 const DOCUMENT_RANK: usize = 3;
 const VERTICAL_PX: MetricId = MetricId(0);

@@ -1,8 +1,8 @@
 use super::plain_document;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
 use himark::app::OpenedDocument;
+use himark::app_ext::AppExt;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(

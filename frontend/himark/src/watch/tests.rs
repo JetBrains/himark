@@ -6,15 +6,15 @@ use std::sync::{Arc, Mutex};
 use imba::store::Store;
 
 use super::*;
+use crate::app::AppFonts;
+use crate::app::Application;
+use crate::app::OpenedDocument;
+use ::editor::test_document::plain_document;
 use documents::watch::{
     RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect, Subscription, UnsubscribeEffect,
     Watching,
 };
-use ::editor::test_document::plain_document;
-use crate::app::AppFonts;
-use crate::app::Application;
 use documents::OpenDocuments;
-use crate::app::OpenedDocument;
 use editor::document::Document;
 use editor::location::ResourceLocation;
 
@@ -581,7 +581,10 @@ fn the_saves_own_echo_is_a_no_op() {
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let before = document.revision();
-    let operation = myersdiff::diff(document.text(), &text::text::Text::from_string_exact("alpha\n"));
+    let operation = myersdiff::diff(
+        document.text(),
+        &text::text::Text::from_string_exact("alpha\n"),
+    );
     OpenDocuments::edit_external(
         &mut store,
         docs(),

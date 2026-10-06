@@ -2314,7 +2314,10 @@ impl Document {
         state.settle_to = None;
     }
 
-    pub fn document_layout(&self, editor: EditorId) -> Option<&crate::document_layout::DocumentLayout> {
+    pub fn document_layout(
+        &self,
+        editor: EditorId,
+    ) -> Option<&crate::document_layout::DocumentLayout> {
         self.editors.get(&editor).map(|editor| &editor.layout)
     }
 

@@ -43,7 +43,16 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 
 [features]
-test-support = ["workbench/test-support", "editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support", "toc/test-support", "ahp-session/test-support"]
+test-support = [
+    "workbench/test-support", 
+    "editor/test-support", 
+    "hikit/test-support", 
+    "changesview/test-support", 
+    "canvas/test-support", 
+    "filetree/test-support", 
+    "toc/test-support", 
+    "ahp-session/test-support"
+]
 
 [dev-dependencies]
 editor = { path = "../editor", features = ["test-support"] }

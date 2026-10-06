@@ -3,7 +3,7 @@
 
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
 
-use editor::{editor_view::EditorCommand, editor::EditorId, editor_view::EditorView};
+use editor::{editor::EditorId, editor_view::EditorCommand, editor_view::EditorView};
 
 use crate::DocumentId;
 

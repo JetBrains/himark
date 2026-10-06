@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use operation::{op::Op, operation::Operation, builder::OperationBuilder};
+use operation::{builder::OperationBuilder, op::Op, operation::Operation};
 use text::text::Text;
 
 use crate::caret::{Caret, DragOrigin, MultiCaret};

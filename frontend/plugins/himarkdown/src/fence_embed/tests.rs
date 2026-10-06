@@ -7,8 +7,11 @@ use super::*;
 /// production takes (the location's owner; a bare test store routes
 /// to the local default session), never a privately minted id.
 fn test_docs(store: &mut Store) -> imba::store::Id<documents::OpenDocuments> {
-    ahp_session::session::state::Hosts::ensure_state(store, &ahp_wire::SessionId::local_default(store))
-        .documents()
+    ahp_session::session::state::Hosts::ensure_state(
+        store,
+        &ahp_wire::SessionId::local_default(store),
+    )
+    .documents()
 }
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
@@ -380,8 +383,8 @@ fn a_line_fragment_windows_the_embed() {
         .into_iter()
         .find_map(|interval| interval.inlay.view_as::<EmbedView>().copied())
         .expect("the embed");
-    let target =
-        documents::OpenDocuments::document_ref(&store, documents, embed.document()).expect("target");
+    let target = documents::OpenDocuments::document_ref(&store, documents, embed.document())
+        .expect("target");
     let window = target.window(embed.editor());
     let text = target.text();
     let shown = text.byte_string(window.start as usize, (window.end - window.start) as usize);

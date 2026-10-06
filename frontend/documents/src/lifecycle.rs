@@ -1,7 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::{document::Document, editor_view::EditorCommand, editor::EditorEffects, editor::EditorId};
+use editor::{
+    document::Document, editor::EditorEffects, editor::EditorId, editor_view::EditorCommand,
+};
 use imba::store::Store;
 
 use crate::{DocumentId, OpenDocuments};

@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::ui::UiCtx;
-use crate::{arena::Arena, constraints::Constraints, container::{container, Container}, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, View, Widget};
+use crate::{
+    arena::Arena,
+    constraints::Constraints,
+    container::{container, Container},
+    event::{Event, EventResult},
+    store::Store,
+    thunk_ext::ThunkExt,
+    View, Widget,
+};
 use skia_safe::{Contains, Rect, Size};
 
 #[derive(Clone)]

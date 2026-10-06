@@ -5,7 +5,10 @@ use std::{future::Future, ops::Range, pin::Pin, sync::Arc};
 
 use text::text::Text;
 
-use crate::{document::DocumentToken, markup::{Markup, MarkupBuilder, MarkupId, Syntax}};
+use crate::{
+    document::DocumentToken,
+    markup::{Markup, MarkupBuilder, MarkupId, Syntax},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EnricherId(pub &'static str);
@@ -391,8 +394,10 @@ mod tests {
     }
 
     fn document(source: &str) -> crate::document::Document {
-        let mut document =
-            crate::document::Document::new(text::text::Text::from_string_exact(source), Markup::new());
+        let mut document = crate::document::Document::new(
+            text::text::Text::from_string_exact(source),
+            Markup::new(),
+        );
         let _ = document.add_syntax(
             0..0,
             crate::markup::Syntax::new("fake", None, Markup::new()),
@@ -662,9 +667,15 @@ mod tests {
             "the subject's element grew by the badge height: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference =
-            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
-                .element_heights();
+        let reference = crate::editor_view::EditorView::complete(
+            document.clone(),
+            400.0,
+            store,
+            ui,
+            &fonts(),
+            &theme(),
+        )
+        .element_heights();
         assert_eq!(
             live, reference,
             "the landed layout equals a from-scratch layout over the enriched document"
@@ -728,9 +739,15 @@ mod tests {
             "the drained repairs laid the deep badge in: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference =
-            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
-                .element_heights();
+        let reference = crate::editor_view::EditorView::complete(
+            document.clone(),
+            400.0,
+            store,
+            ui,
+            &fonts(),
+            &theme(),
+        )
+        .element_heights();
         assert_eq!(
             live, reference,
             "the repaired layout equals the from-scratch reference"

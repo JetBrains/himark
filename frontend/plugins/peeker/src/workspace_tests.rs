@@ -3,12 +3,12 @@
 
 use super::*;
 use ::editor::test_document::plain_document;
-use himark::app_ext::AppExt;
+use editor::location::Authority;
+use editor::location::ResourceType;
 use himark::app::AppFonts;
 use himark::app::Application;
 use himark::app::OpenedDocument;
-use editor::location::Authority;
-use editor::location::ResourceType;
+use himark::app_ext::AppExt;
 use imba::effect::EffectHandler;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
@@ -59,7 +59,10 @@ impl EffectHandler<BuildDocumentEffect> for StubBuild {
 struct StubOpenByLocation;
 
 impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocation {
-    async fn handle(&self, effect: himark::workspace::OpenByLocationEffect) -> himark::app::AppCommand {
+    async fn handle(
+        &self,
+        effect: himark::workspace::OpenByLocationEffect,
+    ) -> himark::app::AppCommand {
         himark::app::AppCommand::Opened(
             effect.window,
             OpenedDocument {
@@ -113,7 +116,10 @@ fn boot(
 
     struct StubWatch;
     impl imba::effect::EffectHandler<documents::watch::SubscribeEffect> for StubWatch {
-        async fn handle(&self, _effect: documents::watch::SubscribeEffect) -> Option<documents::watch::Subscription> {
+        async fn handle(
+            &self,
+            _effect: documents::watch::SubscribeEffect,
+        ) -> Option<documents::watch::Subscription> {
             Some(documents::watch::Subscription(7))
         }
     }

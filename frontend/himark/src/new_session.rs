@@ -1,23 +1,36 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use hikit::combo::ComboProbe;
 use ::ahp_chat::session_toolbar::enum_options;
+use hikit::combo::ComboProbe;
 
 use std::sync::Arc;
 
-use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key}, leaf::leaf, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::{AnyEffect, CancellationToken, Effects},
+    event::{Event, EventResult, Key},
+    layout::Layout as _,
+    layout::LayoutExt as _,
+    leaf::leaf,
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Paint, Rect, Size};
 
-use hikit::combo::{Combo, ComboCommand, ComboItem, ComboOption};
-use ahp_wire::client::HostId;
 use ahp_session::session::state::HostStatus;
 use ahp_session::session::state::Hosts;
-use ahp_wire::effects::ResolveSessionConfigEffect;
+use ahp_wire::client::HostId;
 use ahp_wire::client::Servers;
 use ahp_wire::client::SessionOptions;
+use ahp_wire::effects::ResolveSessionConfigEffect;
 use editor::editor_view::EditorCommand;
 use editor::editor_view::EditorView;
+use hikit::combo::{Combo, ComboCommand, ComboItem, ComboOption};
 
 const PICK_FOLDER: &str = "\u{1}pick-folder";
 
@@ -138,7 +151,8 @@ struct Prefill {
 impl Prefill {
     fn of_session(store: &Store, session: &ahp_wire::SessionId) -> Self {
         let mut prefill = Self::default();
-        if let Some(folder) = ahp_session::session::folders::session_folders(store, session).first() {
+        if let Some(folder) = ahp_session::session::folders::session_folders(store, session).first()
+        {
             if let Some(uris) = Hosts::uris(store, session.host) {
                 prefill.dir = Some(uris.uri_of(folder).as_str().to_owned());
             }
@@ -208,7 +222,6 @@ fn store_fingerprint(store: &Store) -> u64 {
         .hash(&mut hasher);
     hasher.finish()
 }
-
 
 #[doc(hidden)]
 pub struct NewSessionProbe {
@@ -286,11 +299,14 @@ pub struct NewSessionView {
 }
 
 fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<EditorView> {
-    let document = editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
-        .with_syntax(
-            editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-            &[],
-        );
+    let document = editor::document::Document::new(
+        text::text::Text::from_string_exact(""),
+        editor::markup::Markup::new(),
+    )
+    .with_syntax(
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
+        &[],
+    );
     let fonts = hikit::fonts::source()();
     let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
@@ -302,7 +318,11 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
 }
 
 impl NewSessionView {
-    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx, window: ::workbench::window::WindowId) -> Self {
+    pub fn new(
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+    ) -> Self {
         Self::for_host(store, ui, window, None)
     }
 
@@ -697,7 +717,6 @@ impl NewSessionView {
         })));
     }
 }
-
 
 fn host_status(combo: &Combo) -> Option<HostStatus> {
     let value = combo.value()?;
@@ -1115,12 +1134,14 @@ impl View for NewSessionView {
                         }),
                 )
                 .child(
-                    imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(imba::layout::Insets {
-                        left: 0.0,
-                        top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                        right: 0.0,
-                        bottom: 0.0,
-                    }),
+                    imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                        imba::layout::Insets {
+                            left: 0.0,
+                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                            right: 0.0,
+                            bottom: 0.0,
+                        },
+                    ),
                 )
                 .pad_insets(imba::layout::Insets {
                     left: pad,
@@ -1183,14 +1204,16 @@ impl View for NewSessionView {
             let pairs = hints.len();
             for (index, (key, label)) in hints.into_iter().enumerate() {
                 hint_row = hint_row
-                    .child(imba::layout::text(ui, key, key_font.clone(), key_color).pad_insets(
-                        imba::layout::Insets {
-                            left: 0.0,
-                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                            right: 5.0,
-                            bottom: 0.0,
-                        },
-                    ))
+                    .child(
+                        imba::layout::text(ui, key, key_font.clone(), key_color).pad_insets(
+                            imba::layout::Insets {
+                                left: 0.0,
+                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                right: 5.0,
+                                bottom: 0.0,
+                            },
+                        ),
+                    )
                     .child(
                         imba::layout::text(ui, label, hint_font.clone(), label_color).pad_insets(
                             imba::layout::Insets {
@@ -1363,7 +1386,10 @@ impl Composers {
         });
     }
 
-    pub fn take(store: &mut Store, window: ::workbench::window::WindowId) -> Option<NewSessionView> {
+    pub fn take(
+        store: &mut Store,
+        window: ::workbench::window::WindowId,
+    ) -> Option<NewSessionView> {
         let composer = store
             .get::<Composers>()
             .and_then(|composers| composers.0.get(&window).cloned());
@@ -1375,7 +1401,10 @@ impl Composers {
         composer
     }
 
-    pub fn composer_ref(store: &Store, window: ::workbench::window::WindowId) -> Option<&NewSessionView> {
+    pub fn composer_ref(
+        store: &Store,
+        window: ::workbench::window::WindowId,
+    ) -> Option<&NewSessionView> {
         store
             .get::<Composers>()
             .and_then(|composers| composers.0.get(&window))
@@ -1464,7 +1493,11 @@ impl View for ComposerPane {
             };
             imba::ThunkBox::new(
                 arena,
-                imba::layout::Layout::layout(composer.display(arena, store, ui), arena, constraints),
+                imba::layout::Layout::layout(
+                    composer.display(arena, store, ui),
+                    arena,
+                    constraints,
+                ),
             )
         })
     }
@@ -1645,13 +1678,12 @@ impl crate::commands::WindowedCommand for StartComposedSession {
                     AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                         client: client.session.clone(),
                         channel: session.as_channel(),
-                        action:
-                            ahp_types::actions::StateAction::SessionConfigChanged(
-                                ahp_types::actions::SessionConfigChangedAction {
-                                    config,
-                                    replace: None,
-                                },
-                            ),
+                        action: ahp_types::actions::StateAction::SessionConfigChanged(
+                            ahp_types::actions::SessionConfigChangedAction {
+                                config,
+                                replace: None,
+                            },
+                        ),
                     })
                     .map(move |result| {
                         crate::app::AppCommand::Windowed(
@@ -1832,12 +1864,14 @@ fn dispose_placeholder(
     session: ahp_wire::client::SessionUri,
     fx: &mut crate::app::AppFx<'_>,
 ) {
-    let live = ::workbench::window::Windows::list(store).into_iter().any(|id| {
-        ::workbench::window::Windows::window_ref(store, id).is_some_and(|entity| {
-            let current = crate::workspace::entity_session(&entity);
-            current.host == host && current.session == session
-        })
-    });
+    let live = ::workbench::window::Windows::list(store)
+        .into_iter()
+        .any(|id| {
+            ::workbench::window::Windows::window_ref(store, id).is_some_and(|entity| {
+                let current = crate::workspace::entity_session(&entity);
+                current.host == host && current.session == session
+            })
+        });
     if live {
         eprintln!("[new-session] NOT disposing {session}: a window lives in it");
         return;
@@ -1846,7 +1880,11 @@ fn dispose_placeholder(
         return;
     };
     fx.push(
-        AnyEffect::new(ahp_wire::effects::DisposeSessionEffect { client: client.session.clone(), session }).map(move |result| {
+        AnyEffect::new(ahp_wire::effects::DisposeSessionEffect {
+            client: client.session.clone(),
+            session,
+        })
+        .map(move |result| {
             crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(PlaceholderDispatched {
@@ -2184,7 +2222,10 @@ impl crate::commands::WindowedCommand for PlaceholderCreated {
             let previous = crate::workspace::entity_session(&entity);
             // The name changes, the ids do not: the rekeyed workspace
             // carries the same bundle under the new key.
-            let rekeyed = crate::workspace::SessionWorkspace::boxed(key.clone(), crate::workspace::entity_state(&entity));
+            let rekeyed = crate::workspace::SessionWorkspace::boxed(
+                key.clone(),
+                crate::workspace::entity_state(&entity),
+            );
             if entity.rekey_current(rekeyed) {
                 // The name changed, the ids did not: the window keeps
                 // its bundle and the catalog row moves under the new key.
@@ -2285,7 +2326,10 @@ impl crate::commands::WindowedCommand for OpenNewSession {
         if current.names_session() {
             let scratch = ahp_wire::SessionId::mint_scratch(store);
             crate::app::switch_session(store, window, scratch, fx);
-            fx.follow_up(crate::app::AppCommand::Windowed(window, Arc::new(MountComposer)));
+            fx.follow_up(crate::app::AppCommand::Windowed(
+                window,
+                Arc::new(MountComposer),
+            ));
             return;
         }
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {

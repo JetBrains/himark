@@ -3,7 +3,16 @@
 
 use std::{ops::Range, sync::OnceLock};
 
-use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, View};
+use imba::{
+    anim::{Animation, AnimationClock, Easing, Motion},
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, MouseButton},
+    layout::Layout as _,
+    store::Store,
+    thunk_ext::ThunkExt,
+    View,
+};
 use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
 
 use editor::document::Document;

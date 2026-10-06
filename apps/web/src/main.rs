@@ -19,9 +19,9 @@ mod app {
         os::raw::{c_char, c_double, c_int, c_void},
     };
 
-    use himark::app_ext::AppExt;
     use himark::app::AppFonts;
     use himark::app::Application;
+    use himark::app_ext::AppExt;
     use skia_safe::{
         gpu::{
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
@@ -318,7 +318,9 @@ mod app {
             comments::install(&mut state.store_mut());
             state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
             state.register_toolbar_button(himark::hicomments::toolbar_button());
-            state.register_command(std::sync::Arc::new(himark::higent::drawer::ToggleAgentsView));
+            state.register_command(std::sync::Arc::new(
+                himark::higent::drawer::ToggleAgentsView,
+            ));
             state.register_command(std::sync::Arc::new(himark::higent::new_chat::NewChat));
             state.register_toolbar_button(himark::higent::drawer::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::hichanges::ToggleChangesView));
@@ -368,7 +370,11 @@ mod app {
                         ),
                     ));
                     let host = state.register_client(client.clone());
-                    ahp_session::session::agents::Agents::seed(&mut state.store_mut(), host, "This Host");
+                    ahp_session::session::agents::Agents::seed(
+                        &mut state.store_mut(),
+                        host,
+                        "This Host",
+                    );
                     ahp_session::session::state::Hosts::install_uris(
                         &mut state.store_mut(),
                         host,
@@ -425,9 +431,7 @@ mod app {
                             channels: Arc::clone(&document_channels),
                         },
                     );
-                    state.register_document_command(Arc::new(
-                        himark::save::save_document(false),
-                    ));
+                    state.register_document_command(Arc::new(himark::save::save_document(false)));
                     state.register_handler::<documents::ListDirectoryEffect>(
                         ahp_session::fsroute::RouteList {
                             directory: Arc::clone(&clients),
@@ -571,7 +575,8 @@ mod app {
 
             let canvas = surface.canvas();
             canvas.save();
-            self.state.draw_window_sized(self.window,
+            self.state.draw_window_sized(
+                self.window,
                 canvas,
                 Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
             );
@@ -755,7 +760,8 @@ mod app {
     }
 
     fn web_languages() -> editor::reparse::SyntaxLanguages {
-        static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> = std::sync::OnceLock::new();
+        static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> =
+            std::sync::OnceLock::new();
         LANGUAGES
             .get_or_init(|| {
                 let mut languages = editor::reparse::SyntaxLanguages::new();

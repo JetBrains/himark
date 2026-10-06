@@ -10,7 +10,6 @@ use imba::store::Store;
 
 use crate::workbench_node::Panel;
 
-
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
 /// resolve the window's session and land panes into it. Shell-side by
 /// nature; they shrink away as opening becomes content-addressed.

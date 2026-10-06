@@ -8,7 +8,17 @@
 //! column names its session, the split tree names its file, the dock
 //! carries its own buttons ([docs/ui/toolbar.md]).
 
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, layout::Layout as _, Thunk, ui::UiCtx};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult},
+    layout::Layout as _,
+    leaf::leaf,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk,
+};
 use skia_safe::{Canvas, Paint, Rect, Size};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -331,8 +341,8 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
             chrome.height,
         ),
     };
-    let label =
-        imba::layout::text(ui, title, title_font.clone(), chrome.title_color.0).layout(arena, bounds);
+    let label = imba::layout::text(ui, title, title_font.clone(), chrome.title_color.0)
+        .layout(arena, bounds);
     strip.place_boxed(inset + chrome.button_inset, baseline - ascent, label);
 
     imba::ThunkBox::new(

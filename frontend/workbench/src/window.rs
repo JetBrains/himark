@@ -1,20 +1,29 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, dyn_view::DynView as _, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    dyn_view::DynView as _,
+    effect::Effects,
+    event::{Event, EventResult},
+    store::Store,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::Size;
 
 use imba::scroll::ScrollView;
 
 use crate::workbench::panel_width;
 
+use crate::workbench::Workbench;
+use crate::workbench::WorkbenchCommand;
+use crate::workbench_node::Panel;
+use crate::workbench_node::WorkbenchNode;
 use documents::entity_view::EditorIdView;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
-use crate::workbench_node::Panel;
-use crate::workbench::Workbench;
-use crate::workbench::WorkbenchCommand;
-use crate::workbench_node::WorkbenchNode;
 
 #[derive(Clone)]
 pub enum WindowCommand {
@@ -762,7 +771,10 @@ impl Windows {
     /// it? The hold is what the shell's housekeeping spares.
     pub fn any_window_holds(store: &imba::store::Store, workspace: &dyn Workspace) -> bool {
         store.get::<Windows>().is_some_and(|windows| {
-            windows.entries.values().any(|window| window.holds(workspace))
+            windows
+                .entries
+                .values()
+                .any(|window| window.holds(workspace))
         })
     }
 
@@ -792,7 +804,6 @@ impl Windows {
     pub fn entity(&self, id: WindowId) -> Option<&Window> {
         self.entries.get(&id)
     }
-
 
     /// Hand an opaque adoption payload to every window's workspaces
     /// (the shell's local-host rekey).
@@ -923,8 +934,11 @@ impl Window {
     /// Every workspace this window keeps alive: the shown workspace and
     /// every stashed one.
     pub fn workspaces(&self) -> impl Iterator<Item = &dyn Workspace> + '_ {
-        std::iter::once(self.workspace.as_ref())
-            .chain(self.workbenches.iter().map(|(workspace, _)| workspace.as_ref()))
+        std::iter::once(self.workspace.as_ref()).chain(
+            self.workbenches
+                .iter()
+                .map(|(workspace, _)| workspace.as_ref()),
+        )
     }
 
     /// Does this window hold the workspace — showing it or keeping
@@ -1204,7 +1218,11 @@ impl Window {
                     .swap(panel, owner);
                 fx.scope(WindowCommand::Dock, |fx| {
                     fx.scope(
-                        |command| imba::dyn_view::DynCommand::new(crate::dock::DockCommand::Content(command)),
+                        |command| {
+                            imba::dyn_view::DynCommand::new(crate::dock::DockCommand::Content(
+                                command,
+                            ))
+                        },
                         |fx| imba::dyn_view::DynView::destroy_dyn(outgoing.as_mut(), store, fx),
                     )
                 });
@@ -1359,7 +1377,11 @@ impl Window {
         self.content.focus = LayerFocus::Content;
     }
 
-    pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::workbench_node::Panel) {
+    pub(crate) fn replace_focused_panel(
+        &mut self,
+        store: &mut Store,
+        panel: crate::workbench_node::Panel,
+    ) {
         let displaced = self.workbench_mut().root.replace_focused_panel(panel);
 
         self.stash_displaced(store, displaced);
@@ -1385,7 +1407,10 @@ impl Window {
 
     pub fn unmount_all_widgets(
         &mut self,
-    ) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
+    ) -> Vec<(
+        hikit::panel::WidgetOrigin,
+        Box<dyn hikit::panel::DynPanelView>,
+    )> {
         let mut widgets = Vec::new();
         let mut index = 0usize;
         self.workbench_mut().root.for_each_pane_mut(&mut |panel| {
@@ -1402,7 +1427,10 @@ impl Window {
 
     pub fn restore_widgets(
         &mut self,
-        widgets: Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)>,
+        widgets: Vec<(
+            hikit::panel::WidgetOrigin,
+            Box<dyn hikit::panel::DynPanelView>,
+        )>,
     ) {
         for (origin, widget) in widgets {
             match origin {
@@ -1423,7 +1451,11 @@ impl Window {
         }
     }
 
-    pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn hikit::panel::DynPanelView>) {
+    pub fn mount_focused(
+        &mut self,
+        store: &mut Store,
+        widget: Box<dyn hikit::panel::DynPanelView>,
+    ) {
         self.workbench_mut().yield_chat();
         let displaced = self
             .workbench_mut()
@@ -1593,7 +1625,8 @@ impl Window {
                 return true;
             }
         }
-        let Some(panel) = crate::navigation::Navigators::navigate(store, ui, window, target, fx) else {
+        let Some(panel) = crate::navigation::Navigators::navigate(store, ui, window, target, fx)
+        else {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
@@ -1675,7 +1708,12 @@ impl Window {
         match closed {
             Panel::Editor(pane) => {
                 let view = *pane.content();
-                documents::lifecycle::close_editor(store, view.documents(), view.document(), view.editor());
+                documents::lifecycle::close_editor(
+                    store,
+                    view.documents(),
+                    view.document(),
+                    view.editor(),
+                );
                 documents::OpenDocuments::remove_on_close(
                     store,
                     view.documents(),
@@ -1810,7 +1848,12 @@ impl Window {
     ) {
         if let Panel::Editor(pane) = &displaced {
             let view = *pane.content();
-            documents::lifecycle::close_editor(store, view.documents(), view.document(), view.editor());
+            documents::lifecycle::close_editor(
+                store,
+                view.documents(),
+                view.document(),
+                view.editor(),
+            );
             documents::OpenDocuments::remove_if_editorless(
                 store,
                 view.documents(),
@@ -1878,7 +1921,9 @@ impl Window {
             }
             let caret = target
                 .as_ref()
-                .map(|target| documents::text_ext::offset_at(&mut document.text().view(), target.start) as u32)
+                .map(|target| {
+                    documents::text_ext::offset_at(&mut document.text().view(), target.start) as u32
+                })
                 .unwrap_or(0);
             drop(document);
             let place = hikit::navigation::EditorPlace {
@@ -1963,8 +2008,10 @@ impl View for Window {
     }
 }
 
-
-fn same_editor_location(a: &hikit::navigation::NavigationLocation, b: &hikit::navigation::NavigationLocation) -> bool {
+fn same_editor_location(
+    a: &hikit::navigation::NavigationLocation,
+    b: &hikit::navigation::NavigationLocation,
+) -> bool {
     match (
         a.place::<hikit::navigation::EditorPlace>(),
         b.place::<hikit::navigation::EditorPlace>(),

@@ -1,15 +1,14 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn palette_commands_follow_the_modal_focus() {
+    use documents::OpenDocuments;
+    use hikit::modal::ModalRequest;
+    use hikit::modal::ModalView;
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Application;
-    use hikit::modal::ModalRequest;
-    use hikit::modal::ModalView;
-    use documents::OpenDocuments;
 
     #[derive(Clone)]
     struct TestModal {
@@ -47,7 +46,8 @@ fn palette_commands_follow_the_modal_focus() {
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
             _ui: &'a imba::ui::UiCtx,
-        ) -> impl imba::layout::Layout<'a, TestModalCommand> + imba::layout::LayoutValue + 'a {
+        ) -> impl imba::layout::Layout<'a, TestModalCommand> + imba::layout::LayoutValue + 'a
+        {
             imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
@@ -180,9 +180,10 @@ fn palette_commands_follow_the_modal_focus() {
         "the modal's commands come first"
     );
 
-    let close = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
-        .remove(0)
-        .command;
+    let close =
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            .remove(0)
+            .command;
     app.perform_batch(vec![close]);
     assert_eq!(
         ids(&app).first(),
@@ -199,7 +200,9 @@ fn palette_commands_follow_the_modal_focus() {
     ));
     app.perform_batch(vec![AppCommand::Content(
         app.sole_window(),
-        ::workbench::window::WindowCommand::Modal(imba::dyn_view::DynCommand::new(TestModalCommand::Show)),
+        ::workbench::window::WindowCommand::Modal(imba::dyn_view::DynCommand::new(
+            TestModalCommand::Show,
+        )),
     )]);
     assert!(app.plugin_modal().is_none(), "the show dismissed the modal");
     assert_eq!(
@@ -209,15 +212,15 @@ fn palette_commands_follow_the_modal_focus() {
     );
 
     assert_eq!(app.pane_count(), 1);
-    let split = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
-        .into_iter()
-        .find(|command| command.id == "workbench.split-pane")
-        .expect("the split action")
-        .command;
+    let split =
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            .into_iter()
+            .find(|command| command.id == "workbench.split-pane")
+            .expect("the split action")
+            .command;
     app.perform_batch(vec![split]);
     assert_eq!(app.pane_count(), 2, "the scheduled split ran");
 }
-
 
 #[test]
 fn registered_commands_present_and_dispatch_by_id() {
@@ -236,12 +239,12 @@ fn registered_commands_present_and_dispatch_by_id() {
             "Probe".to_owned()
         }
         fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
-        _fx: &mut himark::app::AppFx<'_>,
-    ) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            _window: ::workbench::window::WindowId,
+            _fx: &mut himark::app::AppFx<'_>,
+        ) {
             store.put(Marker);
         }
     }
@@ -253,10 +256,11 @@ fn registered_commands_present_and_dispatch_by_id() {
     app.draw_window(app.sole_window(), surface.canvas());
 
     app.register_command(std::sync::Arc::new(Probe));
-    let ids: Vec<&str> = himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
-        .iter()
-        .map(|command| command.id)
-        .collect();
+    let ids: Vec<&str> =
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            .iter()
+            .map(|command| command.id)
+            .collect();
     assert_eq!(
         ids,
         [
@@ -326,7 +330,6 @@ fn registered_commands_present_and_dispatch_by_id() {
 
     assert!(app.store().get::<Marker>().is_some());
 }
-
 
 #[test]
 fn keymap_chords_resolve_through_the_palette_surface() {

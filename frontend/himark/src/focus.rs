@@ -118,7 +118,9 @@ impl Application {
 pub(crate) fn focused_location(
     data: &mut FocusData<'_, AppCommand>,
 ) -> Option<editor::location::ResourceLocation> {
-    data.location
-        .take()
-        .and_then(|location| location.downcast_ref::<editor::location::ResourceLocation>().cloned())
+    data.location.take().and_then(|location| {
+        location
+            .downcast_ref::<editor::location::ResourceLocation>()
+            .cloned()
+    })
 }

@@ -5,10 +5,10 @@ use super::*;
 
 use ::editor::test_document::plain_document;
 use himark::app::AppCommand;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
 use himark::app::OpenedDocument;
+use himark::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
 
 fn document_location(name: &str) -> ResourceLocation {
@@ -181,7 +181,8 @@ impl ahp_wire::client::LocationsClient for StreamSeat {
     fn subscribe_locations(
         &self,
         _channel: ahp_wire::client::ChannelUri,
-    ) -> ahp_wire::client::ClientFuture<Result<himark_ahp_ext_types::locations::LocationList, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<himark_ahp_ext_types::locations::LocationList, String>>
+    {
         let snapshot = self.snapshot.clone();
         Box::pin(std::future::ready(Ok(snapshot)))
     }
@@ -194,7 +195,9 @@ impl ahp_wire::client::LocationsClient for StreamSeat {
 /// these in production).
 struct SeatSubscribeLocations;
 
-impl imba::effect::EffectHandler<ahp_wire::effects::SubscribeLocationsEffect> for SeatSubscribeLocations {
+impl imba::effect::EffectHandler<ahp_wire::effects::SubscribeLocationsEffect>
+    for SeatSubscribeLocations
+{
     async fn handle(
         &self,
         effect: ahp_wire::effects::SubscribeLocationsEffect,
@@ -306,10 +309,9 @@ fn references_stream_into_the_search_dock() {
         "the Search tab activated"
     );
     let lists = himark::workspace::entity_state(&entity).lists();
-    let feed = locations::LocationLists::search(app.store(), lists)
-        .expect("the session fronts the feed");
-    let row =
-        locations::LocationLists::row(app.store(), lists, feed).expect("the feed row");
+    let feed =
+        locations::LocationLists::search(app.store(), lists).expect("the session fronts the feed");
+    let row = locations::LocationLists::row(app.store(), lists, feed).expect("the feed row");
     assert_eq!(row.title, "References to `line`");
     assert!(row.done && !row.truncated);
     assert_eq!(row.locations.len(), 3, "the stream landed, resolved");

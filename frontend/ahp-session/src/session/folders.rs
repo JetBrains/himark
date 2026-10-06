@@ -5,7 +5,10 @@ use super::state::Hosts;
 use ahp_wire::SessionId;
 use imba::store::Store;
 
-pub fn session_folders(store: &Store, session: &SessionId) -> Vec<editor::location::ResourceLocation> {
+pub fn session_folders(
+    store: &Store,
+    session: &SessionId,
+) -> Vec<editor::location::ResourceLocation> {
     let Some(uris) = Hosts::uris(store, session.host) else {
         return Vec::new();
     };

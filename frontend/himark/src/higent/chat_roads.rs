@@ -22,15 +22,18 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
         store,
         Arc::new(|store, row| {
             let ahp_chat::chats::ChatRow(chats, chat) = row.row::<ahp_chat::chats::ChatRow>()?;
-            store.entity(*chats).filter(|rows| rows.holds(chat)).map(|_| {
-                Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
-                    as Box<dyn hikit::panel::DynPanelView>
-            })
+            store
+                .entity(*chats)
+                .filter(|rows| rows.holds(chat))
+                .map(|_| {
+                    Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
+                        as Box<dyn hikit::panel::DynPanelView>
+                })
         }),
     );
-    store.put(ahp_session::session::state::WindowGrip(Arc::new(|store, scope| {
-        crate::workspace::any_window_holds(store, scope)
-    })));
+    store.put(ahp_session::session::state::WindowGrip(Arc::new(
+        |store, scope| crate::workspace::any_window_holds(store, scope),
+    )));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
             crate::commands::AppRequests::push(
@@ -85,8 +88,10 @@ impl crate::commands::WindowedCommand for OpenEditedFile {
         let Some(uris) = ahp_session::session::state::Hosts::uris(store, self.server) else {
             return;
         };
-        let authority =
-            editor::location::Authority::new(ahp_wire::client::authority(self.server, &self.session));
+        let authority = editor::location::Authority::new(ahp_wire::client::authority(
+            self.server,
+            &self.session,
+        ));
         let Some(location) = uris.location_of(
             &ahp_wire::client::ResourceUri::new(self.uri.as_str()),
             editor::location::ResourceType::document(),
@@ -129,7 +134,12 @@ impl crate::commands::WindowedCommand for ApplyChannelActions {
     ) {
         let _ = window;
         fx.scope(crate::app::AppCommand::Verb, |fx| {
-            ahp_session::session::channel::apply_channel_actions(store, &self.home, &self.actions, fx)
+            ahp_session::session::channel::apply_channel_actions(
+                store,
+                &self.home,
+                &self.actions,
+                fx,
+            )
         });
     }
 }

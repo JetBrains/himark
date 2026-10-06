@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::state::{Host, HostStatus, Hosts};
+use ahp_types::notifications::PartialSessionSummary;
+use ahp_types::state::{AgentInfo, SessionSummary};
 use ahp_wire::client::SessionChannel;
 use ahp_wire::client::{HostId, ServerEvent};
 use ahp_wire::SessionId;
-use ahp_types::notifications::PartialSessionSummary;
-use ahp_types::state::{AgentInfo, SessionSummary};
 use imba::store::Store;
 
 #[derive(Clone, Default)]
@@ -118,7 +118,12 @@ impl Agents {
         }
     }
 
-    pub fn note_turn(store: &mut Store, server: HostId, chat: &ahp_wire::client::ChatUri, turn: &str) {
+    pub fn note_turn(
+        store: &mut Store,
+        server: HostId,
+        chat: &ahp_wire::client::ChatUri,
+        turn: &str,
+    ) {
         let session = Hosts::host(store, server).and_then(|host| {
             host.states
                 .iter()

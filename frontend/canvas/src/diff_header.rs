@@ -9,7 +9,13 @@
 //! action. Call sites pick the affordances and map the presses onto
 //! their own command type; the geometry and the glyphs live here.
 
-use imba::{arena::Arena, event::{Event, EventResult}, store::Store, ui::UiCtx, Widget};
+use imba::{
+    arena::Arena,
+    event::{Event, EventResult},
+    store::Store,
+    ui::UiCtx,
+    Widget,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use editor::env;

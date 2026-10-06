@@ -147,7 +147,9 @@ mod tests {
             SessionActivity::Unviewed
         );
         assert_eq!(
-            activity(&summary(SessionStatus::Idle.bits() | SessionStatus::IsRead.bits())),
+            activity(&summary(
+                SessionStatus::Idle.bits() | SessionStatus::IsRead.bits()
+            )),
             SessionActivity::Quiet
         );
     }

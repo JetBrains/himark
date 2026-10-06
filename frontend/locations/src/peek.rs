@@ -13,15 +13,27 @@
 
 use std::sync::Arc;
 
-use imba::{arena::Arena, constraints::Constraints, effect::AnyEffect, event::{Event, EventResult, Key as InputKey}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::AnyEffect,
+    event::{Event, EventResult, Key as InputKey},
+    layout::Layout as _,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::views::files_forest;
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk};
-use editor::{document::Document, editor_view::EditorCommand, editor_view::EditorView, markup::InlayKey};
+use editor::{
+    document::Document, editor_view::EditorCommand, editor_view::EditorView, markup::InlayKey,
+};
 use hikit::forest::ForestList;
-use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
 use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
+use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
 use imba::list::{ActivateTrigger, ListOps};
 
 const PEEK_HEIGHT: f32 = 280.0;
@@ -91,8 +103,11 @@ pub struct PeekView {
     /// The open-in-pane verb, injected at mount — the shell's window
     /// rides in the closure; the card never holds one.
     open: Arc<
-        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
-            + Send
+        dyn Fn(
+                &mut Store,
+                editor::location::ResourceLocation,
+                std::ops::Range<documents::text_ext::LineCol>,
+            ) + Send
             + Sync,
     >,
 
@@ -109,8 +124,11 @@ impl PeekView {
         feed: FeedId,
         promote: Arc<dyn Fn(&mut Store) + Send + Sync>,
         open: Arc<
-            dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
-                + Send
+            dyn Fn(
+                    &mut Store,
+                    editor::location::ResourceLocation,
+                    std::ops::Range<documents::text_ext::LineCol>,
+                ) + Send
                 + Sync,
         >,
     ) -> Self {
@@ -799,7 +817,8 @@ mod tests {
             ],
             true,
         );
-        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> = Default::default();
+        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> =
+            Default::default();
         let noted = opened.clone();
         let mut view = PeekView::new(
             &store,
@@ -854,7 +873,8 @@ mod tests {
         let mut store = Store::new();
         let ui = ::editor::test_document::test_ui();
         let (lists, feed) = feed(&mut store, &[found("a.rs", 3, "only")], true);
-        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> = Default::default();
+        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> =
+            Default::default();
         let noted = opened.clone();
         let mut view = PeekView::new(
             &store,
@@ -968,14 +988,20 @@ pub struct GoToReference {
     /// The documents collection's sibling lists — the session row
     /// linkage, answered by whoever owns the catalog.
     pub lists: Arc<
-        dyn Fn(&Store, imba::store::Id<documents::OpenDocuments>) -> Option<imba::store::Id<LocationLists>>
+        dyn Fn(
+                &Store,
+                imba::store::Id<documents::OpenDocuments>,
+            ) -> Option<imba::store::Id<LocationLists>>
             + Send
             + Sync,
     >,
     /// The card's deliberate open — a windowed ask the shell queues.
     pub open: Arc<
-        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
-            + Send
+        dyn Fn(
+                &mut Store,
+                editor::location::ResourceLocation,
+                std::ops::Range<documents::text_ext::LineCol>,
+            ) + Send
             + Sync,
     >,
     /// Front the SAME feed in the shell's dock — no re-ask.

@@ -20,7 +20,9 @@ fn whole_replace(base: &text::text::Text, target: &text::text::Text) -> Operatio
     let mut ops = Vec::with_capacity(2);
     let base_len = base.byte_count();
     if base_len > 0 {
-        ops.push(operation::op::Op::Delete(base.view().byte_string(0, base_len)));
+        ops.push(operation::op::Op::Delete(
+            base.view().byte_string(0, base_len),
+        ));
     }
     let target_len = target.byte_count();
     if target_len > 0 {
@@ -885,14 +887,15 @@ pub fn sync_stripe_bases<R: 'static>(
     else {
         return;
     };
-    let asks: Vec<(DocumentId, editor::location::ResourceLocation)> = OpenDocuments::list(store, documents)
-        .into_iter()
-        .filter(|(_, entity)| !entity.base_requested())
-        .filter_map(|(document, entity)| {
-            let location = entity.location()?.clone();
-            (!crate::is_synthetic(&location)).then_some((document, location))
-        })
-        .collect();
+    let asks: Vec<(DocumentId, editor::location::ResourceLocation)> =
+        OpenDocuments::list(store, documents)
+            .into_iter()
+            .filter(|(_, entity)| !entity.base_requested())
+            .filter_map(|(document, entity)| {
+                let location = entity.location()?.clone();
+                (!crate::is_synthetic(&location)).then_some((document, location))
+            })
+            .collect();
     for (document, location) in asks {
         OpenDocuments::set_base_requested(store, documents, document);
         if probe() {

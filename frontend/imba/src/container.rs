@@ -4,7 +4,12 @@
 use skia_safe::Contains;
 use skia_safe::{Rect, Size};
 
-use crate::{arena::{Arena, ArenaVec}, event::{Event, EventResult}, overlay::Overlay, Thunk, ThunkBox, Widget, WidgetBox};
+use crate::{
+    arena::{Arena, ArenaVec},
+    event::{Event, EventResult},
+    overlay::Overlay,
+    Thunk, ThunkBox, Widget, WidgetBox,
+};
 
 pub struct Container<'a, Command> {
     arena: &'a Arena,

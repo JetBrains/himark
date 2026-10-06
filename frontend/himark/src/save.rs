@@ -49,7 +49,11 @@ impl WindowedCommand for SaveAll {
     }
 }
 
-pub(crate) fn save_all(store: &mut Store, window: ::workbench::window::WindowId, fx: &mut AppFx<'_>) {
+pub(crate) fn save_all(
+    store: &mut Store,
+    window: ::workbench::window::WindowId,
+    fx: &mut AppFx<'_>,
+) {
     let Some(documents) =
         crate::workspace::session_state(store, window).map(|state| state.documents())
     else {

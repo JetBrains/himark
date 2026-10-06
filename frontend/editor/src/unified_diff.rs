@@ -422,8 +422,9 @@ impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
         // this pane only FILTERS the emissions to the projections
         // (the strips and before-cards riding INLAY_HOST), exactly
         // what the old duplicate build re-minted by hand.
-        let inner = imba::layout::Layout::layout(view.display(frame, store, ui), frame, constraints)
-            .realize(arena, viewport);
+        let inner =
+            imba::layout::Layout::layout(view.display(frame, store, ui), frame, constraints)
+                .realize(arena, viewport);
         imba::WidgetBox::new(arena, InlinePane { inner })
     }
 }

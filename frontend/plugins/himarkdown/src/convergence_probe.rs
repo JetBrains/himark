@@ -18,11 +18,16 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let ui = ::editor::test_document::test_ui();
     let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
-    let mut document = editor::document::Document::new(Text::from_string_exact(""), editor::markup::Markup::new())
-        .with_syntax(
-            editor::markup::Syntax::new("markdown".to_owned(), None, editor::markup::Markup::new()),
-            &[],
-        );
+    let mut document =
+        editor::document::Document::new(Text::from_string_exact(""), editor::markup::Markup::new())
+            .with_syntax(
+                editor::markup::Syntax::new(
+                    "markdown".to_owned(),
+                    None,
+                    editor::markup::Markup::new(),
+                ),
+                &[],
+            );
     let editor = document.add_editor(
         400.0,
         None,
@@ -132,8 +137,14 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     }
 
     let live = document.element_heights(editor);
-    let fresh_view =
-        editor::editor_view::EditorView::complete(document.clone(), 700.0, store, ui, &fonts, &theme());
+    let fresh_view = editor::editor_view::EditorView::complete(
+        document.clone(),
+        700.0,
+        store,
+        ui,
+        &fonts,
+        &theme(),
+    );
     let fresh = fresh_view.element_heights();
     assert_eq!(live, fresh, "incremental layout diverged from from-scratch");
 }

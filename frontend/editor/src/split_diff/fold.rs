@@ -57,7 +57,10 @@ pub(crate) fn derive_folds(
 ) -> Vec<FoldSpec> {
     let mut folds = Vec::new();
 
-    if diff.iter().all(|op| matches!(op, operation::op::Op::Retain(_))) {
+    if diff
+        .iter()
+        .all(|op| matches!(op, operation::op::Op::Retain(_)))
+    {
         return folds;
     }
     let mut scan = LineScan::new(left_text);
@@ -451,8 +454,8 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
         constraints: imba::constraints::Constraints,
     ) -> imba::ThunkBox<'a, FoldCommand> {
         use imba::event::{Event, EventResult, MouseButton};
-        use imba::thunk_ext::ThunkExt;
         use imba::layout::LayoutExt;
+        use imba::thunk_ext::ThunkExt;
 
         let chrome = self.chrome;
         let width = constraints.max.width.max(1.0);

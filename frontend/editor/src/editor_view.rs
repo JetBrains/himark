@@ -1,10 +1,25 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, container::{container, Container}, effect::Effects, event::{Event, EventResult, MouseButton}, lazy::lazy, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::{container, Container},
+    effect::Effects,
+    event::{Event, EventResult, MouseButton},
+    lazy::lazy,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::{Point, Rect, Size};
 
-use crate::{document::Document, editor::EditorId, markup::{inlay_anchor_byte, inlay_anchors_line, InlayCommand, InlayMode}};
+use crate::{
+    document::Document,
+    editor::EditorId,
+    markup::{inlay_anchor_byte, inlay_anchors_line, InlayCommand, InlayMode},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EditorFocus {

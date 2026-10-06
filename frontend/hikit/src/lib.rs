@@ -8,16 +8,14 @@
 //! protocol, no application.
 
 pub mod combo;
-pub mod pane_row;
 pub mod fonts;
 pub mod forest;
 pub mod list_keyboard;
 pub mod menu;
 pub mod modal;
 pub mod navigation;
+pub mod pane_row;
 pub mod panel;
 pub mod rows;
 pub mod tree_item;
 pub mod ui;
-
-

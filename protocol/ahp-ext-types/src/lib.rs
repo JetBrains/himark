@@ -8,4 +8,3 @@ pub mod history;
 pub mod locations;
 pub mod search;
 pub mod text;
-

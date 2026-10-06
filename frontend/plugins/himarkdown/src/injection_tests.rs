@@ -13,8 +13,8 @@ fn test_theme() -> editor::theme::Theme {
 
 use editor::markup::MarkupBuilder;
 use editor::reparse::ReparseWork;
-use editor::theme::StyleId;
 use editor::reparse::SyntaxLanguage;
+use editor::theme::StyleId;
 use std::sync::Arc;
 
 struct Toy;

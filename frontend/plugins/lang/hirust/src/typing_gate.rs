@@ -65,26 +65,27 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     let mut store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
     ui.set(imba::ui::UiFonts(fonts.clone()));
-    let drain = |view: &mut editor::editor_view::EditorView,
-                 store: &mut imba::store::Store,
-                 batch: &mut imba::effect::Batch<editor::editor_view::EditorCommand>| {
-        let mut rounds = 0;
-        loop {
-            let pending = himark::test_support::surviving_launches(std::mem::replace(
-                batch,
-                imba::effect::Batch::new(),
-            ));
-            if pending.is_empty() {
-                break;
+    let drain =
+        |view: &mut editor::editor_view::EditorView,
+         store: &mut imba::store::Store,
+         batch: &mut imba::effect::Batch<editor::editor_view::EditorCommand>| {
+            let mut rounds = 0;
+            loop {
+                let pending = himark::test_support::surviving_launches(std::mem::replace(
+                    batch,
+                    imba::effect::Batch::new(),
+                ));
+                if pending.is_empty() {
+                    break;
+                }
+                for effect in pending {
+                    rounds += 1;
+                    assert!(rounds < 10_000, "the tail must converge");
+                    let command = himark::test_support::handle_effect(effect, &workshop);
+                    imba::View::perform(view, store, &ui, command, &mut batch.effects());
+                }
             }
-            for effect in pending {
-                rounds += 1;
-                assert!(rounds < 10_000, "the tail must converge");
-                let command = himark::test_support::handle_effect(effect, &workshop);
-                imba::View::perform(view, store, &ui, command, &mut batch.effects());
-            }
-        }
-    };
+        };
     drain(&mut view, &mut store, &mut batch);
     view.document.set_caret(editor, at as u32);
 

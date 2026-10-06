@@ -7,12 +7,12 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use himark::workspace::open_locations;
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 use himark::app::AppCommand;
 use himark::app::AppFx;
 use himark::commands::WindowedCommand;
-use editor::location::ResourceLocation;
-use editor::location::ResourceType;
+use himark::workspace::open_locations;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
 
@@ -363,7 +363,9 @@ fn open_folder_session(
             .map(|summary| ahp_wire::client::SessionUri::new(summary.resource.clone()))
     });
     match existing {
-        Some(session) => himark::higent::open_session::open_session(store, window, host, session, false, fx),
+        Some(session) => {
+            himark::higent::open_session::open_session(store, window, host, session, false, fx)
+        }
         None => {
             let _ = fx.push(
                 AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
@@ -486,7 +488,8 @@ impl documents::dynamic::DocumentCommand for OpenWorkingCopy {
         _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         _fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
-        let working = changesview::hichanges::working_copy(location).unwrap_or_else(|| location.clone());
+        let working =
+            changesview::hichanges::working_copy(location).unwrap_or_else(|| location.clone());
         let byte = document.caret_byte(editor);
         let mut view = document.text().view();
         let at = documents::text_ext::line_col_at(&mut view, byte as usize);
@@ -691,11 +694,13 @@ impl WindowedCommand for OpenTerminal {
         let resolved = ahp_session::session::agents::Agents::live_session(store, &workspace)
             .and_then(|key| {
                 let client = ahp_wire::client::Servers::client(store, key.host)?;
-                let cwd = ahp_session::session::agents::Agents::record(store, key.host).and_then(|record| {
-                    record
-                        .summary(&key.session)
-                        .and_then(|summary| summary.working_directories.as_ref()?.first().cloned())
-                });
+                let cwd = ahp_session::session::agents::Agents::record(store, key.host).and_then(
+                    |record| {
+                        record.summary(&key.session).and_then(|summary| {
+                            summary.working_directories.as_ref()?.first().cloned()
+                        })
+                    },
+                );
                 Some((client, key.clone(), cwd))
             })
             .or_else(|| {
@@ -715,7 +720,9 @@ impl WindowedCommand for OpenTerminal {
                     client,
                     ahp_wire::SessionId {
                         host: server,
-                        session: ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                        session: ahp_wire::client::SessionUri::new(
+                            host_discovery::LOCAL_FS_SESSION,
+                        ),
                     },
                     cwd,
                 ))
@@ -767,7 +774,8 @@ impl WindowedCommand for ShowTerminal {
         let Some(session) = &self.session else {
             return;
         };
-        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            workbench::window::Windows::window(store, window).expect("the window entity");
 
         let terminals = self.terminals;
         let id = terminals::TerminalId::mint();

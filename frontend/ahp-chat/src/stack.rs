@@ -3,7 +3,17 @@
 
 use ahp_types::state::{ConfirmationOption, ConfirmationOptionKind, Message, PendingMessage};
 use hikit::fonts::ui_text_font;
-use imba::{arena::Arena, constraints::Constraints, container::{container, Container}, event::{Event, EventResult}, leaf::leaf, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::{container, Container},
+    event::{Event, EventResult},
+    layout::Layout as _,
+    layout::LayoutExt as _,
+    leaf::leaf,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::turn::TurnView;

@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use skia_safe::{Canvas, Rect, Size};
 
-use crate::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use crate::{
+    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
+};
 
 pub struct ImageView {
     bytes: Arc<[u8]>,

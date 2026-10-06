@@ -5,9 +5,9 @@ use std::sync::{
 
 use imba::store::Store;
 
-use himark::test_driver;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::test_driver;
 
 struct Mark {
     id: &'static str,
@@ -24,17 +24,21 @@ impl himark::commands::WindowedCommand for Mark {
     }
 
     fn perform(
-    &self,
-    _store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    _window: ::workbench::window::WindowId,
-    _fx: &mut himark::app::AppFx<'_>,
-) {
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut himark::app::AppFx<'_>,
+    ) {
         self.hits.fetch_add(1, Ordering::Relaxed);
     }
 }
 
-fn button(id: &'static str, order: f32, side: ::workbench::toolbar::ToolbarSide) -> ::workbench::toolbar::ToolbarButton {
+fn button(
+    id: &'static str,
+    order: f32,
+    side: ::workbench::toolbar::ToolbarSide,
+) -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: id,
         order,
@@ -66,8 +70,16 @@ fn a_right_button_press_dispatches_its_own_command() {
             }),
         );
     }
-    app.register_toolbar_button(button("test.left-mark", 10.0, ::workbench::toolbar::ToolbarSide::Left));
-    app.register_toolbar_button(button("test.right-mark", 10.0, ::workbench::toolbar::ToolbarSide::Right));
+    app.register_toolbar_button(button(
+        "test.left-mark",
+        10.0,
+        ::workbench::toolbar::ToolbarSide::Left,
+    ));
+    app.register_toolbar_button(button(
+        "test.right-mark",
+        10.0,
+        ::workbench::toolbar::ToolbarSide::Right,
+    ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
 
@@ -83,9 +95,8 @@ fn a_right_button_press_dispatches_its_own_command() {
         })
         .position(|button| button.command == "test.left-mark")
         .expect("the left button is in the cluster");
-    let x = chrome.button_inset
-        + cluster_index as f32 * chrome.button_size
-        + chrome.button_size * 0.5;
+    let x =
+        chrome.button_inset + cluster_index as f32 * chrome.button_size + chrome.button_size * 0.5;
     assert!(test_driver::click(
         &mut app,
         x,

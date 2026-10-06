@@ -9,7 +9,6 @@ use imba::store::Store;
 use crate::app::{AppCommand, AppFx};
 use editor::location::ResourceLocation;
 
-
 pub struct OpenByLocationEffect {
     pub window: ::workbench::window::WindowId,
     /// The collection the open lands into — stamped at launch.
@@ -55,7 +54,6 @@ impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-
 pub fn open_by_location_effect(
     window: ::workbench::window::WindowId,
     documents: imba::store::Id<documents::OpenDocuments>,
@@ -82,7 +80,12 @@ pub fn open_locations(
     fx: &mut AppFx<'_>,
 ) {
     let folders = ::workbench::window::Windows::window_ref(store, window)
-        .map(|entity| ahp_session::session::folders::session_folders(store, &crate::workspace::entity_session(&entity)))
+        .map(|entity| {
+            ahp_session::session::folders::session_folders(
+                store,
+                &crate::workspace::entity_session(&entity),
+            )
+        })
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
         .iter()
@@ -112,7 +115,8 @@ pub fn open_locations(
     for location in &locations {
         if let Some(document) = documents::OpenDocuments::by_location(store, documents, location) {
             if primary {
-                if let Some(mut window_entity) = ::workbench::window::Windows::window(store, window) {
+                if let Some(mut window_entity) = ::workbench::window::Windows::window(store, window)
+                {
                     fx.scope(AppCommand::Verb, |fx| {
                         window_entity.show_document(store, ui, window, document, None, false, fx);
                     });
@@ -150,7 +154,8 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
         let documents = crate::workspace::session_state(store, window)
             .expect("navigation runs in a window with a session")
             .documents();
-        let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {
+        let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location)
+        else {
             // The fetch-then-open lands an AppCommand into the window —
             // the shell escape carries it over the Verb lane.
             fx.push(
@@ -177,7 +182,8 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
                 imba::command::Verb::at(documents, documents::DocumentsCommand::Editor(id, command))
             },
             |fx| {
-                let editor = documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
+                let editor =
+                    documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
 
                 if place.caret > 0 {
                     let fonts = ::editor::env::Fonts::of(store)();
@@ -211,7 +217,6 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
 /// `SessionState` — wired at session entry, stable for the session's
 /// life). Identity is the name: two workspaces are the same when
 /// their sessions match.
-
 use std::any::Any;
 
 use ahp_session::session::state::SessionState;
@@ -244,12 +249,11 @@ impl Workspace for SessionWorkspace {
         }
     }
 
-    fn front_chat_pane(
-        &self,
-        store: &mut Store,
-    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
+    fn front_chat_pane(&self, store: &mut Store) -> Option<Box<dyn hikit::panel::DynPanelView>> {
         let chats = self.state.chats();
-        let chat = ahp_chat::chats::Chats::list(store, chats).into_iter().next()?;
+        let chat = ahp_chat::chats::Chats::list(store, chats)
+            .into_iter()
+            .next()?;
         let pane = ::workbench::rows::mint(
             store,
             &hikit::pane_row::PaneRow::new(ahp_chat::chats::ChatRow(chats, chat.clone())),
@@ -358,7 +362,8 @@ pub fn any_window_holds(store: &Store, session: &SessionId) -> bool {
     windows.ids().into_iter().any(|id| {
         windows.entity(id).is_some_and(|window| {
             window.workspaces().any(|workspace| {
-                workspace.as_any()
+                workspace
+                    .as_any()
                     .downcast_ref::<SessionWorkspace>()
                     .is_some_and(|workspace| workspace.session == *session)
             })

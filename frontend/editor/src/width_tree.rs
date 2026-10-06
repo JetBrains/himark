@@ -4,7 +4,9 @@
 use std::ops::Range;
 
 use operation::{op::Op, operation::Operation};
-use sumtree::{summary::Bias, summary::Dimension, summary::Item, tree::Splice, tree::SumTree, summary::Summary};
+use sumtree::{
+    summary::Bias, summary::Dimension, summary::Item, summary::Summary, tree::Splice, tree::SumTree,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct WidthSpan {

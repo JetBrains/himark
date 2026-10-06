@@ -3,8 +3,6 @@
 
 use imba::store::Store;
 
-
-
 pub struct ReloadDocument;
 
 impl crate::commands::WindowedCommand for ReloadDocument {

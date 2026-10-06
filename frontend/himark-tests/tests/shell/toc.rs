@@ -1,8 +1,8 @@
 use super::*;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
 use himark::app::OpenedDocument;
+use himark::app_ext::AppExt;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(
@@ -36,9 +36,7 @@ fn outlined_document() -> (String, editor::document::Document) {
     (source, document)
 }
 
-fn run_outline(
-    batch: imba::effect::Batch<::toc::OutlineCommand>,
-) -> Option<::toc::OutlineRows> {
+fn run_outline(batch: imba::effect::Batch<::toc::OutlineCommand>) -> Option<::toc::OutlineRows> {
     use imba::effect::{block_on, EffectHandler, Message};
     for message in batch.drain() {
         let (Message::Launch(_, effect) | Message::Relaunch(_, _, effect)) = message else {
@@ -126,9 +124,8 @@ fn the_outline_derives_lands_and_jumps() {
             &mut imba::effect::Batch::new().effects(),
         );
         let at = view.search().cursor_index().expect("a cursor row");
-        let pick = ::toc::OutlineCommand::List(
-            view.search().activate_command(at, ActivateTrigger::Enter),
-        );
+        let pick =
+            ::toc::OutlineCommand::List(view.search().activate_command(at, ActivateTrigger::Enter));
         view.perform(
             &mut store,
             &ui,
@@ -136,12 +133,12 @@ fn the_outline_derives_lands_and_jumps() {
             &mut imba::effect::Batch::new().effects(),
         );
     }
-    let Some(hikit::modal::ModalRequest::Perform(verb)) = hikit::modal::ModalView::take_request(&mut view)
+    let Some(hikit::modal::ModalRequest::Perform(verb)) =
+        hikit::modal::ModalView::take_request(&mut view)
     else {
         panic!("the pick performs the jump");
     };
-    let command =
-        himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command = himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_command(command));
     let (document_id, editor_id) = app.focused_editor_id();
     let caret =
@@ -428,7 +425,9 @@ fn outline_speedsearch_filters_steps_and_clears() {
         let (value, _) = effect.into_payload().split();
         if let Ok(effect) = value.downcast::<hikit::list_keyboard::SpeedSearchEffect>() {
             matches = Some(block_on(Box::pin(async move {
-                hikit::list_keyboard::SpeedSearchHandler.handle(*effect).await
+                hikit::list_keyboard::SpeedSearchHandler
+                    .handle(*effect)
+                    .await
             })));
         }
     }
@@ -540,7 +539,9 @@ fn speedsearch_arrows_step_the_matches() {
         let (value, _) = effect.into_payload().split();
         if let Ok(effect) = value.downcast::<hikit::list_keyboard::SpeedSearchEffect>() {
             matches = Some(block_on(Box::pin(async move {
-                hikit::list_keyboard::SpeedSearchHandler.handle(*effect).await
+                hikit::list_keyboard::SpeedSearchHandler
+                    .handle(*effect)
+                    .await
             })));
         }
     }
@@ -572,8 +573,7 @@ fn speedsearch_arrows_step_the_matches() {
             &arena,
             Constraints::tight(skia_safe::Size::new(800.0, 600.0)),
         );
-        let widget =
-            imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(800.0, 600.0));
+        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(800.0, 600.0));
         let result = widget.handle_event(
             &arena,
             &Event::KeyDown {

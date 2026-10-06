@@ -14,8 +14,7 @@ use std::sync::Arc;
 use crate::changes::{digest_actions, digest_state, entry_serves, CatalogEntry};
 use ahp_types::actions::StateAction;
 use ahp_wire::effects::{
-    DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
-    SubscribeHistoryEffect,
+    DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect, SubscribeHistoryEffect,
 };
 use changesview::hichanges::Changes;
 use changesview::hihistory::{
@@ -172,7 +171,11 @@ pub(crate) fn subscribe_fresh(
     for (folder, client, channel) in fresh {
         let landing = folder.clone();
         fx.push(
-            AnyEffect::new(SubscribeHistoryEffect { client: client.history.clone(), channel }).map(move |result| {
+            AnyEffect::new(SubscribeHistoryEffect {
+                client: client.history.clone(),
+                channel,
+            })
+            .map(move |result| {
                 Verb::Dynamic(Arc::new(SnapshotLanded {
                     wire,
                     folder: landing.clone(),
@@ -347,7 +350,11 @@ fn relaunch_poll(
     };
     let (client, landing) = (held.client.clone(), folder.clone());
     fx.push(
-        AnyEffect::new(PollChangesetEffect { client: client.changes.clone(), channel }).map(move |actions| {
+        AnyEffect::new(PollChangesetEffect {
+            client: client.changes.clone(),
+            channel,
+        })
+        .map(move |actions| {
             let (deltas, harvest) = digest_deltas(&actions);
             Verb::Dynamic(Arc::new(Polled {
                 wire,
@@ -450,7 +457,11 @@ pub(crate) fn fetch_commit_files(
     Changes::mark_commit_computing(store, changes, folder, commit);
     let (landing, commit_id) = (folder.clone(), commit.to_owned());
     fx.push(
-        AnyEffect::new(SubscribeChangesetEffect { client: client.changes.clone(), channel }).map(move |result| {
+        AnyEffect::new(SubscribeChangesetEffect {
+            client: client.changes.clone(),
+            channel,
+        })
+        .map(move |result| {
             Verb::Dynamic(Arc::new(CommitFilesLanded {
                 wire,
                 folder: landing.clone(),
@@ -549,7 +560,11 @@ fn settle_commit_fetch(
         changesview::hichanges::ChangesStatus::Computing => {
             let (landing, commit_id) = (folder.clone(), commit.to_owned());
             fx.push(
-                AnyEffect::new(PollChangesetEffect { client: client.changes.clone(), channel }).map(move |actions| {
+                AnyEffect::new(PollChangesetEffect {
+                    client: client.changes.clone(),
+                    channel,
+                })
+                .map(move |actions| {
                     Verb::Dynamic(Arc::new(CommitFilesPolled {
                         wire,
                         folder: landing.clone(),

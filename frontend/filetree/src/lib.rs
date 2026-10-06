@@ -13,9 +13,24 @@ use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use hikit::menu::{MenuCommand, MenuView, PopupMenuView};
-use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, forest::TreeRow};
+use hikit::{
+    forest::TreeRow, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController,
+    modal::ModalRequest, modal::ModalView,
+};
 use imba::list::{ActivateTrigger, ListOps};
-use imba::{arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    event::{Event, EventResult, Key as InputKey},
+    leaf::leaf,
+    list::{ListSlice, ListView},
+    scroll::ScrollView,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Paint, Size};
 
 const PANEL_PAD: f32 = 6.0;
@@ -87,12 +102,15 @@ impl LocationTree {
     fn row(&self, location: &ResourceLocation, depth: u16, expanded: bool) -> TreeRow {
         let directory = location.kind().is_directory();
         let name = location.name().to_owned();
-        let label = hikit::tree_item::TreeLabel::new(name, !directory, false).tinted(match directory {
-            true => hikit::tree_item::TreeTint::Directory,
-            false => hikit::tree_item::TreeTint::File,
-        });
+        let label =
+            hikit::tree_item::TreeLabel::new(name, !directory, false).tinted(match directory {
+                true => hikit::tree_item::TreeTint::Directory,
+                false => hikit::tree_item::TreeTint::File,
+            });
         match directory {
-            true => hikit::tree_item::TreeItemView::branch(label, depth, expanded).toggling_on_body(),
+            true => {
+                hikit::tree_item::TreeItemView::branch(label, depth, expanded).toggling_on_body()
+            }
             false => hikit::tree_item::TreeItemView::leaf(label, depth),
         }
     }
@@ -755,7 +773,8 @@ impl SessionTreeView {
             .inner_mut()
             .content_mut()
             .splice_slice(at..at, slice);
-        let mut input = ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+        let mut input =
+            ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
         self.edit = Some(RowEdit {
             target: EditTarget::Create {
@@ -944,7 +963,8 @@ fn edit_text(input: &::editor::editor_view::EditorView) -> String {
 fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view::EditorView {
     let mut markup = editor::markup::Markup::new();
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
-    let document = editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
+    let document =
+        editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let fonts = hikit::fonts::source();
     let mut input = ::editor::editor_view::EditorView::of_document(
         document,

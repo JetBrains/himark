@@ -3,7 +3,14 @@
 
 use std::hash::Hash;
 
-use imba::{arena::Arena, list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView}, scroll::ScrollView, store::Store, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView},
+    scroll::ScrollView,
+    store::Store,
+    ui::UiCtx,
+    View,
+};
 
 use crate::tree_item::{TreeItemView, TreeLabel, TreeListCommand, TreeTint};
 
@@ -433,7 +440,9 @@ impl<K> Default for ForestSearcher<K> {
     }
 }
 
-impl<K: Clone + Eq + Hash + Send + Sync + 'static> crate::list_keyboard::Searcher for ForestSearcher<K> {
+impl<K: Clone + Eq + Hash + Send + Sync + 'static> crate::list_keyboard::Searcher
+    for ForestSearcher<K>
+{
     type View = ForestList<K>;
     type Key = K;
 

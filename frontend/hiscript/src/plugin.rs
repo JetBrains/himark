@@ -450,7 +450,8 @@ fn land(
                 base_revision,
                 operation,
             } => {
-                let Some(documents) = ahp_session::session::state::Hosts::documents_of_document(store, id)
+                let Some(documents) =
+                    ahp_session::session::state::Hosts::documents_of_document(store, id)
                 else {
                     continue;
                 };
@@ -488,7 +489,10 @@ fn land(
                     AnyEffect::new(documents::StoreDocumentEffect { location, text }).map(
                         move |stored| editor::editor_view::EditorCommand::Dynamic {
                             id: "script.run",
-                            payload: Some(editor::dynamic::DynPayload::new(ScriptStored { stored, show })),
+                            payload: Some(editor::dynamic::DynPayload::new(ScriptStored {
+                                stored,
+                                show,
+                            })),
                         },
                     ),
                 );

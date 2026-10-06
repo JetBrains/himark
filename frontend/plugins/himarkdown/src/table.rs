@@ -7,7 +7,10 @@ use editor::document::Document;
 use editor::editor_view::EditorCommand;
 use editor::editor_view::EditorView;
 use editor::markup::Markup;
-use imba::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
+    Widget,
+};
 use operation::{op::Op, operation::Operation};
 use skia_safe::{
     textlayout::{FontCollection, ParagraphBuilder, ParagraphStyle, TextDirection, TextStyle},
@@ -291,7 +294,11 @@ fn cell_view(
     view
 }
 
-fn cell_intrinsics(text: &str, fonts: &FontCollection, theme: &editor::theme::Theme) -> ColumnIntrinsics {
+fn cell_intrinsics(
+    text: &str,
+    fonts: &FontCollection,
+    theme: &editor::theme::Theme,
+) -> ColumnIntrinsics {
     if text.is_empty() {
         return ColumnIntrinsics { min: 0.0, max: 0.0 };
     }

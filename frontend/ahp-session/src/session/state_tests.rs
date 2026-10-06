@@ -8,8 +8,8 @@
 
 use imba::store::Store;
 
-use ahp_chat::chats::Chats;
 use super::state::{Hosts, WindowGrip};
+use ahp_chat::chats::Chats;
 use ahp_wire::client::{ChatUri, HostId, SessionUri};
 
 fn session(uri: &str) -> ahp_wire::SessionId {
@@ -175,10 +175,7 @@ fn disposal_retracts_every_session_entity() {
 
     put(&mut store, &home, "chat:1");
     let row = Hosts::ensure_state(&mut store, &home);
-    store.update_entity(
-        row.recents,
-        |_recents: &mut recents::RecentLocations| {},
-    );
+    store.update_entity(row.recents, |_recents: &mut recents::RecentLocations| {});
     store.update_entity(row.trees, |_trees| {});
     store.update_entity(row.terminals, |_terminals| {});
 

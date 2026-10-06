@@ -4,7 +4,13 @@
 use crate::ui::UiCtx;
 use skia_safe::Rect;
 
-use crate::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, store::Store, View, Widget};
+use crate::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult},
+    store::Store,
+    View, Widget,
+};
 
 #[derive(Clone)]
 pub struct Stack<Base, Modal> {
@@ -139,7 +145,11 @@ where
                     constraints,
                 ),
                 modal: self.modal.as_ref().map(|modal| {
-                    crate::layout::Layout::layout(modal.display(arena, store, ui), arena, constraints)
+                    crate::layout::Layout::layout(
+                        modal.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
                 }),
             },
         )

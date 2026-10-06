@@ -320,7 +320,9 @@ fn context_press(index: usize) -> TreeCommand {
             index,
             Some(Box::new(imba::list::ListCommand::Child(
                 index,
-                hikit::tree_item::TreeItemCommand::Inner(hikit::tree_item::TreeLabelCommand::Context),
+                hikit::tree_item::TreeItemCommand::Inner(
+                    hikit::tree_item::TreeLabelCommand::Context,
+                ),
             ))),
         )),
     ))

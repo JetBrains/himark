@@ -20,7 +20,6 @@ pub mod testing;
 mod trace;
 mod uris;
 
-
 pub(crate) fn uuid_v4() -> String {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

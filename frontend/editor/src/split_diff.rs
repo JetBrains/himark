@@ -3,8 +3,17 @@
 
 use std::ops::Range;
 
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::{Effect, Effects}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
-use operation::{operation::Bias, op::Op, operation::Operation};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::{Effect, Effects},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View,
+};
+use operation::{op::Op, operation::Bias, operation::Operation};
 use skia_safe::Size;
 use text::text::Text;
 
@@ -149,7 +158,11 @@ impl DiffViewState {
     /// containers, and misses faces realized after it fired). One
     /// Resync clears it: settle rolls the revisions forward and adopts
     /// the pending generation.
-    pub fn stale(&self, left: &crate::document::Document, right: &crate::document::Document) -> bool {
+    pub fn stale(
+        &self,
+        left: &crate::document::Document,
+        right: &crate::document::Document,
+    ) -> bool {
         self.left_revision != left.revision()
             || self.right_revision != right.revision()
             || right
@@ -1152,9 +1165,12 @@ impl View for SplitDiffView {
                 min: Size::new(half, 0.0),
                 max: Size::new(half, f32::MAX),
             };
-            let left =
-                imba::layout::Layout::layout(self.left.display(arena, store, ui), arena, half_constraints)
-                    .map(SplitDiffCommand::Left);
+            let left = imba::layout::Layout::layout(
+                self.left.display(arena, store, ui),
+                arena,
+                half_constraints,
+            )
+            .map(SplitDiffCommand::Left);
             let right = imba::layout::Layout::layout(
                 self.right.display(arena, store, ui),
                 arena,

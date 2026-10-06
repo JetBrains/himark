@@ -25,9 +25,11 @@ fn text_of(store: &Store, id: DocumentId) -> String {
 fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
-    let documents =
-        ahp_session::session::state::Hosts::ensure_state(store, &ahp_wire::SessionId::local_default(store))
-            .documents();
+    let documents = ahp_session::session::state::Hosts::ensure_state(
+        store,
+        &ahp_wire::SessionId::local_default(store),
+    )
+    .documents();
     OpenDocuments::register(
         store,
         documents,
@@ -322,8 +324,7 @@ impl ahp_wire::client::ChatClient for ScriptedSeat {
     fn subscribe_chat(
         &self,
         _chat: ahp_wire::client::ChatUri,
-    ) -> ahp_wire::client::ClientFuture<Result<ahp_types::state::ChatState, String>>
-    {
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_types::state::ChatState, String>> {
         let state = serde_json::from_value(serde_json::json!({
             "resource": "chat:script",
             "title": "",

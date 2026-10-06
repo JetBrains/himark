@@ -9,10 +9,22 @@
 
 use std::sync::Arc;
 
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key as InputKey}, store::Store, layout::LayoutExt as _, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, Key as InputKey},
+    layout::LayoutExt as _,
+    store::Store,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::Size;
 
-use hikit::{tree_item::tree_toggle, navigation::EditorPlace, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
+use hikit::{
+    forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
+    list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView,
+    navigation::EditorPlace, tree_item::tree_toggle, tree_item::TreeListCommand,
+};
 use imba::list::{ActivateTrigger, ListOps};
 
 pub(crate) const OUTLINE_CAP: usize = 2_000;

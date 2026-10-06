@@ -5,14 +5,12 @@
 //! window. The collection and the tree live in the `changesview`
 //! crate.
 
-
 use changesview::hichanges::*;
 
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use imba::{effect::AnyEffect, store::Store};
-
 
 pub struct OpenDiffForPair {
     pub old: ResourceLocation,
@@ -41,12 +39,14 @@ impl crate::commands::WindowedCommand for OpenDiffForPair {
             .documents();
         let old = documents::diff_views::DiffSideInput::resolve(store, documents, self.old.clone());
         let new = documents::diff_views::DiffSideInput::resolve(store, documents, self.new.clone());
-        let _ = fx.push(AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
-            window,
-            documents,
-            old,
-            new,
-        }));
+        let _ = fx.push(AnyEffect::new(
+            crate::workspace::OpenDiffByLocationsEffect {
+                window,
+                documents,
+                old,
+                new,
+            },
+        ));
     }
 }
 
@@ -66,7 +66,8 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
             ::workbench::window::Windows::put(store, window, entity);
@@ -83,16 +84,17 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
-        let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::app::shell_verb(crate::app::AppCommand::Windowed(
-                window,
-                Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                    changes,
-                    source,
-                    reveal,
-                }),
-            ))
-        });
+        let open_canvas: changesview::changes_view::CanvasOpener =
+            Arc::new(move |source, reveal| {
+                crate::app::shell_verb(crate::app::AppCommand::Windowed(
+                    window,
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        changes,
+                        source,
+                        reveal,
+                    }),
+                ))
+            });
 
         fx.scope(
             move |command| crate::app::AppCommand::Content(window, command),

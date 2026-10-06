@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use ::canvas::diff_pane::*;
-use himark::diff_pane::*;
-use himark::app_ext::AppExt;
 use himark::app::AppFonts;
 use himark::app::Application;
+use himark::app_ext::AppExt;
+use himark::diff_pane::*;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
-
 
 fn monster_pair(repetitions: usize) -> (String, String) {
     let sample = include_str!("../../plugins/demo/sample.md");
@@ -261,10 +260,7 @@ fn probe_pair(left: String, right: String) {
         let width = 1200.0 - (step as f32 + 1.0) * 20.0;
         let frame_size = skia_safe::Size::new(width, 900.0);
         let started = Instant::now();
-        let _ = app.draw_window_sized(app.sole_window(),
-            surface.canvas(),
-            frame_size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), frame_size);
         resize_frames.push(started.elapsed());
 
         runner.run();
@@ -302,8 +298,7 @@ fn probe_pair(left: String, right: String) {
     if has_table {
         for _ in 0..80 {
             let _ = himark::test_driver::scroll(&mut app, -2000.0);
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
         let cell_focused = |app: &Application| {
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
@@ -315,9 +310,12 @@ fn probe_pair(left: String, right: String) {
                 let document =
                     documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
                         .expect("document");
-                document
-                    .editor_ids()
-                    .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
+                document.editor_ids().any(|editor| {
+                    matches!(
+                        document.focus(editor),
+                        editor::editor_view::EditorFocus::Inlay(_)
+                    )
+                })
             }
         };
 
@@ -381,10 +379,7 @@ fn probe_pair(left: String, right: String) {
                     continue;
                 }
                 himark::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
-                let _ = app.draw_window_sized(app.sole_window(),
-                    surface.canvas(),
-                    size,
-                );
+                let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
                 if cell_focused(&app) {
                     focused = true;
                     break 'probe;
@@ -398,14 +393,12 @@ fn probe_pair(left: String, right: String) {
         );
         for _ in 0..8 {
             let _ = himark::test_driver::type_text(&mut app, "grow the row substantially ");
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             crate::hidiff_tests::assert_pair_aligned(&app);
         }
         for _ in 0..2 {
             let _ = himark::test_driver::type_text(&mut app, "\n");
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             crate::hidiff_tests::assert_pair_aligned(&app);
         }
     }
@@ -426,8 +419,7 @@ fn probe_pair(left: String, right: String) {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
     }
     crate::hidiff_tests::assert_pair_aligned(&app);

@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
+use ahp_types::state::{AgentInfo, SessionSummary};
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionChannel;
 use ahp_wire::client::SessionUri;
-use ahp_types::state::{AgentInfo, SessionSummary};
 use imba::store::{Id, Store};
 
 use super::agents::Agents;
@@ -18,7 +18,6 @@ pub enum HostStatus {
     Connected,
     Failed(String),
 }
-
 
 #[derive(Clone)]
 pub struct Host {
@@ -425,7 +424,6 @@ impl Hosts {
         self.entries.insert_mut(scope.host, host);
     }
 
-
     /// A session's conversations, reached by its own id whatever the
     /// batch was gathered for.
     /// A session's own state, addressed by its id. `Hosts` rides EVERY
@@ -531,11 +529,7 @@ impl Hosts {
         );
         store.put_entity(
             state.history_wire,
-            ahp_changes::history::HistoryWire::wired(
-                state.history,
-                state.changes,
-                uris.clone(),
-            ),
+            ahp_changes::history::HistoryWire::wired(state.history, state.changes, uris.clone()),
         );
         store.put_entity(
             state.history,
@@ -608,9 +602,7 @@ impl Hosts {
         documents::OpenDocuments::install_scoped_hook(
             store,
             state.documents,
-            std::sync::Arc::new(locations::views::LocationsWashHook {
-                lists: state.lists,
-            }),
+            std::sync::Arc::new(locations::views::LocationsWashHook { lists: state.lists }),
         );
         store.put_entity(
             state.chats,
@@ -639,8 +631,7 @@ impl Hosts {
                     Host::new("Local".to_owned())
                 }
             };
-            host.rows
-                .insert_mut(session.session.clone(), state.clone());
+            host.rows.insert_mut(session.session.clone(), state.clone());
             hosts.entries.insert_mut(session.host, host);
             hosts.generation += 1;
         });
@@ -706,9 +697,7 @@ impl Hosts {
                     Host::new("Local".to_owned())
                 }
             };
-            target
-                .rows
-                .insert_mut(to.session.clone(), state.clone());
+            target.rows.insert_mut(to.session.clone(), state.clone());
             hosts.entries.insert_mut(to.host, target);
             hosts.generation += 1;
         });
@@ -853,6 +842,6 @@ impl Hosts {
 /// window HOLDS is not garbage, however empty — the sweep asks
 /// through this road instead of knowing windows.
 #[derive(Clone)]
-pub struct WindowGrip(pub std::sync::Arc<dyn Fn(&Store, &ahp_wire::SessionId) -> bool + Send + Sync>);
-
-
+pub struct WindowGrip(
+    pub std::sync::Arc<dyn Fn(&Store, &ahp_wire::SessionId) -> bool + Send + Sync>,
+);

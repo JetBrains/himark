@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use hikit::panel::PanelView;
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, MouseButton},
+    list::{ListCommand, ListSlice, ListView},
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Paint, PathBuilder, Rect, Size};
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -320,7 +330,8 @@ impl himark::commands::WindowedCommand for OpenTreeDemo {
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.open_panel(store, ui, Box::new(TreeDemoView::new()), fx);
         workbench::window::Windows::put(store, window, entity);
     }

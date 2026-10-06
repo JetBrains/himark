@@ -31,7 +31,8 @@ impl crate::commands::WindowedCommand for ToggleCommentsView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
             ::workbench::window::Windows::put(store, window, entity);

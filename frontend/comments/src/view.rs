@@ -9,12 +9,23 @@
 use std::sync::Arc;
 
 use imba::command::{Requests, Verb};
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, MouseButton},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::{Canvas, Color, Paint, Rect, Size};
 
 use crate::AnnotationId;
 use editor::document::Document;
-use editor::{editor_view::EditorCommand, editor_view::EditorFocus, editor_view::EditorView, markup::Inlay, markup::InlayKey, markup::InlayMode};
+use editor::{
+    editor_view::EditorCommand, editor_view::EditorFocus, editor_view::EditorView, markup::Inlay,
+    markup::InlayKey, markup::InlayMode,
+};
 
 type CommentChrome = editor::theme::CommentChrome;
 

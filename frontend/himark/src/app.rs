@@ -7,23 +7,33 @@ use imba::command::{Addressed, Verb};
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use imba::{arena::Arena, constraints::Constraints, effect::{Effect, Effects}, event::{Event, EventResult}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::{Effect, Effects},
+    event::{Event, EventResult},
+    scroll::ScrollView,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::{Canvas, Rect, Size};
 use text::text::Text;
 
-use documents::lifecycle::mount_editor;
-use documents::entity_view::EditorIdView;
-use hikit::modal::ModalRequest;
-use hikit::modal::ModalView;
-use documents::OpenDocuments;
-use ::workbench::workbench_node::Panel;
 use ::workbench::window::Window;
 use ::workbench::window::WindowId;
 use ::workbench::window::Windows;
 use ::workbench::workbench::Workbench;
+use ::workbench::workbench_node::Panel;
 use ::workbench::workbench_node::WorkbenchNode;
+use documents::entity_view::EditorIdView;
+use documents::lifecycle::mount_editor;
+use documents::OpenDocuments;
 use editor::document::Document;
 use editor::markup::Markup;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
 
 use crate::stats::{Stats, StatsCommand};
 
@@ -94,7 +104,10 @@ pub type DocumentBuild = Box<
 pub enum AppCommand {
     Content(WindowId, ::workbench::window::WindowCommand),
 
-    Windowed(WindowId, std::sync::Arc<dyn crate::commands::WindowedCommand>),
+    Windowed(
+        WindowId,
+        std::sync::Arc<dyn crate::commands::WindowedCommand>,
+    ),
 
     /// The app-level erased vocabulary (imba::command) — windowless:
     /// addressed entity commands, dynamic commands and one-shot
@@ -139,8 +152,6 @@ pub enum AppCommand {
     RegisterEnrichers(::editor::enrich::Enrichers),
 }
 
-
-
 /// Wrap a shell command for the verb lane — the opaque escape a kit
 /// request rides when it must name the application (a window-coupled
 /// gesture). Interpreted by the drains below, never by `Verb::run`.
@@ -155,13 +166,15 @@ pub fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
     match verb {
         Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
             Ok(command) => Some(*command),
-            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::commands::WindowedCommand>>() {
-                Ok(command) => Some(AppCommand::Windowed(window, *command)),
-                Err(_) => {
-                    eprintln!("[app] an unknown shell verb payload was dropped");
-                    None
+            Err(payload) => {
+                match payload.downcast::<std::sync::Arc<dyn crate::commands::WindowedCommand>>() {
+                    Ok(command) => Some(AppCommand::Windowed(window, *command)),
+                    Err(_) => {
+                        eprintln!("[app] an unknown shell verb payload was dropped");
+                        None
+                    }
                 }
-            },
+            }
         },
         verb => Some(AppCommand::Verb(verb)),
     }
@@ -178,8 +191,6 @@ impl AppCommand {
 pub type AppEffects = imba::effect::Batch<AppCommand>;
 
 pub type AppFx<'a> = Effects<'a, AppCommand>;
-
-
 
 impl Application {
     pub fn ui_ctx(&self) -> std::rc::Rc<UiCtx> {
@@ -204,7 +215,6 @@ impl AppFonts {
         self.source.clone()
     }
 }
-
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
@@ -309,8 +319,10 @@ impl crate::commands::WindowedCommand for EnterFreshSession {
 }
 
 pub fn markdown_scratch() -> Document {
-    Document::new(Text::from_string_exact(""), Markup::new())
-        .with_syntax(::editor::markup::Syntax::new("markdown", None, Markup::new()), &[])
+    Document::new(Text::from_string_exact(""), Markup::new()).with_syntax(
+        ::editor::markup::Syntax::new("markdown", None, Markup::new()),
+        &[],
+    )
 }
 
 impl Application {
@@ -341,7 +353,10 @@ impl Application {
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
-        ::workbench::navigation::Navigators::register_windowed(&mut store, crate::workspace::EditorNavigator);
+        ::workbench::navigation::Navigators::register_windowed(
+            &mut store,
+            crate::workspace::EditorNavigator,
+        );
         ::workbench::registry::Registry::update(&mut store, |registry| {
             registry.run_command = Some(std::sync::Arc::new(|store, id| {
                 if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
@@ -490,7 +505,6 @@ impl Application {
             });
     }
 
-
     pub fn add_window(&mut self) -> WindowId {
         let workspace = ahp_wire::SessionId::local_default(&self.store);
         let ui = self.ui_ctx();
@@ -499,7 +513,10 @@ impl Application {
         let editors = fresh_workbench_root(&mut self.store, &state, &ui, &mut discarded.effects());
         Windows::add(
             &mut self.store,
-            Window::new(editors, crate::workspace::SessionWorkspace::boxed(workspace.clone(), state)),
+            Window::new(
+                editors,
+                crate::workspace::SessionWorkspace::boxed(workspace.clone(), state),
+            ),
         )
     }
 
@@ -526,7 +543,9 @@ impl Application {
         &mut self,
         navigator: N,
     ) {
-        self.setup(|store| ::workbench::navigation::Navigators::register_windowed(store, navigator));
+        self.setup(|store| {
+            ::workbench::navigation::Navigators::register_windowed(store, navigator)
+        });
     }
 
     pub fn register_navigator<N: hikit::navigation::Navigator>(&mut self, navigator: N) {
@@ -546,13 +565,19 @@ impl Application {
         self.setup(move |store| documents::diffs::StripeBases::install(store, resolve.clone()));
     }
 
-    pub fn register_editor_command(&mut self, command: Arc<dyn editor::dynamic::DynamicEditorCommand>) {
+    pub fn register_editor_command(
+        &mut self,
+        command: Arc<dyn editor::dynamic::DynamicEditorCommand>,
+    ) {
         self.setup(|store| ::editor::dynamic::EditorCommands::register(store, command));
     }
 
     /// Commands that act on the COLLECTION — handed the pane's ids at
     /// dispatch (docs/entities.md law 3), never resolving an owner.
-    pub fn register_document_command(&mut self, command: Arc<dyn documents::dynamic::DocumentCommand>) {
+    pub fn register_document_command(
+        &mut self,
+        command: Arc<dyn documents::dynamic::DocumentCommand>,
+    ) {
         self.setup(|store| documents::dynamic::DocumentCommands::register(store, command));
     }
 
@@ -656,7 +681,8 @@ impl Application {
     #[doc(hidden)]
     pub fn dock_owner_for_tests(&self, window: WindowId) -> Option<&'static str> {
         let store = self.window_store(window);
-        ::workbench::window::Windows::window_ref(&store, window).and_then(|entity| entity.dock_owner())
+        ::workbench::window::Windows::window_ref(&store, window)
+            .and_then(|entity| entity.dock_owner())
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -780,9 +806,9 @@ impl Application {
                                 .find(|presentable| presentable.id == id.as_ref())
                                 .map(|presentable| presentable.command)
                                 .or_else(|| {
-                                    crate::commands::Commands::of(&store)
-                                        .find(id.as_ref())
-                                        .map(|command| AppCommand::Windowed(window, command.clone()))
+                                    crate::commands::Commands::of(&store).find(id.as_ref()).map(
+                                        |command| AppCommand::Windowed(window, command.clone()),
+                                    )
                                 })
                         })
                     }
@@ -913,12 +939,7 @@ impl Application {
                 // notes drain onto the wire — a clean collection
                 // costs a map read.
                 fx.scope(AppCommand::Verb, |fx| {
-                    ahp_comments::sync(
-                        &mut store,
-                        state.comments_wire(),
-                        &self.ui_ctx(),
-                        fx,
-                    )
+                    ahp_comments::sync(&mut store, state.comments_wire(), &self.ui_ctx(), fx)
                 });
                 // The gesture-ask lanes: the views noted onto their
                 // MODELS (grow, commit fetches, refetches); the
@@ -1257,7 +1278,8 @@ impl Application {
     fn perform(&mut self, store: &mut Store, ui: &UiCtx, command: AppCommand, fx: &mut AppFx<'_>) {
         match command {
             AppCommand::Content(window, command) => {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity =
+                    ::workbench::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.perform(store, ui, command, fx),
@@ -1323,10 +1345,19 @@ impl Application {
 
                         if let Some(state) = crate::workspace::session_state(store, window) {
                             fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, state.documents(), fx)
-            });
+                                documents::lanes::sync_document_watches(
+                                    store,
+                                    state.documents(),
+                                    fx,
+                                )
+                            });
                             fx.scope(AppCommand::Verb, |fx| {
-                                documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
+                                documents::lanes::sync_stripe_bases(
+                                    store,
+                                    state.documents(),
+                                    ui,
+                                    fx,
+                                )
                             });
                         }
                     }
@@ -1351,8 +1382,8 @@ impl Application {
                     }
                 }
                 if let Some(request) = side_request {
-                    let mut entity =
-                        ::workbench::window::Windows::window(store, window).expect("the window entity");
+                    let mut entity = ::workbench::window::Windows::window(store, window)
+                        .expect("the window entity");
                     fx.scope(
                         move |command| AppCommand::Content(window, command),
                         |fx| entity.dismiss_side_panel(store, fx),
@@ -1392,8 +1423,12 @@ impl Application {
 
                             if let Some(state) = crate::workspace::session_state(store, window) {
                                 fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, state.documents(), fx)
-            });
+                                    documents::lanes::sync_document_watches(
+                                        store,
+                                        state.documents(),
+                                        fx,
+                                    )
+                                });
                                 fx.scope(AppCommand::Verb, |fx| {
                                     documents::lanes::sync_stripe_bases(
                                         store,
@@ -1415,8 +1450,8 @@ impl Application {
                     }
                 }
                 if let Some(request) = dock_request {
-                    let mut entity =
-                        ::workbench::window::Windows::window(store, window).expect("the window entity");
+                    let mut entity = ::workbench::window::Windows::window(store, window)
+                        .expect("the window entity");
                     match request {
                         ModalRequest::Close => {
                             fx.scope(
@@ -1455,8 +1490,12 @@ impl Application {
                             ::workbench::window::Windows::put(store, window, entity);
                             if let Some(state) = crate::workspace::session_state(store, window) {
                                 fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, state.documents(), fx)
-            });
+                                    documents::lanes::sync_document_watches(
+                                        store,
+                                        state.documents(),
+                                        fx,
+                                    )
+                                });
                                 fx.scope(AppCommand::Verb, |fx| {
                                     documents::lanes::sync_stripe_bases(
                                         store,
@@ -1513,7 +1552,9 @@ impl Application {
                         self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);
                     }
                     Some(hikit::panel::PanelRequest::Shell(payload)) => {
-                        match payload.downcast_ref::<std::sync::Arc<dyn crate::commands::WindowedCommand>>() {
+                        match payload
+                            .downcast_ref::<std::sync::Arc<dyn crate::commands::WindowedCommand>>()
+                        {
                             Some(command) => {
                                 let command = command.clone();
                                 self.perform(store, ui, AppCommand::Windowed(window, command), fx);
@@ -1596,8 +1637,8 @@ impl Application {
                     ahp_session::session::state::Hosts::documents_of_watch(store, subscription)
                 {
                     fx.scope(crate::app::AppCommand::Verb, |fx| {
-                    documents::lanes::refetch_watched(store, documents, subscription, fx)
-                });
+                        documents::lanes::refetch_watched(store, documents, subscription, fx)
+                    });
                 }
 
                 self.pending_file_events.push(subscription);
@@ -1627,8 +1668,8 @@ impl Application {
                 };
 
                 fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, documents, fx)
-            });
+                    documents::lanes::sync_document_watches(store, documents, fx)
+                });
                 fx.scope(AppCommand::Verb, |fx| {
                     documents::lanes::sync_stripe_bases(store, documents, ui, fx)
                 });
@@ -1667,12 +1708,14 @@ impl Application {
                 ));
             }
             AppCommand::OpenPanel(window, panel) => {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity =
+                    ::workbench::window::Windows::window(store, window).expect("the window entity");
                 entity.open_panel(store, ui, panel, fx);
                 ::workbench::window::Windows::put(store, window, entity);
             }
             AppCommand::OpenModal(window, modal) => {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity =
+                    ::workbench::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.show_modal(store, modal, fx),
@@ -1680,7 +1723,8 @@ impl Application {
                 ::workbench::window::Windows::put(store, window, entity);
             }
             AppCommand::CloseModal(window) => {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity =
+                    ::workbench::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.dismiss_modal(store, fx),
@@ -1688,7 +1732,8 @@ impl Application {
                 ::workbench::window::Windows::put(store, window, entity);
             }
             AppCommand::ViewportResized(window, size) => {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity =
+                    ::workbench::window::Windows::window(store, window).expect("the window entity");
                 entity.set_viewport_size(size);
                 ::workbench::window::Windows::put(store, window, entity);
             }
@@ -1715,9 +1760,12 @@ impl Application {
         constraints: Constraints,
     ) -> impl Thunk<'a, AppCommand> + 'a {
         let size = constraints.max;
-        let entity = ::workbench::window::Windows::window_ref(store, window).expect("the window entity");
-        let content = imba::layout::Layout::layout(entity.display(arena, store, ui), arena, constraints);
-        let stats = imba::layout::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
+        let entity =
+            ::workbench::window::Windows::window_ref(store, window).expect("the window entity");
+        let content =
+            imba::layout::Layout::layout(entity.display(arena, store, ui), arena, constraints);
+        let stats =
+            imba::layout::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
 
         let mut container = imba::container::container(arena, size);
         container.place(
@@ -1734,13 +1782,21 @@ impl Application {
 }
 
 impl Application {
-    pub fn sync_viewport_window(&mut self, window: ::workbench::window::WindowId, size: skia_safe::Size) {
+    pub fn sync_viewport_window(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        size: skia_safe::Size,
+    ) {
         if self.viewport_stale(window, size) {
             self.perform_batch(vec![AppCommand::ViewportResized(window, size)]);
         }
     }
 
-    pub fn draw_window(&mut self, window: ::workbench::window::WindowId, canvas: &skia_safe::Canvas) -> bool {
+    pub fn draw_window(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        canvas: &skia_safe::Canvas,
+    ) -> bool {
         let size = canvas.base_layer_size();
         self.draw_window_sized(
             window,
@@ -1758,8 +1814,8 @@ impl Application {
         self.stats_mut().begin_frame();
 
         if trace_resize_enabled() {
-            let entity =
-                ::workbench::window::Windows::window_ref(self.store(), window).expect("the window entity");
+            let entity = ::workbench::window::Windows::window_ref(self.store(), window)
+                .expect("the window entity");
             if entity.viewport_stale(size) {
                 let current = entity.viewport_size();
                 eprintln!(

@@ -5,7 +5,10 @@ use crate::theme::{StyleId, TextAttributes};
 
 use std::{ops::Range, sync::Arc};
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, dyn_view::DynCommand, Thunk, ui::UiCtx, View};
+use imba::{
+    arena::Arena, constraints::Constraints, dyn_view::DynCommand, store::Store, ui::UiCtx, Thunk,
+    View,
+};
 use intervals::{Interval, IntervalQuery, Intervals, Order};
 use operation::{op::Op, operation::Operation};
 use skia_safe::Size;
@@ -208,7 +211,6 @@ impl<'a> Iterator for RecursiveQuery<'a> {
         self.next_keyed().map(|(_, item)| item)
     }
 }
-
 
 #[derive(Clone)]
 pub(crate) enum Decoration {
@@ -1714,7 +1716,12 @@ impl Markup {
         (Some((range, mode)), edit)
     }
 
-    pub(crate) fn edit(&mut self, operation: &Operation, view: &mut text::text_view::TextView, base: u32) {
+    pub(crate) fn edit(
+        &mut self,
+        operation: &Operation,
+        view: &mut text::text_view::TextView,
+        base: u32,
+    ) {
         if !self.syntaxes.is_empty() {
             let Some(affected) = affected_span(operation) else {
                 self.shape.edit(interval_steps(operation));

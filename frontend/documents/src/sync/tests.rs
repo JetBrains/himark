@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use operation::{op::Op, builder::OperationBuilder};
+use operation::{builder::OperationBuilder, op::Op};
 use rebase::{Action, RebaseLog};
 
 fn state(source: &str) -> SyncState {

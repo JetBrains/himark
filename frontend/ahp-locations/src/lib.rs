@@ -36,7 +36,8 @@ impl imba::effect::Effect for FindEffect {
 pub struct LocationsChannel {
     pub client: std::sync::Arc<dyn ahp_wire::client::LocationsClient>,
     pub channel: ahp_wire::client::ChannelUri,
-    pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<editor::location::ResourceLocation> + Send + Sync>,
+    pub resolve:
+        std::sync::Arc<dyn Fn(&str) -> Option<editor::location::ResourceLocation> + Send + Sync>,
 }
 
 /// The streaming content search ask. Answers the channel; results

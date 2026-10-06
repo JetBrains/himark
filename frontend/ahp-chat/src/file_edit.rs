@@ -123,9 +123,8 @@ pub fn build_file_edit(
         fonts,
         theme,
     );
-    let mut after = crate::cell::side_document(
-        after_text, &extension, parsers, store, ui, fonts, theme,
-    );
+    let mut after =
+        crate::cell::side_document(after_text, &extension, parsers, store, ui, fonts, theme);
 
     let operation = differ.diff(&before_text, after.text(), None);
     let prepared = ::editor::split_diff::prepare_marks(&operation, before.text());

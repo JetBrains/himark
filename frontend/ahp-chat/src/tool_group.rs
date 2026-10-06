@@ -1,7 +1,17 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, effect::Effects, leaf::leaf, list::{ListCommand, ListSlice, ListView}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::Effects,
+    leaf::leaf,
+    list::{ListCommand, ListSlice, ListView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    Thunk, View,
+};
 use skia_safe::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind};
@@ -106,8 +116,12 @@ impl View for ToolRowView {
             match self {
                 Self::Body(cell) => imba::ThunkBox::new(
                     arena,
-                    imba::layout::Layout::layout(cell.display(arena, store, ui), arena, constraints)
-                        .map(|command| ToolRowCommand::Cell(Box::new(command))),
+                    imba::layout::Layout::layout(
+                        cell.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(|command| ToolRowCommand::Cell(Box::new(command))),
                 ),
                 Self::Face(face) => {
                     let theme = env::Themes::of(store);

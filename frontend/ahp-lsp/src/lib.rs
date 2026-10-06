@@ -59,7 +59,8 @@ impl EffectHandler<LspCompletionEffect> for CompletionRoute {
             "position": { "line": effect.position.line, "character": effect.position.col },
         });
         let result = client
-            .lsp.lsp(session, "textDocument/completion".to_owned(), params)
+            .lsp
+            .lsp(session, "textDocument/completion".to_owned(), params)
             .await
             .ok()?;
         Some(parse_completion(&result))
@@ -138,7 +139,8 @@ impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
             "position": { "line": effect.position.line, "character": effect.position.col },
         });
         let result = client
-            .lsp.lsp(session, "textDocument/hover".to_owned(), params)
+            .lsp
+            .lsp(session, "textDocument/hover".to_owned(), params)
             .await
             .ok()?;
         let info = parse_hover(&result);

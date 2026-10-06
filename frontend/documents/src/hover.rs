@@ -11,7 +11,7 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::ui::UiCtx;
 
-use crate::{DocumentId, text_ext::LineCol};
+use crate::{text_ext::LineCol, DocumentId};
 use editor::location::ResourceLocation;
 
 #[derive(Clone, Debug)]
@@ -305,16 +305,19 @@ impl HoverView {
     ) -> Self {
         let text = text::text::Text::from_string_exact(markdown);
         let document = match editor::env::Parsers::of(store) {
-            Some(parsers) => {
-                editor::document::Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
-            }
-            None => editor::document::Document::new(text, editor::markup::Markup::new()).with_syntax(
-                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-                &[],
+            Some(parsers) => editor::document::Document::from_language(
+                text, "markdown", &parsers, store, ui, fonts, theme,
             ),
+            None => editor::document::Document::new(text, editor::markup::Markup::new())
+                .with_syntax(
+                    editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
+                    &[],
+                ),
         };
         Self {
-            view: editor::editor_view::EditorView::complete(document, CARD_WIDTH, store, ui, fonts, theme),
+            view: editor::editor_view::EditorView::complete(
+                document, CARD_WIDTH, store, ui, fonts, theme,
+            ),
         }
     }
 }

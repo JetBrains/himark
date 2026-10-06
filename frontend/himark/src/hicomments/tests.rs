@@ -12,12 +12,12 @@ use imba::ui::UiCtx;
 
 use std::ops::Range;
 
-use ::editor::test_document::plain_document;
 use crate::app::AppCommand;
-use crate::app_ext::AppExt;
 use crate::app::AppFonts;
 use crate::app::Application;
 use crate::app::OpenedDocument;
+use crate::app_ext::AppExt;
+use ::editor::test_document::plain_document;
 use editor::caret::Caret;
 use editor::caret::MultiCaret;
 
@@ -57,7 +57,9 @@ impl editor::dynamic::DynamicEditorCommand for SelectRange {
 
 fn app_with_located_document(source: &str) -> (Application, ::workbench::window::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
-    app.register_syntax_languages(himarkdown::markdown_languages(editor::reparse::SyntaxLanguages::new()));
+    app.register_syntax_languages(himarkdown::markdown_languages(
+        editor::reparse::SyntaxLanguages::new(),
+    ));
     // `comments.add` arrives via the session ceremony (a scoped,
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
@@ -257,7 +259,6 @@ fn typing_lands_in_the_card_not_the_host_document() {
     };
     assert_eq!(host_before, host_after, "the host text never changes");
 }
-
 
 #[test]
 fn sending_never_consumes_what_it_cannot_deliver() {

@@ -1,7 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, layout::LayoutExt as _, Thunk, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    effect::Effects,
+    event::{Event, EventResult},
+    layout::LayoutExt as _,
+    store::Store,
+    ui::UiCtx,
+    Thunk, View, Widget,
+};
 use skia_safe::{Paint, Size};
 
 /// What the label NAMES — resolved to a theme color at display time

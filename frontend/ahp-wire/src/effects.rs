@@ -10,8 +10,8 @@ use imba::effect::Effect;
 
 use crate::client::{
     AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, FileEditContents,
-    HistoryClient, LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri,
-    SessionsPage, TurnId, TurnsPage,
+    HistoryClient, LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri, SessionsPage,
+    TurnId, TurnsPage,
 };
 
 pub struct ConnectServerEffect {

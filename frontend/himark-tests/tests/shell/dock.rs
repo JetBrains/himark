@@ -2,7 +2,6 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
-
 use imba::anim::AnimationClock;
 
 use imba::constraints::Constraints;
@@ -16,7 +15,6 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt as _;
 
 use imba::{ui::UiCtx, View};
-
 
 use himark::test_driver;
 
@@ -32,13 +30,11 @@ use hikit::modal::ModalRequest;
 
 use hikit::modal::ModalView;
 
-
 #[derive(Clone, Debug)]
 enum StubCommand {
     Close,
     Ask,
 }
-
 
 impl std::fmt::Display for StubCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,13 +42,11 @@ impl std::fmt::Display for StubCommand {
     }
 }
 
-
 #[derive(Clone)]
 struct DockStub {
     label: &'static str,
     request: Arc<Mutex<Option<ModalRequest>>>,
 }
-
 
 impl DockStub {
     fn new(label: &'static str) -> Self {
@@ -62,7 +56,6 @@ impl DockStub {
         }
     }
 }
-
 
 impl View for DockStub {
     type Command = StubCommand;
@@ -121,7 +114,6 @@ impl View for DockStub {
     }
 }
 
-
 impl ModalView for DockStub {
     fn take_request(&mut self) -> Option<ModalRequest> {
         self.request.lock().unwrap().take()
@@ -136,12 +128,10 @@ impl ModalView for DockStub {
     }
 }
 
-
 struct ShowStubDock {
     label: &'static str,
     owner: &'static str,
 }
-
 
 impl himark::commands::WindowedCommand for ShowStubDock {
     fn id(&self) -> &'static str {
@@ -153,12 +143,12 @@ impl himark::commands::WindowedCommand for ShowStubDock {
     }
 
     fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -170,16 +160,17 @@ impl himark::commands::WindowedCommand for ShowStubDock {
     }
 }
 
-
 #[test]
 fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
     let mut app = Application::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    let before =
-        ::workbench::workbench::panel_width(app.store(), entity(&app).workbench().root.focused_pane())
-            .expect("the scratch pane is an editor");
+    let before = ::workbench::workbench::panel_width(
+        app.store(),
+        entity(&app).workbench().root.focused_pane(),
+    )
+    .expect("the scratch pane is an editor");
 
     show_dock(&mut app, "files", "test.files");
     assert!(entity(&app).has_dock(), "the dock is up");
@@ -191,15 +182,16 @@ fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
         ::workbench::dock::DOCK_WIDTH,
         "the dock settled at the default width"
     );
-    let after =
-        ::workbench::workbench::panel_width(app.store(), entity(&app).workbench().root.focused_pane())
-            .expect("still an editor");
+    let after = ::workbench::workbench::panel_width(
+        app.store(),
+        entity(&app).workbench().root.focused_pane(),
+    )
+    .expect("still an editor");
     assert!(
         before - after > ::workbench::dock::DOCK_WIDTH * 0.5,
         "the workbench narrowed for the split (was {before}, now {after})"
     );
 }
-
 
 #[test]
 fn escape_closes_the_dock_after_the_slide_settles() {
@@ -223,7 +215,6 @@ fn escape_closes_the_dock_after_the_slide_settles() {
         "the settled slide filed the close"
     );
 }
-
 
 #[test]
 fn the_dock_resizes_by_dragging_its_edge() {
@@ -258,7 +249,6 @@ fn the_dock_resizes_by_dragging_its_edge() {
     );
 }
 
-
 #[test]
 fn an_editor_drag_still_selects_while_the_dock_is_up() {
     let mut app = Application::new(AppFonts::embedded());
@@ -289,7 +279,6 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
     );
 }
 
-
 #[test]
 fn dock_picks_keep_the_panel_up() {
     let mut app = Application::new(AppFonts::embedded());
@@ -303,7 +292,6 @@ fn dock_picks_keep_the_panel_up() {
     assert!(entity(&app).has_dock(), "the pick kept the panel");
     assert_eq!(entity(&app).dock_owner(), Some("test.files"));
 }
-
 
 #[test]
 fn dock_header_buttons_dispatch_their_commands() {
@@ -319,12 +307,12 @@ fn dock_header_buttons_dispatch_their_commands() {
             "Dock Mark".to_owned()
         }
         fn perform(
-    &self,
-    _store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    _window: ::workbench::window::WindowId,
-    _fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            _store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            _window: ::workbench::window::WindowId,
+            _fx: &mut himark::app::AppFx<'_>,
+        ) {
             self.hits.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -367,7 +355,6 @@ fn dock_header_buttons_dispatch_their_commands() {
     );
 }
 
-
 #[test]
 fn the_dock_swaps_content_in_place() {
     let mut app = Application::new(AppFonts::embedded());
@@ -406,7 +393,6 @@ fn the_dock_swaps_content_in_place() {
     assert!(entity(&app).has_dock());
 }
 
-
 #[test]
 fn the_dock_and_the_floating_drawer_coexist() {
     let mut app = Application::new(AppFonts::embedded());
@@ -431,7 +417,6 @@ fn the_dock_and_the_floating_drawer_coexist() {
     assert!(entity(&app).has_side_panel(), "the drawer is up");
     assert!(entity(&app).has_dock(), "the dock stayed");
 }
-
 
 #[test]
 fn the_dock_and_the_families_ride_their_session_across_switches() {
@@ -475,12 +460,12 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
             "Test Switch".to_owned()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = match self.0.lock().unwrap().clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -532,7 +517,6 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 }
 
-
 pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
@@ -541,7 +525,6 @@ pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
     )
 }
 
-
 pub(super) fn show_dock(app: &mut Application, label: &'static str, owner: &'static str) {
     let window = app.sole_window();
     assert!(app.perform_command(AppCommand::Windowed(
@@ -549,7 +532,6 @@ pub(super) fn show_dock(app: &mut Application, label: &'static str, owner: &'sta
         Arc::new(ShowStubDock { label, owner }),
     )));
 }
-
 
 pub(super) fn settle(app: &mut Application, surface: &mut skia_safe::Surface) {
     for tick in 0..60 {
@@ -560,7 +542,6 @@ pub(super) fn settle(app: &mut Application, surface: &mut skia_safe::Surface) {
         }
     }
 }
-
 
 pub(super) fn entity(app: &Application) -> &::workbench::window::Window {
     ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("the window")

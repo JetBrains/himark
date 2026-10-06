@@ -30,7 +30,9 @@ fn the_parse_never_renders_a_diagram() {
     );
 
     let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
-        .reparse(editor::reparse::ReparseWork::capture(&document, registry.clone()).expect("parse"));
+        .reparse(
+            editor::reparse::ReparseWork::capture(&document, registry.clone()).expect("parse"),
+        );
     let invalidated = document
         .apply_reparse_outcome(
             outcome,

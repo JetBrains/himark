@@ -99,7 +99,10 @@ fn drain(view: &mut SplitDiffView, effects: Vec<imba::effect::AnyEffect<SplitDif
     }
 }
 
-fn track(left: &mut crate::document::Document, right: &mut crate::document::Document) -> DiffViewState {
+fn track(
+    left: &mut crate::document::Document,
+    right: &mut crate::document::Document,
+) -> DiffViewState {
     let operation = myersdiff::diff(left.text(), right.text());
     let id = right.add_diff(operation, left.revision());
     let left_marks = left.add_markup();
@@ -245,7 +248,8 @@ fn assert_aligned(view: &SplitDiffView) {
                     )
                 }
                 false => {
-                    let mapped = diff.transform_offset_back(boundary, operation::operation::Bias::Right);
+                    let mapped =
+                        diff.transform_offset_back(boundary, operation::operation::Bias::Right);
                     (
                         mapped,
                         diff.transform_offset(mapped, operation::operation::Bias::Right),
@@ -826,7 +830,8 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
                 let right_editor = view.right.editor;
                 let end = view.left.document.text().byte_count() as u32;
                 let left_state = view.left.document.editors.get_mut(&left_editor).unwrap();
-                let left_layout = &mut left_state.layout as *mut crate::document_layout::DocumentLayout;
+                let left_layout =
+                    &mut left_state.layout as *mut crate::document_layout::DocumentLayout;
                 let right_state = view.right.document.editors.get_mut(&right_editor).unwrap();
                 let right_layout = &mut right_state.layout;
 

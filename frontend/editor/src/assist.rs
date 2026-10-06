@@ -4,7 +4,7 @@
 use std::ops::Range;
 
 use imba::store::Store;
-use operation::{op::Op, operation::Operation, builder::OperationBuilder};
+use operation::{builder::OperationBuilder, op::Op, operation::Operation};
 
 use crate::caret::{Caret, MultiCaret};
 use crate::document::Document;

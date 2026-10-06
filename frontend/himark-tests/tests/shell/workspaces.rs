@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn switching_workspaces_stashes_and_restores_the_workbench() {
     use himark::app::AppFonts;
@@ -19,12 +18,12 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             "Test Switch".to_owned()
         }
         fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -33,20 +32,21 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    let switch =
-        |app: &mut himark::app::Application, target: Option<ahp_wire::SessionId>| -> ahp_wire::SessionId {
-            let window = app.sole_window();
-            let made = Arc::new(std::sync::Mutex::new(None));
-            app.perform_batch(vec![himark::app::AppCommand::Windowed(
-                window,
-                Arc::new(Switch {
-                    target,
-                    made: Arc::clone(&made),
-                }),
-            )]);
-            let result = made.lock().unwrap().take().expect("the switch ran");
-            result
-        };
+    let switch = |app: &mut himark::app::Application,
+                  target: Option<ahp_wire::SessionId>|
+     -> ahp_wire::SessionId {
+        let window = app.sole_window();
+        let made = Arc::new(std::sync::Mutex::new(None));
+        app.perform_batch(vec![himark::app::AppCommand::Windowed(
+            window,
+            Arc::new(Switch {
+                target,
+                made: Arc::clone(&made),
+            }),
+        )]);
+        let result = made.lock().unwrap().take().expect("the switch ran");
+        result
+    };
 
     let fonts = AppFonts::embedded();
     let mut app = himark::app::Application::new(fonts);
@@ -110,7 +110,6 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     );
 }
 
-
 #[test]
 fn switching_dismisses_the_overlays_first() {
     use himark::app::AppFonts;
@@ -133,7 +132,8 @@ fn switching_dismisses_the_overlays_first() {
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
             _ui: &'a imba::ui::UiCtx,
-        ) -> impl imba::layout::Layout<'a, std::convert::Infallible> + imba::layout::LayoutValue + 'a {
+        ) -> impl imba::layout::Layout<'a, std::convert::Infallible> + imba::layout::LayoutValue + 'a
+        {
             imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
@@ -166,12 +166,12 @@ fn switching_dismisses_the_overlays_first() {
             "Test Switch".to_owned()
         }
         fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId::mint_scratch(store);
             *self.0.lock().unwrap() = Some(target.clone());
             himark::app::switch_session(store, window, target, fx)

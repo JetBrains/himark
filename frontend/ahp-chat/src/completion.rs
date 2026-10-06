@@ -68,7 +68,6 @@ pub enum CompletionFound {
     },
 }
 
-
 #[derive(Clone)]
 pub struct PickedFile {
     pub label: String,
@@ -504,7 +503,11 @@ impl Completion {
         fx.relaunch_erased(&mut self.lane, effect);
     }
 
-    fn marker_start(&self, document: &editor::document::Document, editor: ::editor::editor::EditorId) -> Option<u32> {
+    fn marker_start(
+        &self,
+        document: &editor::document::Document,
+        editor: ::editor::editor::EditorId,
+    ) -> Option<u32> {
         let key = self.key?;
         document
             .popups_in(editor, 0..u32::MAX)
@@ -513,7 +516,11 @@ impl Completion {
             .map(|(_, range, _, _)| range.start)
     }
 
-    fn query_anchor(&self, document: &editor::document::Document, editor: ::editor::editor::EditorId) -> Option<u32> {
+    fn query_anchor(
+        &self,
+        document: &editor::document::Document,
+        editor: ::editor::editor::EditorId,
+    ) -> Option<u32> {
         Some(self.marker_start(document, editor)? + self.anchor_offset)
     }
 
@@ -838,7 +845,10 @@ impl Completion {
                 };
 
                 for location in recents.iter() {
-                    if hikit::list_keyboard::subsequence_match(&location.name().to_lowercase(), &query) {
+                    if hikit::list_keyboard::subsequence_match(
+                        &location.name().to_lowercase(),
+                        &query,
+                    ) {
                         push(location);
                     }
                 }
@@ -884,7 +894,11 @@ impl Completion {
         }
     }
 
-    fn swap_view(&mut self, document: &mut editor::document::Document, editor: ::editor::editor::EditorId) {
+    fn swap_view(
+        &mut self,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
+    ) {
         let Some(key) = self.key else { return };
         let Some((_, range, _, spec)) = document
             .popups_in(editor, 0..u32::MAX)

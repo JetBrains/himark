@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
+use crate::{cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope};
 
 struct TextMeasure;
 
@@ -84,8 +84,11 @@ fn rope_from_cursor(cursor: crate::cursor::Cursor<char, TextMeasure>) -> Rope<ch
     rope
 }
 
-fn replace_at_cursor<I>(cursor: &mut crate::cursor::Cursor<char, TextMeasure>, n: usize, replacement: I)
-where
+fn replace_at_cursor<I>(
+    cursor: &mut crate::cursor::Cursor<char, TextMeasure>,
+    n: usize,
+    replacement: I,
+) where
     I: IntoIterator<Item = char>,
 {
     cursor.delete(n);

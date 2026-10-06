@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn typing_and_backspace_keep_utf8_text_and_layout_in_sync() {
     let mut pane = TestPane::new(plain_document(""), 420.0);
@@ -22,7 +21,6 @@ fn typing_and_backspace_keep_utf8_text_and_layout_in_sync() {
     assert!(pane.gathered().document_layout().height() > 0.0);
 }
 
-
 #[test]
 fn view_refresh_matches_committed_store() {
     let mut pane = TestPane::new(plain_document("hello"), 420.0);
@@ -41,7 +39,6 @@ fn view_refresh_matches_committed_store() {
         pane.gathered().document_layout().height()
     );
 }
-
 
 #[test]
 fn editors_sharing_a_document_see_each_others_edits() {
@@ -122,7 +119,6 @@ fn editors_sharing_a_document_see_each_others_edits() {
     );
 }
 
-
 #[test]
 fn typing_in_code_block_with_emoji_keeps_layout_ranges_valid() {
     let source = "```rust\nlet x = \"😀😀😀😀😀\"; abcdefghijklmnopqrstuvwxyz\n```\n\noutside";
@@ -139,7 +135,6 @@ fn typing_in_code_block_with_emoji_keeps_layout_ranges_valid() {
 
     assert_layout_ranges_are_utf8(&pane);
 }
-
 
 #[test]
 fn repeated_typing_at_softline_start_repairs_as_fresh_layout() {
@@ -162,7 +157,6 @@ fn repeated_typing_at_softline_start_repairs_as_fresh_layout() {
     let fresh = TestPane::new(list_document(&text_string(&pane)), width);
     assert_eq!(layout_ranges(&pane), layout_ranges(&fresh));
 }
-
 
 #[test]
 fn inlay_command_updates_interval_view_and_repairs_layout() {
@@ -188,7 +182,6 @@ fn inlay_command_updates_interval_view_and_repairs_layout() {
 
     assert!(pane.gathered().content_height() >= inlay_height + 10.0);
 }
-
 
 #[test]
 fn inline_inlay_height_change_repairs_layout() {
@@ -216,7 +209,6 @@ fn inline_inlay_height_change_repairs_layout() {
         "growing an anchored inline inlay should repair the affected line height"
     );
 }
-
 
 #[test]
 fn under_inlay_height_change_repairs_end_anchor_line() {
@@ -249,7 +241,6 @@ fn under_inlay_height_change_repairs_end_anchor_line() {
     );
 }
 
-
 #[test]
 fn inline_inlay_width_change_rewraps_layout() {
     let source = "alpha beta gamma delta epsilon";
@@ -277,7 +268,6 @@ fn inline_inlay_width_change_rewraps_layout() {
     );
 }
 
-
 #[test]
 fn resizing_an_empty_document_leaves_nothing_pending() {
     let mut pane = TestPane::new(plain_document(""), 420.0);
@@ -292,7 +282,6 @@ fn resizing_an_empty_document_leaves_nothing_pending() {
     assert!(pane.gathered().document_layout().repair_pending().is_none());
 }
 
-
 #[test]
 fn deleting_all_text_leaves_nothing_pending() {
     let mut pane = TestPane::new(plain_document("abc"), 420.0);
@@ -306,7 +295,6 @@ fn deleting_all_text_leaves_nothing_pending() {
         "an emptied layout must never be left pending"
     );
 }
-
 
 #[test]
 fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
@@ -334,7 +322,6 @@ fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
     );
     assert_eq!(view.document_layout().height(), fresh.content_height());
 }
-
 
 #[test]
 fn repairs_for_a_repointed_entity_discard_themselves() {
@@ -411,7 +398,6 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
         "the layout tiles document B exactly"
     );
 }
-
 
 #[test]
 fn stale_repairs_discard_and_the_fresh_one_converges() {
@@ -493,7 +479,6 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
     assert_eq!(view.document_layout().height(), fresh.content_height());
 }
 
-
 #[test]
 fn focus_moves_between_text_and_inlays() {
     use imba::event::EventResult;
@@ -552,7 +537,6 @@ fn focus_moves_between_text_and_inlays() {
     }
 }
 
-
 #[test]
 fn inlay_modes_anchor_to_interval_offsets() {
     let first = 0..10;
@@ -579,7 +563,6 @@ fn inlay_modes_anchor_to_interval_offsets() {
     assert!(!inlay_anchors_line(InlayMode::Under, &interval, &first));
     assert!(inlay_anchors_line(InlayMode::Under, &interval, &second));
 }
-
 
 #[test]
 fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
@@ -651,7 +634,6 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
     );
 }
 
-
 #[test]
 fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
     let ui = ::editor::test_document::test_ui();
@@ -683,7 +665,6 @@ fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
         "the repaired layout converges to a from-scratch layout at 420px"
     );
 }
-
 
 #[test]
 fn a_repair_from_before_a_resize_discards_itself() {
@@ -726,7 +707,6 @@ fn a_repair_from_before_a_resize_discards_itself() {
         "a repair captured at the old width must discard itself"
     );
 }
-
 
 #[test]
 fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
@@ -811,7 +791,6 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     );
 }
 
-
 #[test]
 fn ime_composition_reaches_the_focused_editor() {
     use himark::app::AppFonts;
@@ -849,7 +828,6 @@ fn ime_composition_reaches_the_focused_editor() {
         "the committed text is in the document"
     );
 }
-
 
 #[test]
 fn ime_hit_test_answers_only_over_the_focused_text() {
@@ -890,7 +868,6 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
         .expect("focused");
     assert!(left.is_none(), "the gutter is not text");
 }
-
 
 #[test]
 fn ime_selection_sets_reads_back_and_answers_rects() {
@@ -957,7 +934,6 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
         .is_empty());
 }
 
-
 #[test]
 fn ime_popup_positions_in_window_coordinates_and_hides() {
     use himark::app::AppFonts;
@@ -1002,7 +978,9 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     );
 
     let delta = 120.0;
-    assert!(himark::test_driver::scroll_at(&mut app, 400.0, 300.0, delta));
+    assert!(himark::test_driver::scroll_at(
+        &mut app, 400.0, 300.0, delta
+    ));
     app.draw_window(app.sole_window(), surface.canvas());
     let scrolled = app
         .with_ime_client(app.sole_window(), |client| client.first_rect(0, 1))
@@ -1025,7 +1003,6 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
         "the commit ended the composition — the popup hides"
     );
 }
-
 
 #[test]
 fn accent_popup_replaces_the_held_character() {
@@ -1055,7 +1032,6 @@ fn accent_popup_replaces_the_held_character() {
     assert_eq!(app.focused_document_text().as_deref(), Some("so\u{fc}!"));
 }
 
-
 #[test]
 fn typing_into_the_empty_startup_document_inserts() {
     use himark::app::AppFonts;
@@ -1073,7 +1049,6 @@ fn typing_into_the_empty_startup_document_inserts() {
     assert!(handled, "typing into the empty document must be handled");
     assert_eq!(app.focused_document_text().as_deref(), Some("a"));
 }
-
 
 #[test]
 fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
@@ -1183,7 +1158,6 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
     );
 }
 
-
 #[test]
 fn a_stale_theme_repair_landing_discards_itself() {
     let store = &imba::store::Store::new();
@@ -1278,8 +1252,14 @@ fn a_stale_theme_repair_landing_discards_itself() {
     let layout = converged.document_layout(entity.editor()).unwrap();
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
-    let fresh =
-        ::editor::editor_view::EditorView::complete(converged.clone(), 420.0, &store, ui, &fonts, &light);
+    let fresh = ::editor::editor_view::EditorView::complete(
+        converged.clone(),
+        420.0,
+        &store,
+        ui,
+        &fonts,
+        &light,
+    );
     assert!(
         (layout.height() - fresh.document_layout().height()).abs() < 0.5,
         "the repaired document IS the fresh light layout: {} vs {}",
@@ -1287,7 +1267,6 @@ fn a_stale_theme_repair_landing_discards_itself() {
         fresh.document_layout().height()
     );
 }
-
 
 #[test]
 fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
@@ -1329,12 +1308,11 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     );
 }
 
-
 #[test]
 fn caret_commands_glide_the_pane_to_the_caret() {
-    use himark::test_driver;
     use himark::app::AppFonts;
     use himark::app::Application;
+    use himark::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
@@ -1396,12 +1374,11 @@ fn caret_commands_glide_the_pane_to_the_caret() {
     );
 }
 
-
 #[test]
 fn a_manual_scroll_cancels_the_reveal_in_flight() {
-    use himark::test_driver;
     use himark::app::AppFonts;
     use himark::app::Application;
+    use himark::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
@@ -1461,15 +1438,14 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
     );
 }
 
-
 #[test]
 fn opening_with_a_target_lands_the_caret_revealed() {
+    use documents::text_ext::LineCol;
     use himark::app::AppCommand;
-    use himark::app_ext::AppExt;
     use himark::app::AppFonts;
     use himark::app::Application;
-    use documents::text_ext::LineCol;
     use himark::app::OpenedDocument;
+    use himark::app_ext::AppExt;
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let window = app.add_window();
@@ -1521,7 +1497,6 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     assert_eq!(app.focused_caret_byte(), Some(0));
     assert_eq!(app.focused_reveal_pending(), Some(false));
 }
-
 
 #[test]
 fn clipboard_reaches_the_focused_editor() {
@@ -1588,13 +1563,17 @@ fn clipboard_reaches_the_focused_editor() {
     );
 }
 
-
 #[test]
 fn double_and_triple_click_select_word_and_line() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     use editor::editor_view::ClickKind;
-    use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, Widget};
+    use imba::{
+        arena::Arena,
+        constraints::Constraints,
+        event::{Event, EventResult},
+        Widget,
+    };
     use skia_safe::{Point, Rect, Size};
 
     let text = "alpha  beta gamma\nsecond line\n";
@@ -1683,7 +1662,6 @@ fn double_and_triple_click_select_word_and_line() {
         "alt outranks the count"
     );
 }
-
 
 #[test]
 fn drag_extends_selection_by_the_press_unit() {
@@ -1775,7 +1753,6 @@ fn drag_extends_selection_by_the_press_unit() {
     );
 }
 
-
 #[test]
 fn ime_hit_test_covers_an_empty_document() {
     use himark::app::AppFonts;
@@ -1806,7 +1783,6 @@ fn ime_hit_test_covers_an_empty_document() {
         .expect("focused")
         .is_none());
 }
-
 
 #[test]
 fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {

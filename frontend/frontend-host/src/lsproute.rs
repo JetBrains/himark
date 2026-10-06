@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use ahp_wire::fs::ClientDirectory;
-use hicode::{CodeTarget, FindDefinitionEffect};
 use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
+use hicode::{CodeTarget, FindDefinitionEffect};
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
 
@@ -41,7 +41,11 @@ async fn locate(
         "textDocument": { "uri": uri },
         "position": { "line": position.line, "character": position.col },
     });
-    let result = client.lsp.lsp(session, method.to_owned(), params).await.ok()?;
+    let result = client
+        .lsp
+        .lsp(session, method.to_owned(), params)
+        .await
+        .ok()?;
     Some(parse_targets(&result, uris, location))
 }
 

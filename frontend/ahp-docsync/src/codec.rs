@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use documents::sync::Resolve;
-use himark_ahp_ext_types::text::Span;
 use himark_ahp_ext_types::documents::TextOperation;
-use operation::{op::Op, operation::Operation, builder::OperationBuilder};
+use himark_ahp_ext_types::text::Span;
+use operation::{builder::OperationBuilder, op::Op, operation::Operation};
 use std::sync::Arc;
 
 pub fn resolve_wire(operation: TextOperation) -> Resolve {

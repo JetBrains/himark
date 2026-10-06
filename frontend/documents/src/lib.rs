@@ -9,14 +9,13 @@ pub mod diffs;
 pub mod dynamic;
 pub mod entity_view;
 pub mod hover;
+pub mod lanes;
 pub mod lifecycle;
+pub mod save;
 pub mod scroll_stripes;
 pub mod sync;
 pub mod text_ext;
-pub mod lanes;
-pub mod save;
 pub mod watch;
-
 
 pub struct FetchDocumentEffect {
     pub location: editor::location::ResourceLocation,
@@ -147,7 +146,10 @@ pub enum DocumentsCommand {
     /// collection and the view id — the dressing's own road
     /// (docs/model-view.md step 1): marks-job landings and resyncs
     /// reach the view with no panel involved.
-    DiffView(crate::diffs::DiffViewId, Box<editor::unified_diff::UnifiedDiffCommand>),
+    DiffView(
+        crate::diffs::DiffViewId,
+        Box<editor::unified_diff::UnifiedDiffCommand>,
+    ),
 
     BaseLocated {
         document: DocumentId,
@@ -922,7 +924,10 @@ impl OpenDocuments {
         store.entity(documents)?.by_location_row(location)
     }
 
-    pub fn by_location_row(&self, location: &editor::location::ResourceLocation) -> Option<DocumentId> {
+    pub fn by_location_row(
+        &self,
+        location: &editor::location::ResourceLocation,
+    ) -> Option<DocumentId> {
         self.by_location.get(location).copied()
     }
 
@@ -1036,7 +1041,11 @@ impl OpenDocuments {
         });
     }
 
-    pub fn set_watch_row(&mut self, document: DocumentId, watch: Option<crate::watch::Subscription>) {
+    pub fn set_watch_row(
+        &mut self,
+        document: DocumentId,
+        watch: Option<crate::watch::Subscription>,
+    ) {
         let Some(entity) = self.entries.get(&document) else {
             return;
         };
@@ -1068,7 +1077,12 @@ impl OpenDocuments {
         });
     }
 
-    pub fn mark_saved_row(&mut self, document: DocumentId, revision: u64, stored: text::text::Text) {
+    pub fn mark_saved_row(
+        &mut self,
+        document: DocumentId,
+        revision: u64,
+        stored: text::text::Text,
+    ) {
         self.update_row(document, |entity| {
             entity.saved_revision = revision;
             entity.baseline = stored;

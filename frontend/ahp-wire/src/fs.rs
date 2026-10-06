@@ -69,7 +69,10 @@ impl ClientDirectory {
         id
     }
 
-    pub fn release_watch(&self, subscription: u64) -> Option<(Arc<dyn ResourceClient>, WatchHandle)> {
+    pub fn release_watch(
+        &self,
+        subscription: u64,
+    ) -> Option<(Arc<dyn ResourceClient>, WatchHandle)> {
         self.watches
             .lock()
             .expect("watch table")

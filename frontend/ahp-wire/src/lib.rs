@@ -59,9 +59,7 @@ impl SessionId {
         store: &imba::store::Store,
         location: &editor::location::ResourceLocation,
     ) -> SessionId {
-        if let Some((host, session)) =
-            crate::client::route(store, location.authority().as_str())
-        {
+        if let Some((host, session)) = crate::client::route(store, location.authority().as_str()) {
             return SessionId { host, session };
         }
         Self::local_default(store)

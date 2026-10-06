@@ -7,6 +7,5 @@ pub mod measure;
 pub mod text;
 pub mod text_view;
 
-
 #[cfg(test)]
 mod tests;

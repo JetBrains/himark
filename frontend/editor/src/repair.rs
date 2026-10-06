@@ -3,7 +3,12 @@
 
 use imba::effect::{Effect, EffectHandler};
 
-use crate::{document::Document, document_layout::DocumentLayout, editor::{Editor, EditorId}, editor_view::EditorCommand};
+use crate::{
+    document::Document,
+    document_layout::DocumentLayout,
+    editor::{Editor, EditorId},
+    editor_view::EditorCommand,
+};
 
 #[derive(Clone)]
 pub struct RepairedLayout {

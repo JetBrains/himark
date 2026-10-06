@@ -1,7 +1,13 @@
 #![allow(unused_imports)]
-use super::*;
 use super::dock::{entity, located, settle, show_dock};
-use std::sync::{Arc, Mutex};
+use super::*;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use himark::app::AppCommand;
+use himark::app::AppFonts;
+use himark::app::Application;
+use himark::app_ext::AppExt;
+use himark::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -9,14 +15,7 @@ use imba::leaf::leaf;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{ui::UiCtx, View};
-use himark::test_driver;
-use himark::app::AppCommand;
-use himark::app_ext::AppExt;
-use himark::app::AppFonts;
-use himark::app::Application;
-use hikit::modal::ModalRequest;
-use hikit::modal::ModalView;
-
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn switching_workspaces_stashes_the_chat_panel() {
@@ -35,12 +34,12 @@ fn switching_workspaces_stashes_the_chat_panel() {
             "Test Switch".to_owned()
         }
         fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -49,20 +48,21 @@ fn switching_workspaces_stashes_the_chat_panel() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    let switch =
-        |app: &mut himark::app::Application, target: Option<ahp_wire::SessionId>| -> ahp_wire::SessionId {
-            let window = app.sole_window();
-            let made = Arc::new(std::sync::Mutex::new(None));
-            app.perform_batch(vec![himark::app::AppCommand::Windowed(
-                window,
-                Arc::new(Switch {
-                    target,
-                    made: Arc::clone(&made),
-                }),
-            )]);
-            let result = made.lock().unwrap().take().expect("the switch ran");
-            result
-        };
+    let switch = |app: &mut himark::app::Application,
+                  target: Option<ahp_wire::SessionId>|
+     -> ahp_wire::SessionId {
+        let window = app.sole_window();
+        let made = Arc::new(std::sync::Mutex::new(None));
+        app.perform_batch(vec![himark::app::AppCommand::Windowed(
+            window,
+            Arc::new(Switch {
+                target,
+                made: Arc::clone(&made),
+            }),
+        )]);
+        let result = made.lock().unwrap().take().expect("the switch ran");
+        result
+    };
 
     let fonts = AppFonts::embedded();
     let mut app = himark::app::Application::new(fonts);
@@ -71,7 +71,8 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let first = himark::workspace::entity_session(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
     );
-    let first_chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
+    let first_chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
 
     {
         let ui = app.ui_ctx();
@@ -90,7 +91,8 @@ fn switching_workspaces_stashes_the_chat_panel() {
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
     fn mounted_chat(app: &himark::app::Application) -> Option<String> {
-        let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+        let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
+            .expect("window");
         let chat = entity.workbench().chat()?;
         match chat.panel() {
             ::workbench::workbench_node::Panel::Plugin(view) => view
@@ -114,7 +116,6 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let _ = second;
 }
 
-
 /// `chat.composer` (\u{2318}I): the chat is always open from the
 /// workbench's point of view — the command fills the dedicated
 /// slot on first use, re-focuses it after, and the chat NEVER
@@ -136,12 +137,12 @@ fn the_composer_command_fronts_the_chat_panel() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -156,7 +157,8 @@ fn the_composer_command_fronts_the_chat_panel() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -164,14 +166,15 @@ fn the_composer_command_fronts_the_chat_panel() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut surface);
 
     let slot_chat = |app: &himark::app::Application| -> Option<String> {
-        let entity =
-            ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+        let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
+            .expect("window");
         let chat = entity.workbench().chat()?;
         match chat.panel() {
             ::workbench::workbench_node::Panel::Plugin(view) => view
@@ -182,8 +185,8 @@ fn the_composer_command_fronts_the_chat_panel() {
         }
     };
     let tree_chat = |app: &himark::app::Application| -> Option<String> {
-        let entity =
-            ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+        let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
+            .expect("window");
         let mut found = None;
         entity.workbench().root.for_each_pane(&mut |panel| {
             if let ::workbench::workbench_node::Panel::Plugin(view) = panel {
@@ -220,7 +223,6 @@ fn the_composer_command_fronts_the_chat_panel() {
     );
 }
 
-
 /// Presentation is the layout's call alone: a vacant tree hands
 /// the whole workbench to the chat, a document splits the space
 /// when the window fits both, a narrow window shows the document
@@ -244,12 +246,12 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -264,7 +266,8 @@ fn the_chat_docks_left_when_the_window_is_wide() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -272,7 +275,8 @@ fn the_chat_docks_left_when_the_window_is_wide() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut wide);
@@ -293,7 +297,8 @@ fn the_chat_docks_left_when_the_window_is_wide() {
         });
         found
     };
-    let vacant = |app: &himark::app::Application| -> bool { held(app).workbench().root.is_vacant() };
+    let vacant =
+        |app: &himark::app::Application| -> bool { held(app).workbench().root.is_vacant() };
 
     assert!(app.perform_registered(window, "chat.composer"));
     settle(&mut app, &mut wide);
@@ -321,12 +326,12 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -336,7 +341,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
                 "doc".to_owned(),
                 0,
             );
-                            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
             fx.scope(himark::app::AppCommand::Verb, |fx| {
                 entity.show_document(store, &ui, window, id, None, true, fx)
             });
@@ -354,7 +359,6 @@ fn the_chat_docks_left_when_the_window_is_wide() {
     assert!(vacant(&app), "closing the last panel empties the tree");
     assert!(slot_filled(&app), "the chat owns the workbench again");
 }
-
 
 /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_narrow_screenshot -- --ignored`
 /// — the squeezed case: a document open in a window too narrow
@@ -381,12 +385,12 @@ fn dump_chat_narrow_screenshot() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -400,7 +404,8 @@ fn dump_chat_narrow_screenshot() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -408,7 +413,8 @@ fn dump_chat_narrow_screenshot() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut narrow);
@@ -424,12 +430,12 @@ fn dump_chat_narrow_screenshot() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let state = himark::workspace::session_state(store, window).expect("state");
             let document = himark::app::markdown_scratch();
             let id = documents::OpenDocuments::register(
@@ -440,7 +446,7 @@ fn dump_chat_narrow_screenshot() {
                 "narrow.md".to_owned(),
                 0,
             );
-                            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
             fx.scope(himark::app::AppCommand::Verb, |fx| {
                 entity.show_document(store, &ui, window, id, None, true, fx)
             });
@@ -456,7 +462,6 @@ fn dump_chat_narrow_screenshot() {
         .expect("png");
     std::fs::write(format!("{dir}/chat-narrow.png"), data.as_bytes()).expect("write");
 }
-
 
 /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_column_screenshot -- --ignored`
 #[test]
@@ -480,12 +485,12 @@ fn dump_chat_column_screenshot() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -500,7 +505,8 @@ fn dump_chat_column_screenshot() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -508,7 +514,8 @@ fn dump_chat_column_screenshot() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut wide);
@@ -521,7 +528,6 @@ fn dump_chat_column_screenshot() {
         .expect("png");
     std::fs::write(format!("{dir}/chat-column.png"), data.as_bytes()).expect("write");
 }
-
 
 /// The single-panel presentation: Cmd-I fronts the hidden chat
 /// over the panel, opening a panel hands the window back, and
@@ -544,12 +550,12 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -563,7 +569,8 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -571,7 +578,8 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut narrow);
@@ -597,12 +605,12 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -612,7 +620,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
                 "doc".to_owned(),
                 0,
             );
-                            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
             fx.scope(himark::app::AppCommand::Verb, |fx| {
                 entity.show_document(store, &ui, window, id, None, true, fx)
             });
@@ -658,7 +666,6 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     );
 }
 
-
 /// The tree header's MAXIMIZE hides the chat; \u{2318}I and the
 /// minimize button bring it back.
 #[test]
@@ -678,12 +685,12 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -697,7 +704,8 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -705,7 +713,8 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         "ahp-session:/volatile",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut wide);
@@ -718,7 +727,9 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
 
     assert!(app.perform_command(AppCommand::Content(
         window,
-        ::workbench::window::WindowCommand::Base(::workbench::workbench::WorkbenchCommand::MaximizeTree),
+        ::workbench::window::WindowCommand::Base(
+            ::workbench::workbench::WorkbenchCommand::MaximizeTree
+        ),
     )));
     settle(&mut app, &mut wide);
     assert!(
@@ -735,13 +746,17 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
 
     assert!(app.perform_command(AppCommand::Content(
         window,
-        ::workbench::window::WindowCommand::Base(::workbench::workbench::WorkbenchCommand::MaximizeTree),
+        ::workbench::window::WindowCommand::Base(
+            ::workbench::workbench::WorkbenchCommand::MaximizeTree
+        ),
     )));
     settle(&mut app, &mut wide);
     assert!(held(&app).workbench().chat_minimized());
     assert!(app.perform_command(AppCommand::Content(
         window,
-        ::workbench::window::WindowCommand::Base(::workbench::workbench::WorkbenchCommand::RestoreChat),
+        ::workbench::window::WindowCommand::Base(
+            ::workbench::workbench::WorkbenchCommand::RestoreChat
+        ),
     )));
     settle(&mut app, &mut wide);
     assert!(
@@ -749,7 +764,6 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         "the minimize button brings the chat back"
     );
 }
-
 
 /// EVERY open road converges on the chat slot: a chat pane sent
 /// down the generic `open_panel` lands there, never in the tree.
@@ -766,7 +780,8 @@ fn any_open_road_lands_the_chat_in_the_slot() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/walkable"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -774,12 +789,13 @@ fn any_open_road_lands_the_chat_in_the_slot() {
         "ahp-session:/walkable",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     {
-    let ui = app.ui_ctx();
-    let mut store = app.store_mut();
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
         let mut batch = imba::effect::Batch::<himark::app::AppCommand>::new();
         let _ = entity.open_panel(
@@ -806,7 +822,6 @@ fn any_open_road_lands_the_chat_in_the_slot() {
     assert!(!in_tree, "the chat never enters the tree");
 }
 
-
 #[test]
 fn new_session_leaves_the_previous_session_and_its_chat() {
     let mut app = Application::new(AppFonts::embedded());
@@ -824,12 +839,12 @@ fn new_session_leaves_the_previous_session_and_its_chat() {
             String::new()
         }
         fn perform(
-    &self,
-    store: &mut Store,
-    _ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    fx: &mut himark::app::AppFx<'_>,
-) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
@@ -843,7 +858,8 @@ fn new_session_leaves_the_previous_session_and_its_chat() {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
     };
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -851,12 +867,13 @@ fn new_session_leaves_the_previous_session_and_its_chat() {
         "ahp-session:/live",
         chats,
         uri.clone(),
-        ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
     );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     {
-    let ui = app.ui_ctx();
-    let mut store = app.store_mut();
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
         let mut batch = imba::effect::Batch::<himark::app::AppCommand>::new();
         let _ = entity.open_panel(
@@ -874,7 +891,9 @@ fn new_session_leaves_the_previous_session_and_its_chat() {
             .workbench()
             .chat()
             .is_some_and(|chat| match chat.panel() {
-                ::workbench::workbench_node::Panel::Plugin(view) => view.as_any().is::<ahp_chat::chats::ChatPane>(),
+                ::workbench::workbench_node::Panel::Plugin(view) => {
+                    view.as_any().is::<ahp_chat::chats::ChatPane>()
+                }
                 ::workbench::workbench_node::Panel::Editor(_) => false,
             })
     };

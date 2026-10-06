@@ -5,7 +5,6 @@
 //! `locations::search` face (the view itself lives with its model,
 //! docs/entities.md).
 
-
 use ::locations::search::{SearchArea, SearchCommand, SearchView};
 
 use std::sync::Arc;
@@ -17,7 +16,6 @@ use locations::open_feed;
 use locations::FeedId;
 use locations::LocationLists;
 use locations::LocationsAsk;
-
 
 /// The dock owner id — the toggle command's, shared by everything
 /// that lands content into this tab.
@@ -52,8 +50,11 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some((lists, wire)) = ::workbench::window::Windows::window_ref(store, window)
-            .map(|entity| { let state = crate::workspace::entity_state(entity); (state.lists(), state.locations_wire()) })
+        let Some((lists, wire)) =
+            ::workbench::window::Windows::window_ref(store, window).map(|entity| {
+                let state = crate::workspace::entity_state(entity);
+                (state.lists(), state.locations_wire())
+            })
         else {
             return;
         };
@@ -148,7 +149,8 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
             ::workbench::window::Windows::put(store, window, entity);
@@ -196,17 +198,20 @@ impl crate::commands::WindowedCommand for FocusSearchView {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(OWNER) {
             entity.focus_dock();
             if let Some(panel) = entity.dock_panel_mut() {
-                                fx.scope(
+                fx.scope(
                     move |command| {
                         crate::app::AppCommand::Content(
                             window,
-                            ::workbench::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
-                                ::workbench::dock::DockCommand::Content(command),
-                            )),
+                            ::workbench::window::WindowCommand::Dock(
+                                imba::dyn_view::DynCommand::new(
+                                    ::workbench::dock::DockCommand::Content(command),
+                                ),
+                            ),
                         )
                     },
                     |fx| {
@@ -214,7 +219,10 @@ impl crate::commands::WindowedCommand for FocusSearchView {
                             panel.as_mut(),
                             store,
                             &ui,
-                            imba::dyn_view::DynCommand::new(SearchCommand::Focus(SearchArea::Input, None)),
+                            imba::dyn_view::DynCommand::new(SearchCommand::Focus(
+                                SearchArea::Input,
+                                None,
+                            )),
                             fx,
                         )
                     },

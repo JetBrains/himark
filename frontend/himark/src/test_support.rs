@@ -3,16 +3,19 @@
 
 use imba::store::Store;
 
+use crate::app::Application;
 use ::workbench::workbench::pane_width;
 use ::workbench::workbench::workbench_geometry;
-use crate::app::Application;
-use documents::entity_view::EditorIdView;
 use ::workbench::workbench_node::Panel;
+use documents::entity_view::EditorIdView;
 
 struct TestUris;
 
 impl ahp_wire::client::ResourceUriMap for TestUris {
-    fn uri_of(&self, location: &editor::location::ResourceLocation) -> ahp_wire::client::ResourceUri {
+    fn uri_of(
+        &self,
+        location: &editor::location::ResourceLocation,
+    ) -> ahp_wire::client::ResourceUri {
         ahp_wire::client::ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }
 
@@ -97,7 +100,8 @@ pub fn add_session_folders(
     folders: &[editor::location::ResourceLocation],
 ) {
     let uris = ahp_session::session::state::Hosts::uris(store, id.host).expect("a seeded session");
-    let mut channel = ahp_session::session::agents::Agents::channel(store, id).expect("a seeded session");
+    let mut channel =
+        ahp_session::session::agents::Agents::channel(store, id).expect("a seeded session");
     for folder in folders {
         let uri = uris.uri_of(folder).into_string();
         if !channel.working_directories.iter().any(|held| held == &uri) {
@@ -163,7 +167,8 @@ impl Application {
         let document = documents::OpenDocuments::document_ref(
             self.store(),
             self.sole_documents(),
-            ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?.focused_document_id()?,
+            ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?
+                .focused_document_id()?,
         )?;
         let end = document.text().byte_count().min(u32::MAX as usize) as u32;
         Some(document.text().view().substring(0..end))
@@ -179,9 +184,12 @@ impl Application {
             }
         });
         let entity = first.expect("an editor pane");
-        let document =
-            documents::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())
-                .expect("document");
+        let document = documents::OpenDocuments::document_ref(
+            self.store(),
+            entity.documents(),
+            entity.document(),
+        )
+        .expect("document");
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
         let ui = ::editor::test_document::test_ui();
@@ -205,11 +213,12 @@ impl Application {
     }
 
     pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
-        let Some(document) = ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
-            .and_then(|window| window.focused_document_id())
-            .and_then(|id| {
-                documents::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)
-            })
+        let Some(document) =
+            ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
+                .and_then(|window| window.focused_document_id())
+                .and_then(|id| {
+                    documents::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)
+                })
         else {
             return false;
         };
@@ -242,8 +251,14 @@ impl Application {
                 let width = document.layout_width(entity.editor());
                 let fonts = ::editor::test_document::test_fonts_collection();
                 let theme = ::editor::theme::Theme::embedded();
-                let mut reference =
-                    editor::editor_view::EditorView::complete(document.clone(), width, store, ui, &fonts, &theme);
+                let mut reference = editor::editor_view::EditorView::complete(
+                    document.clone(),
+                    width,
+                    store,
+                    ui,
+                    &fonts,
+                    &theme,
+                );
 
                 reference.reveal_caret(
                     document.caret_byte(entity.editor()),
@@ -372,8 +387,11 @@ impl Application {
 
     pub fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
         let view = self.workbench().root.focused_pane().editor()?.content();
-        let document =
-            documents::OpenDocuments::document_ref(self.store(), view.documents(), view.document())?;
+        let document = documents::OpenDocuments::document_ref(
+            self.store(),
+            view.documents(),
+            view.document(),
+        )?;
         if document.text().view().byte_count() == 0 {
             return None;
         }
@@ -475,33 +493,39 @@ pub fn handle_effect<R: 'static>(
                             async move { handler.handle(*effect).await },
                         )))
                     }
-                    Err(value) => match value.downcast::<::editor::split_diff::RepairDiffEffect>() {
-                        Ok(effect) => {
-                            let handler =
-                                ::editor::split_diff::RepairDiffHandler(std::sync::Arc::clone(workshop));
-                            Box::new(block_on(Box::pin(
-                                async move { handler.handle(*effect).await },
-                            )))
-                        }
-                        Err(value) => match value.downcast::<documents::diffs::DiffNormalizeEffect>() {
+                    Err(value) => {
+                        match value.downcast::<::editor::split_diff::RepairDiffEffect>() {
                             Ok(effect) => {
-                                let handler = documents::diffs::DiffNormalizeHandler;
+                                let handler = ::editor::split_diff::RepairDiffHandler(
+                                    std::sync::Arc::clone(workshop),
+                                );
                                 Box::new(block_on(Box::pin(async move {
                                     handler.handle(*effect).await
                                 })))
                             }
-                            Err(value) => match value.downcast::<crate::app::OpenEffect>() {
+                            Err(value) => match value
+                                .downcast::<documents::diffs::DiffNormalizeEffect>()
+                            {
                                 Ok(effect) => {
-                                    let handler =
-                                        crate::app::OpenHandler(std::sync::Arc::clone(workshop));
+                                    let handler = documents::diffs::DiffNormalizeHandler;
                                     Box::new(block_on(Box::pin(async move {
                                         handler.handle(*effect).await
                                     })))
                                 }
-                                Err(_) => panic!("handle_effect: unknown effect type"),
+                                Err(value) => match value.downcast::<crate::app::OpenEffect>() {
+                                    Ok(effect) => {
+                                        let handler = crate::app::OpenHandler(
+                                            std::sync::Arc::clone(workshop),
+                                        );
+                                        Box::new(block_on(Box::pin(async move {
+                                            handler.handle(*effect).await
+                                        })))
+                                    }
+                                    Err(_) => panic!("handle_effect: unknown effect type"),
+                                },
                             },
-                        },
-                    },
+                        }
+                    }
                 },
             },
         },

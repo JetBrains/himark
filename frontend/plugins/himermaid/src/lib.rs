@@ -13,7 +13,10 @@ use editor::markup::InlayMode;
 use editor::reparse::SyntaxLanguage;
 use editor::reparse::SyntaxLanguages;
 use editor::reparse::SyntaxTree;
-use imba::{arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt,
+    ui::UiCtx, View,
+};
 use skia_safe::{Canvas, Rect, Size};
 use text::text::Text;
 
@@ -95,7 +98,13 @@ impl SyntaxTree for MermaidParse {
         Box::new(MermaidParse)
     }
 
-    fn edit(&mut self, _operation: &operation::operation::Operation, _view: &mut text::text_view::TextView, _base: u32) {}
+    fn edit(
+        &mut self,
+        _operation: &operation::operation::Operation,
+        _view: &mut text::text_view::TextView,
+        _base: u32,
+    ) {
+    }
 
     fn changed_since(&self, _old: &dyn SyntaxTree) -> Option<Vec<Range<u32>>> {
         Some(Vec::new())

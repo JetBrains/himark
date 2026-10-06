@@ -235,7 +235,9 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
         if text_string(&effect.current) == effect.fetched {
             let len = effect.current.byte_count().min(u32::MAX as usize) as u32;
             return RefetchRebase {
-                operation: operation::operation::Operation::from_ops([operation::op::Op::Retain(len)]),
+                operation: operation::operation::Operation::from_ops([operation::op::Op::Retain(
+                    len,
+                )]),
                 fetched,
                 fetched_source: effect.fetched,
                 clean: true,
@@ -244,7 +246,9 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
         }
         let theirs = effect.policy.diff(&effect.baseline, &fetched, None);
         let ours = effect.policy.diff(&effect.baseline, &effect.current, None);
-        let clean = ours.iter().all(|op| matches!(op, operation::op::Op::Retain(_)));
+        let clean = ours
+            .iter()
+            .all(|op| matches!(op, operation::op::Op::Retain(_)));
         let (operation, synced) = match clean {
             true => (theirs, true),
             false => {

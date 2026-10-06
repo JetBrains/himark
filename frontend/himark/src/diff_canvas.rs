@@ -4,14 +4,13 @@
 //! a canvas, open a row's file in a full pane). The canvas itself —
 //! rows, header, panel face, router — lives in the `canvas` crate.
 
-use changesview::hichanges::CanvasSource;
 use ::canvas::diff_canvas::*;
+use changesview::hichanges::CanvasSource;
 
 use imba::store::Store;
 
-use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
-
+use editor::location::ResourceLocation;
 
 /// Open the canvas for a source — or REUSE the one already open (the
 /// canvas is found by source in the store; a fresh view of it costs
@@ -113,7 +112,15 @@ impl crate::commands::WindowedCommand for OpenCanvasFile {
             Some(document_id) => {
                 if let Some(mut entity) = ::workbench::window::Windows::window(store, window) {
                     fx.scope(crate::app::AppCommand::Verb, |fx| {
-                        entity.show_document(store, ui, window, document_id, Some(target), false, fx);
+                        entity.show_document(
+                            store,
+                            ui,
+                            window,
+                            document_id,
+                            Some(target),
+                            false,
+                            fx,
+                        );
                     });
                     ::workbench::window::Windows::put(store, window, entity);
                 }

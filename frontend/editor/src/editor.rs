@@ -11,7 +11,13 @@ use std::{
 
 use imba::effect::Effects;
 
-use crate::{caret::MultiCaret, document::{Document, FragmentKey}, document_layout::DocumentLayout, editor_view::{EditorCommand, EditorFocus}, markup::MarkupId};
+use crate::{
+    caret::MultiCaret,
+    document::{Document, FragmentKey},
+    document_layout::DocumentLayout,
+    editor_view::{EditorCommand, EditorFocus},
+    markup::MarkupId,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EditorId(u64);

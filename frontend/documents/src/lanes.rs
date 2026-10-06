@@ -36,18 +36,16 @@ pub fn refetch_document(
     }
     let serial = crate::OpenDocuments::stamp_refetch(store, documents_id, document);
     let _ = fx.push(
-        imba::effect::AnyEffect::new(crate::FetchDocumentEffect { location }).map(
-            move |text| {
-                imba::command::Verb::at(
-                    documents_id,
-                    crate::DocumentsCommand::Refetched {
-                        document,
-                        serial,
-                        text,
-                    },
-                )
-            },
-        ),
+        imba::effect::AnyEffect::new(crate::FetchDocumentEffect { location }).map(move |text| {
+            imba::command::Verb::at(
+                documents_id,
+                crate::DocumentsCommand::Refetched {
+                    document,
+                    serial,
+                    text,
+                },
+            )
+        }),
     );
 }
 
@@ -63,14 +61,9 @@ pub fn sync_stripe_bases(
     fx.scope(
         move |command| imba::command::Verb::at(documents, command),
         |fx| {
-            crate::diffs::sync_stripe_bases(
-                store,
-                documents,
-                fx,
-                |store, document, base, fx| {
-                    crate::diffs::land_base_located(store, documents, ui, document, base, fx);
-                },
-            );
+            crate::diffs::sync_stripe_bases(store, documents, fx, |store, document, base, fx| {
+                crate::diffs::land_base_located(store, documents, ui, document, base, fx);
+            });
         },
     );
 }
@@ -83,16 +76,22 @@ pub fn refetch_watched(
     subscription: crate::watch::Subscription,
     fx: &mut imba::command::Fx<'_>,
 ) {
-    crate::watch::refetch_watched(store, documents, subscription, fx, move |document, serial, text| {
-        imba::command::Verb::at(
-            documents,
-            crate::DocumentsCommand::Refetched {
-                document,
-                serial,
-                text,
-            },
-        )
-    });
+    crate::watch::refetch_watched(
+        store,
+        documents,
+        subscription,
+        fx,
+        move |document, serial, text| {
+            imba::command::Verb::at(
+                documents,
+                crate::DocumentsCommand::Refetched {
+                    document,
+                    serial,
+                    text,
+                },
+            )
+        },
+    );
 }
 
 /// The batch-tail DRESSING sweep, scoped onto the At road.
@@ -136,7 +135,15 @@ pub fn sync_scroll_stripe_lanes(
     documents: imba::store::Id<crate::OpenDocuments>,
     fx: &mut imba::command::Fx<'_>,
 ) {
-    crate::scroll_stripes::sync_scroll_stripe_lanes(store, documents, fx, move |document, command| {
-        imba::command::Verb::at(documents, crate::DocumentsCommand::Editor(document, command))
-    });
+    crate::scroll_stripes::sync_scroll_stripe_lanes(
+        store,
+        documents,
+        fx,
+        move |document, command| {
+            imba::command::Verb::at(
+                documents,
+                crate::DocumentsCommand::Editor(document, command),
+            )
+        },
+    );
 }

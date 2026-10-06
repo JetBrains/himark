@@ -95,7 +95,6 @@ fn of(store: &Store, wire: imba::store::Id<CommentsWire>) -> Option<&CommentsWir
     store.entity(wire)
 }
 
-
 /// Mutate in place; a gone driver takes no write.
 fn update(
     store: &mut Store,

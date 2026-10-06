@@ -147,7 +147,8 @@ impl WindowedCommand for SplitPane {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             entity.split_current(store, ui, fx);
         });
@@ -172,7 +173,8 @@ impl WindowedCommand for CloseFocused {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.close_focused_widget(store, ui, window, fx);
         });
@@ -196,7 +198,8 @@ impl WindowedCommand for ClosePane {
         window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.close_current(store);
         ::workbench::window::Windows::put(store, window, entity);
     }
@@ -219,7 +222,8 @@ impl WindowedCommand for NavigateBack {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.navigate_back(store, ui, window, fx);
         });
@@ -244,7 +248,8 @@ impl WindowedCommand for NavigateForward {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = ui;
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.navigate_forward(store, ui, window, fx);
         });
@@ -329,7 +334,8 @@ impl WindowedCommand for CompletionTrigger {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let Some((id, editor)) = slot.find_target() else {
@@ -345,7 +351,8 @@ impl WindowedCommand for CompletionTrigger {
                 ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
-            let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
+            let Some(mut document) = documents::OpenDocuments::document(store, documents, id)
+            else {
                 ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
@@ -399,7 +406,7 @@ impl WindowedCommand for CompletionLanded {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-                let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
@@ -428,7 +435,8 @@ impl WindowedCommand for FindOpen {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             if slot.panel.editor().is_some() {
@@ -493,7 +501,8 @@ impl WindowedCommand for FindStep {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let target = slot.find_target();
@@ -545,7 +554,7 @@ fn find_sync_slot(
     let Some((document, _)) = target else {
         return;
     };
-        let fonts = ::editor::env::ui_collection(store, &ui);
+    let fonts = ::editor::env::ui_collection(store, &ui);
     let theme = ::editor::env::Themes::of(store);
     let Some(documents) = slot_documents else {
         return;
@@ -584,7 +593,7 @@ impl WindowedCommand for FindScanLanded {
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-                let fonts = ::editor::env::ui_collection(store, &ui);
+        let fonts = ::editor::env::ui_collection(store, &ui);
         let theme = ::editor::env::Themes::of(store);
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
             let target = slot.find_target();
@@ -631,7 +640,8 @@ impl WindowedCommand for ChatComposer {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        let mut entity =
+            ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             entity.front_chat(store, ui, fx);
         });

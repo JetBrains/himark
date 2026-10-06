@@ -1,13 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, list::{ListCommand, ListView}, store::Store, Thunk, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::Effects,
+    list::{ListCommand, ListView},
+    store::Store,
+    ui::UiCtx,
+    Thunk, View,
+};
 use skia_safe::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind, DiffHeader};
 use crate::chat::model::PartId;
-use crate::tool_group::{ToolCallSpec, ToolFace};
 use crate::file_edit::FileEditRefs;
+use crate::tool_group::{ToolCallSpec, ToolFace};
 use ahp_types::common::Uri;
 
 pub type TurnCommand = ListCommand<CellCommand>;

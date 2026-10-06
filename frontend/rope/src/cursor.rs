@@ -1,10 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::metrics::Measure;
 use crate::metrics::MetricId;
 use crate::rope::Rope;
 use crate::zipper::Zipper;
-use crate::metrics::Measure;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeekMode {

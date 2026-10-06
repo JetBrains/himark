@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn find_bar_rescans_in_the_background_after_document_edits() {
     use himark::app::AppFonts;
@@ -49,10 +48,13 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     {
         let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&mut store, window).expect("window");
-        himark::pane_services::EditorServices::of(entity.workbench_mut().root.focused_slot_mut(), &store)
-            .and_then(|services| services.find.as_mut())
-            .expect("the bar is open")
-            .focused = false;
+        himark::pane_services::EditorServices::of(
+            entity.workbench_mut().root.focused_slot_mut(),
+            &store,
+        )
+        .and_then(|services| services.find.as_mut())
+        .expect("the bar is open")
+        .focused = false;
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
 
@@ -70,7 +72,6 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     settle(&mut app);
     assert_eq!(matches_now(&app), vec![0..5, 10..15]);
 }
-
 
 #[test]
 fn find_bar_highlights_and_walks_occurrences() {
@@ -118,8 +119,7 @@ fn find_bar_highlights_and_walks_occurrences() {
         f(entity.workbench().root.focused_slot());
     };
     with_slot(&app, &|slot| {
-        let services =
-            himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
+        let services = himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
         let find = services.find.as_ref().expect("the bar is open");
         assert_eq!(find.query(), "alpha");
 
@@ -135,8 +135,9 @@ fn find_bar_highlights_and_walks_occurrences() {
             .find_target()
             .expect("an editor pane")
     };
-    let document = documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
-        .expect("the document");
+    let document =
+        documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+            .expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -180,8 +181,9 @@ fn find_bar_highlights_and_walks_occurrences() {
             "Escape closed the bar"
         );
     });
-    let document = documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
-        .expect("the document");
+    let document =
+        documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+            .expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -206,7 +208,12 @@ fn find_bar_highlights_and_walks_occurrences() {
             ::editor::caret::MultiCaret::one(::editor::caret::Caret::selecting(6, 10)),
         );
         let documents = app.sole_documents();
-        documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
+        documents::OpenDocuments::put_document(
+            &mut app.store_mut(),
+            documents,
+            document_id,
+            document,
+        );
     }
     assert!(app.perform_registered(window, "find.open"));
 
@@ -217,14 +224,12 @@ fn find_bar_highlights_and_walks_occurrences() {
         }
     }
     with_slot(&app, &|slot| {
-        let services =
-            himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
+        let services = himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
         let find = services.find.as_ref().expect("re-opened");
         assert_eq!(find.query(), "beta", "the selection seeded the query");
         assert_eq!(find.matches().len(), 1);
     });
 }
-
 
 #[test]
 fn keymap_backspace_edits_the_find_bar_query() {

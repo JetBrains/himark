@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark_ahp_ext_types::{text};
 use himark_ahp_ext_types::documents::{DocumentApplied, Uid};
+use himark_ahp_ext_types::text;
 use himark_text::text::Text;
 use serde_json::Value;
 

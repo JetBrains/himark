@@ -533,7 +533,6 @@ impl Changes {
         store.put_entity(changes, row);
     }
 
-
     /// Leave the stripe-base note on the row: the re-asks run behind
     /// the lease, so the work waits for `after_route`.
     fn note_rearm(&mut self, folder: &ResourceLocation) {

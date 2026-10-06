@@ -6,8 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use himark::app_ext::AppExt;
 use editor::markup::InlayMode;
+use himark::app_ext::AppExt;
 use skia_safe::{surfaces, textlayout::FontCollection};
 
 use himark::app::AppCommand;
@@ -856,7 +856,8 @@ trait RunReparse {
 
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
-        editor::reparse::ReparseHandler(himark::test_support::test_workshop(test_theme())).reparse(self)
+        editor::reparse::ReparseHandler(himark::test_support::test_workshop(test_theme()))
+            .reparse(self)
     }
 }
 
@@ -951,10 +952,7 @@ fn scroll_frame_breakdown() {
         let started = Instant::now();
         let _ = himark::test_driver::scroll(&mut app, 4096.0);
         scrolls.push(started.elapsed());
-        paints.push(app.draw_window_profiled(app.sole_window(),
-            surface.canvas(),
-            size,
-        ));
+        paints.push(app.draw_window_profiled(app.sole_window(), surface.canvas(), size));
     }
     let p = |mut samples: Vec<Duration>| {
         samples.sort();
@@ -1148,8 +1146,15 @@ fn resize_repair_matches_fresh_layout() {
     }
 
     let live = document.element_heights(editor);
-    let fresh = editor::editor_view::EditorView::complete(document.clone(), 1128.0, store, ui, &fonts, &theme)
-        .element_heights();
+    let fresh = editor::editor_view::EditorView::complete(
+        document.clone(),
+        1128.0,
+        store,
+        ui,
+        &fonts,
+        &theme,
+    )
+    .element_heights();
     for (index, (a, b)) in live.iter().zip(fresh.iter()).enumerate() {
         assert_eq!(a, b, "element {index} diverged (live vs fresh)");
     }
@@ -1216,7 +1221,10 @@ fn tree_demo_panel_toggles_through_clicks() {
     let _ = fonts;
     let (mut app, _arriving) = boot();
 
-    himark::app_ext::AppExt::register_command(&mut app, std::sync::Arc::new(crate::tree_demo::OpenTreeDemo));
+    himark::app_ext::AppExt::register_command(
+        &mut app,
+        std::sync::Arc::new(crate::tree_demo::OpenTreeDemo),
+    );
     let window = app.sole_window();
     let mut surface = surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(window, surface.canvas());
@@ -1230,7 +1238,10 @@ fn tree_demo_panel_toggles_through_clicks() {
     let row_count = |app: &himark::app::Application| -> usize {
         let mut count = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(tree) = panel.as_any().downcast_ref::<crate::tree_demo::TreeDemoView>() {
+            if let Some(tree) = panel
+                .as_any()
+                .downcast_ref::<crate::tree_demo::TreeDemoView>()
+            {
                 count = Some(tree.row_count());
             }
         });
@@ -1263,7 +1274,10 @@ fn tree_demo_panel_toggles_through_clicks() {
     let content_height = |app: &himark::app::Application| -> f32 {
         let mut height = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(tree) = panel.as_any().downcast_ref::<crate::tree_demo::TreeDemoView>() {
+            if let Some(tree) = panel
+                .as_any()
+                .downcast_ref::<crate::tree_demo::TreeDemoView>()
+            {
                 height = Some(tree.content_height());
             }
         });
@@ -1346,8 +1360,7 @@ fn rust_document_settles_and_stops_reconciling() {
                     landed = true;
                     app.perform_batch(vec![command]);
                 }
-                let reconciling =
-                    app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+                let reconciling = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
                 if reconciling || landed {
                     settled_streak = 0;
                 } else {
@@ -1376,8 +1389,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 size,
             );
             let _ = hop;
-            let _ =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
         settle(&mut app, &mut surface, "scrolled");
 
@@ -1399,7 +1411,8 @@ fn rust_document_settles_and_stops_reconciling() {
                 location: None,
                 primary: true,
                 target: Some(
-                    documents::text_ext::LineCol { line: 1830, col: 0 }..documents::text_ext::LineCol { line: 1830, col: 4 },
+                    documents::text_ext::LineCol { line: 1830, col: 0 }
+                        ..documents::text_ext::LineCol { line: 1830, col: 4 },
                 ),
                 focus: false,
             },
@@ -1419,8 +1432,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 },
                 size,
             );
-            let reconciling =
-                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let reconciling = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             if reconciling || landed || animating {
                 quiet_streak = 0;
             } else {

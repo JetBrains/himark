@@ -6,12 +6,12 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use documents::text_ext::line_col_at;
-use himark::app::AppFx;
-use himark::commands::WindowedCommand;
 use documents::text_ext::LineCol;
 use documents::OpenDocuments;
 use editor::document::Document;
 use editor::location::ResourceLocation;
+use himark::app::AppFx;
+use himark::commands::WindowedCommand;
 use imba::{effect::Effect, store::Store};
 use text::text_view::TextView;
 

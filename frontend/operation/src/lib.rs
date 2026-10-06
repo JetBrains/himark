@@ -8,6 +8,5 @@ pub mod op;
 pub mod operation;
 pub mod reader;
 
-
 #[cfg(test)]
 mod tests;

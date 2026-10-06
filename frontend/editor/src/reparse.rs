@@ -6,7 +6,10 @@ use std::{ops::Range, sync::Arc};
 use operation::operation::Operation;
 use text::text::Text;
 
-use crate::{document::Document, markup::{MarkupBuilder, Syntax}};
+use crate::{
+    document::Document,
+    markup::{MarkupBuilder, Syntax},
+};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SyntaxSite {

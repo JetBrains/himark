@@ -256,7 +256,8 @@ fn an_offer_slices_into_one_operation() {
         "from the origin, the slice IS the difference"
     );
 
-    let tail = text::text::Text::from_string_exact("hello!").edit(&bridge(&after_first, &display.log));
+    let tail =
+        text::text::Text::from_string_exact("hello!").edit(&bridge(&after_first, &display.log));
     assert_eq!(display.text, tail, "and from anywhere else in the log");
 }
 

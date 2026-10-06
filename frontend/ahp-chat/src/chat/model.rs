@@ -848,9 +848,7 @@ fn read_tool(state: &ToolCallState) -> Laid {
 }
 
 fn said_output(content: Option<&[ahp_types::state::ToolResultContent]>) -> String {
-    content
-        .map(crate::turn::tool_output)
-        .unwrap_or_default()
+    content.map(crate::turn::tool_output).unwrap_or_default()
 }
 
 fn inline(input: &Option<ToolInput>) -> Option<String> {

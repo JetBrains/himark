@@ -44,8 +44,8 @@ fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
 }
 
 use documents::entity_view::EditorIdView;
-use editor::editor_view::EditorCommand;
 use editor::editor::EditorId;
+use editor::editor_view::EditorCommand;
 use editor::reparse::ReparseOutcome;
 use editor::reparse::ReparseWork;
 use imba::{store::Store, View};
@@ -598,7 +598,12 @@ fn inlay_commands_route_by_layer() {
         0..1,
         editor::markup::Inlay::new(
             editor::markup::InlayMode::Above,
-            editor::editor_view::EditorView::input(100.0, store, ui, editor::embedded_fonts::source()),
+            editor::editor_view::EditorView::input(
+                100.0,
+                store,
+                ui,
+                editor::embedded_fonts::source(),
+            ),
         ),
         store,
         ui,
@@ -934,7 +939,8 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
 
     send(&mut store, EditorCommand::InsertText { text: "ф".into() });
     let in_flight = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1193,7 +1199,8 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
     assert_eq!(text, "gamma\n\n|   |   |\n| --- | --- |\n|   |   |");
 
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1281,8 +1288,8 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     );
     cell(&mut store, EditorCommand::Enter { soft: false });
     let text_of = |store: &Store| {
-        let document =
-            documents::OpenDocuments::document_ref(store, test_docs(), document_id).expect("document");
+        let document = documents::OpenDocuments::document_ref(store, test_docs(), document_id)
+            .expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert!(
@@ -1304,7 +1311,8 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     );
 
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1426,7 +1434,8 @@ fn breaking_the_delimiter_dissolves_the_widget() {
         documents::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1482,7 +1491,8 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
     }
 
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1559,8 +1569,8 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
         },
     );
     let text_of = |store: &Store| {
-        let document =
-            documents::OpenDocuments::document_ref(store, test_docs(), document_id).expect("document");
+        let document = documents::OpenDocuments::document_ref(store, test_docs(), document_id)
+            .expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert!(
@@ -1576,7 +1586,8 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     );
 
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1650,7 +1661,8 @@ fn a_faithful_reparse_still_carries_the_live_table() {
 
     send(&mut store, type_in_cell("X"));
     let outcome = ReparseWork::capture(
-        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
+        &documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
+            .expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -2386,7 +2398,10 @@ fn multi_caret_enter_continues_every_item() {
     );
     document.set_carets(
         editor,
-        editor::caret::MultiCaret::normalized(vec![editor::caret::Caret::at(3), editor::caret::Caret::at(7)], 0),
+        editor::caret::MultiCaret::normalized(
+            vec![editor::caret::Caret::at(3), editor::caret::Caret::at(7)],
+            0,
+        ),
     );
     let ui = ::editor::test_document::test_ui();
     document.perform(

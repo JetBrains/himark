@@ -6,8 +6,16 @@ use hikit::{panel::DynPanelView, panel::PanelView};
 use editor::editor_view::EditorCommand;
 
 use documents::entity_view::EditorIdView;
-use imba::{arena::Arena, constraints::Constraints, scroll::{ScrollCommand, ScrollView}, split::{Arrangement, Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
-
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    scroll::{ScrollCommand, ScrollView},
+    split::{Arrangement, Pane, SplitCommand, SplitView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 
 #[derive(Clone)]
 pub(crate) struct ClosedPanel;
@@ -184,8 +192,11 @@ impl Panel {
                 let location =
                     documents::OpenDocuments::location(store, view.documents(), view.document())?;
 
-                let document =
-                    documents::OpenDocuments::document_ref(store, view.documents(), view.document())?;
+                let document = documents::OpenDocuments::document_ref(
+                    store,
+                    view.documents(),
+                    view.document(),
+                )?;
                 if !document.has_outline() {
                     return None;
                 }
@@ -203,24 +214,32 @@ impl Panel {
         }
     }
 
-    pub(crate) fn navigation_location(&self, store: &Store) -> Option<hikit::navigation::NavigationLocation> {
+    pub(crate) fn navigation_location(
+        &self,
+        store: &Store,
+    ) -> Option<hikit::navigation::NavigationLocation> {
         match self {
             Self::Editor(pane) => {
                 let view = pane.content();
                 let location =
                     documents::OpenDocuments::location(store, view.documents(), view.document())?;
-                let document =
-                    documents::OpenDocuments::document_ref(store, view.documents(), view.document())?;
+                let document = documents::OpenDocuments::document_ref(
+                    store,
+                    view.documents(),
+                    view.document(),
+                )?;
 
                 if documents::is_scratch(&location) && document.revision() == 0 {
                     return None;
                 }
                 let caret = document.caret_byte(view.editor());
-                Some(hikit::navigation::NavigationLocation::new(hikit::navigation::EditorPlace {
-                    location,
-                    caret,
-                    scroll_y: pane.scroll_y(),
-                }))
+                Some(hikit::navigation::NavigationLocation::new(
+                    hikit::navigation::EditorPlace {
+                        location,
+                        caret,
+                        scroll_y: pane.scroll_y(),
+                    },
+                ))
             }
             Self::Plugin(view) => view.navigation_location_dyn(store),
         }
@@ -239,7 +258,8 @@ impl Panel {
                     return false;
                 };
                 let view = *pane.content();
-                if documents::OpenDocuments::location(store, view.documents(), view.document()).as_ref()
+                if documents::OpenDocuments::location(store, view.documents(), view.document())
+                    .as_ref()
                     != Some(&place.location)
                 {
                     return false;
@@ -307,11 +327,13 @@ impl View for Panel {
                 let anchor = match &command {
                     ScrollCommand::Content(EditorCommand::Viewport { width, anchor, .. }) => {
                         let view = pane.content();
-                        documents::OpenDocuments::document_ref(store, view.documents(), view.document())
-                            .map(|document| {
-                                (document.layout_width(view.editor()) - *width).abs() > 1.0
-                            })
-                            .unwrap_or(false)
+                        documents::OpenDocuments::document_ref(
+                            store,
+                            view.documents(),
+                            view.document(),
+                        )
+                        .map(|document| (document.layout_width(view.editor()) - *width).abs() > 1.0)
+                        .unwrap_or(false)
                     }
                     .then_some(*anchor),
                     _ => None,
@@ -324,9 +346,11 @@ impl View for Panel {
                 if cancels_reveal {
                     {
                         let view = *pane.content();
-                        if let Some(mut document) =
-                            documents::OpenDocuments::document(store, view.documents(), view.document())
-                        {
+                        if let Some(mut document) = documents::OpenDocuments::document(
+                            store,
+                            view.documents(),
+                            view.document(),
+                        ) {
                             document.cancel_reveal(view.editor());
                             documents::OpenDocuments::put_document(
                                 store,
@@ -385,10 +409,14 @@ impl View for Panel {
             let content: imba::ThunkBox<'a, PanelCommand> = match self {
                 Self::Editor(pane) => imba::ThunkBox::new(
                     arena,
-                    imba::layout::Layout::layout(pane.display(arena, store, ui), arena, constraints)
-                        .map(PanelCommand::Editor)
-                        .overlay_host(editor::sticky::HOST)
-                        .overlay_host(editor::scroll_stripe::HOST),
+                    imba::layout::Layout::layout(
+                        pane.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(PanelCommand::Editor)
+                    .overlay_host(editor::sticky::HOST)
+                    .overlay_host(editor::scroll_stripe::HOST),
                 ),
                 Self::Plugin(view) => imba::ThunkBox::new(
                     arena,
@@ -634,7 +662,8 @@ impl PaneSlot {
 
         let Some(point) = point else {
             if self.hover.open() {
-                if let Some(mut document) = documents::OpenDocuments::document(store, documents, id) {
+                if let Some(mut document) = documents::OpenDocuments::document(store, documents, id)
+                {
                     self.hover
                         .retract(store, ui, &mut document, fx, Self::wrap_editor);
                     documents::OpenDocuments::put_document(store, documents, id, document);
@@ -716,7 +745,6 @@ impl PaneSlot {
         );
         documents::OpenDocuments::put_document(store, documents, id, document);
     }
-
 }
 
 #[derive(Clone)]
@@ -1077,14 +1105,18 @@ impl View for WorkbenchNode {
                     let inset = window.divider_inset;
                     imba::ThunkBox::new(
                         arena,
-                        imba::layout::Layout::layout(split.display(arena, store, ui), arena, constraints)
-                            .map(|command| NodeCommand::Split(Box::new(command)))
-                            .paint_below(move |_arena, canvas, _| {
-                                let mut paint = skia_safe::Paint::default();
-                                paint.set_anti_alias(true);
-                                paint.set_color(color);
-                                canvas.draw_rect(divider.with_offset((-inset, 0.0)), &paint);
-                            }),
+                        imba::layout::Layout::layout(
+                            split.display(arena, store, ui),
+                            arena,
+                            constraints,
+                        )
+                        .map(|command| NodeCommand::Split(Box::new(command)))
+                        .paint_below(move |_arena, canvas, _| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_anti_alias(true);
+                            paint.set_color(color);
+                            canvas.draw_rect(divider.with_offset((-inset, 0.0)), &paint);
+                        }),
                     )
                 }
             };

@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use ahp_wire::fs::ClientDirectory;
-use ahp_wire::client::{LocationsAsk, ResourceUriMap};
-use himark_ahp_ext_types::search::SearchKind;
 use crate::{LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect};
+use ahp_wire::client::{LocationsAsk, ResourceUriMap};
+use ahp_wire::fs::ClientDirectory;
 use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
+use himark_ahp_ext_types::search::SearchKind;
 use imba::effect::EffectHandler;
 
 pub struct RouteSearchLocations {
@@ -75,7 +75,11 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
             }
             LspLocationsKind::Implementations => "textDocument/implementation",
         };
-        let channel = match client.locations.lsp_locations(session, method.to_owned(), params).await {
+        let channel = match client
+            .locations
+            .lsp_locations(session, method.to_owned(), params)
+            .await
+        {
             Ok(channel) => channel,
             Err(error) => {
                 tracing::warn!(target: "ahp_wire", %method, %error, "lsp/locations ask failed");

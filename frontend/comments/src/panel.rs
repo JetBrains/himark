@@ -5,10 +5,25 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use editor::{location::ResourceLocation, location::ResourceType};
+use hikit::{
+    forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
+    list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView,
+    tree_item::TreeListCommand,
+};
 use imba::list::ActivateTrigger;
-use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
 use imba::list::ListOps;
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::Effects,
+    event::{Event, EventResult, Key as InputKey},
+    leaf::leaf,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Rect, Size};
 
 use crate::view::comments_markup;
@@ -312,10 +327,8 @@ impl CommentsView {
                 let target = live_range(store, self.comments, &id)
                     .or(record.range.clone())
                     .unwrap_or(
-                        documents::text_ext::LineCol { line: 0, col: 0 }..documents::text_ext::LineCol {
-                            line: 0,
-                            col: 0,
-                        },
+                        documents::text_ext::LineCol { line: 0, col: 0 }
+                            ..documents::text_ext::LineCol { line: 0, col: 0 },
                     );
                 self.request = Some(ModalRequest::OpenAt {
                     location: record.location,

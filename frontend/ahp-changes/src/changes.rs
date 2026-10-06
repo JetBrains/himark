@@ -210,15 +210,13 @@ pub fn ensure_folder(
                 client: client.session.clone(),
                 session,
             })
-            .map(
-                move |result| {
-                    Verb::Dynamic(Arc::new(SessionLanded {
-                        home: landing.clone(),
-                        wire,
-                        result,
-                    }))
-                },
-            ),
+            .map(move |result| {
+                Verb::Dynamic(Arc::new(SessionLanded {
+                    home: landing.clone(),
+                    wire,
+                    result,
+                }))
+            }),
         );
     }
 }
@@ -606,12 +604,7 @@ impl imba::command::DynamicCommand for SessionLanded {
                     Changes::fold_error(store, changes, &folder, error);
                 }
                 Changes::nudge_all_in(store, changes);
-                crate::history::session_failed(
-                    store,
-                    history_wire,
-                    &self.home.session,
-                    error,
-                );
+                crate::history::session_failed(store, history_wire, &self.home.session, error);
             }
         }
     }
@@ -834,9 +827,7 @@ pub struct CatalogEntry {
     pub kind: String,
 }
 
-pub fn digest_catalog(
-    changesets: &[ahp_types::state::Changeset],
-) -> Vec<CatalogEntry> {
+pub fn digest_catalog(changesets: &[ahp_types::state::Changeset]) -> Vec<CatalogEntry> {
     changesets
         .iter()
         .filter(|entry| {

@@ -5,7 +5,6 @@ use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
 use std::sync::{Arc, Mutex};
 
-
 use ahp_docsync as docsync;
 use ahp_locations::find;
 use ahp_session::fsroute;
@@ -17,8 +16,8 @@ use ahp_wire::uris;
 
 use demo::demo_location;
 use himark::app::AppCommand;
-use himark::app_ext::AppExt;
 use himark::app::Application;
+use himark::app_ext::AppExt;
 use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, MouseButton};
@@ -130,7 +129,11 @@ fn register_agent_server(
     let id = app.register_client(client.clone());
     ahp_session::session::agents::Agents::seed(&mut app.store_mut(), id, name);
 
-    ahp_session::session::state::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
+    ahp_session::session::state::Hosts::install_uris(
+        &mut app.store_mut(),
+        id,
+        Arc::new(uris::FileUris),
+    );
     clients.record(id, client);
     id
 }
@@ -357,7 +360,8 @@ fn autostart_himark_host() -> Option<String> {
 }
 
 fn syntax_languages() -> editor::reparse::SyntaxLanguages {
-    static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> = std::sync::OnceLock::new();
+    static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> =
+        std::sync::OnceLock::new();
     LANGUAGES
         .get_or_init(|| {
             let mut languages = editor::reparse::SyntaxLanguages::new();
@@ -543,7 +547,9 @@ impl HimarkEngine {
                 inbox
                     .lock()
                     .expect("inbox")
-                    .push_back(AppCommand::FileChanged(documents::watch::Subscription(subscription)));
+                    .push_back(AppCommand::FileChanged(documents::watch::Subscription(
+                        subscription,
+                    )));
                 wake.fire();
             })
         }));
@@ -558,13 +564,12 @@ impl HimarkEngine {
             himark::higent::flows::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 Arc::new(move |store, url| {
-                    let client = ahp_wire::client::Client::of(Arc::new(
-                        ahp_wire::wire::WireHost::at(
+                    let client =
+                        ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::at(
                             handle.clone(),
                             Arc::clone(&connector),
                             url.to_owned(),
-                        ),
-                    ));
+                        )));
                     // Minted into the STORE IN HAND — this runs inside
                     // a batch, where the application's store is taken
                     // out; a mint through the app would be clobbered
@@ -574,7 +579,11 @@ impl HimarkEngine {
                         id = servers.mint(client.clone())
                     });
                     ahp_session::session::agents::Agents::seed(store, id, url.trim());
-                    ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
+                    ahp_session::session::state::Hosts::install_uris(
+                        store,
+                        id,
+                        Arc::new(uris::FileUris),
+                    );
                     clients.record(id, client);
                     Some(id)
                 }),
@@ -758,7 +767,8 @@ impl HimarkEngine {
         height: f32,
         _scale: f32,
     ) -> bool {
-        self.app.draw_window_sized(wid(window), canvas, Size::new(width, height))
+        self.app
+            .draw_window_sized(wid(window), canvas, Size::new(width, height))
     }
 
     pub fn record_latency(&mut self, now_secs: f64) {
@@ -1070,7 +1080,8 @@ impl HimarkEngine {
             self.app
                 .register_command(Arc::new(himark::hichanges::ToggleChangesView));
 
-            self.app.register_command(Arc::new(himark::watch::ReloadDocument));
+            self.app
+                .register_command(Arc::new(himark::watch::ReloadDocument));
             self.app
                 .register_command(Arc::new(himark::hichanges::RefetchChanges::default()));
             self.app
@@ -1084,24 +1095,23 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 });
-            self.app.register_handler::<ahp_lsp::LspCompletionEffect>(
-                ahp_lsp::CompletionRoute {
+            self.app
+                .register_handler::<ahp_lsp::LspCompletionEffect>(ahp_lsp::CompletionRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
-                },
-            );
-            self.app.register_handler::<documents::hover::LspHoverEffect>(
-                ahp_lsp::HoverRoute {
+                });
+            self.app
+                .register_handler::<documents::hover::LspHoverEffect>(ahp_lsp::HoverRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
-                },
-            );
-            self.app.register_handler::<ahp_locations::LspLocationsEffect>(
-                ahp_locations::routes::RouteLspLocations {
-                    directory: Arc::clone(&self.clients),
-                    uris: Arc::clone(&self.resource_uris),
-                },
-            );
+                });
+            self.app
+                .register_handler::<ahp_locations::LspLocationsEffect>(
+                    ahp_locations::routes::RouteLspLocations {
+                        directory: Arc::clone(&self.clients),
+                        uris: Arc::clone(&self.resource_uris),
+                    },
+                );
 
             editor::change_sink::InstalledChangeSink::install(
                 &mut self.app.store_mut(),
@@ -1132,20 +1142,21 @@ impl HimarkEngine {
                 .register_editor_command(Arc::new(hiscript::plugin::RunScript));
             let caller = self.app.effect_caller();
             self.app
-                .register_handler::<hiscript::plugin::RunScriptEffect>(hiscript::plugin::RunScriptHandler {
-                    caller,
-                });
+                .register_handler::<hiscript::plugin::RunScriptEffect>(
+                    hiscript::plugin::RunScriptHandler { caller },
+                );
         }
         if capabilities.list_directory && !installed.list_directory {
             self.app
                 .register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
                     directory: Arc::clone(&self.clients),
                 });
-            self.app.register_handler::<ahp_locations::SearchLocationsEffect>(
-                ahp_locations::routes::RouteSearchLocations {
-                    directory: Arc::clone(&self.clients),
-                },
-            );
+            self.app
+                .register_handler::<ahp_locations::SearchLocationsEffect>(
+                    ahp_locations::routes::RouteSearchLocations {
+                        directory: Arc::clone(&self.clients),
+                    },
+                );
             self.app
                 .register_command(Arc::new(himark::hisearch::ToggleSearchView));
             self.app
@@ -1203,7 +1214,11 @@ impl HimarkEngine {
         self.host = Some(bridge);
     }
 
-    pub fn host_picked(&mut self, request: u64, locations: Vec<editor::location::ResourceLocation>) -> bool {
+    pub fn host_picked(
+        &mut self,
+        request: u64,
+        locations: Vec<editor::location::ResourceLocation>,
+    ) -> bool {
         self.host
             .as_ref()
             .is_some_and(|host| host.requests.fulfill(request, Box::new(locations)))
@@ -1233,9 +1248,9 @@ impl HimarkEngine {
             .inbox
             .lock()
             .expect("inbox")
-            .push_back(himark::app::AppCommand::FileChanged(documents::watch::Subscription(
-                subscription,
-            )));
+            .push_back(himark::app::AppCommand::FileChanged(
+                documents::watch::Subscription(subscription),
+            ));
         self.shared.wake.fire();
         true
     }

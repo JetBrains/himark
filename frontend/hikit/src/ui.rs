@@ -7,7 +7,9 @@
 //! (`ListRow`, `Surface`) and pick roles; a bare f32 in a view is a
 //! smell.
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, layout::LayoutExt as _, ui::UiCtx};
+use imba::{
+    arena::Arena, constraints::Constraints, layout::LayoutExt as _, store::Store, ui::UiCtx,
+};
 use skia_safe::{Color, Paint, Rect};
 
 /// The spacing scale — every inset and gap is one of these.
@@ -378,14 +380,19 @@ mod tests {
         let ui = UiCtx::dont_use_too_slow();
         // Warm the ctx the way the app's long-lived one is warm: the
         // first typeface resolution is a boot cost, not a push cost.
-        let mut warmup: imba::list::ListSlice<crate::forest::TreeRow, u64> = imba::list::ListSlice::new();
+        let mut warmup: imba::list::ListSlice<crate::forest::TreeRow, u64> =
+            imba::list::ListSlice::new();
         warmup.push_keyed(
             u64::MAX,
-            crate::tree_item::TreeItemView::leaf(crate::tree_item::TreeLabel::new("warmup".to_owned(), true, false), 1),
+            crate::tree_item::TreeItemView::leaf(
+                crate::tree_item::TreeLabel::new("warmup".to_owned(), true, false),
+                1,
+            ),
             &store,
             &ui,
         );
-        let mut slice: imba::list::ListSlice<crate::forest::TreeRow, u64> = imba::list::ListSlice::new();
+        let mut slice: imba::list::ListSlice<crate::forest::TreeRow, u64> =
+            imba::list::ListSlice::new();
         let mut worst = 0.0f64;
         let mut first = 0.0f64;
         let started = std::time::Instant::now();

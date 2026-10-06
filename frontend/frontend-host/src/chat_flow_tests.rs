@@ -73,7 +73,6 @@ impl Script {
             .insert(uri.to_owned(), text);
     }
 
-
     fn sent(&self) -> Vec<(String, String)> {
         self.sent.lock().expect("sent").clone()
     }
@@ -154,7 +153,10 @@ impl ahp_wire::client::SessionClient for ScriptedSeat {
         })))
     }
 
-    fn poll_session(&self, _session: SessionUri) -> ahp_wire::client::ClientFuture<Vec<StateAction>> {
+    fn poll_session(
+        &self,
+        _session: SessionUri,
+    ) -> ahp_wire::client::ClientFuture<Vec<StateAction>> {
         Box::pin(std::future::pending())
     }
 
@@ -388,9 +390,7 @@ fn long_turn_stream(turn: &str) -> Vec<Vec<StateAction>> {
             tool_call_id: "tool-1".to_owned(),
             result: ToolCallResult {
                 success: true,
-                past_tense_message: ahp_types::common::StringOrMarkdown::Plain(
-                    "ran it".to_owned(),
-                ),
+                past_tense_message: ahp_types::common::StringOrMarkdown::Plain("ran it".to_owned()),
                 content: None,
                 structured_content: None,
                 error: None,
@@ -463,7 +463,14 @@ impl himark::commands::WindowedCommand for OpenScripted {
         window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        himark::higent::open_session::open_session(store, window, self.host, self.session.clone(), true, fx);
+        himark::higent::open_session::open_session(
+            store,
+            window,
+            self.host,
+            self.session.clone(),
+            true,
+            fx,
+        );
     }
 }
 
@@ -474,9 +481,9 @@ fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Ch
     let window = *engine.app.window_ids().first().expect("a window");
     himark::workspace::entity_state(
         workbench::window::Windows::window_ref(engine.app.store(), window)
-        .expect("the window entity"),
-        )
-        .chats()
+            .expect("the window entity"),
+    )
+    .chats()
 }
 
 fn chat_record(engine: &HimarkEngine) -> Option<ahp_chat::chat::ChatPanel> {
@@ -528,13 +535,15 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
-        workbench::window::WindowId::from_raw(window),
-        Arc::new(OpenScripted {
-            host,
-            session: SessionUri::new(SESSION),
-        }),
-    )]));
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            workbench::window::WindowId::from_raw(window),
+            Arc::new(OpenScripted {
+                host,
+                session: SessionUri::new(SESSION),
+            }),
+        )]));
     settle_until(&mut engine, window, "the scripted chat came up", |engine| {
         chat_record(engine).is_some_and(|chat| chat.ready())
             && transcript(engine).len() == expected_turns
@@ -593,13 +602,15 @@ fn a_scripted_stream_lands_whole() {
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
-        workbench::window::WindowId::from_raw(second),
-        Arc::new(OpenScripted {
-            host: script_host(&engine),
-            session: SessionUri::new(SESSION),
-        }),
-    )]));
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            workbench::window::WindowId::from_raw(second),
+            Arc::new(OpenScripted {
+                host: script_host(&engine),
+                session: SessionUri::new(SESSION),
+            }),
+        )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(second, surface.canvas(), 1100.0, 800.0, 1.0);
     settle(&mut engine);
@@ -1063,28 +1074,26 @@ fn edit_tool_call(turn: &str, step: usize) -> Vec<StateAction> {
             tool_call_id: tool,
             result: ToolCallResult {
                 success: true,
-                past_tense_message: ahp_types::common::StringOrMarkdown::Plain(
-                    format!("edited file{step}.rs"),
-                ),
-                content: Some(vec![
-                    ahp_types::state::ToolResultContent::FileEdit(
-                        ahp_chat::file_edit::FileEditRefs {
-                            before: Some(ahp_chat::file_edit::snapshot(
-                                &format!("src/file{step}.rs"),
-                                &format!("ahp-content:/before-{step}"),
-                            )),
-                            after: Some(ahp_chat::file_edit::snapshot(
-                                &format!("src/file{step}.rs"),
-                                &format!("ahp-content:/after-{step}"),
-                            )),
-                            counts: ahp_chat::file_edit::DiffCounts {
-                                added: Some(1),
-                                removed: Some(1),
-                            },
-                        }
-                        .to_content(),
-                    ),
-                ]),
+                past_tense_message: ahp_types::common::StringOrMarkdown::Plain(format!(
+                    "edited file{step}.rs"
+                )),
+                content: Some(vec![ahp_types::state::ToolResultContent::FileEdit(
+                    ahp_chat::file_edit::FileEditRefs {
+                        before: Some(ahp_chat::file_edit::snapshot(
+                            &format!("src/file{step}.rs"),
+                            &format!("ahp-content:/before-{step}"),
+                        )),
+                        after: Some(ahp_chat::file_edit::snapshot(
+                            &format!("src/file{step}.rs"),
+                            &format!("ahp-content:/after-{step}"),
+                        )),
+                        counts: ahp_chat::file_edit::DiffCounts {
+                            added: Some(1),
+                            removed: Some(1),
+                        },
+                    }
+                    .to_content(),
+                )]),
                 structured_content: None,
                 error: None,
             },

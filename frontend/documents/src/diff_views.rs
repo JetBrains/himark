@@ -118,9 +118,9 @@ pub fn gather_diff_view(
             None,
         )?,
     };
-    Some(editor::unified_diff::UnifiedDiffView::new(editor::split_diff::SplitDiffView::new(
-        left_view, right_view, state,
-    )))
+    Some(editor::unified_diff::UnifiedDiffView::new(
+        editor::split_diff::SplitDiffView::new(left_view, right_view, state),
+    ))
 }
 
 /// Perform one command against a STORE-HELD diff view — the
@@ -205,7 +205,9 @@ pub fn sync_diff_dressing(
             documents,
             ui,
             id,
-            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
+            editor::unified_diff::UnifiedDiffCommand::Split(
+                editor::split_diff::SplitDiffCommand::Resync,
+            ),
             fx,
         );
     }
@@ -281,7 +283,9 @@ pub fn rewrap_pair(
     let inline = view.inline_editor;
     fx.scope(
         |c: editor::editor_view::EditorCommand| {
-            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Left(c))
+            editor::unified_diff::UnifiedDiffCommand::Split(
+                editor::split_diff::SplitDiffCommand::Left(c),
+            )
         },
         |fx| {
             view.split
@@ -292,7 +296,9 @@ pub fn rewrap_pair(
     );
     fx.scope(
         |c: editor::editor_view::EditorCommand| {
-            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Right(c))
+            editor::unified_diff::UnifiedDiffCommand::Split(
+                editor::split_diff::SplitDiffCommand::Right(c),
+            )
         },
         |fx| {
             view.split
@@ -303,7 +309,9 @@ pub fn rewrap_pair(
     );
     if let Some(inline) = inline {
         fx.scope(
-            |c: editor::editor_view::EditorCommand| editor::unified_diff::UnifiedDiffCommand::Inline(c),
+            |c: editor::editor_view::EditorCommand| {
+                editor::unified_diff::UnifiedDiffCommand::Inline(c)
+            },
             |fx| {
                 view.split
                     .right
@@ -315,7 +323,9 @@ pub fn rewrap_pair(
     view.perform(
         store,
         ui,
-        editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
+        editor::unified_diff::UnifiedDiffCommand::Split(
+            editor::split_diff::SplitDiffCommand::Resync,
+        ),
         fx,
     );
     OpenDocuments::put_document(
@@ -408,27 +418,32 @@ pub fn build_diff_view(
     let target_markup = OpenDocuments::document_ref(store, documents, right)
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
 
-    let mut open =
-        |document_id: crate::DocumentId, marks: editor::markup::MarkupId| -> Option<crate::entity_view::EditorIdView> {
-            let mut document = OpenDocuments::document(store, documents, document_id)?;
+    let mut open = |document_id: crate::DocumentId,
+                    marks: editor::markup::MarkupId|
+     -> Option<crate::entity_view::EditorIdView> {
+        let mut document = OpenDocuments::document(store, documents, document_id)?;
 
-            let editor = document.add_editor(
-                half_width,
-                None,
-                editor::document::EditorBuild::Bounded,
-                &[marks],
-                store,
-                ui,
-                &fonts,
-                &theme,
-                &mut imba::effect::Batch::new().effects(),
-            );
+        let editor = document.add_editor(
+            half_width,
+            None,
+            editor::document::EditorBuild::Bounded,
+            &[marks],
+            store,
+            ui,
+            &fonts,
+            &theme,
+            &mut imba::effect::Batch::new().effects(),
+        );
 
-            document.manage_repairs_in_pair(editor);
+        document.manage_repairs_in_pair(editor);
 
-            OpenDocuments::put_document(store, documents, document_id, document);
-            Some(crate::entity_view::EditorIdView::new(documents, document_id, editor))
-        };
+        OpenDocuments::put_document(store, documents, document_id, document);
+        Some(crate::entity_view::EditorIdView::new(
+            documents,
+            document_id,
+            editor,
+        ))
+    };
     let (Some(left_view), Some(right_view)) =
         (open(left, handle.base_markup), open(right, target_markup))
     else {

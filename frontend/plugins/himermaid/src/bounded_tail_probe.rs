@@ -52,7 +52,9 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     let ui = ::editor::test_document::test_ui();
 
     let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
-        .reparse(editor::reparse::ReparseWork::capture(&view.document, registry.clone()).expect("parse"));
+        .reparse(
+            editor::reparse::ReparseWork::capture(&view.document, registry.clone()).expect("parse"),
+        );
     imba::View::perform(
         &mut view,
         &mut store,

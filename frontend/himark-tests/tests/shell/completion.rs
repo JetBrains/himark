@@ -1,12 +1,11 @@
 #![allow(unused_imports)]
 use super::*;
 
-
 #[test]
 fn the_at_completion_opens_finds_and_picks() {
-    use himark::test_driver;
     use himark::app::AppFonts;
     use himark::app::Application;
+    use himark::test_driver;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
@@ -21,7 +20,10 @@ fn the_at_completion_opens_finds_and_picks() {
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<ahp_locations::FindEffect> for StubFind {
-        async fn handle(&self, effect: ahp_locations::FindEffect) -> Vec<editor::location::ResourceLocation> {
+        async fn handle(
+            &self,
+            effect: ahp_locations::FindEffect,
+        ) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
             let file = |path: &[&str]| {
                 editor::location::ResourceLocation::new(
@@ -48,7 +50,8 @@ fn the_at_completion_opens_finds_and_picks() {
     );
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/completion");
-    let chats = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &session).chats();
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &session).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -56,8 +59,9 @@ fn the_at_completion_opens_finds_and_picks() {
         session.session.clone(),
         chats,
         uri.clone(),
-            ahp_chat::chats::Chats::catalog(app.store(), chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
-        );
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
+    );
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     // Retire the launch scratch: at this width the chat is visible
     // only over a vacant tree, and the composer needs the screen.
@@ -152,14 +156,13 @@ fn the_at_completion_opens_finds_and_picks() {
     );
 }
 
-
 #[test]
 fn the_at_completion_serves_markdown_panes() {
-    use himark::test_driver;
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Application;
     use himark::app::OpenedDocument;
+    use himark::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
@@ -175,7 +178,10 @@ fn the_at_completion_serves_markdown_panes() {
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<ahp_locations::FindEffect> for StubFind {
-        async fn handle(&self, effect: ahp_locations::FindEffect) -> Vec<editor::location::ResourceLocation> {
+        async fn handle(
+            &self,
+            effect: ahp_locations::FindEffect,
+        ) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
             vec![editor::location::ResourceLocation::new(
                 editor::location::ResourceType::document(),
@@ -204,12 +210,12 @@ fn the_at_completion_serves_markdown_panes() {
             String::new()
         }
         fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
             himark::app::switch_session(store, window, self.0.clone(), fx)
         }
     }
@@ -248,17 +254,21 @@ fn the_at_completion_serves_markdown_panes() {
     let completion_open = |app: &Application| -> bool {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
-                    .is_some_and(|services| services.completion.open())
+                himark::pane_services::EditorServices::of_ref(
+                    entity.workbench().root.focused_slot(),
+                )
+                .is_some_and(|services| services.completion.open())
             })
             .unwrap_or(false)
     };
     let rows = |app: &Application| -> Vec<String> {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
-                    .map(|services| services.completion.row_labels())
-                    .unwrap_or_default()
+                himark::pane_services::EditorServices::of_ref(
+                    entity.workbench().root.focused_slot(),
+                )
+                .map(|services| services.completion.row_labels())
+                .unwrap_or_default()
             })
             .unwrap_or_default()
     };
@@ -347,14 +357,13 @@ fn the_at_completion_serves_markdown_panes() {
     );
 }
 
-
 #[test]
 fn lsp_completion_serves_code_panes() {
-    use himark::test_driver;
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Application;
     use himark::app::OpenedDocument;
+    use himark::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
@@ -428,17 +437,21 @@ fn lsp_completion_serves_code_panes() {
     let completion_open = |app: &Application| -> bool {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
-                    .is_some_and(|services| services.completion.open())
+                himark::pane_services::EditorServices::of_ref(
+                    entity.workbench().root.focused_slot(),
+                )
+                .is_some_and(|services| services.completion.open())
             })
             .unwrap_or(false)
     };
     let rows = |app: &Application| -> Vec<String> {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
-                    .map(|services| services.completion.row_labels())
-                    .unwrap_or_default()
+                himark::pane_services::EditorServices::of_ref(
+                    entity.workbench().root.focused_slot(),
+                )
+                .map(|services| services.completion.row_labels())
+                .unwrap_or_default()
             })
             .unwrap_or_default()
     };

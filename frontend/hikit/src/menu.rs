@@ -1,7 +1,18 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{constraints::Constraints, effect::Effects, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListOps, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    constraints::Constraints,
+    effect::Effects,
+    event::{Event, EventResult, Key},
+    leaf::leaf,
+    list::{ListCommand, ListOps, ListSlice, ListView},
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::{Paint, Point, Rect, Size};
 
 use crate::combo::{measured, ComboItem, ComboOption};

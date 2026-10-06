@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use crate::app::AppCommand;
 use crate::app::Application;
-use crate::commands::WindowedCommand;
-use hikit::modal::ModalView;
 use crate::app::OpenedDocument;
+use crate::commands::WindowedCommand;
 use editor::document::Document;
+use hikit::modal::ModalView;
 
 pub trait AppExt {
     fn perform_command(&mut self, command: AppCommand) -> bool;
@@ -42,9 +42,17 @@ pub trait AppExt {
             + 'static,
     ) -> bool;
 
-    fn open_panel(&mut self, window: ::workbench::window::WindowId, panel: Box<dyn hikit::panel::DynPanelView>) -> bool;
+    fn open_panel(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        panel: Box<dyn hikit::panel::DynPanelView>,
+    ) -> bool;
 
-    fn open_modal(&mut self, window: ::workbench::window::WindowId, modal: Box<dyn ModalView>) -> bool;
+    fn open_modal(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        modal: Box<dyn ModalView>,
+    ) -> bool;
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool;
 
@@ -142,11 +150,19 @@ impl AppExt for Application {
         })
     }
 
-    fn open_panel(&mut self, window: ::workbench::window::WindowId, panel: Box<dyn hikit::panel::DynPanelView>) -> bool {
+    fn open_panel(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        panel: Box<dyn hikit::panel::DynPanelView>,
+    ) -> bool {
         self.perform_command(AppCommand::OpenPanel(window, panel))
     }
 
-    fn open_modal(&mut self, window: ::workbench::window::WindowId, modal: Box<dyn ModalView>) -> bool {
+    fn open_modal(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        modal: Box<dyn ModalView>,
+    ) -> bool {
         self.perform_command(AppCommand::OpenModal(window, modal))
     }
 

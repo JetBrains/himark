@@ -12,10 +12,17 @@ macro_rules! fx {
     };
 }
 
-use crate::{document::Document, document_layout::DocumentLayout, editor_view::EditorView, markup::BlockStyle, shaped_line::line_paragraph, test_document::{
+use crate::{
+    document::Document,
+    document_layout::DocumentLayout,
+    editor_view::EditorView,
+    markup::BlockStyle,
+    shaped_line::line_paragraph,
+    test_document::{
         fenced_code_document, header_marks, hidden_document, list_document, marked_document,
         plain_document,
-    }};
+    },
+};
 
 fn test_theme() -> crate::theme::Theme {
     crate::theme::Theme::embedded()
@@ -1328,10 +1335,10 @@ fn a_bounded_editor_paints_only_its_fragment() {
 
 mod injected_syntax {
     use super::{test_fonts, test_theme};
-    use crate::markup::Syntax;
     use crate::markup::Markup;
-    use crate::theme::StyleId;
+    use crate::markup::Syntax;
     use crate::test_document::plain_document;
+    use crate::theme::StyleId;
     use operation::operation::Operation;
 
     fn payload(tokens: &[(std::ops::Range<u32>, StyleId)]) -> Syntax {
@@ -3194,8 +3201,14 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let document = plain_document("foo bar foo");
-    let mut view =
-        crate::editor_view::EditorView::complete(document, 600.0, store, ui, &test_fonts(), &test_theme());
+    let mut view = crate::editor_view::EditorView::complete(
+        document,
+        600.0,
+        store,
+        ui,
+        &test_fonts(),
+        &test_theme(),
+    );
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
 
@@ -3590,7 +3603,8 @@ mod folding {
             key: crate::markup::IntervalId(0),
             value: (),
         }]);
-        Document::new(text::text::Text::from_string_exact(source), Markup::new()).with_syntax(syntax, &[])
+        Document::new(text::text::Text::from_string_exact(source), Markup::new())
+            .with_syntax(syntax, &[])
     }
 
     const SOURCE: &str = "head\nfn demo() {\n    body\n}\ntail\n";
@@ -3981,7 +3995,9 @@ mod folding {
             },
             skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
-        let imba::event::EventResult::Command(crate::editor_view::EditorCommand::ToggleFold { range }) = result
+        let imba::event::EventResult::Command(crate::editor_view::EditorCommand::ToggleFold {
+            range,
+        }) = result
         else {
             panic!("the gutter click answers the toggle");
         };
@@ -4106,7 +4122,8 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
+        let operation =
+            myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         let viewport = build(&document, editor, Some(id));
@@ -4148,7 +4165,8 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
+        let operation =
+            myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         // Typing ABOVE the standing hunk shifts its stripe the same
@@ -4219,7 +4237,10 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::text::Text::from_string_exact("one\n"), document.text());
+        let operation = myersdiff::diff(
+            &text::text::Text::from_string_exact("one\n"),
+            document.text(),
+        );
         let id = document.add_diff(operation, 0);
         let unjoined = build(&document, editor, None);
         assert!(unjoined.lines.iter().all(|line| line.diff.is_none()));
@@ -4489,7 +4510,10 @@ mod before_inlay_presentation {
         }
     }
 
-    fn perform(view: &mut crate::editor_view::EditorView, command: crate::editor_view::EditorCommand) {
+    fn perform(
+        view: &mut crate::editor_view::EditorView,
+        command: crate::editor_view::EditorCommand,
+    ) {
         use imba::View;
         let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
@@ -4497,7 +4521,10 @@ mod before_inlay_presentation {
     }
 
     fn toggled(view: &mut crate::editor_view::EditorView, at: u32) -> crate::markup::InlayKey {
-        perform(view, crate::editor_view::EditorCommand::ToggleBeforeInlay { at });
+        perform(
+            view,
+            crate::editor_view::EditorCommand::ToggleBeforeInlay { at },
+        );
         let cards = view.document.before_inlay_views(view.editor);
         assert_eq!(cards.len(), 1, "one card standing");
         cards[0].0
@@ -4822,8 +4849,14 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
     let fonts = test_fonts();
     let theme = test_theme();
     let source: String = (0..200).map(|i| format!("line number {i}\n")).collect();
-    let mut view =
-        crate::editor_view::EditorView::complete(plain_document(&source), 400.0, store, ui, &fonts, &theme);
+    let mut view = crate::editor_view::EditorView::complete(
+        plain_document(&source),
+        400.0,
+        store,
+        ui,
+        &fonts,
+        &theme,
+    );
     let editor = view.editor;
 
     let before_height = view.document.content_height(editor);
@@ -4996,7 +5029,8 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         crate::markup::Markup::new(),
     )
     .with_syntax(syntax, &[]);
-    let mut view = crate::editor_view::EditorView::complete(document, 400.0, store, ui, &fonts, &theme);
+    let mut view =
+        crate::editor_view::EditorView::complete(document, 400.0, store, ui, &fonts, &theme);
 
     view.gutter_width = 100.0;
     let editor = view.editor;
@@ -5312,7 +5346,11 @@ fn deleting_the_text_drops_its_markup_intervals() {
     let source = "x".repeat(10_000);
     let text = text::text::Text::from_string_exact(&source);
     let mut view = text.view();
-    markup.edit(&operation::operation::Operation::delete_at(0, &source), &mut view, 0);
+    markup.edit(
+        &operation::operation::Operation::delete_at(0, &source),
+        &mut view,
+        0,
+    );
 
     assert_eq!(markup.query_count(), 0, "no corpse is left to walk");
     assert_eq!(

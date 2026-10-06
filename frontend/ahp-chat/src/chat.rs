@@ -14,10 +14,6 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use ahp_wire::client::TurnsPage;
-use ahp_wire::effects::{
-    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect,
-};
 use ahp_types::actions::{
     ChatPendingMessageRemovedAction, ChatToolCallConfirmedAction, StateAction,
 };
@@ -25,9 +21,28 @@ use ahp_types::state::{
     ChatState, ConfirmationOption, ConfirmationOptionKind, PendingMessageKind,
     ToolCallConfirmationReason, ToolInput,
 };
+use ahp_wire::client::TurnsPage;
+use ahp_wire::effects::{
+    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect,
+};
 use editor::env;
 use hikit::fonts::ui_text_font;
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::{AnyEffect, CancellationToken, Effects},
+    event::{Event, EventResult, Key},
+    layout::Layout as _,
+    layout::LayoutExt as _,
+    leaf::leaf,
+    list::{ListCommand, ListSlice, ListView},
+    scroll::{ScrollCommand, ScrollView},
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::cell::{Cell, CellCommand};
@@ -174,8 +189,12 @@ impl View for ChatRow {
                     }))
                 }
                 ChatRow::Turn(turn) => Either::Turn(
-                    imba::layout::Layout::layout(turn.display(arena, store, ui), arena, constraints)
-                        .map(RowCommand::Turn),
+                    imba::layout::Layout::layout(
+                        turn.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(RowCommand::Turn),
                 ),
             },
         )
@@ -1873,7 +1892,8 @@ impl ChatPanel {
         store: &'a Store,
         ui: &'a UiCtx,
         id: ChatViewId,
-    ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a> {
+    ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a>
+    {
         let view = self.views.get(&id)?;
         Some(imba::layout::laid(
             move |_arena: &'a Arena, constraints: Constraints| {
@@ -2467,10 +2487,12 @@ impl ChatView {
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> Option<ComposerCommand> {
         use imba::scroll::ScrollCommand;
-        let ComposerCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
-            key,
-            command: inlay,
-        })) = command
+        let ComposerCommand::Editor(ScrollCommand::Content(
+            ::editor::editor_view::EditorCommand::Inlay {
+                key,
+                command: inlay,
+            },
+        )) = command
         else {
             return Some(command);
         };
@@ -2640,7 +2662,9 @@ fn cell_location() -> editor::location::ResourceLocation {
 fn redress(spec: &CellSpec) -> Vec<CellCommand> {
     match spec {
         CellSpec::Text(_, text) => {
-            vec![CellCommand::Rewrite(text::text::Text::from_string_exact(text))]
+            vec![CellCommand::Rewrite(text::text::Text::from_string_exact(
+                text,
+            ))]
         }
         // ADD, not Face: a call the group already holds takes it as a
         // face refresh, a call that just joined the run splices in.
@@ -2719,7 +2743,9 @@ fn peeled_open_file(command: &RowsCommand) -> Option<String> {
 #[derive(Clone)]
 pub struct OpenEditedRoad(
     pub  std::sync::Arc<
-        dyn Fn(&mut Store, ahp_wire::client::HostId, ahp_wire::client::SessionUri, String) + Send + Sync,
+        dyn Fn(&mut Store, ahp_wire::client::HostId, ahp_wire::client::SessionUri, String)
+            + Send
+            + Sync,
     >,
 );
 

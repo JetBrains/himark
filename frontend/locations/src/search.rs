@@ -9,7 +9,17 @@
 
 use std::sync::Arc;
 
-use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key as InputKey}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    event::{Event, EventResult, Key as InputKey},
+    layout::Layout as _,
+    layout::LayoutExt as _,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View,
+};
 use skia_safe::Size;
 
 use crate::views::locations_forest;
@@ -17,9 +27,9 @@ use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, Locatio
 use editor::{editor_view::EditorCommand, editor_view::EditorView};
 use hikit::modal::ModalRequest;
 use hikit::modal::RequestSlot;
-use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
 use hikit::{forest::ForestList, forest::ForestSearcher};
 use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
+use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
 use imba::list::{ActivateTrigger, ListOps};
 
 const MIN_QUERY: usize = 2;
@@ -718,7 +728,8 @@ impl hikit::modal::ModalView for SearchView {
 fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) -> EditorView {
     let mut markup = editor::markup::Markup::new();
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
-    let document = editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
+    let document =
+        editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let fonts = hikit::fonts::source();
     let mut input = EditorView::of_document(
         document,

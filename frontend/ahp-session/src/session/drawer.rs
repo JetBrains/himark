@@ -3,19 +3,32 @@
 
 use std::sync::Arc;
 
-use ahp_wire::client::SessionUri;
+use ahp_types::state::SessionSummary;
 use ahp_wire::client::HostId;
-use imba::list::ActivateTrigger;
+use ahp_wire::client::SessionUri;
+use hikit::forest::TreeRow;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::tree_item::TreeLabel;
 use hikit::tree_item::TreeListCommand;
-use hikit::forest::TreeRow;
-use ahp_types::state::SessionSummary;
+use imba::list::ActivateTrigger;
 use imba::list::ListOps;
-use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use imba::{
+    arena::Arena,
+    constraints::Constraints,
+    container::container,
+    effect::Effects,
+    event::{Event, EventResult, Key as InputKey},
+    leaf::leaf,
+    list::{ListSlice, ListView},
+    scroll::ScrollView,
+    store::Store,
+    thunk_ext::ThunkExt,
+    ui::UiCtx,
+    View, Widget,
+};
 use skia_safe::{Rect, Size};
 
 use super::agents::Agents;
@@ -143,8 +156,7 @@ pub struct DrawerAsks {
     /// highlight-and-land walk.
     pub open_session: Arc<dyn Fn(&Store) -> Option<ahp_wire::SessionId> + Send + Sync>,
     /// Open an existing session row.
-    pub open_row:
-        Arc<dyn Fn(HostId, SessionUri) -> imba::command::Verb + Send + Sync>,
+    pub open_row: Arc<dyn Fn(HostId, SessionUri) -> imba::command::Verb + Send + Sync>,
     /// Start a NEW session on a host.
     pub new_session: Arc<dyn Fn(&Store, HostId) -> imba::command::Verb + Send + Sync>,
     /// Submit an add-host URL.
@@ -155,7 +167,9 @@ impl AgentsPanel {
     pub fn open(store: &Store, ui: &UiCtx, asks: Arc<DrawerAsks>) -> Self {
         let panel = Self {
             list: ListKeyboardController::searchable(
-                ScrollView::new(ListView::empty().with_selection(hikit::rows::selection_style(store))),
+                ScrollView::new(
+                    ListView::empty().with_selection(hikit::rows::selection_style(store)),
+                ),
                 SessionSearcher,
                 store,
                 ui,
@@ -226,8 +240,12 @@ impl AgentsPanel {
             };
             slice.push_keyed(
                 AgentKey::Server(server),
-                hikit::tree_item::TreeItemView::branch(TreeLabel::new(label, false, false), 0, expanded)
-                    .toggling_on_body(),
+                hikit::tree_item::TreeItemView::branch(
+                    TreeLabel::new(label, false, false),
+                    0,
+                    expanded,
+                )
+                .toggling_on_body(),
                 store,
                 ui,
             );
@@ -280,10 +298,14 @@ impl AgentsPanel {
                         }
                     }
                     for (_, sessions) in groups.iter_mut() {
-                        sessions.sort_by_key(|summary| std::cmp::Reverse(summary::modified_stamp(summary)));
+                        sessions.sort_by_key(|summary| {
+                            std::cmp::Reverse(summary::modified_stamp(summary))
+                        });
                     }
                     groups.sort_by_key(|(_, sessions)| {
-                        std::cmp::Reverse(sessions.first().map(|first| summary::modified_stamp(first)))
+                        std::cmp::Reverse(
+                            sessions.first().map(|first| summary::modified_stamp(first)),
+                        )
                     });
                     for (folder, sessions) in groups {
                         let depth = match &folder {
@@ -293,7 +315,11 @@ impl AgentsPanel {
                                 slice.push_keyed(
                                     AgentKey::Folder(server, folder.clone()),
                                     hikit::tree_item::TreeItemView::branch(
-                                        TreeLabel::new(super::folders::folders_label(folder), false, false),
+                                        TreeLabel::new(
+                                            super::folders::folders_label(folder),
+                                            false,
+                                            false,
+                                        ),
                                         1,
                                         expanded,
                                     )
@@ -341,7 +367,10 @@ impl AgentsPanel {
         }
         slice.push_keyed(
             AgentKey::AddHost,
-            hikit::tree_item::TreeItemView::leaf(TreeLabel::new("+ Add Host…".to_owned(), true, false), 0),
+            hikit::tree_item::TreeItemView::leaf(
+                TreeLabel::new("+ Add Host…".to_owned(), true, false),
+                0,
+            ),
             store,
             ui,
         );
@@ -749,8 +778,7 @@ impl View for AgentsPanel {
             );
             overlay.place(0.0, 0.0, keymap);
 
-            let boot =
-                self.seen != Some(super::state::Hosts::generation(store));
+            let boot = self.seen != Some(super::state::Hosts::generation(store));
             overlay.wrap(move |inner| BootShell { inner, boot })
         })
     }
@@ -807,4 +835,3 @@ impl ModalView for AgentsPanel {
         self
     }
 }
-

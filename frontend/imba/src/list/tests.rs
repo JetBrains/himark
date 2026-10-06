@@ -23,7 +23,8 @@ impl crate::View for Stub {
         _arena: &'a crate::arena::Arena,
         _store: &'a crate::store::Store,
         _ui: &'a crate::ui::UiCtx,
-    ) -> impl crate::layout::Layout<'a, std::convert::Infallible> + crate::layout::LayoutValue + 'a {
+    ) -> impl crate::layout::Layout<'a, std::convert::Infallible> + crate::layout::LayoutValue + 'a
+    {
         crate::layout::laid(
             move |_arena: &'a crate::arena::Arena,
                   _constraints: crate::constraints::Constraints| {

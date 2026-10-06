@@ -257,8 +257,12 @@ where
         crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let inner = ThunkBox::new(
                 arena,
-                crate::layout::Layout::layout(self.view.display(arena, store, ui), arena, constraints)
-                    .map(TooltipCommand::Host),
+                crate::layout::Layout::layout(
+                    self.view.display(arena, store, ui),
+                    arena,
+                    constraints,
+                )
+                .map(TooltipCommand::Host),
             );
             let tip = match &self.hover {
                 Hover::Shown { anchor, tip } => Some((
@@ -409,7 +413,9 @@ mod tests {
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
         ) -> impl crate::layout::Layout<'a, u32> + crate::layout::LayoutValue + 'a {
-            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(200.0, 40.0))
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+                leaf(200.0, 40.0)
+            })
         }
     }
 
@@ -431,7 +437,9 @@ mod tests {
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
         ) -> impl crate::layout::Layout<'a, Infallible> + crate::layout::LayoutValue + 'a {
-            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(60.0, 24.0))
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+                leaf(60.0, 24.0)
+            })
         }
     }
 
