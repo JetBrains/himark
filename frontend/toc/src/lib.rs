@@ -29,7 +29,7 @@ use imba::list::{ActivateTrigger, ListOps};
 
 pub(crate) const OUTLINE_CAP: usize = 2_000;
 
-pub type SearchListCommand = ListKeyCommand<TreeListCommand>;
+pub(crate) type SearchListCommand = ListKeyCommand<TreeListCommand>;
 
 #[derive(Clone)]
 pub enum TocCommand {
@@ -201,6 +201,8 @@ impl TocView {
         &self.search
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn visible_rows(&self) -> usize {
         self.search.inner().list().len()
     }
@@ -341,6 +343,8 @@ impl ModalView for TocView {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub type OutlineKey = (::editor::markup::SyntaxId, ::editor::markup::IntervalId);
 
 #[derive(Clone, Debug)]
@@ -368,7 +372,9 @@ impl imba::effect::Effect for OutlineEffect {
     type Result = OutlineRows;
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct OutlineRows {
     pub rows: Vec<OutlineRow>,
     pub stamp: (u64, u64),
@@ -408,7 +414,9 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub enum OutlineCommand {
     List(SearchListCommand),
     Dismiss,
@@ -511,6 +519,8 @@ impl OutlineView {
         &self.search
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn visible_rows(&self) -> usize {
         self.search.inner().list().len()
     }
@@ -519,6 +529,8 @@ impl OutlineView {
         ListOps::match_count(self.search.inner().list())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn cursor_title(&self) -> Option<String> {
         let key = self.search.inner().list().cursor()?;
         self.rows

@@ -229,7 +229,7 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
         self.zipper.move_next_leaf()
     }
 
-    pub fn retreat_leaf(&mut self) -> bool {
+    pub(crate) fn retreat_leaf(&mut self) -> bool {
         self.zipper.move_prev_leaf()
     }
 

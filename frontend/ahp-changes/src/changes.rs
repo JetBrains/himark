@@ -27,6 +27,7 @@ use imba::{effect::AnyEffect, store::Store};
 /// serial (only the CURRENT loop's landing re-arms — a superseding
 /// subscribe bumps it; docs/perf-issue.md §4 measure 5).
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct FolderWire {
     pub client: ahp_wire::client::Client,
     pub session: ahp_wire::client::SessionUri,
@@ -59,6 +60,7 @@ impl ChangesWire {
     /// Test seam: seed a folder's wire the way `ensure_folder` would
     /// after routing — the unit tests drive landings without a host.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn seed_folder_for_tests(
         store: &mut Store,
         wire: imba::store::Id<ChangesWire>,
@@ -277,6 +279,7 @@ pub fn adopt_session_catalog(
 /// Match catalog entries to the folders riding this session's feed
 /// that hold no channel yet — the one exact-serve rule plus the
 /// lone-folder fallback. Pure, so the claim is unit-testable.
+#[doc(hidden)]
 pub fn claim_channels(
     folders: &rpds::HashTrieMapSync<ResourceLocation, FolderWire>,
     session: &ahp_wire::client::SessionUri,
@@ -535,6 +538,7 @@ impl imba::command::DynamicCommand for PollDrained {
 
 /// The poll landing's application — store-level so tests drive it
 /// the way the command does.
+#[doc(hidden)]
 pub fn apply_poll(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
@@ -819,7 +823,9 @@ pub(crate) fn status_of_wire(status: &ChangesetStatus, error: Option<&str>) -> C
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[doc(hidden)]
 pub struct CatalogEntry {
     pub uri: ahp_wire::client::ChannelUri,
     pub description: Option<String>,
@@ -827,7 +833,7 @@ pub struct CatalogEntry {
     pub kind: String,
 }
 
-pub fn digest_catalog(changesets: &[ahp_types::state::Changeset]) -> Vec<CatalogEntry> {
+pub(crate) fn digest_catalog(changesets: &[ahp_types::state::Changeset]) -> Vec<CatalogEntry> {
     changesets
         .iter()
         .filter(|entry| {

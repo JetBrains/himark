@@ -224,7 +224,7 @@ impl Turn {
         turn
     }
 
-    pub fn of_settled(wire: &WireTurn) -> Self {
+    pub(crate) fn of_settled(wire: &WireTurn) -> Self {
         let life = match wire.state {
             TurnState::Complete => Life::Complete,
             TurnState::Cancelled => Life::Cancelled,

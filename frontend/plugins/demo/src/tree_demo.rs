@@ -194,7 +194,7 @@ impl std::fmt::Display for Command {
 }
 
 #[derive(Clone)]
-pub struct TreeDemoView {
+pub(crate) struct TreeDemoView {
     rows: Rows,
 }
 

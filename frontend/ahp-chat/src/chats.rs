@@ -94,6 +94,8 @@ impl Chats {
         self.recents
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn chat_ref<'a>(
         store: &'a Store,
         chats: imba::store::Id<Chats>,
@@ -260,7 +262,7 @@ impl imba::command::DynamicCommand for BootChat {
     }
 }
 
-pub struct EnsureChatFeed {
+pub(crate) struct EnsureChatFeed {
     pub chats: imba::store::Id<Chats>,
     pub chat: ChatUri,
 }

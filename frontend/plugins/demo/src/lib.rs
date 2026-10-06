@@ -99,7 +99,7 @@ impl himark::commands::WindowedCommand for OpenWallOfTextDemo {
     }
 }
 
-pub fn wall_of_text(lines: usize) -> Document {
+pub(crate) fn wall_of_text(lines: usize) -> Document {
     let unit = "0000 :: lorem ipsum dolor sit amet :: 00 ";
     let mut block = String::new();
     let lengths: [usize; 16] = [1, 3, 1, 7, 2, 1, 12, 1, 3, 2, 24, 1, 2, 6, 1, 48];

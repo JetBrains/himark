@@ -110,7 +110,7 @@ impl ComboItem for ComboOption {
 
 type OptionList<T> = ScrollView<ListView<T, String>>;
 
-pub struct OptionSearcher<T>(std::marker::PhantomData<fn() -> T>);
+pub(crate) struct OptionSearcher<T>(std::marker::PhantomData<fn() -> T>);
 
 impl<T> Clone for OptionSearcher<T> {
     fn clone(&self) -> Self {

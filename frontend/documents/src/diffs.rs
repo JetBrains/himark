@@ -249,7 +249,7 @@ impl OpenDocuments {
     /// Note a view the dressing touched this batch — the collection's
     /// own tail queue (the `PendingSweeps` shape): the canvas lane
     /// takes exactly these at the batch tail and resizes their rows.
-    pub fn note_dressed(
+    pub(crate) fn note_dressed(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         id: DiffViewId,
@@ -295,7 +295,7 @@ impl OpenDocuments {
             .and_then(|docs| docs.diffs.diff_views.get(&id.0))
     }
 
-    pub fn remove_diff_view(
+    pub(crate) fn remove_diff_view(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         id: DiffViewId,
@@ -310,7 +310,7 @@ impl OpenDocuments {
     /// documents were written since the last sweep — the only views
     /// whose state can lag. O(touched views), never O(all views ever)
     /// (docs/perf-issue.md §1b).
-    pub fn take_stale_view_candidates(
+    pub(crate) fn take_stale_view_candidates(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
     ) -> Vec<DiffViewId> {
@@ -331,7 +331,7 @@ impl OpenDocuments {
     /// The STANDALONE pairs — the session rows a peeker can front.
     /// Canvas-embedded pairs stay with their canvas.
     /// Every tracked diff view — the dressing sweep's domain.
-    pub fn diff_view_ids(
+    pub(crate) fn diff_view_ids(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
     ) -> Vec<DiffViewId> {
@@ -370,11 +370,11 @@ impl OpenDocuments {
             .unwrap_or(0)
     }
 
-    pub fn holds_diff_view(&self, id: DiffViewId) -> bool {
+    pub(crate) fn holds_diff_view(&self, id: DiffViewId) -> bool {
         self.diffs.diff_views.contains_key(&id.0)
     }
 
-    pub fn pair_tracked(
+    pub(crate) fn pair_tracked(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
         base: DocumentId,
@@ -407,7 +407,7 @@ impl OpenDocuments {
         result
     }
 
-    pub fn track_diff_row(
+    pub(crate) fn track_diff_row(
         &mut self,
         base: DocumentId,
         target: DocumentId,
@@ -550,6 +550,8 @@ impl OpenDocuments {
         Self::remove_if_editorless(store, documents, ui, record.target, fx);
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn diff_handle(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
@@ -558,7 +560,7 @@ impl OpenDocuments {
         store.entity(documents)?.diff_handle_row(id)
     }
 
-    pub fn diff_handle_row(&self, id: DiffId) -> Option<DiffHandle> {
+    pub(crate) fn diff_handle_row(&self, id: DiffId) -> Option<DiffHandle> {
         let record = self.diffs.record(id)?;
         Some(DiffHandle {
             id,
@@ -576,7 +578,7 @@ impl OpenDocuments {
         store.entity(documents)?.stripe_diff_row(target)
     }
 
-    pub fn stripe_diff_row(&self, target: DocumentId) -> Option<DiffHandle> {
+    pub(crate) fn stripe_diff_row(&self, target: DocumentId) -> Option<DiffHandle> {
         self.diff_handle_row(self.diffs.stripe_of(target)?)
     }
 
@@ -616,7 +618,7 @@ impl OpenDocuments {
     }
 
     #[doc(hidden)]
-    pub fn diff_refs(
+    pub(crate) fn diff_refs(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
         id: DiffId,
@@ -751,7 +753,7 @@ pub fn land_normalized(
 }
 
 impl OpenDocuments {
-    pub fn land_normalized_row(
+    pub(crate) fn land_normalized_row(
         &mut self,
         id: DiffId,
         minimal: Operation,
@@ -798,7 +800,7 @@ impl OpenDocuments {
 /// document — through the entity's own effects scope, so the swap's
 /// repair tails route home like any landing's. A PLUGIN BOUNDARY:
 /// the markup swap destroys replaced inlays.
-pub fn land_diff_markup(
+pub(crate) fn land_diff_markup(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,
@@ -925,7 +927,7 @@ pub fn rearm_base_asks(
     }
 }
 
-pub fn adopt_base_location<R: 'static>(
+pub(crate) fn adopt_base_location<R: 'static>(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,
@@ -959,7 +961,7 @@ pub fn adopt_base_location<R: 'static>(
 /// is still owed, launch the fetch — the landing comes home as
 /// `BaseFetched` on the collection's own command type (the caller
 /// scopes the fx to its address).
-pub fn land_base_located(
+pub(crate) fn land_base_located(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,
@@ -982,7 +984,7 @@ pub fn land_base_located(
     );
 }
 
-pub fn land_base_built(
+pub(crate) fn land_base_built(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,

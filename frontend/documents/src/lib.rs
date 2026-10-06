@@ -637,7 +637,7 @@ impl OpenDocuments {
         id
     }
 
-    pub fn register_row(
+    pub(crate) fn register_row(
         &mut self,
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
@@ -742,7 +742,7 @@ impl OpenDocuments {
             .is_some_and(|riders| !riders.is_empty())
     }
 
-    pub fn watch_riders(&self, subscription: crate::watch::Subscription) -> Vec<DocumentId> {
+    pub(crate) fn watch_riders(&self, subscription: crate::watch::Subscription) -> Vec<DocumentId> {
         self.by_watch
             .get(&subscription)
             .map(|riders| riders.iter().copied().collect())
@@ -780,7 +780,7 @@ impl OpenDocuments {
         }
     }
 
-    pub fn tracks_diff(&self, diff: ::editor::diff::DiffId) -> bool {
+    pub(crate) fn tracks_diff(&self, diff: ::editor::diff::DiffId) -> bool {
         self.diffs.record(diff).is_some()
     }
 
@@ -804,7 +804,7 @@ impl OpenDocuments {
     /// what a leased perform uses, where a store read of the own id
     /// would be reentrancy (docs/entities.md law 5). The `(store, id)`
     /// statics stay as the outside doors and delegate here.
-    pub fn document_row(&self, id: DocumentId) -> Option<&Document> {
+    pub(crate) fn document_row(&self, id: DocumentId) -> Option<&Document> {
         self.entries.get(&id).map(|entity| &entity.document)
     }
 
@@ -817,7 +817,7 @@ impl OpenDocuments {
         Self::update_entity(store, documents, id, |entity| entity.document = document);
     }
 
-    pub fn put_document_row(&mut self, id: DocumentId, document: Document) {
+    pub(crate) fn put_document_row(&mut self, id: DocumentId, document: Document) {
         self.update_row(id, |entity| entity.document = document);
     }
 
@@ -908,7 +908,10 @@ impl OpenDocuments {
         store.entity(documents)?.location_row(document)
     }
 
-    pub fn location_row(&self, document: DocumentId) -> Option<editor::location::ResourceLocation> {
+    pub(crate) fn location_row(
+        &self,
+        document: DocumentId,
+    ) -> Option<editor::location::ResourceLocation> {
         self.entries.get(&document)?.location.clone()
     }
 
@@ -920,7 +923,7 @@ impl OpenDocuments {
         store.entity(documents)?.entity_row(document)
     }
 
-    pub fn entity_row(&self, document: DocumentId) -> Option<OpenDocument> {
+    pub(crate) fn entity_row(&self, document: DocumentId) -> Option<OpenDocument> {
         self.entries.get(&document).cloned()
     }
 
@@ -932,7 +935,7 @@ impl OpenDocuments {
         store.entity(documents)?.by_location_row(location)
     }
 
-    pub fn by_location_row(
+    pub(crate) fn by_location_row(
         &self,
         location: &editor::location::ResourceLocation,
     ) -> Option<DocumentId> {
@@ -1008,13 +1011,13 @@ impl OpenDocuments {
             .is_some_and(|rows| rows.host_synced_row(document))
     }
 
-    pub fn host_synced_row(&self, document: DocumentId) -> bool {
+    pub(crate) fn host_synced_row(&self, document: DocumentId) -> bool {
         self.entries
             .get(&document)
             .is_some_and(|entity| entity.host_synced)
     }
 
-    pub fn set_watch_requested(
+    pub(crate) fn set_watch_requested(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
@@ -1024,7 +1027,7 @@ impl OpenDocuments {
         });
     }
 
-    pub fn set_base_requested(
+    pub(crate) fn set_base_requested(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
@@ -1034,10 +1037,12 @@ impl OpenDocuments {
         });
     }
 
-    pub fn set_base_requested_row(&mut self, document: DocumentId) {
+    pub(crate) fn set_base_requested_row(&mut self, document: DocumentId) {
         self.update_row(document, |entity| entity.base_requested = true);
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn set_watch(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
@@ -1049,7 +1054,7 @@ impl OpenDocuments {
         });
     }
 
-    pub fn set_watch_row(
+    pub(crate) fn set_watch_row(
         &mut self,
         document: DocumentId,
         watch: Option<crate::watch::Subscription>,
@@ -1085,7 +1090,7 @@ impl OpenDocuments {
         });
     }
 
-    pub fn mark_saved_row(
+    pub(crate) fn mark_saved_row(
         &mut self,
         document: DocumentId,
         revision: u64,
@@ -1176,6 +1181,8 @@ impl OpenDocuments {
         true
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn stamp_refetch(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
@@ -1197,6 +1204,7 @@ impl OpenDocuments {
     /// the disk with nothing left to retry (the reload loop must
     /// converge, not give up).
     #[must_use]
+    #[doc(hidden)]
     pub fn absorb_refetched(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,

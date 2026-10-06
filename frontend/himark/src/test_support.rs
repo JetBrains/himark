@@ -41,6 +41,8 @@ impl ahp_wire::client::ResourceUriMap for TestUris {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn seed_session_folders(
     store: &mut Store,
     folders: &[editor::location::ResourceLocation],
@@ -94,7 +96,7 @@ pub fn seed_session_folders(
     id
 }
 
-pub fn add_session_folders(
+pub(crate) fn add_session_folders(
     store: &mut Store,
     id: &ahp_wire::SessionId,
     folders: &[editor::location::ResourceLocation],
@@ -128,6 +130,7 @@ impl Application {
 
     /// The session the sole window is working in — the owner a test
     /// names when it reaches session-addressed state.
+    #[doc(hidden)]
     pub fn sole_window_session(&self) -> ahp_wire::SessionId {
         crate::workspace::entity_session(
             ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
@@ -137,12 +140,13 @@ impl Application {
 
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
-    pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
+    pub(crate) fn sole_family(&self) -> ahp_session::session::state::SessionState {
         crate::workspace::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
 
     /// The sole window session's documents collection.
+    #[doc(hidden)]
     pub fn sole_documents(&self) -> imba::store::Id<documents::OpenDocuments> {
         self.sole_family().documents()
     }
@@ -163,6 +167,8 @@ impl Application {
         ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_document_text(&self) -> Option<String> {
         let document = documents::OpenDocuments::document_ref(
             self.store(),
@@ -174,6 +180,8 @@ impl Application {
         Some(document.text().view().substring(0..end))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn first_pane_heights_vs_fresh(&self) -> (Vec<(u32, f32)>, Vec<(u32, f32)>, String) {
         let mut first = None;
         self.workbench().root.for_each_pane(&mut |panel| {
@@ -212,6 +220,8 @@ impl Application {
         (live, fresh.element_heights(), text)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
         let Some(document) =
             ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
@@ -234,6 +244,8 @@ impl Application {
             .any(|id| matches!(id, ::editor::theme::StyleId::Header(_)))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn unconverged_panes(&self) -> Vec<(usize, f32, f32)> {
         let ui = ::editor::test_document::test_ui();
         let mut offenders = Vec::new();
@@ -285,6 +297,8 @@ impl Application {
         offenders
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn first_inlay_probe_point(&self) -> Option<(f32, f32)> {
         let toolbar = ::editor::env::Themes::of(self.store()).ui().toolbar.height;
         let geometry = workbench_geometry(
@@ -320,6 +334,8 @@ impl Application {
         ))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_caret_byte(&self) -> Option<u32> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
@@ -331,6 +347,8 @@ impl Application {
         Some(document.caret_byte(entity.editor()))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_reveal_pending(&self) -> Option<bool> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
@@ -342,6 +360,8 @@ impl Application {
         Some(document.reveal_pending(entity.editor()))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_pane_scroll_y(&self) -> f32 {
         self.workbench()
             .root
@@ -350,6 +370,8 @@ impl Application {
             .map_or(0.0, |pane| pane.scroll_y())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_pane_content_height(&self) -> f32 {
         let Some(pane) = self.workbench().root.focused_pane().editor() else {
             return 0.0;
@@ -357,6 +379,8 @@ impl Application {
         pane_height_content(self.store(), *pane.content()).unwrap_or(0.0)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn styled_pane_count(&self) -> usize {
         let store = self.store();
         let mut styled = 0;
@@ -374,6 +398,8 @@ impl Application {
         styled
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn pane_widths(&self) -> Vec<f32> {
         let mut widths = Vec::new();
         let store = self.store();
@@ -385,6 +411,8 @@ impl Application {
         widths
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
         let view = self.workbench().root.focused_pane().editor()?.content();
         let document = documents::OpenDocuments::document_ref(
@@ -407,16 +435,22 @@ impl Application {
             .or(Some(None))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn document_count(&self) -> usize {
         documents::OpenDocuments::list(self.store(), self.sole_documents()).len()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn pane_count(&self) -> usize {
         let mut count = 0;
         self.workbench().root.for_each_pane(&mut |_| count += 1);
         count
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn hikit::panel::DynPanelView)) {
         // The chat slot is a workbench panel too — always open, just
         // not a tree citizen.
@@ -432,6 +466,8 @@ impl Application {
         });
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_editor_id(&self) -> (documents::DocumentId, ::editor::editor::EditorId) {
         let view = self
             .workbench()

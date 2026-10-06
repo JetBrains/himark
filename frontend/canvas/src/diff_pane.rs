@@ -49,7 +49,7 @@ fn gathered(
     documents::diff_views::gather_diff_view(pair, store, documents)
 }
 
-pub fn gathered_view(
+pub(crate) fn gathered_view(
     store: &Store,
     documents: imba::store::Id<documents::OpenDocuments>,
     id: documents::diffs::DiffViewId,
@@ -408,6 +408,8 @@ impl DiffPanelView {
         self.pane.content().documents
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
         documents::OpenDocuments::diff_view_ref(
             store,

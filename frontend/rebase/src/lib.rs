@@ -60,10 +60,12 @@ impl<I: Clone + Eq, A: Action> RebaseLog<I, A> {
         &self.version
     }
 
-    pub fn is_rebasing(&self) -> bool {
+    pub(crate) fn is_rebasing(&self) -> bool {
         !self.rebasing.is_empty()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn is_settled(&self) -> bool {
         self.speculation.is_empty() && self.rebasing.is_empty()
     }

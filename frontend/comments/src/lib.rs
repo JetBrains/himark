@@ -61,11 +61,11 @@ pub struct CommentRecord {
 }
 
 impl CommentRecord {
-    pub fn own_entry(&self) -> Option<&EntryRecord> {
+    pub(crate) fn own_entry(&self) -> Option<&EntryRecord> {
         self.entries.iter().find(|entry| entry.ours)
     }
 
-    pub fn foreign_texts(&self) -> Vec<Text> {
+    pub(crate) fn foreign_texts(&self) -> Vec<Text> {
         self.entries
             .iter()
             .filter(|entry| !entry.ours)
@@ -264,7 +264,7 @@ impl Comments {
 
     /// Whether any record placed at `location` still lacks its card —
     /// the document hook's materialize cue.
-    pub fn owes_cards_at(
+    pub(crate) fn owes_cards_at(
         store: &Store,
         comments: imba::store::Id<Comments>,
         location: &ResourceLocation,
@@ -277,7 +277,7 @@ impl Comments {
     }
 
     /// Every card living in one document — the closing hook's sweep.
-    pub fn cards_in(
+    pub(crate) fn cards_in(
         store: &Store,
         comments: imba::store::Id<Comments>,
         document: DocumentId,
@@ -296,7 +296,11 @@ impl Comments {
 
     /// The card's document CLOSED: forget the card (the inlay died
     /// with the document); the record stays.
-    pub fn card_closed(store: &mut Store, comments: imba::store::Id<Comments>, id: &AnnotationId) {
+    pub(crate) fn card_closed(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        id: &AnnotationId,
+    ) {
         let id = id.clone();
         Self::update(store, comments, |comments| {
             comments.cards.remove_mut(&id);
@@ -527,7 +531,7 @@ impl Comments {
         id
     }
 
-    pub fn card_born(
+    pub(crate) fn card_born(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
         id: &AnnotationId,
@@ -603,7 +607,7 @@ impl Comments {
     }
 
     /// Note a send-to-agent ask for the wire lane.
-    pub fn ask_send(
+    pub(crate) fn ask_send(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
         ids: Vec<AnnotationId>,
@@ -665,7 +669,7 @@ impl Comments {
         work
     }
 
-    pub fn text_edited(
+    pub(crate) fn text_edited(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
         id: &AnnotationId,

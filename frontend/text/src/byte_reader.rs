@@ -5,18 +5,18 @@ use rope::cursor::Cursor;
 
 use crate::{measure::TextMeasure, text::Text};
 
-pub struct ByteReader {
+pub(crate) struct ByteReader {
     cursor: Cursor<u8, TextMeasure>,
     remaining_bytes: usize,
     index_in_leaf: usize,
 }
 
 impl Text {
-    pub fn byte_reader(&self) -> ByteReader {
+    pub(crate) fn byte_reader(&self) -> ByteReader {
         self.byte_reader_at(0)
     }
 
-    pub fn byte_reader_at(&self, byte_offset: usize) -> ByteReader {
+    pub(crate) fn byte_reader_at(&self, byte_offset: usize) -> ByteReader {
         let byte_count = self.byte_count();
         let byte_offset = byte_offset.min(byte_count);
         let mut cursor = self.rope.cursor();
@@ -41,13 +41,13 @@ impl Text {
 }
 
 impl ByteReader {
-    pub fn take_string(&mut self, byte_len: usize) -> String {
+    pub(crate) fn take_string(&mut self, byte_len: usize) -> String {
         let mut bytes = Vec::with_capacity(byte_len.min(self.remaining_bytes));
         self.take_bytes(&mut bytes, byte_len);
         String::from_utf8(bytes).expect("text rope must remain valid UTF-8")
     }
 
-    pub fn take_bytes(&mut self, out: &mut Vec<u8>, byte_len: usize) {
+    pub(crate) fn take_bytes(&mut self, out: &mut Vec<u8>, byte_len: usize) {
         let mut remaining = byte_len.min(self.remaining_bytes);
         out.reserve(remaining);
         while remaining > 0 {
@@ -71,7 +71,7 @@ impl ByteReader {
         }
     }
 
-    pub fn take_bytes_into(&mut self, out: &mut impl Extend<u8>, byte_len: usize) {
+    pub(crate) fn take_bytes_into(&mut self, out: &mut impl Extend<u8>, byte_len: usize) {
         let mut remaining = byte_len.min(self.remaining_bytes);
         if remaining == 0 {
             return;

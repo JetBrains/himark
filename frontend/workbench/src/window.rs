@@ -1177,11 +1177,11 @@ impl Window {
     }
 
     #[doc(hidden)]
-    pub fn layer_focus(&self) -> LayerFocus {
+    pub(crate) fn layer_focus(&self) -> LayerFocus {
         self.content.focus
     }
 
-    pub fn side_panel_mut(&mut self) -> Option<&mut Box<dyn ModalView>> {
+    pub(crate) fn side_panel_mut(&mut self) -> Option<&mut Box<dyn ModalView>> {
         self.content
             .side
             .as_mut()
@@ -1299,10 +1299,14 @@ impl Window {
             .map(|dock| dock.owner())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn has_dock(&self) -> bool {
         self.content.workbench.dock().is_some()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn dock_target_width(&self) -> f32 {
         self.content
             .workbench
@@ -1425,7 +1429,7 @@ impl Window {
         widgets
     }
 
-    pub fn restore_widgets(
+    pub(crate) fn restore_widgets(
         &mut self,
         widgets: Vec<(
             hikit::panel::WidgetOrigin,
@@ -1756,7 +1760,9 @@ impl Window {
         true
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn focused_history_depths(&self) -> (usize, usize) {
         self.workbench().root.focused_slot().history_depths()
     }

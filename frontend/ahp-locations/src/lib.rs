@@ -33,6 +33,7 @@ impl imba::effect::Effect for FindEffect {
 /// (docs/ahp/ahp-locations.md), plus the route's way back from the
 /// stream's resource URIs to locations — the shell never parses URIs.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct LocationsChannel {
     pub client: std::sync::Arc<dyn ahp_wire::client::LocationsClient>,
     pub channel: ahp_wire::client::ChannelUri,

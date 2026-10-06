@@ -45,11 +45,11 @@ mod fake_host {
             Arc::as_ptr(self) as *mut std::ffi::c_void
         }
 
-        pub fn take_pick(&self) -> u64 {
+        pub(crate) fn take_pick(&self) -> u64 {
             self.picks.swap(0, Ordering::SeqCst)
         }
 
-        pub fn take_save_pick(&self) -> (u64, String) {
+        pub(crate) fn take_save_pick(&self) -> (u64, String) {
             std::mem::take(&mut *self.save_picks.lock().expect("save picks"))
         }
 
@@ -6887,16 +6887,18 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                 break;
             }
             if started.elapsed() > std::time::Duration::from_secs(30) {
-                let mirror = ahp_session::session::agents::Agents::channel(
-                    engine.app.store(),
-                    &session,
-                )
-                .map(|channel| {
-                    (
-                        channel.working_directories.iter().cloned().collect::<Vec<_>>(),
-                        channel.chats.len(),
-                    )
-                });
+                let mirror =
+                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                        .map(|channel| {
+                            (
+                                channel
+                                    .working_directories
+                                    .iter()
+                                    .cloned()
+                                    .collect::<Vec<_>>(),
+                                channel.chats.len(),
+                            )
+                        });
                 let live = ahp_session::session::agents::Agents::live_session(
                     engine.app.store(),
                     &session,

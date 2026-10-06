@@ -2625,7 +2625,7 @@ impl Feed {
     }
 }
 
-pub struct PollFeed {
+pub(crate) struct PollFeed {
     feed: Arc<Feed>,
 }
 
@@ -2737,7 +2737,7 @@ impl<T> Future for OneShot<T> {
     }
 }
 
-pub struct RunFuture<T> {
+pub(crate) struct RunFuture<T> {
     slot: OneShot<Result<T, String>>,
 }
 

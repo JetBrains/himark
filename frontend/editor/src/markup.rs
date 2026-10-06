@@ -710,6 +710,8 @@ pub struct InlayKey {
 }
 
 impl InlayKey {
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn in_markup(markup: MarkupId, key: u32) -> Self {
         Self {
             layer: MarkupLayer::Markup(markup),
@@ -826,6 +828,8 @@ impl Markup {
         self.shape.len() + self.styles.len()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn query_count(&self) -> usize {
         self.merged_query(0..u32::MAX, Order::Ascending).count()
     }
@@ -950,6 +954,8 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         )
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn block_marks_in(&self, range: Range<u32>) -> BlockStyle {
         let mut marks = BlockStyle::default();
         for decoration in self.query(range.clone(), Order::Ascending) {
@@ -964,6 +970,8 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         marks
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn marks_inline_hidden_in(
         &self,
         range: Range<u32>,
@@ -1301,6 +1309,8 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
 }
 
 impl Markup {
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn block_marks_in(&self, range: Range<u32>) -> BlockStyle {
         let mut marks = BlockStyle::default();
         for decoration in self.query(range.clone(), Order::Ascending) {
@@ -1315,6 +1325,8 @@ impl Markup {
         marks
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn marks_inline_hidden_in(
         &self,
         range: Range<u32>,
@@ -1415,7 +1427,7 @@ impl Markup {
         key
     }
 
-    pub fn set_unhide(&mut self, range: Range<u32>) -> Option<Range<u32>> {
+    pub(crate) fn set_unhide(&mut self, range: Range<u32>) -> Option<Range<u32>> {
         let previous = self.take_unhide();
         let key = self.mint();
         self.shape.insert([intervals::Interval {
@@ -1428,7 +1440,7 @@ impl Markup {
         previous
     }
 
-    pub fn take_unhide(&mut self) -> Option<Range<u32>> {
+    pub(crate) fn take_unhide(&mut self) -> Option<Range<u32>> {
         let mut stale = None;
         for interval in self.shape.query(0..u32::MAX, Order::Ascending) {
             if matches!(interval.value, Decoration::Unhide) {
@@ -1442,7 +1454,7 @@ impl Markup {
         })
     }
 
-    pub fn unhide_range(&self) -> Option<Range<u32>> {
+    pub(crate) fn unhide_range(&self) -> Option<Range<u32>> {
         self.query(0..u32::MAX, Order::Ascending)
             .find(|decoration| matches!(decoration.value, Decoration::Unhide))
             .map(|decoration| decoration.range.clone())
@@ -1459,6 +1471,8 @@ impl Markup {
         }]);
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn add_syntax(&mut self, range: Range<u32>, syntax: Syntax) -> SyntaxId {
         let key = self.mint();
         let state = SyntaxId(key.0 as u64);
@@ -1497,7 +1511,7 @@ impl Markup {
         None
     }
 
-    pub fn set_syntax(&mut self, key: SyntaxId, syntax: Syntax) -> bool {
+    pub(crate) fn set_syntax(&mut self, key: SyntaxId, syntax: Syntax) -> bool {
         if !self.syntaxes.contains_key(&key) {
             return false;
         }
@@ -1508,7 +1522,7 @@ impl Markup {
         true
     }
 
-    pub fn reconcile_syntaxes(
+    pub(crate) fn reconcile_syntaxes(
         &mut self,
         old: &Markup,
         sites: &[crate::reparse::SyntaxSite],
@@ -1518,7 +1532,7 @@ impl Markup {
         self.reconcile_syntaxes_in(old, &[0..u32::MAX], sites)
     }
 
-    pub fn reconcile_syntaxes_in(
+    pub(crate) fn reconcile_syntaxes_in(
         &mut self,
         old: &Markup,
         invalidated: &[Range<u32>],
@@ -2001,6 +2015,8 @@ pub struct InlayInterval<'a> {
     pub inlay: &'a Inlay,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn inlay_anchors_line(mode: InlayMode, interval: &Range<u32>, line: &Range<u32>) -> bool {
     if !intersects(interval, line) {
         return false;
@@ -2219,7 +2235,7 @@ fn rebase_into(
 }
 
 #[derive(Clone)]
-pub struct FreshSyntax {
+pub(crate) struct FreshSyntax {
     pub key: SyntaxId,
     pub language: String,
 
@@ -2376,7 +2392,7 @@ impl Markup {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn syntax_markers_in(&self, span: Range<u32>) -> Vec<Range<u32>> {
+    pub(crate) fn syntax_markers_in(&self, span: Range<u32>) -> Vec<Range<u32>> {
         self.syntax_in(span)
             .into_iter()
             .map(|(_, range)| range)

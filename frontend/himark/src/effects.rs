@@ -14,9 +14,9 @@ use crate::app::AppCommand;
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
 use crate::app::AppEffects;
 
-pub type EffectDispatcher = Arc<dyn Fn(AppCommand) + Send + Sync>;
+pub(crate) type EffectDispatcher = Arc<dyn Fn(AppCommand) + Send + Sync>;
 
-pub type AppEffect = imba::effect::AnyEffect<AppCommand>;
+pub(crate) type AppEffect = imba::effect::AnyEffect<AppCommand>;
 
 pub(crate) fn trace_effects(message: impl FnOnce() -> String) {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

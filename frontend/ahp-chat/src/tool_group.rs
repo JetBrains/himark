@@ -62,17 +62,17 @@ impl std::fmt::Display for ToolRowCommand {
     }
 }
 
-pub type ToolRowsCommand = ListCommand<TreeItemCommand<ToolRowCommand>>;
+pub(crate) type ToolRowsCommand = ListCommand<TreeItemCommand<ToolRowCommand>>;
 
 #[derive(Clone)]
-pub struct FaceLine {
+pub(crate) struct FaceLine {
     text: String,
     failed: bool,
     live: bool,
 }
 
 #[derive(Clone)]
-pub enum ToolRowView {
+pub(crate) enum ToolRowView {
     Face(FaceLine),
     Body(Cell),
 }
@@ -168,7 +168,7 @@ struct CallEntry {
 }
 
 #[derive(Clone)]
-pub struct ToolGroup {
+pub(crate) struct ToolGroup {
     calls: rpds::VectorSync<CallEntry>,
 
     expanded: bool,

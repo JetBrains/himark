@@ -19,7 +19,7 @@ use crate::file_edit::FileEditRefs;
 use crate::tool_group::{ToolCallSpec, ToolFace};
 use ahp_types::common::Uri;
 
-pub type TurnCommand = ListCommand<CellCommand>;
+pub(crate) type TurnCommand = ListCommand<CellCommand>;
 
 #[derive(Clone)]
 pub(crate) enum CellSpec {

@@ -32,7 +32,7 @@ pub fn default_dir() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".himark").join("agent-host"))
 }
 
-pub fn lock_path(dir: &Path) -> PathBuf {
+pub(crate) fn lock_path(dir: &Path) -> PathBuf {
     dir.join("host.lock")
 }
 
@@ -47,7 +47,7 @@ pub fn build_stamp() -> String {
     }
 }
 
-pub fn build_stamp_of(binary: &Path) -> String {
+pub(crate) fn build_stamp_of(binary: &Path) -> String {
     let Ok(meta) = std::fs::metadata(binary) else {
         return "unknown".to_owned();
     };
@@ -60,7 +60,7 @@ pub fn build_stamp_of(binary: &Path) -> String {
     format!("{}:{}:{}", binary.display(), meta.len(), mtime)
 }
 
-pub const DAEMON_BINARY: &str = "himark-agent-host";
+pub(crate) const DAEMON_BINARY: &str = "himark-agent-host";
 
 pub fn resolve_daemon_binary() -> Option<PathBuf> {
     if let Ok(named) = std::env::var("HIMARK_AGENT_HOST_BIN") {

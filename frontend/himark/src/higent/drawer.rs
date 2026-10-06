@@ -17,6 +17,7 @@ use skia_safe::Rect;
 
 /// The shell's answers to the panel's gestures, each closed over the
 /// window the drawer stands in.
+#[doc(hidden)]
 pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
     Arc::new(DrawerAsks {
         open_session: Arc::new(move |store| Some(crate::workspace::window_session(store, window)?)),

@@ -235,6 +235,7 @@ fn fallback<H>(inner: Option<H>, outer: Option<H>, compose: impl FnOnce(H, H) ->
 }
 
 /// The frame's palette commands — a plain state walk, no layout.
+#[doc(hidden)]
 pub fn frame_commands<V: crate::View>(
     view: &V,
     store: &crate::store::Store,
@@ -245,7 +246,7 @@ pub fn frame_commands<V: crate::View>(
 
 /// A key delivered to the focus chain — a plain state walk, no
 /// layout.
-pub fn frame_key<V: crate::View>(
+pub(crate) fn frame_key<V: crate::View>(
     view: &V,
     store: &crate::store::Store,
     ui: &crate::ui::UiCtx,

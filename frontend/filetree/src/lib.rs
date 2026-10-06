@@ -605,6 +605,8 @@ impl SessionTreeView {
         self.tree.len()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn selected_name(&self) -> Option<String> {
         Some(self.tree.list.inner().content().cursor()?.name().to_owned())
     }
@@ -1004,6 +1006,8 @@ fn stale_roots(
 }
 
 impl SessionTreeView {
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn search_query(&self) -> String {
         self.tree.list.query()
     }

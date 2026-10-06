@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub const FAKE_CLI: &str = r#"#!/usr/bin/env python3
+pub(crate) const FAKE_CLI: &str = r#"#!/usr/bin/env python3
 import json, os, sys, time
 
 print("[stub] alive pid=%d" % os.getpid(), file=sys.stderr, flush=True)
@@ -161,11 +161,13 @@ while True:
         result()
 "#;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn fake_cli_command(dir: &Path) -> String {
     format!("python3 {}", write_fake_cli(dir).display())
 }
 
-pub fn write_fake_cli(dir: &Path) -> PathBuf {
+pub(crate) fn write_fake_cli(dir: &Path) -> PathBuf {
     let path = dir.join("fake-claude.py");
     std::fs::write(&path, FAKE_CLI).expect("stub written");
     #[cfg(unix)]
@@ -176,7 +178,7 @@ pub fn write_fake_cli(dir: &Path) -> PathBuf {
     path
 }
 
-pub const FAKE_CODEX: &str = r#"#!/usr/bin/env python3
+pub(crate) const FAKE_CODEX: &str = r#"#!/usr/bin/env python3
 import json, os, sys
 
 root = os.path.dirname(os.path.abspath(__file__))
@@ -270,6 +272,8 @@ while True:
         "id": turn, "status": "completed", "items": [], "durationMs": 5, "error": None}}})
 "#;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn fake_codex_command(dir: &Path) -> String {
     let path = dir.join("fake-codex.py");
     std::fs::write(&path, FAKE_CODEX).expect("codex stub written");
@@ -377,6 +381,8 @@ while True:
         send({"jsonrpc": "2.0", "id": ident, "result": None})
 "#;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn fake_ls_command(dir: &Path) -> String {
     let path = dir.join("fake-ls.py");
     std::fs::write(&path, FAKE_LS).expect("fake ls written");
@@ -494,6 +500,8 @@ while True:
         continue
 "#;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn fake_fsp_command(dir: &Path) -> String {
     let path = dir.join("fake-fsp.py");
     std::fs::write(&path, FAKE_FSP).expect("fake fsp written");
@@ -501,6 +509,7 @@ pub fn fake_fsp_command(dir: &Path) -> String {
 }
 
 /// The fake FSP server's message log, parsed.
+#[doc(hidden)]
 pub fn fsp_log(dir: &Path) -> Vec<serde_json::Value> {
     let raw = std::fs::read_to_string(dir.join("fsp-log.jsonl")).unwrap_or_default();
     raw.lines()

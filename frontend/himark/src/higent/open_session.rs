@@ -25,7 +25,7 @@ pub fn open_session(
     open_session_with(store, window, server, session, open_chat, None, fx)
 }
 
-pub fn open_session_with(
+pub(crate) fn open_session_with(
     store: &mut Store,
     window: ::workbench::window::WindowId,
     server: HostId,
@@ -59,7 +59,7 @@ pub fn open_session_with(
     );
 }
 
-pub struct OpenSubscribedSession {
+pub(crate) struct OpenSubscribedSession {
     pub server: HostId,
     pub session: SessionUri,
 

@@ -4,6 +4,8 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub struct UnixTransport {
     lines: tokio::io::Lines<tokio::io::BufReader<tokio::net::unix::OwnedReadHalf>>,
     write: tokio::net::unix::OwnedWriteHalf,

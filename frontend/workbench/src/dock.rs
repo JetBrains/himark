@@ -18,11 +18,15 @@ use skia_safe::{Paint, Rect, Size};
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub const DOCK_WIDTH: f32 = 600.0;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub const DOCK_MIN_WIDTH: f32 = 240.0;
 
-pub const DOCK_MAX_RATIO: f32 = 0.6;
+pub(crate) const DOCK_MAX_RATIO: f32 = 0.6;
 
 const SLIDE_MS: f64 = 160.0;
 

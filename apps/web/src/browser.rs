@@ -130,7 +130,7 @@ struct Anchor(*const Mutex<Shared>);
 
 unsafe impl Send for Anchor {}
 
-pub struct BrowserTransport {
+pub(crate) struct BrowserTransport {
     socket: EMSCRIPTEN_WEBSOCKET_T,
     shared: Arc<Mutex<Shared>>,
 

@@ -23,7 +23,9 @@ struct ImageRef {
     reference: String,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct ImageInlay {
     reference: Arc<str>,
     view: ImageView,

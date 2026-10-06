@@ -227,7 +227,7 @@ where
     }
 }
 
-pub struct OverlayHostWidget<'a, Command> {
+pub(crate) struct OverlayHostWidget<'a, Command> {
     stacked: RealizedContainer<'a, Command>,
 
     bubbling: Vec<Overlay<'a, Command>>,

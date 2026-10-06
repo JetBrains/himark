@@ -40,7 +40,9 @@ pub struct ScrollView<Content> {
     surface: crate::event::ScrollSurfaceId,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Copy)]
+#[doc(hidden)]
 pub struct Glide {
     target: f32,
     last: Option<crate::anim::AnimationClock>,
@@ -80,7 +82,7 @@ impl<C: std::fmt::Display> std::fmt::Display for ScrollCommand<C> {
     }
 }
 
-pub struct ScrollWidget<ContentThunk, ContentCommand> {
+pub(crate) struct ScrollWidget<ContentThunk, ContentCommand> {
     content: ContentThunk,
     viewport: Size,
     scroll_y: f32,
@@ -135,7 +137,7 @@ where
     }
 }
 
-pub struct RealizedScroll<'a, ContentCommand> {
+pub(crate) struct RealizedScroll<'a, ContentCommand> {
     content: crate::WidgetBox<'a, ContentCommand>,
     viewport: Size,
     scroll_y: f32,

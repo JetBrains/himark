@@ -35,7 +35,7 @@ const RESPAWN_BACKOFF: std::time::Duration = std::time::Duration::from_secs(2);
 /// The discovery ladder (docs/file-search.md §5): env override, a
 /// sibling of the running binary, PATH, then the sibling checkout's
 /// build output — both profiles probed, the newer build wins.
-pub fn discover_binary() -> Option<String> {
+pub(crate) fn discover_binary() -> Option<String> {
     if std::env::var("HIMARK_FSP").is_ok_and(|flag| flag == "0") {
         return None;
     }

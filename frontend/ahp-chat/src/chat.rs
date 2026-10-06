@@ -421,7 +421,7 @@ impl std::fmt::Display for ChatPanelCommand {
 }
 
 impl ChatPanelCommand {
-    pub fn is_send(&self) -> bool {
+    pub(crate) fn is_send(&self) -> bool {
         match self {
             Self::Send => true,
             Self::Focus(_, Some(inner)) => inner.is_send(),
@@ -653,7 +653,7 @@ impl ChatPanel {
         }
     }
 
-    pub fn with_initial_prompt(mut self, prompt: String) -> Self {
+    pub(crate) fn with_initial_prompt(mut self, prompt: String) -> Self {
         self.initial_prompt = Some(prompt);
         self
     }
@@ -722,17 +722,17 @@ impl ChatPanel {
 
     /// How many turns this conversation carries — the counter the
     /// registry compares across a write-back.
-    pub fn turn_count(&self) -> usize {
+    pub(crate) fn turn_count(&self) -> usize {
         self.conversation.len()
     }
 
     /// The tail turn and the turn in flight: what a shrinking
     /// write-back needs to name what it would drop. Both are O(1).
-    pub fn tail_turn(&self) -> Option<&str> {
+    pub(crate) fn tail_turn(&self) -> Option<&str> {
         self.conversation.tail().map(|turn| turn.id.as_str())
     }
 
-    pub fn live_turn(&self) -> Option<&str> {
+    pub(crate) fn live_turn(&self) -> Option<&str> {
         self.conversation.live().map(|turn| turn.as_str())
     }
 
@@ -771,7 +771,7 @@ impl ChatPanel {
             .is_some_and(|view| view.composer.blurred())
     }
 
-    pub fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
+    pub(crate) fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let band = self
@@ -797,17 +797,19 @@ impl ChatPanel {
         matches!(self.state, Link::Ready)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn permission_oracle(&self) -> Option<(String, String, Option<String>, Vec<String>)> {
         self.stack.permission_oracle()
     }
 
-    pub fn composer_content_height(&self) -> f32 {
+    pub(crate) fn composer_content_height(&self) -> f32 {
         self.first_view()
             .map(|view| view.composer.content_height())
             .unwrap_or(0.0)
     }
 
-    pub fn queue_oracle(&self) -> Vec<(String, String)> {
+    pub(crate) fn queue_oracle(&self) -> Vec<(String, String)> {
         self.stack.queue_oracle()
     }
 
@@ -1181,6 +1183,7 @@ impl ChatPanel {
     /// holding a permission ask (it outlives the stream), else the
     /// turn the wire last told us was in flight. With none of these
     /// the button has nothing to name — and does nothing.
+    #[doc(hidden)]
     pub fn cancel_target(&self) -> Option<ahp_wire::client::TurnId> {
         self.conversation
             .live()

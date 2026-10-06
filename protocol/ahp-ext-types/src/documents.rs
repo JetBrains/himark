@@ -126,12 +126,12 @@ pub const DOCUMENT_APPLIED: &str = "document/applied";
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DocumentClosed {
+pub(crate) struct DocumentClosed {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
 
-pub const DOCUMENT_CLOSED: &str = "document/closed";
+pub(crate) const DOCUMENT_CLOSED: &str = "document/closed";
 
 #[cfg(test)]
 mod tests {

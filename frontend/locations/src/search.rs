@@ -686,12 +686,9 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
                         let mut commands = commands.into_iter();
                         match commands.next() {
                             Some(first) => EventResult::Commands(
-                                std::iter::once(SearchCommand::Focus(
-                                    area,
-                                    Some(Box::new(first)),
-                                ))
-                                .chain(commands)
-                                .collect(),
+                                std::iter::once(SearchCommand::Focus(area, Some(Box::new(first))))
+                                    .chain(commands)
+                                    .collect(),
                             ),
                             None => EventResult::Command(SearchCommand::Focus(area, None)),
                         }

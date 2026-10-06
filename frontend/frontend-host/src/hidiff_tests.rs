@@ -4036,7 +4036,14 @@ fn releasing_the_last_view_frees_the_rows_documents() {
     let mut first = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        DiffCanvasView::seeded_for_tests(&mut store, &ui, changes, commit.clone(), file.clone(), built(&file))
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            commit.clone(),
+            file.clone(),
+            built(&file),
+        )
     };
     let registered = |app: &Application| {
         let store = app.store();
@@ -4102,16 +4109,15 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
-    let file = |name: &str, added: Option<i64>, removed: Option<i64>| {
-        ::canvas::diff_canvas::CanvasFile {
+    let file =
+        |name: &str, added: Option<i64>, removed: Option<i64>| ::canvas::diff_canvas::CanvasFile {
             title: name.to_owned(),
             old: location(&format!("{name}.old")),
             new: location(name),
             added,
             removed,
             updated: 1,
-        }
-    };
+        };
 
     let built = |file: &::canvas::diff_canvas::CanvasFile| {
         let old = editor::document::Document::new(
@@ -4166,7 +4172,11 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
     // The batch-tail pump drains ONE open and stays quiet while it is
     // in flight; the landing admits the next.
     assert_eq!(view.pump_for_tests(&mut app.store_mut()), 1);
-    assert_eq!(view.pump_for_tests(&mut app.store_mut()), 0, "one in flight");
+    assert_eq!(
+        view.pump_for_tests(&mut app.store_mut()),
+        0,
+        "one in flight"
+    );
     let f01 = file("f01.md", Some(100), Some(100));
     let prep = built(&f01);
     {

@@ -41,6 +41,8 @@ pub struct RepairEffect {
 }
 
 impl RepairEffect {
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn editor_count(&self) -> usize {
         self.editors.len()
     }

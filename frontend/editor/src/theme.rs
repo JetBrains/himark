@@ -1124,7 +1124,7 @@ fn parse_color(hex: &str) -> Result<Color, String> {
     })
 }
 
-pub type HiddenRange = Range<u32>;
+pub(crate) type HiddenRange = Range<u32>;
 
 #[cfg(test)]
 mod tests;

@@ -76,7 +76,9 @@ pub struct RefetchDiffEffect {
     pub policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct RefetchRebase {
     pub operation: operation::operation::Operation,
 
@@ -354,6 +356,7 @@ impl OpenDocuments {
     /// Re-run the diff for a fetch whose landing raced a fresher
     /// revision: same serial (it is still the newest disk text — a newer
     /// fetch supersedes it by serial), fresh baseline/current/revision.
+    #[doc(hidden)]
     pub fn rediff_row(
         &self,
         store: &Store,
@@ -392,6 +395,8 @@ impl OpenDocuments {
         );
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn apply_refetched_row(
         &self,
         store: &Store,

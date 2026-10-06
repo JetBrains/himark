@@ -103,7 +103,7 @@ impl SourceState {
 }
 
 #[derive(Clone)]
-pub struct CompletionPopupView {
+pub(crate) struct CompletionPopupView {
     list: PopupList,
     rows: usize,
 }

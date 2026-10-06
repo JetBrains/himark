@@ -213,6 +213,7 @@ pub(crate) fn session_failed(
 /// WIRE → MIRROR: the model's state types, built on the effect
 /// worker. The commits' changeset uris are harvested separately —
 /// driver state, never the model's.
+#[doc(hidden)]
 pub fn digest_snapshot(state: history_wire::HistoryState) -> (HistorySnapshot, Harvest) {
     let harvest = harvest_channels(&state.commits);
     let snapshot = HistorySnapshot {
@@ -255,6 +256,8 @@ fn digest_head(head: &history_wire::HistoryHead) -> HistoryHead {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn digest_commit(commit: history_wire::Commit) -> CommitInfo {
     CommitInfo {
         id: commit.id,

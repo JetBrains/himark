@@ -115,7 +115,7 @@ impl Panel {
         }
     }
 
-    pub fn editor_mut(&mut self) -> Option<&mut EditorPane> {
+    pub(crate) fn editor_mut(&mut self) -> Option<&mut EditorPane> {
         match self {
             Self::Editor(pane) => Some(pane),
             _ => None,
@@ -570,7 +570,7 @@ impl PaneSlot {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn history_depths(&self) -> (usize, usize) {
+    pub(crate) fn history_depths(&self) -> (usize, usize) {
         (self.back.len(), self.forward.len())
     }
 
@@ -785,11 +785,12 @@ impl WorkbenchNode {
 
     /// Nothing open — the chat column (when present) owns the whole
     /// workbench, and closing the last panel brings the chat back.
+    #[doc(hidden)]
     pub fn is_vacant(&self) -> bool {
         matches!(self, Self::Leaf(slot) if slot.panel.panel.is_blank())
     }
 
-    pub fn split_of(first: EditorPane, second: EditorPane, ratio: f32) -> Self {
+    pub(crate) fn split_of(first: EditorPane, second: EditorPane, ratio: f32) -> Self {
         Self::Split(Box::new(
             SplitView::row(Self::editor_leaf(first), Self::editor_leaf(second)).with_ratio(ratio),
         ))
@@ -832,7 +833,7 @@ impl WorkbenchNode {
         &self.focused_slot().panel.panel
     }
 
-    pub fn focused_pane_mut(&mut self) -> &mut Panel {
+    pub(crate) fn focused_pane_mut(&mut self) -> &mut Panel {
         &mut self.focused_slot_mut().panel.panel
     }
 
@@ -841,6 +842,8 @@ impl WorkbenchNode {
         self.focused_slot_mut().replace_panel(panel)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focused_slot(&self) -> &PaneSlot {
         match self {
             Self::Leaf(slot) => slot,
@@ -881,7 +884,7 @@ impl WorkbenchNode {
         }
     }
 
-    pub fn for_each_pane_mut(&mut self, visit: &mut impl FnMut(&mut Panel)) {
+    pub(crate) fn for_each_pane_mut(&mut self, visit: &mut impl FnMut(&mut Panel)) {
         match self {
             Self::Leaf(slot) => visit(&mut slot.panel.panel),
             Self::Split(split) => {

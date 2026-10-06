@@ -65,6 +65,8 @@ pub struct Application {
     settling: bool,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub struct OpenedDocument {
     /// The collection the open was launched FOR — stamped at the
     /// gesture, so the landing files the document into the session the
@@ -90,7 +92,7 @@ pub struct AppFonts {
     source: ::editor::FontSource,
 }
 
-pub type DocumentBuild = Box<
+pub(crate) type DocumentBuild = Box<
     dyn FnOnce(
             &imba::store::Store,
             &UiCtx,
@@ -162,6 +164,7 @@ pub fn shell_verb(command: AppCommand) -> Verb {
 /// A drained verb back into the app stream: shell payloads unwrap
 /// (an `AppCommand`, or a deferred dynamic ask that takes the
 /// draining window); everything else rides the Verb arm.
+#[doc(hidden)]
 pub fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
     match verb {
         Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
@@ -188,7 +191,7 @@ impl AppCommand {
     }
 }
 
-pub type AppEffects = imba::effect::Batch<AppCommand>;
+pub(crate) type AppEffects = imba::effect::Batch<AppCommand>;
 
 pub type AppFx<'a> = Effects<'a, AppCommand>;
 
@@ -318,6 +321,8 @@ impl crate::commands::WindowedCommand for EnterFreshSession {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn markdown_scratch() -> Document {
     Document::new(Text::from_string_exact(""), Markup::new()).with_syntax(
         ::editor::markup::Syntax::new("markdown", None, Markup::new()),
@@ -442,6 +447,8 @@ impl Application {
             .is_some_and(|entity| entity.viewport_stale(size))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn ui_handle(&self) -> std::rc::Rc<UiCtx> {
         self.ui.clone()
     }
@@ -539,7 +546,7 @@ impl Application {
         self.handlers.register::<E>(handler);
     }
 
-    pub fn register_windowed_navigator<N: ::workbench::navigation::WindowedNavigator>(
+    pub(crate) fn register_windowed_navigator<N: ::workbench::navigation::WindowedNavigator>(
         &mut self,
         navigator: N,
     ) {
@@ -1244,7 +1251,7 @@ fn trace_reconcile(source: &str, commands: &[AppCommand]) {
     eprintln!("[reconcile] {source} reported: {}", labels.join(", "));
 }
 
-pub fn trace_stalls_enabled() -> bool {
+pub(crate) fn trace_stalls_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_STALLS").is_some())
 }
@@ -1798,7 +1805,7 @@ impl Application {
 }
 
 impl Application {
-    pub fn sync_viewport_window(
+    pub(crate) fn sync_viewport_window(
         &mut self,
         window: ::workbench::window::WindowId,
         size: skia_safe::Size,
@@ -1808,6 +1815,8 @@ impl Application {
         }
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn draw_window(
         &mut self,
         window: ::workbench::window::WindowId,
@@ -1851,7 +1860,9 @@ impl Application {
         reconciled
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn draw_window_profiled(
         &mut self,
         window: ::workbench::window::WindowId,

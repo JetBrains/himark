@@ -36,7 +36,7 @@ pub enum Sizing {
 }
 
 impl Sizing {
-    pub fn first_extent(self, axis: f32) -> f32 {
+    pub(crate) fn first_extent(self, axis: f32) -> f32 {
         match self {
             Sizing::Ratio(ratio) => (axis * ratio).floor(),
             Sizing::FirstAbsolute(px) => px.clamp(0.0, axis).floor(),
@@ -99,7 +99,7 @@ impl<First, Second> SplitView<First, Second> {
         self
     }
 
-    pub fn with_sizing(mut self, sizing: Sizing) -> Self {
+    pub(crate) fn with_sizing(mut self, sizing: Sizing) -> Self {
         self.sizing = sizing;
         self
     }

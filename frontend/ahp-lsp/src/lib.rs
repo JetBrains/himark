@@ -67,7 +67,7 @@ impl EffectHandler<LspCompletionEffect> for CompletionRoute {
     }
 }
 
-pub fn parse_completion(result: &serde_json::Value) -> LspAnswer {
+pub(crate) fn parse_completion(result: &serde_json::Value) -> LspAnswer {
     const PARSE_CAP: usize = 512;
     let (items, incomplete) = match result {
         serde_json::Value::Array(items) => (items.as_slice(), false),
@@ -148,7 +148,7 @@ impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
     }
 }
 
-pub fn parse_hover(result: &serde_json::Value) -> documents::hover::HoverInfo {
+pub(crate) fn parse_hover(result: &serde_json::Value) -> documents::hover::HoverInfo {
     const LINE_CAP: usize = 80;
     let mut text = String::new();
     collect_hover(

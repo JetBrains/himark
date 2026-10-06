@@ -22,7 +22,7 @@ use crate::inline_decorations;
 type TableChrome = ::editor::theme::TableChrome;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CellAlign {
+pub(crate) enum CellAlign {
     Left,
     Center,
     Right,
@@ -1153,7 +1153,7 @@ impl imba::effect::Effect for TableRelayoutEffect {
     type Result = TableCommand;
 }
 
-pub struct TableRelayoutHandler(pub std::sync::Arc<editor::env::Workshop>);
+pub(crate) struct TableRelayoutHandler(pub std::sync::Arc<editor::env::Workshop>);
 
 impl imba::effect::EffectHandler<TableRelayoutEffect> for TableRelayoutHandler {
     async fn handle(&self, effect: TableRelayoutEffect) -> TableCommand {

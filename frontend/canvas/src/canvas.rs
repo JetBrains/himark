@@ -271,7 +271,7 @@ impl Canvas {
     }
 
     #[doc(hidden)]
-    pub fn probe_focused_row(&self) -> Option<usize> {
+    pub(crate) fn probe_focused_row(&self) -> Option<usize> {
         self.rows.content().focused()
     }
 
@@ -445,7 +445,7 @@ impl Canvas {
 
     /// Per Built row: (host text head, each card's text head).
     #[doc(hidden)]
-    pub fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
+    pub(crate) fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(_, diff)| {
@@ -478,7 +478,7 @@ impl Canvas {
 
     /// Geometry oracle: (content_height, [(anchor_byte, y_of_anchor)]).
     #[doc(hidden)]
-    pub fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
+    pub(crate) fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(_, diff)| {
@@ -1126,7 +1126,7 @@ impl Canvas {
     /// TEST SUPPORT: seed one BUILT row directly — the perf harness
     /// measures canvas RENDERING without the changes feed or a host.
     #[doc(hidden)]
-    pub fn seed_built_for_tests(
+    pub(crate) fn seed_built_for_tests(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
@@ -1918,7 +1918,7 @@ impl Canvases {
         }
     }
 
-    pub fn set_reveal(
+    pub(crate) fn set_reveal(
         store: &mut Store,
         changes: imba::store::Id<Changes>,
         id: CanvasId,
@@ -2028,7 +2028,7 @@ fn route_canvas(
 
 /// Perform one command against a SET-OWNED canvas — the panel-free
 /// road (`perform_diff_view`'s twin), reached through the router.
-pub fn perform_canvas(
+pub(crate) fn perform_canvas(
     store: &mut Store,
     ui: &UiCtx,
     changes: imba::store::Id<Changes>,
@@ -2282,7 +2282,7 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_focused_row(&self, store: &Store) -> Option<usize> {
+    pub(crate) fn probe_focused_row(&self, store: &Store) -> Option<usize> {
         self.canvas(store)?.probe_focused_row()
     }
 
@@ -2318,14 +2318,14 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
+    pub(crate) fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_texts(store))
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
-    pub fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
+    pub(crate) fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_geometry(store))
             .unwrap_or_default()

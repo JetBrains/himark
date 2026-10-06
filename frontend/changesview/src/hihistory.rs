@@ -83,7 +83,9 @@ impl std::ops::Deref for Commit {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct FolderHistory {
     pub status: ChangesStatus,
     pub head: HistoryHead,
@@ -350,7 +352,7 @@ impl History {
     }
 }
 
-pub struct FetchCommitFiles {
+pub(crate) struct FetchCommitFiles {
     pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
     pub commit: crate::hichanges::Revision,
@@ -372,7 +374,7 @@ impl imba::command::DynamicCommand for FetchCommitFiles {
     }
 }
 
-pub struct GrowHistory {
+pub(crate) struct GrowHistory {
     pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
 }
@@ -454,6 +456,8 @@ impl DirSink for CommitSink<'_> {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn graph_node(
     store: &Store,
     history: imba::store::Id<History>,
@@ -600,7 +604,9 @@ pub fn graph_node(
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct CommitTip {
     lines: Vec<(String, bool)>,
 }
@@ -699,7 +705,7 @@ impl imba::View for CommitTip {
     }
 }
 
-pub fn commit_tip(
+pub(crate) fn commit_tip(
     rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
     history: imba::store::Id<History>,

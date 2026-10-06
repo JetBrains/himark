@@ -23,7 +23,7 @@ pub(crate) enum LsEvent {
     Progress,
 }
 
-pub fn discover_rust_analyzer() -> String {
+pub(crate) fn discover_rust_analyzer() -> String {
     if let Ok(command) = std::env::var("HIMARK_RUST_ANALYZER") {
         return command;
     }

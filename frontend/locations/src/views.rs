@@ -64,6 +64,7 @@ impl documents::DocumentHook for LocationsWashHook {
 /// current and future panes — shows it. Ranges resolve against the
 /// LIVE text and shift with edits like all markup; the wash leaves
 /// with the feed (`DisposeFeed`).
+#[doc(hidden)]
 pub struct WashDocument {
     pub lists: imba::store::Id<LocationLists>,
     pub feed: FeedId,
@@ -208,7 +209,7 @@ pub fn dispose_feed(
 
 /// The peek's master forest: locations grouped by FILE (no directory
 /// nesting — the card is compact), every occurrence a pickable leaf.
-pub fn files_forest<'a>(
+pub(crate) fn files_forest<'a>(
     store: &Store,
     rows: impl IntoIterator<Item = &'a FoundLocation>,
 ) -> Vec<ForestNode<LocationKey>> {
@@ -260,7 +261,7 @@ pub fn files_forest<'a>(
 /// Sorted by (authority, path, line, column) whatever order batches
 /// landed in; single-child directory chains join into one row (the
 /// TOC recipe); every occurrence is its own pickable leaf.
-pub fn locations_forest<'a>(
+pub(crate) fn locations_forest<'a>(
     store: &Store,
     rows: impl IntoIterator<Item = &'a FoundLocation>,
 ) -> Vec<ForestNode<LocationKey>> {

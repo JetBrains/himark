@@ -19,7 +19,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 
 use crate::claude::Sink;
 
-pub fn discover_binary() -> String {
+pub(crate) fn discover_binary() -> String {
     if let Ok(binary) = std::env::var("HIMARK_CODEX_BIN") {
         return binary;
     }
@@ -45,7 +45,7 @@ pub fn discover_binary() -> String {
     "codex".to_owned()
 }
 
-pub struct SpawnConfig {
+pub(crate) struct SpawnConfig {
     pub binary: String,
     pub cwd: std::path::PathBuf,
     pub add_dirs: Vec<std::path::PathBuf>,
@@ -56,7 +56,7 @@ pub struct SpawnConfig {
     pub thinking_level: Option<String>,
 }
 
-pub struct CodexAgent {
+pub(crate) struct CodexAgent {
     stdin: Mutex<Option<tokio::process::ChildStdin>>,
     child: Mutex<Option<tokio::process::Child>>,
     state: Mutex<TurnState>,
@@ -239,11 +239,11 @@ impl CodexAgent {
         Ok(agent)
     }
 
-    pub fn native_id(&self) -> &str {
+    pub(crate) fn native_id(&self) -> &str {
         &self.native_id
     }
 
-    pub fn is_dead(&self) -> bool {
+    pub(crate) fn is_dead(&self) -> bool {
         self.dead.load(std::sync::atomic::Ordering::SeqCst)
     }
 

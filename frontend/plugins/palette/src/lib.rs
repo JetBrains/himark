@@ -38,7 +38,7 @@ struct Entry {
 }
 
 #[derive(Clone)]
-pub enum PaletteCommand {
+pub(crate) enum PaletteCommand {
     /// The palette's OWN input editor — the query lives here.
     Input(editor::editor_view::EditorCommand),
 
@@ -63,7 +63,7 @@ impl std::fmt::Display for PaletteCommand {
 const PALETTE_SHOWN: usize = 200;
 
 #[derive(Clone)]
-pub struct PaletteView {
+pub(crate) struct PaletteView {
     /// The palette's own query input: the overlay owns its text.
     input: editor::editor_view::EditorView,
 

@@ -252,6 +252,8 @@ impl DiffViewState {
         &self.diff
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn mark_markups(&self) -> (crate::markup::MarkupId, crate::markup::MarkupId) {
         (self.left_marks, self.right_marks)
     }
@@ -294,7 +296,7 @@ impl std::fmt::Display for SplitDiffCommand {
     }
 }
 
-pub type SplitDiffEffects<'a> = Effects<'a, SplitDiffCommand>;
+pub(crate) type SplitDiffEffects<'a> = Effects<'a, SplitDiffCommand>;
 
 pub(crate) mod align;
 pub(crate) mod fold;

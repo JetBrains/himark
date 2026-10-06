@@ -19,12 +19,12 @@ use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
 // is baked into the design (base font 32, toolbar 74, pane 900).
 
 /// The dedicated chat column never shrinks below this (420pt at 2x).
-pub const CHAT_COLUMN_MIN: f32 = 840.0;
+pub(crate) const CHAT_COLUMN_MIN: f32 = 840.0;
 
 /// The main area keeps at least this much beside the column (1100pt
 /// at 2x) — below that there is no room for both, and the panel wins
 /// the whole workbench.
-pub const MAIN_COLUMN_MIN: f32 = 2200.0;
+pub(crate) const MAIN_COLUMN_MIN: f32 = 2200.0;
 
 /// The column's default share of the window; dragging adjusts it
 /// freely upward from `CHAT_COLUMN_MIN` — there is no maximum.
@@ -36,7 +36,7 @@ const HANDLE_REACH: f32 = 4.0;
 /// fit while the main area keeps a real working width — not a bare
 /// editor minimum. Below this the chat lives in the split tree like
 /// any other panel.
-pub fn chat_column_engaged(width: f32, window: &::editor::theme::WindowChrome) -> bool {
+pub(crate) fn chat_column_engaged(width: f32, window: &::editor::theme::WindowChrome) -> bool {
     width >= CHAT_COLUMN_MIN + window.first_pane_width.max(MAIN_COLUMN_MIN)
 }
 
@@ -44,7 +44,7 @@ pub fn chat_column_engaged(width: f32, window: &::editor::theme::WindowChrome) -
 /// state: the split between chat and panel is proportion-first (the
 /// share survives window resizes), bounded by the chat minimum and
 /// the main area's guarantee.
-pub fn chat_column_width(share: f32, width: f32) -> f32 {
+pub(crate) fn chat_column_width(share: f32, width: f32) -> f32 {
     (width * share).clamp(CHAT_COLUMN_MIN, chat_column_max(width))
 }
 
@@ -58,7 +58,9 @@ fn chat_column_max(width: f32) -> f32 {
     (width - MAIN_COLUMN_MIN).max(CHAT_COLUMN_MIN)
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub enum WorkbenchCommand {
     /// To the split tree.
     Node(NodeCommand),
@@ -219,18 +221,26 @@ impl Workbench {
         self.chat.as_mut()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn chat_focused(&self) -> bool {
         self.chat_focused && self.chat.is_some()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn focus_chat(&mut self, focus: bool) {
         self.chat_focused = focus && self.chat.is_some();
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn chat_fronted(&self) -> bool {
         self.chat_fronted && self.chat.is_some()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn chat_minimized(&self) -> bool {
         self.chat_minimized && self.chat.is_some()
     }
@@ -282,6 +292,8 @@ pub struct WorkbenchGeometry {
     pub split_width: f32,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn workbench_geometry(
     width: f32,
     height: f32,

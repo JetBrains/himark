@@ -223,6 +223,8 @@ use ahp_session::session::state::SessionState;
 use ahp_wire::SessionId;
 use workbench::window::{Window, WindowId, Windows, Workspace};
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub struct SessionWorkspace {
     pub session: SessionId,
     pub state: SessionState,
@@ -236,7 +238,7 @@ impl SessionWorkspace {
 }
 
 /// The local-host rekey payload (`Window::adopt_workspaces`).
-pub struct AdoptLocalHost(pub ahp_wire::client::HostId);
+pub(crate) struct AdoptLocalHost(pub ahp_wire::client::HostId);
 
 impl Workspace for SessionWorkspace {
     fn documents(&self) -> imba::store::Id<documents::OpenDocuments> {
@@ -349,6 +351,8 @@ pub fn session_state(store: &Store, window: WindowId) -> Option<SessionState> {
     Some(entity_state(Windows::window_ref(store, window)?))
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn window_session(store: &Store, window: WindowId) -> Option<SessionId> {
     Some(entity_session(Windows::window_ref(store, window)?))
 }

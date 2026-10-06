@@ -371,7 +371,7 @@ impl std::fmt::Display for FoldCommand {
 }
 
 #[derive(Clone)]
-pub struct FoldStrip {
+pub(crate) struct FoldStrip {
     pub lines: u32,
 
     /// The split's LEFT pane mounts the fold as a silent spacer: it

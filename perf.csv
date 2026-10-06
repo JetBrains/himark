@@ -13542,3 +13542,16 @@ timestamp,commit,profile,bench,metric,value_ms
 1791295248,3fc16707e,debug,sumtree,splice1k_ms,40.3811
 1791295248,3fc16707e,debug,sumtree,set10k_ms,61.1815
 1791295248,3fc16707e,debug,sumtree,find10k_ms,8.2455
+1791311135,7b6f0e2e6,debug,tree-demo,toggle_ms,0.9908
+1791311188,7b6f0e2e6,debug,render-scroll,avg_ms,1.3241
+1791311188,7b6f0e2e6,debug,render-scroll,p50_ms,1.3088
+1791311188,7b6f0e2e6,debug,render-scroll,p95_ms,1.7234
+1791311232,7b6f0e2e6,debug,styled-typing,p50_ms,3.1033
+1791311232,7b6f0e2e6,debug,styled-typing,p95_ms,4.0352
+1791311275,7b6f0e2e6,debug,monster-scroll,paint_p50_ms,2.3580
+1791311275,7b6f0e2e6,debug,monster-scroll,paint_p95_ms,3.1997
+1791311288,7b6f0e2e6,debug,wall,open_ms,110.7700
+1791311288,7b6f0e2e6,debug,wall,typing_p50_ms,1.3065
+1791311320,7b6f0e2e6,debug,burst-typing,p50_ms,5.5703
+1791311320,7b6f0e2e6,debug,burst-typing,p95_ms,15.9932
+1791311359,7b6f0e2e6,debug,typing,emptied_monster_p50_ms,2.0298

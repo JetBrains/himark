@@ -45,7 +45,7 @@ impl std::fmt::Display for UnifiedDiffCommand {
     }
 }
 
-pub type UnifiedDiffEffects<'a> = imba::effect::Effects<'a, UnifiedDiffCommand>;
+pub(crate) type UnifiedDiffEffects<'a> = imba::effect::Effects<'a, UnifiedDiffCommand>;
 
 #[derive(Clone)]
 pub struct UnifiedDiffView {

@@ -103,7 +103,7 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
     }
 }
 
-pub struct DiffNavigator;
+pub(crate) struct DiffNavigator;
 
 impl ::workbench::navigation::WindowedNavigator for DiffNavigator {
     type Place = canvas::diff_pane::DiffPlace;
@@ -177,7 +177,7 @@ impl WindowedCommand for OpenDiffPair {
     }
 }
 
-pub struct OpenByLocationHandler {
+pub(crate) struct OpenByLocationHandler {
     pub caller: imba::effect::EffectCaller,
     pub workshop: Arc<editor::env::Workshop>,
     pub languages: Arc<editor::reparse::SyntaxLanguages>,
@@ -228,7 +228,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
     }
 }
 
-pub struct FetchFailed {
+pub(crate) struct FetchFailed {
     location: ResourceLocation,
 }
 

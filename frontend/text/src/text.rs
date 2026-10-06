@@ -27,6 +27,8 @@ impl Text {
         }
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn from_string(text: impl AsRef<str>) -> Self {
         let normalized = text.as_ref().replace("\r\n", "\n").replace('\r', "\n");
         Self::from_string_exact(normalized)

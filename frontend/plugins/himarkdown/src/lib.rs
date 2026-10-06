@@ -131,7 +131,7 @@ pub fn markdown_document(
     (document, blocks)
 }
 
-pub fn document_from_tree(
+pub(crate) fn document_from_tree(
     source: &str,
     tree: &Tree,
     store: &imba::store::Store,
@@ -214,7 +214,7 @@ fn parse_markdown_incremental(
         .expect("reparse must produce a tree")
 }
 
-pub struct MarkdownLanguage;
+pub(crate) struct MarkdownLanguage;
 
 impl SyntaxLanguage for MarkdownLanguage {
     fn parse(
@@ -355,7 +355,7 @@ impl MarkdownLanguage {
     }
 }
 
-pub fn parse_markdown(text: &Text) -> Tree {
+pub(crate) fn parse_markdown(text: &Text) -> Tree {
     let mut source = text.byte_string(0, text.byte_count());
 
     if !source.ends_with('\n') && !source.is_empty() {
@@ -364,7 +364,7 @@ pub fn parse_markdown(text: &Text) -> Tree {
     mdparser::block_tree(&source)
 }
 
-pub fn markup_from_tree(
+pub(crate) fn markup_from_tree(
     text: &Text,
     tree: &Tree,
     fonts: &skia_safe::textlayout::FontCollection,
@@ -373,7 +373,7 @@ pub fn markup_from_tree(
     markup_builder_from_tree(text, tree, fonts, theme).finish()
 }
 
-pub fn markup_builder_from_tree(
+pub(crate) fn markup_builder_from_tree(
     text: &Text,
     tree: &Tree,
     fonts: &skia_safe::textlayout::FontCollection,
@@ -386,7 +386,7 @@ pub fn markup_builder_from_tree(
     markup
 }
 
-pub fn markup_builder_from_blocks(
+pub(crate) fn markup_builder_from_blocks(
     blocks: &[MarkdownBlock],
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
@@ -400,7 +400,7 @@ pub fn markup_builder_from_blocks(
     markup
 }
 
-pub fn markdown_blocks(text: &Text, tree: &Tree) -> Vec<MarkdownBlock> {
+pub(crate) fn markdown_blocks(text: &Text, tree: &Tree) -> Vec<MarkdownBlock> {
     let mut blocks = Vec::new();
     visit_markdown_blocks(text, tree, |block| blocks.push(block));
     blocks

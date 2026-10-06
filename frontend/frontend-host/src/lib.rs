@@ -463,7 +463,7 @@ impl HimarkEngine {
         engine
     }
 
-    pub fn with_fonts(fonts: AppFonts) -> Self {
+    pub(crate) fn with_fonts(fonts: AppFonts) -> Self {
         let mut app = Application::new(fonts);
         app.register_syntax_languages(syntax_languages());
         // ONE policy: what the diff view computes with is what the
@@ -728,12 +728,12 @@ impl HimarkEngine {
 
     const DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
 
-    pub fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
+    pub(crate) fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
         self.drain_chunk = chunk;
         self.drain_budget = budget;
     }
 
-    pub fn queued_landings(&self) -> usize {
+    pub(crate) fn queued_landings(&self) -> usize {
         self.shared.inbox.lock().expect("inbox").len()
     }
 
@@ -853,7 +853,7 @@ impl HimarkEngine {
             .unwrap_or(false)
     }
 
-    pub fn text_input_replacing(
+    pub(crate) fn text_input_replacing(
         &mut self,
         window: u64,
         text: &str,
@@ -969,7 +969,7 @@ impl HimarkEngine {
         self.scroll_at_time(window, x, y, delta_x, delta_y, 0.0)
     }
 
-    pub fn scroll_at_time(
+    pub(crate) fn scroll_at_time(
         &mut self,
         window: u64,
         x: f32,
@@ -1216,7 +1216,7 @@ impl HimarkEngine {
         self.host = Some(bridge);
     }
 
-    pub fn host_picked(
+    pub(crate) fn host_picked(
         &mut self,
         request: u64,
         locations: Vec<editor::location::ResourceLocation>,
@@ -1226,7 +1226,7 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(locations)))
     }
 
-    pub fn host_picked_folder(
+    pub(crate) fn host_picked_folder(
         &mut self,
         request: u64,
         location: Option<editor::location::ResourceLocation>,
@@ -1236,13 +1236,13 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(location)))
     }
 
-    pub fn host_fetched(&mut self, request: u64, text: Option<String>) -> bool {
+    pub(crate) fn host_fetched(&mut self, request: u64, text: Option<String>) -> bool {
         self.host
             .as_ref()
             .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
     }
 
-    pub fn file_changed(&mut self, subscription: u64) -> bool {
+    pub(crate) fn file_changed(&mut self, subscription: u64) -> bool {
         if subscription == 0 {
             return false;
         }
@@ -1257,13 +1257,13 @@ impl HimarkEngine {
         true
     }
 
-    pub fn host_stored(&mut self, request: u64, stored: bool) -> bool {
+    pub(crate) fn host_stored(&mut self, request: u64, stored: bool) -> bool {
         self.host
             .as_ref()
             .is_some_and(|host| host.requests.fulfill(request, Box::new(stored)))
     }
 
-    pub fn host_listed(
+    pub(crate) fn host_listed(
         &mut self,
         request: u64,
         entries: Option<Vec<editor::location::ResourceLocation>>,
@@ -1472,7 +1472,7 @@ impl HimarkEngine {
 }
 
 impl HimarkEngine {
-    pub fn register_agent_server(
+    pub(crate) fn register_agent_server(
         &mut self,
         name: &str,
         client: ahp_wire::client::Client,
@@ -1480,7 +1480,7 @@ impl HimarkEngine {
         register_agent_server(&mut self.app, &self.clients, name, client)
     }
 
-    pub fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
+    pub(crate) fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
         self.clients.set_local(server);
         self.app.designate_local_host(server);
     }

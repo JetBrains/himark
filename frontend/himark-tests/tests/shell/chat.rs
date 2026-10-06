@@ -224,21 +224,22 @@ fn the_composer_command_fronts_the_chat_panel() {
 
     // ⌘I means "type here": a view parked on the transcript (a click
     // there sticks) is re-pointed at the composer by the command.
-    let with_pane = |app: &mut himark::app::Application,
-                     f: &mut dyn FnMut(&ahp_chat::chats::ChatPane, &mut Store)| {
-        let entity = ::workbench::window::Windows::window(app.store(), app.sole_window())
-            .expect("window");
-        if let Some(chat) = entity.workbench().chat() {
-            if let ::workbench::workbench_node::Panel::Plugin(view) = chat.panel() {
-                if let Some(pane) = view.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
-                    let pane = pane.clone();
-                    f(&pane, &mut app.store_mut());
+    let with_pane =
+        |app: &mut himark::app::Application,
+         f: &mut dyn FnMut(&ahp_chat::chats::ChatPane, &mut Store)| {
+            let entity = ::workbench::window::Windows::window(app.store(), app.sole_window())
+                .expect("window");
+            if let Some(chat) = entity.workbench().chat() {
+                if let ::workbench::workbench_node::Panel::Plugin(view) = chat.panel() {
+                    if let Some(pane) = view.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
+                        let pane = pane.clone();
+                        f(&pane, &mut app.store_mut());
+                    }
                 }
             }
-        }
-        let window = app.sole_window();
-        ::workbench::window::Windows::put(&mut app.store_mut(), window, entity);
-    };
+            let window = app.sole_window();
+            ::workbench::window::Windows::put(&mut app.store_mut(), window, entity);
+        };
     with_pane(&mut app, &mut |pane, store| {
         pane.set_focus_area(store, ahp_chat::chat::ChatArea::Transcript);
         assert_eq!(

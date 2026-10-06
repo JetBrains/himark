@@ -15,7 +15,7 @@ use ahp_session::session::state::Hosts;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
 
-pub struct AddSessionFolders {
+pub(crate) struct AddSessionFolders {
     pub server: HostId,
     pub session: SessionUri,
 }

@@ -11,6 +11,8 @@ const NOTE_KIND: &str = "changes-note";
 
 const REF_PREFIX: &str = "ahpref\u{1f}";
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub const EMPTY_AUTHORITY: &str = "changes-empty";
 
 pub fn before_ref_location(
@@ -353,7 +355,7 @@ impl ChangeSet {
 /// Transitional alias — the tests and older call sites named the
 /// per-folder record `FolderChanges`; it IS the working-copy
 /// `ChangeSet` now.
-pub type FolderChanges = ChangeSet;
+pub(crate) type FolderChanges = ChangeSet;
 
 /// The session's change sets, keyed by minted id
 /// (docs/model-view.md): one record per working copy, one per commit.
@@ -543,6 +545,8 @@ impl Changes {
         self.sets.is_empty() && self.refetch_asks.is_empty()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
         let source = ChangeSetSource::WorkingCopy {
             folder: folder.clone(),
@@ -595,7 +599,7 @@ impl Changes {
     /// Mint — or find — the COMMIT-flavored set (eager and light: the
     /// history row references it from birth; its files land lazily on
     /// first ask). Never bumps the commit set's generation.
-    pub fn ensure_commit_set(
+    pub(crate) fn ensure_commit_set(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -856,7 +860,7 @@ impl Changes {
         Self::of(store, changes)?.sets.get(&id)
     }
 
-    pub fn id_for_folder(
+    pub(crate) fn id_for_folder(
         store: &Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,

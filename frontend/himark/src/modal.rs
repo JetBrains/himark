@@ -22,7 +22,7 @@ pub fn dock_scope(
     }
 }
 
-pub fn side_scope(
+pub(crate) fn side_scope(
     window: ::workbench::window::WindowId,
 ) -> impl Fn(imba::dyn_view::DynCommand) -> AppCommand + Send + Clone + 'static {
     move |command| {

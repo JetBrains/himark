@@ -18,7 +18,7 @@ pub fn block_tree(source: &str) -> Tree {
     block_tree_incremental(source, None)
 }
 
-pub fn block_tree_incremental(source: &str, old_tree: Option<&Tree>) -> Tree {
+pub(crate) fn block_tree_incremental(source: &str, old_tree: Option<&Tree>) -> Tree {
     let mut parser = Parser::new();
     let language = markdown_language();
     parser
@@ -29,6 +29,8 @@ pub fn block_tree_incremental(source: &str, old_tree: Option<&Tree>) -> Tree {
         .expect("failed to parse markdown")
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn block_sexp(source: &str) -> String {
     block_tree(source).root_node().to_sexp()
 }

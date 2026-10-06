@@ -13,7 +13,7 @@ use crate::editor_view::{ClickKind, Motion};
 use crate::text_cursor;
 
 impl Document {
-    pub fn insert_at_carets(
+    pub(crate) fn insert_at_carets(
         &mut self,
         editor: EditorId,
         text: &str,
@@ -35,7 +35,7 @@ impl Document {
         self.replace_at_carets(editor, carets, ranges, text, store, ui, fonts, theme, fx)
     }
 
-    pub fn delete_selections(
+    pub(crate) fn delete_selections(
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
@@ -53,7 +53,7 @@ impl Document {
         self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
     }
 
-    pub fn delete_at_carets(
+    pub(crate) fn delete_at_carets(
         &mut self,
         editor: EditorId,
         motion: Motion,
@@ -101,7 +101,7 @@ impl Document {
         self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
     }
 
-    pub fn replace_at_carets(
+    pub(crate) fn replace_at_carets(
         &mut self,
         editor: EditorId,
         carets: MultiCaret,
@@ -121,7 +121,7 @@ impl Document {
         self.set_carets(editor, after);
     }
 
-    pub fn move_carets(
+    pub(crate) fn move_carets(
         &mut self,
         editor: EditorId,
         motion: Motion,
@@ -172,7 +172,7 @@ impl Document {
         self.set_carets(editor, moved);
     }
 
-    pub fn move_carets_vertically(
+    pub(crate) fn move_carets_vertically(
         &mut self,
         editor: EditorId,
         down: bool,
@@ -213,7 +213,7 @@ impl Document {
         self.set_carets(editor, MultiCaret::normalized(moved, primary));
     }
 
-    pub fn add_caret_vertically(
+    pub(crate) fn add_caret_vertically(
         &mut self,
         editor: EditorId,
         above: bool,
@@ -246,7 +246,7 @@ impl Document {
         self.set_carets(editor, carets.with_added(Caret::at(target).with_goal(x)));
     }
 
-    pub fn select_all(&mut self, editor: EditorId) {
+    pub(crate) fn select_all(&mut self, editor: EditorId) {
         let window = self.window(editor);
         self.set_carets(
             editor,
@@ -254,11 +254,11 @@ impl Document {
         );
     }
 
-    pub fn collapse_carets(&mut self, editor: EditorId) {
+    pub(crate) fn collapse_carets(&mut self, editor: EditorId) {
         self.set_carets(editor, self.carets(editor).collapsed_to_primary());
     }
 
-    pub fn select_next_occurrence(&mut self, editor: EditorId) {
+    pub(crate) fn select_next_occurrence(&mut self, editor: EditorId) {
         let carets = self.carets(editor).clamped(&self.window(editor));
         let primary = carets.primary();
         if !primary.has_selection() {
@@ -289,7 +289,7 @@ impl Document {
         );
     }
 
-    pub fn select_all_occurrences(&mut self, editor: EditorId) {
+    pub(crate) fn select_all_occurrences(&mut self, editor: EditorId) {
         let window = self.window(editor);
         let carets = self.carets(editor).clamped(&window);
         let primary = carets.primary();
@@ -325,7 +325,7 @@ impl Document {
         }
     }
 
-    pub fn click_carets(
+    pub(crate) fn click_carets(
         &mut self,
         editor: EditorId,
         point: skia_safe::Point,
@@ -385,7 +385,7 @@ impl Document {
         }
     }
 
-    pub fn drag_carets(
+    pub(crate) fn drag_carets(
         &mut self,
         editor: EditorId,
         point: skia_safe::Point,

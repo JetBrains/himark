@@ -139,7 +139,9 @@ impl SyntaxLanguage for MermaidLanguage {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct MermaidView {
     outcome: Outcome,
 }
@@ -180,7 +182,7 @@ impl MermaidView {
         Self { outcome }
     }
 
-    pub fn is_diagram(&self) -> bool {
+    pub(crate) fn is_diagram(&self) -> bool {
         matches!(self.outcome, Outcome::Diagram(_))
     }
 

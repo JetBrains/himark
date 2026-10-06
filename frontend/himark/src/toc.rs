@@ -10,7 +10,7 @@ use ::toc::{OutlineView, TocView};
 use imba::store::Store;
 use skia_safe::Paint;
 
-pub struct NavigateToPlace {
+pub(crate) struct NavigateToPlace {
     pub place: hikit::navigation::EditorPlace,
 }
 
@@ -73,7 +73,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     }
 }
 
-pub struct ToggleToc;
+pub(crate) struct ToggleToc;
 
 impl crate::commands::WindowedCommand for ToggleToc {
     fn id(&self) -> &'static str {

@@ -93,7 +93,9 @@ impl ClientState {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Default)]
+#[doc(hidden)]
 pub struct SyncClients {
     clients: rpds::HashTrieMapSync<ResourceLocation, ClientState>,
 }

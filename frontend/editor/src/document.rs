@@ -40,7 +40,7 @@ pub enum EditorBuild {
     Prebuilt(crate::document_layout::DocumentLayout),
 }
 
-pub const NOWRAP_LAYOUT_WIDTH: f32 = 1_000_000.0;
+pub(crate) const NOWRAP_LAYOUT_WIDTH: f32 = 1_000_000.0;
 
 #[derive(Clone)]
 pub struct Document {
@@ -199,26 +199,35 @@ impl Document {
     /// a parse and a layout; the tests that guard the UI thread read it
     /// across a frame and expect it not to move.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn born_on_this_thread() -> u64 {
         BORN.with(std::cell::Cell::get)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn element_heights(&self, editor: EditorId) -> Vec<(u32, f32)> {
         self.editor(editor).layout.element_heights()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn element_spacers(&self, editor: EditorId) -> Vec<f32> {
         self.editor(editor).layout.element_spacers()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn element_byte_ranges(&self, editor: EditorId) -> Vec<std::ops::Range<u32>> {
         self.editor(editor).layout.element_byte_ranges()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn fresh_layout_heights(
         &self,
         editor: EditorId,
@@ -255,7 +264,9 @@ impl Document {
         layout.element_heights()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn markup_styled_ranges(&self, id: MarkupId) -> Vec<std::ops::Range<u32>> {
         use intervals::{IntervalQuery, Order};
         let Some(markup) = self.markups.get(&id) else {
@@ -268,7 +279,9 @@ impl Document {
             .collect()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn enrichment_markup(
         &self,
         enricher: crate::enrich::EnricherId,
@@ -280,13 +293,15 @@ impl Document {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn editor_shows_markup(&self, editor: EditorId, markup: MarkupId) -> bool {
+    pub(crate) fn editor_shows_markup(&self, editor: EditorId, markup: MarkupId) -> bool {
         self.editors
             .get(&editor)
             .is_some_and(|state| state.markups.contains(&markup))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn probe_state(
         &self,
         editor: EditorId,
@@ -307,6 +322,8 @@ impl Document {
         )
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn refresh_unhide(
         &mut self,
         editor: EditorId,
@@ -380,7 +397,7 @@ impl Document {
         self.markup_generation
     }
 
-    pub fn markup_changed_in(&self, since: u64, range: Range<u32>) -> bool {
+    pub(crate) fn markup_changed_in(&self, since: u64, range: Range<u32>) -> bool {
         if since == self.markup_generation {
             return false;
         }
@@ -427,6 +444,8 @@ impl Document {
             .unwrap_or_else(|| Markup::empty())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn add_syntax(&mut self, range: std::ops::Range<u32>, syntax: Syntax) -> SyntaxId {
         if self.syntax.is_none() {
             self.syntax = Some(Syntax::new(String::new(), None, Markup::new()));
@@ -525,6 +544,8 @@ impl Document {
         self.log.ranges_since(self.parsed_revision)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn install_syntax(&mut self, mut root: Syntax, sites: &[SyntaxSite]) {
         self.parsed_revision = self.revision();
         let _ = root
@@ -534,7 +555,7 @@ impl Document {
         self.note_markup_change(None);
     }
 
-    pub fn capture_reparse(
+    pub(crate) fn capture_reparse(
         &self,
         parsers: std::sync::Arc<SyntaxLanguages>,
     ) -> Option<ReparseEffect> {
@@ -579,7 +600,7 @@ impl Document {
         slot
     }
 
-    pub fn launch_enrichment(
+    pub(crate) fn launch_enrichment(
         &mut self,
         enrichers: &crate::enrich::Enrichers,
         languages: Option<std::sync::Arc<SyntaxLanguages>>,
@@ -873,7 +894,7 @@ impl Document {
         }
     }
 
-    pub fn inlay_focus_data<'w>(
+    pub(crate) fn inlay_focus_data<'w>(
         &'w self,
         store: &'w Store,
         ui: &'w imba::ui::UiCtx,
@@ -1006,7 +1027,7 @@ impl Document {
         root.markup.resolve_outline(syntax, key)
     }
 
-    pub fn outline_enclosing(&self, offset: u32) -> Vec<Range<u32>> {
+    pub(crate) fn outline_enclosing(&self, offset: u32) -> Vec<Range<u32>> {
         use intervals::{IntervalQuery, Order};
         let Some(syntax) = &self.syntax else {
             return Vec::new();
@@ -1060,14 +1081,14 @@ impl Document {
         FragmentKey { set, key }
     }
 
-    pub fn fragment_range(&self, key: FragmentKey) -> Option<Range<u32>> {
+    pub(crate) fn fragment_range(&self, key: FragmentKey) -> Option<Range<u32>> {
         self.fragments
             .get(&key.set)?
             .find_by_id(&key.key)
             .map(|entry| entry.range.clone())
     }
 
-    pub fn remove_fragments(&mut self, keys: impl IntoIterator<Item = FragmentKey>) {
+    pub(crate) fn remove_fragments(&mut self, keys: impl IntoIterator<Item = FragmentKey>) {
         for fragment in keys {
             if let Some(tree) = self.fragments.get(&fragment.set) {
                 let mut tree = tree.clone();
@@ -1137,7 +1158,7 @@ impl Document {
     /// repair pass. The per-inlay road paid `note_markup_change(None)`
     /// plus a `repair_editors` sweep PER PUSH — expanding a diff's
     /// before-cards that way froze the UI for ~1.2ms × cards.
-    pub fn push_inlays(
+    pub(crate) fn push_inlays(
         &mut self,
         markup_id: MarkupId,
         inlays: Vec<(Range<u32>, Inlay)>,
@@ -1880,7 +1901,7 @@ impl Document {
         )
     }
 
-    pub fn edit_as(
+    pub(crate) fn edit_as(
         &mut self,
         identity: crate::edit_log::EditIdentity,
         operation: &Operation,
@@ -2121,7 +2142,7 @@ impl Document {
         }
     }
 
-    pub fn reveal_jump(&self, editor: EditorId) -> bool {
+    pub(crate) fn reveal_jump(&self, editor: EditorId) -> bool {
         self.editors
             .get(&editor)
             .is_some_and(|state| state.reveal_jump)
@@ -2138,7 +2159,7 @@ impl Document {
         self.editor(editor).viewport.clone()
     }
 
-    pub fn extras_vec(&self, editor: EditorId) -> Vec<&Markup> {
+    pub(crate) fn extras_vec(&self, editor: EditorId) -> Vec<&Markup> {
         Self::view_extras(&self.markups, self.editor(editor))
             .into_iter()
             .map(|(_, markup)| markup)
@@ -2175,6 +2196,8 @@ impl Document {
             .collect()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn has_popups(&self, editor: EditorId) -> bool {
         self.markup().has_popups()
             || self
@@ -2183,6 +2206,8 @@ impl Document {
                 .any(|(_, markup)| markup.has_popups())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn extras_keyed(&self, editor: EditorId) -> Vec<(MarkupId, &Markup)> {
         Self::view_extras(&self.markups, self.editor(editor))
     }
@@ -2248,7 +2273,7 @@ impl Document {
         self.editors.get(&editor).is_none_or(|state| state.softwrap)
     }
 
-    pub fn reported_width(&self, editor: EditorId) -> f32 {
+    pub(crate) fn reported_width(&self, editor: EditorId) -> f32 {
         self.editors
             .get(&editor)
             .map_or(0.0, |state| state.target_width)
@@ -2266,7 +2291,7 @@ impl Document {
             .map_or(0.0, |state| state.scroll_x)
     }
 
-    pub fn repairs_pending(&self, editor: EditorId) -> bool {
+    pub(crate) fn repairs_pending(&self, editor: EditorId) -> bool {
         self.editors
             .get(&editor)
             .is_some_and(|state| state.layout.repair_pending().is_some())
@@ -2288,6 +2313,8 @@ impl Document {
         })
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn visible_damage(&self, editor: EditorId, top: f32, bottom: f32) -> bool {
         self.editors.get(&editor).is_some_and(|editor| {
             let visible =
@@ -2296,7 +2323,7 @@ impl Document {
         })
     }
 
-    pub fn visible_byte_band(
+    pub(crate) fn visible_byte_band(
         &self,
         editor: EditorId,
         top: f32,
@@ -2307,6 +2334,8 @@ impl Document {
             .map_or(0..0, |editor| editor.layout.byte_band(top, bottom))
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn first_visible_byte(&self, editor: EditorId, y: f32) -> u32 {
         self.editors
             .get(&editor)
@@ -2322,7 +2351,7 @@ impl Document {
     /// Where the settle pulse should re-aim this editor's viewport,
     /// if a height mutation above it left a correction pending
     /// (docs/editor/viewport-preservation.md §3).
-    pub fn settle_target(&self, editor: EditorId) -> Option<f32> {
+    pub(crate) fn settle_target(&self, editor: EditorId) -> Option<f32> {
         self.editors.get(&editor)?.settle_to
     }
 
@@ -2330,7 +2359,7 @@ impl Document {
     /// viewport honest (the full paint report stays throttled) and
     /// drop any pending correction — the observed move supersedes it
     /// (docs/editor/viewport-preservation.md §3.1).
-    pub fn note_viewport_top(&mut self, editor: EditorId, top: f32) {
+    pub(crate) fn note_viewport_top(&mut self, editor: EditorId, top: f32) {
         let Some(state) = self.editors.get_mut(&editor) else {
             return;
         };
@@ -2357,6 +2386,8 @@ impl Document {
             .find_misaligned_boundary(self.text())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn apply_syntax(
         &mut self,
         root: Syntax,
@@ -2452,6 +2483,8 @@ impl Document {
         false
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn apply_repair(&mut self, repaired: RepairedLayout) {
         let revision = self.revision();
         let markup_generation = self.markup_generation();
@@ -2959,7 +2992,12 @@ impl Document {
     /// (base coordinates) the banned set becomes `extent \ keep`, and
     /// every later fold derivation subtracts it. Pair-level state —
     /// it rides the `Diff` entry, not any view.
-    pub fn ban_fold(&mut self, id: crate::diff::DiffId, extent: Range<u32>, keep: Range<u32>) {
+    pub(crate) fn ban_fold(
+        &mut self,
+        id: crate::diff::DiffId,
+        extent: Range<u32>,
+        keep: Range<u32>,
+    ) {
         let Some(diff) = self.diffs.get(&id) else {
             return;
         };
@@ -3343,7 +3381,7 @@ impl Document {
         state.scroll_stripes.landed = Some(outcome.stripes);
     }
 
-    pub fn prebuild_row_layouts(
+    pub(crate) fn prebuild_row_layouts(
         &self,
         shown: &[MarkupId],
         rows: &[Range<u32>],

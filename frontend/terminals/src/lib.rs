@@ -32,7 +32,9 @@ pub trait TerminalBackend: Send + Sync {
     fn hangup(&self);
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct Collector(Arc<Mutex<Vec<TermEvent>>>);
 
 impl EventListener for Collector {
@@ -53,7 +55,11 @@ pub struct Session {
     told: Mutex<(u16, u16)>,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub const DEFAULT_COLS: u16 = 80;
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub const DEFAULT_ROWS: u16 = 24;
 
 impl Session {
@@ -172,7 +178,7 @@ impl Session {
         }
     }
 
-    pub fn scroll_lines(&self, lines: i32) {
+    pub(crate) fn scroll_lines(&self, lines: i32) {
         self.term.lock().scroll_display(Scroll::Delta(lines));
     }
 }
@@ -227,6 +233,8 @@ impl Terminals {
         Self::session_ref(store, terminals, id).cloned()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn session_ref<'a>(
         store: &'a Store,
         terminals: imba::store::Id<Self>,

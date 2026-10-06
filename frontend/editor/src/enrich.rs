@@ -84,6 +84,7 @@ pub struct EnrichCx<'a> {
 /// Where a derive gets its inlay-measure ctx: the UI thread hands
 /// its own pair in; the effect handler lends its kept Workshop pair.
 /// Never minted per call — see `UiCtx::dont_use_too_slow`.
+#[doc(hidden)]
 pub enum MeasureCtx<'a> {
     Handed {
         store: &'a imba::store::Store,

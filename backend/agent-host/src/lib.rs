@@ -47,8 +47,8 @@ pub(crate) fn uuid_v4() -> String {
 
 pub const PROTOCOL_VERSION: &str = ahp_types::version::PROTOCOL_VERSION;
 
-pub const SERVER_NAME: &str = "himark-agent-host";
-pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const SERVER_NAME: &str = "himark-agent-host";
+pub(crate) const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn run(socket: Option<&std::path::Path>) -> i32 {
     run_with(socket, None, None)

@@ -41,7 +41,7 @@ const PEEK_HEIGHT: f32 = 280.0;
 const HEADER_HEIGHT: f32 = 24.0;
 
 #[derive(Clone)]
-pub enum PeekCommand {
+pub(crate) enum PeekCommand {
     Tree(ListKeyCommand<TreeListCommand>),
     Close,
     /// The header chip: front this feed in the Search dock tab —
@@ -74,7 +74,7 @@ impl std::fmt::Display for PeekCommand {
 }
 
 #[derive(Clone)]
-pub struct PeekView {
+pub(crate) struct PeekView {
     /// The hosting document and the card's own key, baked in by the
     /// push → swap two-step so the card can remove itself.
     host: Option<documents::DocumentId>,
@@ -739,7 +739,7 @@ impl imba::command::DynamicCommand for RemovePeek {
 /// snapped; the character before it at the text's end; `None` on an
 /// empty document. An EMPTY anchor renders nothing — an Under
 /// inlay's line anchoring needs a real span.
-pub fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>> {
+pub(crate) fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>> {
     let len = document.text().byte_count().min(u32::MAX as usize) as u32;
     if len == 0 {
         return None;

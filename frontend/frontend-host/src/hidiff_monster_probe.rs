@@ -612,7 +612,10 @@ fn canvas_landing_breakdown_probe() {
             &env_theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        eprintln!("[landing]   one add_editor (Bounded): {:?}", started.elapsed());
+        eprintln!(
+            "[landing]   one add_editor (Bounded): {:?}",
+            started.elapsed()
+        );
     }
 
     let started = Instant::now();

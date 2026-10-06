@@ -21,6 +21,8 @@ pub fn click(app: &mut Application, x: f32, y: f32, width: f32, height: f32) -> 
     )
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn type_text(app: &mut Application, text: &str) -> bool {
     let size = app.viewport_size();
     app.dispatch_timed(app.sole_window(), Event::TextInput { text }, size, 0.0)

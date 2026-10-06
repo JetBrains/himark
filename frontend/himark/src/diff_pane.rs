@@ -15,7 +15,7 @@ use documents::OpenDocuments;
 /// docs/editor/diff-canvas.md §7). A `Built` side whose location was
 /// opened by someone else meanwhile reuses the winner and drops the
 /// build — the one genuine (and rare) throwaway, a lost open race.
-pub fn open_opened_diff_pane(
+pub(crate) fn open_opened_diff_pane(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
     window: ::workbench::window::WindowId,
@@ -35,7 +35,7 @@ pub fn open_opened_diff_pane(
     opened
 }
 
-pub fn open_diff_documents(
+pub(crate) fn open_diff_documents(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,

@@ -72,7 +72,9 @@ impl View for EmbedPending {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Copy)]
+#[doc(hidden)]
 pub struct EmbedView {
     view: EditorIdView,
     height: f32,

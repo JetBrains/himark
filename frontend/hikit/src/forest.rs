@@ -105,12 +105,14 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         self.entries.contains_key(key)
     }
 
-    pub fn is_branch(&self, key: &K) -> bool {
+    pub(crate) fn is_branch(&self, key: &K) -> bool {
         self.entries
             .get(key)
             .is_some_and(|entry| !entry.children.is_empty())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn is_collapsed(&self, key: &K) -> bool {
         self.collapsed.contains(key)
     }
@@ -131,7 +133,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         slice
     }
 
-    pub fn subtree_slice(
+    pub(crate) fn subtree_slice(
         &self,
         key: &K,
         store: &imba::store::Store,
@@ -142,7 +144,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         slice
     }
 
-    pub fn folded_slice(
+    pub(crate) fn folded_slice(
         &self,
         key: &K,
         store: &imba::store::Store,
@@ -258,7 +260,9 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
             .collect()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn rows_trailed(&self) -> Vec<(u8, String, bool)> {
         self.flatten()
             .into_iter()
@@ -276,7 +280,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
 }
 
 impl<K: Clone + Eq + Hash + Send + Sync + 'static> Forest<K> {
-    pub fn toggle_in(
+    pub(crate) fn toggle_in(
         &mut self,
         list: &mut imba::list::ListView<TreeRow, K>,
         key: &K,

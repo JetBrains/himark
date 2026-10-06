@@ -72,7 +72,7 @@ fn class_of(ch: char) -> CharClass {
     }
 }
 
-pub fn previous_word_start(text: &Text, byte: u32) -> Option<u32> {
+pub(crate) fn previous_word_start(text: &Text, byte: u32) -> Option<u32> {
     let mut offset = byte;
     let (start, first) = previous_char_before(text, offset)?;
     offset = start;
@@ -101,7 +101,7 @@ pub fn previous_word_start(text: &Text, byte: u32) -> Option<u32> {
     Some(offset)
 }
 
-pub fn next_word_end(text: &Text, byte: u32) -> Option<u32> {
+pub(crate) fn next_word_end(text: &Text, byte: u32) -> Option<u32> {
     let mut offset = byte;
     let (end, first) = next_char_after(text, offset)?;
     offset = end;
@@ -127,7 +127,7 @@ pub fn next_word_end(text: &Text, byte: u32) -> Option<u32> {
     Some(offset)
 }
 
-pub fn word_around(text: &Text, byte: u32) -> Option<std::ops::Range<u32>> {
+pub(crate) fn word_around(text: &Text, byte: u32) -> Option<std::ops::Range<u32>> {
     let after_is_word = next_char_after(text, byte)
         .and_then(|(_, ch)| ch.chars().next())
         .is_some_and(|ch| class_of(ch) == CharClass::Word);
@@ -155,7 +155,7 @@ pub fn word_around(text: &Text, byte: u32) -> Option<std::ops::Range<u32>> {
     (start < end).then_some(start..end)
 }
 
-pub fn hard_line_range(text: &Text, byte: u32) -> std::ops::Range<u32> {
+pub(crate) fn hard_line_range(text: &Text, byte: u32) -> std::ops::Range<u32> {
     let count = byte_count(text);
     let byte = byte.min(count);
     let mut view = text.view();

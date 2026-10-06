@@ -28,6 +28,8 @@ const HEADER_MODES: [InlayMode; 4] = [
     InlayMode::Under,
 ];
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn add_badges(
     document: &mut Document,
     blocks: &[MarkdownBlock],

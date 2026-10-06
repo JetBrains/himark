@@ -123,12 +123,12 @@ pub struct ScriptLanding {
     pub shows: Vec<ResourceLocation>,
 }
 
-pub struct ScriptStored {
+pub(crate) struct ScriptStored {
     pub stored: bool,
     pub show: Option<ResourceLocation>,
 }
 
-pub struct ShowDocuments {
+pub(crate) struct ShowDocuments {
     pub locations: Vec<ResourceLocation>,
 }
 

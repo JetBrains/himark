@@ -98,7 +98,7 @@ impl<T: Clone> Measure<ListElement<T>> for ListMeasure {
 const MAX_ROW_PX: f32 = 1_000_000.0;
 
 #[derive(Clone, Copy, Default)]
-pub struct SeparatorStyle {
+pub(crate) struct SeparatorStyle {
     pub color: Color,
 
     pub inset: f32,
@@ -449,7 +449,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         Self::from_rope_at(f32::NAN, items)
     }
 
-    pub fn from_rope_at(width: f32, items: ListRope<T>) -> Self {
+    pub(crate) fn from_rope_at(width: f32, items: ListRope<T>) -> Self {
         Self {
             items,
             structure: Intervals::new(),
@@ -483,7 +483,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         list
     }
 
-    pub fn with_separators(mut self, style: SeparatorStyle) -> Self {
+    pub(crate) fn with_separators(mut self, style: SeparatorStyle) -> Self {
         self.separators = Some(style);
         self
     }
@@ -1223,7 +1223,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         }
     }
 
-    pub fn update_heights(&mut self, mut measure: impl FnMut(&T) -> Option<f32>) -> bool {
+    pub(crate) fn update_heights(&mut self, mut measure: impl FnMut(&T) -> Option<f32>) -> bool {
         let mut changed = false;
         let remeasured: Vec<ListElement<T>> = self
             .items

@@ -138,7 +138,7 @@ impl SessionToolbar {
         }
     }
 
-    pub fn model_selection(&self) -> Option<ahp_types::state::ModelSelection> {
+    pub(crate) fn model_selection(&self) -> Option<ahp_types::state::ModelSelection> {
         let model = self.model.value()?;
         Some(ahp_types::state::ModelSelection {
             id: model.id.clone(),

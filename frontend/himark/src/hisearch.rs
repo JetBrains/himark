@@ -83,7 +83,7 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
 /// uses: a references ask opening the tab at ASK time, and the
 /// peek's promote button, which reuses the standing feed instead of
 /// asking again.
-pub struct ShowFeedInDock {
+pub(crate) struct ShowFeedInDock {
     /// The feed's HOME collection and its wire — carried with the
     /// feed so a promote fronts the right rows even if the window
     /// moved on.

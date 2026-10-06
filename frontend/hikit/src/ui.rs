@@ -24,7 +24,7 @@ pub mod space {
 /// Corner radii: cards, wells, chips.
 pub const RADIUS: f32 = 10.0;
 pub const RADIUS_S: f32 = 6.0;
-pub const RADIUS_XS: f32 = 4.0;
+pub(crate) const RADIUS_XS: f32 = 4.0;
 
 /// Type scale.
 const LABEL_SIZE: f32 = 24.0;
@@ -99,7 +99,7 @@ pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
 }
 
 /// Shortcut hints.
-pub fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
+pub(crate) fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
@@ -271,7 +271,7 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         }
     }
 
-    pub fn badge_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub(crate) fn badge_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.badge = Some(text(style, content));
         self
     }
@@ -281,7 +281,7 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         self
     }
 
-    pub fn label_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub(crate) fn label_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.label = Some(text(style, content));
         self
     }
@@ -292,7 +292,7 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         self
     }
 
-    pub fn trail_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub(crate) fn trail_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.trails.push(RowEntry::Text(text(style, content)));
         self
     }

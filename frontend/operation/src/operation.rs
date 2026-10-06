@@ -232,7 +232,7 @@ impl Operation {
         self.ops_from(offset, OLD_LEN)
     }
 
-    pub fn ops_from_new(&self, offset: u32) -> OpsFrom {
+    pub(crate) fn ops_from_new(&self, offset: u32) -> OpsFrom {
         self.ops_from(offset, NEW_LEN)
     }
 

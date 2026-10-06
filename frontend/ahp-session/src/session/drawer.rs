@@ -86,7 +86,9 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub enum AgentsCommand {
     Rows(ListKeyCommand<TreeListCommand>),
 

@@ -15,7 +15,7 @@ use ahp_wire::client::HostId;
 pub type NewSessionFlow =
     Arc<dyn Fn(HostId) -> Arc<dyn crate::commands::WindowedCommand> + Send + Sync>;
 
-pub type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + Send + Sync>;
+pub(crate) type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + Send + Sync>;
 
 #[derive(Clone, Default)]
 pub struct AgentFlows {
@@ -24,11 +24,13 @@ pub struct AgentFlows {
 }
 
 impl AgentFlows {
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn install_new_session(store: &mut Store, flow: NewSessionFlow) {
         store.update::<AgentFlows>(|flows| flows.new_session = Some(flow));
     }
 
-    pub fn new_session_flow(store: &Store) -> Option<NewSessionFlow> {
+    pub(crate) fn new_session_flow(store: &Store) -> Option<NewSessionFlow> {
         store.get::<AgentFlows>()?.new_session.clone()
     }
 
@@ -36,7 +38,7 @@ impl AgentFlows {
         store.update::<AgentFlows>(|flows| flows.add_host = Some(flow));
     }
 
-    pub fn add_host_flow(store: &Store) -> Option<AddHostFlow> {
+    pub(crate) fn add_host_flow(store: &Store) -> Option<AddHostFlow> {
         store.get::<AgentFlows>()?.add_host.clone()
     }
 }

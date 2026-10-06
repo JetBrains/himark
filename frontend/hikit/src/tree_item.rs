@@ -42,7 +42,9 @@ pub struct TreeLabel {
     action: Option<String>,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Copy)]
+#[doc(hidden)]
 pub enum TreeLabelCommand {
     /// The row's right-aligned action chip was pressed.
     Action,
@@ -63,7 +65,10 @@ impl std::fmt::Display for TreeLabelCommand {
 
 /// The one definition of "secondary press" — shells that cannot send
 /// `MouseButton::Right` still deliver control as a modifier.
-pub fn secondary_press(button: imba::event::MouseButton, mods: &imba::event::Modifiers) -> bool {
+pub(crate) fn secondary_press(
+    button: imba::event::MouseButton,
+    mods: &imba::event::Modifiers,
+) -> bool {
     matches!(button, imba::event::MouseButton::Right)
         || (matches!(button, imba::event::MouseButton::Left) && mods.control)
 }
@@ -98,7 +103,7 @@ impl TreeLabel {
         self
     }
 
-    pub fn with_action(mut self, action: Option<String>) -> Self {
+    pub(crate) fn with_action(mut self, action: Option<String>) -> Self {
         self.action = action;
         self
     }
@@ -248,7 +253,7 @@ impl<V: Clone> TreeItemView<V> {
         self
     }
 
-    pub fn with_action_priority(mut self) -> Self {
+    pub(crate) fn with_action_priority(mut self) -> Self {
         self.action_first = true;
         self
     }

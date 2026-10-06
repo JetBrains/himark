@@ -64,7 +64,7 @@ pub fn scan(claude_home: &Path, limit: usize) -> Vec<CliSession> {
     sessions
 }
 
-pub fn scan_codex(codex_home: &Path, limit: usize) -> Vec<CliSession> {
+pub(crate) fn scan_codex(codex_home: &Path, limit: usize) -> Vec<CliSession> {
     let mut files = Vec::new();
     collect_jsonl(&codex_home.join("sessions"), &mut files);
     files.sort_by(|a, b| b.0.cmp(&a.0));
@@ -180,7 +180,7 @@ fn head(path: &Path) -> Option<(String, Option<String>)> {
     None
 }
 
-pub fn backfill_actions(path: &Path) -> Vec<StateAction> {
+pub(crate) fn backfill_actions(path: &Path) -> Vec<StateAction> {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Vec::new();
     };
@@ -261,7 +261,7 @@ pub fn backfill_actions(path: &Path) -> Vec<StateAction> {
     actions
 }
 
-pub fn session_backfill_actions(session: &CliSession) -> Vec<StateAction> {
+pub(crate) fn session_backfill_actions(session: &CliSession) -> Vec<StateAction> {
     match session.provider.as_str() {
         "codex" => codex_backfill_actions(&session.path),
         _ => backfill_actions(&session.path),

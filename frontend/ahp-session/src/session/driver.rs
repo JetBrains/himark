@@ -24,7 +24,7 @@ use super::state::HostStatus;
 /// what lives here is only the plumbing: which hosts have a drain in
 /// flight, which have their session list already running.
 #[derive(Clone, Default)]
-pub struct HostFeeds {
+pub(crate) struct HostFeeds {
     drains: rpds::HashTrieMapSync<HostId, CancellationToken>,
     listed: rpds::HashTrieSetSync<HostId>,
 }

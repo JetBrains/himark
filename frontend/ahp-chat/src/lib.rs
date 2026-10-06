@@ -12,7 +12,7 @@ pub mod chat;
 pub mod chats;
 pub mod completion;
 pub mod composer;
-pub mod file_completion;
+pub(crate) mod file_completion;
 pub mod file_edit;
 pub mod open;
 pub mod session_toolbar;

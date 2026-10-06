@@ -645,7 +645,7 @@ impl Hosts {
     /// had. Removal is structural, so the generation bumps. The ONE
     /// deletion road; `scatter_session`'s all-empty sweep is mere
     /// housekeeping over the same retract.
-    pub fn dispose_state(store: &mut Store, session: &ahp_wire::SessionId) {
+    pub(crate) fn dispose_state(store: &mut Store, session: &ahp_wire::SessionId) {
         let session = &Self::addressed(store, session);
         let Some(state) = store
             .get::<Hosts>()

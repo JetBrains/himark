@@ -4,8 +4,8 @@
 /// Arena-allocated box/string/vec — bumpalo stays imba's private
 /// dependency; these aliases are the public names.
 pub type ArenaBox<'a, T> = bumpalo::boxed::Box<'a, T>;
-pub type ArenaString<'a> = bumpalo::collections::String<'a>;
-pub type ArenaVec<'a, T> = bumpalo::collections::Vec<'a, T>;
+pub(crate) type ArenaString<'a> = bumpalo::collections::String<'a>;
+pub(crate) type ArenaVec<'a, T> = bumpalo::collections::Vec<'a, T>;
 
 use bumpalo::Bump;
 

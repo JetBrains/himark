@@ -80,6 +80,7 @@ impl FeedId {
 /// DRIVER's, in the session's wire row. `generation` bumps on every
 /// fold so faces refresh on paint.
 #[derive(Clone, Default)]
+#[doc(hidden)]
 pub struct LocationsFeedRow {
     pub title: String,
     /// Seeds the query input. Empty for LSP result sets.
@@ -333,6 +334,8 @@ impl LocationLists {
             && self.asks.is_empty()
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn note_wash(
         store: &mut Store,
         lists: imba::store::Id<LocationLists>,
@@ -346,7 +349,7 @@ impl LocationLists {
 
     /// Claim the pending wash noted for a location, if any — the
     /// wash hook's half of the pick → open → wash chain.
-    pub fn take_wash(
+    pub(crate) fn take_wash(
         store: &mut Store,
         lists: imba::store::Id<LocationLists>,
         location: &ResourceLocation,
@@ -365,7 +368,11 @@ impl LocationLists {
     }
 
     /// Drop every pending wash note a feed left — disposal's sweep.
-    pub fn sweep_washes(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
+    pub(crate) fn sweep_washes(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+    ) {
         Self::update(store, lists, |held| {
             let stale: Vec<ResourceLocation> = held
                 .pending_washes

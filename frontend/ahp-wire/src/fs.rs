@@ -36,7 +36,7 @@ impl ClientDirectory {
         *self.local.lock().expect("client directory") = Some(server);
     }
 
-    pub fn local_client(&self) -> Option<(Client, crate::client::SessionUri)> {
+    pub(crate) fn local_client(&self) -> Option<(Client, crate::client::SessionUri)> {
         let server = (*self.local.lock().expect("client directory"))?;
         let client = self.client(server)?;
         Some((

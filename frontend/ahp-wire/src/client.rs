@@ -40,6 +40,8 @@ impl HostId {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub type ClientFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 #[derive(Clone, Debug)]
@@ -76,6 +78,7 @@ pub struct SessionOptions {
 /// the session channel, and channel-action dispatch. The old
 /// all-knowing `AhpServer` trait is burned — a caller holds the
 /// facet it drives, never the entire session.
+#[doc(hidden)]
 pub trait SessionClient: Send + Sync + 'static {
     fn connect(&self) -> ClientFuture<Result<RootInfo, String>>;
     fn list_sessions(&self, cursor: Option<String>) -> ClientFuture<Result<SessionsPage, String>>;
@@ -142,6 +145,7 @@ pub trait ChatClient: Send + Sync + 'static {
 
 /// The resource facet: the session's filesystem — reads, writes,
 /// listings, watches, and the quick-open path find.
+#[doc(hidden)]
 pub trait ResourceClient: Send + Sync + 'static {
     fn resource_read(&self, session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<String>>;
 
@@ -307,6 +311,7 @@ pub trait HistoryClient: Send + Sync + 'static {
 }
 
 /// The annotations facet: the comments channel.
+#[doc(hidden)]
 pub trait AnnotationsClient: Send + Sync + 'static {
     fn subscribe_annotations(
         &self,

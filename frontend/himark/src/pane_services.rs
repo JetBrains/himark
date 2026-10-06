@@ -23,6 +23,7 @@ use findbar::{FindBar, FindCommand};
 /// One leaf's services: the bar when ⌘F stood one, the completion
 /// always ready to pop.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct EditorServices {
     pub find: Option<FindBar>,
     pub completion: Completion,
@@ -42,6 +43,7 @@ impl EditorServices {
     /// state this shell installs. The himark-side drivers (⌘F, the
     /// completion trigger) reach the state through here.
     /// The read side — no minting, no store.
+    #[doc(hidden)]
     pub fn of_ref(slot: &PaneSlot) -> Option<&EditorServices> {
         slot.services
             .as_ref()?
@@ -62,7 +64,7 @@ impl EditorServices {
 
 /// The service commands, erased into `PanelCommand::Service`.
 #[derive(Clone)]
-pub enum ServiceCommand {
+pub(crate) enum ServiceCommand {
     Find(FindCommand),
     CompletionFound(CompletionFound),
 }
@@ -89,7 +91,7 @@ fn wrap_found(found: CompletionFound) -> PanelCommand {
 }
 
 /// The installed face.
-pub struct EditorServicesFace;
+pub(crate) struct EditorServicesFace;
 
 impl PaneServices for EditorServicesFace {
     fn mint(&self) -> ServiceState {
@@ -207,7 +209,7 @@ pub fn install(store: &mut Store) {
 }
 
 impl EditorServices {
-    pub fn sync_find(
+    pub(crate) fn sync_find(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,

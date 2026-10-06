@@ -603,6 +603,8 @@ impl ChangeSets {
         id
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn view_ref<'a>(
         store: &'a Store,
         changes: imba::store::Id<ChangeSets>,
@@ -717,7 +719,7 @@ impl ChangeSets {
 
     /// The same marks, on the row itself — what a landing under the
     /// collection's own lease does.
-    pub fn nudge_set_in_place(&mut self, set: crate::hichanges::ChangeSetId) {
+    pub(crate) fn nudge_set_in_place(&mut self, set: crate::hichanges::ChangeSetId) {
         let Some(viewing) = self.viewers.get(&set).cloned() else {
             return;
         };
@@ -726,7 +728,7 @@ impl ChangeSets {
         }
     }
 
-    pub fn nudge_folder_in_place(&mut self, folder: &ResourceLocation) {
+    pub(crate) fn nudge_folder_in_place(&mut self, folder: &ResourceLocation) {
         let source = crate::hichanges::ChangeSetSource::WorkingCopy {
             folder: folder.clone(),
         };
@@ -736,7 +738,7 @@ impl ChangeSets {
         }
     }
 
-    pub fn nudge_all(&mut self) {
+    pub(crate) fn nudge_all(&mut self) {
         let ids: Vec<ChangesViewId> = self.views.keys().copied().collect();
         for id in ids {
             self.stale.insert_mut(id);

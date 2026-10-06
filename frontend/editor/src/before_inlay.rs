@@ -217,14 +217,14 @@ impl Document {
         const BLOCK_CAP_BYTES: u32 = 64 * 1024;
         let mut fragments = crate::diff::fragments_at(&operation, base.text(), 0);
         let mut blocks: Vec<(Range<u32>, Range<u32>)> = Vec::new();
-        let complete =
-            |block: Option<(Range<u32>, Range<u32>)>, blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
-                if let Some((lines, span)) = block {
-                    if span.start < span.end {
-                        blocks.push((lines, span));
-                    }
+        let complete = |block: Option<(Range<u32>, Range<u32>)>,
+                        blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
+            if let Some((lines, span)) = block {
+                if span.start < span.end {
+                    blocks.push((lines, span));
                 }
-            };
+            }
+        };
         let mut block: Option<(Range<u32>, Range<u32>)> = None;
         while let Some(fragment) = fragments.next() {
             let lines = hard_lines(&mut view, fragment.right.clone());
@@ -265,9 +265,8 @@ impl Document {
                     .unwrap_or(true)
             })
             .filter_map(|(anchor, base_span)| {
-                let inlay = self.built_before_card(
-                    editor, base, base_span, false, store, ui, fonts, theme,
-                )?;
+                let inlay = self
+                    .built_before_card(editor, base, base_span, false, store, ui, fonts, theme)?;
                 Some((anchor, inlay))
             })
             .collect();
@@ -288,7 +287,7 @@ impl Document {
     /// offsets). O(cards) per call; a set-reconcile that leaves
     /// untouched blocks alone is the refinement if the churn ever
     /// shows.
-    pub fn refresh_before_inlays(
+    pub(crate) fn refresh_before_inlays(
         &mut self,
         editor: EditorId,
         base: &Document,

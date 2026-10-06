@@ -15,7 +15,7 @@ use editor::location::ResourceLocation;
 /// Open the canvas for a source — or REUSE the one already open (the
 /// canvas is found by source in the store; a fresh view of it costs
 /// nothing). An armed reveal rides the place.
-pub struct OpenDiffCanvas {
+pub(crate) struct OpenDiffCanvas {
     /// The collection whose set this canvas shows.
     pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,
@@ -73,7 +73,7 @@ impl crate::commands::WindowedCommand for OpenDiffCanvas {
 
 /// Open a canvas file's live side in an ordinary pane — the header's
 /// click (and `workbench.open-in-full` on a focused row).
-pub struct OpenCanvasFile {
+pub(crate) struct OpenCanvasFile {
     pub location: ResourceLocation,
     /// The caret to land on — carried from the row's diff editor so
     /// cmd-enter opens at the position being read, matching the

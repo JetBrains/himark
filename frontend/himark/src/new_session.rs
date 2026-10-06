@@ -326,7 +326,7 @@ impl NewSessionView {
         Self::for_host(store, ui, window, None)
     }
 
-    pub fn for_host(
+    pub(crate) fn for_host(
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
@@ -1401,6 +1401,8 @@ impl Composers {
         composer
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn composer_ref(
         store: &Store,
         window: ::workbench::window::WindowId,
@@ -1417,6 +1419,8 @@ impl Composers {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub struct ComposerPane {
     window: ::workbench::window::WindowId,
 

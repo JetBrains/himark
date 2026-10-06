@@ -70,7 +70,7 @@ impl EditLog {
         identity
     }
 
-    pub fn identity_at(&self, index: usize) -> Option<EditIdentity> {
+    pub(crate) fn identity_at(&self, index: usize) -> Option<EditIdentity> {
         self.identities.get(index).copied()
     }
 

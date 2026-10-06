@@ -624,11 +624,15 @@ impl EditorView {
             .expect("the bound editor exists")
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn element_heights(&self) -> Vec<(u32, f32)> {
         self.document.element_heights(self.editor)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn reveal_caret(
         &mut self,
         byte: u32,

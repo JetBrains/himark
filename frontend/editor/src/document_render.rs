@@ -297,7 +297,7 @@ impl crate::document::Document {
         Some((x, text_top + top, 2.0, height.max(18.0)))
     }
 
-    pub fn selection_content_rects(
+    pub(crate) fn selection_content_rects(
         &self,
         editor: crate::editor::EditorId,
         range: Range<u32>,

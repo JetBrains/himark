@@ -7,6 +7,8 @@ use himark_ahp_ext_types::text::Span;
 use operation::{builder::OperationBuilder, op::Op, operation::Operation};
 use std::sync::Arc;
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn resolve_wire(operation: TextOperation) -> Resolve {
     Arc::new(move |text: &text::text::Text| {
         let spans = himark_ahp_ext_types::text::spans_of(text, &operation).ok()?;

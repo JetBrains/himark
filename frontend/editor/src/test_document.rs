@@ -48,11 +48,13 @@ pub fn test_workshop(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::W
     ))
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn plain_document(source: &str) -> Document {
     marked_document(source, &[])
 }
 
-pub fn marked_document(source: &str, blocks: &[(Range<u32>, StyleId)]) -> Document {
+pub(crate) fn marked_document(source: &str, blocks: &[(Range<u32>, StyleId)]) -> Document {
     let mut markup = Markup::builder();
     for (range, id) in blocks {
         markup.push_block_styles(range.clone(), [*id]);
@@ -60,6 +62,8 @@ pub fn marked_document(source: &str, blocks: &[(Range<u32>, StyleId)]) -> Docume
     Document::new(Text::from_string_exact(source), markup.finish())
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn fenced_code_document(source: &str) -> Document {
     let fence = source
         .rfind("```")
@@ -81,12 +85,14 @@ pub fn fenced_code_document(source: &str) -> Document {
     Document::new(Text::from_string_exact(source), markup.finish())
 }
 
-pub fn hidden_document(source: &str, hidden: Range<u32>) -> Document {
+pub(crate) fn hidden_document(source: &str, hidden: Range<u32>) -> Document {
     let mut markup = Markup::builder();
     markup.push_hidden(hidden);
     Document::new(Text::from_string_exact(source), markup.finish())
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn list_document(source: &str) -> Document {
     let mut blocks = Vec::new();
     let mut offset = 0u32;
@@ -98,14 +104,14 @@ pub fn list_document(source: &str) -> Document {
     marked_document(source, &blocks)
 }
 
-pub fn header_marks(level: u8) -> StyleId {
+pub(crate) fn header_marks(level: u8) -> StyleId {
     StyleId::Header(level)
 }
 
-pub fn code_marks() -> StyleId {
+pub(crate) fn code_marks() -> StyleId {
     StyleId::CodeBlock
 }
 
-pub fn list_item_marks() -> StyleId {
+pub(crate) fn list_item_marks() -> StyleId {
     StyleId::ListItem
 }

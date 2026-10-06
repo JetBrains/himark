@@ -7,7 +7,7 @@ use std::sync::Arc;
 use operation::{operation::Bias, operation::Operation};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum DragOrigin {
+pub(crate) enum DragOrigin {
     Char(u32),
     Word(std::ops::Range<u32>),
     Line(std::ops::Range<u32>),
@@ -44,11 +44,11 @@ impl Caret {
         self.offset
     }
 
-    pub fn goal_x(&self) -> Option<f32> {
+    pub(crate) fn goal_x(&self) -> Option<f32> {
         self.goal_x
     }
 
-    pub fn with_goal(mut self, x: f32) -> Self {
+    pub(crate) fn with_goal(mut self, x: f32) -> Self {
         self.goal_x = Some(x);
         self
     }
@@ -69,7 +69,7 @@ impl Caret {
         }
     }
 
-    pub fn moved_to(&self, offset: u32, select: bool) -> Self {
+    pub(crate) fn moved_to(&self, offset: u32, select: bool) -> Self {
         match select {
             true => Self::selecting(self.anchor(), offset),
             false => Self::at(offset),
@@ -173,7 +173,7 @@ impl MultiCaret {
         self.carets[self.primary.min(self.carets.len() - 1)]
     }
 
-    pub fn primary_index(&self) -> usize {
+    pub(crate) fn primary_index(&self) -> usize {
         self.primary.min(self.carets.len() - 1)
     }
 
@@ -188,13 +188,13 @@ impl MultiCaret {
         )
     }
 
-    pub fn with_added(&self, caret: Caret) -> Self {
+    pub(crate) fn with_added(&self, caret: Caret) -> Self {
         let mut carets = self.carets.as_ref().clone();
         carets.push(caret);
         Self::normalized(carets, self.carets.len())
     }
 
-    pub fn with_removed_at(&self, offset: u32) -> Option<Self> {
+    pub(crate) fn with_removed_at(&self, offset: u32) -> Option<Self> {
         if self.carets.len() <= 1 {
             return None;
         }
@@ -210,11 +210,11 @@ impl MultiCaret {
         Self::normalized(carets, primary).into()
     }
 
-    pub fn collapsed_to_primary(&self) -> Self {
+    pub(crate) fn collapsed_to_primary(&self) -> Self {
         Self::single(self.primary().offset)
     }
 
-    pub fn collapsed_selections(&self) -> Self {
+    pub(crate) fn collapsed_selections(&self) -> Self {
         self.map(|caret| Caret::at(caret.offset))
     }
 

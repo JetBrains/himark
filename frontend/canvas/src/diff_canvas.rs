@@ -48,7 +48,7 @@ pub enum CanvasListing {
 /// canvas heads with the commit composer (the box that used to sit in
 /// the changes dock).
 #[derive(Clone, PartialEq, Debug)]
-pub enum CanvasBanner {
+pub(crate) enum CanvasBanner {
     Composer {
         folder: ResourceLocation,
     },
@@ -60,7 +60,7 @@ pub enum CanvasBanner {
     },
 }
 
-pub fn canvas_banner(
+pub(crate) fn canvas_banner(
     store: &Store,
     changes: imba::store::Id<Changes>,
     source: &CanvasSource,

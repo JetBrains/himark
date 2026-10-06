@@ -29,7 +29,7 @@ use editor::{
 
 type CommentChrome = editor::theme::CommentChrome;
 
-pub const FALLBACK_WIDTH: f32 = 600.0;
+pub(crate) const FALLBACK_WIDTH: f32 = 600.0;
 
 /// The gesture command, WIRED: the session ceremony mints one per
 /// session with the cards' collection in hand and registers it scoped
@@ -117,6 +117,8 @@ impl documents::dynamic::DocumentCommand for AddComment {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn comments_markup() -> editor::markup::MarkupId {
     static ID: std::sync::OnceLock<editor::markup::MarkupId> = std::sync::OnceLock::new();
     *ID.get_or_init(editor::markup::MarkupId::mint)
@@ -183,7 +185,9 @@ impl imba::command::DynamicCommand for SendComments {
     }
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub enum CommentCommand {
     Editor(EditorCommand),
 
@@ -343,6 +347,8 @@ impl CommentView {
         view.substring(0..end)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn parsed_markdown(&self) -> bool {
         self.editor
             .document

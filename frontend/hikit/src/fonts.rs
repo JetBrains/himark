@@ -28,9 +28,9 @@ pub fn source() -> FontSource {
     }
 }
 
-pub struct ChromeTypeface(pub skia_safe::Typeface);
+pub(crate) struct ChromeTypeface(pub skia_safe::Typeface);
 
-pub struct ChromeTextTypeface(pub skia_safe::Typeface);
+pub(crate) struct ChromeTextTypeface(pub skia_safe::Typeface);
 
 pub fn ui_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
     let typeface = ui.env(|| {

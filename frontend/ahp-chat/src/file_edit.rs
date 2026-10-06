@@ -12,8 +12,10 @@ pub struct FileSnapshotRef {
     pub content: ContentRef,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[doc(hidden)]
 pub struct DiffCounts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub added: Option<i64>,
@@ -52,6 +54,8 @@ impl FileEditRefs {
         })
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn to_content(&self) -> ToolResultFileEditContent {
         ToolResultFileEditContent {
             before: self
@@ -101,7 +105,7 @@ pub struct BuiltFileEdit {
 /// The seeded pair recipe, off-thread. `name` names the language (the
 /// edited file's own name); `parsers` and `differ` are passed in because
 /// the build context is the workshop's bare store, not the app's.
-pub fn build_file_edit(
+pub(crate) fn build_file_edit(
     name: &str,
     contents: &ahp_wire::client::FileEditContents,
     parsers: &std::sync::Arc<editor::reparse::SyntaxLanguages>,

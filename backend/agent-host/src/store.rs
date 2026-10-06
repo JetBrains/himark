@@ -60,7 +60,7 @@ impl Store {
         self.root.join("sessions").join(native_id)
     }
 
-    pub fn write_manifest(&self, manifest: &Manifest) -> std::io::Result<()> {
+    pub(crate) fn write_manifest(&self, manifest: &Manifest) -> std::io::Result<()> {
         let dir = self.session_dir(&manifest.native_id);
         std::fs::create_dir_all(&dir)?;
         std::fs::write(
@@ -121,7 +121,11 @@ impl Store {
         }
     }
 
-    pub fn log_modified_at(&self, native_id: &str, chat: &Uri) -> Option<std::time::SystemTime> {
+    pub(crate) fn log_modified_at(
+        &self,
+        native_id: &str,
+        chat: &Uri,
+    ) -> Option<std::time::SystemTime> {
         std::fs::metadata(self.chat_log(native_id, chat))
             .and_then(|meta| meta.modified())
             .ok()

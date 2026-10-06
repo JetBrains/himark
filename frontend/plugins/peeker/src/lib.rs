@@ -71,7 +71,7 @@ pub struct Peeker {
     request: hikit::modal::RequestSlot<ModalRequest>,
 }
 
-pub type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
+pub(crate) type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
 
 #[derive(Clone)]
 pub enum PeekerCommand {
@@ -319,10 +319,12 @@ impl Peeker {
         &self.labels
     }
 
-    pub fn hidden_count(&self) -> usize {
+    pub(crate) fn hidden_count(&self) -> usize {
         self.hidden
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn preview_height(&self, store: &Store) -> Option<f32> {
         match self.preview.as_ref()? {
             PreviewSlot::Editor(preview) => {
@@ -332,7 +334,7 @@ impl Peeker {
         }
     }
 
-    pub fn previewed_widget_title(&self) -> Option<String> {
+    pub(crate) fn previewed_widget_title(&self) -> Option<String> {
         match self.preview.as_ref()? {
             PreviewSlot::Widget(index) => self.widget_titles.get(*index).cloned(),
             PreviewSlot::Editor(_) => None,
@@ -1038,11 +1040,13 @@ pub fn labels(app: &Application) -> Option<Vec<String>> {
     Some(peeker_of(app)?.labels().to_vec())
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
+#[doc(hidden)]
 pub fn preview_height(app: &Application, store: &Store) -> Option<f32> {
     peeker_of(app)?.preview_height(store)
 }
 
-pub fn previewed_widget(app: &Application) -> Option<String> {
+pub(crate) fn previewed_widget(app: &Application) -> Option<String> {
     peeker_of(app)?.previewed_widget_title()
 }
 

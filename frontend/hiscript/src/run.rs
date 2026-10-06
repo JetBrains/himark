@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use rquickjs::{Context, Ctx, Function, Module, Object, Persistent, Promise, Runtime, Value};
 
-pub type WorldFuture<T> = Pin<Box<dyn Future<Output = T>>>;
+pub(crate) type WorldFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
 pub struct ScriptWorld {
     pub read: Box<dyn FnMut(String) -> WorldFuture<Option<String>>>,

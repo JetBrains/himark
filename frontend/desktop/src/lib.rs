@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod connector;
+/// TEST SUPPORT: no production caller outside this crate.
 #[cfg(unix)]
+#[doc(hidden)]
 pub mod unix_transport;
 #[cfg(unix)]
 use std::time::{Duration, Instant};

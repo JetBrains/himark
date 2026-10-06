@@ -63,7 +63,7 @@ pub fn is_running(summary: &SessionSummary) -> bool {
 /// The stamp the recency order runs on — `modified_at` moves on every
 /// message, ours or the agent's. Unparseable stamps sink to the
 /// epoch, so fresh sessions never hide below them.
-pub fn modified_stamp(summary: &SessionSummary) -> std::time::SystemTime {
+pub(crate) fn modified_stamp(summary: &SessionSummary) -> std::time::SystemTime {
     humantime::parse_rfc3339_weak(&summary.modified_at).unwrap_or(std::time::SystemTime::UNIX_EPOCH)
 }
 

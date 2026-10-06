@@ -25,7 +25,7 @@ impl DiffId {
 /// rolled by `apply_base_edits` with the same composed base operation
 /// that rolls the diff, untouched by target-side edits (base
 /// coordinates) and by normalize landings, gone with the entry.
-pub type FoldBans = intervals::Intervals<crate::markup::IntervalId, ()>;
+pub(crate) type FoldBans = intervals::Intervals<crate::markup::IntervalId, ()>;
 
 /// Rewrite the banned set WITHIN `extent` to `extent \ keep`, leaving
 /// bans outside `extent` alone. `keep` empty bans the whole extent (a
@@ -109,7 +109,7 @@ impl Diff {
         self.generation
     }
 
-    pub fn fold_bans(&self) -> &FoldBans {
+    pub(crate) fn fold_bans(&self) -> &FoldBans {
         &self.fold_bans
     }
 

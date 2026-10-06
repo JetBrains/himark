@@ -55,7 +55,7 @@ pub fn offset_of(view: &mut TextView, position: &TextPosition) -> Result<usize, 
     Ok(at)
 }
 
-pub fn position_at(view: &mut TextView, at: usize) -> TextPosition {
+pub(crate) fn position_at(view: &mut TextView, at: usize) -> TextPosition {
     let line = view.line_at(at).0;
     let start = view.line_start_offset(LineNumber(line));
     TextPosition {
@@ -131,7 +131,7 @@ pub fn check_spans(text: &Text, spans: &[Span]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn apply_spans(text: &Text, spans: &[Span]) -> Text {
+pub(crate) fn apply_spans(text: &Text, spans: &[Span]) -> Text {
     let mut view = text.view();
     let mut builder = OperationBuilder::new();
     let mut cursor = 0usize;

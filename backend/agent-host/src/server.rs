@@ -66,7 +66,9 @@ const METHOD_NOT_FOUND: i32 = -32601;
 const INVALID_PARAMS: i32 = -32602;
 const INTERNAL: i32 = -32603;
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
+#[doc(hidden)]
 pub struct HostConfig {
     pub agents: Vec<AgentInfo>,
 
@@ -92,7 +94,9 @@ pub struct HostConfig {
     pub fsp_data_dir: PathBuf,
 }
 
+/// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone, Debug)]
+#[doc(hidden)]
 pub struct LanguageServer {
     pub extensions: Vec<String>,
 
@@ -918,6 +922,8 @@ impl Host {
         }
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub async fn serve_stream(self: Arc<Self>, stream: UnixStream) -> std::io::Result<()> {
         let (read, mut write) = stream.into_split();
         let (outbox, mut inbox) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();

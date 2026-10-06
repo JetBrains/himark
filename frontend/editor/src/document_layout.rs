@@ -139,7 +139,7 @@ pub struct DocumentLayout {
     shaped_theme: std::sync::Arc<str>,
 }
 
-pub const SYNC_LAYOUT_HEIGHT: f32 = 4_000.0;
+pub(crate) const SYNC_LAYOUT_HEIGHT: f32 = 4_000.0;
 
 impl DocumentLayout {
     pub fn build(
@@ -185,7 +185,7 @@ impl DocumentLayout {
     /// Test-support: the float-width builders, paying the
     /// per-call measure seed — production threads `InlayMeasure`.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn build_slow(
+    pub(crate) fn build_slow(
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
@@ -207,7 +207,7 @@ impl DocumentLayout {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn build_complete_slow(
+    pub(crate) fn build_complete_slow(
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
@@ -229,7 +229,7 @@ impl DocumentLayout {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn repair_layout_bounded_slow(
+    pub(crate) fn repair_layout_bounded_slow(
         &mut self,
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
@@ -261,7 +261,7 @@ impl DocumentLayout {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn repair_layout_slow(
+    pub(crate) fn repair_layout_slow(
         &mut self,
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
@@ -312,6 +312,8 @@ impl DocumentLayout {
         }
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn shaped_theme(&self) -> &str {
         &self.shaped_theme
     }
@@ -380,7 +382,7 @@ impl DocumentLayout {
         repair_start.unwrap_or(offset)
     }
 
-    pub fn mark_modified(&mut self, byte_start: u32) -> u32 {
+    pub(crate) fn mark_modified(&mut self, byte_start: u32) -> u32 {
         if self.byte_size() == 0 {
             return 0;
         }
@@ -389,7 +391,7 @@ impl DocumentLayout {
         byte_start
     }
 
-    pub fn mark_modified_in(&mut self, range: Range<u32>) -> u32 {
+    pub(crate) fn mark_modified_in(&mut self, range: Range<u32>) -> u32 {
         if self.byte_size() == 0 {
             return 0;
         }
@@ -448,6 +450,8 @@ impl DocumentLayout {
         );
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn repair_pending(&self) -> Option<u32> {
         self.damage.first()
     }
@@ -612,11 +616,13 @@ impl DocumentLayout {
         self.widths.max()
     }
 
-    pub fn max_width_in(&self, range: Range<u32>) -> f32 {
+    pub(crate) fn max_width_in(&self, range: Range<u32>) -> f32 {
         self.widths.max_in(range)
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
     #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn element_heights(&self) -> Vec<(u32, f32)> {
         let mut out = Vec::new();
         if self.rope.is_empty() {

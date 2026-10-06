@@ -72,7 +72,7 @@ impl Commands {
 
 /// A window-coupled deferred ask carried through the kit's panel
 /// requests — the drain adds the window.
-pub fn shell_ask(command: Arc<dyn WindowedCommand>) -> hikit::panel::PanelRequest {
+pub(crate) fn shell_ask(command: Arc<dyn WindowedCommand>) -> hikit::panel::PanelRequest {
     hikit::panel::PanelRequest::Shell(Arc::new(command))
 }
 

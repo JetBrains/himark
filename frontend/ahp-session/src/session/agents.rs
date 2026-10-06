@@ -31,16 +31,20 @@ impl Agents {
         Hosts::update(store, server, mutate);
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn set_status(store: &mut Store, server: HostId, status: HostStatus) {
         Self::update_record(store, server, |record| record.status = status);
     }
 
-    pub fn set_agents(store: &mut Store, server: HostId, agents: Vec<AgentInfo>) {
+    pub(crate) fn set_agents(store: &mut Store, server: HostId, agents: Vec<AgentInfo>) {
         Self::update_record(store, server, |record| {
             record.agents = agents.into_iter().collect();
         });
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn add_sessions(
         store: &mut Store,
         server: HostId,
@@ -58,7 +62,7 @@ impl Agents {
         });
     }
 
-    pub fn apply_event(store: &mut Store, server: HostId, event: ServerEvent) {
+    pub(crate) fn apply_event(store: &mut Store, server: HostId, event: ServerEvent) {
         match event {
             ServerEvent::SessionAdded(summary) => {
                 Self::update_record(store, server, |record| {
@@ -158,6 +162,8 @@ impl Agents {
         live.then(|| workspace.clone())
     }
 
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
     pub fn set_channel(store: &mut Store, key: &SessionId, channel: SessionChannel) {
         let session = key.session.clone();
         Self::update_record(store, key.host, |record| {

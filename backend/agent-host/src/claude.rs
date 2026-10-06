@@ -26,7 +26,7 @@ pub trait AgentSink: Send + Sync {
 
 pub type Sink = Arc<dyn AgentSink>;
 
-pub fn discover_binary() -> String {
+pub(crate) fn discover_binary() -> String {
     if let Ok(binary) = std::env::var("HIMARK_CLAUDE_BIN") {
         return binary;
     }
@@ -59,7 +59,7 @@ pub(crate) fn is_executable(path: &std::path::Path) -> bool {
         .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 
-pub struct SpawnConfig {
+pub(crate) struct SpawnConfig {
     pub binary: String,
     pub cwd: std::path::PathBuf,
 
@@ -75,7 +75,7 @@ pub struct SpawnConfig {
     pub thinking_level: Option<String>,
 }
 
-pub struct ClaudeAgent {
+pub(crate) struct ClaudeAgent {
     stdin: Mutex<Option<tokio::process::ChildStdin>>,
     state: Mutex<TurnState>,
     sink: Sink,
@@ -233,7 +233,7 @@ impl ClaudeAgent {
         Ok(agent)
     }
 
-    pub fn is_dead(&self) -> bool {
+    pub(crate) fn is_dead(&self) -> bool {
         self.dead.load(std::sync::atomic::Ordering::SeqCst)
     }
 
