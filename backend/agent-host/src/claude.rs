@@ -286,20 +286,30 @@ impl ClaudeAgent {
         Ok(())
     }
 
-    pub async fn answer(&self, tool_call_id: &str, approved: bool) -> Result<(), String> {
-        let (request_id, input) = {
+    pub async fn answer(
+        &self,
+        tool_call_id: &str,
+        approved: bool,
+        option: Option<&str>,
+    ) -> Result<(), String> {
+        let (request_id, name, input) = {
             let mut state = self.state.lock().expect("turn state");
             let Some(request_id) = state.asks.remove(tool_call_id) else {
                 return Ok(());
             };
-            let input = state
+            let (name, input) = state
                 .tools
                 .get(tool_call_id)
-                .map(|track| track.input.clone())
-                .unwrap_or(Value::Null);
-            (request_id, input)
+                .map(|track| (track.name.clone(), track.input.clone()))
+                .unwrap_or((String::new(), Value::Null));
+            (request_id, name, input)
         };
         let response = if approved {
+            let input = if name == "AskUserQuestion" {
+                answered_questions(input, option)
+            } else {
+                input
+            };
             json!({"behavior": "allow", "updatedInput": input})
         } else {
             json!({"behavior": "deny", "message": "The user declined."})
@@ -720,37 +730,50 @@ impl ClaudeAgent {
             capture_before(track, &self.cwd);
             track.ready = true;
         }
-        let invocation = if description.is_empty() {
-            display.clone()
+        let ask = if tool_name == "AskUserQuestion" {
+            question_ask(&input)
         } else {
-            description.to_owned()
+            None
         };
+        let (invocation, tool_input, title, options) = ask.unwrap_or_else(|| {
+            let invocation = if description.is_empty() {
+                display.clone()
+            } else {
+                description.to_owned()
+            };
+            (
+                invocation,
+                Some(ToolInput::Inline(preview(&input))),
+                display.clone(),
+                vec![
+                    ConfirmationOption {
+                        id: "allow".to_owned(),
+                        label: "Yes".to_owned(),
+                        kind: ConfirmationOptionKind::Approve,
+                        group: None,
+                    },
+                    ConfirmationOption {
+                        id: "deny".to_owned(),
+                        label: "No, tell Claude what to do differently".to_owned(),
+                        kind: ConfirmationOptionKind::Deny,
+                        group: None,
+                    },
+                ],
+            )
+        });
         self.emit(StateAction::ChatToolCallReady(ChatToolCallReadyAction {
             turn_id,
             tool_call_id: tool_use_id,
             contributor: None,
             intention: None,
             invocation_message: invocation.into(),
-            tool_input: Some(ToolInput::Inline(preview(&input))),
-            confirmation_title: Some(display.into()),
+            tool_input,
+            confirmation_title: Some(title.into()),
             risk_assessment: None,
             edits: None,
             editable: None,
             confirmed: None,
-            options: Some(vec![
-                ConfirmationOption {
-                    id: "allow".to_owned(),
-                    label: "Yes".to_owned(),
-                    kind: ConfirmationOptionKind::Approve,
-                    group: None,
-                },
-                ConfirmationOption {
-                    id: "deny".to_owned(),
-                    label: "No, tell Claude what to do differently".to_owned(),
-                    kind: ConfirmationOptionKind::Deny,
-                    group: None,
-                },
-            ]),
+            options: Some(options),
             meta: None,
         }));
     }
@@ -1000,11 +1023,67 @@ fn preview(input: &Value) -> String {
         return path.to_owned();
     }
     let rendered = input.to_string();
-    if rendered.len() > 200 {
-        format!("{}…", &rendered[..200])
-    } else {
-        rendered
+    match rendered.char_indices().nth(200) {
+        Some((cut, _)) => format!("{}…", &rendered[..cut]),
+        None => rendered,
     }
+}
+
+/// AskUserQuestion is not a permission gate: the options ARE the answer.
+/// Show the question itself and one Approve option per choice; the option
+/// id carries the choice index for `answer` to translate back. Only the
+/// first question is asked — the CLI sends one per call in practice.
+fn question_ask(
+    input: &Value,
+) -> Option<(String, Option<ToolInput>, String, Vec<ConfirmationOption>)> {
+    let question = input["questions"].as_array()?.first()?;
+    let text = question["question"].as_str()?.to_owned();
+    let title = question["header"].as_str().unwrap_or("Question").to_owned();
+    let mut options: Vec<ConfirmationOption> = question["options"]
+        .as_array()?
+        .iter()
+        .enumerate()
+        .filter_map(|(index, option)| {
+            Some(ConfirmationOption {
+                id: format!("answer:{index}"),
+                label: option["label"].as_str()?.to_owned(),
+                kind: ConfirmationOptionKind::Approve,
+                group: None,
+            })
+        })
+        .collect();
+    if options.is_empty() {
+        return None;
+    }
+    options.push(ConfirmationOption {
+        id: "decline".to_owned(),
+        label: "Decline to answer".to_owned(),
+        kind: ConfirmationOptionKind::Deny,
+        group: None,
+    });
+    Some((text, None, title, options))
+}
+
+/// The CLI reads the user's choice from `updatedInput.answers`, a map of
+/// question text to the chosen label — an allow without it counts as a
+/// refusal.
+fn answered_questions(mut input: Value, option: Option<&str>) -> Value {
+    let Some(index) = option
+        .and_then(|id| id.strip_prefix("answer:"))
+        .and_then(|index| index.parse::<usize>().ok())
+    else {
+        return input;
+    };
+    let answer = input["questions"][0]["question"].as_str().and_then(|text| {
+        let label = input["questions"][0]["options"][index]["label"].as_str()?;
+        Some((text.to_owned(), label.to_owned()))
+    });
+    if let (Some((text, label)), Some(object)) = (answer, input.as_object_mut()) {
+        let mut answers = serde_json::Map::new();
+        answers.insert(text, Value::String(label));
+        object.insert("answers".to_owned(), Value::Object(answers));
+    }
+    input
 }
 
 fn result_text(content: &Value) -> String {

@@ -1589,6 +1589,16 @@ impl ChatPanel {
 
     /// The pane road: `view` is the pane's record. View furniture
     /// commands land on it; model commands fall through.
+    /// Point a view at the composer. Fronting the chat (⌘I) must land
+    /// the keyboard in the input — without this the view keeps whatever
+    /// area a transcript click left it on.
+    pub(crate) fn focus_composer_view(&mut self, id: ChatViewId) {
+        if let Some(mut view) = self.views.get(&id).cloned() {
+            view.focus = ChatArea::Composer;
+            self.views.insert_mut(id, view);
+        }
+    }
+
     pub(crate) fn perform_in_view(
         &mut self,
         store: &mut Store,

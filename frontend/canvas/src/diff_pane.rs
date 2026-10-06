@@ -79,6 +79,19 @@ impl View for PairPane {
         command: UnifiedDiffCommand,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
+        // Collection-scoped document commands (comments.add …) run
+        // against the pair's registered side — the gathered editors
+        // are bare views and would drop them.
+        let Some(command) = documents::diff_views::dynamic_diff_command(
+            store,
+            ui,
+            self.documents,
+            self.id,
+            command,
+            fx,
+        ) else {
+            return;
+        };
         let Some(mut pair) =
             documents::OpenDocuments::take_diff_view(store, self.documents, self.id)
         else {
@@ -254,6 +267,40 @@ fn pane_focus_data<'w>(
                 payload: None,
             }),
         ));
+    }
+    // Collection-scoped document commands (comments.add …) are offered
+    // on the active side, same as a full pane's EditorIdView — the run
+    // path is `dynamic_diff_command` in `perform`.
+    if let (Some(wrap), Some(pair)) = (
+        wrap,
+        documents::OpenDocuments::diff_view_ref(store, documents, id),
+    ) {
+        let active = match view.layout {
+            editor::unified_diff::DiffLayout::Inline => pair.right.document(),
+            editor::unified_diff::DiffLayout::Split => {
+                if view.split.left.focus() != editor::editor_view::EditorFocus::None {
+                    pair.left.document()
+                } else {
+                    pair.right.document()
+                }
+            }
+        };
+        if let Some(at) = documents::OpenDocuments::location(store, documents, active) {
+            for entry in documents::dynamic::DocumentCommands::of(store).iter(documents) {
+                if entry.offers_at(&at)
+                    && !commands.iter().any(|existing| existing.id == entry.id())
+                {
+                    commands.push(imba::PresentableCommand::new(
+                        entry.id(),
+                        entry.name(),
+                        wrap(editor::editor_view::EditorCommand::Dynamic {
+                            id: entry.id(),
+                            payload: None,
+                        }),
+                    ));
+                }
+            }
+        }
     }
     let with_view = move |f: &mut dyn FnMut(
         imba::focus::FocusData<'_, UnifiedDiffCommand>,

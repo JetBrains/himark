@@ -336,6 +336,20 @@ impl ChatPane {
         self.chats
     }
 
+    /// Land the keyboard in the composer. A fresh view already starts
+    /// there; an adopted one keeps its last area (a transcript click
+    /// sticks), so fronting the chat resets it explicitly.
+    pub fn focus_composer(&self, store: &mut Store) {
+        let Some(view) = self.view else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        panel.focus_composer_view(view);
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+    }
+
     /// The pane goes but the MOUNT stays — parked and still fed, so the
     /// walk back re-displays it instead of rebuilding every cell's
     /// document. The chat itself is session truth either way.

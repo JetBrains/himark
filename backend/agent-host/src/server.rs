@@ -429,6 +429,12 @@ struct ChatEntry {
     spoken: bool,
 
     retire_after_turn: bool,
+
+    /// Prompts expanded the moment their turn was queued, keyed by the
+    /// queued message id. Annotations are read at expansion time; the
+    /// client deletes its comments once the dispatch succeeds, so a
+    /// queued review expanded only at drain time would find nothing.
+    queued_prompts: std::collections::HashMap<String, String>,
 }
 
 #[derive(Clone)]
@@ -452,9 +458,14 @@ impl LiveAgent {
         }
     }
 
-    async fn answer(&self, tool_call_id: &str, approved: bool) -> Result<(), String> {
+    async fn answer(
+        &self,
+        tool_call_id: &str,
+        approved: bool,
+        option: Option<&str>,
+    ) -> Result<(), String> {
         match self {
-            Self::Claude(agent) => agent.answer(tool_call_id, approved).await,
+            Self::Claude(agent) => agent.answer(tool_call_id, approved, option).await,
             Self::Codex(agent) => agent.answer(tool_call_id, approved).await,
         }
     }
@@ -634,6 +645,18 @@ impl Host {
                 let _ = ahp::reducers::apply_action_to_chat(&mut chat_state, &cancelled);
                 store.append(&manifest.native_id, &manifest.default_chat, &cancelled);
             }
+            // Queued messages replayed from the log belong to that dead
+            // turn: their expanded prompts (and any review annotations)
+            // died with the previous process, so they can never drain.
+            for queued in chat_state.queued_messages.clone().into_iter().flatten() {
+                let removed =
+                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                        kind: PendingMessageKind::Queued,
+                        id: queued.id.clone(),
+                    });
+                let _ = ahp::reducers::apply_action_to_chat(&mut chat_state, &removed);
+                store.append(&manifest.native_id, &manifest.default_chat, &removed);
+            }
             let spoken = !chat_state.turns.is_empty();
             let mut manifest = manifest;
             if !manifest.listed {
@@ -657,6 +680,7 @@ impl Host {
                     agent: None,
                     spoken,
                     retire_after_turn: false,
+                    queued_prompts: std::collections::HashMap::new(),
                 },
             );
             sessions.insert_mut(
@@ -1591,6 +1615,7 @@ impl Host {
                     agent: None,
                     spoken: true,
                     retire_after_turn: false,
+                    queued_prompts: std::collections::HashMap::new(),
                 },
             );
             state.sessions.insert_mut(
@@ -1851,6 +1876,7 @@ impl Host {
                     agent: None,
                     spoken: false,
                     retire_after_turn: false,
+                    queued_prompts: std::collections::HashMap::new(),
                 },
             );
             state.sessions.insert_mut(
@@ -1917,6 +1943,7 @@ impl Host {
                     agent: None,
                     spoken: false,
                     retire_after_turn: false,
+                    queued_prompts: std::collections::HashMap::new(),
                 },
             );
             Some(summary)
@@ -2023,6 +2050,17 @@ impl Host {
                             started.turn_id
                         );
                     }
+                    // Expand NOW, not at drain time: the client deletes its
+                    // review comments once this dispatch succeeds, so the
+                    // annotations exist only at this moment.
+                    let text = self.expanded_prompt(started);
+                    self.update(|state| {
+                        if let Some(entry) = state.chats.get(&channel) {
+                            let mut entry = entry.clone();
+                            entry.queued_prompts.insert(started.turn_id.clone(), text);
+                            state.chats.insert_mut(channel.clone(), entry);
+                        }
+                    });
                     self.apply(
                         &channel,
                         StateAction::ChatPendingMessageSet(ChatPendingMessageSetAction {
@@ -2046,15 +2084,24 @@ impl Host {
             StateAction::ChatToolCallConfirmed(confirmed) => {
                 let approved = confirmed.approved;
                 let tool = confirmed.tool_call_id.clone();
+                let option = confirmed.selected_option_id.clone();
                 self.apply(&channel, envelope.action);
                 let agent = self.agent_of(&channel);
                 if let Some(agent) = agent {
-                    let _ = agent.answer(&tool, approved).await;
+                    let _ = agent.answer(&tool, approved, option.as_deref()).await;
                 }
             }
             StateAction::ChatTurnCancelled(cancelled) => {
                 let turn_id = cancelled.turn_id.clone();
+                // A cancel naming a queued message removes that entry — the
+                // agent never saw the id, there is nothing to interrupt.
+                if self.unqueue(&channel, &turn_id) {
+                    return;
+                }
                 self.apply(&channel, envelope.action);
+                // Stop empties the queue: a prompt queued behind a turn the
+                // user just killed must not fire at the next completion.
+                self.purge_queue(&channel);
                 if let Some(agent) = self.agent_of(&channel) {
                     let _ = agent.interrupt(&turn_id).await;
                 }
@@ -2430,8 +2477,14 @@ impl Host {
                 }
             });
         }
-        if terminal && natural {
-            self.drain_queue(chat);
+        if terminal {
+            if natural {
+                self.drain_queue(chat);
+            } else {
+                // A cancelled or errored turn drains nothing — and nothing
+                // after it would either, so the queue must not outlive it.
+                self.purge_queue(chat);
+            }
         }
     }
 
@@ -2447,6 +2500,13 @@ impl Host {
             })
         };
         let Some(queued) = next else { return };
+        let stored = self.update(|state| {
+            let entry = state.chats.get(chat)?;
+            let mut entry = entry.clone();
+            let text = entry.queued_prompts.remove(&queued.id);
+            state.chats.insert_mut(chat.clone(), entry);
+            text
+        });
         self.apply(
             chat,
             StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
@@ -2462,7 +2522,7 @@ impl Host {
             queued_message_id: Some(queued.id),
             meta: None,
         };
-        let text = self.expanded_prompt(&started);
+        let text = stored.unwrap_or_else(|| self.expanded_prompt(&started));
         self.honor_message_model(chat, &queued.message);
         self.apply(chat, StateAction::ChatTurnStarted(started));
         let host = Arc::clone(&self);
@@ -2470,6 +2530,70 @@ impl Host {
         tokio::spawn(async move {
             host.prompt(&channel, turn_id, text).await;
         });
+    }
+
+    /// Remove ONE queued message by id. True when the id named a queued
+    /// entry — the caller then has no turn to interrupt.
+    fn unqueue(self: &Arc<Self>, chat: &Uri, id: &str) -> bool {
+        let queued = {
+            let state = self.snapshot();
+            state.chats.get(chat).is_some_and(|entry| {
+                entry
+                    .state
+                    .queued_messages
+                    .as_ref()
+                    .is_some_and(|queue| queue.iter().any(|queued| queued.id == id))
+            })
+        };
+        if !queued {
+            return false;
+        }
+        self.update(|state| {
+            if let Some(entry) = state.chats.get(chat) {
+                let mut entry = entry.clone();
+                entry.queued_prompts.remove(id);
+                state.chats.insert_mut(chat.clone(), entry);
+            }
+        });
+        self.apply(
+            chat,
+            StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                kind: PendingMessageKind::Queued,
+                id: id.to_owned(),
+            }),
+        );
+        true
+    }
+
+    fn purge_queue(self: &Arc<Self>, chat: &Uri) {
+        let ids: Vec<String> = {
+            let state = self.snapshot();
+            state
+                .chats
+                .get(chat)
+                .and_then(|entry| entry.state.queued_messages.as_ref())
+                .map(|queue| queue.iter().map(|queued| queued.id.clone()).collect())
+                .unwrap_or_default()
+        };
+        if ids.is_empty() {
+            return;
+        }
+        self.update(|state| {
+            if let Some(entry) = state.chats.get(chat) {
+                let mut entry = entry.clone();
+                entry.queued_prompts.clear();
+                state.chats.insert_mut(chat.clone(), entry);
+            }
+        });
+        for id in ids {
+            self.apply(
+                chat,
+                StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                    kind: PendingMessageKind::Queued,
+                    id,
+                }),
+            );
+        }
     }
 
     fn retitle_on_first_prompt(&self, chat: &Uri, started: &ChatTurnStartedAction) {

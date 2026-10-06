@@ -123,6 +123,101 @@ pub fn gather_diff_view(
     ))
 }
 
+/// Which side of the pair a routed editor command addresses.
+#[derive(Clone, Copy)]
+enum PairSide {
+    Inline,
+    Left,
+    Right,
+}
+
+/// Collection-scoped document commands (comments.add among them)
+/// dispatch HERE with the pair's ids in hand — the gathered editors
+/// are bare `EditorView`s and would drop a Dynamic command on the
+/// floor (`EditorIdView` does the same for full panes). Returns the
+/// command back when it is not a dynamic one.
+pub fn dynamic_diff_command(
+    store: &mut Store,
+    ui: &imba::ui::UiCtx,
+    documents: imba::store::Id<OpenDocuments>,
+    id: DiffViewId,
+    command: editor::unified_diff::UnifiedDiffCommand,
+    fx: &mut Effects<'_, editor::unified_diff::UnifiedDiffCommand>,
+) -> Option<editor::unified_diff::UnifiedDiffCommand> {
+    use editor::editor_view::EditorCommand;
+    use editor::split_diff::SplitDiffCommand;
+    use editor::unified_diff::UnifiedDiffCommand;
+    let (side, command_id) = match &command {
+        UnifiedDiffCommand::Inline(EditorCommand::Dynamic { id, .. }) => (PairSide::Inline, *id),
+        UnifiedDiffCommand::Split(SplitDiffCommand::Left(EditorCommand::Dynamic {
+            id, ..
+        })) => (PairSide::Left, *id),
+        UnifiedDiffCommand::Split(SplitDiffCommand::Right(EditorCommand::Dynamic {
+            id, ..
+        })) => (PairSide::Right, *id),
+        _ => return Some(command),
+    };
+    let Some(entry) = crate::dynamic::DocumentCommands::of(store)
+        .find(documents, command_id)
+        .cloned()
+    else {
+        return Some(command);
+    };
+    let sides = {
+        let pair = OpenDocuments::diff_view_ref(store, documents, id)?;
+        match side {
+            // The inline face reads the right document through the
+            // inline editor — that is where the selection lives.
+            PairSide::Inline => pair
+                .state
+                .as_ref()
+                .and_then(|state| state.inline_editor())
+                .map(|editor| (pair.right.document(), editor)),
+            PairSide::Left => Some((pair.left.document(), pair.left.editor())),
+            PairSide::Right => Some((pair.right.document(), pair.right.editor())),
+        }
+    };
+    let Some((document_id, editor)) = sides else {
+        return None;
+    };
+    let payload = match command {
+        UnifiedDiffCommand::Inline(EditorCommand::Dynamic { payload, .. })
+        | UnifiedDiffCommand::Split(SplitDiffCommand::Left(EditorCommand::Dynamic {
+            payload,
+            ..
+        }))
+        | UnifiedDiffCommand::Split(SplitDiffCommand::Right(EditorCommand::Dynamic {
+            payload,
+            ..
+        })) => payload,
+        _ => unreachable!("matched above"),
+    };
+    let location = OpenDocuments::location(store, documents, document_id)?;
+    let mut document = OpenDocuments::document(store, documents, document_id)?;
+    fx.scope(
+        move |command| match side {
+            PairSide::Inline => UnifiedDiffCommand::Inline(command),
+            PairSide::Left => UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)),
+            PairSide::Right => UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)),
+        },
+        |fx| {
+            entry.perform(
+                store,
+                ui,
+                documents,
+                document_id,
+                &mut document,
+                editor,
+                &location,
+                payload.and_then(editor::dynamic::DynPayload::take),
+                fx,
+            );
+        },
+    );
+    OpenDocuments::put_document(store, documents, document_id, document);
+    None
+}
+
 /// Perform one command against a STORE-HELD diff view — the
 /// panel-free road (docs/model-view.md step 1): take the record,
 /// gather, perform with effects routed home BY ID
@@ -137,6 +232,16 @@ pub fn perform_diff_view(
     command: editor::unified_diff::UnifiedDiffCommand,
     fx: &mut Effects<'_, DocumentsCommand>,
 ) {
+    let mut passthrough = None;
+    fx.scope(
+        move |command: editor::unified_diff::UnifiedDiffCommand| {
+            DocumentsCommand::DiffView(id, Box::new(command))
+        },
+        |fx| passthrough = dynamic_diff_command(store, ui, documents, id, command, fx),
+    );
+    let Some(command) = passthrough else {
+        return;
+    };
     let Some(mut pair) = OpenDocuments::take_diff_view(store, documents, id) else {
         return;
     };

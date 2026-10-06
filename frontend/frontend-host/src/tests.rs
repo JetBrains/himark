@@ -6864,11 +6864,12 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     settle(&mut engine);
     let request = pick_request(&mut engine, &host_seat);
     assert!(engine.host_picked(request, vec![fs.dir(&[])]));
-    settle_until(
-        engine_mut(&mut engine),
-        "the granted folder landed",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+    // The settle that flakes on CI (linux-leaning) and has never been
+    // caught with its breadcrumbs in hand: on deadline, dump BOTH ends
+    // of the chain — the client's channel mirror and the host's log —
+    // so the failing run names the dead link itself.
+    {
+        let landed = |engine: &HimarkEngine| {
             ahp_session::session::agents::Agents::channel(engine.app.store(), &session).is_some_and(
                 |channel| {
                     channel
@@ -6877,8 +6878,46 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                         .any(|held| held.contains("files"))
                 },
             )
-        },
-    );
+        };
+        let started = std::time::Instant::now();
+        loop {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            settle(&mut engine);
+            if landed(&engine) {
+                break;
+            }
+            if started.elapsed() > std::time::Duration::from_secs(30) {
+                let mirror = ahp_session::session::agents::Agents::channel(
+                    engine.app.store(),
+                    &session,
+                )
+                .map(|channel| {
+                    (
+                        channel.working_directories.iter().cloned().collect::<Vec<_>>(),
+                        channel.chats.len(),
+                    )
+                });
+                let live = ahp_session::session::agents::Agents::live_session(
+                    engine.app.store(),
+                    &session,
+                );
+                // The host's persisted manifest is the chain's far
+                // end: folder IN the manifest but not the mirror means
+                // the host applied it and the client drain lost it;
+                // folder MISSING means the dispatch never landed (a
+                // refusal prints "[hihost] ... REFUSED" above).
+                panic!(
+                    "never settled: the granted folder landed (waited {:?})\n\
+                     session: {session:?} live: {live:?}\n\
+                     channel mirror (folders, chats): {mirror:?}\n\
+                     host manifests: {:?}",
+                    started.elapsed(),
+                    manifests()
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
     assert!(
         manifests()
             .iter()

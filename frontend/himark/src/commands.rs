@@ -645,6 +645,15 @@ impl WindowedCommand for ChatComposer {
         fx.scope(AppCommand::Verb, |fx| {
             entity.front_chat(store, ui, fx);
         });
+        // Fronting alone leaves the view on whatever area it last had —
+        // ⌘I means "type here", so point it at the composer.
+        if let Some(chat) = entity.workbench().chat() {
+            if let ::workbench::workbench_node::Panel::Plugin(view) = chat.panel() {
+                if let Some(pane) = view.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
+                    pane.focus_composer(store);
+                }
+            }
+        }
         ::workbench::window::Windows::put(store, window, entity);
     }
 }

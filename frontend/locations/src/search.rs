@@ -675,9 +675,26 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
                     true => SearchArea::Input,
                     false => SearchArea::Results,
                 };
+                // A row click on a selectable list is a BATCH (Select +
+                // Activate) — fold the first into the Focus so it lands
+                // after the area switch, and keep the rest.
                 match self.panel.handle_event(arena, event, viewport) {
                     EventResult::Command(command) => {
                         EventResult::Command(SearchCommand::Focus(area, Some(Box::new(command))))
+                    }
+                    EventResult::Commands(commands) => {
+                        let mut commands = commands.into_iter();
+                        match commands.next() {
+                            Some(first) => EventResult::Commands(
+                                std::iter::once(SearchCommand::Focus(
+                                    area,
+                                    Some(Box::new(first)),
+                                ))
+                                .chain(commands)
+                                .collect(),
+                            ),
+                            None => EventResult::Command(SearchCommand::Focus(area, None)),
+                        }
                     }
                     _ => EventResult::Command(SearchCommand::Focus(area, None)),
                 }

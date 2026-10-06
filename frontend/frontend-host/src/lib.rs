@@ -467,10 +467,12 @@ impl HimarkEngine {
         let mut app = Application::new(fonts);
         app.register_syntax_languages(syntax_languages());
         // ONE policy: what the diff view computes with is what the
-        // chat's cells are built with.
+        // chat's cells are built with. Myers, time-bounded — the
+        // structural engine's per-region search is unbounded and
+        // stalled the shared worker for seconds on large regions,
+        // with no measured gain in hunk quality over Myers.
         let languages = Arc::new(syntax_languages());
-        let diff_policy: Arc<dyn ::editor::diff::DiffPolicy> =
-            Arc::new(structdiff::Structural::new(Arc::clone(&languages)));
+        let diff_policy: Arc<dyn ::editor::diff::DiffPolicy> = Arc::new(myersdiff::Myers);
         app.register_diff_policy(Arc::clone(&diff_policy));
         app.register_enrichers(enrichment_passes());
         app.register_command(Arc::new(palette::TogglePalette));
@@ -1073,7 +1075,7 @@ impl HimarkEngine {
             himark::hiahp::install_open_handlers(
                 &mut self.app,
                 Arc::new(syntax_languages()),
-                Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
+                Arc::new(myersdiff::Myers),
             );
             self.app
                 .observe_stripe_bases(Arc::new(fsroute::resolve_base));
