@@ -66,9 +66,10 @@ pub fn deliver(
     fx: &mut EditorEffects<'_>,
 ) {
     if let EditorCommand::ApplyReparse(outcome) = command {
-        if outcome.anchor().is_none() {
-            return;
-        }
+        // No anchor gate: `land_reparse` never needs an editor, and a
+        // parse captured while the document briefly had none (a canvas
+        // row mid-succession) must still land — dropping it leaves the
+        // edited text uncolored under the diff wash until the next edit.
         let location = OpenDocuments::location(store, documents, document_id);
         let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);

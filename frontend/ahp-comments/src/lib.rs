@@ -429,8 +429,14 @@ pub fn sync(
             }
         }
     }
-    for ids in Comments::take_send_asks(store, comments) {
-        send_to_agent(store, wire, ids, fx);
+    // Sends drain ONLY onto a live channel with its URI map set, same
+    // as the announces: taken earlier, `send_to_agent` would filter
+    // the still-unsynced records out and the send would vanish — the
+    // announce drain above is what syncs them.
+    if row.channel.as_ref().is_some_and(|held| held.live) && row.uris.is_some() {
+        for ids in Comments::take_send_asks(store, comments) {
+            send_to_agent(store, wire, ids, fx);
+        }
     }
     let work = Comments::take_card_work(store, comments);
     comments::cards::run_card_work(store, ui, comments, work, fx);

@@ -346,7 +346,27 @@ impl ChatPane {
         let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
             return;
         };
-        panel.focus_composer_view(view);
+        panel.focus_view(view, crate::chat::ChatArea::Composer);
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+    }
+
+    /// Test probes for the ⌘I regression: which area the pane's view
+    /// focuses, and a way to park it on the transcript first.
+    #[doc(hidden)]
+    pub fn focus_area(&self, store: &Store) -> Option<crate::chat::ChatArea> {
+        let view = self.view?;
+        Chats::chat_ref(store, self.chats, &self.chat)?.focus_area_view(view)
+    }
+
+    #[doc(hidden)]
+    pub fn set_focus_area(&self, store: &mut Store, area: crate::chat::ChatArea) {
+        let Some(view) = self.view else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        panel.focus_view(view, area);
         Chats::put(store, self.chats, self.chat.clone(), panel);
     }
 

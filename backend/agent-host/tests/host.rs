@@ -698,6 +698,58 @@ async fn a_permission_ask_round_trips() {
     assert!(kinds.contains(&"chat/toolCallComplete"), "{kinds:?}");
 }
 
+/// AskUserQuestion is not a permission gate: the card shows the
+/// question and its choices, and the chosen label travels back as
+/// `updatedInput.answers` — an allow without it counts as a refusal.
+#[tokio::test]
+async fn a_question_offers_its_options_and_returns_the_answer() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+
+    client
+        .dispatch(&chat, turn_started("t-question", "question time"))
+        .await;
+    let actions = client.actions_until(&chat, "chat/toolCallReady").await;
+    let ready = actions.last().expect("question card");
+    assert_eq!(ready["toolCallId"], "q1");
+    assert!(
+        ready["toolInput"].is_null(),
+        "the question, not raw JSON: {ready}"
+    );
+    let rendered = ready.to_string();
+    assert!(rendered.contains("Which color?"), "{ready}");
+    assert!(rendered.contains("Color"), "{ready}");
+    let options = ready["options"].as_array().expect("options");
+    let labels: Vec<&str> = options
+        .iter()
+        .filter_map(|option| option["label"].as_str())
+        .collect();
+    assert_eq!(&labels[..2], &["Red", "Blue"], "{options:?}");
+
+    client
+        .dispatch(
+            &chat,
+            json!({
+                "type": "chat/toolCallConfirmed",
+                "turnId": "t-question",
+                "toolCallId": "q1",
+                "approved": true,
+                "confirmed": "user-action",
+                "selectedOptionId": "answer:1",
+            }),
+        )
+        .await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    let text: String = actions
+        .iter()
+        .filter(|action| action["type"] == "chat/delta")
+        .filter_map(|action| action["content"].as_str())
+        .collect();
+    assert_eq!(text, "answered: Blue", "the chosen label reached the CLI");
+}
+
 #[tokio::test]
 async fn cancel_interrupts_a_parked_turn() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -923,6 +975,124 @@ async fn a_queued_review_drains_with_its_comments_expanded() {
         .collect();
     assert!(prompt.contains("<review-comments>"), "{prompt}");
     assert!(prompt.contains("why unwrap?"), "{prompt}");
+}
+
+/// A cancel NAMING a queued message removes that entry — the agent never
+/// saw the id, there is nothing to interrupt, and the prompt must not
+/// fire at the next natural completion.
+#[tokio::test]
+async fn cancelling_a_queued_id_removes_it_from_the_queue() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+
+    park_a_turn(&mut client, &chat, "t-park").await;
+    client
+        .dispatch(&chat, turn_started("t-queued", "hello"))
+        .await;
+    let queued = client.next_action(&chat).await;
+    assert_eq!(queued["type"], "chat/pendingMessageSet", "{queued}");
+
+    client
+        .dispatch(
+            &chat,
+            json!({"type": "chat/turnCancelled", "turnId": "t-queued", "duration": 0}),
+        )
+        .await;
+    let removed = client.next_action(&chat).await;
+    assert_eq!(removed["type"], "chat/pendingMessageRemoved", "{removed}");
+    assert_eq!(removed["id"], "t-queued", "{removed}");
+
+    // The parked turn was untouched; end it and complete another turn —
+    // nothing drains behind it.
+    stop_the_turn(&mut client, &chat, "t-park").await;
+    client.dispatch(&chat, turn_started("t-after", "hi")).await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    assert!(
+        actions.iter().all(|action| action["turnId"] == "t-after"),
+        "{actions:?}"
+    );
+    client.dispatch(&chat, turn_started("t-probe", "hi")).await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(
+        actions[0]["type"], "chat/turnStarted",
+        "the probe starts itself — no stale drain first: {actions:?}"
+    );
+    assert!(
+        actions.iter().all(|action| action["turnId"] == "t-probe"),
+        "{actions:?}"
+    );
+}
+
+/// An ERRORED turn strands the queue — the held prompts would fire at a
+/// broken agent one per later completion — so the error purges it.
+#[tokio::test]
+async fn an_error_purges_the_queue() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+
+    client
+        .dispatch(&chat, turn_started("t-die", "die-now"))
+        .await;
+    client
+        .dispatch(&chat, turn_started("t-queued", "hello"))
+        .await;
+    let mut saw_removed = false;
+    loop {
+        let action = client.next_action(&chat).await;
+        if action["type"] == "chat/pendingMessageRemoved" {
+            assert_eq!(action["id"], "t-queued", "{action}");
+            saw_removed = true;
+        }
+        if action["type"] == "chat/error" || action["type"] == "chat/turnCancelled" {
+            break;
+        }
+    }
+    if !saw_removed {
+        let action = client.next_action(&chat).await;
+        assert_eq!(action["type"], "chat/pendingMessageRemoved", "{action}");
+        assert_eq!(action["id"], "t-queued", "{action}");
+    }
+}
+
+/// Queued messages replayed from the log never drain — their expanded
+/// prompts died with the previous process — so a restart drops them.
+#[tokio::test]
+async fn restart_drops_the_replayed_queue() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+    client
+        .dispatch(
+            &chat,
+            json!({
+                "type": "chat/pendingMessageSet",
+                "kind": "queued",
+                "id": "q-stale",
+                "message": {"text": "hello", "origin": {"kind": "user"}},
+            }),
+        )
+        .await;
+    client.next_action(&chat).await;
+
+    let reborn = host_at(dir.path());
+    let mut client = Client::connect(reborn).await;
+    client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
+        )
+        .await;
+    let snapshot = client.request("subscribe", json!({"channel": chat})).await;
+    let queue = &snapshot["snapshot"]["state"]["queuedMessages"];
+    assert!(
+        queue.is_null() || queue.as_array().is_some_and(Vec::is_empty),
+        "the stale queue did not survive the restart: {queue}"
+    );
 }
 
 /// `chat/turnCancelled` cancels the turn it NAMES. A stale id (a turn the

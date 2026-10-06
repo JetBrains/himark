@@ -3978,6 +3978,200 @@ fn a_committed_change_set_empties_the_canvas() {
     );
 }
 
+/// Releasing a canvas's LAST view tears its rows down. The rows'
+/// substance — both side documents, editors, tracked diffs — lives in
+/// the session's shared OpenDocuments, and used to stay there for the
+/// session's life after the canvas value was dropped. The working-copy
+/// canvas is the deliberate exception: it keeps serving the next open.
+#[test]
+fn releasing_the_last_view_frees_the_rows_documents() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let location = |name: &str| {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("test"),
+        vec!["proj".to_owned()],
+    );
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: location("a.md.old"),
+        new: location("a.md"),
+        added: Some(1),
+        removed: Some(1),
+        updated: 1,
+    };
+    let built = |file: &::canvas::diff_canvas::CanvasFile| {
+        let old = editor::document::Document::new(
+            text::text::Text::from_string_exact("one\n"),
+            editor::markup::Markup::new(),
+        );
+        let new = editor::document::Document::new(
+            text::text::Text::from_string_exact("One\n"),
+            editor::markup::Markup::new(),
+        );
+        prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0)
+    };
+    let commit = changesview::hichanges::CanvasSource::Commit {
+        folder: folder.clone(),
+        id: changesview::hichanges::Revision::new("abc123"),
+    };
+
+    let (changes, documents) = {
+        let store = app.store();
+        let changes = canvas_changes(&store);
+        let documents = changesview::hichanges::Changes::of(&store, changes)
+            .expect("the window's change sets")
+            .documents();
+        (changes, documents)
+    };
+    let mut first = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(&mut store, &ui, changes, commit.clone(), file.clone(), built(&file))
+    };
+    let registered = |app: &Application| {
+        let store = app.store();
+        documents::OpenDocuments::by_location(&store, documents, &file.old).is_some()
+            && documents::OpenDocuments::by_location(&store, documents, &file.new).is_some()
+    };
+    assert!(registered(&app), "the built row registered both sides");
+
+    // A second view on the same source shares the canvas: releasing it
+    // releases ONE ref, the rows stay.
+    let mut second = DiffCanvasView::over(&mut app.store_mut(), changes, commit.clone());
+    hikit::panel::PanelView::displaced(&mut second, &mut app.store_mut());
+    assert!(registered(&app), "one view still stands — nothing retires");
+
+    // The LAST view goes (a navigation away, not a close): every row
+    // tears down and both side documents leave the collection.
+    hikit::panel::PanelView::displaced(&mut first, &mut app.store_mut());
+    assert!(
+        !registered(&app),
+        "the last release frees the rows' documents"
+    );
+
+    // The working-copy canvas is kept whole on release, by design.
+    let wc_file = ::canvas::diff_canvas::CanvasFile {
+        title: "b.md".to_owned(),
+        old: location("b.md.old"),
+        new: location("b.md"),
+        ..file.clone()
+    };
+    let mut working = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy { folder },
+            wc_file.clone(),
+            built(&wc_file),
+        )
+    };
+    hikit::panel::PanelView::dismantle(&mut working, &mut app.store_mut());
+    assert!(
+        documents::OpenDocuments::by_location(&app.store(), documents, &wc_file.new).is_some(),
+        "the working-copy canvas keeps its rows for the next open"
+    );
+}
+
+/// The prefetch horizon: arming one placeholder (its first paint) also
+/// launches the builds just past it — capped by row count AND by
+/// cumulative change mass, stopping at the first row that would
+/// overflow — and nothing ever launches twice.
+#[test]
+fn an_armed_row_prefetches_a_bounded_horizon() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let location = |name: &str| {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = |name: &str, added: Option<i64>, removed: Option<i64>| {
+        ::canvas::diff_canvas::CanvasFile {
+            title: name.to_owned(),
+            old: location(&format!("{name}.old")),
+            new: location(name),
+            added,
+            removed,
+            updated: 1,
+        }
+    };
+
+    let seed = file("seed.md", Some(1), Some(0));
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        let old = editor::document::Document::new(
+            text::text::Text::from_string_exact("one\n"),
+            editor::markup::Markup::new(),
+        );
+        let new = editor::document::Document::new(
+            text::text::Text::from_string_exact("One\n"),
+            editor::markup::Markup::new(),
+        );
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+            },
+            seed.clone(),
+            prepared_pair(seed.old.clone(), old, seed.new.clone(), new, 1100.0),
+        )
+    };
+
+    // Twelve light placeholders (weight 200 each) splice in lazily.
+    let mut listing = vec![seed.clone()];
+    for index in 0..12 {
+        listing.push(file(&format!("f{index:02}.md"), Some(100), Some(100)));
+    }
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), listing.clone());
+    assert_eq!(launched, 0, "additions splice in as lazy placeholders");
+
+    // Arming f00 launches itself plus the ROW-CAPPED horizon:
+    // 8 × 200 lines stays under the mass budget.
+    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f00.md"), 800.0);
+    assert_eq!(launched, 1 + 8, "the arm launches itself and 8 ahead");
+
+    // Arming a row already in flight launches only what lies past the
+    // standing horizon — nothing twice.
+    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f01.md"), 800.0);
+    assert_eq!(launched, 3, "f09..f11 only; the rest were in flight");
+
+    // Heavy rows hit the MASS cap: the walk takes one 3000-line entry,
+    // then stops at the next one that would overflow — the small file
+    // behind it waits for its own arm (no skipping past a wall).
+    listing.push(file("g00.md", Some(1500), Some(1500)));
+    listing.push(file("g01.md", Some(1500), Some(1500)));
+    listing.push(file("h00.md", None, None));
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), listing);
+    assert_eq!(launched, 0);
+    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f05.md"), 800.0);
+    assert_eq!(launched, 1, "one heavy row fits the mass budget, then the walk stops");
+}
+
 fn canvas_file(
     key: &editor::location::ResourceLocation,
     updated: u64,

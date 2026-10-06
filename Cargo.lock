@@ -1672,7 +1672,6 @@ dependencies = [
  "serde",
  "serde_json",
  "skia-safe",
- "structdiff",
  "tempfile",
  "terminals",
  "text",

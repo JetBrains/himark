@@ -30,7 +30,6 @@ text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
 editor = { path = "../editor" }
-structdiff = { path = "../structdiff" }
 myersdiff = { path = "../myersdiff" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }

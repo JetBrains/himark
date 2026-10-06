@@ -78,6 +78,33 @@ while True:
                 {"type": "tool_result", "tool_use_id": "t1", "content": "denied", "is_error": True}]}})
             stream_text("understood")
         result()
+    elif "question" in text:
+        q_input = {"questions": [{"question": "Which color?", "header": "Color",
+                                  "options": [{"label": "Red"}, {"label": "Blue"}],
+                                  "multiSelect": False}]}
+        out({"type": "assistant", "session_id": session, "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "q1", "name": "AskUserQuestion", "input": q_input}]}})
+        out({"type": "control_request", "request_id": "ask-q1", "session_id": session,
+             "request": {"subtype": "can_use_tool", "tool_name": "AskUserQuestion",
+                          "display_name": "AskUserQuestion", "input": q_input,
+                          "tool_use_id": "q1", "permission_suggestions": []}})
+        answer = read()
+        while answer.get("type") != "control_response":
+            answer = read()
+        response = answer["response"]["response"]
+        answers = (response.get("updatedInput") or {}).get("answers") or {}
+        # The REAL CLI reads the choice from updatedInput.answers — an
+        # allow without it counts as a refusal, same as a deny.
+        if response.get("behavior") == "allow" and answers:
+            out({"type": "user", "session_id": session, "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "q1", "content": "answered"}]}})
+            stream_text("answered: " + answers.get("Which color?", ""))
+        else:
+            out({"type": "user", "session_id": session, "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "q1",
+                 "content": "User declined to answer questions", "is_error": True}]}})
+            stream_text("refused")
+        result()
     elif "edit" in text:
         out({"type": "assistant", "session_id": session, "message": {"role": "assistant", "content": [
             {"type": "tool_use", "id": "e1", "name": "Write",
@@ -89,6 +116,9 @@ while True:
             {"type": "tool_result", "tool_use_id": "e1", "content": "wrote it"}]}})
         stream_text("edited")
         result()
+    elif "die-now" in text:
+        time.sleep(0.4)  # long enough for the test to queue behind this turn
+        sys.exit(1)
     elif "slow" in text:
         time.sleep(0.7)
         stream_text("OK")

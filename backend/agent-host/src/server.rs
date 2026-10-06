@@ -2099,9 +2099,6 @@ impl Host {
                     return;
                 }
                 self.apply(&channel, envelope.action);
-                // Stop empties the queue: a prompt queued behind a turn the
-                // user just killed must not fire at the next completion.
-                self.purge_queue(&channel);
                 if let Some(agent) = self.agent_of(&channel) {
                     let _ = agent.interrupt(&turn_id).await;
                 }
@@ -2465,6 +2462,7 @@ impl Host {
                 | StateAction::ChatError(_)
         );
         let natural = matches!(action, StateAction::ChatTurnComplete(_));
+        let errored = matches!(action, StateAction::ChatError(_));
         self.apply(chat, action);
         if terminal {
             self.update(|state| {
@@ -2477,14 +2475,15 @@ impl Host {
                 }
             });
         }
-        if terminal {
-            if natural {
-                self.drain_queue(chat);
-            } else {
-                // A cancelled or errored turn drains nothing — and nothing
-                // after it would either, so the queue must not outlive it.
-                self.purge_queue(chat);
-            }
+        if terminal && natural {
+            self.drain_queue(chat);
+        }
+        // A cancel leaves the queue paused (it drains at the next natural
+        // completion), but an ERROR strands it: the agent is broken, the
+        // held prompts would fire at it one per later completion, surprise
+        // included — drop them instead.
+        if errored {
+            self.purge_queue(chat);
         }
     }
 

@@ -34,14 +34,29 @@ const REFINE_BUDGET: usize = 4 * 1024;
 
 const RETAIN_NOISE: usize = 3;
 
+/// Ceiling on the line pass: past it `similar` degrades to cruder
+/// hunks instead of stalling the worker — the diff stays exact either
+/// way, only hunk quality drops. Myers is O((N+M)·D), unbounded on a
+/// large rewrite without this.
+const LINE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Total char-refinement budget per diff: a replace block past it
+/// lands as plain delete+insert (no word tints) rather than stall.
+/// Each block is already capped at `REFINE_BUDGET`, but a diff can
+/// hold hundreds of blocks.
+const REFINE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(200);
+
 pub fn diff(left: &Text, right: &Text) -> Operation {
     let left = materialize(left);
     let right = materialize(right);
     let mut ops: Vec<Op> = Vec::new();
 
-    let lines = TextDiff::from_lines(left.as_str(), right.as_str());
+    let lines = TextDiff::configure()
+        .timeout(LINE_DEADLINE)
+        .diff_lines(left.as_str(), right.as_str());
     let old_offsets = prefix_offsets(lines.iter_old_slices());
     let new_offsets = prefix_offsets(lines.iter_new_slices());
+    let refine_until = std::time::Instant::now() + REFINE_DEADLINE;
     for op in lines.ops() {
         let old = span(&old_offsets, op.old_range());
         let new = span(&new_offsets, op.new_range());
@@ -49,7 +64,13 @@ pub fn diff(left: &Text, right: &Text) -> Operation {
             DiffTag::Equal => push_retain(&mut ops, old.len()),
             DiffTag::Delete => push_delete(&mut ops, &left[old]),
             DiffTag::Insert => push_insert(&mut ops, &right[new]),
-            DiffTag::Replace => refine(&mut ops, &left[old], &right[new]),
+            DiffTag::Replace if std::time::Instant::now() < refine_until => {
+                refine(&mut ops, &left[old], &right[new]);
+            }
+            DiffTag::Replace => {
+                push_delete(&mut ops, &left[old]);
+                push_insert(&mut ops, &right[new]);
+            }
         }
     }
     Operation::from_ops(ops)

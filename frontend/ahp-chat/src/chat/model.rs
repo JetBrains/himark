@@ -346,6 +346,24 @@ impl Conversation {
         next
     }
 
+    fn without_turn(&self, id: &TurnId) -> Self {
+        if !self.turns.contains_key(id) {
+            return self.clone();
+        }
+        let mut said = VectorSync::new_sync();
+        for kept in self.said.iter().filter(|kept| *kept != id) {
+            said.push_back_mut(kept.clone());
+        }
+        let mut turns = self.turns.clone();
+        turns.remove_mut(id);
+        Self {
+            said,
+            turns,
+            live: self.live.clone().filter(|live| live != id),
+            older: self.older.clone(),
+        }
+    }
+
     fn update(&self, id: &TurnId, mutate: impl FnOnce(&Turn) -> Option<Turn>) -> Option<Self> {
         let held = self.turns.get(id)?;
         let next = mutate(held)?;
@@ -469,12 +487,28 @@ impl Conversation {
         match action {
             A::ChatTurnStarted(a) => {
                 let id = TurnId::new(a.turn_id.clone());
+                // A drained queue re-starts our write-ahead turn under
+                // the host's own id — the stale copy would sit forever
+                // as a never-closing row repeating the prompt.
+                let queued = a
+                    .queued_message_id
+                    .as_ref()
+                    .map(|queued| TurnId::new(queued.clone()))
+                    .filter(|queued| self.turns.contains_key(queued));
+                let base = match &queued {
+                    Some(stale) => self.without_turn(stale),
+                    None => self.clone(),
+                };
                 // A start RESETS the turn's parts: a replayed stream
                 // rebuilds it to one copy, and a start for a turn we
                 // already hold replaces it where it stands.
-                let mut next = self.with_turn(Turn::opened(id.clone(), &a.message));
+                let mut next = base.with_turn(Turn::opened(id.clone(), &a.message));
                 next.live = Some(id.clone());
-                (next, Change::Said(id))
+                match queued {
+                    // A row vanished mid-list: the whole list re-lays.
+                    Some(_) => (next, Change::Page),
+                    None => (next, Change::Said(id)),
+                }
             }
 
             A::ChatResponsePart(a) => {

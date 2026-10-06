@@ -913,6 +913,80 @@ mod tests {
         assert!(hikit::modal::ModalView::take_request(&mut view).is_none());
     }
 
+    /// A MOUSE click on a results row opens it. The widget shell must
+    /// pass the list's command BATCH through — a row click is Select +
+    /// Activate (`EventResult::Commands`), not the single command a
+    /// chevron returns; the shell once kept only single commands and
+    /// every row click died in its `_` arm.
+    #[test]
+    fn a_row_click_opens_through_the_widget_shell() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let lists = lists(&mut store);
+        feed(
+            &mut store,
+            lists,
+            &[found(&["work", "a.rs"], 3, 2, "alpha")],
+            true,
+        );
+        let mut view = view(&mut store, &ui, lists);
+        let mut batch = imba::effect::Batch::new();
+
+        // Settle the cursor first: entering the results already opens
+        // the landing row — consume that so only the CLICK can open.
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Focus(SearchArea::Results, None),
+            &mut batch.effects(),
+        );
+        let _ = hikit::modal::ModalView::take_request(&mut view);
+
+        let mut opened = false;
+        let mut y = 4.0;
+        while y < 396.0 && !opened {
+            let commands = {
+                let arena = Arena::default();
+                let widget = imba::Thunk::realize(
+                    imba::layout::Layout::layout(
+                        view.display(&arena, &store, &ui),
+                        &arena,
+                        imba::constraints::Constraints::tight(Size::new(400.0, 400.0)),
+                    ),
+                    &arena,
+                    skia_safe::Rect::from_wh(400.0, 400.0),
+                );
+                let event = Event::MouseDown {
+                    point: skia_safe::Point::new(200.0, y),
+                    button: imba::event::MouseButton::Left,
+                    mods: imba::event::Modifiers::default(),
+                    count: 1,
+                };
+                match imba::Widget::handle_event(
+                    &widget,
+                    &arena,
+                    &event,
+                    skia_safe::Rect::from_wh(400.0, 400.0),
+                ) {
+                    EventResult::Command(command) => vec![command],
+                    EventResult::Commands(commands) => commands,
+                    _ => Vec::new(),
+                }
+            };
+            for command in commands {
+                view.perform(&mut store, &ui, command, &mut batch.effects());
+            }
+            if matches!(
+                hikit::modal::ModalView::take_request(&mut view),
+                Some(ModalRequest::OpenAt { .. })
+            ) {
+                opened = true;
+            }
+            y += 8.0;
+        }
+        assert!(opened, "a click on a results row opens its location");
+    }
+
     /// Selection IS navigation: keyboard cursor moves open the row
     /// they land on; standing still (and feed rebuilds re-asserting
     /// the cursor) never re-open; directories only fold.

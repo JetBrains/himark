@@ -103,6 +103,12 @@ pub struct Canvas {
 
     phases: rpds::HashTrieMapSync<ResourceLocation, RowPhase>,
 
+    /// Rows whose build is already IN FLIGHT — the prefetch horizon
+    /// launches rows the paint never armed, and the arm that follows
+    /// must not launch them twice. Cleared when the build lands (a
+    /// later rebuild goes through `relaunch`, not the arm).
+    launched: rpds::HashTrieSetSync<ResourceLocation>,
+
     /// An armed reveal: applied at populate, or picked up by the
     /// paint probe when a reuse navigation arms it later.
     reveal: Option<ResourceLocation>,
@@ -145,6 +151,17 @@ pub enum RowPhase {
     Failed,
 }
 
+/// The prefetch horizon past an armed row: at most this many
+/// placeholder rows launch speculatively…
+const PREFETCH_ROWS: usize = 8;
+/// …and their change mass (added+removed lines, the only size signal
+/// the listing carries) may sum to at most this much. The walk stops
+/// at the first row that would overflow — a huge file loads when the
+/// user actually reaches it, never speculatively.
+const PREFETCH_LINES: i64 = 4000;
+/// A listing entry with no stats weighs this much against the budget.
+const PREFETCH_UNKNOWN_LINES: i64 = 400;
+
 fn sticky_style() -> imba::list::StickySource {
     std::sync::Arc::new(|store: &Store| {
         let window = env::Themes::of(store).ui().window.clone();
@@ -169,6 +186,7 @@ impl Canvas {
             successions: rpds::HashTrieMapSync::new_sync(),
             request: None,
             phases: rpds::HashTrieMapSync::new_sync(),
+            launched: rpds::HashTrieSetSync::new_sync(),
             reveal: None,
             refs: 0,
             stash: rpds::HashTrieMapSync::new_sync(),
@@ -926,6 +944,7 @@ impl Canvas {
         }
         self.files.remove_mut(key);
         self.phases.remove_mut(key);
+        self.launched.remove_mut(key);
         self.stash.remove_mut(key);
         if self.reveal.as_ref() == Some(key) {
             self.reveal = None;
@@ -1123,14 +1142,81 @@ impl Canvas {
         self.land(store, ui, key, prep, &mut throwaway.effects());
     }
 
-    fn launch(&self, store: &Store, index: usize, width: f32, fx: &mut Effects<'_, CanvasCommand>) {
+    fn launch(
+        &mut self,
+        store: &Store,
+        index: usize,
+        width: f32,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
         let Some(CanvasKey::Diff(location)) = self.rows.content().key_at(index).cloned() else {
             return;
         };
         let Some(file) = self.files.get(&location).cloned() else {
             return;
         };
-        Self::launch_pair(store, self.changes, location, &file, width, fx);
+        self.launch_once(store, location, &file, width, fx);
+        self.prefetch(store, index, width, fx);
+    }
+
+    fn launch_once(
+        &mut self,
+        store: &Store,
+        key: ResourceLocation,
+        file: &CanvasFile,
+        width: f32,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        if self.launched.contains(&key) {
+            return;
+        }
+        self.launched.insert_mut(key.clone());
+        Self::launch_pair(store, self.changes, key, file, width, fx);
+    }
+
+    /// The prefetch horizon: an ARMED row names the moment and the
+    /// width — the placeholders just past it launch now, bounded, so
+    /// scrolling meets built diffs instead of skeletons. The open road
+    /// is two host round trips plus two cold parses on the serial
+    /// worker; lazy-only, that cost lands exactly when the user is
+    /// looking. The armed row's own effect is already queued, so the
+    /// visible build still goes first.
+    fn prefetch(
+        &mut self,
+        store: &Store,
+        index: usize,
+        width: f32,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let rows = self.rows.content();
+        let horizon: Vec<(ResourceLocation, CanvasFile)> = (index + 1..rows.len())
+            .filter_map(|at| match rows.key_at(at) {
+                Some(CanvasKey::Diff(location)) => Some(location.clone()),
+                _ => None,
+            })
+            .filter(|key| {
+                !self.launched.contains(key)
+                    && matches!(self.phases.get(key), Some(RowPhase::Placeholder))
+            })
+            .filter_map(|key| {
+                let file = self.files.get(&key)?.clone();
+                let weight = match (file.added, file.removed) {
+                    (None, None) => PREFETCH_UNKNOWN_LINES,
+                    (added, removed) => added.unwrap_or(0) + removed.unwrap_or(0),
+                };
+                Some((key, file, weight))
+            })
+            // The mass budget: the scan dies at the first row that
+            // would overflow — a wall, not a sieve.
+            .scan(PREFETCH_LINES, |left, (key, file, weight)| {
+                *left -= weight;
+                (*left >= 0).then_some((key, file))
+            })
+            .take(PREFETCH_ROWS)
+            .collect();
+        for (key, file) in horizon {
+            self.launch_once(store, key, &file, width, fx);
+        }
     }
 
     fn land(
@@ -1141,6 +1227,7 @@ impl Canvas {
         prep: documents::diff_views::OpenedDiffPair,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
+        self.launched.remove_mut(&key);
         let Some(file) = self.files.get(&key).cloned() else {
             return;
         };
@@ -1771,6 +1858,17 @@ impl Canvases {
         // next open for free).
         if canvas.refs > 0 || matches!(canvas.source, CanvasSource::WorkingCopy { .. }) {
             Self::put(store, changes, id, canvas);
+            return;
+        }
+        // The last view is gone. The rows' substance — documents,
+        // editors, tracked diffs — lives in the session's shared
+        // OpenDocuments, not in this struct: dropping the canvas alone
+        // leaks all of it for the session's life. Tear every row down:
+        // live in the list, parked in the collapse stash, and the
+        // off-row successors alike.
+        let keys: Vec<ResourceLocation> = canvas.files.keys().cloned().collect();
+        for key in keys {
+            canvas.teardown_row(store, &key);
         }
     }
 
@@ -2017,6 +2115,40 @@ impl DiffCanvasView {
             }
             // The settle pulse rides the same channel — strip it, count
             // only real builds.
+            let _ = batch.take_settle();
+            launched = batch
+                .drain()
+                .into_iter()
+                .filter(|message| {
+                    matches!(
+                        message,
+                        imba::effect::Message::Launch(..) | imba::effect::Message::Relaunch(..)
+                    )
+                })
+                .count();
+            Canvases::put(store, self.changes, self.id, canvas);
+        }
+        launched
+    }
+
+    /// TEST SUPPORT: arm one row by its file key at a width, as its
+    /// first paint would — returns how many builds the arm launched
+    /// (the row itself plus the prefetch horizon behind it).
+    #[doc(hidden)]
+    pub fn arm_for_tests(&self, store: &mut Store, key: &ResourceLocation, width: f32) -> usize {
+        let mut launched = 0;
+        if let Some(mut canvas) = Canvases::take(store, self.changes, self.id) {
+            let mut batch = imba::effect::Batch::new();
+            {
+                let mut fx = batch.effects();
+                if let Some(range) = canvas
+                    .rows
+                    .content()
+                    .row_range(&CanvasKey::Diff(key.clone()))
+                {
+                    canvas.launch(store, range.start, width, &mut fx);
+                }
+            }
             let _ = batch.take_settle();
             launched = batch
                 .drain()
@@ -3201,8 +3333,16 @@ impl hikit::panel::PanelView for DiffCanvasView {
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        // Row documents and editors are ROW-owned — they die with the
-        // canvas when the collection lets go of it.
+        Canvases::release(store, self.changes, self.id);
+    }
+
+    /// Displacement ends this view as surely as closing does — the
+    /// slot walked elsewhere and the instance is dropped right after
+    /// (the walk back mints a fresh view through the navigator, which
+    /// retains again). Without this, every navigation away left a
+    /// permanent +1 and the canvas — rows, documents, editors — could
+    /// never retire.
+    fn displaced(&mut self, store: &mut Store) {
         Canvases::release(store, self.changes, self.id);
     }
 
