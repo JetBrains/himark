@@ -6590,21 +6590,63 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
             probe(engine).dir.picked.as_deref() == Some("other")
         },
     );
-    settle_until(
-        engine_mut(&mut engine),
-        "the seeded folder grant was revoked",
-        |engine| {
+    {
+        // A full deadline here has never been caught with its state in
+        // hand. The revoke is issued from the PLACEHOLDER row's
+        // `applied` list (new_session.rs ensure_placeholder), and the
+        // window's session can be rekeyed out from under the id we
+        // captured — so on deadline name all three: which session the
+        // window holds now, what each mirror carries, and the row the
+        // revoke is computed from.
+        let dirs = |engine: &HimarkEngine, at: &ahp_wire::SessionId| {
+            ahp_session::session::agents::Agents::channel(engine.app.store(), at).map(|channel| {
+                channel
+                    .working_directories
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+        };
+        let revoked = |engine: &HimarkEngine| {
+            dirs(engine, &reseeded).is_some_and(|held| {
+                held.len() == 1 && held.iter().all(|dir| dir.ends_with("other"))
+            })
+        };
+        let started = std::time::Instant::now();
+        loop {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            ahp_session::session::agents::Agents::channel(engine.app.store(), &reseeded)
-                .is_some_and(|channel| {
-                    channel.working_directories.len() == 1
-                        && channel
-                            .working_directories
-                            .iter()
-                            .all(|held| held.ends_with("other"))
-                })
-        },
-    );
+            settle(&mut engine);
+            if revoked(&engine) {
+                break;
+            }
+            if started.elapsed() > std::time::Duration::from_secs(30) {
+                let now = himark::workspace::entity_session(
+                    workbench::window::Windows::window_ref(
+                        engine.app.store(),
+                        engine.app.sole_window(),
+                    )
+                    .expect("window"),
+                );
+                panic!(
+                    "never settled: the seeded folder grant was revoked (waited {:?})\n\
+                     reseeded: {reseeded:?}\n\
+                     window session now: {now:?} (same: {})\n\
+                     reseeded dirs: {:?}\n\
+                     window dirs: {:?}\n\
+                     placeholder row (provider, session, applied, pending): {:?}",
+                    started.elapsed(),
+                    now == reseeded,
+                    dirs(&engine, &reseeded),
+                    dirs(&engine, &now),
+                    himark::new_session::Placeholders::probe(
+                        engine.app.store(),
+                        engine.app.sole_window()
+                    ),
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     assert!(himark::test_driver::type_text(&mut engine.app, "again"));
     assert!(probe(&engine).ready, "prompt + folder re-arm Start");

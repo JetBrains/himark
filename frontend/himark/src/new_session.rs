@@ -1916,6 +1916,25 @@ struct Placeholder {
 }
 
 impl Placeholders {
+    /// TEST SUPPORT: the window's placeholder row — provider, session,
+    /// the grants already applied and the one still pending. The
+    /// composer's folder-grant flakes turn on exactly this state, so a
+    /// failing settle can print it instead of guessing.
+    #[doc(hidden)]
+    pub fn probe(
+        store: &Store,
+        window: ::workbench::window::WindowId,
+    ) -> Option<(String, Option<String>, Vec<String>, Option<String>)> {
+        let rows = store.get::<Placeholders>()?;
+        let row = rows.0.get(&window)?;
+        Some((
+            row.provider.clone(),
+            row.session.as_ref().map(|session| format!("{session:?}")),
+            row.applied.iter().cloned().collect(),
+            row.pending.clone(),
+        ))
+    }
+
     #[doc(hidden)]
     pub fn session_of(
         store: &Store,
