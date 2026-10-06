@@ -270,11 +270,6 @@ impl Canvas {
         out
     }
 
-    #[doc(hidden)]
-    pub(crate) fn probe_focused_row(&self) -> Option<usize> {
-        self.rows.content().focused()
-    }
-
     fn banner_row(&self) -> Option<BannerRow> {
         let range = self.rows.content().row_range(&CanvasKey::Banner)?;
         match self.rows.content().view_at(range.start)? {
@@ -439,66 +434,6 @@ impl Canvas {
                     .map(|(_, card)| format!("{:?}", card.card_focus()))
                     .collect();
                 Some((title, host, cards))
-            })
-            .collect()
-    }
-
-    /// Per Built row: (host text head, each card's text head).
-    #[doc(hidden)]
-    pub(crate) fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
-        self.diff_rows()
-            .into_iter()
-            .filter_map(|(_, diff)| {
-                let RowBody::Built { pane } = &diff.body else {
-                    return None;
-                };
-                let Some(view) =
-                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
-                else {
-                    return None;
-                };
-                let inline = view.inline_editor?;
-                let host = {
-                    let text = view.split.right.document.text();
-                    let end = text.byte_count().min(120) as u32;
-                    text.view().substring(0..end)
-                };
-                let cards = view
-                    .split
-                    .right
-                    .document
-                    .before_inlay_views(inline)
-                    .into_iter()
-                    .map(|(_, card)| card.shown_text())
-                    .collect();
-                Some((host, cards))
-            })
-            .collect()
-    }
-
-    /// Geometry oracle: (content_height, [(anchor_byte, y_of_anchor)]).
-    #[doc(hidden)]
-    pub(crate) fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
-        self.diff_rows()
-            .into_iter()
-            .filter_map(|(_, diff)| {
-                let RowBody::Built { pane } = &diff.body else {
-                    return None;
-                };
-                let Some(view) =
-                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
-                else {
-                    return None;
-                };
-                let inline = view.inline_editor?;
-                let document = &view.split.right.document;
-                let content = document.content_height(inline);
-                let anchors = document
-                    .before_inlays(inline)
-                    .into_iter()
-                    .map(|(range, _, _)| (range.start, document.height_before(inline, range.start)))
-                    .collect();
-                Some((content, anchors))
             })
             .collect()
     }
@@ -2282,11 +2217,6 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub(crate) fn probe_focused_row(&self, store: &Store) -> Option<usize> {
-        self.canvas(store)?.probe_focused_row()
-    }
-
-    #[doc(hidden)]
     pub fn probe_composer(&self, store: &Store) -> Option<(bool, String)> {
         self.canvas(store)?.probe_composer()
     }
@@ -2314,20 +2244,6 @@ impl DiffCanvasView {
     pub fn probe_focus(&self, store: &Store) -> Vec<(String, String, Vec<String>)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_focus(store))
-            .unwrap_or_default()
-    }
-
-    #[doc(hidden)]
-    pub(crate) fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
-        self.canvas(store)
-            .map(|canvas| canvas.probe_texts(store))
-            .unwrap_or_default()
-    }
-
-    #[doc(hidden)]
-    pub(crate) fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
-        self.canvas(store)
-            .map(|canvas| canvas.probe_geometry(store))
             .unwrap_or_default()
     }
 }

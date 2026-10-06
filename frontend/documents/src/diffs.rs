@@ -328,25 +328,6 @@ impl OpenDocuments {
         candidates
     }
 
-    /// The STANDALONE pairs — the session rows a peeker can front.
-    /// Canvas-embedded pairs stay with their canvas.
-    /// Every tracked diff view — the dressing sweep's domain.
-    pub(crate) fn diff_view_ids(
-        store: &Store,
-        documents: imba::store::Id<OpenDocuments>,
-    ) -> Vec<DiffViewId> {
-        store
-            .entity(documents)
-            .map(|docs| {
-                docs.diffs
-                    .diff_views
-                    .keys()
-                    .map(|id| DiffViewId(*id))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
     pub fn pair_ids(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<DiffViewId> {
         store
             .entity(documents)
@@ -368,21 +349,6 @@ impl OpenDocuments {
             .entity(documents)
             .map(|docs| docs.diffs.diff_views.size())
             .unwrap_or(0)
-    }
-
-    pub(crate) fn holds_diff_view(&self, id: DiffViewId) -> bool {
-        self.diffs.diff_views.contains_key(&id.0)
-    }
-
-    pub(crate) fn pair_tracked(
-        store: &Store,
-        documents: imba::store::Id<OpenDocuments>,
-        base: DocumentId,
-        target: DocumentId,
-    ) -> bool {
-        store
-            .entity(documents)
-            .is_some_and(|docs| docs.diffs.by_pair(base, target).is_some())
     }
 
     /// Track a diff between two ALREADY-REGISTERED documents and mint
@@ -617,6 +583,7 @@ impl OpenDocuments {
         true
     }
 
+    #[cfg(test)]
     #[doc(hidden)]
     pub(crate) fn diff_refs(
         store: &Store,

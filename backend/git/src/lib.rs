@@ -368,6 +368,7 @@ pub fn show(toplevel: &Path, rev: &str, rel: &str) -> Option<String> {
     git(toplevel, &["show", &format!("{rev}:{rel}")])
 }
 
+#[cfg(test)]
 pub(crate) fn tracked_at(toplevel: &Path, rev: &str, rel: &str) -> bool {
     git(toplevel, &["cat-file", "-e", &format!("{rev}:{rel}")]).is_some()
 }

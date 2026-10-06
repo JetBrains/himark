@@ -292,7 +292,7 @@ impl Document {
             .map(|slot| slot.markup)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn editor_shows_markup(&self, editor: EditorId, markup: MarkupId) -> bool {
         self.editors
             .get(&editor)
@@ -1086,16 +1086,6 @@ impl Document {
             .get(&key.set)?
             .find_by_id(&key.key)
             .map(|entry| entry.range.clone())
-    }
-
-    pub(crate) fn remove_fragments(&mut self, keys: impl IntoIterator<Item = FragmentKey>) {
-        for fragment in keys {
-            if let Some(tree) = self.fragments.get(&fragment.set) {
-                let mut tree = tree.clone();
-                tree.remove([&fragment.key]);
-                self.fragments.insert_mut(fragment.set, tree);
-            }
-        }
     }
 
     fn reshape_markup_change(
@@ -2159,6 +2149,7 @@ impl Document {
         self.editor(editor).viewport.clone()
     }
 
+    #[cfg(test)]
     pub(crate) fn extras_vec(&self, editor: EditorId) -> Vec<&Markup> {
         Self::view_extras(&self.markups, self.editor(editor))
             .into_iter()
@@ -2289,12 +2280,6 @@ impl Document {
         self.editors
             .get(&editor)
             .map_or(0.0, |state| state.scroll_x)
-    }
-
-    pub(crate) fn repairs_pending(&self, editor: EditorId) -> bool {
-        self.editors
-            .get(&editor)
-            .is_some_and(|state| state.layout.repair_pending().is_some())
     }
 
     pub fn content_height(&self, editor: EditorId) -> f32 {
@@ -3379,39 +3364,6 @@ impl Document {
             return;
         }
         state.scroll_stripes.landed = Some(outcome.stripes);
-    }
-
-    pub(crate) fn prebuild_row_layouts(
-        &self,
-        shown: &[MarkupId],
-        rows: &[Range<u32>],
-        width: f32,
-        store: &imba::store::Store,
-        ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &crate::theme::Theme,
-    ) -> Vec<crate::document_layout::DocumentLayout> {
-        let globals: Vec<(MarkupId, &Markup)> = shown
-            .iter()
-            .filter_map(|id| self.feature_markup(*id).map(|markup| (*id, markup)))
-            .chain(
-                self.document_scoped_markups()
-                    .filter(|(id, _)| !shown.contains(id)),
-            )
-            .collect();
-        let measure = crate::markup::InlayMeasure { width, store, ui };
-        rows.iter()
-            .map(|range| {
-                crate::document_layout::DocumentLayout::build(
-                    &self.text,
-                    crate::markup::OverlaidMarkup::new(self.markup(), &globals),
-                    measure,
-                    fonts,
-                    theme,
-                    Some(range.clone()),
-                )
-            })
-            .collect()
     }
 
     pub fn feature_markup(&self, id: MarkupId) -> Option<&Markup> {

@@ -352,28 +352,6 @@ impl History {
     }
 }
 
-pub(crate) struct FetchCommitFiles {
-    pub history: imba::store::Id<History>,
-    pub folder: ResourceLocation,
-    pub commit: crate::hichanges::Revision,
-}
-
-impl imba::command::DynamicCommand for FetchCommitFiles {
-    fn id(&self) -> &'static str {
-        "history.fetch-commit"
-    }
-    fn name(&self) -> String {
-        "Fetch Commit".to_owned()
-    }
-    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
-        History::ask(
-            store,
-            self.history,
-            HistoryAsk::CommitFiles(self.folder.clone(), self.commit.clone()),
-        );
-    }
-}
-
 pub(crate) struct GrowHistory {
     pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,

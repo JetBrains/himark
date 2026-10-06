@@ -99,11 +99,6 @@ impl<First, Second> SplitView<First, Second> {
         self
     }
 
-    pub(crate) fn with_sizing(mut self, sizing: Sizing) -> Self {
-        self.sizing = sizing;
-        self
-    }
-
     pub fn sizing(&self) -> Sizing {
         self.sizing
     }

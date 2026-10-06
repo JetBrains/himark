@@ -728,11 +728,13 @@ impl HimarkEngine {
 
     const DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
 
+    #[cfg(test)]
     pub(crate) fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
         self.drain_chunk = chunk;
         self.drain_budget = budget;
     }
 
+    #[cfg(test)]
     pub(crate) fn queued_landings(&self) -> usize {
         self.shared.inbox.lock().expect("inbox").len()
     }
@@ -1242,6 +1244,7 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
     }
 
+    #[cfg(test)]
     pub(crate) fn file_changed(&mut self, subscription: u64) -> bool {
         if subscription == 0 {
             return false;

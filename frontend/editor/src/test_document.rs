@@ -85,6 +85,7 @@ pub fn fenced_code_document(source: &str) -> Document {
     Document::new(Text::from_string_exact(source), markup.finish())
 }
 
+#[cfg(test)]
 pub(crate) fn hidden_document(source: &str, hidden: Range<u32>) -> Document {
     let mut markup = Markup::builder();
     markup.push_hidden(hidden);
@@ -104,6 +105,7 @@ pub fn list_document(source: &str) -> Document {
     marked_document(source, &blocks)
 }
 
+#[cfg(test)]
 pub(crate) fn header_marks(level: u8) -> StyleId {
     StyleId::Header(level)
 }

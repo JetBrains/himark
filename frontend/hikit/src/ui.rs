@@ -24,7 +24,6 @@ pub mod space {
 /// Corner radii: cards, wells, chips.
 pub const RADIUS: f32 = 10.0;
 pub const RADIUS_S: f32 = 6.0;
-pub(crate) const RADIUS_XS: f32 = 4.0;
 
 /// Type scale.
 const LABEL_SIZE: f32 = 24.0;
@@ -32,7 +31,6 @@ const CAPTION_SIZE: f32 = 22.0;
 const HEADING_SIZE: f32 = 24.0;
 const CAPS_SIZE: f32 = 15.0;
 const CAPS_TRACKING: f32 = 1.5;
-const KEY_HINT_SIZE: f32 = 15.0;
 
 /// A typography role resolved against the theme: font, color,
 /// tracking. Placement is never part of the style — text sits on the
@@ -94,16 +92,6 @@ pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_font(ui, CAPS_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: CAPS_TRACKING,
-        shaper: imba::layout::TextShaper::of(ui),
-    }
-}
-
-/// Shortcut hints.
-pub(crate) fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
-        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: 0.0,
         shaper: imba::layout::TextShaper::of(ui),
     }
 }

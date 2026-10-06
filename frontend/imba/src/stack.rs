@@ -42,16 +42,8 @@ impl<Base, Modal> Stack<Base, Modal> {
         &self.base
     }
 
-    pub(crate) fn base_mut(&mut self) -> &mut Base {
-        &mut self.base
-    }
-
     pub fn modal(&self) -> Option<&Modal> {
         self.modal.as_ref()
-    }
-
-    pub(crate) fn modal_mut(&mut self) -> Option<&mut Modal> {
-        self.modal.as_mut()
     }
 
     pub fn show(&mut self, modal: Modal) {

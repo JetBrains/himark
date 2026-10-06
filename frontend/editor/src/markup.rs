@@ -1575,7 +1575,6 @@ impl Markup {
                     );
                     dirty.push(FreshSyntax {
                         key: state,
-                        language: site.language.clone(),
                         range: site.range.clone(),
                     });
                     state
@@ -2237,7 +2236,6 @@ fn rebase_into(
 #[derive(Clone)]
 pub(crate) struct FreshSyntax {
     pub key: SyntaxId,
-    pub language: String,
 
     pub range: Range<u32>,
 }
@@ -2389,14 +2387,6 @@ impl Markup {
             }
             syntax.markup.collect_channel_folds(syntax_base, span, out);
         }
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn syntax_markers_in(&self, span: Range<u32>) -> Vec<Range<u32>> {
-        self.syntax_in(span)
-            .into_iter()
-            .map(|(_, range)| range)
-            .collect()
     }
 
     pub fn styled_ranges_in(&self, span: Range<u32>) -> Vec<Range<u32>> {

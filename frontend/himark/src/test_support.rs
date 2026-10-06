@@ -96,23 +96,6 @@ pub fn seed_session_folders(
     id
 }
 
-pub(crate) fn add_session_folders(
-    store: &mut Store,
-    id: &ahp_wire::SessionId,
-    folders: &[editor::location::ResourceLocation],
-) {
-    let uris = ahp_session::session::state::Hosts::uris(store, id.host).expect("a seeded session");
-    let mut channel =
-        ahp_session::session::agents::Agents::channel(store, id).expect("a seeded session");
-    for folder in folders {
-        let uri = uris.uri_of(folder).into_string();
-        if !channel.working_directories.iter().any(|held| held == &uri) {
-            channel.working_directories.push_back_mut(uri);
-        }
-    }
-    ahp_session::session::agents::Agents::set_channel(store, id, channel);
-}
-
 #[allow(dead_code)]
 fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
     Some(

@@ -229,6 +229,9 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
         self.zipper.move_next_leaf()
     }
 
+    /// The mirror of `advance_leaf` — kept so the cursor's leaf walk
+    /// reads both ways, though nothing steps backwards today.
+    #[allow(dead_code)]
     pub(crate) fn retreat_leaf(&mut self) -> bool {
         self.zipper.move_prev_leaf()
     }

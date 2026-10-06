@@ -12,6 +12,9 @@ pub(crate) struct ByteReader {
 }
 
 impl Text {
+    /// Whole-text reader — the `byte_reader_at(0)` shorthand; every
+    /// caller currently names its own offset.
+    #[allow(dead_code)]
     pub(crate) fn byte_reader(&self) -> ByteReader {
         self.byte_reader_at(0)
     }
@@ -71,6 +74,9 @@ impl ByteReader {
         }
     }
 
+    /// Bulk drain into a sink — the reader primitive beside
+    /// `take_bytes`; no caller needs the sink form today.
+    #[allow(dead_code)]
     pub(crate) fn take_bytes_into(&mut self, out: &mut impl Extend<u8>, byte_len: usize) {
         let mut remaining = byte_len.min(self.remaining_bytes);
         if remaining == 0 {

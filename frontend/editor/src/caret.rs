@@ -214,10 +214,6 @@ impl MultiCaret {
         Self::single(self.primary().offset)
     }
 
-    pub(crate) fn collapsed_selections(&self) -> Self {
-        self.map(|caret| Caret::at(caret.offset))
-    }
-
     pub fn clamped(&self, window: &Range<u32>) -> Self {
         if self
             .carets

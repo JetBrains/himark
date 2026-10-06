@@ -1176,18 +1176,6 @@ impl Window {
         true
     }
 
-    #[doc(hidden)]
-    pub(crate) fn layer_focus(&self) -> LayerFocus {
-        self.content.focus
-    }
-
-    pub(crate) fn side_panel_mut(&mut self) -> Option<&mut Box<dyn ModalView>> {
-        self.content
-            .side
-            .as_mut()
-            .map(|drawer| drawer.content_mut())
-    }
-
     pub fn roll_away_side_panel(&mut self) {
         if let Some(drawer) = &mut self.content.side {
             drawer.focus_lost();

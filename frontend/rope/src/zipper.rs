@@ -155,6 +155,8 @@ impl<T: Clone, M: Measure<T>> Zipper<T, M> {
         self.is_leaf()
     }
 
+    /// The mirror of `move_next_leaf`; no caller walks backwards yet.
+    #[allow(dead_code)]
     pub(crate) fn move_prev_leaf(&mut self) -> bool {
         let Some(frame_index) = self
             .frames

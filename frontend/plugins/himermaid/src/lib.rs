@@ -182,6 +182,7 @@ impl MermaidView {
         Self { outcome }
     }
 
+    #[cfg(test)]
     pub(crate) fn is_diagram(&self) -> bool {
         matches!(self.outcome, Outcome::Diagram(_))
     }

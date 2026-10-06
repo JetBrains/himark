@@ -243,15 +243,3 @@ pub fn frame_commands<V: crate::View>(
 ) -> Vec<PresentableCommand<V::Command>> {
     crate::View::focus_data(view, store, ui).commands
 }
-
-/// A key delivered to the focus chain — a plain state walk, no
-/// layout.
-pub(crate) fn frame_key<V: crate::View>(
-    view: &V,
-    store: &crate::store::Store,
-    ui: &crate::ui::UiCtx,
-    key: Key,
-    mods: Modifiers,
-) -> EventResult<V::Command> {
-    crate::View::focus_data(view, store, ui).key(key, mods)
-}

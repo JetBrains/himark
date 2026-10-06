@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use ahp_locations::driver::LocationsWire;
 use locations::open_feed;
 use locations::FeedId;
 use locations::LocationLists;
@@ -50,11 +49,8 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some((lists, wire)) =
-            ::workbench::window::Windows::window_ref(store, window).map(|entity| {
-                let state = crate::workspace::entity_state(entity);
-                (state.lists(), state.locations_wire())
-            })
+        let Some(lists) = ::workbench::window::Windows::window_ref(store, window)
+            .map(|entity| crate::workspace::entity_state(entity).lists())
         else {
             return;
         };
@@ -75,7 +71,7 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
                 position: self.position,
             },
         );
-        ShowFeedInDock { lists, wire, feed }.perform(store, ui, window, fx);
+        ShowFeedInDock { lists, feed }.perform(store, ui, window, fx);
     }
 }
 
@@ -88,7 +84,6 @@ pub(crate) struct ShowFeedInDock {
     /// feed so a promote fronts the right rows even if the window
     /// moved on.
     pub lists: imba::store::Id<LocationLists>,
-    pub wire: imba::store::Id<LocationsWire>,
     pub feed: FeedId,
 }
 

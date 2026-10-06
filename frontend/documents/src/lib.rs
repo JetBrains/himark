@@ -780,10 +780,6 @@ impl OpenDocuments {
         }
     }
 
-    pub(crate) fn tracks_diff(&self, diff: ::editor::diff::DiffId) -> bool {
-        self.diffs.record(diff).is_some()
-    }
-
     pub fn document(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
@@ -815,10 +811,6 @@ impl OpenDocuments {
         document: Document,
     ) {
         Self::update_entity(store, documents, id, |entity| entity.document = document);
-    }
-
-    pub(crate) fn put_document_row(&mut self, id: DocumentId, document: Document) {
-        self.update_row(id, |entity| entity.document = document);
     }
 
     pub(crate) fn update_row(&mut self, id: DocumentId, mutate: impl FnOnce(&mut OpenDocument)) {
@@ -1035,10 +1027,6 @@ impl OpenDocuments {
         Self::update_entity(store, documents, document, |entity| {
             entity.base_requested = true
         });
-    }
-
-    pub(crate) fn set_base_requested_row(&mut self, document: DocumentId) {
-        self.update_row(document, |entity| entity.base_requested = true);
     }
 
     /// TEST SUPPORT: no production caller outside this crate.

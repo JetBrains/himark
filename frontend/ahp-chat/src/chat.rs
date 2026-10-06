@@ -420,16 +420,7 @@ impl std::fmt::Display for ChatPanelCommand {
     }
 }
 
-impl ChatPanelCommand {
-    pub(crate) fn is_send(&self) -> bool {
-        match self {
-            Self::Send => true,
-            Self::Focus(_, Some(inner)) => inner.is_send(),
-            Self::InView(_, inner) => inner.is_send(),
-            _ => false,
-        }
-    }
-}
+impl ChatPanelCommand {}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ChatViewId(u64);
@@ -720,22 +711,6 @@ impl ChatPanel {
             .collect()
     }
 
-    /// How many turns this conversation carries — the counter the
-    /// registry compares across a write-back.
-    pub(crate) fn turn_count(&self) -> usize {
-        self.conversation.len()
-    }
-
-    /// The tail turn and the turn in flight: what a shrinking
-    /// write-back needs to name what it would drop. Both are O(1).
-    pub(crate) fn tail_turn(&self) -> Option<&str> {
-        self.conversation.tail().map(|turn| turn.id.as_str())
-    }
-
-    pub(crate) fn live_turn(&self) -> Option<&str> {
-        self.conversation.live().map(|turn| turn.as_str())
-    }
-
     pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
         self.first_view().map(Self::rows_oracle).unwrap_or_default()
     }
@@ -803,12 +778,7 @@ impl ChatPanel {
         self.stack.permission_oracle()
     }
 
-    pub(crate) fn composer_content_height(&self) -> f32 {
-        self.first_view()
-            .map(|view| view.composer.content_height())
-            .unwrap_or(0.0)
-    }
-
+    #[cfg(test)]
     pub(crate) fn queue_oracle(&self) -> Vec<(String, String)> {
         self.stack.queue_oracle()
     }

@@ -30,18 +30,16 @@ pub fn go_to_reference() -> Arc<locations::peek::GoToReference> {
             );
         }),
         promote: Arc::new(|store, lists, feed| {
-            // The dock tab needs the feed's WIRE too — the session
-            // whose lists these are has it on the same row.
-            let Some(wire) = ahp_session::session::state::Hosts::states(store)
+            // Only promote a feed whose lists a live session owns.
+            if !ahp_session::session::state::Hosts::states(store)
                 .into_iter()
-                .find(|state| state.lists() == lists)
-                .map(|state| state.locations_wire())
-            else {
+                .any(|state| state.lists() == lists)
+            {
                 return;
-            };
+            }
             crate::commands::AppRequests::push(
                 store,
-                Arc::new(crate::hisearch::ShowFeedInDock { lists, wire, feed }),
+                Arc::new(crate::hisearch::ShowFeedInDock { lists, feed }),
             );
         }),
     })

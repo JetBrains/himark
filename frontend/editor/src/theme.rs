@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashMap;
-use std::ops::Range;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -1123,8 +1122,6 @@ fn parse_color(hex: &str) -> Result<Color, String> {
         _ => return Err(format!("{hex}: expected #rrggbb or #aarrggbb")),
     })
 }
-
-pub(crate) type HiddenRange = Range<u32>;
 
 #[cfg(test)]
 mod tests;

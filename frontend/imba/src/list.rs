@@ -483,11 +483,6 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         list
     }
 
-    pub(crate) fn with_separators(mut self, style: SeparatorStyle) -> Self {
-        self.separators = Some(style);
-        self
-    }
-
     /// Sticky parent lines: while a node's subtree fills the top of
     /// the viewport, the node's OWN row is planted at the top of the
     /// list (into `STICKY_HOST`). Parenthood is the list's own
@@ -1221,31 +1216,6 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
                 }
             }
         }
-    }
-
-    pub(crate) fn update_heights(&mut self, mut measure: impl FnMut(&T) -> Option<f32>) -> bool {
-        let mut changed = false;
-        let remeasured: Vec<ListElement<T>> = self
-            .items
-            .iter()
-            .map(|element| {
-                let height = match measure(&element.view) {
-                    Some(height) if (height - element.height).abs() > 0.5 => {
-                        changed = true;
-                        height
-                    }
-                    _ => element.height,
-                };
-                ListElement {
-                    view: element.view,
-                    height,
-                }
-            })
-            .collect();
-        if changed {
-            self.items = Rope::from_iter(remeasured);
-        }
-        changed
     }
 }
 

@@ -182,9 +182,9 @@ impl DocumentLayout {
         layout
     }
 
+    #[cfg(test)]
     /// Test-support: the float-width builders, paying the
     /// per-call measure seed — production threads `InlayMeasure`.
-    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn build_slow(
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
@@ -206,7 +206,7 @@ impl DocumentLayout {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn build_complete_slow(
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
@@ -228,7 +228,7 @@ impl DocumentLayout {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn repair_layout_bounded_slow(
         &mut self,
         text: &Text,
@@ -260,7 +260,7 @@ impl DocumentLayout {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn repair_layout_slow(
         &mut self,
         text: &Text,

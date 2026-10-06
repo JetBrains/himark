@@ -236,6 +236,7 @@ impl<R: 'static> Batch<R> {
             .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn retain_launches(&mut self, mut keep: impl FnMut(&AnyEffect<R>) -> bool) {
         self.messages = std::mem::take(&mut self.messages)
             .into_iter()

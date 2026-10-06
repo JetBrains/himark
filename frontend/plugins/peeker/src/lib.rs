@@ -319,6 +319,7 @@ impl Peeker {
         &self.labels
     }
 
+    #[cfg(test)]
     pub(crate) fn hidden_count(&self) -> usize {
         self.hidden
     }
@@ -334,6 +335,7 @@ impl Peeker {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn previewed_widget_title(&self) -> Option<String> {
         match self.preview.as_ref()? {
             PreviewSlot::Widget(index) => self.widget_titles.get(*index).cloned(),
@@ -1046,6 +1048,7 @@ pub fn preview_height(app: &Application, store: &Store) -> Option<f32> {
     peeker_of(app)?.preview_height(store)
 }
 
+#[cfg(test)]
 pub(crate) fn previewed_widget(app: &Application) -> Option<String> {
     peeker_of(app)?.previewed_widget_title()
 }

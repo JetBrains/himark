@@ -131,24 +131,6 @@ pub fn markdown_document(
     (document, blocks)
 }
 
-pub(crate) fn document_from_tree(
-    source: &str,
-    tree: &Tree,
-    store: &imba::store::Store,
-    ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
-    theme: &editor::theme::Theme,
-) -> Document {
-    document_from_tree_text(
-        Text::from_string_exact(source),
-        tree.clone(),
-        store,
-        ui,
-        fonts,
-        theme,
-    )
-}
-
 fn document_from_tree_text(
     text: Text,
     tree: Tree,
@@ -383,20 +365,6 @@ pub(crate) fn markup_builder_from_tree(
     visit_markdown_blocks(text, tree, |block| {
         push_markup_for_block(&mut markup, &block, fonts, theme);
     });
-    markup
-}
-
-pub(crate) fn markup_builder_from_blocks(
-    blocks: &[MarkdownBlock],
-    fonts: &skia_safe::textlayout::FontCollection,
-    theme: &editor::theme::Theme,
-) -> MarkupBuilder {
-    let mut markup = Markup::builder();
-
-    for block in blocks {
-        push_markup_for_block(&mut markup, block, fonts, theme);
-    }
-
     markup
 }
 

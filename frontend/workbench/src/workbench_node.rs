@@ -115,13 +115,6 @@ impl Panel {
         }
     }
 
-    pub(crate) fn editor_mut(&mut self) -> Option<&mut EditorPane> {
-        match self {
-            Self::Editor(pane) => Some(pane),
-            _ => None,
-        }
-    }
-
     pub fn dismantle(&mut self, store: &mut Store) {
         if let Self::Plugin(view) = self {
             view.dismantle(store);
@@ -788,12 +781,6 @@ impl WorkbenchNode {
     #[doc(hidden)]
     pub fn is_vacant(&self) -> bool {
         matches!(self, Self::Leaf(slot) if slot.panel.panel.is_blank())
-    }
-
-    pub(crate) fn split_of(first: EditorPane, second: EditorPane, ratio: f32) -> Self {
-        Self::Split(Box::new(
-            SplitView::row(Self::editor_leaf(first), Self::editor_leaf(second)).with_ratio(ratio),
-        ))
     }
 
     pub fn close_focused(&mut self) -> bool {

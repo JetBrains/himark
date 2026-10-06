@@ -209,10 +209,12 @@ impl TreeDemoView {
         }
     }
 
+    #[cfg(test)]
     pub fn row_count(&self) -> usize {
         self.rows.content().len()
     }
 
+    #[cfg(test)]
     pub fn content_height(&self) -> f32 {
         self.rows.content().total_height()
     }
