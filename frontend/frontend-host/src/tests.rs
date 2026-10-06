@@ -6869,15 +6869,31 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     // of the chain — the client's channel mirror and the host's log —
     // so the failing run names the dead link itself.
     {
+        // The window's session is NOT fixed for the run: the composer
+        // mints an UNLISTED PLACEHOLDER first, and Start reuses it only
+        // when it is already created — otherwise it creates the real
+        // session beside it and `PlaceholderCreated`/`switch_session`
+        // rekeys the window (new_session.rs). The grant follows the
+        // WINDOW, so the wait must re-read its session every pass; the
+        // id captured back at "the session opened" can be the dead
+        // placeholder, and waiting on that mirror never lands.
+        let current = |engine: &HimarkEngine| {
+            himark::workspace::entity_session(
+                workbench::window::Windows::window_ref(
+                    engine.app.store(),
+                    engine.app.sole_window(),
+                )
+                .expect("window"),
+            )
+        };
         let landed = |engine: &HimarkEngine| {
-            ahp_session::session::agents::Agents::channel(engine.app.store(), &session).is_some_and(
-                |channel| {
+            ahp_session::session::agents::Agents::channel(engine.app.store(), &current(engine))
+                .is_some_and(|channel| {
                     channel
                         .working_directories
                         .iter()
                         .any(|held| held.contains("files"))
-                },
-            )
+                })
         };
         let started = std::time::Instant::now();
         loop {
@@ -6887,9 +6903,10 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                 break;
             }
             if started.elapsed() > std::time::Duration::from_secs(30) {
+                let now = current(&engine);
                 let mirror =
-                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
-                        .map(|channel| {
+                    ahp_session::session::agents::Agents::channel(engine.app.store(), &now).map(
+                        |channel| {
                             (
                                 channel
                                     .working_directories
@@ -6898,11 +6915,10 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                                     .collect::<Vec<_>>(),
                                 channel.chats.len(),
                             )
-                        });
-                let live = ahp_session::session::agents::Agents::live_session(
-                    engine.app.store(),
-                    &session,
-                );
+                        },
+                    );
+                let live =
+                    ahp_session::session::agents::Agents::live_session(engine.app.store(), &now);
                 // The host's persisted manifest is the chain's far
                 // end: folder IN the manifest but not the mirror means
                 // the host applied it and the client drain lost it;
@@ -6910,7 +6926,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                 // refusal prints "[hihost] ... REFUSED" above).
                 panic!(
                     "never settled: the granted folder landed (waited {:?})\n\
-                     session: {session:?} live: {live:?}\n\
+                     window session: {now:?} (opened as {session:?}) live: {live:?}\n\
                      channel mirror (folders, chats): {mirror:?}\n\
                      host manifests: {:?}",
                     started.elapsed(),
