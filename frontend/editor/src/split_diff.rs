@@ -202,6 +202,12 @@ impl DiffViewState {
         self.inline_generation == 0
     }
 
+    /// The pane itself still carries the whole-replace SEED — no
+    /// honest normalize has been adopted yet.
+    pub(crate) fn wears_the_seed(&self) -> bool {
+        self.seen_generation == 0
+    }
+
     /// Record that the inline face is now built for the adopted
     /// generation (called after a build or a rebuild).
     pub(crate) fn note_inline_built(&mut self) {
@@ -1146,8 +1152,19 @@ impl View for SplitDiffView {
                 self.pair_lane(fx)
             }
             SplitDiffCommand::Resync => {
+                let probing = std::env::var_os("HIMARK_TRACE_DIFF").is_some();
+                let started = probing.then(std::time::Instant::now);
                 self.settle_after(None, None);
-                self.pair_lane(fx)
+                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
+                {
+                    eprintln!("[resync] settle_after: {:?}", started.elapsed());
+                }
+                let started = probing.then(std::time::Instant::now);
+                self.pair_lane(fx);
+                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
+                {
+                    eprintln!("[resync] pair_lane: {:?}", started.elapsed());
+                }
             }
         }
     }

@@ -896,21 +896,37 @@ impl Application {
             // landing's session gets its sweep THIS batch whatever the
             // batch's scope (the old tail served only the LAST scope's
             // session, so a cross-session batch starved the others).
+            let probe_lanes = std::env::var_os("HIMARK_TRACE_DIFF").is_some();
             for state in ahp_session::session::state::Hosts::states(&store) {
                 let documents = state.documents();
+                let started = probe_lanes.then(std::time::Instant::now);
                 fx.scope(AppCommand::Verb, |fx| {
                     documents::lanes::sync_diff_lanes(&mut store, documents, fx)
                 });
+                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
+                {
+                    eprintln!("[lanes] sync_diff_lanes: {:?}", started.elapsed());
+                }
+                let started = probe_lanes.then(std::time::Instant::now);
                 fx.scope(AppCommand::Verb, |fx| {
                     documents::lanes::sync_scroll_stripe_lanes(&mut store, documents, fx)
                 });
+                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
+                {
+                    eprintln!("[lanes] sync_scroll_stripe_lanes: {:?}", started.elapsed());
+                }
                 // The DRESSING sweep: any view whose basis lags its
                 // pair resyncs NOW, id-routed — a normalize landing
                 // and its re-dress share a batch, and no face waits
                 // for paint.
+                let started = probe_lanes.then(std::time::Instant::now);
                 fx.scope(AppCommand::Verb, |fx| {
                     documents::lanes::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), fx)
                 });
+                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
+                {
+                    eprintln!("[lanes] sync_diff_dressing: {:?}", started.elapsed());
+                }
                 // The dock tree views ride the push road too: a
                 // changes / history feed landing refreshes a mounted
                 // stale view in the SAME batch — no paint probe.

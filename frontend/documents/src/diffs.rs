@@ -8,7 +8,7 @@ use operation::operation::Operation;
 
 use crate::{DocumentId, OpenDocuments};
 
-fn probe() -> bool {
+pub(crate) fn probe() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_DIFF").is_some())
 }

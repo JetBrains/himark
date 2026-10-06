@@ -1128,14 +1128,43 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> InlayKey {
+        self.push_inlays(markup_id, vec![(range, inlay)], store, ui, fonts, theme, fx)
+            .pop()
+            .expect("one inlay in, one key out")
+    }
+
+    /// Push a BATCH of inlays with one invalidation and one coalesced
+    /// repair pass. The per-inlay road paid `note_markup_change(None)`
+    /// plus a `repair_editors` sweep PER PUSH — expanding a diff's
+    /// before-cards that way froze the UI for ~1.2ms × cards.
+    pub fn push_inlays(
+        &mut self,
+        markup_id: MarkupId,
+        inlays: Vec<(Range<u32>, Inlay)>,
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        theme: &crate::theme::Theme,
+        fx: &mut EditorEffects<'_>,
+    ) -> Vec<InlayKey> {
+        if inlays.is_empty() {
+            return Vec::new();
+        }
         self.note_markup_change(None);
-        let span = crate::markup::inlay_repair_span(inlay.mode(), &range);
-        let key = self.with_markup_mut(MarkupLayer::Markup(markup_id), |markup| InlayKey {
-            layer: MarkupLayer::Markup(markup_id),
-            key: markup.push_inlay(range, inlay),
-        });
-        self.repair_editors(span, store, ui, fonts, theme, fx);
-        key
+        let mut keys = Vec::with_capacity(inlays.len());
+        let mut spans = Vec::with_capacity(inlays.len());
+        for (range, inlay) in inlays {
+            spans.push(crate::markup::inlay_repair_span(inlay.mode(), &range));
+            keys.push(
+                self.with_markup_mut(MarkupLayer::Markup(markup_id), |markup| InlayKey {
+                    layer: MarkupLayer::Markup(markup_id),
+                    key: markup.push_inlay(range, inlay),
+                }),
+            );
+        }
+        EditLog::coalesce(&mut spans);
+        self.repair_editors_many(&spans, store, ui, fonts, theme, fx);
+        keys
     }
 
     pub fn remove_inlay(
@@ -2806,12 +2835,41 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
+        self.repair_editors_many(&[span], store, ui, fonts, theme, fx)
+    }
+
+    /// Repair after a BATCH of modified spans: every span is marked on
+    /// every editor, but each editor runs ONE bounded synchronous pass
+    /// (from the earliest span, its sync budget) — the rest of the
+    /// damage rides the standing background road (`pending_repairs` →
+    /// RepairEffect on the worker, and the paint-band repair). A pass
+    /// per span shaped a sync budget PER CARD when a diff face expanded
+    /// its before-cards — O(cards × band) on the UI thread, the freeze.
+    fn repair_editors_many(
+        &mut self,
+        spans: &[Range<u32>],
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        theme: &crate::theme::Theme,
+        fx: &mut EditorEffects<'_>,
+    ) {
         let collection = fonts.clone();
         for id in self.editors.keys().copied().collect::<Vec<_>>() {
             let Some(editor) = self.editors.get_mut(&id) else {
                 continue;
             };
-            let repair_start = editor.layout.mark_modified_in(span.clone());
+            let mut repair_start: Option<u32> = None;
+            for span in spans {
+                let start = editor.layout.mark_modified_in(span.clone());
+                repair_start = Some(match repair_start {
+                    Some(standing) => standing.min(start),
+                    None => start,
+                });
+            }
+            let Some(repair_start) = repair_start else {
+                continue;
+            };
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
             {

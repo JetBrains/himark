@@ -106,9 +106,17 @@ impl UnifiedDiffView {
             return;
         }
         if next == DiffLayout::Inline && self.inline_editor.is_none() {
-            let editor = self.build_inline_editor(store, ui, fx);
-            self.inline_editor = Some(editor);
-            self.split.state.note_inline_built();
+            // Building the face off the SEED is O(file) thrown-away
+            // work: the whole-replace operation expands ONE before-card
+            // holding the entire base document, behind the host's
+            // skeleton where nobody sees it, and the first honest
+            // landing rebuilds the editor wholesale anyway. Defer the
+            // build to that landing (`refresh_inline_if_stale`).
+            if !self.split.state.wears_the_seed() {
+                let editor = self.build_inline_editor(store, ui, fx);
+                self.inline_editor = Some(editor);
+                self.split.state.note_inline_built();
+            }
         }
         self.layout = next;
         self.split
@@ -179,6 +187,27 @@ impl UnifiedDiffView {
         ui: &UiCtx,
         fx: &mut UnifiedDiffEffects<'_>,
     ) {
+        // An inline face DEFERRED past the seed builds now, off the
+        // first honest dressing — one build instead of a thrown-away
+        // seed face plus a wholesale rebuild.
+        if self.layout == DiffLayout::Inline
+            && self.inline_editor.is_none()
+            && !self.split.state.wears_the_seed()
+        {
+            let started = std::env::var_os("HIMARK_TRACE_DIFF")
+                .is_some()
+                .then(std::time::Instant::now);
+            let editor = self.build_inline_editor(store, ui, fx);
+            if let Some(started) = started {
+                eprintln!("[resync] deferred inline build: {:?}", started.elapsed());
+            }
+            self.inline_editor = Some(editor);
+            self.split.state.note_inline_built();
+            self.split
+                .state
+                .set_unified(self.layout, self.inline_editor);
+            return;
+        }
         if !self.split.state.inline_stale() {
             return;
         }

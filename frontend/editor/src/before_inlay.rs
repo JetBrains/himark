@@ -110,6 +110,36 @@ impl Document {
             }
         }
 
+        let Some(markup_id) = self.before_markup_of(editor) else {
+            return;
+        };
+        let Some(inlay) =
+            self.built_before_card(editor, base, base_span, animate, store, ui, fonts, theme)
+        else {
+            return;
+        };
+        self.push_inlay(markup_id, anchor, inlay, store, ui, fonts, theme, fx);
+    }
+
+    /// Build ONE before-card (the base side's deleted lines, framed as
+    /// an Above inlay) — pure construction on a clone of the base; the
+    /// caller pushes it, singly (a toggle) or batched
+    /// (`expand_before_inlays`, one repair pass for the whole set).
+    #[allow(clippy::too_many_arguments)]
+    fn built_before_card(
+        &self,
+        editor: EditorId,
+        base: &Document,
+        base_span: Range<u32>,
+        animate: bool,
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        theme: &crate::theme::Theme,
+    ) -> Option<Inlay> {
+        if base_span.start >= base_span.end {
+            return None;
+        }
         let base_lines = hard_lines(&mut base.text().view(), base_span);
 
         let width = self
@@ -158,23 +188,11 @@ impl Document {
         };
         card.blur();
 
-        let Some(markup_id) = self.before_markup_of(editor) else {
-            return;
-        };
         let card = match animate {
             true => BeforeInlay::appearing(card, base_lines),
             false => BeforeInlay::settled(card, base_lines),
         };
-        self.push_inlay(
-            markup_id,
-            anchor,
-            Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST),
-            store,
-            ui,
-            fonts,
-            theme,
-            fx,
-        );
+        Some(Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST))
     }
 
     pub fn expand_before_inlays(
@@ -198,15 +216,16 @@ impl Document {
         }
         const BLOCK_CAP_BYTES: u32 = 64 * 1024;
         let mut fragments = crate::diff::fragments_at(&operation, base.text(), 0);
-        let mut anchors: Vec<u32> = Vec::new();
-        let mut block: Option<(Range<u32>, Range<u32>)> = None;
-        let complete = |block: Option<(Range<u32>, Range<u32>)>, anchors: &mut Vec<u32>| {
-            if let Some((lines, span)) = block {
-                if span.start < span.end {
-                    anchors.push(lines.start);
+        let mut blocks: Vec<(Range<u32>, Range<u32>)> = Vec::new();
+        let complete =
+            |block: Option<(Range<u32>, Range<u32>)>, blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
+                if let Some((lines, span)) = block {
+                    if span.start < span.end {
+                        blocks.push((lines, span));
+                    }
                 }
-            }
-        };
+            };
+        let mut block: Option<(Range<u32>, Range<u32>)> = None;
         while let Some(fragment) = fragments.next() {
             let lines = hard_lines(&mut view, fragment.right.clone());
             match &mut block {
@@ -223,14 +242,42 @@ impl Document {
                     }
                 }
                 _ => {
-                    complete(block.take(), &mut anchors);
+                    complete(block.take(), &mut blocks);
                     block = Some((lines, fragment.left.clone()));
                 }
             }
         }
-        complete(block.take(), &mut anchors);
-        for at in anchors {
-            self.toggle_before_inlay(editor, at, base, diff, false, store, ui, fonts, theme, fx);
+        complete(block.take(), &mut blocks);
+        let Some(markup_id) = self.before_markup_of(editor) else {
+            return;
+        };
+        let probing = std::env::var_os("HIMARK_TRACE_DIFF").is_some();
+        let started = probing.then(std::time::Instant::now);
+        // Build every card off the blocks the ONE walk found, then
+        // push them as a BATCH: one invalidation, one coalesced repair
+        // pass — the per-card toggle road re-walked the fragments and
+        // repaired the host once per card, O(cards × file).
+        let cards: Vec<(Range<u32>, Inlay)> = blocks
+            .into_iter()
+            .filter(|(anchor, _)| {
+                self.feature_markup(markup_id)
+                    .map(|markup| markup.all_inlays_in(anchor.clone()).is_empty())
+                    .unwrap_or(true)
+            })
+            .filter_map(|(anchor, base_span)| {
+                let inlay = self.built_before_card(
+                    editor, base, base_span, false, store, ui, fonts, theme,
+                )?;
+                Some((anchor, inlay))
+            })
+            .collect();
+        let count = cards.len();
+        self.push_inlays(markup_id, cards, store, ui, fonts, theme, fx);
+        if let Some(started) = started {
+            eprintln!(
+                "[cards] expand {count} before-cards: {:?}",
+                started.elapsed()
+            );
         }
     }
 

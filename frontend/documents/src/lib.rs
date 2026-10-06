@@ -375,9 +375,14 @@ impl imba::store::Entity for OpenDocuments {
                 base_revision,
                 target_revision,
             } => {
+                let landed_at = crate::diffs::probe().then(std::time::Instant::now);
                 if self.land_normalized_row(diff, operation, base_revision, target_revision) {
+                    if let Some(started) = landed_at {
+                        eprintln!("[diffs] land_normalized_row: {:?}", started.elapsed());
+                    }
                     if let Some(handle) = self.diff_handle_row(diff) {
                         let document = handle.target;
+                        let started = crate::diffs::probe().then(std::time::Instant::now);
                         // The markup swap destroys replaced inlays —
                         // a plugin boundary.
                         with_row_home!(fx.scope(
@@ -395,6 +400,9 @@ impl imba::store::Entity for OpenDocuments {
                                 )
                             },
                         ));
+                        if let Some(started) = started {
+                            eprintln!("[diffs] land_diff_markup: {:?}", started.elapsed());
+                        }
                     }
                     // No push here: every visible diff face notices the
                     // landed generation itself, on its next paint (the

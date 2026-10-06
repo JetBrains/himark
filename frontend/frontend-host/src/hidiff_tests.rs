@@ -4113,11 +4113,7 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
         }
     };
 
-    let seed = file("seed.md", Some(1), Some(0));
-    let view = {
-        let ui = app.ui_handle();
-        let mut store = app.store_mut();
-        let changes = canvas_changes(&store);
+    let built = |file: &::canvas::diff_canvas::CanvasFile| {
         let old = editor::document::Document::new(
             text::text::Text::from_string_exact("one\n"),
             editor::markup::Markup::new(),
@@ -4126,6 +4122,15 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
             text::text::Text::from_string_exact("One\n"),
             editor::markup::Markup::new(),
         );
+        prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0)
+    };
+
+    let seed = file("seed.md", Some(1), Some(0));
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        let prep = built(&seed);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
@@ -4138,7 +4143,7 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
                 ),
             },
             seed.clone(),
-            prepared_pair(seed.old.clone(), old, seed.new.clone(), new, 1100.0),
+            prep,
         )
     };
 
@@ -4150,26 +4155,47 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
     let launched = view.reconcile_for_tests(&mut app.store_mut(), listing.clone());
     assert_eq!(launched, 0, "additions splice in as lazy placeholders");
 
-    // Arming f00 launches itself plus the ROW-CAPPED horizon:
-    // 8 × 200 lines stays under the mass budget.
+    // Arming f00 launches ONLY itself and AIMS the queue at the
+    // row-capped horizon — speculation is a trickle, never a flood.
     let launched = view.arm_for_tests(&mut app.store_mut(), &location("f00.md"), 800.0);
-    assert_eq!(launched, 1 + 8, "the arm launches itself and 8 ahead");
+    assert_eq!(launched, 1, "the arm launches itself alone");
+    let queue = view.probe_prefetch_queue(&app.store());
+    assert_eq!(queue.len(), 8, "the queue holds the row-capped horizon");
+    assert_eq!(queue[0], location("f01.md"));
 
-    // Arming a row already in flight launches only what lies past the
-    // standing horizon — nothing twice.
-    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f01.md"), 800.0);
-    assert_eq!(launched, 3, "f09..f11 only; the rest were in flight");
+    // The batch-tail pump drains ONE open and stays quiet while it is
+    // in flight; the landing admits the next.
+    assert_eq!(view.pump_for_tests(&mut app.store_mut()), 1);
+    assert_eq!(view.pump_for_tests(&mut app.store_mut()), 0, "one in flight");
+    let f01 = file("f01.md", Some(100), Some(100));
+    let prep = built(&f01);
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, location("f01.md"), prep);
+    }
+    assert_eq!(
+        view.pump_for_tests(&mut app.store_mut()),
+        1,
+        "the landing admits the next speculative open"
+    );
 
-    // Heavy rows hit the MASS cap: the walk takes one 3000-line entry,
-    // then stops at the next one that would overflow — the small file
-    // behind it waits for its own arm (no skipping past a wall).
+    // Heavy rows hit the MASS cap: the horizon takes one 3000-line
+    // entry, then stops at the next one that would overflow — the
+    // small file behind the wall waits for its own arm.
     listing.push(file("g00.md", Some(1500), Some(1500)));
     listing.push(file("g01.md", Some(1500), Some(1500)));
     listing.push(file("h00.md", None, None));
     let launched = view.reconcile_for_tests(&mut app.store_mut(), listing);
     assert_eq!(launched, 0);
-    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f05.md"), 800.0);
-    assert_eq!(launched, 1, "one heavy row fits the mass budget, then the walk stops");
+    let launched = view.arm_for_tests(&mut app.store_mut(), &location("f09.md"), 800.0);
+    assert_eq!(launched, 1);
+    let queue = view.probe_prefetch_queue(&app.store());
+    assert_eq!(
+        queue,
+        vec![location("f10.md"), location("f11.md"), location("g00.md")],
+        "one heavy row fits the mass budget, then the wall stops the walk"
+    );
 }
 
 fn canvas_file(

@@ -109,6 +109,22 @@ pub struct Canvas {
     /// later rebuild goes through `relaunch`, not the arm).
     launched: rpds::HashTrieSetSync<ResourceLocation>,
 
+    /// Speculative builds waiting their turn — the horizon the last
+    /// arm aimed at, drained ONE at a time from the batch tail. A
+    /// flood here was a freeze: the serial worker finished the opens
+    /// back to back and their landings clumped into one UI batch,
+    /// while the visible row's normalize queued behind every
+    /// speculative open.
+    prefetch_queue: std::collections::VecDeque<ResourceLocation>,
+
+    /// The width the queued rows will build at (the arming row's — one
+    /// column, every row shares it).
+    prefetch_width: f32,
+
+    /// The one speculative open in flight. The pump launches nothing
+    /// while this stands; the landing clears it.
+    prefetching: Option<ResourceLocation>,
+
     /// An armed reveal: applied at populate, or picked up by the
     /// paint probe when a reuse navigation arms it later.
     reveal: Option<ResourceLocation>,
@@ -187,6 +203,9 @@ impl Canvas {
             request: None,
             phases: rpds::HashTrieMapSync::new_sync(),
             launched: rpds::HashTrieSetSync::new_sync(),
+            prefetch_queue: std::collections::VecDeque::new(),
+            prefetch_width: 0.0,
+            prefetching: None,
             reveal: None,
             refs: 0,
             stash: rpds::HashTrieMapSync::new_sync(),
@@ -641,6 +660,7 @@ impl Canvas {
                 fx.settle();
             }
         }
+        self.pump_prefetch(store, fx);
     }
 
     /// Resize ONE diff row to its current body height — called right
@@ -945,6 +965,9 @@ impl Canvas {
         self.files.remove_mut(key);
         self.phases.remove_mut(key);
         self.launched.remove_mut(key);
+        if self.prefetching.as_ref() == Some(key) {
+            self.prefetching = None;
+        }
         self.stash.remove_mut(key);
         if self.reveal.as_ref() == Some(key) {
             self.reveal = None;
@@ -1156,7 +1179,7 @@ impl Canvas {
             return;
         };
         self.launch_once(store, location, &file, width, fx);
-        self.prefetch(store, index, width, fx);
+        self.prefetch(index, width);
     }
 
     fn launch_once(
@@ -1175,21 +1198,16 @@ impl Canvas {
     }
 
     /// The prefetch horizon: an ARMED row names the moment and the
-    /// width — the placeholders just past it launch now, bounded, so
-    /// scrolling meets built diffs instead of skeletons. The open road
-    /// is two host round trips plus two cold parses on the serial
-    /// worker; lazy-only, that cost lands exactly when the user is
-    /// looking. The armed row's own effect is already queued, so the
-    /// visible build still goes first.
-    fn prefetch(
-        &mut self,
-        store: &Store,
-        index: usize,
-        width: f32,
-        fx: &mut Effects<'_, CanvasCommand>,
-    ) {
+    /// width — the placeholders just past it are AIMED AT, bounded, so
+    /// scrolling meets built diffs instead of skeletons. Nothing
+    /// launches here: the batch-tail pump drains the queue one open at
+    /// a time, each landing admitting the next, so the serial worker
+    /// never holds more than one speculative open ahead of visible
+    /// work and the landings arrive spread out instead of clumping
+    /// into one UI batch.
+    fn prefetch(&mut self, index: usize, width: f32) {
         let rows = self.rows.content();
-        let horizon: Vec<(ResourceLocation, CanvasFile)> = (index + 1..rows.len())
+        self.prefetch_queue = (index + 1..rows.len())
             .filter_map(|at| match rows.key_at(at) {
                 Some(CanvasKey::Diff(location)) => Some(location.clone()),
                 _ => None,
@@ -1199,23 +1217,48 @@ impl Canvas {
                     && matches!(self.phases.get(key), Some(RowPhase::Placeholder))
             })
             .filter_map(|key| {
-                let file = self.files.get(&key)?.clone();
+                let file = self.files.get(&key)?;
                 let weight = match (file.added, file.removed) {
                     (None, None) => PREFETCH_UNKNOWN_LINES,
                     (added, removed) => added.unwrap_or(0) + removed.unwrap_or(0),
                 };
-                Some((key, file, weight))
+                Some((key, weight))
             })
             // The mass budget: the scan dies at the first row that
             // would overflow — a wall, not a sieve.
-            .scan(PREFETCH_LINES, |left, (key, file, weight)| {
+            .scan(PREFETCH_LINES, |left, (key, weight)| {
                 *left -= weight;
-                (*left >= 0).then_some((key, file))
+                (*left >= 0).then_some(key)
             })
             .take(PREFETCH_ROWS)
             .collect();
-        for (key, file) in horizon {
-            self.launch_once(store, key, &file, width, fx);
+        self.prefetch_width = width;
+    }
+
+    /// Drain ONE speculative open, if none is in flight. Runs at the
+    /// batch tail — after the diff lanes — so a landed row's normalize
+    /// and repair are already queued ahead of the next speculation.
+    fn pump_prefetch(&mut self, store: &Store, fx: &mut Effects<'_, CanvasCommand>) {
+        if self
+            .prefetching
+            .as_ref()
+            .is_some_and(|key| self.launched.contains(key))
+        {
+            return;
+        }
+        self.prefetching = None;
+        while let Some(key) = self.prefetch_queue.pop_front() {
+            if self.launched.contains(&key)
+                || !matches!(self.phases.get(&key), Some(RowPhase::Placeholder))
+            {
+                continue;
+            }
+            let Some(file) = self.files.get(&key).cloned() else {
+                continue;
+            };
+            self.prefetching = Some(key.clone());
+            self.launch_once(store, key, &file, self.prefetch_width, fx);
+            return;
         }
     }
 
@@ -1228,6 +1271,9 @@ impl Canvas {
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         self.launched.remove_mut(&key);
+        if self.prefetching.as_ref() == Some(&key) {
+            self.prefetching = None;
+        }
         let Some(file) = self.files.get(&key).cloned() else {
             return;
         };
@@ -2163,6 +2209,41 @@ impl DiffCanvasView {
             Canvases::put(store, self.changes, self.id, canvas);
         }
         launched
+    }
+
+    /// TEST SUPPORT: run the batch-tail prefetch pump once — returns
+    /// how many speculative opens it launched (0 or 1).
+    #[doc(hidden)]
+    pub fn pump_for_tests(&self, store: &mut Store) -> usize {
+        let mut launched = 0;
+        if let Some(mut canvas) = Canvases::take(store, self.changes, self.id) {
+            let mut batch = imba::effect::Batch::new();
+            {
+                let mut fx = batch.effects();
+                canvas.pump_prefetch(store, &mut fx);
+            }
+            let _ = batch.take_settle();
+            launched = batch
+                .drain()
+                .into_iter()
+                .filter(|message| {
+                    matches!(
+                        message,
+                        imba::effect::Message::Launch(..) | imba::effect::Message::Relaunch(..)
+                    )
+                })
+                .count();
+            Canvases::put(store, self.changes, self.id, canvas);
+        }
+        launched
+    }
+
+    /// TEST SUPPORT: the queued prefetch horizon, in drain order.
+    #[doc(hidden)]
+    pub fn probe_prefetch_queue(&self, store: &Store) -> Vec<editor::location::ResourceLocation> {
+        self.canvas(store)
+            .map(|canvas| canvas.prefetch_queue.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// TEST SUPPORT: land a build for a key, as the effect would.

@@ -534,3 +534,181 @@ fn scroll_soak_for_profiling() {
 fn diff_panel_full_monster_probe() {
     probe(1409);
 }
+
+/// Time each UI-thread piece of ONE canvas-row landing for a monster
+/// pair — the freeze hunt: which part of `Landed` must move to the
+/// worker.
+#[test]
+#[ignore = "landing breakdown probe; run with --ignored --nocapture"]
+fn canvas_landing_breakdown_probe() {
+    let repetitions: usize = std::env::var("HIMARK_PROBE_REPS")
+        .ok()
+        .and_then(|reps| reps.parse().ok())
+        .unwrap_or(8);
+    let (left, right) = monster_pair(repetitions);
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    himarkdown::register_handlers(&mut app);
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
+    eprintln!("[landing] sides: {} / {} bytes", left.len(), right.len());
+
+    let documents = himark::workspace::session_state(app.store(), app.sole_window())
+        .expect("the window's session")
+        .documents();
+    let location = |name: &str| {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("probe"),
+            vec![name.to_owned()],
+        )
+    };
+
+    let started = Instant::now();
+    let old_doc = himarkdown::document_from_markdown(
+        &left,
+        app.store(),
+        &app.ui_ctx(),
+        &markdown_fonts,
+        &theme,
+    );
+    let new_doc = himarkdown::document_from_markdown(
+        &right,
+        app.store(),
+        &app.ui_ctx(),
+        &markdown_fonts,
+        &theme,
+    );
+    eprintln!(
+        "[landing] build documents (the open effect's WORKER half): {:?}",
+        started.elapsed()
+    );
+
+    // One add_editor alone, on a scratch clone — the suspected bulk
+    // of build_diff_view.
+    {
+        let mut scratch = old_doc.clone();
+        let fonts_collection = editor::env::Fonts::of(app.store())();
+        let env_theme = editor::env::Themes::of(app.store());
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let started = Instant::now();
+        let _editor = scratch.add_editor(
+            550.0,
+            None,
+            editor::document::EditorBuild::Bounded,
+            &[],
+            &mut store,
+            &ui,
+            &fonts_collection,
+            &env_theme,
+            &mut imba::effect::Batch::new().effects(),
+        );
+        eprintln!("[landing]   one add_editor (Bounded): {:?}", started.elapsed());
+    }
+
+    let started = Instant::now();
+    let revision = old_doc.revision();
+    let old_id = documents::OpenDocuments::register(
+        &mut app.store_mut(),
+        documents,
+        old_doc,
+        Some(location("old.md")),
+        "old.md".to_owned(),
+        revision,
+    );
+    let revision = new_doc.revision();
+    let new_id = documents::OpenDocuments::register(
+        &mut app.store_mut(),
+        documents,
+        new_doc,
+        Some(location("new.md")),
+        "new.md".to_owned(),
+        revision,
+    );
+    eprintln!("[landing] register both sides: {:?}", started.elapsed());
+
+    let id = {
+        let ui = app.ui_handle();
+        let started = Instant::now();
+        let id = documents::diff_views::build_diff_view(
+            &mut app.store_mut(),
+            documents,
+            &ui,
+            old_id,
+            new_id,
+            550.0,
+            true,
+        )
+        .expect("the tracked pair");
+        eprintln!(
+            "[landing] build_diff_view (track + 2 editors + attach): {:?}",
+            started.elapsed()
+        );
+        id
+    };
+
+    {
+        let ui = app.ui_handle();
+        let mut pane = PairPane::over(documents, id);
+        let mut batch = imba::effect::Batch::new();
+        let started = Instant::now();
+        {
+            let mut fx = batch.effects();
+            imba::View::perform(
+                &mut pane,
+                &mut app.store_mut(),
+                &ui,
+                editor::unified_diff::UnifiedDiffCommand::SetLayout(
+                    editor::unified_diff::DiffLayout::Inline,
+                ),
+                &mut fx,
+            );
+        }
+        eprintln!("[landing] SetLayout(Inline): {:?}", started.elapsed());
+    }
+
+    let size = skia_safe::Size::new(1200.0, 900.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
+    let started = Instant::now();
+    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    eprintln!(
+        "[landing] next frame (batch tail: lanes + normalize launch): {:?}",
+        started.elapsed()
+    );
+
+    let mut round = 0usize;
+    loop {
+        let started = Instant::now();
+        runner.run();
+        let worker = started.elapsed();
+        let mut commands = Vec::new();
+        while let Ok(command) = arriving.try_recv() {
+            commands.push(command);
+        }
+        if commands.is_empty() {
+            break;
+        }
+        round += 1;
+        let count = commands.len();
+        let started = Instant::now();
+        for command in commands {
+            app.perform_batch(vec![command]);
+        }
+        let landing = started.elapsed();
+        let started = Instant::now();
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        eprintln!(
+            "[landing] round {round}: worker {worker:?}, {count} landings {landing:?}, frame {:?}",
+            started.elapsed()
+        );
+    }
+}
