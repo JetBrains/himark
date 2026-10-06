@@ -4,7 +4,6 @@
 #[cfg(feature = "plugin")]
 pub mod plugin;
 pub mod run;
-#[cfg(feature = "plugin")]
 
 pub fn eval_to_string(source: &str) -> Result<String, String> {
     let runtime = rquickjs::Runtime::new().map_err(|error| error.to_string())?;

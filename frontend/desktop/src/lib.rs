@@ -6,7 +6,7 @@ pub mod connector;
 #[cfg(unix)]
 #[doc(hidden)]
 pub mod unix_transport;
-#[cfg(unix)]
+
 use std::time::{Duration, Instant};
 
 use himark::app::AppFonts;
