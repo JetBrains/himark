@@ -2288,27 +2288,34 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     assert!(app.perform_command(toggle));
     settle(&mut app, &mut surface);
 
-    let paint_median_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+    let paint_floor_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
-        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        times[times.len() / 2]
+        // The FLOOR, not the median: suite-load contention only ever
+        // INFLATES a sample (it can never make a paint cheaper), so
+        // the minimum is the true cost — and a genuinely linear paint
+        // raises its floor just the same. Medians flaked under
+        // parallel load (top 1.5ms, bottom "4.8ms" of descheduling).
+        times
+            .into_iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .expect("samples")
     };
 
-    let top = paint_median_ms(&mut app, &mut surface);
+    let top = paint_floor_ms(&mut app, &mut surface);
 
     // One decisive fling to the very bottom, then let it settle.
     for _ in 0..4 {
         let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
         settle(&mut app, &mut surface);
     }
-    let bottom = paint_median_ms(&mut app, &mut surface);
+    let bottom = paint_floor_ms(&mut app, &mut surface);
 
-    eprintln!("[perf] paint median: top {top:.2}ms bottom {bottom:.2}ms");
+    eprintln!("[perf] paint floor: top {top:.2}ms bottom {bottom:.2}ms");
     assert!(
         bottom < (top * 3.0).max(2.0),
         "painting the diff's end must not cost more than its start: \
@@ -2414,23 +2421,30 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     };
     settle(&mut app, &mut surface);
 
-    let paint_median_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+    let paint_floor_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
-        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        times[times.len() / 2]
+        // The FLOOR, not the median: suite-load contention only ever
+        // INFLATES a sample (it can never make a paint cheaper), so
+        // the minimum is the true cost — and a genuinely linear paint
+        // raises its floor just the same. Medians flaked under
+        // parallel load (top 1.5ms, bottom "4.8ms" of descheduling).
+        times
+            .into_iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .expect("samples")
     };
 
-    let top = paint_median_ms(&mut app, &mut surface);
+    let top = paint_floor_ms(&mut app, &mut surface);
     for _ in 0..4 {
         let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
         settle(&mut app, &mut surface);
     }
-    let bottom = paint_median_ms(&mut app, &mut surface);
+    let bottom = paint_floor_ms(&mut app, &mut surface);
 
     eprintln!("[perf] canvas paint median: top {top:.2}ms bottom {bottom:.2}ms");
     // A linear-in-offset regression measures WAY past this (5.4x at
@@ -2449,7 +2463,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
 /// (dedicated shape/style interval lanes + per-segment sweeps).
 #[test]
 fn folded_squash_paint_cost_is_size_independent() {
-    let median_for = |line_count: usize| -> f64 {
+    let floor_for = |line_count: usize| -> f64 {
         let fonts = AppFonts::embedded();
         let mut app = Application::new(fonts);
         let _ = app.add_window();
@@ -2537,13 +2551,20 @@ fn folded_squash_paint_cost_is_size_independent() {
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
-        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        times[times.len() / 2]
+        // The FLOOR, not the median: suite-load contention only ever
+        // INFLATES a sample (it can never make a paint cheaper), so
+        // the minimum is the true cost — and a genuinely linear paint
+        // raises its floor just the same. Medians flaked under
+        // parallel load (top 1.5ms, bottom "4.8ms" of descheduling).
+        times
+            .into_iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .expect("samples")
     };
 
-    let small = median_for(5_000);
-    let large = median_for(200_000);
-    eprintln!("[perf] squashed paint median: 5k lines {small:.2}ms, 200k lines {large:.2}ms");
+    let small = floor_for(5_000);
+    let large = floor_for(200_000);
+    eprintln!("[perf] squashed paint floor: 5k lines {small:.2}ms, 200k lines {large:.2}ms");
     assert!(
         large < (small * 3.0).max(2.0),
         "a fold-squashed viewport must paint independent of file size: \
