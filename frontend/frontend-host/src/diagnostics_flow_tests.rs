@@ -670,6 +670,37 @@ fn live_host_squiggles_the_opened_file() {
         last.as_ref().is_some_and(|found| !found.is_empty()),
         "the live host's diagnostics squiggled the file: {last:?}"
     );
+    // Let the pull layers land too, then time a theme switch over
+    // the dressed document.
+    for _ in 0..40 {
+        settle(&mut engine);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    for round in 0..3 {
+        let started = std::time::Instant::now();
+        assert!(engine.perform_command(window, "theme.toggle"));
+        let performed = started.elapsed();
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let drawn = started.elapsed();
+        // The repairs the toggle owes: drain the worker until quiet.
+        let mut rounds = 0;
+        loop {
+            engine.worker().run_pending();
+            let landed = engine.drain();
+            let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+            rounds += 1;
+            if !landed && engine.queued_landings() == 0 && rounds > 3 {
+                break;
+            }
+            if rounds > 400 {
+                break;
+            }
+        }
+        eprintln!(
+            "[live] theme toggle {round}: perform {performed:?}, first draw {drawn:?}, settled {:?} after {rounds} rounds",
+            started.elapsed()
+        );
+    }
 }
 
 /// The pull layers through the real session-open road: a document

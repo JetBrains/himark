@@ -750,6 +750,10 @@ fn hints_markup(document: &editor::document::Document, hints: &[HintItem]) -> (M
 /// RATIO of the source-code size, never a size of its own.
 const HINT_SCALE: f32 = 0.8;
 
+/// The code typeface every hint chip shares — cached in the ui
+/// context (the theme's code families do not change between looks).
+struct HintTypeface(Option<skia_safe::Typeface>);
+
 /// The hint chip: a line of dim text in the code font, sized off the
 /// source-code look, colored by the theme's `inlay_hint` entry.
 /// Passive — it takes no commands.
@@ -785,10 +789,24 @@ impl imba::View for HintView {
             .map(<[String]>::to_vec)
             .unwrap_or_default();
         let size = look.font_size.or(theme.base().font_size).unwrap_or(32.0) * HINT_SCALE;
-        let typeface = editor::env::ui_typeface(ui, &families, skia_safe::FontStyle::normal())
-            .or_else(|| {
-                editor::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::normal())
-            });
+        // The code face, resolved ONCE per ui context: a font-collection
+        // search per chip per measure was the retheme stall (every
+        // inlay re-measures; hundreds of chips, a cold worker ctx).
+        let typeface = ui
+            .env(|| {
+                HintTypeface(
+                    editor::env::ui_typeface(ui, &families, skia_safe::FontStyle::normal())
+                        .or_else(|| {
+                            editor::env::ui_typeface(
+                                ui,
+                                &[] as &[&str],
+                                skia_safe::FontStyle::normal(),
+                            )
+                        }),
+                )
+            })
+            .0
+            .clone();
         let mut style = hikit::ui::caption(store, ui).sized(size);
         if let Some(typeface) = typeface {
             style.font = skia_safe::Font::from_typeface(typeface, size);
