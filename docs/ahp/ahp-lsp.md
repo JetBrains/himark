@@ -313,5 +313,15 @@ Other conditions:
 ## 9. Client notes (non-normative)
 
 The reference client currently forwards `textDocument/completion`,
-`textDocument/hover`, `textDocument/definition`, and
-`textDocument/references`, and renders the diagnostics channel.
+`textDocument/hover`, `textDocument/definition`,
+`textDocument/references`, `textDocument/semanticTokens/full` and
+`textDocument/inlayHint`, and renders the diagnostics channel.
+
+Semantic tokens and inlay hints are PULLED per document: the client
+asks on open and after every edit (a new ask supersedes the one in
+flight), reads the token legend once per language server through
+`lsp/capabilities` (§5), and lands each answer as its own
+document-scoped markup layer against the current text — the same
+landing shape as the diagnostics squiggles. An answer computed
+against older text lands slightly off for one cycle; the standing
+layer meanwhile shifts correctly at the edit door.

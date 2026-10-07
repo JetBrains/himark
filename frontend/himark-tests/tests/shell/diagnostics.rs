@@ -86,10 +86,11 @@ impl LspClient for Lsp {
     fn lsp(
         &self,
         _session: SessionUri,
-        _method: String,
+        method: String,
         _params: serde_json::Value,
     ) -> ClientFuture<Result<serde_json::Value, String>> {
-        unreachable!("no pass-through ask here")
+        // The pull layers ask on open; this host serves none of them.
+        Box::pin(std::future::ready(Err(format!("{method} not served"))))
     }
 
     fn lsp_diagnostics(&self, session: SessionUri) -> ClientFuture<Result<ChannelUri, String>> {

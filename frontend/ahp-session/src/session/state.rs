@@ -67,6 +67,8 @@ pub struct SessionState {
 
     pub diagnostics_wire: Id<ahp_lsp::diagnostics::DiagnosticsWire>,
 
+    pub enrich_wire: Id<ahp_lsp::enrich::EnrichWire>,
+
     pub history: Id<changesview::hihistory::History>,
 
     pub comments: Id<comments::Comments>,
@@ -119,6 +121,10 @@ impl SessionState {
         self.diagnostics_wire
     }
 
+    pub fn enrich_wire(&self) -> Id<ahp_lsp::enrich::EnrichWire> {
+        self.enrich_wire
+    }
+
     pub fn history(&self) -> Id<changesview::hihistory::History> {
         self.history
     }
@@ -158,6 +164,7 @@ impl SessionState {
             history_wire: Id::mint(),
             comments_wire: Id::mint(),
             diagnostics_wire: Id::mint(),
+            enrich_wire: Id::mint(),
             history: Id::mint(),
             comments: Id::mint(),
             terminals: Id::mint(),
@@ -182,6 +189,7 @@ impl SessionState {
             && empty(store, self.history_wire, |it| it.is_empty())
             && empty(store, self.comments_wire, |it| it.is_empty())
             && empty(store, self.diagnostics_wire, |it| it.is_empty())
+            && empty(store, self.enrich_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
             && empty(store, self.recents, |it| it.is_empty())
             && empty(store, self.changes, |it| it.is_empty())
@@ -208,6 +216,7 @@ impl SessionState {
         // The diagnostics channel's poll chain dies with the wire row
         // (the locations-wire precedent).
         store.retract(self.diagnostics_wire);
+        store.retract(self.enrich_wire);
         // The ceremony installed the scoped hooks and commands; the
         // ceremony retires them (law 6 symmetry).
         documents::OpenDocuments::retire_scope(store, self.documents);
@@ -308,6 +317,7 @@ impl Hosts {
             ahp_changes::history::HistoryWire::stamp_uris(store, state.history_wire, &map);
             ahp_comments::CommentsWire::stamp_uris(store, state.comments_wire, &map);
             ahp_lsp::diagnostics::DiagnosticsWire::stamp_uris(store, state.diagnostics_wire, &map);
+            ahp_lsp::enrich::EnrichWire::stamp_uris(store, state.enrich_wire, &map);
         }
     }
 
@@ -590,6 +600,17 @@ impl Hosts {
             state.documents,
             std::sync::Arc::new(ahp_lsp::diagnostics::DiagnosticsHook {
                 wire: state.diagnostics_wire,
+            }),
+        );
+        store.put_entity(
+            state.enrich_wire,
+            ahp_lsp::enrich::EnrichWire::wired(state.documents, uris.clone()),
+        );
+        documents::OpenDocuments::install_scoped_hook(
+            store,
+            state.documents,
+            std::sync::Arc::new(ahp_lsp::enrich::EnrichHook {
+                wire: state.enrich_wire,
             }),
         );
         store.put_entity(

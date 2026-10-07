@@ -171,10 +171,12 @@ dependencies = [
  "ahp-wire",
  "documents",
  "editor",
+ "hikit",
  "himark-ahp-ext-types",
  "imba",
  "rpds",
  "serde_json",
+ "skia-safe",
  "text",
 ]
 

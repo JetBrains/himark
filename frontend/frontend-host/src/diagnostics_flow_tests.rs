@@ -219,16 +219,48 @@ impl ahp_wire::client::DocumentsClient for Parked {
 
 struct Lsp {
     snapshot: DiagnosticsState,
+    /// The pass-through answers by method; an unscripted method is
+    /// refused, the way a host without that language feature would.
+    answers: std::collections::HashMap<&'static str, serde_json::Value>,
+    legend: Vec<&'static str>,
+}
+
+impl Lsp {
+    fn quiet(snapshot: DiagnosticsState) -> Self {
+        Self {
+            snapshot,
+            answers: std::collections::HashMap::new(),
+            legend: Vec::new(),
+        }
+    }
 }
 
 impl LspClient for Lsp {
     fn lsp(
         &self,
         _session: SessionUri,
-        _method: String,
+        method: String,
         _params: serde_json::Value,
     ) -> ClientFuture<Result<serde_json::Value, String>> {
-        unreachable!("no pass-through ask here")
+        let answer = self
+            .answers
+            .get(method.as_str())
+            .cloned()
+            .ok_or_else(|| format!("{method} not scripted"));
+        Box::pin(std::future::ready(answer))
+    }
+
+    fn lsp_capabilities(
+        &self,
+        _session: SessionUri,
+        _uri: ahp_wire::client::ResourceUri,
+    ) -> ClientFuture<Result<Option<serde_json::Value>, String>> {
+        let capabilities = (!self.legend.is_empty()).then(|| {
+            serde_json::json!({ "semanticTokensProvider": { "legend": {
+                "tokenTypes": self.legend, "tokenModifiers": []
+            }}})
+        });
+        Box::pin(std::future::ready(Ok(capabilities)))
     }
 
     fn lsp_diagnostics(&self, session: SessionUri) -> ClientFuture<Result<ChannelUri, String>> {
@@ -411,9 +443,7 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
             changes: Arc::new(Parked),
             resources: Arc::new(Parked),
             documents: Arc::new(Parked),
-            lsp: Arc::new(Lsp {
-                snapshot: DiagnosticsState { items },
-            }),
+            lsp: Arc::new(Lsp::quiet(DiagnosticsState { items })),
             ..ahp_wire::client::inert()
         },
     );
@@ -640,4 +670,187 @@ fn live_host_squiggles_the_opened_file() {
         last.as_ref().is_some_and(|found| !found.is_empty()),
         "the live host's diagnostics squiggled the file: {last:?}"
     );
+}
+
+/// The pull layers through the real session-open road: a document
+/// opened under the session asks its semantic tokens and inlay hints,
+/// and both land as document-scoped markups that reach the pixels.
+#[test]
+fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let window = engine.add_window();
+    let mut answers = std::collections::HashMap::new();
+    // "main" at 0:3, four long, token type 0 = function.
+    answers.insert(
+        "textDocument/semanticTokens/full",
+        serde_json::json!({ "data": [0, 3, 4, 0, 0] }),
+    );
+    answers.insert(
+        "textDocument/inlayHint",
+        serde_json::json!([{
+            "position": { "line": 0, "character": 9 },
+            "label": "-> ()",
+            "paddingLeft": true
+        }]),
+    );
+    let host = engine.register_agent_server(
+        "enriched",
+        ahp_wire::client::Client {
+            session: Arc::new(Seat),
+            annotations: Arc::new(Parked),
+            changes: Arc::new(Parked),
+            resources: Arc::new(Parked),
+            documents: Arc::new(Parked),
+            lsp: Arc::new(Lsp {
+                snapshot: DiagnosticsState::default(),
+                answers,
+                legend: vec!["function"],
+            }),
+            ..ahp_wire::client::inert()
+        },
+    );
+    engine.set_local_backend(host);
+
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            crate::wid(window),
+            Arc::new(OpenScripted { host }),
+        )]));
+    settle_until(&mut engine, window, "the session came up", |engine| {
+        himark::workspace::window_session(engine.app.store(), crate::wid(window))
+            .is_some_and(|key| key.session.as_str() == SESSION)
+    });
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            crate::wid(window),
+            Arc::new(OpenMain),
+        )]));
+
+    let layer = |engine: &HimarkEngine,
+                 markup: editor::markup::MarkupId|
+     -> Option<editor::markup::Markup> {
+        let store = engine.app.store();
+        let state = himark::workspace::session_state(store, crate::wid(window))?;
+        let key = himark::workspace::window_session(store, crate::wid(window))?;
+        let location = ResourceLocation::new(
+            ResourceType::document(),
+            Authority::new(ahp_wire::client::authority(key.host, &key.session)),
+            vec![
+                "tmp".to_owned(),
+                "diagproj".to_owned(),
+                "main.rs".to_owned(),
+            ],
+        );
+        let id = documents::OpenDocuments::by_location(store, state.documents(), &location)?;
+        let document = documents::OpenDocuments::document_ref(store, state.documents(), id)?;
+        document.feature_markup(markup).cloned()
+    };
+    settle_until(&mut engine, window, "both layers landed", |engine| {
+        layer(engine, ahp_lsp::enrich::semantic_tokens_markup()).is_some_and(|m| !m.is_empty())
+            && layer(engine, ahp_lsp::enrich::inlay_hints_markup()).is_some_and(|m| !m.is_empty())
+    });
+
+    let tokens = layer(&engine, ahp_lsp::enrich::semantic_tokens_markup()).expect("tokens");
+    let mut inline = Vec::new();
+    let mut hidden = Vec::new();
+    tokens.marks_inline_hidden_in(0..u32::MAX, &mut inline, &mut hidden);
+    let spans: Vec<_> = inline.iter().map(|i| (i.range.clone(), i.id)).collect();
+    assert_eq!(
+        spans,
+        vec![(3..7, StyleId::Function)],
+        "`main` restyled as a function"
+    );
+
+    // The window paints with the hint chip in place: a frame with the
+    // layer and a frame after clearing it differ.
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let frame = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        settle(engine);
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        surface
+            .image_snapshot()
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png")
+            .as_bytes()
+            .to_vec()
+    };
+    let with_hint = frame(&mut engine, &mut surface);
+    if let Some(dir) = std::env::var_os("HIMARK_SHOT") {
+        std::fs::write(
+            std::path::PathBuf::from(dir).join("inlay-hints.png"),
+            &with_hint,
+        )
+        .expect("the shot");
+    }
+
+    struct ClearHints;
+    impl himark::commands::WindowedCommand for ClearHints {
+        fn id(&self) -> &'static str {
+            "test.clear-hints"
+        }
+        fn name(&self) -> String {
+            "Clear Hints".to_owned()
+        }
+        fn perform(
+            &self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let state = himark::workspace::session_state(store, window).expect("a state");
+            let key = himark::workspace::window_session(store, window).expect("a session");
+            let location = ResourceLocation::new(
+                ResourceType::document(),
+                Authority::new(ahp_wire::client::authority(key.host, &key.session)),
+                vec![
+                    "tmp".to_owned(),
+                    "diagproj".to_owned(),
+                    "main.rs".to_owned(),
+                ],
+            );
+            let documents = state.documents();
+            let id =
+                documents::OpenDocuments::by_location(store, documents, &location).expect("open");
+            let mut document =
+                documents::OpenDocuments::document(store, documents, id).expect("doc");
+            let markup = ahp_lsp::enrich::inlay_hints_markup();
+            let replacement = editor::markup::Markup::new();
+            let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
+            let fonts = editor::env::ui_collection(store, ui);
+            let theme = editor::env::Themes::of(store);
+            fx.scope(
+                move |command| {
+                    himark::app::AppCommand::Verb(imba::command::Verb::at(
+                        documents,
+                        documents::DocumentsCommand::Editor(id, command),
+                    ))
+                },
+                |fx| {
+                    document.replace_markup(
+                        markup,
+                        replacement,
+                        &changed,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    )
+                },
+            );
+            documents::OpenDocuments::put_document(store, documents, id, document);
+        }
+    }
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            crate::wid(window),
+            Arc::new(ClearHints),
+        )]));
+    let without_hint = frame(&mut engine, &mut surface);
+    assert_ne!(with_hint, without_hint, "the hint chip reaches the pixels");
 }

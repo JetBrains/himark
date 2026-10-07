@@ -382,6 +382,19 @@ pub trait LspClient: Send + Sync + 'static {
         params: serde_json::Value,
     ) -> ClientFuture<Result<serde_json::Value, String>>;
 
+    /// `lsp/capabilities` (ahp-lsp.md §5): the capabilities of the
+    /// language server serving `uri`, `None` while none does.
+    fn lsp_capabilities(
+        &self,
+        session: SessionUri,
+        uri: ResourceUri,
+    ) -> ClientFuture<Result<Option<serde_json::Value>, String>> {
+        let _ = (session, uri);
+        Box::pin(std::future::ready(Err(
+            "lsp/capabilities not served".to_owned()
+        )))
+    }
+
     /// `lsp/diagnostics`: mint-or-find the session's diagnostics
     /// channel (idempotent).
     fn lsp_diagnostics(&self, session: SessionUri) -> ClientFuture<Result<ChannelUri, String>> {

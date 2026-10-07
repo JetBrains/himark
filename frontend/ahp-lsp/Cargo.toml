@@ -8,10 +8,10 @@ license = "Apache-2.0"
 ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
+hikit = { path = "../hikit" }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 imba = { path = "../imba" }
 rpds = "1"
 serde_json = "1"
-
-[dev-dependencies]
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }

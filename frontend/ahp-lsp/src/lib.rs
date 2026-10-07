@@ -38,6 +38,7 @@ impl imba::effect::Effect for LspCompletionEffect {
 }
 
 pub mod diagnostics;
+pub mod enrich;
 
 use std::sync::Arc;
 

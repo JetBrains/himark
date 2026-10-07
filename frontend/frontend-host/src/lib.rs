@@ -507,6 +507,7 @@ impl HimarkEngine {
         // boot-global: the session ceremony installs them per session,
         // wired with their sibling ids (docs/entities.md law 4).
         comments::install(&mut app.store_mut());
+        ahp_lsp::enrich::install_edit_sink(&mut app.store_mut());
         app.register_command(Arc::new(himark::hicomments::ToggleCommentsView));
         app.register_toolbar_button(himark::hicomments::toolbar_button());
 

@@ -205,7 +205,14 @@ impl Server {
                         // the server's thin native diagnostics ever arrive.
                         "synchronization": { "didSave": true },
 
-                        "completion": { "completionItem": {} }
+                        "completion": { "completionItem": {} },
+                        "semanticTokens": {
+                            "requests": { "full": true },
+                            "tokenTypes": [],
+                            "tokenModifiers": [],
+                            "formats": ["relative"]
+                        },
+                        "inlayHint": {}
                     },
                 },
             },

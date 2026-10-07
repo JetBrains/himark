@@ -332,4 +332,8 @@ pub fn register_all(app: &mut crate::app::Application) {
     app.register_handler::<ahp_wire::effects::PollLspDiagnosticsEffect>(
         ::ahp_wire::registry::HandlePollLspDiagnostics,
     );
+    app.register_handler::<ahp_lsp::enrich::LspSemanticTokensEffect>(
+        ahp_lsp::enrich::HandleSemanticTokens::default(),
+    );
+    app.register_handler::<ahp_lsp::enrich::LspInlayHintsEffect>(ahp_lsp::enrich::HandleInlayHints);
 }

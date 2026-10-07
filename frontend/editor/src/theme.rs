@@ -67,6 +67,10 @@ pub enum StyleId {
     DiagnosticWarning,
     DiagnosticInfo,
     DiagnosticHint,
+
+    /// A language server's inlay hint (a parameter name, an inferred
+    /// type): the dim chip the hint inlay paints with.
+    InlayHint,
 }
 
 impl StyleId {
@@ -129,10 +133,11 @@ impl StyleId {
             Self::DiagnosticWarning => 41,
             Self::DiagnosticInfo => 42,
             Self::DiagnosticHint => 43,
+            Self::InlayHint => 44,
         }
     }
 
-    const SLOTS: usize = 44;
+    const SLOTS: usize = 45;
 
     fn all_slots() -> [StyleId; Self::SLOTS] {
         [
@@ -180,6 +185,7 @@ impl StyleId {
             Self::DiagnosticWarning,
             Self::DiagnosticInfo,
             Self::DiagnosticHint,
+            Self::InlayHint,
         ]
     }
 
@@ -226,6 +232,7 @@ impl StyleId {
             Self::DiagnosticWarning => "diagnostic_warning",
             Self::DiagnosticInfo => "diagnostic_info",
             Self::DiagnosticHint => "diagnostic_hint",
+            Self::InlayHint => "inlay_hint",
             Self::Quote => "quote",
             Self::HorizontalLine => "horizontal_line",
             Self::Indent(_) => "indent",

@@ -1883,6 +1883,28 @@ impl LspClient for WireHost {
         }))
     }
 
+    fn lsp_capabilities(
+        &self,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
+    ) -> ClientFuture<Result<Option<serde_json::Value>, String>> {
+        let (session, uri) = (session.into_string(), uri.into_string());
+        Box::pin(self.run_ask(move |active| async move {
+            let result: serde_json::Value = active
+                .client
+                .request(
+                    "lsp/capabilities",
+                    serde_json::json!({ "channel": session, "uri": uri }),
+                )
+                .await
+                .map_err(|error| format!("lsp/capabilities: {error}"))?;
+            Ok(result
+                .get("capabilities")
+                .cloned()
+                .filter(|value| !value.is_null()))
+        }))
+    }
+
     fn lsp_diagnostics(
         &self,
         session: crate::client::SessionUri,

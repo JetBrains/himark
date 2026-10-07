@@ -1006,6 +1006,12 @@ impl Application {
                         fx,
                     )
                 });
+                // The language-services pull lane: edited and newly
+                // opened documents re-ask their semantic tokens and
+                // inlay hints.
+                fx.scope(AppCommand::Verb, |fx| {
+                    ahp_lsp::enrich::sync(&mut store, state.enrich_wire(), fx)
+                });
                 // The gesture-ask lanes: the views noted onto their
                 // MODELS (grow, commit fetches, refetches); the
                 // drivers drain the notes onto the wires here — no
@@ -1022,6 +1028,9 @@ impl Application {
                 });
             }
         }
+        // Every session's lane claimed its own edit notes above; what
+        // is left names documents open nowhere.
+        ahp_lsp::enrich::drop_unclaimed(&store);
         // The safety net for a tail lane's follow-up: the queue loop
         // is over, so perform them here — late but never lost.
         loop {

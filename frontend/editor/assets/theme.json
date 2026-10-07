@@ -74,6 +74,9 @@
     "diagnostic_hint": {
       "squiggle": "#6e7aa0"
     },
+    "inlay_hint": {
+      "color": "#6e7aa0"
+    },
     "header1": {
       "bold": true,
       "font_size": 72.0,
