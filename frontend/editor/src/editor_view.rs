@@ -57,6 +57,11 @@ pub enum ClickKind {
     Word,
 
     Line,
+
+    /// A cmd-click: a caret set that ALSO asks to follow the link
+    /// under the point — the editor itself only moves the caret; the
+    /// follow is the document-collection layer's to interpret.
+    Link,
 }
 
 #[derive(Clone)]
@@ -155,6 +160,12 @@ pub enum EditorCommand {
 
     Hover(Option<Point>),
 
+    /// The hovered-link TRANSITION: the hit test resolved a different
+    /// link span under the command-held pointer than the editor holds
+    /// (`None` leaves). Records the span as view state and drives the
+    /// shell's pointer shape; never emitted while the answer stands.
+    HoverLink(Option<std::ops::Range<u32>>),
+
     Retheme {
         top: f32,
         bottom: f32,
@@ -228,6 +239,7 @@ impl std::fmt::Display for EditorCommand {
             EditorCommand::ToggleSoftwrap => out.write_str("toggle softwrap"),
             EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
             EditorCommand::Hover(_) => out.write_str("hover"),
+            EditorCommand::HoverLink(_) => out.write_str("hover link"),
             EditorCommand::Retheme { .. } => out.write_str("retheme"),
             EditorCommand::InsertTextReplacing { .. } => out.write_str("insert text replacing"),
             EditorCommand::SetMarkedText { .. } => out.write_str("set marked text"),
@@ -1707,12 +1719,13 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
             } => EventResult::Command(EditorCommand::Click {
                 point: *point,
 
-                kind: match (mods.alt, mods.shift, count) {
-                    (true, _, _) => ClickKind::Add,
-                    (false, true, _) => ClickKind::Extend,
-                    (false, false, 2) => ClickKind::Word,
-                    (false, false, count) if *count >= 3 => ClickKind::Line,
-                    (false, false, _) => ClickKind::Set,
+                kind: match (mods.command, mods.alt, mods.shift, count) {
+                    (true, false, false, 1) => ClickKind::Link,
+                    (_, true, _, _) => ClickKind::Add,
+                    (_, false, true, _) => ClickKind::Extend,
+                    (_, false, false, 2) => ClickKind::Word,
+                    (_, false, false, count) if *count >= 3 => ClickKind::Line,
+                    (_, false, false, _) => ClickKind::Set,
                 },
             }),
 
@@ -1728,10 +1741,43 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 EventResult::Command(EditorCommand::DragEnd)
             }
 
-            Event::HitTest { point, miss } if self.location.is_some() => {
+            Event::HitTest { point, miss, mods } if self.location.is_some() => {
                 use skia_safe::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
-                EventResult::Command(EditorCommand::Hover(inside.then_some(*point)))
+                let hover = EditorCommand::Hover(inside.then_some(*point));
+
+                // The hovered link, resolved against the view the hit
+                // test already sees: a Reference span under a
+                // command-held pointer. Only the TRANSITION commands —
+                // the standing answer re-tests to itself and stays
+                // silent.
+                let desired = match inside && mods.command {
+                    true => self
+                        .document()
+                        .byte_at_point(
+                            self.editor(),
+                            point.x,
+                            point.y,
+                            self.shared.store,
+                            self.shared.ui,
+                            &self.shared.fonts.collection(),
+                            &self.shared.theme,
+                        )
+                        .and_then(|byte| self.document().link_range_at(byte)),
+                    false => None,
+                };
+                // The pointer shape rides the answer: a link under the
+                // pointer is a hand, anything else the arrow — derived
+                // from THIS hit test, never stored.
+                let shape = match desired.is_some() {
+                    true => imba::event::PointerShape::Pointer,
+                    false => imba::event::PointerShape::Default,
+                };
+                let commands = match desired == self.document().hovered_link(self.editor()) {
+                    true => vec![hover],
+                    false => vec![hover, EditorCommand::HoverLink(desired)],
+                };
+                EventResult::Pointer { shape, commands }
             }
             _ => EventResult::Ignored,
         }

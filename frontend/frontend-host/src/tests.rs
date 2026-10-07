@@ -7798,7 +7798,9 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         .expect("focused editor")
         .expect("the word is on screen");
     assert!(
-        engine.mouse_move(window, x + w * 0.5, y + h * 0.5),
+        engine
+            .mouse_move(window, x + w * 0.5, y + h * 0.5, 0)
+            .changed,
         "the move over text must be consumed"
     );
     fn popup_standing(engine: &mut HimarkEngine) -> bool {
@@ -7837,7 +7839,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         "painting frames must not dismiss the card"
     );
 
-    let _ = engine.mouse_move(window, x + w * 0.5, 690.0);
+    let _ = engine.mouse_move(window, x + w * 0.5, 690.0, 0).changed;
     settle(&mut engine);
     assert!(
         !popup_standing(&mut engine),
@@ -7856,7 +7858,11 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
             .with_ime_client(sole, |client| client.first_rect(4, 5))
             .expect("focused editor")
             .expect("the word is on screen after the split");
-        assert!(engine.mouse_move(window, x + w * 0.5, y + h * 0.5));
+        assert!(
+            engine
+                .mouse_move(window, x + w * 0.5, y + h * 0.5, 0)
+                .changed
+        );
         rest(&mut engine);
         settle_until(
             &mut engine,
@@ -7864,7 +7870,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
             popup_standing,
         );
 
-        let _ = engine.mouse_move(window, x + w * 0.5, 690.0);
+        let _ = engine.mouse_move(window, x + w * 0.5, 690.0, 0).changed;
         settle(&mut engine);
     }
 
@@ -7873,7 +7879,11 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         .with_ime_client(sole, |client| client.first_rect(4, 5))
         .expect("focused editor")
         .expect("the word is on screen");
-    assert!(engine.mouse_move(window, x + w * 0.5, y + h * 0.5));
+    assert!(
+        engine
+            .mouse_move(window, x + w * 0.5, y + h * 0.5, 0)
+            .changed
+    );
     rest(&mut engine);
     settle_until(
         &mut engine,
@@ -7882,13 +7892,17 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     );
     assert!(engine.perform_command(window, "peeker.toggle"));
     settle(&mut engine);
-    let _ = engine.mouse_move(window, x + w * 0.5 + 1.0, y + h * 0.5);
+    let _ = engine
+        .mouse_move(window, x + w * 0.5 + 1.0, y + h * 0.5, 0)
+        .changed;
     settle(&mut engine);
     assert!(
         !popup_standing(&mut engine),
         "a covered pane's card dismisses on the first missed tick"
     );
-    let _ = engine.mouse_move(window, x + w * 0.5, y + h * 0.5);
+    let _ = engine
+        .mouse_move(window, x + w * 0.5, y + h * 0.5, 0)
+        .changed;
     rest(&mut engine);
     settle(&mut engine);
     assert!(
@@ -8557,5 +8571,301 @@ fn a_test_engine_registers_no_outward_hosts() {
         ahp_session::session::agents::Agents::list(engine.app.store()).len(),
         0,
         "no host rows before a test registers its own"
+    );
+}
+
+#[test]
+fn cmd_hover_marks_the_link_under_the_pointer() {
+    let (_host, mut engine, window, fs) = hosted_engine();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["link.rs"],
+        "let value = other;\n",
+    );
+    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+
+    let document = |engine: &mut HimarkEngine| {
+        let (document_id, editor_id) = engine.app.focused_editor_id();
+        (document_id, editor_id)
+    };
+
+    // The parse must land Reference spans before a link can resolve.
+    settle_until(&mut engine, "the parse landed reference spans", |engine| {
+        let (document_id, _) = document(engine);
+        documents::OpenDocuments::document_ref(
+            engine.app.store(),
+            engine.app.sole_documents(),
+            document_id,
+        )
+        .is_some_and(|entry| entry.link_range_at(12).is_some())
+    });
+
+    let sole = engine.app.sole_window();
+    let (x, y, w, h) = engine
+        .app
+        .with_ime_client(sole, |client| client.first_rect(12, 17))
+        .expect("focused editor")
+        .expect("the word is on screen");
+
+    let hovered = |engine: &mut HimarkEngine| {
+        let (document_id, editor_id) = document(engine);
+        documents::OpenDocuments::document_ref(
+            engine.app.store(),
+            engine.app.sole_documents(),
+            document_id,
+        )
+        .and_then(|entry| entry.hovered_link(editor_id))
+    };
+
+    let snapshot = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
+        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let image = surface.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("encoded");
+        data.as_bytes().to_vec()
+    };
+    let plain = snapshot(&mut engine, &mut surface);
+
+    // cmd-hover: the link span under the pointer becomes editor view
+    // state and the shell cursor points.
+    let pointed = engine.mouse_move(window, x + w * 0.5, y + h * 0.5, HIMARK_MOD_COMMAND);
+    assert!(pointed.changed);
+    settle(&mut engine);
+    assert_eq!(
+        hovered(&mut engine),
+        Some(12..17),
+        "the identifier under the command-held pointer is the hovered link"
+    );
+    assert_eq!(pointed.shape, PointerShape::Pointer);
+
+    // The look reaches the PIXELS: the hovered frame differs from the
+    // plain one (link color + underline on the word).
+    let linked = snapshot(&mut engine, &mut surface);
+    assert_ne!(plain, linked, "the hovered link repaints the word");
+
+    // The key lifts (a plain move at the same point): the look retires.
+    let pointed = engine.mouse_move(window, x + w * 0.5, y + h * 0.5, 0);
+    assert!(pointed.changed);
+    settle(&mut engine);
+    assert_eq!(hovered(&mut engine), None, "a plain move clears the link");
+    assert_eq!(pointed.shape, PointerShape::Default);
+
+    // The classic stuck hand: the key is still held, the pointer leaves
+    // the word for the window chrome. No view answers a hand there, so
+    // the event's answer is the arrow — nothing stored, nothing to sync.
+    let pointed = engine.mouse_move(window, x + w * 0.5, y + h * 0.5, HIMARK_MOD_COMMAND);
+    assert_eq!(pointed.shape, PointerShape::Pointer);
+    let pointed = engine.mouse_move(window, 2.0, 2.0, HIMARK_MOD_COMMAND);
+    assert_eq!(
+        pointed.shape,
+        PointerShape::Default,
+        "off the link, the very next event answers the arrow"
+    );
+}
+
+#[test]
+fn published_diagnostics_squiggle_the_open_document() {
+    let ls_dir = tempfile::tempdir().expect("ls dir");
+    let (_host, mut engine, window, fs) =
+        hosted_engine_with_language_servers(vec![agent_host::server::LanguageServer {
+            extensions: vec!["rs".to_owned()],
+            command: agent_host::testing::fake_ls_command(ls_dir.path()),
+        }]);
+    fs.write(&["project", "lib.rs"], "fn answer() -> u32 { 42 }\n");
+
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_until(&mut engine, "the folder session opened", |engine| {
+        let entity_id = engine.app.sole_window();
+        let workspace = himark::workspace::entity_session(
+            workbench::window::Windows::window_ref(engine.app.store(), entity_id)
+                .expect("the window entity"),
+        );
+        !ahp_session::session::folders::session_folders(engine.app.store(), &workspace).is_empty()
+    });
+    let session = himark::workspace::entity_session(
+        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            .expect("the window entity"),
+    );
+    let folders = ahp_session::session::folders::session_folders(engine.app.store(), &session);
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        folders[0].authority().clone(),
+        {
+            let mut segments = folders[0].path().to_vec();
+            segments.push("lib.rs".to_owned());
+            segments
+        },
+    );
+
+    struct Open(editor::location::ResourceLocation);
+    impl himark::commands::WindowedCommand for Open {
+        fn id(&self) -> &'static str {
+            "test.open-diagnosed"
+        }
+        fn name(&self) -> String {
+            "Open".to_owned()
+        }
+        fn perform(
+            &self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let ui = ui;
+            himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
+        }
+    }
+    assert!(engine
+        .app
+        .perform_command(himark::app::AppCommand::Windowed(
+            wid(window),
+            Arc::new(Open(file.clone()))
+        )));
+    settle_until(&mut engine, "lib.rs opened", |engine| {
+        documents::OpenDocuments::by_location(
+            engine.app.store(),
+            engine.app.sole_documents(),
+            &file,
+        )
+        .is_some()
+    });
+
+    // An edit, so the fake server publishes strictly AFTER the
+    // diagnostics channel stood (a publish racing the dial is dropped
+    // host-side and the next change republishes).
+    settle_until(&mut engine, "the document synced to the host", |engine| {
+        documents::OpenDocuments::by_location(
+            engine.app.store(),
+            engine.app.sole_documents(),
+            &file,
+        )
+        .is_some_and(|id| {
+            documents::OpenDocuments::host_synced(
+                engine.app.store(),
+                engine.app.sole_documents(),
+                id,
+            )
+        })
+    });
+    assert!(engine.text_input(window, "x"));
+
+    settle_until(&mut engine, "the squiggle markup landed", |engine| {
+        documents::OpenDocuments::by_location(
+            engine.app.store(),
+            engine.app.sole_documents(),
+            &file,
+        )
+        .and_then(|id| {
+            documents::OpenDocuments::document_ref(
+                engine.app.store(),
+                engine.app.sole_documents(),
+                id,
+            )
+        })
+        .and_then(|document| document.feature_markup(ahp_lsp::diagnostics::diagnostics_markup()))
+        .is_some_and(|markup| {
+            let mut inline = Vec::new();
+            let mut hidden = Vec::new();
+            markup.marks_inline_hidden_in(0..u32::MAX, &mut inline, &mut hidden);
+            inline
+                .iter()
+                .any(|interval| interval.id == editor::theme::StyleId::DiagnosticError)
+        })
+    });
+
+    // The squiggle reaches the PIXELS: the frame with the markup and
+    // the frame after a wholesale clear must differ — the data road
+    // above proves the markup landed, this proves it PAINTS (the
+    // cmd-hover underline once landed invisibly: line-local offsets).
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let snapshot = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
+        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let image = surface.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("encoded");
+        data.as_bytes().to_vec()
+    };
+    let squiggled = snapshot(&mut engine, &mut surface);
+    let again = snapshot(&mut engine, &mut surface);
+    assert_eq!(squiggled, again, "back-to-back frames are deterministic");
+
+    struct Clear(
+        imba::store::Id<documents::OpenDocuments>,
+        editor::location::ResourceLocation,
+    );
+    impl himark::commands::WindowedCommand for Clear {
+        fn id(&self) -> &'static str {
+            "test.clear-diagnostics"
+        }
+        fn name(&self) -> String {
+            "Clear".to_owned()
+        }
+        fn perform(
+            &self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            _window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let documents_id = self.0;
+            let Some(document_id) =
+                documents::OpenDocuments::by_location(store, documents_id, &self.1)
+            else {
+                return;
+            };
+            let Some(mut document) =
+                documents::OpenDocuments::document(store, documents_id, document_id)
+            else {
+                return;
+            };
+            let markup = ahp_lsp::diagnostics::diagnostics_markup();
+            let replacement = editor::markup::Markup::new();
+            let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
+            let fonts = editor::env::ui_collection(store, ui);
+            let theme = editor::env::Themes::of(store);
+            fx.scope(
+                move |command| {
+                    himark::app::AppCommand::Verb(imba::command::Verb::at(
+                        documents_id,
+                        documents::DocumentsCommand::Editor(document_id, command),
+                    ))
+                },
+                |fx| {
+                    document.replace_markup(
+                        markup,
+                        replacement,
+                        &changed,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    );
+                },
+            );
+            documents::OpenDocuments::put_document(store, documents_id, document_id, document);
+        }
+    }
+    assert!(engine
+        .app
+        .perform_command(himark::app::AppCommand::Windowed(
+            wid(window),
+            Arc::new(Clear(engine.app.sole_documents(), file.clone()))
+        )));
+    settle(&mut engine);
+    let cleared = snapshot(&mut engine, &mut surface);
+    assert_ne!(
+        squiggled, cleared,
+        "clearing the diagnostics markup repaints the squiggled word"
     );
 }

@@ -72,8 +72,15 @@ final class HimarkEngine {
     @discardableResult func mouseUp(window: UInt64, x: Float, y: Float) -> Bool {
         himark_mouse_up(engine, window, x, y)
     }
-    @discardableResult func mouseMove(window: UInt64, x: Float, y: Float) -> Bool {
-        himark_mouse_move(engine, window, x, y)
+    /// The event's answer carries the pointer shape (0 = arrow, 1 = hand):
+    /// apply it right away — it is derived per event and never stored.
+    @discardableResult func mouseMove(window: UInt64, x: Float, y: Float, mods: UInt32 = 0) -> HimarkPointed {
+        himark_mouse_move(engine, window, x, y, mods)
+    }
+    @discardableResult func modifiersChanged(
+        window: UInt64, x: Float, y: Float, mods: UInt32
+    ) -> HimarkPointed {
+        himark_modifiers_changed(engine, window, x, y, mods)
     }
     @discardableResult func mouseLeft(window: UInt64) -> Bool {
         himark_mouse_left(engine, window)

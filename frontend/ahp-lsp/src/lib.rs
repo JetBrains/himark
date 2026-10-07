@@ -37,6 +37,8 @@ impl imba::effect::Effect for LspCompletionEffect {
     type Result = Option<LspAnswer>;
 }
 
+pub mod diagnostics;
+
 use std::sync::Arc;
 
 use documents::text_ext::LineCol;

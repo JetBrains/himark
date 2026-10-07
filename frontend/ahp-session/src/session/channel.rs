@@ -141,11 +141,11 @@ pub fn apply_channel_actions(
         // every folder; one added mid-session gets the same here.
         // The channel names the session it serves; the session's
         // collection takes the folder.
-        if let Some(wire) =
-            super::state::Hosts::state(store, key).map(|state| state.comments_wire())
-        {
+        if let Some(state) = super::state::Hosts::state(store, key) {
+            let (comments, diagnostics) = (state.comments_wire(), state.diagnostics_wire());
             for folder in super::folders::session_folders(store, key) {
-                ahp_comments::ensure(store, wire, &folder, fx);
+                ahp_comments::ensure(store, comments, &folder, fx);
+                ahp_lsp::diagnostics::ensure(store, diagnostics, &folder, fx);
             }
         }
     }

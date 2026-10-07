@@ -65,6 +65,8 @@ pub struct SessionState {
 
     pub comments_wire: Id<ahp_comments::CommentsWire>,
 
+    pub diagnostics_wire: Id<ahp_lsp::diagnostics::DiagnosticsWire>,
+
     pub history: Id<changesview::hihistory::History>,
 
     pub comments: Id<comments::Comments>,
@@ -113,6 +115,10 @@ impl SessionState {
         self.comments_wire
     }
 
+    pub fn diagnostics_wire(&self) -> Id<ahp_lsp::diagnostics::DiagnosticsWire> {
+        self.diagnostics_wire
+    }
+
     pub fn history(&self) -> Id<changesview::hihistory::History> {
         self.history
     }
@@ -151,6 +157,7 @@ impl SessionState {
             canvas_router: Id::mint(),
             history_wire: Id::mint(),
             comments_wire: Id::mint(),
+            diagnostics_wire: Id::mint(),
             history: Id::mint(),
             comments: Id::mint(),
             terminals: Id::mint(),
@@ -174,6 +181,7 @@ impl SessionState {
             && empty(store, self.canvas_router, |it| it.is_empty())
             && empty(store, self.history_wire, |it| it.is_empty())
             && empty(store, self.comments_wire, |it| it.is_empty())
+            && empty(store, self.diagnostics_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
             && empty(store, self.recents, |it| it.is_empty())
             && empty(store, self.changes, |it| it.is_empty())
@@ -197,6 +205,9 @@ impl SessionState {
         store.retract(self.canvas_router);
         store.retract(self.history_wire);
         store.retract(self.comments_wire);
+        // The diagnostics channel's poll chain dies with the wire row
+        // (the locations-wire precedent).
+        store.retract(self.diagnostics_wire);
         // The ceremony installed the scoped hooks and commands; the
         // ceremony retires them (law 6 symmetry).
         documents::OpenDocuments::retire_scope(store, self.documents);
@@ -296,6 +307,7 @@ impl Hosts {
             ahp_changes::changes::ChangesWire::stamp_uris(store, state.changes_wire, &map);
             ahp_changes::history::HistoryWire::stamp_uris(store, state.history_wire, &map);
             ahp_comments::CommentsWire::stamp_uris(store, state.comments_wire, &map);
+            ahp_lsp::diagnostics::DiagnosticsWire::stamp_uris(store, state.diagnostics_wire, &map);
         }
     }
 
@@ -569,6 +581,17 @@ impl Hosts {
                 )
             }),
         };
+        store.put_entity(
+            state.diagnostics_wire,
+            ahp_lsp::diagnostics::DiagnosticsWire::wired(state.documents, uris.clone()),
+        );
+        documents::OpenDocuments::install_scoped_hook(
+            store,
+            state.documents,
+            std::sync::Arc::new(ahp_lsp::diagnostics::DiagnosticsHook {
+                wire: state.diagnostics_wire,
+            }),
+        );
         store.put_entity(
             state.comments_wire,
             ahp_comments::CommentsWire::wired(state.comments, uris, roads),

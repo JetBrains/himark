@@ -10,8 +10,8 @@ use imba::effect::Effect;
 
 use crate::client::{
     AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, FileEditContents,
-    HistoryClient, LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri, SessionsPage,
-    TurnId, TurnsPage,
+    HistoryClient, LocationsClient, LspClient, RootInfo, ServerEvent, SessionClient, SessionUri,
+    SessionsPage, TurnId, TurnsPage,
 };
 
 pub struct ConnectServerEffect {
@@ -320,6 +320,52 @@ impl std::fmt::Display for UnsubscribeLocationsEffect {
 
 impl Effect for UnsubscribeLocationsEffect {
     type Result = ();
+}
+
+/// Mint-or-find the session's diagnostics channel (ahp-lsp.md §6.1).
+pub struct LspDiagnosticsChannelEffect {
+    pub client: Arc<dyn LspClient>,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for LspDiagnosticsChannelEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "lsp diagnostics channel {}", self.session.as_str())
+    }
+}
+
+impl Effect for LspDiagnosticsChannelEffect {
+    type Result = Result<ChannelUri, String>;
+}
+
+pub struct SubscribeLspDiagnosticsEffect {
+    pub client: Arc<dyn LspClient>,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for SubscribeLspDiagnosticsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe lsp diagnostics {}", self.channel.as_str())
+    }
+}
+
+impl Effect for SubscribeLspDiagnosticsEffect {
+    type Result = Result<himark_ahp_ext_types::lsp::DiagnosticsState, String>;
+}
+
+pub struct PollLspDiagnosticsEffect {
+    pub client: Arc<dyn LspClient>,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for PollLspDiagnosticsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll lsp diagnostics {}", self.channel.as_str())
+    }
+}
+
+impl Effect for PollLspDiagnosticsEffect {
+    type Result = Vec<himark_ahp_ext_types::lsp::DiagnosticsPublished>;
 }
 
 pub struct SubscribeAnnotationsEffect {

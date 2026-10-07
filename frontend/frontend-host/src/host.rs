@@ -417,6 +417,7 @@ impl WindowedCommand for OpenPicked {
             let state = himark::workspace::session_state(store, window);
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
+                let diagnostics_wire = state.diagnostics_wire();
                 for folder in folders {
                     let spelled = editor::location::ResourceLocation::new(
                         folder.kind().clone(),
@@ -431,6 +432,9 @@ impl WindowedCommand for OpenPicked {
                     });
                     fx.scope(AppCommand::Verb, |fx| {
                         ahp_comments::ensure(store, comments_wire, &spelled, fx)
+                    });
+                    fx.scope(AppCommand::Verb, |fx| {
+                        ahp_lsp::diagnostics::ensure(store, diagnostics_wire, &spelled, fx)
                     });
                 }
             } else if !open_folder_session(store, window, &folders, fx) {

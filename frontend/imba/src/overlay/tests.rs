@@ -88,6 +88,7 @@ fn command<C>(result: EventResult<C>) -> C {
         EventResult::Handled => panic!("expected a command, got handled"),
         EventResult::Ignored => panic!("expected a command, got ignored"),
         EventResult::Reveal(_) => panic!("expected a command, got a reveal"),
+        EventResult::Pointer { .. } => panic!("expected a command, got a pointer answer"),
     }
 }
 

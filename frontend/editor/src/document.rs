@@ -578,6 +578,15 @@ impl Document {
             .all_inlays_in(range)
     }
 
+    /// The link span under a byte — a [`crate::theme::StyleId::Reference`]
+    /// span the tree-sitter pass emitted for an identifier. One
+    /// stabbing query over the parse markup; `None` on plain text,
+    /// keywords, literals.
+    pub fn link_range_at(&self, byte: u32) -> Option<Range<u32>> {
+        crate::markup::OverlaidMarkup::plain(syntax_markup(&self.syntax))
+            .styled_range_at(byte, |id| id == crate::theme::StyleId::Reference)
+    }
+
     fn ensure_enrich_slot(&mut self, key: EnrichKey) -> EnrichSlot {
         if let Some(slot) = self.enrich.get(&key) {
             return slot.clone();
@@ -1671,6 +1680,7 @@ impl Document {
             EditorCommand::Dynamic { .. } => {}
 
             EditorCommand::Hover(_) => {}
+            EditorCommand::HoverLink(range) => self.set_hovered_link(editor, range),
         };
         if arms_reveal {
             if let Some(state) = self.editors.get_mut(&editor) {
@@ -1751,6 +1761,16 @@ impl Document {
 
     pub fn marked_range(&self, editor: EditorId) -> Option<Range<u32>> {
         self.marked_of(editor)
+    }
+
+    pub fn hovered_link(&self, editor: EditorId) -> Option<Range<u32>> {
+        self.editors.get(&editor)?.hovered_link.clone()
+    }
+
+    pub(crate) fn set_hovered_link(&mut self, editor: EditorId, range: Option<Range<u32>>) {
+        if let Some(state) = self.editors.get_mut(&editor) {
+            state.hovered_link = range;
+        }
     }
 
     fn marked_of(&self, editor: EditorId) -> Option<Range<u32>> {
@@ -2002,6 +2022,11 @@ impl Document {
                 .marked
                 .take()
                 .map(|range| EditLog::transform_range(range, &operation));
+
+            // The hovered link is pointer-derived; an edit may retire
+            // the span entirely, so drop it and let the next hit test
+            // re-resolve against the fresh parse.
+            editor.hovered_link = None;
 
             if let Some(key) = editor.bounds {
                 let window = self
@@ -3434,6 +3459,7 @@ fn editor_command_label(command: &crate::editor_view::EditorCommand) -> &'static
         E::Drag { .. } => "Drag",
         E::DragEnd => "DragEnd",
         E::Hover(_) => "Hover",
+        E::HoverLink(_) => "HoverLink",
         E::Move { .. } => "Move",
         E::Viewport { .. } => "Viewport",
         E::ViewportTop(_) => "ViewportTop",

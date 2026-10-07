@@ -343,7 +343,9 @@ impl Document {
         let byte = byte.clamp(window.start, window.end);
         let carets = self.carets(editor).clamped(&window);
         let (clicked, origin) = match kind {
-            ClickKind::Set => (MultiCaret::single(byte), Some(DragOrigin::Char(byte))),
+            ClickKind::Set | ClickKind::Link => {
+                (MultiCaret::single(byte), Some(DragOrigin::Char(byte)))
+            }
             ClickKind::Extend => {
                 let mut all: Vec<Caret> = carets.carets().to_vec();
                 let index = carets.primary_index();

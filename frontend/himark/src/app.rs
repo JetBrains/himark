@@ -740,7 +740,7 @@ impl Application {
                 trace_reconcile("paint", std::slice::from_ref(&command));
                 self.perform_batch(vec![command])
             }
-            EventResult::Commands(commands) => {
+            EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
                 trace_reconcile("paint", &commands);
                 self.perform_batch(commands)
             }
@@ -767,21 +767,41 @@ impl Application {
     }
 
     pub fn dispatch(&mut self, window: WindowId, event: Event<'_>, size: Size) -> bool {
-        let hit = match &event {
-            Event::MouseMove { point } => self.dispatch_event(
+        self.dispatch_pointed(window, event, size).0
+    }
+
+    /// Dispatch, and beside the redraw flag the shape the pointer
+    /// takes: a move hit-tests first and the hit's answer IS the
+    /// shape — derived per event; the shell applies it and nothing
+    /// stores it.
+    pub fn dispatch_pointed(
+        &mut self,
+        window: WindowId,
+        event: Event<'_>,
+        size: Size,
+    ) -> (bool, imba::event::PointerShape) {
+        let (hit, shape) = match &event {
+            Event::MouseMove { point, mods } => self.dispatch_event(
                 window,
                 Event::HitTest {
                     point: *point,
                     miss: false,
+                    mods: *mods,
                 },
                 size,
             ),
-            _ => false,
+            _ => (false, imba::event::PointerShape::Default),
         };
-        self.dispatch_event(window, event, size) || hit
+        let (changed, _) = self.dispatch_event(window, event, size);
+        (changed || hit, shape)
     }
 
-    fn dispatch_event(&mut self, window: WindowId, event: Event<'_>, size: Size) -> bool {
+    fn dispatch_event(
+        &mut self,
+        window: WindowId,
+        event: Event<'_>,
+        size: Size,
+    ) -> (bool, imba::event::PointerShape) {
         let clock = matches!(event, Event::AnimationClock { .. });
 
         let key_down = match event {
@@ -844,10 +864,17 @@ impl Application {
         };
 
         if let Some(command) = fallback {
-            return self.perform_batch(vec![command]);
+            return (
+                self.perform_batch(vec![command]),
+                imba::event::PointerShape::Default,
+            );
         }
 
-        match result {
+        let shape = match &result {
+            EventResult::Pointer { shape, .. } => *shape,
+            _ => imba::event::PointerShape::Default,
+        };
+        let changed = match result {
             EventResult::Ignored => false,
 
             EventResult::Handled => !clock,
@@ -863,8 +890,13 @@ impl Application {
                 }
                 self.perform_batch(commands)
             }
+            EventResult::Pointer { commands, .. } => match commands.is_empty() {
+                true => !clock,
+                false => self.perform_batch(commands),
+            },
             EventResult::Reveal(_) => false,
-        }
+        };
+        (changed, shape)
     }
 
     pub fn perform_batch(&mut self, commands: Vec<AppCommand>) -> bool {
@@ -963,6 +995,16 @@ impl Application {
                 // costs a map read.
                 fx.scope(AppCommand::Verb, |fx| {
                     ahp_comments::sync(&mut store, state.comments_wire(), &self.ui_ctx(), fx)
+                });
+                // The diagnostics lane: dirty resources land their
+                // squiggle markups into the session's open documents.
+                fx.scope(AppCommand::Verb, |fx| {
+                    ahp_lsp::diagnostics::sync(
+                        &mut store,
+                        state.diagnostics_wire(),
+                        &self.ui_ctx(),
+                        fx,
+                    )
                 });
                 // The gesture-ask lanes: the views noted onto their
                 // MODELS (grow, commit fetches, refetches); the

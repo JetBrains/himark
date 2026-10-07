@@ -52,7 +52,12 @@ fn the_light_theme_parses_covers_and_matches_dark_geometry() {
     assert_eq!(dark.name(), "dark");
     assert_eq!(light.name(), "light");
     for id in StyleId::all_slots() {
-        if matches!(id, StyleId::Composing | StyleId::Indent(_)) {
+        // Reference is deliberately attribute-less: the link look is
+        // the editor's hovered-link state, not the span's.
+        if matches!(
+            id,
+            StyleId::Composing | StyleId::Indent(_) | StyleId::Reference
+        ) {
             continue;
         }
         assert_ne!(

@@ -607,7 +607,7 @@ impl<'a> RealizedLayers<'a> {
         event: &Event<'_>,
         viewport: skia_safe::Rect,
     ) -> EventResult<WindowCommand> {
-        if let Event::HitTest { point, miss } = event {
+        if let Event::HitTest { point, miss, mods } = event {
             let mut claimed = *miss;
             let tick = |claimed: &mut bool, blocks: bool| {
                 let hit = !*claimed && blocks;
@@ -617,6 +617,7 @@ impl<'a> RealizedLayers<'a> {
                 Event::HitTest {
                     point: *point,
                     miss: !hit,
+                    mods: *mods,
                 }
             };
             let mut merged: EventResult<WindowCommand> = EventResult::Ignored;

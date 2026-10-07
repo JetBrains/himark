@@ -2423,7 +2423,7 @@ where
 
             Event::MouseDown { point, .. }
             | Event::Scroll { point, .. }
-            | Event::MouseMove { point }
+            | Event::MouseMove { point, .. }
             | Event::HitTest { point, .. } => {
                 let Some(cursor) = self.cursor_at_y(point.y) else {
                     return EventResult::Ignored;

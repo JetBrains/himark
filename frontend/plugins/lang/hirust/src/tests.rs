@@ -88,6 +88,53 @@ fn rust_blocks_highlight_for_real() {
 }
 
 #[test]
+fn identifiers_carry_reference_spans() {
+    let store = &imba::store::Store::new();
+    let ui = editor::test_document::test_ui();
+    let source = "title\n\n```rust\nfn main() { let x = 1; }\n```\n";
+    let content_start = source.find("fn main").unwrap() as u32;
+    let fonts = editor::test_document::test_fonts_collection();
+    let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &test_theme());
+    let _editor = document.add_editor(
+        400.0,
+        None,
+        editor::document::EditorBuild::Bounded,
+        &[],
+        store,
+        ui,
+        &fonts,
+        &test_theme(),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
+        .expect("document has a parse")
+        .run_reparse();
+    document.apply_reparse_outcome(
+        outcome,
+        store,
+        ui,
+        &fonts,
+        &test_theme(),
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    let at = |needle: &str| content_start + "fn main() { let x = 1; }".find(needle).unwrap() as u32;
+    assert_eq!(
+        document.link_range_at(at("main")),
+        Some(at("main")..at("main") + 4),
+        "a function name is a link candidate"
+    );
+    assert_eq!(
+        document.link_range_at(at("x")),
+        Some(at("x")..at("x") + 1),
+        "a local is a link candidate"
+    );
+    assert_eq!(document.link_range_at(at("fn")), None, "keywords are not");
+    assert_eq!(document.link_range_at(at("1")), None, "literals are not");
+}
+
+#[test]
 fn unknown_languages_stay_plain() {
     assert!(languages().get("cobol").is_none());
 }

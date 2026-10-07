@@ -35,6 +35,7 @@ struct Entry {
     width_bits: u32,
     selected: bool,
     marked: Option<Range<u32>>,
+    hovered: Option<Range<u32>>,
     last_use: u64,
 }
 
@@ -71,6 +72,7 @@ pub(crate) fn shaped(
     line: Range<u32>,
     selected: bool,
     marked: Option<Range<u32>>,
+    hovered: Option<Range<u32>>,
     shape: impl FnOnce() -> ShapedLine,
 ) -> Rc<ShapedLine> {
     CACHE.with(|cell| {
@@ -88,6 +90,7 @@ pub(crate) fn shaped(
                     && entry.width_bits == stamp.width_bits
                     && entry.selected == selected
                     && entry.marked == marked
+                    && entry.hovered == hovered
                     && entry.theme == stamp.theme
                     && (entry.markup_generation == stamp.markup_generation
                         || !(stamp.markup_changed_since)(entry.markup_generation, line.clone()))
@@ -123,6 +126,7 @@ pub(crate) fn shaped(
                 width_bits: stamp.width_bits,
                 selected,
                 marked,
+                hovered,
                 last_use: clock,
             },
         );

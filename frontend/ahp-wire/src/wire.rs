@@ -1882,6 +1882,66 @@ impl LspClient for WireHost {
                 .map_err(|error| format!("lsp/{method}: {error}"))
         }))
     }
+
+    fn lsp_diagnostics(
+        &self,
+        session: crate::client::SessionUri,
+    ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
+        let session = session.into_string();
+        Box::pin(self.run_ask(move |active| async move {
+            let params = himark_ahp_ext_types::lsp::LspDiagnosticsParams { channel: session };
+            let result: himark_ahp_ext_types::lsp::LspDiagnosticsChannelResult = active
+                .client
+                .request("lsp/diagnostics", params)
+                .await
+                .map_err(|error| format!("lsp/diagnostics: {error}"))?;
+            Ok(crate::client::ChannelUri::new(result.channel))
+        }))
+    }
+
+    fn subscribe_lsp_diagnostics(
+        &self,
+        channel: crate::client::ChannelUri,
+    ) -> ClientFuture<Result<himark_ahp_ext_types::lsp::DiagnosticsState, String>> {
+        let channel = channel.into_string();
+        let last_seen = Arc::clone(&self.last_seen);
+        let tag = self.tag.clone();
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_ext(&active, channel, last_seen, tag).await?;
+                serde_json::from_value(result["snapshot"]["state"].clone())
+                    .map_err(|error| format!("lsp diagnostics snapshot: {error}"))
+            }
+        }))
+    }
+
+    fn poll_lsp_diagnostics(
+        &self,
+        channel: crate::client::ChannelUri,
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::lsp::DiagnosticsPublished>> {
+        let channel = channel.into_string();
+        let polled = self.poll_channel(channel);
+        Box::pin(async move {
+            polled
+                .await
+                .into_iter()
+                .filter_map(|action| match action {
+                    StateAction::Unknown(value)
+                        if value["type"]
+                            == himark_ahp_ext_types::lsp::LSP_DIAGNOSTICS_PUBLISHED =>
+                    {
+                        serde_json::from_value(value).ok()
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+    }
+
+    fn unsubscribe_lsp_diagnostics(&self, channel: &crate::client::ChannelUri) {
+        let _ = self.unsubscribe_channel(channel.as_str().to_owned());
+    }
 }
 
 impl ResourceClient for WireHost {

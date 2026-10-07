@@ -253,10 +253,11 @@ impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand,
                 );
         }
 
-        if let Event::HitTest { point, .. } = event {
+        if let Event::HitTest { point, mods, .. } = event {
             let missed = Event::HitTest {
                 point: *point,
                 miss: true,
+                mods: *mods,
             };
             return self
                 .base

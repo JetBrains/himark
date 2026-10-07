@@ -150,6 +150,7 @@ impl WindowedCommand for EnterSessionWork {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 for folder in folders {
                     ahp_comments::ensure(store, state.comments_wire(), &folder, fx);
+                    ahp_lsp::diagnostics::ensure(store, state.diagnostics_wire(), &folder, fx);
                 }
             });
         }

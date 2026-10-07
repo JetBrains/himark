@@ -370,7 +370,10 @@ pub trait DocumentsClient: Send + Sync + 'static {
     fn unsubscribe_document(&self, channel: &ChannelUri) -> ClientFuture<()>;
 }
 
-/// The LSP facet: the raw lsp@1 pass-through.
+/// The LSP facet: the raw lsp@1 pass-through, plus the diagnostics
+/// channel — the extension's one server-push surface
+/// (docs/ahp/ahp-lsp.md §6), with channel-method defaults so bare
+/// pass-through hosts stay valid.
 pub trait LspClient: Send + Sync + 'static {
     fn lsp(
         &self,
@@ -378,6 +381,37 @@ pub trait LspClient: Send + Sync + 'static {
         method: String,
         params: serde_json::Value,
     ) -> ClientFuture<Result<serde_json::Value, String>>;
+
+    /// `lsp/diagnostics`: mint-or-find the session's diagnostics
+    /// channel (idempotent).
+    fn lsp_diagnostics(&self, session: SessionUri) -> ClientFuture<Result<ChannelUri, String>> {
+        let _ = session;
+        Box::pin(std::future::ready(Err(
+            "lsp/diagnostics not served".to_owned()
+        )))
+    }
+
+    fn subscribe_lsp_diagnostics(
+        &self,
+        channel: ChannelUri,
+    ) -> ClientFuture<Result<himark_ahp_ext_types::lsp::DiagnosticsState, String>> {
+        let _ = channel;
+        Box::pin(std::future::ready(Err(
+            "lsp diagnostics channel not served".to_owned(),
+        )))
+    }
+
+    fn poll_lsp_diagnostics(
+        &self,
+        channel: ChannelUri,
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::lsp::DiagnosticsPublished>> {
+        let _ = channel;
+        Box::pin(std::future::ready(Vec::new()))
+    }
+
+    fn unsubscribe_lsp_diagnostics(&self, channel: &ChannelUri) {
+        let _ = channel;
+    }
 }
 
 /// One session's channel digest: the provider, chats, working

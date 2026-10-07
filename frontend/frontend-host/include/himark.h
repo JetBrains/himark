@@ -78,6 +78,16 @@ typedef struct {
     uint32_t length;
 } HimarkRange;
 
+/**
+ * The pointer event's answer across the FFI: `changed` owes a frame;
+ * `shape` is 0 for the platform default arrow, 1 for the pointing
+ * hand. The shell applies the shape right away and stores nothing.
+ */
+typedef struct {
+    bool changed;
+    uint32_t shape;
+} HimarkPointed;
+
 typedef struct {
     const char *ptr;
     uintptr_t len;
@@ -154,7 +164,17 @@ float himark_toolbar_height(HimarkEngine *engine);
 
 bool himark_mouse_drag(HimarkEngine *engine, uint64_t window, float x, float y, uint32_t mods);
 
-bool himark_mouse_move(HimarkEngine *engine, uint64_t window, float x, float y);
+HimarkPointed himark_modifiers_changed(HimarkEngine *engine,
+                                       uint64_t window,
+                                       float x,
+                                       float y,
+                                       uint32_t mods);
+
+HimarkPointed himark_mouse_move(HimarkEngine *engine,
+                                uint64_t window,
+                                float x,
+                                float y,
+                                uint32_t mods);
 
 bool himark_mouse_up(HimarkEngine *engine, uint64_t window, float x, float y);
 

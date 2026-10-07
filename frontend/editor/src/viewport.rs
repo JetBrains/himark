@@ -318,15 +318,38 @@ impl EditorViewport {
             let inline_start = viewport.inline.len();
             viewport.inline.extend(inline_scratch.iter().cloned());
 
+            // Inline decoration intervals are LINE-LOCAL, like the
+            // sweep's (`classify_line_marks` rebases by the line
+            // start); an absolute range maps out of the display
+            // tables and silently vanishes.
             if let Some(marked) = &state.marked {
                 let lo = marked.start.max(byte_start);
                 let hi = marked.end.min(byte_end);
                 if lo < hi {
                     viewport.inline.push(TextDecorationInterval {
-                        range: lo..hi,
+                        range: lo - byte_start..hi - byte_start,
                         id: crate::theme::StyleId::Composing,
                     });
                 }
+            }
+            if let Some(hovered) = &state.hovered_link {
+                let lo = hovered.start.max(byte_start);
+                let hi = hovered.end.min(byte_end);
+                if lo < hi {
+                    viewport.inline.push(TextDecorationInterval {
+                        range: lo - byte_start..hi - byte_start,
+                        id: crate::theme::StyleId::Link,
+                    });
+                }
+            }
+            if viewport.inline.len() > inline_start + 1
+                && (state.marked.is_some() || state.hovered_link.is_some())
+            {
+                // The shaping walk requires start-ordered decorations
+                // (`add_text_slice` never looks back); the state
+                // intervals appended behind the sweep's sorted spans
+                // must fold into that order.
+                viewport.inline[inline_start..].sort_by_key(|interval| interval.range.start);
             }
             let inline_end = viewport.inline.len();
             let hidden_start = viewport.hidden.len();
@@ -346,11 +369,17 @@ impl EditorViewport {
                     let hi = marked.end.min(byte_end);
                     (lo < hi).then_some(lo..hi)
                 });
+                let hovered = state.hovered_link.as_ref().and_then(|hovered| {
+                    let lo = hovered.start.max(byte_start);
+                    let hi = hovered.end.min(byte_end);
+                    (lo < hi).then_some(lo..hi)
+                });
                 Some(crate::shape_cache::shaped(
                     &stamp,
                     line_range.clone(),
                     selected,
                     marked,
+                    hovered,
                     || {
                         shaped_lines += 1;
                         ShapedLine::new(

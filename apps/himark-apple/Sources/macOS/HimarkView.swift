@@ -173,11 +173,39 @@ final class HimarkView: NSView, NSTextInputClient {
 
     override func mouseMoved(with event: NSEvent) {
         let (x, y) = devicePoint(event)
-        if engine.mouseMove(window: windowId, x: x, y: y) { request() }
+        let pointed = engine.mouseMove(window: windowId, x: x, y: y, mods: himarkMods(event))
+        if pointed.changed { request() }
+        applyPointerShape(pointed.shape)
+    }
+
+    // Modifier-gated hover looks (the cmd-hover link) follow the keys
+    // without pointer motion: re-hit-test under the standing pointer.
+    override func flagsChanged(with event: NSEvent) {
+        if let window {
+            let location = window.mouseLocationOutsideOfEventStream
+            let p = convert(location, from: nil)
+            if bounds.contains(p) {
+                let s = metalLayer.contentsScale
+                let (x, y) = (Float(p.x * s), Float((bounds.height - p.y) * s))
+                let pointed = engine.modifiersChanged(
+                    window: windowId, x: x, y: y, mods: himarkMods(event))
+                if pointed.changed { request() }
+                applyPointerShape(pointed.shape)
+            }
+        }
+        super.flagsChanged(with: event)
+    }
+
+    private func applyPointerShape(_ shape: UInt32) {
+        switch shape {
+        case 1: NSCursor.pointingHand.set()
+        default: NSCursor.arrow.set()
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         if engine.mouseLeft(window: windowId) { request() }
+        NSCursor.arrow.set()
     }
 
     override func updateTrackingAreas() {

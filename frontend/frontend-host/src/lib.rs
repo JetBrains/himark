@@ -20,7 +20,18 @@ use himark::app::Application;
 use himark::app_ext::AppExt;
 use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
+pub use imba::event::PointerShape;
 use imba::event::{Event, Key, MouseButton};
+
+/// A pointer event's answer: whether a frame is owed, and the shape
+/// the pointer takes over what the hit test found. Derived from this
+/// event alone — the shell drives the platform cursor from it and
+/// keeps nothing, so no stale shape can stick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pointed {
+    pub changed: bool,
+    pub shape: PointerShape,
+}
 use skia_safe::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
@@ -936,15 +947,25 @@ impl HimarkEngine {
         )
     }
 
-    pub fn mouse_move(&mut self, window: u64, x: f32, y: f32) -> bool {
+    pub fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
         let size = self.window_size(window);
-        self.app.dispatch(
+        let (changed, shape) = self.app.dispatch_pointed(
             wid(window),
             Event::MouseMove {
                 point: Point::new(x, y),
+                mods: map_mods(mods),
             },
             size,
-        )
+        );
+        Pointed { changed, shape }
+    }
+
+    /// The shell's modifiers report (macOS `flagsChanged`, winit
+    /// `ModifiersChanged`): a mouse move at the standing pointer's
+    /// position, so modifier-gated hover looks (the cmd-hover link
+    /// underline) re-hit-test without pointer motion.
+    pub fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
+        self.mouse_move(window, x, y, mods)
     }
 
     pub fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool {
@@ -1687,16 +1708,57 @@ pub unsafe extern "C" fn himark_mouse_drag(
         .map_or(false, |engine| engine.mouse_drag(window, x, y, mods))
 }
 
+/// The pointer event's answer across the FFI: `changed` owes a frame;
+/// `shape` is 0 for the platform default arrow, 1 for the pointing
+/// hand. The shell applies the shape right away and stores nothing.
+#[repr(C)]
+pub struct HimarkPointed {
+    pub changed: bool,
+    pub shape: u32,
+}
+
+fn pointed(pointed: Option<Pointed>) -> HimarkPointed {
+    let pointed = pointed.unwrap_or(Pointed {
+        changed: false,
+        shape: PointerShape::Default,
+    });
+    HimarkPointed {
+        changed: pointed.changed,
+        shape: match pointed.shape {
+            PointerShape::Default => 0,
+            PointerShape::Pointer => 1,
+        },
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_modifiers_changed(
+    engine: *mut HimarkEngine,
+    window: u64,
+    x: f32,
+    y: f32,
+    mods: u32,
+) -> HimarkPointed {
+    pointed(
+        engine
+            .as_mut()
+            .map(|engine| engine.modifiers_changed(window, x, y, mods)),
+    )
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn himark_mouse_move(
     engine: *mut HimarkEngine,
     window: u64,
     x: f32,
     y: f32,
-) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.mouse_move(window, x, y))
+    mods: u32,
+) -> HimarkPointed {
+    pointed(
+        engine
+            .as_mut()
+            .map(|engine| engine.mouse_move(window, x, y, mods)),
+    )
 }
 
 #[no_mangle]
@@ -2148,6 +2210,8 @@ fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
 
 #[cfg(test)]
 mod chat_flow_tests;
+#[cfg(test)]
+mod diagnostics_flow_tests;
 #[cfg(test)]
 mod findroute_tests;
 #[cfg(test)]

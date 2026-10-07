@@ -43,11 +43,21 @@ pub fn scroll(app: &mut Application, delta_y: f32) -> bool {
 }
 
 pub fn mouse_move(app: &mut Application, x: f32, y: f32) -> bool {
+    mouse_move_with_mods(app, x, y, imba::event::Modifiers::default())
+}
+
+pub fn mouse_move_with_mods(
+    app: &mut Application,
+    x: f32,
+    y: f32,
+    mods: imba::event::Modifiers,
+) -> bool {
     let size = app.viewport_size();
     app.dispatch(
         app.sole_window(),
         Event::MouseMove {
             point: Point::new(x, y),
+            mods,
         },
         size,
     )

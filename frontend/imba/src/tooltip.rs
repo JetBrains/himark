@@ -337,7 +337,7 @@ impl<'a, C: 'a> Widget<'a, TooltipCommand<C>> for TooltipWidget<'a, C> {
     ) -> EventResult<TooltipCommand<C>> {
         let inner = self.inner.handle_event(arena, event, viewport);
         let mine = match event {
-            Event::HitTest { point, miss } => {
+            Event::HitTest { point, miss, .. } => {
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
                 match (inside, self.active) {
                     (true, _) => EventResult::Command(TooltipCommand::Moved(*point)),
@@ -499,6 +499,7 @@ mod tests {
             Event::HitTest {
                 point: inside,
                 miss: false,
+                mods: Default::default(),
             },
         );
         assert!(!view.showing(), "arming, not shown");
@@ -523,6 +524,7 @@ mod tests {
             Event::HitTest {
                 point: Point::new(50.0, 30.0),
                 miss: false,
+                mods: Default::default(),
             },
         );
         assert!(view.showing(), "the tip walks across rows");
@@ -532,6 +534,7 @@ mod tests {
             Event::HitTest {
                 point: Point::new(500.0, 300.0),
                 miss: false,
+                mods: Default::default(),
             },
         );
         assert!(!view.showing(), "leaving hides");
@@ -546,6 +549,7 @@ mod tests {
             Event::HitTest {
                 point: Point::new(50.0, 10.0),
                 miss: false,
+                mods: Default::default(),
             },
         );
         drive(
@@ -588,6 +592,7 @@ mod tests {
             &Event::HitTest {
                 point: Point::new(500.0, 300.0),
                 miss: false,
+                mods: Default::default(),
             },
             Rect::from_wh(200.0, 40.0),
         ) {
@@ -601,6 +606,7 @@ mod tests {
             Event::HitTest {
                 point: Point::new(50.0, 39.9),
                 miss: false,
+                mods: Default::default(),
             },
         );
         drive(
@@ -608,6 +614,7 @@ mod tests {
             Event::HitTest {
                 point: Point::new(50.0, 45.0),
                 miss: false,
+                mods: Default::default(),
             },
         );
         assert!(!view.showing());

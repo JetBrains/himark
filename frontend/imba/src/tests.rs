@@ -70,7 +70,7 @@ impl Widget<'_, Command> for HitBox {
                 button: MouseButton::Left,
                 ..
             } => EventResult::Command(Command::Hit(self.name, *point)),
-            Event::HitTest { point, miss } => {
+            Event::HitTest { point, miss, .. } => {
                 use skia_safe::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
                 EventResult::Command(Command::Probe(self.name, inside))
@@ -142,6 +142,7 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
         &Event::HitTest {
             point: Point::new(18.0, 22.0),
             miss: false,
+            mods: Default::default(),
         },
         root_viewport(),
     );
@@ -155,6 +156,7 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
         &Event::HitTest {
             point: Point::new(18.0, 22.0),
             miss: true,
+            mods: Default::default(),
         },
         root_viewport(),
     );
@@ -171,6 +173,7 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
         &Event::HitTest {
             point: Point::new(95.0, 95.0),
             miss: false,
+            mods: Default::default(),
         },
         root_viewport(),
     );
@@ -190,6 +193,7 @@ fn result_commands(result: EventResult<Command>) -> Vec<Command> {
         EventResult::Ignored => panic!("expected commands, got Ignored"),
         EventResult::Handled => panic!("expected commands, got Handled"),
         EventResult::Reveal(rect) => panic!("expected commands, got Reveal({rect:?})"),
+        EventResult::Pointer { commands, .. } => commands,
     }
 }
 
@@ -654,6 +658,7 @@ fn result_command(result: EventResult<Command>) -> Command {
         EventResult::Ignored => panic!("expected command, got ignored"),
         EventResult::Commands(_) => panic!("expected one command, got a batch"),
         EventResult::Reveal(_) => panic!("expected command, got a reveal"),
+        EventResult::Pointer { .. } => panic!("expected command, got a pointer answer"),
     }
 }
 
@@ -2545,5 +2550,39 @@ mod row_reveal {
             )),
             "a visible row satisfies in place"
         );
+    }
+}
+
+/// A hit test's pointer answer survives the merge: the hit child's
+/// hand beats its missed siblings' arrows, and every command rides.
+#[test]
+fn a_pointer_answer_merges_shape_and_commands() {
+    use crate::event::PointerShape;
+    let hand: EventResult<u32> = EventResult::Pointer {
+        shape: PointerShape::Pointer,
+        commands: vec![1],
+    };
+    let arrow: EventResult<u32> = EventResult::Pointer {
+        shape: PointerShape::Default,
+        commands: vec![2],
+    };
+    match arrow.merge(hand).merge(EventResult::Command(3)) {
+        EventResult::Pointer { shape, commands } => {
+            assert_eq!(shape, PointerShape::Pointer);
+            assert_eq!(commands, vec![2, 1, 3]);
+        }
+        _ => panic!("the pointer answer survives the merge"),
+    }
+    let plain: EventResult<u32> = EventResult::Commands(vec![4]);
+    let answered = plain.merge(EventResult::Pointer {
+        shape: PointerShape::Default,
+        commands: Vec::new(),
+    });
+    match answered {
+        EventResult::Pointer { shape, commands } => {
+            assert_eq!(shape, PointerShape::Default);
+            assert_eq!(commands, vec![4]);
+        }
+        _ => panic!("a hit test with no hand still answers the arrow"),
     }
 }

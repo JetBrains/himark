@@ -187,6 +187,39 @@ impl EffectHandler<crate::effects::PollChangesetEffect> for HandlePollChangeset 
     }
 }
 
+pub struct HandleLspDiagnosticsChannel;
+
+impl EffectHandler<crate::effects::LspDiagnosticsChannelEffect> for HandleLspDiagnosticsChannel {
+    async fn handle(
+        &self,
+        effect: crate::effects::LspDiagnosticsChannelEffect,
+    ) -> Result<crate::client::ChannelUri, String> {
+        effect.client.lsp_diagnostics(effect.session).await
+    }
+}
+
+pub struct HandleSubscribeLspDiagnostics;
+
+impl EffectHandler<crate::effects::SubscribeLspDiagnosticsEffect> for HandleSubscribeLspDiagnostics {
+    async fn handle(
+        &self,
+        effect: crate::effects::SubscribeLspDiagnosticsEffect,
+    ) -> Result<himark_ahp_ext_types::lsp::DiagnosticsState, String> {
+        effect.client.subscribe_lsp_diagnostics(effect.channel).await
+    }
+}
+
+pub struct HandlePollLspDiagnostics;
+
+impl EffectHandler<crate::effects::PollLspDiagnosticsEffect> for HandlePollLspDiagnostics {
+    async fn handle(
+        &self,
+        effect: crate::effects::PollLspDiagnosticsEffect,
+    ) -> Vec<himark_ahp_ext_types::lsp::DiagnosticsPublished> {
+        effect.client.poll_lsp_diagnostics(effect.channel).await
+    }
+}
+
 pub struct HandleSubscribeAnnotations;
 
 impl EffectHandler<crate::effects::SubscribeAnnotationsEffect> for HandleSubscribeAnnotations {

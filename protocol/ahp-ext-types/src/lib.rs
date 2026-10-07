@@ -6,5 +6,6 @@ pub type Uri = String;
 pub mod documents;
 pub mod history;
 pub mod locations;
+pub mod lsp;
 pub mod search;
 pub mod text;

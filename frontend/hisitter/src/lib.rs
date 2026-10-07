@@ -234,35 +234,48 @@ impl SyntaxLanguage for TreeSitterLanguage {
             replacement.push_styled(span, theme);
         }
 
-        if !self.outline_kinds.is_empty() {
-            let mut items: Vec<(Range<u32>, Range<u32>, Range<u32>)> = Vec::new();
-            for change in changed {
-                collect_outline(tree.root_node(), change, &self.outline_kinds, &mut items);
-            }
-            items.sort_by_key(|(node, _, _)| (node.start, node.end));
-            items.dedup();
-            let mut view = text.view();
-            for (node, title, name) in items {
-                let title = outline_title(&mut view, start, title);
-                if !title.is_empty() {
-                    replacement.push_outline(node, editor::markup::OutlineItem { title });
-                    if name.start < name.end {
-                        replacement.push_styled(name, StyleId::DeclarationName);
-                    }
+        // Everything the tree itself tells us — link candidates
+        // (approximately every identifier leaf, refinable per
+        // language), foldables and outline items — harvests in ONE
+        // iterative TreeCursor walk over the changed ranges: the
+        // cursor's own stack is the context, no recursion, no second
+        // traversal.
+        let mut harvest = Harvest::default();
+        harvest_structure(
+            tree.root_node(),
+            changed,
+            &self.fold_kinds,
+            &self.outline_kinds,
+            &mut harvest,
+        );
+
+        harvest.links.sort_by_key(|span| (span.start, span.end));
+        harvest.links.dedup();
+        harvest.links.truncate(MAX_TOKENS_PER_BLOCK);
+        for span in harvest.links {
+            invalidated.push(span.clone());
+            replacement.push_styled(span, StyleId::Reference);
+        }
+
+        harvest.outline.sort_by_key(|(node, _, _)| (node.start, node.end));
+        harvest.outline.dedup();
+        let mut view = text.view();
+        for (node, title, name) in harvest.outline {
+            let title = outline_title(&mut view, start, title);
+            if !title.is_empty() {
+                replacement.push_outline(node, editor::markup::OutlineItem { title });
+                if name.start < name.end {
+                    replacement.push_styled(name, StyleId::DeclarationName);
                 }
             }
         }
 
-        if !self.fold_kinds.is_empty() {
-            let mut foldables: Vec<Range<u32>> = Vec::new();
-            for change in changed {
-                collect_foldables(tree.root_node(), change, &self.fold_kinds, &mut foldables);
-            }
-            foldables.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
-            foldables.dedup();
-            for span in foldables {
-                replacement.push_foldable(span);
-            }
+        harvest
+            .foldables
+            .sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
+        harvest.foldables.dedup();
+        for span in harvest.foldables {
+            replacement.push_foldable(span);
         }
     }
 
@@ -274,53 +287,83 @@ impl SyntaxLanguage for TreeSitterLanguage {
     }
 }
 
-fn collect_foldables(
-    node: tree_sitter::Node,
-    range: &Range<u32>,
-    kinds: &[&'static str],
-    out: &mut Vec<Range<u32>>,
-) {
-    let start = node.start_byte() as u32;
-    let end = node.end_byte() as u32;
-    if end <= range.start || start >= range.end {
-        return;
-    }
-    if kinds.contains(&node.kind()) {
-        if let Some(interior) = fold_interior(node) {
-            out.push(interior);
-        }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_foldables(child, range, kinds, out);
-    }
+#[derive(Default)]
+struct Harvest {
+    links: Vec<Range<u32>>,
+    foldables: Vec<Range<u32>>,
+    outline: Vec<(Range<u32>, Range<u32>, Range<u32>)>,
 }
 
-fn collect_outline(
-    node: tree_sitter::Node,
-    range: &Range<u32>,
-    kinds: &[(&'static str, bool)],
-    out: &mut Vec<(Range<u32>, Range<u32>, Range<u32>)>,
+/// Does the node's span intersect any changed range? `changed` is
+/// sorted by start; one partition point answers.
+fn intersects_changed(changed: &[Range<u32>], start: u32, end: u32) -> bool {
+    let at = changed.partition_point(|range| range.end <= start);
+    changed.get(at).is_some_and(|range| range.start < end)
+}
+
+/// ONE iterative pre-order walk — a `TreeCursor` whose own stack is
+/// the traversal context — collecting every tree-derived product at
+/// once: identifier leaves as link candidates, fold interiors,
+/// outline items. Subtrees outside the changed ranges are skipped
+/// whole; nothing recurses and nothing walks upward (`goto_parent`
+/// pops the cursor's stack).
+fn harvest_structure(
+    root: tree_sitter::Node,
+    changed: &[Range<u32>],
+    fold_kinds: &[&'static str],
+    outline_kinds: &[(&'static str, bool)],
+    out: &mut Harvest,
 ) {
-    let start = node.start_byte() as u32;
-    let end = node.end_byte() as u32;
-    if end <= range.start || start >= range.end {
+    let mut changed: Vec<Range<u32>> = changed.to_vec();
+    changed.sort_by_key(|range| (range.start, range.end));
+    if changed.is_empty() {
         return;
     }
-    if let Some((_, requires_body)) = kinds.iter().find(|(kind, _)| *kind == node.kind()) {
-        if !requires_body || body_of(node).is_some() {
-            if let Some(named) = title_node(node) {
-                out.push((
-                    start..end,
-                    start..named.end_byte() as u32,
-                    named.start_byte() as u32..named.end_byte() as u32,
-                ));
+    let mut cursor = root.walk();
+    loop {
+        let node = cursor.node();
+        let start = node.start_byte() as u32;
+        let end = node.end_byte() as u32;
+        let mut descend = false;
+        if intersects_changed(&changed, start, end) {
+            if node.child_count() == 0 {
+                if start < end && node.is_named() && node.kind().contains("identifier") {
+                    out.links.push(start..end);
+                }
+            } else {
+                if fold_kinds.contains(&node.kind()) {
+                    if let Some(interior) = fold_interior(node) {
+                        out.foldables.push(interior);
+                    }
+                }
+                if let Some((_, requires_body)) = outline_kinds
+                    .iter()
+                    .find(|(kind, _)| *kind == node.kind())
+                {
+                    if !requires_body || body_of(node).is_some() {
+                        if let Some(named) = title_node(node) {
+                            out.outline.push((
+                                start..end,
+                                start..named.end_byte() as u32,
+                                named.start_byte() as u32..named.end_byte() as u32,
+                            ));
+                        }
+                    }
+                }
+                descend = true;
             }
         }
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_outline(child, range, kinds, out);
+        if descend && cursor.goto_first_child() {
+            continue;
+        }
+        loop {
+            if cursor.goto_next_sibling() {
+                break;
+            }
+            if !cursor.goto_parent() {
+                return;
+            }
+        }
     }
 }
 

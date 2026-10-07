@@ -271,8 +271,12 @@ impl Engine {
         self.inner.mouse_drag(self.window, x, y, mods)
     }
 
-    fn mouse_move(&mut self, x: f32, y: f32) -> bool {
-        self.inner.mouse_move(self.window, x, y)
+    fn mouse_move(&mut self, x: f32, y: f32, mods: u32) -> himark_api::Pointed {
+        self.inner.mouse_move(self.window, x, y, mods)
+    }
+
+    fn modifiers_changed(&mut self, x: f32, y: f32, mods: u32) -> himark_api::Pointed {
+        self.inner.modifiers_changed(self.window, x, y, mods)
     }
 
     fn mouse_up(&mut self, x: f32, y: f32) -> bool {
@@ -1128,6 +1132,17 @@ impl WinitHost {
         self.event_changed(changed);
     }
 
+    fn apply_pointer_shape(&self, shape: himark_api::PointerShape) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let icon = match shape {
+            himark_api::PointerShape::Pointer => winit::window::CursorIcon::Pointer,
+            himark_api::PointerShape::Default => winit::window::CursorIcon::Default,
+        };
+        window.window.set_cursor(winit::window::Cursor::Icon(icon));
+    }
+
     fn himark_mods(&self) -> u32 {
         let Some(window) = self.window.as_ref() else {
             return 0;
@@ -1419,8 +1434,10 @@ impl ApplicationHandler<UserEvent> for WinitHost {
                 } else if let Some((x, y)) =
                     self.content_point(position.x as f32, position.y as f32)
                 {
-                    let changed = self.engine.mouse_move(x, y);
-                    self.event_changed(changed);
+                    let mods = self.himark_mods();
+                    let pointed = self.engine.mouse_move(x, y, mods);
+                    self.apply_pointer_shape(pointed.shape);
+                    self.event_changed(pointed.changed);
                 }
             }
             WindowEvent::CursorLeft { .. } => {
@@ -1430,6 +1447,7 @@ impl ApplicationHandler<UserEvent> for WinitHost {
                 // A HitTest beyond any component's reach, or hover
                 // popups stick to the last in-window point.
                 let changed = self.engine.mouse_left();
+                self.apply_pointer_shape(himark_api::PointerShape::Default);
                 self.event_changed(changed);
             }
             WindowEvent::MouseInput {
@@ -1518,6 +1536,21 @@ impl ApplicationHandler<UserEvent> for WinitHost {
             WindowEvent::ModifiersChanged(modifiers) => {
                 if let Some(window) = self.window.as_mut() {
                     window.modifiers = modifiers.state();
+                }
+                // Re-hit-test under the standing pointer: modifier-
+                // gated hover looks (the cmd-hover link) follow the
+                // keys without pointer motion.
+                if let Some((x, y)) = self
+                    .window
+                    .as_ref()
+                    .and_then(|window| window.cursor_position)
+                    .map(|position| (position.x as f32, position.y as f32))
+                    .and_then(|(x, y)| self.content_point(x, y))
+                {
+                    let mods = self.himark_mods();
+                    let pointed = self.engine.modifiers_changed(x, y, mods);
+                    self.apply_pointer_shape(pointed.shape);
+                    self.event_changed(pointed.changed);
                 }
             }
             WindowEvent::KeyboardInput {

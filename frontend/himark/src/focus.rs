@@ -106,7 +106,7 @@ impl Application {
             EventResult::Command(command) => {
                 self.perform_batch(vec![command]);
             }
-            EventResult::Commands(commands) => {
+            EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
                 self.perform_batch(commands);
             }
             EventResult::Ignored | EventResult::Handled | EventResult::Reveal(_) => {}

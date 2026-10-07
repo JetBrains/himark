@@ -1126,7 +1126,7 @@ pub(crate) fn apply_attributes(
         text_style.set_font_style(FontStyle::new(weight, current.width(), slant));
     }
     let mut decorations = TextDecoration::empty();
-    if attributes.underline {
+    if attributes.underline || attributes.squiggle.is_some() {
         decorations |= TextDecoration::UNDERLINE;
     }
     if attributes.strikethrough {
@@ -1134,8 +1134,19 @@ pub(crate) fn apply_attributes(
     }
     if !decorations.is_empty() {
         text_style.set_decoration_type(decorations);
-        text_style.set_decoration_style(TextDecorationStyle::Solid);
-        text_style.set_decoration_color(attributes.color.unwrap_or_else(|| text_style.color()));
+        match attributes.squiggle {
+            // The diagnostics look wins the decoration lane: a wavy
+            // underline in the severity's color.
+            Some(color) => {
+                text_style.set_decoration_style(TextDecorationStyle::Wavy);
+                text_style.set_decoration_color(color);
+            }
+            None => {
+                text_style.set_decoration_style(TextDecorationStyle::Solid);
+                text_style
+                    .set_decoration_color(attributes.color.unwrap_or_else(|| text_style.color()));
+            }
+        }
     }
     if let Some(color) = attributes.color {
         text_style.set_color(color);

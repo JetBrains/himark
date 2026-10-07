@@ -200,7 +200,10 @@ impl Server {
                         "references": {},
                         "hover": {},
                         "publishDiagnostics": {},
-                        "synchronization": {},
+                        // `didSave` is what triggers rust-analyzer's
+                        // cargo-check pass (checkOnSave): without it only
+                        // the server's thin native diagnostics ever arrive.
+                        "synchronization": { "didSave": true },
 
                         "completion": { "completionItem": {} }
                     },
@@ -287,6 +290,20 @@ impl Server {
                 "textDocument": { "uri": uri, "version": document.version },
                 "contentChanges": changes,
             }),
+        );
+    }
+
+    /// The host dumped the mirror to disk: tell the server, so a
+    /// save-triggered pass (rust-analyzer's cargo check) runs and
+    /// publishes the workspace's real diagnostics.
+    pub(crate) fn document_saved(&self, uri: &str) {
+        let synced = self.synced.lock().expect("lsp synced");
+        if !synced.contains_key(uri) {
+            return;
+        }
+        self.notify(
+            "textDocument/didSave",
+            json!({ "textDocument": { "uri": uri } }),
         );
     }
 

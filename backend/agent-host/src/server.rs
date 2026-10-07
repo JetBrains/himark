@@ -3723,19 +3723,28 @@ impl Host {
         if let Err(error) = crate::uris::atomic_write(&path, text.as_bytes()) {
             return rpc::failure(id, INTERNAL, format!("{}: {error}", path.display()));
         }
-        self.update(|state| {
+        let dirs = self.update(|state| {
             let mirrored = state.sessions.iter().find_map(|(uri, session)| {
                 (session.mirrors.get(&params.uri) == Some(&params.channel))
                     .then(|| (uri.clone(), session.clone()))
             });
             let Some((owner, mut session)) = mirrored else {
-                return;
+                return None;
             };
             session
                 .disk_texts
                 .insert_mut(params.channel.clone(), text.clone());
+            let dirs = session
+                .state
+                .working_directories
+                .clone()
+                .unwrap_or_default();
             state.sessions.insert_mut(owner, session);
+            Some(dirs)
         });
+        if let Some(dirs) = dirs {
+            self.lsp_feed_save(&dirs, &params.uri);
+        }
         self.changes_touched(&path);
         rpc::success(
             id,
@@ -4269,7 +4278,7 @@ impl Host {
         let root = dirs
             .iter()
             .filter_map(|dir| crate::uris::file_path_str(dir))
-            .filter(|dir| path.starts_with(*dir))
+            .filter(|dir| under_dir(path, dir))
             .max_by_key(|dir| dir.len())?;
         row.map(|row| (PathBuf::from(root), row.command.clone()))
     }
@@ -4318,6 +4327,14 @@ impl Host {
         }
     }
 
+    fn lsp_feed_save(&self, dirs: &[String], uri: &str) {
+        if let Some((root, command)) = self.lsp_route(dirs, uri) {
+            if let Some(server) = self.lsp.ensure(&root, &command) {
+                server.document_saved(uri);
+            }
+        }
+    }
+
     fn ls_event(&self, server: &Arc<crate::lsp::Server>, event: crate::lsp::LsEvent) {
         match event {
             crate::lsp::LsEvent::Diagnostics {
@@ -4328,28 +4345,48 @@ impl Host {
                 let uid = server.uid_of(&uri, version).map(|uid| uid.to_string());
                 let path = crate::uris::file_path_str(&uri).unwrap_or(&uri).to_owned();
                 self.update(|state| {
-                    let sessions: Vec<(Uri, bool)> = state
-                        .lsp_diagnostics
+                    let empty = diagnostics.as_array().is_some_and(Vec::is_empty);
+                    // Every session whose working directories hold the
+                    // resource RETAINS the publish, subscribed or not:
+                    // the row minted here is the same one
+                    // `lsp/diagnostics` answers later, so a client
+                    // dialing after the language server's initial
+                    // burst still snapshots the standing diagnostics.
+                    let sessions: Vec<Uri> = state
+                        .sessions
                         .iter()
-                        .filter(|(_, entry)| {
-                            state.sessions.get(&entry.session).is_some_and(|session| {
-                                session
-                                    .state
-                                    .working_directories
-                                    .iter()
-                                    .flatten()
-                                    .filter_map(|dir| crate::uris::file_path_str(dir))
-                                    .any(|dir| path.starts_with(dir))
-                            })
+                        .filter(|(_, session)| {
+                            session
+                                .state
+                                .working_directories
+                                .iter()
+                                .flatten()
+                                .filter_map(|dir| crate::uris::file_path_str(dir))
+                                .any(|dir| under_dir(&path, dir))
                         })
-                        .map(|(channel, _)| {
-                            (
-                                channel.clone(),
-                                diagnostics.as_array().is_some_and(Vec::is_empty),
-                            )
-                        })
+                        .map(|(session, _)| session.clone())
                         .collect();
-                    for (channel, empty) in sessions {
+                    for session in sessions {
+                        let standing = state
+                            .lsp_diagnostics
+                            .iter()
+                            .find(|(_, held)| held.session == session)
+                            .map(|(channel, _)| channel.clone());
+                        let channel = match standing {
+                            Some(channel) => channel,
+                            None => {
+                                let channel =
+                                    format!("{}{}", LSP_DIAGNOSTICS_PREFIX, crate::uuid_v4());
+                                state.lsp_diagnostics.insert_mut(
+                                    channel.clone(),
+                                    LspDiagnostics {
+                                        session: session.clone(),
+                                        items: rpds::HashTrieMapSync::new_sync(),
+                                    },
+                                );
+                                channel
+                            }
+                        };
                         if let Some(entry) = state.lsp_diagnostics.get(&channel) {
                             let mut entry = entry.clone();
                             if empty {
@@ -4957,6 +4994,16 @@ const LSP_METHOD_NOT_ALLOWED: i32 = -33001;
 const LSP_NO_LANGUAGE_SERVER: i32 = -33002;
 const LSP_DIAGNOSTICS_PREFIX: &str = "ahp-lsp-diagnostics:/";
 
+/// Is `path` the directory `dir` or inside it? A string prefix is
+/// not containment: `/p/himark-jb/x.rs` is not under `/p/himark`.
+fn under_dir(path: &str, dir: &str) -> bool {
+    let dir = dir.trim_end_matches('/');
+    match path.strip_prefix(dir) {
+        Some(rest) => rest.is_empty() || rest.starts_with('/'),
+        None => false,
+    }
+}
+
 const LOCATIONS_PREFIX: &str = "ahp-locations:/";
 
 /// Files read only to derive result context stay bounded.
@@ -5506,5 +5553,19 @@ mod state_tests {
             before + 1,
             "the host keeps serving"
         );
+    }
+}
+
+#[cfg(test)]
+mod under_dir_tests {
+    use super::under_dir;
+
+    #[test]
+    fn containment_is_a_path_boundary_not_a_string_prefix() {
+        assert!(under_dir("/p/himark/src/a.rs", "/p/himark"));
+        assert!(under_dir("/p/himark/src/a.rs", "/p/himark/"));
+        assert!(under_dir("/p/himark", "/p/himark"));
+        assert!(!under_dir("/p/himark-jb/src/a.rs", "/p/himark"));
+        assert!(!under_dir("/p/him", "/p/himark"));
     }
 }

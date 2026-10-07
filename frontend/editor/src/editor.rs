@@ -81,6 +81,13 @@ pub struct Editor {
 
     pub(crate) marked: Option<Range<u32>>,
 
+    /// The link span under a command-held pointer — first-class VIEW
+    /// state, like `marked`: the viewport build styles it as a link
+    /// and the shape cache keys on it; no markup is ever written for
+    /// a hover. Set/cleared by `EditorCommand::HoverLink` on hit-test
+    /// transitions only.
+    pub(crate) hovered_link: Option<Range<u32>>,
+
     pub(crate) drag: Option<crate::caret::DragOrigin>,
 
     pub(crate) pair_managed: bool,
@@ -183,6 +190,7 @@ impl Editor {
             target_width: width,
             viewport: None,
             marked: None,
+            hovered_link: None,
             drag: None,
             pair_managed: false,
             placeholder: None,

@@ -63,6 +63,51 @@ impl EditorIdView {
         self.editor
     }
 
+    /// The cmd-click tail: the caret already sits at the clicked
+    /// position; if it lands on a linkable syntax span, the one
+    /// registered link follower performs there. No follower or no
+    /// span — the click stays a plain caret set.
+    fn follow_link(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut imba::effect::Effects<'_, EditorCommand>,
+    ) {
+        let Some(entry) = crate::dynamic::DocumentCommands::of(store)
+            .link_follower(self.documents)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(location) = crate::OpenDocuments::location(store, self.documents, self.document)
+        else {
+            return;
+        };
+        if !entry.offers_at(&location) {
+            return;
+        }
+        let Some(mut document) =
+            crate::OpenDocuments::document(store, self.documents, self.document)
+        else {
+            return;
+        };
+        if document.link_range_at(document.caret_byte(self.editor)).is_none() {
+            return;
+        }
+        entry.perform(
+            store,
+            ui,
+            self.documents,
+            self.document,
+            &mut document,
+            self.editor,
+            &location,
+            None,
+            fx,
+        );
+        crate::OpenDocuments::put_document(store, self.documents, self.document, document);
+    }
+
     pub fn gathered(&self, store: &Store) -> Option<EditorView> {
         let document = crate::OpenDocuments::document(store, self.documents, self.document)?;
         let mut view = EditorView {
@@ -147,12 +192,34 @@ impl View for EditorIdView {
                 return;
             }
         }
+        // A cmd-click is a caret set FIRST (below, as a plain click),
+        // then — if the clicked position sits on a linkable syntax
+        // span — the registered link follower (go-to-definition) runs
+        // at the fresh caret.
+        let (command, follow_link) = match command {
+            EditorCommand::Click {
+                point,
+                kind: editor::editor_view::ClickKind::Link,
+            } => (
+                EditorCommand::Click {
+                    point,
+                    kind: editor::editor_view::ClickKind::Set,
+                },
+                true,
+            ),
+            command => (command, false),
+        };
+
         let Some(mut view) = self.gathered(store) else {
             return;
         };
 
         view.perform(store, ui, command, fx);
         crate::OpenDocuments::put_document(store, self.documents, self.document, view.document);
+
+        if follow_link {
+            self.follow_link(store, ui, fx);
+        }
     }
 
     fn focus_data<'w>(

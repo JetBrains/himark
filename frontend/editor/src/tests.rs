@@ -5811,3 +5811,215 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
         "the landed rewrap re-aims at the anchored byte"
     );
 }
+
+#[test]
+fn a_hovered_link_styles_the_viewport() {
+    let store = &mut imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    // The span sits on the SECOND line: inline decoration intervals
+    // are line-local, so the push must rebase by the line start.
+    let mut document = plain_document("first line\nfn main() {}\n");
+    let editor = document.add_editor(
+        600.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &test_fonts(),
+        &test_theme(),
+        fx!(),
+    );
+
+    document.perform(
+        store,
+        ui,
+        editor,
+        crate::editor_view::EditorCommand::HoverLink(Some(14..18)),
+        fx!(),
+    );
+    assert_eq!(document.hovered_link(editor), Some(14..18));
+
+    let viewport = crate::viewport::EditorViewport::build(
+        &document,
+        editor,
+        0.0..10_000.0,
+        false,
+        false,
+        None,
+        store,
+        ui,
+        &test_fonts(),
+        &test_theme(),
+    );
+    assert!(
+        viewport
+            .inline
+            .iter()
+            .any(|interval| interval.range == (3..7) && interval.id == crate::theme::StyleId::Link),
+        "the hovered span renders with the link style, LINE-LOCAL: {:?}",
+        viewport
+            .inline
+            .iter()
+            .map(|interval| (interval.range.clone(), interval.id))
+            .collect::<Vec<_>>()
+    );
+
+    // The transition out erases the look.
+    document.perform(
+        store,
+        ui,
+        editor,
+        crate::editor_view::EditorCommand::HoverLink(None),
+        fx!(),
+    );
+    assert_eq!(document.hovered_link(editor), None);
+}
+
+/// A document-scoped diagnostics markup PAINTS: the severity's wavy
+/// underline reaches the pixels under the span, in the theme's color.
+#[test]
+fn a_diagnostic_span_paints_its_squiggle() {
+    let store = &imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    let theme = test_theme();
+    let fonts = test_fonts();
+    let mut document = crate::test_document::plain_document("fn main() {}\n");
+    let editor = document.add_editor(
+        400.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &fonts,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    let markup_id = crate::markup::MarkupId::mint();
+    document.ensure_document_markup(markup_id);
+    let mut builder = crate::markup::Markup::builder();
+    builder.push_styled(3..7, crate::theme::StyleId::DiagnosticError);
+    let replacement = builder.finish();
+    let changed = crate::markup::set_diff(document.feature_markup(markup_id), &replacement);
+    assert!(!changed.is_empty(), "the span is a change");
+    document.replace_markup(
+        markup_id,
+        replacement,
+        &changed,
+        store,
+        ui,
+        &fonts,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 60)).expect("surface");
+    let canvas = surface.canvas();
+    canvas.clear(skia_safe::Color::WHITE);
+    document.paint(
+        editor,
+        canvas,
+        skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
+        false,
+        store,
+        ui,
+        &fonts,
+        &theme,
+    );
+    let image = surface.image_snapshot();
+    let pixmap = image.peek_pixels().expect("raster pixels");
+    let bytes = pixmap.bytes().expect("pixel bytes");
+    let row_bytes = image.width() as usize * 4;
+    // The embedded theme's diagnostic_error squiggle is #ff5370.
+    let squiggle_pixels = (0..image.height() as usize)
+        .flat_map(|y| (0..image.width() as usize).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let px = &bytes[y * row_bytes + x * 4..y * row_bytes + x * 4 + 4];
+            // BGRA or RGBA: red dominant either way.
+            let (a, b, c) = (px[0], px[1], px[2]);
+            let red = a.max(c);
+            let blue = a.min(c);
+            red > 200 && b < 140 && blue < 160 && b > 40
+        })
+        .count();
+    assert!(
+        squiggle_pixels > 10,
+        "the wavy underline painted in the error color: {squiggle_pixels} pixels"
+    );
+}
+
+/// A ONE-CHARACTER span — rust-analyzer's mismatched-arg-count points
+/// at a single paren — still gets visible pixels.
+#[test]
+fn a_one_character_diagnostic_still_paints() {
+    let store = &imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    let theme = test_theme();
+    let fonts = test_fonts();
+    let mut document = crate::test_document::plain_document("fn main() {}\n");
+    let editor = document.add_editor(
+        400.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &fonts,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    let markup_id = crate::markup::MarkupId::mint();
+    document.ensure_document_markup(markup_id);
+    let mut builder = crate::markup::Markup::builder();
+    builder.push_styled(10..11, crate::theme::StyleId::DiagnosticError);
+    let replacement = builder.finish();
+    let changed = crate::markup::set_diff(document.feature_markup(markup_id), &replacement);
+    assert!(!changed.is_empty(), "the span is a change");
+    document.replace_markup(
+        markup_id,
+        replacement,
+        &changed,
+        store,
+        ui,
+        &fonts,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 60)).expect("surface");
+    let canvas = surface.canvas();
+    canvas.clear(skia_safe::Color::WHITE);
+    document.paint(
+        editor,
+        canvas,
+        skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
+        false,
+        store,
+        ui,
+        &fonts,
+        &theme,
+    );
+    let image = surface.image_snapshot();
+    let pixmap = image.peek_pixels().expect("raster pixels");
+    let bytes = pixmap.bytes().expect("pixel bytes");
+    let row_bytes = image.width() as usize * 4;
+    // The embedded theme's diagnostic_error squiggle is #ff5370.
+    let squiggle_pixels = (0..image.height() as usize)
+        .flat_map(|y| (0..image.width() as usize).map(move |x| (x, y)))
+        .filter(|(x, y)| {
+            let px = &bytes[y * row_bytes + x * 4..y * row_bytes + x * 4 + 4];
+            // BGRA or RGBA: red dominant either way.
+            let (a, b, c) = (px[0], px[1], px[2]);
+            let red = a.max(c);
+            let blue = a.min(c);
+            red > 200 && b < 140 && blue < 160 && b > 40
+        })
+        .count();
+    assert!(
+        squiggle_pixels > 0,
+        "the wavy underline painted in the error color: {squiggle_pixels} pixels"
+    );
+}

@@ -41,6 +41,32 @@ pub struct Modifiers {
     pub command: bool,
 }
 
+/// The pointer shape the shell should show — a hit test's answer
+/// (`EventResult::Pointer`), derived per pointer event and applied by
+/// the shell right away. Never stored: a stored shape is state to
+/// sync, and it stuck as a hand whenever the view that set it
+/// stopped being hit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PointerShape {
+    #[default]
+    Default,
+
+    /// The pointing hand — something under the pointer follows on
+    /// click.
+    Pointer,
+}
+
+impl PointerShape {
+    /// The shape a merge keeps: the hand under one child beats the
+    /// arrows its missed siblings answer.
+    pub fn or(self, other: PointerShape) -> PointerShape {
+        match self {
+            PointerShape::Default => other,
+            shape => shape,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum Event<'a> {
     Paint {
@@ -68,11 +94,13 @@ pub enum Event<'a> {
 
     MouseMove {
         point: Point,
+        mods: Modifiers,
     },
 
     HitTest {
         point: Point,
         miss: bool,
+        mods: Modifiers,
     },
     Scroll {
         point: Point,
@@ -113,6 +141,7 @@ impl Event<'_> {
         Event::HitTest {
             point: Point::new(-1.0e6, -1.0e6),
             miss: true,
+            mods: Modifiers::default(),
         }
     }
 
@@ -138,15 +167,19 @@ impl Event<'_> {
                 point.y += dy;
                 Event::MouseDrag { point, mods }
             }
-            Event::MouseMove { mut point } => {
+            Event::MouseMove { mut point, mods } => {
                 point.x += dx;
                 point.y += dy;
-                Event::MouseMove { point }
+                Event::MouseMove { point, mods }
             }
-            Event::HitTest { mut point, miss } => {
+            Event::HitTest {
+                mut point,
+                miss,
+                mods,
+            } => {
                 point.x += dx;
                 point.y += dy;
-                Event::HitTest { point, miss }
+                Event::HitTest { point, miss, mods }
             }
             Event::MouseUp { mut point } => {
                 point.x += dx;
@@ -224,6 +257,17 @@ pub enum EventResult<Command> {
     Commands(Vec<Command>),
 
     Reveal(Reveal),
+
+    /// A hit test's answer: the shape the pointer takes over what it
+    /// hit, beside the commands the hit raised. DERIVED per dispatch
+    /// — the shell applies it to the platform cursor and nothing
+    /// stores it, so there is no stale shape to sync (a stored one
+    /// stuck as a hand whenever the view that set it stopped being
+    /// hit).
+    Pointer {
+        shape: PointerShape,
+        commands: Vec<Command>,
+    },
 }
 
 /// A parameterized reveal: WHAT to show and HOW to place it.
@@ -288,6 +332,10 @@ impl<Command> EventResult<Command> {
                 EventResult::Commands(commands.into_iter().map(f).collect())
             }
             EventResult::Reveal(reveal) => EventResult::Reveal(reveal),
+            EventResult::Pointer { shape, commands } => EventResult::Pointer {
+                shape,
+                commands: commands.into_iter().map(f).collect(),
+            },
         }
     }
 
@@ -300,28 +348,34 @@ impl<Command> EventResult<Command> {
 
     pub fn merge(self, other: EventResult<Command>) -> EventResult<Command> {
         let mut reveal = None;
-        let mut commands = match self {
-            EventResult::Commands(commands) => commands,
-            EventResult::Command(command) => vec![command],
-            EventResult::Reveal(inner) => {
-                reveal = Some(inner);
-                Vec::new()
+        let mut shape: Option<PointerShape> = None;
+        let mut commands = Vec::new();
+        for result in [self, other] {
+            match result {
+                EventResult::Command(command) => commands.push(command),
+                EventResult::Commands(more) => match commands.is_empty() {
+                    true => commands = more,
+                    false => commands.extend(more),
+                },
+                EventResult::Reveal(inner) => reveal = reveal.or(Some(inner)),
+                // A hit test's answer survives the merge: the one
+                // child that was hit names the shape, its missed
+                // siblings answer the arrow.
+                EventResult::Pointer {
+                    shape: answered,
+                    commands: more,
+                } => {
+                    shape = Some(shape.unwrap_or_default().or(answered));
+                    commands.extend(more);
+                }
+                EventResult::Ignored | EventResult::Handled => {}
             }
-            _ => Vec::new(),
-        };
-        match other {
-            EventResult::Command(command) => commands.push(command),
-            EventResult::Commands(more) => match commands.is_empty() {
-                true => commands = more,
-                false => commands.extend(more),
-            },
-            EventResult::Reveal(inner) => reveal = reveal.or(Some(inner)),
-            _ => {}
         }
-        match (commands.is_empty(), reveal) {
-            (false, _) => EventResult::Commands(commands),
-            (true, Some(inner)) => EventResult::Reveal(inner),
-            (true, None) => EventResult::Ignored,
+        match (shape, commands.is_empty(), reveal) {
+            (Some(shape), _, _) => EventResult::Pointer { shape, commands },
+            (None, false, _) => EventResult::Commands(commands),
+            (None, true, Some(inner)) => EventResult::Reveal(inner),
+            (None, true, None) => EventResult::Ignored,
         }
     }
 }

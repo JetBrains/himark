@@ -171,8 +171,11 @@ dependencies = [
  "ahp-wire",
  "documents",
  "editor",
+ "himark-ahp-ext-types",
  "imba",
+ "rpds",
  "serde_json",
+ "text",
 ]
 
 [[package]]
@@ -185,6 +188,7 @@ dependencies = [
  "ahp-comments",
  "ahp-docsync",
  "ahp-locations",
+ "ahp-lsp",
  "ahp-types",
  "ahp-wire",
  "canvas",
@@ -2415,6 +2419,7 @@ dependencies = [
  "editor",
  "hikit",
  "himark",
+ "himark-ahp-ext-types",
  "imba",
  "locations",
  "myersdiff",

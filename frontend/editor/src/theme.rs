@@ -55,6 +55,18 @@ pub enum StyleId {
     BraceMatch,
 
     Occurrence,
+
+    /// An identifier the parse found — a goto-definition candidate
+    /// (docs/editor/highlight.md). Emitted by the tree-sitter pass
+    /// alongside the color spans; invisible at rest (the theme entry
+    /// is empty) — the hovered-link look is the editor's, not the
+    /// span's.
+    Reference,
+
+    DiagnosticError,
+    DiagnosticWarning,
+    DiagnosticInfo,
+    DiagnosticHint,
 }
 
 impl StyleId {
@@ -112,10 +124,15 @@ impl StyleId {
             Self::DeclarationName => 36,
             Self::BraceMatch => 37,
             Self::Occurrence => 38,
+            Self::Reference => 39,
+            Self::DiagnosticError => 40,
+            Self::DiagnosticWarning => 41,
+            Self::DiagnosticInfo => 42,
+            Self::DiagnosticHint => 43,
         }
     }
 
-    const SLOTS: usize = 39;
+    const SLOTS: usize = 44;
 
     fn all_slots() -> [StyleId; Self::SLOTS] {
         [
@@ -158,6 +175,11 @@ impl StyleId {
             Self::DeclarationName,
             Self::BraceMatch,
             Self::Occurrence,
+            Self::Reference,
+            Self::DiagnosticError,
+            Self::DiagnosticWarning,
+            Self::DiagnosticInfo,
+            Self::DiagnosticHint,
         ]
     }
 
@@ -199,6 +221,11 @@ impl StyleId {
             Self::DeclarationName => "declaration_name",
             Self::BraceMatch => "brace_match",
             Self::Occurrence => "occurrence",
+            Self::Reference => "reference",
+            Self::DiagnosticError => "diagnostic_error",
+            Self::DiagnosticWarning => "diagnostic_warning",
+            Self::DiagnosticInfo => "diagnostic_info",
+            Self::DiagnosticHint => "diagnostic_hint",
             Self::Quote => "quote",
             Self::HorizontalLine => "horizontal_line",
             Self::Indent(_) => "indent",
@@ -278,6 +305,10 @@ pub struct TextAttributes {
     /// with one contributes marks to the scroll track; a style whose
     /// ONLY policy is a stripe color paints nothing in the text.
     pub stripe: Option<Color>,
+
+    /// A wavy underline in this color — the diagnostics look. Wins
+    /// over the plain underline's solid style where both apply.
+    pub squiggle: Option<Color>,
 }
 
 #[derive(Clone)]
@@ -401,6 +432,9 @@ impl TextAttributes {
         if over.stripe.is_some() {
             self.stripe = over.stripe;
         }
+        if over.squiggle.is_some() {
+            self.squiggle = over.squiggle;
+        }
     }
 }
 
@@ -448,6 +482,8 @@ struct RawEntry {
     alignment: Option<String>,
     #[serde(default)]
     stripe: Option<String>,
+    #[serde(default)]
+    squiggle: Option<String>,
 }
 
 impl RawEntry {
@@ -496,6 +532,7 @@ impl RawEntry {
             inset: self.inset,
             block_height: self.block_height,
             stripe: self.stripe.as_deref().map(parse_color).transpose()?,
+            squiggle: self.squiggle.as_deref().map(parse_color).transpose()?,
         })
     }
 }

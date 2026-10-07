@@ -9,6 +9,7 @@ ahp = "0.9"
 ahp-changes = { path = "../ahp-changes" }
 ahp-chat = { path = "../ahp-chat" }
 ahp-comments = { path = "../ahp-comments" }
+ahp-lsp = { path = "../ahp-lsp" }
 ahp-docsync = { path = "../ahp-docsync" }
 ahp-locations = { path = "../ahp-locations" }
 ahp-wire = { path = "../ahp-wire" }

@@ -23,6 +23,13 @@ pub trait DocumentCommand: Send + Sync + 'static {
         !location.is_synthetic()
     }
 
+    /// A link follow (cmd-click on a linkable span) dispatches to the
+    /// one registered command that claims it — the shell decides by
+    /// what it registers (desktop: go-to-definition).
+    fn follows_link(&self) -> bool {
+        false
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn perform(
         &self,
@@ -100,5 +107,12 @@ impl DocumentCommands {
             .into_iter()
             .flatten()
             .chain(self.global.iter())
+    }
+
+    pub fn link_follower(
+        &self,
+        scope: imba::store::Id<OpenDocuments>,
+    ) -> Option<&Arc<dyn DocumentCommand>> {
+        self.iter(scope).find(|command| command.follows_link())
     }
 }

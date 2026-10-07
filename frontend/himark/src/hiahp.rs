@@ -323,4 +323,13 @@ pub fn register_all(app: &mut crate::app::Application) {
     app.register_handler::<ahp_wire::effects::PollAnnotationsEffect>(
         ::ahp_wire::registry::HandlePollAnnotations,
     );
+    app.register_handler::<ahp_wire::effects::LspDiagnosticsChannelEffect>(
+        ::ahp_wire::registry::HandleLspDiagnosticsChannel,
+    );
+    app.register_handler::<ahp_wire::effects::SubscribeLspDiagnosticsEffect>(
+        ::ahp_wire::registry::HandleSubscribeLspDiagnostics,
+    );
+    app.register_handler::<ahp_wire::effects::PollLspDiagnosticsEffect>(
+        ::ahp_wire::registry::HandlePollLspDiagnostics,
+    );
 }

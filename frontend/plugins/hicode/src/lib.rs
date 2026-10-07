@@ -221,6 +221,9 @@ impl documents::dynamic::DocumentCommand for GoDefinition {
     fn name(&self) -> String {
         "Go to Definition".to_owned()
     }
+    fn follows_link(&self) -> bool {
+        true
+    }
     fn perform(
         &self,
         store: &mut Store,

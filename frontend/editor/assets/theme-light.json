@@ -60,6 +60,20 @@
       "background": "#c8ccd6ea",
       "stripe": "#e05b6bc0"
     },
+    "diagnostic_error": {
+      "squiggle": "#e45649",
+      "stripe": "#e45649c8"
+    },
+    "diagnostic_warning": {
+      "squiggle": "#c18401",
+      "stripe": "#c18401b0"
+    },
+    "diagnostic_info": {
+      "squiggle": "#0184bc"
+    },
+    "diagnostic_hint": {
+      "squiggle": "#a0a1a7"
+    },
     "header1": {
       "bold": true,
       "font_size": 72.0,

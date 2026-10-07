@@ -218,7 +218,7 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
                 merged
             }
 
-            Event::HitTest { point, miss } => {
+            Event::HitTest { point, miss, mods } => {
                 let hit = match miss {
                     true => None,
                     false => self
@@ -231,6 +231,7 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
                     let event = Event::HitTest {
                         point: *point,
                         miss: Some(index) != hit,
+                        mods: *mods,
                     };
                     merged = merged.merge(child.handle_event(arena, &event, viewport));
                 }
