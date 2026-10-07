@@ -386,7 +386,7 @@ impl Application {
             registry.drawer_button = Some(crate::toc::toolbar_button());
         });
         crate::higent::chat_roads::install_shell_roads(&mut store);
-        crate::pane_services::install(&mut store);
+        crate::editor_accessories::install(&mut store);
         // The locations wash hook is no longer boot-global: the
         // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).

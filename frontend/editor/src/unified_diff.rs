@@ -33,6 +33,14 @@ pub enum UnifiedDiffCommand {
 
     Inline(EditorCommand),
     SetLayout(DiffLayout),
+
+    /// Code navigation landing INSIDE the diff, on whichever face is
+    /// worn: the inline editor, or the split's right half. A fold
+    /// strip hiding the byte lifts first; the face takes the caret
+    /// and reveals it.
+    GoTo {
+        byte: u32,
+    },
 }
 
 impl std::fmt::Display for UnifiedDiffCommand {
@@ -41,6 +49,7 @@ impl std::fmt::Display for UnifiedDiffCommand {
             UnifiedDiffCommand::Split(command) => command.fmt(out),
             UnifiedDiffCommand::Inline(command) => command.fmt(out),
             UnifiedDiffCommand::SetLayout(_) => out.write_str("set layout"),
+            UnifiedDiffCommand::GoTo { .. } => out.write_str("go to"),
         }
     }
 }
@@ -328,6 +337,46 @@ impl imba::View for UnifiedDiffView {
                     self.split.perform(store, ui, command, fx)
                 });
             }
+            UnifiedDiffCommand::GoTo { byte } => match self.layout {
+                DiffLayout::Split => {
+                    fx.scope(UnifiedDiffCommand::Split, |fx| {
+                        self.split
+                            .perform(store, ui, SplitDiffCommand::GoTo { byte }, fx)
+                    });
+                }
+                DiffLayout::Inline => {
+                    let byte = byte.min(self.split.right_len());
+                    if let Some(key) = self.split.fold_strip_at(byte) {
+                        fx.scope(UnifiedDiffCommand::Split, |fx| {
+                            self.split
+                                .adjust_fold(key, fold::FoldCommand::Remove, store, ui, fx)
+                        });
+                    }
+                    let Some(mut view) = self.inline_face(store) else {
+                        return;
+                    };
+                    let fonts = crate::env::ui_collection(store, ui);
+                    let theme = crate::env::Themes::of(store);
+                    fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                        view.set_caret(byte);
+                        view.focus_text();
+                        view.document.reveal_at_instant(
+                            view.editor,
+                            byte,
+                            store,
+                            ui,
+                            &fonts,
+                            &theme,
+                            fx,
+                        );
+                    });
+                    self.split.right.document = view.document;
+                    fx.scope(UnifiedDiffCommand::Split, |fx| {
+                        self.split.settle_after(None, None);
+                        self.split.pair_lane(fx);
+                    });
+                }
+            },
             UnifiedDiffCommand::Inline(command) => {
                 let fold = match &command {
                     EditorCommand::Inlay { key, command } => command

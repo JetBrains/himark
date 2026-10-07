@@ -23,6 +23,11 @@ editor = { path = "../editor" }
 hikit = { path = "../hikit" }
 imba = { path = "../imba" }
 ahp-lsp = { path = "../ahp-lsp" }
+canvas = { path = "../canvas", features = ["test-support"] }
+changesview = { path = "../changesview" }
+hicode = { path = "../plugins/hicode" }
+himarkdown = { path = "../plugins/himarkdown" }
+demo = { path = "../plugins/demo" }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 locations = { path = "../locations" }
 myersdiff = { path = "../myersdiff" }

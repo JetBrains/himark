@@ -635,3 +635,17 @@ fn paint_fold_glyph(
         canvas.draw_path(&bar.detach(), &paint);
     }
 }
+
+/// TEST SUPPORT: the fold strips a marks markup carries — the right
+/// side's interactive strips (silent spacers are the left side's).
+#[doc(hidden)]
+pub fn strip_ranges(
+    markup: &crate::markup::Markup,
+    marks: crate::markup::MarkupId,
+) -> Vec<Range<u32>> {
+    markup
+        .inlays_in(0..u32::MAX, crate::markup::MarkupLayer::Markup(marks))
+        .filter(|inlay| inlay.inlay.view_as::<FoldStrip>().is_some())
+        .map(|inlay| inlay.range.clone())
+        .collect()
+}

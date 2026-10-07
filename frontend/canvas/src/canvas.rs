@@ -1853,7 +1853,18 @@ impl Canvases {
         }
     }
 
-    pub(crate) fn set_reveal(
+    fn canvas_ref(
+        store: &Store,
+        changes: imba::store::Id<Changes>,
+        id: CanvasId,
+    ) -> Option<&Canvas> {
+        let set = Self::owner_of(store, changes, id)?;
+        Changes::canvas_ref::<Canvas>(store, changes, set, id)
+    }
+
+    /// Arm a row reveal: applied at populate, or picked up by the
+    /// paint probe — the walk-back and code-navigation road.
+    pub fn set_reveal(
         store: &mut Store,
         changes: imba::store::Id<Changes>,
         id: CanvasId,
@@ -1864,6 +1875,61 @@ impl Canvases {
             Self::put(store, changes, id, canvas);
         }
     }
+}
+
+/// Where a code-navigation target lands when the focused panel shows
+/// a diff (docs/ui/UI.md): INSIDE it. A canvas reveals the target's
+/// row and, once that row is built, goes to the byte in its right
+/// half; a diff panel goes to the byte when the target is its right
+/// document. `None` says the target is not in the diff — the plain
+/// road opens an editor.
+pub struct DiffLanding {
+    /// The built pair to land in, if the row is built (a placeholder
+    /// row reveals only; the arm builds it next).
+    pub pair: Option<documents::diffs::DiffViewId>,
+    /// The canvas row to reveal.
+    pub reveal: Option<(imba::store::Id<Changes>, CanvasId, ResourceLocation)>,
+}
+
+pub fn diff_landing(
+    store: &Store,
+    panel: &dyn std::any::Any,
+    documents: imba::store::Id<documents::OpenDocuments>,
+    target: &ResourceLocation,
+) -> Option<DiffLanding> {
+    if let Some(view) = panel.downcast_ref::<DiffCanvasView>() {
+        let canvas = Canvases::canvas_ref(store, view.changes, view.id)?;
+        if !canvas.files.contains_key(target) {
+            return None;
+        }
+        let pair = canvas
+            .pairs
+            .iter()
+            .find(|(_, key)| *key == target)
+            .map(|(pair, _)| *pair)
+            .filter(|pair| {
+                documents::OpenDocuments::diff_view_ref(store, documents, *pair).is_some()
+            });
+        return Some(DiffLanding {
+            pair,
+            reveal: Some((view.changes, view.id, target.clone())),
+        });
+    }
+    if let Some(view) = panel.downcast_ref::<crate::diff_pane::DiffPanelView>() {
+        let pair = view.pair();
+        let right = documents::OpenDocuments::diff_view_ref(store, view.documents(), pair)?
+            .right
+            .document();
+        let shown = documents::OpenDocuments::location(store, view.documents(), right)?;
+        if shown != *target {
+            return None;
+        }
+        return Some(DiffLanding {
+            pair: Some(pair),
+            reveal: None,
+        });
+    }
+    None
 }
 
 /// The canvases' own At address — a stateless ROUTER row minted by
@@ -2036,6 +2102,12 @@ impl DiffCanvasView {
             Canvases::put(store, view.changes, view.id, canvas);
         }
         view
+    }
+
+    /// TEST SUPPORT: the armed row reveal, if any.
+    #[doc(hidden)]
+    pub fn probe_reveal(&self, store: &Store) -> Option<editor::location::ResourceLocation> {
+        self.canvas(store)?.reveal.clone()
     }
 
     /// TEST SUPPORT: the registered `DiffViewId` backing a built row.

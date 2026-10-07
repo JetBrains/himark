@@ -79,6 +79,9 @@ impl View for PairPane {
         command: UnifiedDiffCommand,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
+        // A cmd-click is a caret set first; the link follower runs
+        // on that side once the click performed (below).
+        let (command, follow) = documents::diff_views::link_click(command);
         // Collection-scoped document commands (comments.add …) run
         // against the pair's registered side — the gathered editors
         // are bare views and would drop them.
@@ -118,6 +121,9 @@ impl View for PairPane {
         );
         pair.state = Some(view.split.state);
         documents::OpenDocuments::put_diff_view(store, self.documents, self.id, pair);
+        if let Some(side) = follow {
+            documents::diff_views::follow_link(store, ui, self.documents, self.id, side, fx);
+        }
     }
 
     fn display<'a>(

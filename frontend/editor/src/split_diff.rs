@@ -283,6 +283,14 @@ pub enum SplitDiffCommand {
     },
 
     Resync,
+
+    /// Code navigation landing INSIDE the diff: the right half takes
+    /// the caret at `byte` and reveals it; a fold strip hiding that
+    /// byte lifts first (a ban on the tracked diff, the chip's own
+    /// Remove), so the target is on screen, never under a strip.
+    GoTo {
+        byte: u32,
+    },
 }
 
 impl std::fmt::Display for SplitDiffCommand {
@@ -292,6 +300,7 @@ impl std::fmt::Display for SplitDiffCommand {
             SplitDiffCommand::Right(command) => command.fmt(out),
             SplitDiffCommand::PairRepaired { .. } => out.write_str("pair repaired"),
             SplitDiffCommand::Resync => out.write_str("resync"),
+            SplitDiffCommand::GoTo { .. } => out.write_str("go to"),
         }
     }
 }
@@ -300,6 +309,15 @@ pub(crate) type SplitDiffEffects<'a> = Effects<'a, SplitDiffCommand>;
 
 pub(crate) mod align;
 pub(crate) mod fold;
+
+/// TEST SUPPORT: the fold strips a marks markup carries.
+#[doc(hidden)]
+pub fn fold_strip_ranges(
+    markup: &crate::markup::Markup,
+    marks: crate::markup::MarkupId,
+) -> Vec<std::ops::Range<u32>> {
+    fold::strip_ranges(markup, marks)
+}
 
 fn trace_diff(message: impl FnOnce() -> String) {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -599,6 +617,37 @@ impl SplitDiffView {
             self.sync_region(visible);
         }
         self.widen_align_pending(owed);
+    }
+
+    pub(crate) fn right_len(&self) -> u32 {
+        self.right
+            .document
+            .text()
+            .view()
+            .byte_count()
+            .min(u32::MAX as usize) as u32
+    }
+
+    /// The fold strip hiding `byte` on the right, if any: the right
+    /// marks carry the pair's strips (the left side's are silent
+    /// spacers), so any strip there covering the byte is a fold.
+    pub(crate) fn fold_strip_at(&self, byte: u32) -> Option<crate::markup::InlayKey> {
+        self.right
+            .document
+            .feature_markup(self.state.right_marks)
+            .and_then(|markup| {
+                markup
+                    .inlays_in(
+                        byte..byte.saturating_add(1),
+                        crate::markup::MarkupLayer::Markup(self.state.right_marks),
+                    )
+                    .find(|inlay| {
+                        inlay.range.start <= byte
+                            && byte < inlay.range.end
+                            && inlay.inlay.view_as::<fold::FoldStrip>().is_some()
+                    })
+                    .map(|inlay| inlay.key)
+            })
     }
 
     pub(crate) fn adjust_fold(
@@ -1031,6 +1080,29 @@ impl View for SplitDiffView {
                     left.perform(store, ui, command, fx)
                 });
 
+                self.settle_after(None, None);
+                self.pair_lane(fx)
+            }
+            SplitDiffCommand::GoTo { byte } => {
+                let byte = byte.min(self.right_len());
+                if let Some(key) = self.fold_strip_at(byte) {
+                    self.adjust_fold(key, fold::FoldCommand::Remove, store, ui, fx);
+                }
+                self.left.blur();
+                let right = &mut self.right;
+                Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
+                    right.set_caret(byte);
+                    right.focus_text();
+                    right.document.reveal_at_instant(
+                        right.editor,
+                        byte,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    );
+                });
                 self.settle_after(None, None);
                 self.pair_lane(fx)
             }

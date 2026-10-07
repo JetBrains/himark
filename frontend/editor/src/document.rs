@@ -1681,6 +1681,8 @@ impl Document {
 
             EditorCommand::Hover(_) => {}
             EditorCommand::HoverLink(range) => self.set_hovered_link(editor, range),
+            // The clock belongs to the accessories; the view answered it.
+            EditorCommand::AccessoryTick(_) => {}
         };
         if arms_reveal {
             if let Some(state) = self.editors.get_mut(&editor) {

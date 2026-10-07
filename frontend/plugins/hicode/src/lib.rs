@@ -122,8 +122,11 @@ impl imba::effect::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler
     }
 }
 
-struct ApplyNavigation {
-    outcome: NavigationOutcome,
+/// The landing half of a navigation ask — public so a shell test can
+/// hand a canvas a fixed outcome without a language server.
+#[doc(hidden)]
+pub struct ApplyNavigation {
+    pub outcome: NavigationOutcome,
 }
 
 impl WindowedCommand for ApplyNavigation {
@@ -167,6 +170,41 @@ fn navigate(
     else {
         return;
     };
+    // From a diff, STAY in the diff when the target lives there: the
+    // same file goes to the byte (lifting a fold over it), another
+    // file of the canvas reveals its row; only a target outside the
+    // diff opens an editor.
+    let landing = workbench::window::Windows::window_ref(store, window).and_then(|entity| {
+        match entity.workbench().root.focused_pane() {
+            workbench::workbench_node::Panel::Plugin(view) => {
+                canvas::canvas::diff_landing(store, view.as_any(), documents, &target.location)
+            }
+            workbench::workbench_node::Panel::Editor(_) => None,
+        }
+    });
+    if let Some(landing) = landing {
+        if let Some((changes, canvas, key)) = landing.reveal {
+            canvas::canvas::Canvases::set_reveal(store, changes, canvas, key);
+        }
+        if let Some(pair) = landing.pair {
+            let byte = OpenDocuments::diff_view_ref(store, documents, pair)
+                .map(|held| held.right.document())
+                .and_then(|right| OpenDocuments::document_ref(store, documents, right))
+                .map(|document| {
+                    documents::text_ext::offset_at(&mut document.text().view(), target.range.start)
+                        as u32
+                });
+            if let Some(byte) = byte {
+                fx.scope(
+                    move |command| {
+                        himark::app::AppCommand::Verb(imba::command::Verb::at(documents, command))
+                    },
+                    |fx| documents::diff_views::go_to(store, documents, ui, pair, byte, fx),
+                );
+            }
+        }
+        return;
+    }
     let document_id = match OpenDocuments::by_location(store, documents, &target.location) {
         Some(document) => document,
         None => {

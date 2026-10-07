@@ -407,7 +407,8 @@ impl View for Workbench {
 /// otherwise.
 fn tree_header_title(workbench: &Workbench, store: &Store) -> String {
     let slot = workbench.root.focused_slot();
-    if let (Some(documents), Some((document, _))) = (slot.documents_id(), slot.find_target()) {
+    if let Some(pane) = slot.panel.editor() {
+        let (documents, document) = (pane.content().documents(), pane.content().document());
         if let Some(location) = documents::OpenDocuments::location(store, documents, document) {
             if !location.path().is_empty() {
                 return location.path().join("/");

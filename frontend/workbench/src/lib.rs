@@ -13,7 +13,6 @@ pub mod drawer;
 pub mod navigation;
 pub mod registry;
 pub mod rows;
-pub mod services;
 pub mod toolbar;
 pub mod window;
 pub mod workbench;

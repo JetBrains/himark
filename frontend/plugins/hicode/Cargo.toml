@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 workbench = { path = "../../workbench" }
+canvas = { path = "../../canvas" }
 locations = { path = "../../locations" }
 documents = { path = "../../documents" }
 ahp-session = { path = "../../ahp-session" }

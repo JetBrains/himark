@@ -166,6 +166,10 @@ pub enum EditorCommand {
     /// shell's pointer shape; never emitted while the answer stands.
     HoverLink(Option<std::ops::Range<u32>>),
 
+    /// The animation clock, for an armed accessory (a hover resting
+    /// toward its ask) — see `crate::accessory`.
+    AccessoryTick(imba::anim::AnimationClock),
+
     Retheme {
         top: f32,
         bottom: f32,
@@ -240,6 +244,7 @@ impl std::fmt::Display for EditorCommand {
             EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
             EditorCommand::Hover(_) => out.write_str("hover"),
             EditorCommand::HoverLink(_) => out.write_str("hover link"),
+            EditorCommand::AccessoryTick(_) => out.write_str("accessory tick"),
             EditorCommand::Retheme { .. } => out.write_str("retheme"),
             EditorCommand::InsertTextReplacing { .. } => out.write_str("insert text replacing"),
             EditorCommand::SetMarkedText { .. } => out.write_str("set marked text"),
@@ -969,7 +974,14 @@ impl View for EditorView {
             }
             over.merge_over(inner)
         };
-        inner.merge_under(FocusData::of_commands(self.dynamic_surface(store)))
+        let inner = inner.merge_under(FocusData::of_commands(self.dynamic_surface(store)));
+        // An accessory holding the keys (a focused find input) answers
+        // before the text it serves.
+        let editor = self.editor;
+        crate::accessory::Accessories::of(store)
+            .iter()
+            .filter_map(|accessory| accessory.focus_data(store, ui, editor))
+            .fold(inner, |under, over| over.merge_over(under))
     }
 
     fn perform(
@@ -979,6 +991,40 @@ impl View for EditorView {
         command: Self::Command,
         fx: &mut Effects<'_, Self::Command>,
     ) {
+        // The accessories look first: the completion popup's own
+        // commands, the find bar's, the landings addressed to them.
+        let accessories = crate::accessory::Accessories::of(store);
+        let mut command = command;
+        for accessory in &accessories {
+            match accessory.intercept(
+                store,
+                ui,
+                &mut self.document,
+                self.editor,
+                self.location.as_ref(),
+                command,
+                fx,
+            ) {
+                Some(passed) => command = passed,
+                None => return,
+            }
+        }
+        let performed = crate::accessory::Performed::of(&command);
+        if let EditorCommand::AccessoryTick(_) = command {
+            for accessory in &accessories {
+                accessory.after(
+                    store,
+                    ui,
+                    &mut self.document,
+                    self.editor,
+                    self.location.as_ref(),
+                    &performed,
+                    fx,
+                );
+            }
+            return;
+        }
+
         if let EditorCommand::ToggleBeforeInlay { at } = command {
             if let Some((base, diff)) = &self.base {
                 let fonts = crate::env::ui_collection(store, ui);
@@ -1048,6 +1094,17 @@ impl View for EditorView {
                     );
                 }
             }
+        }
+        for accessory in &accessories {
+            accessory.after(
+                store,
+                ui,
+                &mut self.document,
+                self.editor,
+                self.location.as_ref(),
+                &performed,
+                fx,
+            );
         }
     }
 
@@ -1147,6 +1204,15 @@ impl View for EditorView {
                             container(arena, Size::new(target_width.max(0.0), size.height));
                         window.place(-scroll_x, 0.0, core);
                         root.place(gutter, 0.0, window);
+                    }
+                }
+
+                // Accessory chrome (the find bar) pinned over the top
+                // of the VISIBLE viewport — re-placed per realize as
+                // the viewport moves, so it never scrolls away.
+                for accessory in crate::accessory::Accessories::of(store) {
+                    if let Some((_, bar)) = accessory.bar(arena, store, ui, editor_id, size.width) {
+                        root.place(0.0, viewport.top, bar);
                     }
                 }
 
@@ -1673,9 +1739,17 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 EventResult::Command(EditorCommand::HorizontalScroll(*delta_x))
             }
 
-            Event::AnimationClock { .. } => {
+            Event::AnimationClock { now } => {
                 if !self.document().reveal_pending(self.editor()) {
-                    return EventResult::Ignored;
+                    let editor = self.editor();
+                    let store = self.shared.store;
+                    let armed = crate::accessory::Accessories::of(store)
+                        .iter()
+                        .any(|accessory| accessory.wants_clock(store, editor));
+                    return match armed {
+                        true => EventResult::Command(EditorCommand::AccessoryTick(*now)),
+                        false => EventResult::Ignored,
+                    };
                 }
                 let caret = self.document().caret_byte(self.editor());
                 let (x, y, w, h) = match self.document().caret_content_rect(

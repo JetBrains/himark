@@ -19,8 +19,6 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use documents::DocumentId;
-
 const MAX_MATCHES: usize = 20_000;
 
 #[derive(Clone)]
@@ -50,7 +48,6 @@ impl std::fmt::Display for FindCommand {
 #[derive(Clone)]
 pub struct Scan {
     serial: u64,
-    document: documents::DocumentId,
     revision: u64,
     query: String,
     matches: Vec<Range<u32>>,
@@ -60,13 +57,12 @@ pub struct FindScanEffect {
     text: text::text::Text,
     query: String,
     serial: u64,
-    document: documents::DocumentId,
     revision: u64,
 }
 
 impl std::fmt::Display for FindScanEffect {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "scan find matches {:?}", self.document)
+        write!(out, "scan find matches for {:?}", self.query)
     }
 }
 
@@ -80,7 +76,6 @@ impl imba::effect::EffectHandler<FindScanEffect> for FindScanHandler {
     async fn handle(&self, effect: FindScanEffect) -> Scan {
         Scan {
             serial: effect.serial,
-            document: effect.document,
             revision: effect.revision,
             query: effect.query.clone(),
             matches: scan(&effect.query, &effect.text),
@@ -98,7 +93,8 @@ pub struct FindBar {
 
     stepped: bool,
 
-    installed: Option<(DocumentId, EditorId, MarkupId)>,
+    /// The match tints: on the editor the bar serves.
+    installed: Option<(EditorId, MarkupId)>,
 
     scanned: Option<(u64, String)>,
 
@@ -207,55 +203,37 @@ impl FindBar {
         }
     }
 
+    /// Keep up with the editor after a command: an emptied query takes
+    /// its tints away.
     pub fn sync(
         &mut self,
-        store: &mut Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
-        target: Option<(DocumentId, EditorId)>,
+        store: &Store,
+        document: &mut editor::document::Document,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        if let Some((old_document, _, _)) = self.installed {
-            if target.map(|(document, _)| document) != Some(old_document) {
-                self.uninstall(store, documents, ui, fonts, theme, fx);
-                self.scanned = None;
-                self.launched = None;
-            }
-        }
-        if target.is_none() {
-            return;
-        }
-        let query = self.query();
-        if query.is_empty() {
+        if self.query().is_empty() {
             if self.installed.is_some() {
-                self.uninstall(store, documents, ui, fonts, theme, fx);
+                self.uninstall(store, document, ui, fonts, theme, fx);
             }
             self.matches.clear();
             self.scanned = None;
             self.launched = None;
 
             self.serial += 1;
-            return;
         }
     }
 
+    /// Ask for the matches of the current query against the current
+    /// text, unless that very pair was scanned or is in flight.
     pub fn launch<R: 'static>(
         &mut self,
-        store: &Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
-        target: Option<(DocumentId, EditorId)>,
+        document: &editor::document::Document,
         fx: &mut Effects<'_, R>,
         wrap: impl Fn(Scan) -> R + Send + Sync + 'static,
     ) {
-        let Some((document_id, _)) = target else {
-            return;
-        };
-        let Some(document) = documents::OpenDocuments::document_ref(store, documents, document_id)
-        else {
-            return;
-        };
         let query = self.query();
         if query.is_empty() {
             return;
@@ -270,36 +248,26 @@ impl FindBar {
             text: document.text().clone(),
             query,
             serial: self.serial,
-            document: document_id,
             revision: document.revision(),
         };
         fx.relaunch_erased(&mut self.lane, AnyEffect::new(effect).map(wrap));
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn adopt(
         &mut self,
-        store: &mut Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
-        target: Option<(DocumentId, EditorId)>,
+        store: &Store,
+        document: &mut editor::document::Document,
+        editor: EditorId,
         landed: &Scan,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        if landed.serial != self.serial {
+        if landed.serial != self.serial || self.query() != landed.query {
             return;
         }
-        let Some((document_id, editor)) = target else {
-            return;
-        };
-        if document_id != landed.document || self.query() != landed.query {
-            return;
-        }
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
-        else {
-            return;
-        };
         let matches = landed.matches.clone();
 
         let mut changed: Vec<Range<u32>> = self.matches.clone();
@@ -309,12 +277,12 @@ impl FindBar {
             tints.push_styled(range.clone(), editor::theme::StyleId::Match);
         }
         let markup = match self.installed {
-            Some((_, _, markup)) => markup,
+            Some((_, markup)) => markup,
             None => {
                 let markup = document.add_markup();
                 document.show_markup(editor, markup);
                 document.mark_scroll_stripes(editor, markup);
-                self.installed = Some((document_id, editor, markup));
+                self.installed = Some((editor, markup));
                 markup
             }
         };
@@ -323,20 +291,19 @@ impl FindBar {
 
         self.current = self.current.min(matches.len().saturating_sub(1));
         self.matches = matches;
-        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub fn step(
         &mut self,
-        store: &mut Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
+        store: &Store,
+        document: &mut editor::document::Document,
         forward: bool,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        let Some((document_id, editor, _)) = self.installed else {
+        let Some((editor, _)) = self.installed else {
             return;
         };
         if self.matches.is_empty() {
@@ -354,32 +321,22 @@ impl FindBar {
             self.stepped = true;
         }
         let found = self.matches[self.current].clone();
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
-        else {
-            return;
-        };
         document.reveal_selecting(editor, found, store, ui, fonts, theme, fx);
-        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub fn uninstall(
         &mut self,
-        store: &mut Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
+        store: &Store,
+        document: &mut editor::document::Document,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        let Some((document_id, _, markup)) = self.installed.take() else {
-            return;
-        };
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
-        else {
+        let Some((_, markup)) = self.installed.take() else {
             return;
         };
         document.remove_markup(markup, &self.matches, store, ui, fonts, theme, fx);
-        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub fn perform_input(

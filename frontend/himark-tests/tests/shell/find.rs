@@ -36,9 +36,8 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     settle(&mut app);
 
     let matches_now = |app: &Application| -> Vec<std::ops::Range<u32>> {
-        let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        himark::pane_services::EditorServices::of_ref(entity.workbench().root.focused_slot())
-            .and_then(|services| services.find.as_ref())
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .and_then(|seat| seat.find.as_ref())
             .expect("the bar is open")
             .matches()
             .to_vec()
@@ -46,16 +45,10 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     assert_eq!(matches_now(&app), vec![0..5, 10..15]);
 
     {
-        let mut store = app.store_mut();
-        let mut entity = ::workbench::window::Windows::window(&mut store, window).expect("window");
-        himark::pane_services::EditorServices::of(
-            entity.workbench_mut().root.focused_slot_mut(),
-            &store,
-        )
-        .and_then(|services| services.find.as_mut())
-        .expect("the bar is open")
-        .focused = false;
-        ::workbench::window::Windows::put(&mut store, window, entity);
+        let editor = app.focused_editor_id().1;
+        himark::editor_accessories::Seats::update(&mut app.store_mut(), editor, |seat| {
+            seat.find.as_mut().expect("the bar is open").focused = false;
+        });
     }
 
     assert!(himark::test_driver::type_text(&mut app, "alpha"));
@@ -114,27 +107,20 @@ fn find_bar_highlights_and_walks_occurrences() {
     );
 
     app.draw_window(app.sole_window(), surface.canvas());
-    let with_slot = |app: &Application, f: &dyn Fn(&::workbench::workbench_node::PaneSlot)| {
-        let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        f(entity.workbench().root.focused_slot());
+    let seat = |app: &Application| -> himark::editor_accessories::Seat {
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .cloned()
+            .expect("the seat stood")
     };
-    with_slot(&app, &|slot| {
-        let services = himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
-        let find = services.find.as_ref().expect("the bar is open");
+    {
+        let seat = seat(&app);
+        let find = seat.find.as_ref().expect("the bar is open");
         assert_eq!(find.query(), "alpha");
 
         assert_eq!(find.matches().len(), 3, "{:?}", find.matches());
-    });
+    }
 
-    let (document_id, editor) = {
-        let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-        entity
-            .workbench()
-            .root
-            .focused_slot()
-            .find_target()
-            .expect("an editor pane")
-    };
+    let (document_id, editor) = app.focused_editor_id();
     let document =
         documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
             .expect("the document");
@@ -173,14 +159,7 @@ fn find_bar_highlights_and_walks_occurrences() {
         imba::event::Key::Escape,
         imba::event::Modifiers::default()
     ));
-    with_slot(&app, &|slot| {
-        assert!(
-            himark::pane_services::EditorServices::of_ref(slot)
-                .and_then(|services| services.find.as_ref())
-                .is_none(),
-            "Escape closed the bar"
-        );
-    });
+    assert!(seat(&app).find.is_none(), "Escape closed the bar");
     let document =
         documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
             .expect("the document");
@@ -223,12 +202,12 @@ fn find_bar_highlights_and_walks_occurrences() {
             app.perform_batch(vec![command]);
         }
     }
-    with_slot(&app, &|slot| {
-        let services = himark::pane_services::EditorServices::of_ref(slot).expect("services stood");
-        let find = services.find.as_ref().expect("re-opened");
+    {
+        let seat = seat(&app);
+        let find = seat.find.as_ref().expect("re-opened");
         assert_eq!(find.query(), "beta", "the selection seeded the query");
         assert_eq!(find.matches().len(), 1);
-    });
+    }
 }
 
 #[test]
@@ -256,14 +235,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
 
     let query = |app: &Application| -> Option<String> {
         Some(
-            ::workbench::window::Windows::window_ref(app.store(), app.sole_window())?
-                .workbench()
-                .root
-                .focused_slot()
-                .services
-                .as_ref()?
-                .state
-                .downcast_ref::<himark::pane_services::EditorServices>()?
+            himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)?
                 .find
                 .as_ref()?
                 .query(),

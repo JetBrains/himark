@@ -78,14 +78,6 @@ impl Clone for Panel {
 pub enum PanelCommand {
     Editor(PaneCommand),
     Plugin(imba::dyn_view::DynCommand),
-
-    /// To the pane's SERVICES (find bar, completion) — an erased
-    /// command only the shell's face reads.
-    Service(imba::dyn_view::DynCommand),
-
-    Hover(documents::hover::HoverFound),
-
-    HoverTick(imba::anim::AnimationClock),
 }
 
 impl std::fmt::Display for PanelCommand {
@@ -93,9 +85,6 @@ impl std::fmt::Display for PanelCommand {
         match self {
             PanelCommand::Editor(command) => command.fmt(out),
             PanelCommand::Plugin(command) => command.fmt(out),
-            PanelCommand::Service(command) => command.fmt(out),
-            PanelCommand::Hover(_) => out.write_str("hover found"),
-            PanelCommand::HoverTick(_) => out.write_str("hover tick"),
         }
     }
 }
@@ -498,12 +487,6 @@ pub struct PaneSlot {
     pub(crate) forward: rpds::VectorSync<hikit::navigation::NavigationLocation>,
 
     pub(crate) pending: Option<PendingWalk>,
-
-    /// The pane's SERVICES seat (find bar, completion) — minted from
-    /// the registry's face on first need; its state is the shell's.
-    pub services: Option<crate::services::ServiceSeat>,
-
-    pub(crate) hover: documents::hover::Hover,
 }
 
 #[derive(Clone)]
@@ -527,17 +510,7 @@ impl PaneSlot {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, PanelCommand> {
-        let panel = self.panel.focus_data(store, ui);
-        // A focused service (the find bar) filters the keyboard before
-        // the panel content; its input supplies the text client.
-        let service = self
-            .services
-            .as_ref()
-            .and_then(|seat| seat.face.focus_data(&seat.state, store, ui));
-        match service {
-            Some(data) => data.map(PanelCommand::Service).merge_over(panel),
-            None => panel,
-        }
+        self.panel.focus_data(store, ui)
     }
 
     pub(crate) fn of(panel: Panel) -> Self {
@@ -546,8 +519,6 @@ impl PaneSlot {
             back: rpds::VectorSync::new_sync(),
             forward: rpds::VectorSync::new_sync(),
             pending: None,
-            services: None,
-            hover: documents::hover::Hover::new(),
         }
     }
 
@@ -565,178 +536,6 @@ impl PaneSlot {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn history_depths(&self) -> (usize, usize) {
         (self.back.len(), self.forward.len())
-    }
-
-    pub fn find_target(&self) -> Option<(documents::DocumentId, ::editor::editor::EditorId)> {
-        self.panel
-            .editor()
-            .map(|pane| (pane.content().document(), pane.content().editor()))
-    }
-
-    /// The collection this leaf's editor reads through — the pane
-    /// holds the id (docs/entities.md law 3).
-    pub fn documents_id(&self) -> Option<imba::store::Id<documents::OpenDocuments>> {
-        self.panel.editor().map(|pane| pane.content().documents())
-    }
-
-    /// The leaf's service target: its documents collection and the
-    /// shown editor, if any.
-    pub fn service_target(&self) -> crate::services::ServiceTarget {
-        crate::services::ServiceTarget {
-            documents: self.documents_id(),
-            target: self.find_target(),
-        }
-    }
-
-    /// The seat, minted from the registry's face on first need.
-    pub fn ensure_services(&mut self, store: &Store) -> bool {
-        if self.services.is_some() {
-            return true;
-        }
-        let Some(face) = crate::registry::Registry::of(store)
-            .and_then(|registry| registry.pane_services.clone())
-        else {
-            return false;
-        };
-        let state = face.mint();
-        self.services = Some(crate::services::ServiceSeat { face, state });
-        true
-    }
-
-    fn service_sync(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        inserted: Option<&str>,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        if !self.ensure_services(store) {
-            return;
-        }
-        let target = self.service_target();
-        if let Some(mut seat) = self.services.take() {
-            seat.face
-                .sync(&mut seat.state, target, store, ui, inserted, fx);
-            self.services = Some(seat);
-        }
-    }
-
-    /// Wrap an editor command back into the panel stream — the shape
-    /// every pane accessory answers the editor in.
-    fn wrap_editor(command: ::editor::editor_view::EditorCommand) -> PanelCommand {
-        PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
-    }
-
-    pub(crate) fn sync_hover(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        point: Option<skia_safe::Point>,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        let target = self.find_target();
-        let Some(documents) = self.documents_id() else {
-            return;
-        };
-
-        if let Some(installed) = self.hover.installed() {
-            if target != Some(installed) {
-                match documents::OpenDocuments::document(store, documents, installed.0) {
-                    Some(mut old) => {
-                        self.hover
-                            .retract(store, ui, &mut old, fx, Self::wrap_editor);
-                        documents::OpenDocuments::put_document(store, documents, installed.0, old);
-                    }
-                    None => self.hover.clear(),
-                }
-            }
-        }
-        let Some((id, editor)) = target else { return };
-
-        let Some(point) = point else {
-            if self.hover.open() {
-                if let Some(mut document) = documents::OpenDocuments::document(store, documents, id)
-                {
-                    self.hover
-                        .retract(store, ui, &mut document, fx, Self::wrap_editor);
-                    documents::OpenDocuments::put_document(store, documents, id, document);
-                }
-            }
-            return;
-        };
-
-        let Some(location) = documents::OpenDocuments::location(store, documents, id) else {
-            return;
-        };
-        if location.is_synthetic() {
-            return;
-        }
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-            return;
-        };
-        let fonts = ::editor::env::ui_collection(store, ui);
-        let theme = ::editor::env::Themes::of(store);
-        let byte = document.byte_at_point(editor, point.x, point.y, store, ui, &fonts, &theme);
-        self.hover.sync(
-            store,
-            ui,
-            &mut document,
-            editor,
-            byte,
-            &location,
-            Some((id, editor)),
-            fx,
-            Self::wrap_editor,
-        );
-        documents::OpenDocuments::put_document(store, documents, id, document);
-    }
-
-    pub(crate) fn tick_hover(
-        &mut self,
-        store: &mut Store,
-        now: imba::anim::AnimationClock,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        let Some((id, _editor)) = self.hover.installed() else {
-            return;
-        };
-        let Some(documents) = self.documents_id() else {
-            return;
-        };
-        let Some(document) = documents::OpenDocuments::document_ref(store, documents, id) else {
-            self.hover.clear();
-            return;
-        };
-        self.hover.tick(document, now, fx, PanelCommand::Hover);
-    }
-
-    pub(crate) fn land_hover(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        found: documents::hover::HoverFound,
-        fx: &mut imba::effect::Effects<'_, PanelCommand>,
-    ) {
-        let Some((id, editor)) = self.hover.installed() else {
-            return;
-        };
-        let Some(documents) = self.documents_id() else {
-            return;
-        };
-        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-            self.hover.clear();
-            return;
-        };
-        self.hover.land(
-            store,
-            ui,
-            &mut document,
-            editor,
-            found,
-            fx,
-            Self::wrap_editor,
-        );
-        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 }
 
@@ -948,81 +747,9 @@ impl View for WorkbenchNode {
                 }
                 let wrap = wrap_leaf(target);
                 match command {
-                    PanelCommand::Service(command) => {
-                        if !slot.ensure_services(store) {
-                            return;
-                        }
-                        let target = slot.service_target();
-                        if let Some(mut seat) = slot.services.take() {
-                            fx.scope(wrap, |fx| {
-                                seat.face
-                                    .command(&mut seat.state, target, store, ui, command, fx)
-                            });
-                            slot.services = Some(seat);
-                        }
-                    }
-                    PanelCommand::Hover(found) => {
-                        fx.scope(wrap, |fx| slot.land_hover(store, ui, found, fx))
-                    }
-                    PanelCommand::HoverTick(now) => {
-                        fx.scope(wrap, |fx| slot.tick_hover(store, now, fx))
-                    }
-                    command => {
-                        if let (
-                            Some(seat),
-                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                                ::editor::editor_view::EditorCommand::Click { .. },
-                            )),
-                        ) = (&mut slot.services, &command)
-                        {
-                            // A pointer press lands in the panel: the
-                            // bars lose the keyboard.
-                            seat.face.defocus(&mut seat.state);
-                        }
-
-                        if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                            ::editor::editor_view::EditorCommand::Hover(point),
-                        )) = &command
-                        {
-                            let point = *point;
-                            return fx.scope(wrap, |fx| slot.sync_hover(store, ui, point, fx));
-                        }
-                        fx.scope(wrap, |fx| {
-                            let command = {
-                                if !slot.ensure_services(store) {
-                                    Some(command)
-                                } else if let Some(mut seat) = slot.services.take() {
-                                    let target = slot.service_target();
-                                    let passed = seat.face.intercept(
-                                        &mut seat.state,
-                                        target,
-                                        store,
-                                        ui,
-                                        command,
-                                        fx,
-                                    );
-                                    slot.services = Some(seat);
-                                    passed
-                                } else {
-                                    Some(command)
-                                }
-                            };
-                            let Some(command) = command else {
-                                return;
-                            };
-
-                            let inserted = match &command {
-                                PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                                    ::editor::editor_view::EditorCommand::InsertText { text },
-                                )) => Some(text.clone()),
-                                _ => None,
-                            };
-                            slot.panel.perform(store, ui, command, fx);
-                            slot.service_sync(store, ui, inserted.as_deref(), fx);
-
-                            slot.sync_hover(store, ui, None, fx);
-                        })
-                    }
+                    command => fx.scope(wrap, |fx| {
+                        slot.panel.perform(store, ui, command, fx);
+                    }),
                 }
             }
             (Self::Split(split), NodeCommand::Split(command)) => fx.scope(
@@ -1042,50 +769,15 @@ impl View for WorkbenchNode {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let widget: imba::ThunkBox<'a, NodeCommand> = match self {
-                Self::Leaf(slot) => {
-                    let size = constraints.max;
-                    // The services' chrome above the editor — the find
-                    // bar — when a service stands one.
-                    let bar = slot.services.as_ref().and_then(|seat| {
-                        seat.face
-                            .bar(&seat.state, arena, store, ui, size.width)
-                            .map(|(height, widget)| (height.min(size.height), widget))
-                    });
-                    match bar {
-                        None => imba::ThunkBox::new(
-                            arena,
-                            imba::layout::Layout::layout(
-                                slot.panel.display(arena, store, ui),
-                                arena,
-                                constraints,
-                            )
-                            .map(wrap_leaf(slot.panel_id())),
-                        ),
-                        Some((bar_height, widget)) => {
-                            let leaf = wrap_leaf(slot.panel_id());
-                            let mut column = imba::container::container(arena, size);
-                            column.place(
-                                0.0,
-                                bar_height,
-                                imba::layout::Layout::layout(
-                                    slot.panel.display(arena, store, ui),
-                                    arena,
-                                    Constraints::tight(skia_safe::Size::new(
-                                        size.width,
-                                        (size.height - bar_height).max(1.0),
-                                    )),
-                                )
-                                .map(leaf),
-                            );
-                            column.place(
-                                0.0,
-                                0.0,
-                                widget.map(move |command| leaf(PanelCommand::Service(command))),
-                            );
-                            imba::ThunkBox::new(arena, column)
-                        }
-                    }
-                }
+                Self::Leaf(slot) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        slot.panel.display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(wrap_leaf(slot.panel_id())),
+                ),
 
                 Self::Split(split) => {
                     let divider = split.divider_rect(constraints.max);
@@ -1111,22 +803,6 @@ impl View for WorkbenchNode {
                 }
             };
 
-            if let Self::Leaf(slot) = self {
-                if slot.hover.armed() {
-                    let leaf = wrap_leaf(slot.panel_id());
-                    return imba::ThunkBox::new(
-                        arena,
-                        widget.event(move |_arena, event, _size| match event {
-                            imba::event::Event::AnimationClock { now } => {
-                                imba::event::EventResult::Command(leaf(PanelCommand::HoverTick(
-                                    *now,
-                                )))
-                            }
-                            _ => imba::event::EventResult::Ignored,
-                        }),
-                    );
-                }
-            }
             widget
         })
     }

@@ -1,6 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Multi-minute diff probes over monster documents — ignored by
+//! default; run with `--ignored --nocapture`.
+
+#![allow(unused_imports, dead_code)]
+
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
 use himark::app::Application;
@@ -10,7 +15,7 @@ use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
 fn monster_pair(repetitions: usize) -> (String, String) {
-    let sample = include_str!("../../plugins/demo/sample.md");
+    let sample = include_str!("../../../plugins/demo/sample.md");
     let left = sample.repeat(repetitions);
     let mut right = String::with_capacity(left.len());
     for index in 0..repetitions {
@@ -28,7 +33,7 @@ fn monster_pair(repetitions: usize) -> (String, String) {
 #[test]
 #[ignore = "multi-minute probe; run with --ignored --nocapture"]
 fn unrelated_pair_syncs_region_scale() {
-    let sample = include_str!("../../plugins/demo/sample.md");
+    let sample = include_str!("../../../plugins/demo/sample.md");
     let left = sample.repeat(1409);
     let mut right = String::with_capacity(left.len());
     let mut index = 0usize;
@@ -59,7 +64,7 @@ fn wall_of_text_diff_stays_region_scale() {
 #[test]
 #[ignore = "multi-second probe; run with --ignored --nocapture"]
 fn self_diff_stays_region_scale() {
-    let sample = include_str!("../../plugins/demo/sample.md");
+    let sample = include_str!("../../../plugins/demo/sample.md");
     let left = sample.repeat(1409);
     probe_pair(left.clone(), left);
 }
@@ -153,7 +158,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
                 perform_total
             );
 
-            crate::hidiff_tests::assert_pair_consistent(&app, expect_pairs);
+            super::diffs::assert_pair_consistent(&app, expect_pairs);
 
             assert!(
                 started_walk.elapsed() < std::time::Duration::from_secs(12),
@@ -394,12 +399,12 @@ fn probe_pair(left: String, right: String) {
         for _ in 0..8 {
             let _ = himark::test_driver::type_text(&mut app, "grow the row substantially ");
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
-            crate::hidiff_tests::assert_pair_aligned(&app);
+            super::diffs::assert_pair_aligned(&app);
         }
         for _ in 0..2 {
             let _ = himark::test_driver::type_text(&mut app, "\n");
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
-            crate::hidiff_tests::assert_pair_aligned(&app);
+            super::diffs::assert_pair_aligned(&app);
         }
     }
 
@@ -410,7 +415,7 @@ fn probe_pair(left: String, right: String) {
         }
         let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     }
-    crate::hidiff_tests::assert_pair_aligned(&app);
+    super::diffs::assert_pair_aligned(&app);
 
     for _ in 0..6 {
         let _ = himark::test_driver::type_text(&mut app, "z");
@@ -422,7 +427,7 @@ fn probe_pair(left: String, right: String) {
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
     }
-    crate::hidiff_tests::assert_pair_aligned(&app);
+    super::diffs::assert_pair_aligned(&app);
 
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {

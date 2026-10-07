@@ -38,9 +38,6 @@ pub struct Registry {
     /// The drawer-toggle button face, registered by the shell's toc
     /// glue.
     pub drawer_button: Option<crate::toolbar::ToolbarButton>,
-    /// The editor pane's services face (find bar, completion) — see
-    /// `crate::services`.
-    pub pane_services: Option<std::sync::Arc<dyn crate::services::PaneServices>>,
 }
 
 impl Registry {

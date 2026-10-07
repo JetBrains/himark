@@ -5,6 +5,7 @@ pub mod assist;
 pub(crate) mod before_inlay;
 pub mod caret;
 pub(crate) mod caret_ops;
+pub mod accessory;
 pub mod change_sink;
 pub mod diff;
 pub mod document;

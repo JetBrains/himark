@@ -124,11 +124,145 @@ pub fn gather_diff_view(
 }
 
 /// Which side of the pair a routed editor command addresses.
-#[derive(Clone, Copy)]
-enum PairSide {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PairSide {
     Inline,
     Left,
     Right,
+}
+
+/// A cmd-click into a half is a caret set first; the side it hit
+/// comes back so the pane can run the link follower AFTER the click
+/// performed (`EditorIdView` does the same for a full pane).
+pub fn link_click(
+    command: editor::unified_diff::UnifiedDiffCommand,
+) -> (editor::unified_diff::UnifiedDiffCommand, Option<PairSide>) {
+    use editor::editor_view::{ClickKind, EditorCommand};
+    use editor::split_diff::SplitDiffCommand;
+    use editor::unified_diff::UnifiedDiffCommand;
+    let set = |point| EditorCommand::Click {
+        point,
+        kind: ClickKind::Set,
+    };
+    match command {
+        UnifiedDiffCommand::Inline(EditorCommand::Click {
+            point,
+            kind: ClickKind::Link,
+        }) => (
+            UnifiedDiffCommand::Inline(set(point)),
+            Some(PairSide::Inline),
+        ),
+        UnifiedDiffCommand::Split(SplitDiffCommand::Left(EditorCommand::Click {
+            point,
+            kind: ClickKind::Link,
+        })) => (
+            UnifiedDiffCommand::Split(SplitDiffCommand::Left(set(point))),
+            Some(PairSide::Left),
+        ),
+        UnifiedDiffCommand::Split(SplitDiffCommand::Right(EditorCommand::Click {
+            point,
+            kind: ClickKind::Link,
+        })) => (
+            UnifiedDiffCommand::Split(SplitDiffCommand::Right(set(point))),
+            Some(PairSide::Right),
+        ),
+        command => (command, None),
+    }
+}
+
+/// The cmd-click tail for a diff half: if the fresh caret sits on a
+/// linkable span, the one registered link follower performs there
+/// with the half's ids in hand.
+pub fn follow_link(
+    store: &mut Store,
+    ui: &imba::ui::UiCtx,
+    documents: imba::store::Id<OpenDocuments>,
+    id: DiffViewId,
+    side: PairSide,
+    fx: &mut Effects<'_, editor::unified_diff::UnifiedDiffCommand>,
+) {
+    use editor::split_diff::SplitDiffCommand;
+    use editor::unified_diff::UnifiedDiffCommand;
+    let Some(entry) = crate::dynamic::DocumentCommands::of(store)
+        .link_follower(documents)
+        .cloned()
+    else {
+        return;
+    };
+    let sides = {
+        let Some(pair) = OpenDocuments::diff_view_ref(store, documents, id) else {
+            return;
+        };
+        match side {
+            PairSide::Inline => pair
+                .state
+                .as_ref()
+                .and_then(|state| state.inline_editor())
+                .map(|editor| (pair.right.document(), editor)),
+            PairSide::Left => Some((pair.left.document(), pair.left.editor())),
+            PairSide::Right => Some((pair.right.document(), pair.right.editor())),
+        }
+    };
+    let Some((document_id, editor)) = sides else {
+        return;
+    };
+    let Some(location) = OpenDocuments::location(store, documents, document_id) else {
+        return;
+    };
+    if !entry.offers_at(&location) {
+        return;
+    }
+    let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
+        return;
+    };
+    if document
+        .link_range_at(document.caret_byte(editor))
+        .is_none()
+    {
+        return;
+    }
+    fx.scope(
+        move |command| match side {
+            PairSide::Inline => UnifiedDiffCommand::Inline(command),
+            PairSide::Left => UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)),
+            PairSide::Right => UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)),
+        },
+        |fx| {
+            entry.perform(
+                store,
+                ui,
+                documents,
+                document_id,
+                &mut document,
+                editor,
+                &location,
+                None,
+                fx,
+            );
+        },
+    );
+    OpenDocuments::put_document(store, documents, document_id, document);
+}
+
+/// Land a code-navigation target INSIDE a tracked diff: the right
+/// half takes the caret at `byte`, a fold hiding it lifts
+/// (`SplitDiffCommand::GoTo`), through the store-held road.
+pub fn go_to(
+    store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
+    ui: &imba::ui::UiCtx,
+    id: DiffViewId,
+    byte: u32,
+    fx: &mut Effects<'_, DocumentsCommand>,
+) {
+    perform_diff_view(
+        store,
+        documents,
+        ui,
+        id,
+        editor::unified_diff::UnifiedDiffCommand::GoTo { byte },
+        fx,
+    );
 }
 
 /// Collection-scoped document commands (comments.add among them)

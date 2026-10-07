@@ -1,3 +1,12 @@
+// Copyright © 2026 JetBrains s.r.o.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The diff panel and the diff canvas, driven through the real app:
+//! opening, editing, alignment, washes, folds, faces, navigation,
+//! completion, and the paint-cost regressions.
+
+#![allow(unused_imports)]
+
 /// The session these canvas tests work in.
 /// The change-set collection a test canvas reads from: the one in the
 /// window's session, so the rows it mounts land in the window's own
@@ -11,9 +20,6 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
         .expect("the window's state")
         .changes()
 }
-
-// Copyright © 2026 JetBrains s.r.o.
-// SPDX-License-Identifier: Apache-2.0
 
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
 use ::canvas::diff_pane::*;
@@ -771,7 +777,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     );
     let theme = editor::theme::Theme::embedded();
     let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
-    let sample = include_str!("../../plugins/demo/sample.md");
+    let sample = include_str!("../../../plugins/demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
     for (name, body) in [
@@ -4569,4 +4575,415 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
         "the rebuild replaced the pair — no leak"
     );
     assert!(documents::OpenDocuments::pair_ids(&app.store(), app.sole_documents()).is_empty());
+}
+
+/// Code navigation FROM a canvas diff stays in the canvas: a target
+/// in the diffed file goes to the byte in the row's face (lifting a
+/// fold over it), a target in another file of the canvas reveals
+/// that row and goes to the byte there, and only a target outside
+/// the canvas opens an editor pane.
+#[test]
+fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
+    use documents::OpenDocuments;
+    let mut app = Application::new(AppFonts::embedded());
+    let window = app.add_window();
+    app.register_document_command(Arc::new(hicode::GoDefinition));
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let document = editor::location::ResourceType::document();
+    // a.rs: forty changed lines (a row taller than the viewport, so
+    // revealing b.rs's row below it has to scroll), then a long
+    // identical tail the diff folds; the same-file target sits deep
+    // in that tail.
+    let body = |head: &str| {
+        let mut text = String::new();
+        for n in 0..40 {
+            text.push_str(&format!("{head} line {n}\n"));
+        }
+        for n in 0..80 {
+            text.push_str(&format!("same line {n}\n"));
+        }
+        text
+    };
+    let file_a = ::canvas::diff_canvas::CanvasFile {
+        title: "a.rs".to_owned(),
+        old: location("a.rs.old", document.clone()),
+        new: location("a.rs", document.clone()),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    let file_b = ::canvas::diff_canvas::CanvasFile {
+        title: "b.rs".to_owned(),
+        old: location("b.rs.old", document.clone()),
+        new: location("b.rs", document.clone()),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    let built_a = prepared_pair(
+        file_a.old.clone(),
+        ::editor::test_document::plain_document(&body("old a")),
+        file_a.new.clone(),
+        ::editor::test_document::plain_document(&body("new a")),
+        1100.0,
+    );
+    let built_b = prepared_pair(
+        file_b.old.clone(),
+        ::editor::test_document::plain_document("old b\nfn b() {}\n"),
+        file_b.new.clone(),
+        ::editor::test_document::plain_document("new b\nfn b() {}\n"),
+        1100.0,
+    );
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        let view = DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: location("proj", editor::location::ResourceType::directory()),
+            },
+            file_a.clone(),
+            built_a,
+        );
+        view.reconcile_for_tests(&mut store, vec![file_a.clone(), file_b.clone()]);
+        view.land_for_tests(&mut store, &ui, file_b.new.clone(), built_b);
+        view
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut settle = |app: &mut Application| {
+        for _ in 0..12 {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        }
+    };
+    settle(&mut app);
+
+    let documents = app.sole_documents();
+    let canvas_view = |app: &Application| -> DiffCanvasView {
+        let mut found = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                found = Some(view.clone());
+            }
+        });
+        found.expect("the canvas panel")
+    };
+    let pair_a = canvas_view(&app)
+        .probe_pair(app.store(), &file_a.new)
+        .expect("a.rs built");
+    let (right_a, face_a, marks_a) = {
+        let held = OpenDocuments::diff_view_ref(app.store(), documents, pair_a).expect("pair a");
+        let state = held.state.as_ref().expect("dressed");
+        (
+            held.right.document(),
+            state.inline_editor().expect("the inline face"),
+            state.right_marks_oracle(),
+        )
+    };
+    let offset = |app: &Application, id: documents::DocumentId, line: u32, col: u32| -> u32 {
+        let document = OpenDocuments::document_ref(app.store(), documents, id).expect("doc");
+        documents::text_ext::offset_at(
+            &mut document.text().view(),
+            documents::text_ext::LineCol { line, col },
+        ) as u32
+    };
+    let byte_a = offset(&app, right_a, 61, 5);
+    let hidden_at = |app: &Application| -> bool {
+        let document = OpenDocuments::document_ref(app.store(), documents, right_a).expect("a");
+        document
+            .feature_markup(marks_a)
+            .map(|markup| editor::split_diff::fold_strip_ranges(markup, marks_a))
+            .unwrap_or_default()
+            .iter()
+            .any(|range| range.start <= byte_a && byte_a < range.end)
+    };
+    assert!(
+        hidden_at(&app),
+        "the identical tail is folded over the target"
+    );
+    let panes_before = app.pane_count();
+    let navigate = |app: &mut Application,
+                    target: editor::location::ResourceLocation,
+                    line: u32,
+                    built: Vec<(
+        editor::location::ResourceLocation,
+        editor::document::Document,
+    )>| {
+        assert!(app.perform_command(himark::app::AppCommand::Windowed(
+            window,
+            Arc::new(hicode::ApplyNavigation {
+                outcome: hicode::NavigationOutcome {
+                    title: "Definitions".to_owned(),
+                    targets: Some(vec![hicode::CodeTarget {
+                        location: target,
+                        range: documents::text_ext::LineCol { line, col: 5 }
+                            ..documents::text_ext::LineCol { line, col: 9 },
+                    }]),
+                    built,
+                },
+            }),
+        )));
+    };
+
+    // 1. The diffed file itself: inside the row, fold lifted.
+    navigate(&mut app, file_a.new.clone(), 61, Vec::new());
+    settle(&mut app);
+    assert_eq!(app.pane_count(), panes_before, "no editor pane opened");
+    let document = OpenDocuments::document_ref(app.store(), documents, right_a).expect("a");
+    assert_eq!(
+        document.caret_byte(face_a),
+        byte_a,
+        "the row's face took the caret"
+    );
+    assert!(!hidden_at(&app), "the fold over the target lifted");
+
+    // 2. Another file of the canvas: its row reveals, its face goes.
+    let pair_b = canvas_view(&app)
+        .probe_pair(app.store(), &file_b.new)
+        .expect("b.rs built");
+    let (right_b, face_b) = {
+        let held = OpenDocuments::diff_view_ref(app.store(), documents, pair_b).expect("pair b");
+        (
+            held.right.document(),
+            held.state
+                .as_ref()
+                .expect("dressed")
+                .inline_editor()
+                .expect("face"),
+        )
+    };
+    let scroll_before = canvas_view(&app).probe_scroll_top(app.store());
+    navigate(&mut app, file_b.new.clone(), 1, Vec::new());
+    settle(&mut app);
+    assert!(
+        canvas_view(&app).probe_scroll_top(app.store()) > scroll_before,
+        "the canvas revealed b.rs's row below a.rs's tall one"
+    );
+    assert_eq!(app.pane_count(), panes_before, "still no editor pane");
+    let byte_b = offset(&app, right_b, 1, 5);
+    let document = OpenDocuments::document_ref(app.store(), documents, right_b).expect("b");
+    assert_eq!(
+        document.caret_byte(face_b),
+        byte_b,
+        "b.rs's face took the caret"
+    );
+
+    // 3. An unchanged file: not in the canvas, an editor opens on it.
+    let elsewhere = location("c.rs", editor::location::ResourceType::document());
+    navigate(
+        &mut app,
+        elsewhere,
+        0,
+        vec![(
+            location("c.rs", editor::location::ResourceType::document()),
+            ::editor::test_document::plain_document("fn c() {}\n"),
+        )],
+    );
+    settle(&mut app);
+    assert_eq!(
+        app.focused_document_text().as_deref(),
+        Some("fn c() {}\n"),
+        "the unchanged file opened in an editor pane"
+    );
+}
+
+/// Completion serves a canvas row's face: the pane's services reach
+/// the hosted editor through the canvas's own envelope — the explicit
+/// trigger asks at the face's caret, the landing opens the popup on
+/// it, and a pick writes into the diffed document.
+#[test]
+fn completion_serves_a_canvas_diff_face() {
+    use documents::OpenDocuments;
+    use imba::event::{Key, Modifiers};
+    let mut app = Application::new(AppFonts::embedded());
+    let window = app.add_window();
+    struct StubLsp(Arc<std::sync::atomic::AtomicUsize>);
+    impl imba::effect::EffectHandler<ahp_lsp::LspCompletionEffect> for StubLsp {
+        async fn handle(
+            &self,
+            _effect: ahp_lsp::LspCompletionEffect,
+        ) -> Option<ahp_lsp::LspAnswer> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Some(ahp_lsp::LspAnswer {
+                items: vec![ahp_lsp::LspItem {
+                    label: "push".to_owned(),
+                    detail: None,
+                    filter_text: None,
+                    sort_text: Some("0".to_owned()),
+                    edit: None,
+                    insert_text: Some("push".to_owned()),
+                }],
+                incomplete: false,
+            })
+        }
+    }
+    let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    app.register_handler::<ahp_lsp::LspCompletionEffect>(StubLsp(Arc::clone(&asks)));
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "main.rs".to_owned(),
+        old: location("main.rs.old", editor::location::ResourceType::document()),
+        new: location("main.rs", editor::location::ResourceType::document()),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    let built = prepared_pair(
+        file.old.clone(),
+        ::editor::test_document::plain_document("old "),
+        file.new.clone(),
+        ::editor::test_document::plain_document("value "),
+        1100.0,
+    );
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: location("proj", editor::location::ResourceType::directory()),
+            },
+            file.clone(),
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut settle = |app: &mut Application| {
+        for _ in 0..12 {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        }
+    };
+    settle(&mut app);
+
+    let documents = app.sole_documents();
+    let pair = {
+        let mut found = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                found = view.probe_pair(app.store(), &file.new);
+            }
+        });
+        found.expect("the row built")
+    };
+    let (right, face) = {
+        let held = OpenDocuments::diff_view_ref(app.store(), documents, pair).expect("pair");
+        (
+            held.right.document(),
+            held.state
+                .as_ref()
+                .expect("dressed")
+                .inline_editor()
+                .expect("face"),
+        )
+    };
+    let text = |app: &Application| -> String {
+        let document = OpenDocuments::document_ref(app.store(), documents, right).expect("right");
+        let mut view = document.text().view();
+        let end = view.byte_count();
+        view.byte_string(0, end)
+    };
+    // Click the face far right, past "value ": the caret lands at the
+    // line end and the face holds the keyboard.
+    let _ = himark::test_driver::click(&mut app, 900.0, 240.0, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, 900.0, 240.0);
+    settle(&mut app);
+    let focus = OpenDocuments::document_ref(app.store(), documents, right)
+        .expect("right")
+        .focus(face);
+    assert_ne!(
+        focus,
+        editor::editor_view::EditorFocus::None,
+        "the row's face holds the keyboard"
+    );
+    let caret = OpenDocuments::document_ref(app.store(), documents, right)
+        .expect("right")
+        .caret_byte(face);
+    assert!(caret > 0, "the click placed the caret in the face: {caret}");
+
+    let completion_open = |app: &Application| -> bool {
+        himark::editor_accessories::Seats::seat(app.store(), face)
+            .is_some_and(|seat| seat.completion.open())
+    };
+    let trigger = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+        .into_iter()
+        .find(|presentable| presentable.id == "completion.trigger")
+        .expect("the trigger command registered")
+        .command;
+    assert!(app.perform_command(trigger));
+    assert!(completion_open(&app), "the explicit ask opened on the face");
+    settle(&mut app);
+    let focus = OpenDocuments::document_ref(app.store(), documents, right)
+        .expect("right")
+        .focus(face);
+    assert!(
+        completion_open(&app),
+        "the popup survives the settle ticks (face focus {focus:?})"
+    );
+    let rows = himark::editor_accessories::Seats::seat(app.store(), face)
+        .map(|seat| seat.completion.row_labels())
+        .unwrap_or_default();
+    assert_eq!(
+        rows,
+        vec!["push".to_owned()],
+        "the landing filled the popup (asks {})",
+        asks.load(std::sync::atomic::Ordering::Relaxed)
+    );
+
+    let before = text(&app);
+    assert!(himark::test_driver::key(
+        &mut app,
+        Key::Enter,
+        Modifiers::default()
+    ));
+    settle(&mut app);
+    let after = text(&app);
+    assert_ne!(after, before, "the pick wrote into the diffed document");
+    assert!(after.contains("push"), "the picked item landed: {after:?}");
+    assert!(!completion_open(&app), "the popup closed on the pick");
 }

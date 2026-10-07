@@ -252,24 +252,12 @@ fn the_at_completion_serves_markdown_panes() {
     app.draw_window(window, surface.canvas());
 
     let completion_open = |app: &Application| -> bool {
-        ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(
-                    entity.workbench().root.focused_slot(),
-                )
-                .is_some_and(|services| services.completion.open())
-            })
-            .unwrap_or(false)
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .is_some_and(|seat| seat.completion.open())
     };
     let rows = |app: &Application| -> Vec<String> {
-        ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(
-                    entity.workbench().root.focused_slot(),
-                )
-                .map(|services| services.completion.row_labels())
-                .unwrap_or_default()
-            })
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .map(|seat| seat.completion.row_labels())
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
@@ -435,24 +423,12 @@ fn lsp_completion_serves_code_panes() {
     app.draw_window(window, surface.canvas());
 
     let completion_open = |app: &Application| -> bool {
-        ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(
-                    entity.workbench().root.focused_slot(),
-                )
-                .is_some_and(|services| services.completion.open())
-            })
-            .unwrap_or(false)
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .is_some_and(|seat| seat.completion.open())
     };
     let rows = |app: &Application| -> Vec<String> {
-        ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
-            .map(|entity| {
-                himark::pane_services::EditorServices::of_ref(
-                    entity.workbench().root.focused_slot(),
-                )
-                .map(|services| services.completion.row_labels())
-                .unwrap_or_default()
-            })
+        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
+            .map(|seat| seat.completion.row_labels())
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
