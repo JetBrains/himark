@@ -3,9 +3,7 @@
 
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::{
-    forest::ForestNode,
-};
+use hikit::forest::ForestNode;
 use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, ui::UiCtx};
 
 const NOTE_KIND: &str = "changes-note";

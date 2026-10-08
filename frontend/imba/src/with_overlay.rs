@@ -166,12 +166,11 @@ where
 
     /// A standing overlay answers the keys ahead of its host; Escape
     /// dismisses it.
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> FocusData<'w, Self::Command> {
-        let host = self.view.focus_data(store, ui).map(WithOverlayCommand::Host);
+    fn focus_data<'w>(&'w self, store: &'w Store, ui: &'w UiCtx) -> FocusData<'w, Self::Command> {
+        let host = self
+            .view
+            .focus_data(store, ui)
+            .map(WithOverlayCommand::Host);
         let Some(overlay) = &self.overlay else {
             return host;
         };
@@ -182,8 +181,12 @@ where
             })),
             ..FocusData::default()
         };
-        own.merge_under(overlay.focus_data(store, ui).map(WithOverlayCommand::Overlay))
-            .merge_under(host)
+        own.merge_under(
+            overlay
+                .focus_data(store, ui)
+                .map(WithOverlayCommand::Overlay),
+        )
+        .merge_under(host)
     }
 
     fn display<'a>(
@@ -206,35 +209,32 @@ where
             let backdrop = self.backdrop;
             ThunkBox::new(
                 arena,
-                inner.overlay(
-                    crate::overlay::WINDOW,
-                    move |host: Size, anchor: Rect| {
-                        let content = ThunkBox::new(
+                inner.overlay(crate::overlay::WINDOW, move |host: Size, anchor: Rect| {
+                    let content = ThunkBox::new(
+                        arena,
+                        crate::layout::Layout::layout(
+                            overlay.display(arena, store, ui),
                             arena,
-                            crate::layout::Layout::layout(
-                                overlay.display(arena, store, ui),
-                                arena,
-                                Constraints::tight(host).loosen(),
-                            )
-                            .map(WithOverlayCommand::Overlay),
+                            Constraints::tight(host).loosen(),
+                        )
+                        .map(WithOverlayCommand::Overlay),
+                    );
+                    let origin = placement.origin(host, anchor, content.size());
+                    let mut placed = Vec::with_capacity(2);
+                    if backdrop {
+                        let veil = leaf::<Self::Command>(host.width, host.height).event(
+                            |_arena, event, _size| match event {
+                                Event::MouseDown { .. } => {
+                                    EventResult::Command(WithOverlayCommand::Dismiss)
+                                }
+                                _ => EventResult::Ignored,
+                            },
                         );
-                        let origin = placement.origin(host, anchor, content.size());
-                        let mut placed = Vec::with_capacity(2);
-                        if backdrop {
-                            let veil = leaf::<Self::Command>(host.width, host.height).event(
-                                |_arena, event, _size| match event {
-                                    Event::MouseDown { .. } => {
-                                        EventResult::Command(WithOverlayCommand::Dismiss)
-                                    }
-                                    _ => EventResult::Ignored,
-                                },
-                            );
-                            placed.push((Point::new(0.0, 0.0), ThunkBox::new(arena, veil)));
-                        }
-                        placed.push((origin, content));
-                        placed
-                    },
-                ),
+                        placed.push((Point::new(0.0, 0.0), ThunkBox::new(arena, veil)));
+                    }
+                    placed.push((origin, content));
+                    placed
+                }),
             )
         })
     }

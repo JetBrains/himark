@@ -1122,10 +1122,12 @@ impl HimarkEngine {
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app
-                .register_handler::<::editor::completion::CompletionEffect>(ahp_lsp::CompletionRoute {
-                    directory: Arc::clone(&self.clients),
-                    uris: Arc::clone(&self.resource_uris),
-                });
+                .register_handler::<::editor::completion::CompletionEffect>(
+                    ahp_lsp::CompletionRoute {
+                        directory: Arc::clone(&self.clients),
+                        uris: Arc::clone(&self.resource_uris),
+                    },
+                );
             self.app
                 .register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
                     directory: Arc::clone(&self.clients),
@@ -2225,5 +2227,3 @@ mod findroute_tests;
 mod reconnect_tests;
 #[cfg(test)]
 mod tests;
-
-

@@ -122,8 +122,7 @@ where
                 });
             }
             TooltipCommand::Entered => {
-                if let (Hover::Idle, Some(tip)) = (&self.hover, (self.provide)(&self.view, store))
-                {
+                if let (Hover::Idle, Some(tip)) = (&self.hover, (self.provide)(&self.view, store)) {
                     self.hover = Hover::Arming {
                         tip,
                         rested: 0.0,
@@ -195,22 +194,19 @@ where
             };
             ThunkBox::new(
                 arena,
-                inner.overlay(
-                    crate::overlay::WINDOW,
-                    move |host: Size, anchor: Rect| {
-                        let content = ThunkBox::new(
+                inner.overlay(crate::overlay::WINDOW, move |host: Size, anchor: Rect| {
+                    let content = ThunkBox::new(
+                        arena,
+                        crate::layout::Layout::layout(
+                            tip.display(arena, store, ui),
                             arena,
-                            crate::layout::Layout::layout(
-                                tip.display(arena, store, ui),
-                                arena,
-                                Constraints::tight(host).loosen(),
-                            )
-                            .map(|never: Infallible| match never {}),
-                        );
-                        let origin = Placement::Beside.origin(host, anchor, content.size());
-                        vec![(origin, content)]
-                    },
-                ),
+                            Constraints::tight(host).loosen(),
+                        )
+                        .map(|never: Infallible| match never {}),
+                    );
+                    let origin = Placement::Beside.origin(host, anchor, content.size());
+                    vec![(origin, content)]
+                }),
             )
         })
     }

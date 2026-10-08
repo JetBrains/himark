@@ -240,8 +240,15 @@ impl View for CompletionRow {
                 imba::leaf::leaf::<Self::Command>(width, height).paint_instead(
                     move |_arena, canvas, rect| {
                         let baseline = rect.top + rect.height() * 0.5 + chrome.row_size * 0.36;
-                        let label_width =
-                            shaper.draw(canvas, &font, &self.label, text, 0.0, rect.left + pad, baseline);
+                        let label_width = shaper.draw(
+                            canvas,
+                            &font,
+                            &self.label,
+                            text,
+                            0.0,
+                            rect.left + pad,
+                            baseline,
+                        );
                         if let Some(trail) = &self.trail {
                             let room = rect.width() - pad * 2.0 - label_width - 16.0;
                             if room > 40.0 {
@@ -424,7 +431,10 @@ impl Completer {
     /// Where the anchor stands now.
     pub(crate) fn anchor_start(&self, document: &Document) -> Option<u32> {
         let (markup, key) = self.cover?;
-        document.feature_markup(markup)?.styled_range_of(key).map(|range| range.start)
+        document
+            .feature_markup(markup)?
+            .styled_range_of(key)
+            .map(|range| range.start)
     }
 
     fn query_anchor(&self, document: &Document) -> Option<u32> {
@@ -645,7 +655,16 @@ impl Completer {
         let theme = crate::env::Themes::of(store);
         let mut tints = crate::markup::Markup::new();
         let key = tints.push_styled_keyed(cover..cover + 1, crate::theme::StyleId::Match);
-        document.replace_markup(markup, tints, &[cover..cover + 1], store, ui, &fonts, &theme, fx);
+        document.replace_markup(
+            markup,
+            tints,
+            &[cover..cover + 1],
+            store,
+            ui,
+            &fonts,
+            &theme,
+            fx,
+        );
         self.cover = Some((markup, key));
         self.anchor_offset = anchor_offset;
         self.refresh(store, ui);
@@ -655,9 +674,10 @@ impl Completer {
         if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
             let (serial, count) = match &found {
                 CompletionFound::Path { serial, locations } => (*serial, locations.len()),
-                CompletionFound::Items { serial, answer } => {
-                    (*serial, answer.as_ref().map_or(0, |answer| answer.items.len()))
-                }
+                CompletionFound::Items { serial, answer } => (
+                    *serial,
+                    answer.as_ref().map_or(0, |answer| answer.items.len()),
+                ),
             };
             eprintln!(
                 "[lsp] completion landed #{serial} ({count} items) open={} standing=#{}",
@@ -717,7 +737,12 @@ impl Completer {
 
     /// A rows command: a row body click picks (the answer), anything
     /// else moves the list.
-    fn rows_command(&mut self, store: &mut Store, ui: &UiCtx, command: PopupRowsCommand) -> Option<usize> {
+    fn rows_command(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: PopupRowsCommand,
+    ) -> Option<usize> {
         if let Some((row, _trigger)) = PopupList::activated(&command) {
             if self.list.content().key_at(row).is_some() {
                 return Some(row);
@@ -862,7 +887,9 @@ impl Completer {
         }
         let theme = crate::env::Themes::of(store);
         let row_height = theme.ui().peeker.row_height.max(1.0);
-        let selected = self.selected().min(self.source.row_count().saturating_sub(1));
+        let selected = self
+            .selected()
+            .min(self.source.row_count().saturating_sub(1));
         let scroll_y = self.list.scroll_y();
         let mut slice = ListSlice::new();
         let count = rows_out.len();
@@ -979,7 +1006,10 @@ impl Document {
         }
         let mut completer = std::mem::take(&mut self.editor_mut(editor).completion);
         if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
-            eprintln!("[lsp] completion {command} on {editor:?} open={}", completer.open());
+            eprintln!(
+                "[lsp] completion {command} on {editor:?} open={}",
+                completer.open()
+            );
         }
         match command {
             CompletionCommand::Trigger => unreachable!("handled above"),

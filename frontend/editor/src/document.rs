@@ -1351,9 +1351,7 @@ impl Document {
     }
 
     pub(crate) fn editor_mut(&mut self, editor: EditorId) -> &mut Editor {
-        self.editors
-            .get_mut(&editor)
-            .expect("a registered editor")
+        self.editors.get_mut(&editor).expect("a registered editor")
     }
 
     pub(crate) fn editor(&self, editor: EditorId) -> &Editor {

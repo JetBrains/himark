@@ -91,7 +91,10 @@ impl EditorIdView {
         else {
             return;
         };
-        if document.link_range_at(document.caret_byte(self.editor)).is_none() {
+        if document
+            .link_range_at(document.caret_byte(self.editor))
+            .is_none()
+        {
             return;
         }
         entry.perform(

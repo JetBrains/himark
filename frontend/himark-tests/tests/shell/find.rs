@@ -46,9 +46,8 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     {
         let (document_id, editor) = app.focused_editor_id();
         let documents = app.sole_documents();
-        let mut document =
-            documents::OpenDocuments::document(app.store(), documents, document_id)
-                .expect("the document");
+        let mut document = documents::OpenDocuments::document(app.store(), documents, document_id)
+            .expect("the document");
         document.find_mut(editor).expect("the bar is open").focused = false;
         documents::OpenDocuments::put_document(
             &mut app.store_mut(),

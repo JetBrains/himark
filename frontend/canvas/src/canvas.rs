@@ -2141,7 +2141,10 @@ impl DiffCanvasView {
     pub fn probe_built_pairs(
         &self,
         store: &Store,
-    ) -> Vec<(editor::location::ResourceLocation, documents::diffs::DiffViewId)> {
+    ) -> Vec<(
+        editor::location::ResourceLocation,
+        documents::diffs::DiffViewId,
+    )> {
         let Some(canvas) = self.canvas(store) else {
             return Vec::new();
         };

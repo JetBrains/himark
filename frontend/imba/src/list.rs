@@ -1271,7 +1271,6 @@ where
     T::Command: Send + 'static,
     K: Clone + Eq + Hash + Send + Sync + 'static,
 {
-
     /// `step_matched`'s walk minus the mutation: the matched row a
     /// ±delta step lands on (wrapping; delta 0 = the first match
     /// at/after the cursor).
@@ -2284,10 +2283,7 @@ where
         // pulse (docs §3.1).
         if (viewport.top - list.viewport_top).abs() > 0.5 {
             merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
-                EventResult::Command(ListCommand::ViewportTop(
-                    viewport.top,
-                    viewport.height(),
-                )),
+                EventResult::Command(ListCommand::ViewportTop(viewport.top, viewport.height())),
             );
         }
         match merged {
@@ -2312,10 +2308,8 @@ where
             // so no reveal rides this round; the next round, if any,
             // speaks from fresh state.
             if (viewport.top - list.viewport_top).abs() > 0.5 {
-                let mine = EventResult::Command(ListCommand::ViewportTop(
-                    viewport.top,
-                    viewport.height(),
-                ));
+                let mine =
+                    EventResult::Command(ListCommand::ViewportTop(viewport.top, viewport.height()));
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                 return merged;
             }
@@ -2410,8 +2404,7 @@ where
             // say: focus moves to the row under it, and on a
             // selectable list the row body selects and activates.
             Event::MouseDown { point, .. } => {
-                let Some(row) = self.visible.iter().find(|row| row.rect.contains(*point))
-                else {
+                let Some(row) = self.visible.iter().find(|row| row.rect.contains(*point)) else {
                     return EventResult::Ignored;
                 };
                 let index = row.index;
@@ -2419,10 +2412,9 @@ where
                     // A row affordance consumed the click (a
                     // chevron's Toggle, a button) — that is not
                     // activation.
-                    EventResult::Command(command) => EventResult::Command(ListCommand::Focus(
-                        index,
-                        Some(Box::new(command)),
-                    )),
+                    EventResult::Command(command) => {
+                        EventResult::Command(ListCommand::Focus(index, Some(Box::new(command))))
+                    }
                     // The ROW BODY: routing, selection and
                     // activation, each its own inspectable command
                     // (docs/ui/list-keyboard.md §2).
@@ -2441,7 +2433,11 @@ where
             | Event::MouseDrag { .. }
             | Event::MouseUp { .. } => {
                 let focused = list.focused;
-                match self.visible.iter().position(|row| Some(row.index) == focused) {
+                match self
+                    .visible
+                    .iter()
+                    .position(|row| Some(row.index) == focused)
+                {
                     Some(position) => self.rows.route_to(position, arena, event, viewport),
                     None => EventResult::Ignored,
                 }

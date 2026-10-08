@@ -774,7 +774,6 @@ impl EditorView {
                             .x_at_byte(inlay_anchor_byte(interval.inlay.mode, &interval.range));
                         (anchor_x, y_centered)
                     }
-
                 };
 
                 let key = interval.key;
@@ -1251,7 +1250,8 @@ impl View for EditorView {
                 }
 
                 let popup_origin = skia_safe::Point::new(gutter - scroll_x, 0.0);
-                let mut popups = self.assist_overlays(arena, store, ui, &fonts.collection(), popup_origin);
+                let mut popups =
+                    self.assist_overlays(arena, store, ui, &fonts.collection(), popup_origin);
                 popups.extend(crate::popup::projected_overlays(
                     &document,
                     editor_id,

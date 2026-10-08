@@ -200,12 +200,17 @@ impl EffectHandler<crate::effects::LspDiagnosticsChannelEffect> for HandleLspDia
 
 pub struct HandleSubscribeLspDiagnostics;
 
-impl EffectHandler<crate::effects::SubscribeLspDiagnosticsEffect> for HandleSubscribeLspDiagnostics {
+impl EffectHandler<crate::effects::SubscribeLspDiagnosticsEffect>
+    for HandleSubscribeLspDiagnostics
+{
     async fn handle(
         &self,
         effect: crate::effects::SubscribeLspDiagnosticsEffect,
     ) -> Result<himark_ahp_ext_types::lsp::DiagnosticsState, String> {
-        effect.client.subscribe_lsp_diagnostics(effect.channel).await
+        effect
+            .client
+            .subscribe_lsp_diagnostics(effect.channel)
+            .await
     }
 }
 

@@ -86,7 +86,6 @@ impl MenuView {
         let (index, _trigger) = Controller::activated(rows.as_ref())?;
         self.list().key_at(index).cloned()
     }
-
 }
 
 impl View for MenuView {
@@ -142,15 +141,17 @@ impl View for MenuView {
                 menu.place(
                     0.0,
                     0.0,
-                    leaf::<MenuCommand>(width, height).paint_instead(move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_color(fill);
-                        canvas.draw_rect(rect, &paint);
-                        paint.set_stroke(true);
-                        paint.set_stroke_width(1.0);
-                        paint.set_color(border);
-                        canvas.draw_rect(rect.with_inset((0.5, 0.5)), &paint);
-                    }),
+                    leaf::<MenuCommand>(width, height).paint_instead(
+                        move |_arena, canvas, rect| {
+                            let mut paint = Paint::default();
+                            paint.set_color(fill);
+                            canvas.draw_rect(rect, &paint);
+                            paint.set_stroke(true);
+                            paint.set_stroke_width(1.0);
+                            paint.set_color(border);
+                            canvas.draw_rect(rect.with_inset((0.5, 0.5)), &paint);
+                        },
+                    ),
                 );
                 let rows = imba::layout::Layout::layout(
                     self.rows

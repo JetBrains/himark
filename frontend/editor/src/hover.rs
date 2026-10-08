@@ -96,7 +96,10 @@ impl Hover {
             return;
         }
         if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
-            eprintln!("[lsp] hover sync byte={byte:?} word={word:?} (was {:?})", self.anchor);
+            eprintln!(
+                "[lsp] hover sync byte={byte:?} word={word:?} (was {:?})",
+                self.anchor
+            );
         }
         self.retract(fx);
         self.anchor = word.clone();
@@ -178,8 +181,15 @@ impl Hover {
     }
 
     pub(crate) fn retract(&mut self, fx: &mut Effects<'_, EditorCommand>) {
-        if std::env::var_os("HIMARK_TRACE_LSP").is_some() && (self.card.is_some() || self.arming.is_some() || self.lane.is_some()) {
-            eprintln!("[lsp] hover retract (card {}, arming {}, lane {})", self.card.is_some(), self.arming.is_some(), self.lane.is_some());
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some()
+            && (self.card.is_some() || self.arming.is_some() || self.lane.is_some())
+        {
+            eprintln!(
+                "[lsp] hover retract (card {}, arming {}, lane {})",
+                self.card.is_some(),
+                self.arming.is_some(),
+                self.lane.is_some()
+            );
         }
         if let Some(token) = self.lane.take() {
             fx.cancel(token);

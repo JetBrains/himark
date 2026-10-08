@@ -886,7 +886,6 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     assert_ne!(with_hint, without_hint, "the hint chip reaches the pixels");
 }
 
-
 /// The PRODUCTION engine against the LIVE host: the working-copy
 /// canvas of `HIMARK_LIVE_SESSION`, a click into the first built
 /// row's face, then ctrl-space and a hover — the two accessories must
@@ -899,19 +898,24 @@ fn live_canvas_face_serves_completion_and_hover() {
     let mut engine = HimarkEngine::new();
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
-        crate::wid(window),
-        Arc::new(OpenLiveSession {
-            host,
-            session: session.clone(),
-        }),
-    )]));
+    assert!(engine
+        .app
+        .perform_batch(vec![himark::app::AppCommand::Windowed(
+            crate::wid(window),
+            Arc::new(OpenLiveSession {
+                host,
+                session: session.clone(),
+            }),
+        )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let started = std::time::Instant::now();
     while !himark::workspace::window_session(engine.app.store(), crate::wid(window))
         .is_some_and(|key| key.session.as_str() == session)
     {
-        assert!(started.elapsed() < std::time::Duration::from_secs(30), "session never came up");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "session never came up"
+        );
         let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -940,19 +944,24 @@ fn live_canvas_face_serves_completion_and_hover() {
                 .chain(["frontend", "imba", "src", "list.rs"].map(str::to_owned))
                 .collect::<Vec<String>>(),
         );
-        assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
-            crate::wid(window),
-            Arc::new(himark::diff_canvas::OpenDiffCanvas {
-                changes,
-                source: changesview::hichanges::CanvasSource::WorkingCopy { folder },
-                reveal: Some(reveal),
-            }),
-        )]));
+        assert!(engine
+            .app
+            .perform_batch(vec![himark::app::AppCommand::Windowed(
+                crate::wid(window),
+                Arc::new(himark::diff_canvas::OpenDiffCanvas {
+                    changes,
+                    source: changesview::hichanges::CanvasSource::WorkingCopy { folder },
+                    reveal: Some(reveal),
+                }),
+            )]));
     }
     let canvas = |engine: &HimarkEngine| -> Option<canvas::canvas::DiffCanvasView> {
         let mut found = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(view) = panel.as_any().downcast_ref::<canvas::canvas::DiffCanvasView>() {
+            if let Some(view) = panel
+                .as_any()
+                .downcast_ref::<canvas::canvas::DiffCanvasView>()
+            {
                 found = Some(view.clone());
             }
         });
@@ -983,7 +992,10 @@ fn live_canvas_face_serves_completion_and_hover() {
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    eprintln!("[live] rows: {:?}", canvas(&engine).unwrap().probe_rows(engine.app.store()));
+    eprintln!(
+        "[live] rows: {:?}",
+        canvas(&engine).unwrap().probe_rows(engine.app.store())
+    );
     // The reveal rides the animation clock: tick until the column
     // has moved off the top.
     for tick in 0..60 {
@@ -993,7 +1005,9 @@ fn live_canvas_face_serves_completion_and_hover() {
     }
     eprintln!(
         "[live] scroll top {} reveal pending {:?}",
-        canvas(&engine).unwrap().probe_scroll_top(engine.app.store()),
+        canvas(&engine)
+            .unwrap()
+            .probe_scroll_top(engine.app.store()),
         canvas(&engine).unwrap().probe_reveal(engine.app.store())
     );
 
@@ -1010,7 +1024,9 @@ fn live_canvas_face_serves_completion_and_hover() {
         )
         .into_iter()
         .map(|presentable| presentable.id.to_string())
-        .filter(|id| id.contains("completion") || id.contains("open-in-full") || id.contains("find"))
+        .filter(|id| {
+            id.contains("completion") || id.contains("open-in-full") || id.contains("find")
+        })
         .collect()
     };
     let shot = |surface: &mut skia_safe::Surface, name: &str| {
@@ -1039,12 +1055,20 @@ fn live_canvas_face_serves_completion_and_hover() {
         let view = canvas(&engine).expect("the canvas stays (the click missed the face)");
         let store = engine.app.store();
         for (key, pair) in view.probe_built_pairs(store) {
-            let Some(held) = documents::OpenDocuments::diff_view_ref(store, documents, pair) else { continue };
-            let Some(state) = held.state.as_ref() else { continue };
-            let Some(editor) = state.inline_editor() else { continue };
+            let Some(held) = documents::OpenDocuments::diff_view_ref(store, documents, pair) else {
+                continue;
+            };
+            let Some(state) = held.state.as_ref() else {
+                continue;
+            };
+            let Some(editor) = state.inline_editor() else {
+                continue;
+            };
             let right = held.right.document();
-            let document = documents::OpenDocuments::document_ref(store, documents, right).expect("right");
-            let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
+            let document =
+                documents::OpenDocuments::document_ref(store, documents, right).expect("right");
+            let markdown =
+                document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
             if document.caret_byte(editor) > 0 && !markdown {
                 face = Some((key.clone(), right, editor, y));
             }
@@ -1070,15 +1094,23 @@ fn live_canvas_face_serves_completion_and_hover() {
     let handled = engine.key_down(window, ' ' as u32, HIMARK_MOD_CONTROL);
     eprintln!("[live] ctrl-space handled={handled}");
     let completion = |engine: &HimarkEngine| -> Option<(bool, usize)> {
-        let document = documents::OpenDocuments::document_ref(engine.app.store(), documents, right)?;
+        let document =
+            documents::OpenDocuments::document_ref(engine.app.store(), documents, right)?;
         let completion = document.completion(editor);
         Some((completion.open(), completion.row_labels().len()))
     };
     let hover = |engine: &HimarkEngine| -> Option<(bool, bool)> {
-        let document = documents::OpenDocuments::document_ref(engine.app.store(), documents, right)?;
-        Some((document.hover(editor).armed(), document.hover(editor).open()))
+        let document =
+            documents::OpenDocuments::document_ref(engine.app.store(), documents, right)?;
+        Some((
+            document.hover(editor).armed(),
+            document.hover(editor).open(),
+        ))
     };
-    eprintln!("[live] completion open right after: {:?}", completion(&engine).map(|c| c.0));
+    eprintln!(
+        "[live] completion open right after: {:?}",
+        completion(&engine).map(|c| c.0)
+    );
     // The server answers in its own time: wait for the rows.
     let started = std::time::Instant::now();
     while completion(&engine).is_some_and(|(open, rows)| open && rows == 0)
@@ -1100,7 +1132,10 @@ fn live_canvas_face_serves_completion_and_hover() {
             .filter(|(k, _)| k == &key)
             .filter_map(|(_, pair)| {
                 let held = documents::OpenDocuments::diff_view_ref(store, documents, pair)?;
-                Some((held.right.document(), held.state.as_ref().and_then(|s| s.inline_editor())))
+                Some((
+                    held.right.document(),
+                    held.state.as_ref().and_then(|s| s.inline_editor()),
+                ))
             })
             .collect();
         eprintln!("[live] face now {faces:?} (asked on {right:?} {editor:?})");
@@ -1112,7 +1147,10 @@ fn live_canvas_face_serves_completion_and_hover() {
 
     let _ = engine.key_down(window, crate::HIMARK_KEY_ESCAPE, 0);
     settle(&mut engine);
-    eprintln!("[live] after escape completion open {:?}", completion(&engine).map(|c| c.0));
+    eprintln!(
+        "[live] after escape completion open {:?}",
+        completion(&engine).map(|c| c.0)
+    );
     // Hover: rest over the clicked word.
     // Rest over words along the clicked line until one has something
     // to say (a keyword or a comment word may not): each rest is
@@ -1139,5 +1177,8 @@ fn live_canvas_face_serves_completion_and_hover() {
         }
     }
     shot(&mut surface, "hover");
-    assert!(opened, "a rested pointer opened the hover card on some word");
+    assert!(
+        opened,
+        "a rested pointer opened the hover card on some word"
+    );
 }

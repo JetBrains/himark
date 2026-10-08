@@ -39,7 +39,9 @@ fn the_at_completion_opens_finds_and_picks() {
         }
     }
     let terms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(std::sync::Arc::clone(&terms)));
+    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(
+        std::sync::Arc::clone(&terms),
+    ));
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -191,7 +193,9 @@ fn the_at_completion_serves_markdown_panes() {
         }
     }
     let terms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(std::sync::Arc::clone(&terms)));
+    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(
+        std::sync::Arc::clone(&terms),
+    ));
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -363,7 +367,10 @@ fn lsp_completion_serves_code_panes() {
 
     struct StubLsp(Arc<std::sync::Mutex<Vec<documents::text_ext::LineCol>>>);
     impl imba::effect::EffectHandler<::editor::completion::CompletionEffect> for StubLsp {
-        async fn handle(&self, effect: ::editor::completion::CompletionEffect) -> Option<::editor::completion::Completion> {
+        async fn handle(
+            &self,
+            effect: ::editor::completion::CompletionEffect,
+        ) -> Option<::editor::completion::Completion> {
             self.0.lock().expect("asks").push(effect.position);
             Some(::editor::completion::Completion {
                 items: vec![

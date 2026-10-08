@@ -216,7 +216,8 @@ impl ChangesView {
 
     #[doc(hidden)]
     pub fn cursor_name(&self) -> Option<String> {
-        self.list.inner()
+        self.list
+            .inner()
             .list()
             .cursor()
             .map(|key| key.name().to_owned())
@@ -251,9 +252,7 @@ impl ChangesView {
         // never shown are preset, so a user's expansion survives.
         for (key, item) in items.iter() {
             if matches!(item, RowItem::Open { toggle: true, .. }) && !self.items.contains_key(key) {
-                self.list.inner_mut()
-                    .forest
-                    .preset_collapsed(key);
+                self.list.inner_mut().forest.preset_collapsed(key);
             }
         }
         self.items = items;
@@ -289,9 +288,7 @@ impl ChangesView {
         match self.items.get(key).cloned() {
             Some(RowItem::Branch { select }) => {
                 if select {
-                    self.list.inner_mut()
-                        .list_mut()
-                        .select_only(key.clone());
+                    self.list.inner_mut().list_mut().select_only(key.clone());
                 }
                 self.list.inner_mut().toggle(key, store, ui);
             }
@@ -302,9 +299,7 @@ impl ChangesView {
                 select,
             }) => {
                 if select {
-                    self.list.inner_mut()
-                        .list_mut()
-                        .select_only(key.clone());
+                    self.list.inner_mut().list_mut().select_only(key.clone());
                 }
                 if toggle {
                     self.list.inner_mut().toggle(key, store, ui);
@@ -354,10 +349,9 @@ impl View for ChangesView {
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
         let ui = &imba::ui::UiCtx::dont_use_too_slow();
-        fx.scope(
-            ChangesViewCommand::Rows,
-            |fx| self.list.clear(store, ui, fx),
-        );
+        fx.scope(ChangesViewCommand::Rows, |fx| {
+            self.list.clear(store, ui, fx)
+        });
     }
 
     fn perform(
@@ -400,14 +394,11 @@ impl View for ChangesView {
                                 }
                             }
                         }
-                        return self.list.inner_mut()
-                            .fold_cursor(expand, store, ui);
+                        return self.list.inner_mut().fold_cursor(expand, store, ui);
                     }
                     ListKeyCommand::Inner(inner) => {
                         if let Some(index) = hikit::tree_item::tree_action(inner) {
-                            if let Some(folder) =
-                                self.list.inner().list().key_at(index).cloned()
-                            {
+                            if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
                                 return self.perform(
                                     store,
                                     ui,

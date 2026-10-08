@@ -1142,7 +1142,6 @@ fn classify_line_marks<'a, 'm>(
                             metrics.instead_height =
                                 metrics.instead_height.max(size.height.max(0.0));
                         }
-
                     }
                 }
                 Decoration::Syntax(_) => {}
@@ -1163,7 +1162,6 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
     pub(crate) fn has_inlays(&self) -> bool {
         self.document.has_inlays() || self.extras.iter().any(|(_, markup)| markup.has_inlays())
     }
-
 
     pub fn all_inlays_in(&self, range: Range<u32>) -> Vec<InlayInterval<'a>> {
         if !self.has_inlays() || range.start >= range.end {
@@ -1247,7 +1245,6 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
                 InlayMode::Instead(InsteadKind::FullLine) => {
                     metrics.instead_height = metrics.instead_height.max(size.height.max(0.0));
                 }
-
             }
         }
         metrics
@@ -2009,9 +2006,7 @@ pub fn inlay_anchors_line(mode: InlayMode, interval: &Range<u32>, line: &Range<u
 
 pub(crate) fn inlay_anchor_byte(mode: InlayMode, interval: &Range<u32>) -> u32 {
     match mode {
-        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) => {
-            interval.start
-        }
+        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) => interval.start,
         InlayMode::Right | InlayMode::Under => interval.end,
     }
 }

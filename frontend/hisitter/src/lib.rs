@@ -257,7 +257,9 @@ impl SyntaxLanguage for TreeSitterLanguage {
             replacement.push_styled(span, StyleId::Reference);
         }
 
-        harvest.outline.sort_by_key(|(node, _, _)| (node.start, node.end));
+        harvest
+            .outline
+            .sort_by_key(|(node, _, _)| (node.start, node.end));
         harvest.outline.dedup();
         let mut view = text.view();
         for (node, title, name) in harvest.outline {
@@ -336,9 +338,8 @@ fn harvest_structure(
                         out.foldables.push(interior);
                     }
                 }
-                if let Some((_, requires_body)) = outline_kinds
-                    .iter()
-                    .find(|(kind, _)| *kind == node.kind())
+                if let Some((_, requires_body)) =
+                    outline_kinds.iter().find(|(kind, _)| *kind == node.kind())
                 {
                     if !requires_body || body_of(node).is_some() {
                         if let Some(named) = title_node(node) {

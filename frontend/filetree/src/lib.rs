@@ -13,12 +13,12 @@ use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use hikit::menu::MenuView;
-use imba::with_overlay::{Placement, WithOverlay, WithOverlayCommand};
 use hikit::{
     forest::TreeRow, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController,
     modal::ModalRequest, modal::ModalView,
 };
 use imba::list::{ActivateTrigger, ListOps};
+use imba::with_overlay::{Placement, WithOverlay, WithOverlayCommand};
 use imba::{
     arena::Arena,
     constraints::Constraints,
