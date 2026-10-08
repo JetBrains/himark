@@ -456,9 +456,20 @@ mod app {
                             directory: Arc::clone(&clients),
                         },
                     );
+                    state.register_handler::<::editor::completion::PathCompletionEffect>(
+                        ahp_locations::find::NativeFindHandler {
+                            directory: Arc::clone(&clients),
+                        },
+                    );
 
-                    state.register_handler::<ahp_lsp::LspCompletionEffect>(
+                    state.register_handler::<::editor::completion::CompletionEffect>(
                         ahp_lsp::CompletionRoute {
+                            directory: Arc::clone(&clients),
+                            uris: Arc::clone(&resource_uris),
+                        },
+                    );
+                    state.register_handler::<::editor::hover::HoverEffect>(
+                        ahp_lsp::HoverRoute {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
