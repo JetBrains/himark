@@ -320,20 +320,41 @@ fn context_press(index: usize) -> TreeCommand {
             index,
             Some(Box::new(imba::list::ListCommand::Child(
                 index,
-                hikit::tree_item::TreeItemCommand::Inner(
-                    hikit::tree_item::TreeLabelCommand::Context,
+                imba::with_overlay::WithOverlayCommand::Host(
+                    hikit::tree_item::TreeItemCommand::Inner(
+                        hikit::tree_item::TreeLabelCommand::Context,
+                    ),
                 ),
             ))),
         )),
     ))
 }
 
-fn menu_activate(index: usize) -> TreeCommand {
-    TreeCommand::Menu(hikit::menu::MenuCommand::Rows(Box::new(
-        hikit::list_keyboard::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
-            imba::list::ListCommand::Activate(index, imba::list::ActivateTrigger::Enter),
+/// Enter on the `item`th entry of the menu standing on row `row`.
+fn menu_activate(row: usize, item: usize) -> TreeCommand {
+    TreeCommand::Rows(hikit::list_keyboard::ListKeyCommand::Inner(
+        imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Child(
+            row,
+            imba::with_overlay::WithOverlayCommand::Overlay(hikit::menu::MenuCommand::Rows(
+                Box::new(hikit::list_keyboard::ListKeyCommand::Inner(
+                    imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Activate(
+                        item,
+                        imba::list::ActivateTrigger::Enter,
+                    )),
+                )),
+            )),
         )),
-    )))
+    ))
+}
+
+/// Whether row `row` has its menu standing.
+fn menu_open(view: &SessionTreeView, row: usize) -> bool {
+    view.tree
+        .list
+        .inner()
+        .content()
+        .view_at(row)
+        .is_some_and(|row| row.overlay().is_some())
 }
 
 #[test]
@@ -360,17 +381,20 @@ fn a_context_press_menus_and_rename_commits_a_move() {
         context_press(1),
         &mut imba::effect::Batch::new().effects(),
     );
-    let menu = view.menu.as_ref().expect("the press opened the menu");
-    assert_eq!(menu.target, document(&["project", "README.md"]));
+    assert!(menu_open(&view, 1), "the press opened the menu on the row");
+    assert_eq!(
+        view.tree.list.inner().content().key_at(1),
+        Some(&document(&["project", "README.md"]))
+    );
 
     // A file's items: Rename first, then Delete.
     view.perform(
         &mut store,
         &ui,
-        menu_activate(0),
+        menu_activate(1, 0),
         &mut imba::effect::Batch::new().effects(),
     );
-    assert!(view.menu.is_none(), "the pick closed the menu");
+    assert!(!menu_open(&view, 1), "the pick closed the menu");
     assert!(view.edit.is_some(), "the pick started the rename");
 
     view.edit.as_mut().expect("editing").input =
@@ -410,12 +434,12 @@ fn new_file_rides_a_placeholder_row_and_creates() {
         context_press(0),
         &mut imba::effect::Batch::new().effects(),
     );
-    assert!(view.menu.is_some());
+    assert!(menu_open(&view, 0));
     // A root directory's items: New File first, then Remove.
     view.perform(
         &mut store,
         &ui,
-        menu_activate(0),
+        menu_activate(0, 0),
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(view.edit.is_some(), "the pick started the create");
@@ -1005,4 +1029,39 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         Some(light),
         "the wash follows the switched theme"
     );
+}
+
+#[test]
+fn a_standing_row_menu_owns_the_keys_and_escape_dismisses_it() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    view.perform(
+        &mut store,
+        &ui,
+        context_press(0),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert!(menu_open(&view, 0));
+
+    let escape = {
+        let mut data = imba::View::focus_data(&view, &store, &ui);
+        data.key(imba::event::Key::Escape, imba::event::Modifiers::default())
+    };
+    let imba::event::EventResult::Command(command) = escape else {
+        panic!("Escape reaches the standing menu");
+    };
+    view.perform(
+        &mut store,
+        &ui,
+        command,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert!(!menu_open(&view, 0), "Escape dismissed the row's menu");
 }

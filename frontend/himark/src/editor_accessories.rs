@@ -563,6 +563,12 @@ impl DynamicEditorCommand for CompletionTrigger {
         fx: &mut EditorEffects<'_>,
     ) {
         let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
+            eprintln!(
+                "[lsp] completion.trigger on {editor:?} at {location:?} markdown={markdown} caret={}",
+                document.caret_byte(editor)
+            );
+        }
         if markdown || location.is_synthetic() {
             return;
         }

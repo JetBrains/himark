@@ -823,6 +823,20 @@ impl Application {
                         _ => EventResult::Ignored,
                     }
                 };
+                if std::env::var_os("HIMARK_TRACE_KEYS").is_some() {
+                    if let Some((key, mods)) = key_down {
+                        eprintln!(
+                            "[keys] {key:?} {mods:?}: chain says {}; binding {:?}",
+                            match &result {
+                                EventResult::Ignored => "ignored",
+                                EventResult::Handled => "handled",
+                                EventResult::Reveal(_) => "reveal",
+                                _ => "command",
+                            },
+                            crate::keymap::Keymaps::binding_of(&store, key, mods)
+                        );
+                    }
+                }
                 let fallback = match (key_down, &result) {
                     (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
                         crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|id| {
@@ -864,6 +878,9 @@ impl Application {
         };
 
         if let Some(command) = fallback {
+            if std::env::var_os("HIMARK_TRACE_KEYS").is_some() {
+                eprintln!("[keys] fallback performs the bound command");
+            }
             return (
                 self.perform_batch(vec![command]),
                 imba::event::PointerShape::Default,

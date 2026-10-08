@@ -2136,6 +2136,22 @@ impl DiffCanvasView {
             .unwrap_or_default()
     }
 
+    /// TEST SUPPORT: every Built row's (new-side location, pair id).
+    #[doc(hidden)]
+    pub fn probe_built_pairs(
+        &self,
+        store: &Store,
+    ) -> Vec<(editor::location::ResourceLocation, documents::diffs::DiffViewId)> {
+        let Some(canvas) = self.canvas(store) else {
+            return Vec::new();
+        };
+        canvas
+            .files
+            .keys()
+            .filter_map(|key| Some((key.clone(), canvas.probe_pair(key)?)))
+            .collect()
+    }
+
     /// TEST SUPPORT: drive the REAL listing adoption (the branch the
     /// paint probe and `Canvases::sync` reach through `refresh`).
     #[doc(hidden)]

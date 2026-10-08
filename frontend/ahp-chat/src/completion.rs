@@ -495,6 +495,9 @@ impl Completion {
         let caret = document.caret_byte(editor) as usize;
         let mut view = document.text().view();
         let position = documents::text_ext::line_col_at(&mut view, caret);
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
+            eprintln!("[lsp] completion ask #{serial} at {location:?} {position:?}");
+        }
         let effect = imba::effect::AnyEffect::new(LspCompletionEffect {
             location: location.clone(),
             position,

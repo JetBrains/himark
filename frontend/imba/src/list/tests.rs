@@ -213,3 +213,109 @@ fn a_mid_list_keyed_insert_lands_and_shifts_keys() {
     assert_eq!(view.key_at(1), Some(&"a.header"));
     assert_eq!(view.key_at(3), Some(&"b.header"));
 }
+
+/// A row whose widget emits an overlay (a face's completion popup).
+#[derive(Clone)]
+struct Emitter {
+    emits: bool,
+}
+
+const ROW_HOST: crate::overlay::OverlayHost = crate::overlay::OverlayHost("row-host");
+
+struct EmitterWidget {
+    emits: bool,
+}
+
+impl<'a> crate::Widget<'a, std::convert::Infallible> for EmitterWidget {
+    fn size(&self) -> skia_safe::Size {
+        skia_safe::Size::new(10.0, 30.0)
+    }
+
+    fn handle_event(
+        &self,
+        _arena: &crate::arena::Arena,
+        _event: &crate::event::Event<'_>,
+        _viewport: skia_safe::Rect,
+    ) -> crate::event::EventResult<std::convert::Infallible> {
+        crate::event::EventResult::Ignored
+    }
+
+    fn overlays(&mut self) -> Vec<crate::overlay::Overlay<'a, std::convert::Infallible>> {
+        if !self.emits {
+            return Vec::new();
+        }
+        vec![crate::overlay::Overlay {
+            host: ROW_HOST,
+            anchor: skia_safe::Rect::from_xywh(2.0, 4.0, 6.0, 8.0),
+            content: Box::new(|_host: skia_safe::Size, _anchor: skia_safe::Rect| Vec::new()),
+        }]
+    }
+}
+
+impl crate::View for Emitter {
+    type Command = std::convert::Infallible;
+
+    fn perform(
+        &mut self,
+        _store: &mut crate::store::Store,
+        _ui: &crate::ui::UiCtx,
+        _command: std::convert::Infallible,
+        _fx: &mut crate::effect::Effects<'_, std::convert::Infallible>,
+    ) {
+    }
+
+    fn display<'a>(
+        &'a self,
+        _arena: &'a crate::arena::Arena,
+        _store: &'a crate::store::Store,
+        _ui: &'a crate::ui::UiCtx,
+    ) -> impl crate::layout::Layout<'a, std::convert::Infallible> + crate::layout::LayoutValue + 'a
+    {
+        let emits = self.emits;
+        crate::layout::laid(
+            move |_arena: &'a crate::arena::Arena,
+                  _constraints: crate::constraints::Constraints| {
+                crate::eager(EmitterWidget { emits })
+            },
+        )
+    }
+}
+
+/// The list realizes rows per traversal, so a row's popup used to
+/// die with the traversal that minted it: the window never saw a
+/// canvas face's completion popup. The visible rows' overlays now
+/// surface through the list, anchored in list coordinates.
+#[test]
+fn visible_rows_surface_their_overlays_through_the_list() {
+    use crate::store::Store;
+    use crate::ui::UiCtx;
+    let rows: ListView<Emitter> = ListView::from_rope(crate::list::measured(
+        [false, true, false, true]
+            .into_iter()
+            .map(|emits| (Emitter { emits }, 30.0)),
+    ));
+    let store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let arena = crate::arena::Arena::default();
+    let viewport = skia_safe::Rect::from_xywh(0.0, 0.0, 100.0, 75.0);
+    let mut widget = crate::layout::Layout::layout(
+        crate::View::display(&rows, &arena, &store, &ui),
+        &arena,
+        crate::constraints::Constraints::tight(skia_safe::Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, viewport);
+    let overlays = crate::Widget::overlays(&mut widget);
+    let anchors: Vec<(crate::overlay::OverlayHost, skia_safe::Rect)> = overlays
+        .iter()
+        .map(|overlay| (overlay.host, overlay.anchor))
+        .collect();
+    assert_eq!(
+        anchors,
+        vec![
+            // Row 1 (top 30) emits and is visible; row 3 (top 90)
+            // lies past the viewport and is never realized.
+            (ROW_HOST, skia_safe::Rect::from_xywh(2.0, 34.0, 6.0, 8.0)),
+        ],
+        "the emitting visible row's anchor rides into list coordinates"
+    );
+}

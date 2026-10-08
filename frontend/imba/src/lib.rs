@@ -34,6 +34,7 @@ pub mod svg;
 pub mod thunk_ext;
 pub mod tooltip;
 pub mod ui;
+pub mod with_overlay;
 
 use arena::Arena;
 use event::{Event, EventResult};

@@ -15,7 +15,7 @@ use editor::location::ResourceLocation;
 /// Open the canvas for a source — or REUSE the one already open (the
 /// canvas is found by source in the store; a fresh view of it costs
 /// nothing). An armed reveal rides the place.
-pub(crate) struct OpenDiffCanvas {
+pub struct OpenDiffCanvas {
     /// The collection whose set this canvas shows.
     pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,

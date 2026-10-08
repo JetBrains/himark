@@ -533,6 +533,24 @@ Clips never clip anchors — a popup anchored to a half-scrolled-away
 row is the layout closure's judgment call, at host coordinates, with
 the host's size in hand.
 
+The list is no exception: it is a container of its VISIBLE rows.
+`realize` lays out and realizes the rows in the viewport once (a
+`Container` under the hood) and drains their requests there; paint,
+events and the IME fold run against those same widgets. Rows past
+the viewport are never built. (It used to realize rows per
+traversal — paint built them, the hit test built them again — and a
+row's requests died with the traversal that minted them: the window
+never saw a canvas face's completion popup.)
+
+The declarative form is `with_overlay::WithOverlay<V, O>`: a view
+with an optional overlay view standing on it, anchored at the view's
+own box and placed by a `Placement` (below for a menu, beside for a
+card), with Escape and an outside press as its dismissal. A tree row
+shows its context menu that way, and `tooltip::TooltipView` is the
+same shape with a rested-hover gate in front: a list row that has a
+tip carries it, and no surface re-derives a row's rectangle to anchor
+anything.
+
 ### Hosts
 
 `thunk.overlay_host(key)` — a thunk combinator, sizing-transparent

@@ -4,8 +4,7 @@
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use editor::{location::ResourceLocation, location::ResourceType};
 use hikit::{
-    forest::ForestList, forest::ForestNode, forest::ForestSearcher,
-    list_keyboard::ListKeyboardController,
+    forest::ForestNode,
 };
 use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, ui::UiCtx};
 
@@ -683,13 +682,12 @@ impl imba::View for CommitTip {
     }
 }
 
+/// The tip for a commit row — nothing for any other row.
 pub(crate) fn commit_tip(
-    rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
     history: imba::store::Id<History>,
-    point: skia_safe::Point,
-) -> Option<(skia_safe::Rect, CommitTip)> {
-    let (key, anchor) = rows.inner().hover_row(point)?;
+    key: &ResourceLocation,
+) -> Option<CommitTip> {
     if *key.kind() != ResourceType::new("history-commit") {
         return None;
     }
@@ -701,5 +699,5 @@ pub(crate) fn commit_tip(
     );
     let entry = History::folder(store, history, &folder)?;
     let commit = entry.commits.iter().find(|commit| commit.id == id)?;
-    Some((anchor, CommitTip::of(commit)))
+    Some(CommitTip::of(commit))
 }

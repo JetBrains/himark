@@ -85,14 +85,19 @@ pub enum ViewSets {
     History,
 }
 
-pub type Rows = TooltipView<
-    ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
-    crate::hihistory::CommitTip,
+/// A history row carries its own commit tip: a rested hover shows
+/// it beside the row, anchored by the row itself.
+pub type HistoryRow = TooltipView<hikit::forest::TreeRow, crate::hihistory::CommitTip>;
+pub type RowCommand =
+    TooltipCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>;
+pub type Rows = ListKeyboardController<
+    ForestList<ResourceLocation, HistoryRow>,
+    ForestSearcher<ResourceLocation, HistoryRow>,
 >;
 
 #[derive(Clone)]
 pub enum ChangesViewCommand {
-    Rows(TooltipCommand<ListKeyCommand<TreeListCommand>>),
+    Rows(ListKeyCommand<TreeListCommand<RowCommand>>),
 
     /// Refetch one repository's changesets (the root-row chip).
     Refetch(ResourceLocation),
@@ -168,20 +173,23 @@ impl ChangesView {
         open_canvas: CanvasOpener,
     ) -> Self {
         let mut view = Self {
-            list: TooltipView::new(
-                ListKeyboardController::searchable(
-                    ForestList::new(store),
-                    ForestSearcher::default(),
+            list: ListKeyboardController::searchable(
+                ForestList::wrapping(
                     store,
-                    ui,
-                    editor::env::Fonts::of(store),
-                )
-                .with_folds(),
-                move |rows, store, point| {
-                    let history = Changes::of(store, changes)?.history();
-                    crate::hihistory::commit_tip(rows, store, history, point)
-                },
-            ),
+                    Arc::new(move |row, key: &ResourceLocation| {
+                        let key = key.clone();
+                        TooltipView::new(row, move |_, store| {
+                            let history = Changes::of(store, changes)?.history();
+                            crate::hihistory::commit_tip(store, history, &key)
+                        })
+                    }),
+                ),
+                ForestSearcher::default(),
+                store,
+                ui,
+                editor::env::Fonts::of(store),
+            )
+            .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),
             changes,
             open_canvas,
@@ -198,19 +206,17 @@ impl ChangesView {
     }
 
     pub fn row_count(&self) -> usize {
-        self.list.view().inner().list().len()
+        self.list.inner().list().len()
     }
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.list.view().inner().forest.rows_trailed()
+        self.list.inner().forest.rows_trailed()
     }
 
     #[doc(hidden)]
     pub fn cursor_name(&self) -> Option<String> {
-        self.list
-            .view()
-            .inner()
+        self.list.inner()
             .list()
             .cursor()
             .map(|key| key.name().to_owned())
@@ -245,15 +251,13 @@ impl ChangesView {
         // never shown are preset, so a user's expansion survives.
         for (key, item) in items.iter() {
             if matches!(item, RowItem::Open { toggle: true, .. }) && !self.items.contains_key(key) {
-                self.list
-                    .view_mut()
-                    .inner_mut()
+                self.list.inner_mut()
                     .forest
                     .preset_collapsed(key);
             }
         }
         self.items = items;
-        self.list.view_mut().inner_mut().set(&nodes, store, ui);
+        self.list.inner_mut().set(&nodes, store, ui);
     }
 
     /// The change sets this view currently unites — the join rows
@@ -275,7 +279,7 @@ impl ChangesView {
     }
 
     fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
-        let Some(key) = self.list.view().inner().list().key_at(index).cloned() else {
+        let Some(key) = self.list.inner().list().key_at(index).cloned() else {
             return;
         };
         self.activate_key(&key, store, ui);
@@ -285,13 +289,11 @@ impl ChangesView {
         match self.items.get(key).cloned() {
             Some(RowItem::Branch { select }) => {
                 if select {
-                    self.list
-                        .view_mut()
-                        .inner_mut()
+                    self.list.inner_mut()
                         .list_mut()
                         .select_only(key.clone());
                 }
-                self.list.view_mut().inner_mut().toggle(key, store, ui);
+                self.list.inner_mut().toggle(key, store, ui);
             }
             Some(RowItem::Open {
                 source,
@@ -300,14 +302,12 @@ impl ChangesView {
                 select,
             }) => {
                 if select {
-                    self.list
-                        .view_mut()
-                        .inner_mut()
+                    self.list.inner_mut()
                         .list_mut()
                         .select_only(key.clone());
                 }
                 if toggle {
-                    self.list.view_mut().inner_mut().toggle(key, store, ui);
+                    self.list.inner_mut().toggle(key, store, ui);
                 }
                 self.request = Some(ModalRequest::Perform((self.open_canvas)(source, reveal)));
             }
@@ -336,7 +336,7 @@ impl View for ChangesView {
         use imba::focus::FocusData;
         // The key table is the controller's; the surface keeps only
         // its own dismissal.
-        let searching = self.list.view().searching();
+        let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(ChangesViewCommand::Dismiss),
@@ -355,8 +355,8 @@ impl View for ChangesView {
         // Teardown-only: `View::destroy` carries no UiCtx.
         let ui = &imba::ui::UiCtx::dont_use_too_slow();
         fx.scope(
-            |command| ChangesViewCommand::Rows(TooltipCommand::Host(command)),
-            |fx| self.list.view_mut().clear(store, ui, fx),
+            ChangesViewCommand::Rows,
+            |fx| self.list.clear(store, ui, fx),
         );
     }
 
@@ -372,10 +372,10 @@ impl View for ChangesView {
                 match &command {
                     // The bespoke lazy fold: expanding an unfetched
                     // commit launches its file listing first.
-                    TooltipCommand::Host(ListKeyCommand::Fold { expand, .. }) => {
+                    ListKeyCommand::Fold { expand, .. } => {
                         let expand = *expand;
                         if expand {
-                            if let Some(key) = self.list.view().inner().list().cursor().cloned() {
+                            if let Some(key) = self.list.inner().list().cursor().cloned() {
                                 if let Some(RowItem::Open {
                                     source: crate::hichanges::CanvasSource::Commit { folder, id },
                                     reveal: None,
@@ -400,16 +400,13 @@ impl View for ChangesView {
                                 }
                             }
                         }
-                        return self
-                            .list
-                            .view_mut()
-                            .inner_mut()
+                        return self.list.inner_mut()
                             .fold_cursor(expand, store, ui);
                     }
-                    TooltipCommand::Host(ListKeyCommand::Inner(inner)) => {
+                    ListKeyCommand::Inner(inner) => {
                         if let Some(index) = hikit::tree_item::tree_action(inner) {
                             if let Some(folder) =
-                                self.list.view().inner().list().key_at(index).cloned()
+                                self.list.inner().list().key_at(index).cloned()
                             {
                                 return self.perform(
                                     store,
@@ -426,7 +423,7 @@ impl View for ChangesView {
                     _ => {}
                 }
                 if let Some((index, trigger)) = Rows::activated(&command) {
-                    let searching = self.list.view().searching();
+                    let searching = self.list.searching();
                     self.activate(index, store, ui);
                     match trigger {
                         // The deliberate pick ends the search in the
@@ -435,9 +432,7 @@ impl View for ChangesView {
                             return self.perform(
                                 store,
                                 ui,
-                                ChangesViewCommand::Rows(TooltipCommand::Host(
-                                    ListKeyCommand::Clear,
-                                )),
+                                ChangesViewCommand::Rows(ListKeyCommand::Clear),
                                 fx,
                             );
                         }
@@ -503,7 +498,7 @@ impl View for ChangesView {
 
             // The key table lives in the controller's own overlay;
             // the surface keeps only its dismissal.
-            let searching = self.list.view().searching();
+            let searching = self.list.searching();
             let keymap = leaf::<ChangesViewCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
@@ -521,7 +516,7 @@ impl View for ChangesView {
             // is simply never true for them.
             let rows_height = (size.height - band).max(1.0);
             let near_tail = {
-                let list = self.list.view().inner();
+                let list = self.list.inner();
                 list.scroll_y() + rows_height
                     >= list.list().total_height() - 2.0 * hikit::ui::space::XL
             };

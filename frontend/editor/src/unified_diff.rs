@@ -450,6 +450,23 @@ impl imba::View for UnifiedDiffView {
                         )
                     }
 
+                    // The inline face is deferred past the seed. Showing
+                    // the split halves meanwhile had them REPORT their
+                    // half widths, fighting the inline rewrap for the
+                    // pair's one width — on an empty base (a wholly
+                    // added file) the two never agreed, the marks job
+                    // never launched, and the row stood under its
+                    // skeleton for good. A silent band of the asked
+                    // size holds the place; the host's skeleton covers
+                    // it.
+                    None if self.layout == DiffLayout::Inline => imba::ThunkBox::new(
+                        arena,
+                        imba::leaf::leaf::<UnifiedDiffCommand>(
+                            constraints.max.width,
+                            constraints.min.height.max(1.0),
+                        ),
+                    ),
+
                     _ => imba::ThunkBox::new(
                         arena,
                         imba::layout::Layout::layout(
@@ -533,11 +550,17 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
     }
 
     fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-        // ONLY the projections surface on this face (the pane is the
-        // host); the editor's popup/sticky emissions stay dropped,
-        // as they always were here.
+        // The projections (fold strips) for the pane that hosts
+        // them, and the window-hosted popups (completion, hover) —
+        // the face is an editor and its popups must reach the window
+        // from a canvas row as from a pane. The editor's sticky and
+        // stripe emissions stay dropped: the face has no host for
+        // them, and a hosting pane would paint them over the pair's
+        // own.
         let mut overlays = self.inner.overlays();
-        overlays.retain(|overlay| overlay.host == crate::markup::INLAY_HOST);
+        overlays.retain(|overlay| {
+            overlay.host == crate::markup::INLAY_HOST || overlay.host == imba::overlay::WINDOW
+        });
         overlays
     }
 

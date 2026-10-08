@@ -1,28 +1,31 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! A rested hover shows a tip beside a view. The view is the anchor
+//! (a list row, a chip): the tip is its own overlay request and
+//! rides to the window like any other, with nothing to measure.
+
 use std::convert::Infallible;
 use std::sync::Arc;
 
 use skia_safe::Contains;
-use skia_safe::{Point, Rect, Size};
+use skia_safe::{Rect, Size};
 
 use crate::arena::Arena;
 use crate::constraints::Constraints;
 use crate::event::{Event, EventResult};
 use crate::store::Store;
 use crate::thunk_ext::ThunkExt;
-use crate::{overlay, Thunk, ThunkBox, View, Widget, WidgetBox};
+use crate::with_overlay::Placement;
+use crate::{Thunk, ThunkBox, View};
 
 const HOVER_DELAY_MS: f32 = 450.0;
-
-const TIP_GAP: f32 = 8.0;
 
 impl<C: std::fmt::Display> std::fmt::Display for TooltipCommand<C> {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TooltipCommand::Host(command) => command.fmt(out),
-            TooltipCommand::Moved(_) => out.write_str("tooltip moved"),
+            TooltipCommand::Entered => out.write_str("tooltip entered"),
             TooltipCommand::Left => out.write_str("tooltip left"),
             TooltipCommand::Tick(_) => out.write_str("tooltip tick"),
         }
@@ -33,7 +36,7 @@ impl<C: std::fmt::Display> std::fmt::Display for TooltipCommand<C> {
 pub enum TooltipCommand<C> {
     Host(C),
 
-    Moved(Point),
+    Entered,
     Left,
 
     Tick(crate::anim::AnimationClock),
@@ -44,13 +47,11 @@ enum Hover<T> {
     Idle,
 
     Arming {
-        anchor: Rect,
         tip: T,
         rested: f32,
         last: Option<crate::anim::AnimationClock>,
     },
     Shown {
-        anchor: Rect,
         tip: T,
     },
 }
@@ -67,7 +68,7 @@ impl<V: Clone, T: Clone> Clone for TooltipView<V, T> {
 
 pub struct TooltipView<V, T> {
     view: V,
-    provide: Arc<dyn Fn(&V, &Store, Point) -> Option<(Rect, T)> + Send + Sync>,
+    provide: Arc<dyn Fn(&V, &Store) -> Option<T> + Send + Sync>,
     hover: Hover<T>,
 }
 
@@ -76,10 +77,9 @@ where
     V: View,
     T: View<Command = Infallible>,
 {
-    pub fn new(
-        view: V,
-        provide: impl Fn(&V, &Store, Point) -> Option<(Rect, T)> + Send + Sync + 'static,
-    ) -> Self {
+    /// `provide` answers the tip when the pointer settles on the
+    /// view — `None` for a view with nothing to say.
+    pub fn new(view: V, provide: impl Fn(&V, &Store) -> Option<T> + Send + Sync + 'static) -> Self {
         Self {
             view,
             provide: Arc::new(provide),
@@ -97,65 +97,6 @@ where
 
     pub fn showing(&self) -> bool {
         matches!(self.hover, Hover::Shown { .. })
-    }
-}
-
-impl<V, T> crate::list::ListOps for TooltipView<V, T>
-where
-    V: crate::list::ListOps,
-    V::Command: 'static,
-    T: View<Command = Infallible>,
-{
-    type Key = V::Key;
-
-    fn set_matches(&mut self, keys: &[Self::Key]) {
-        self.view.set_matches(keys);
-    }
-    fn clear_matches(&mut self) {
-        self.view.clear_matches();
-    }
-    fn match_count(&self) -> usize {
-        self.view.match_count()
-    }
-    fn cursor_index(&self) -> Option<usize> {
-        self.view.cursor_index()
-    }
-    fn step_index(&self, delta: isize) -> Option<usize> {
-        self.view.step_index(delta)
-    }
-    fn matched_step_index(&self, delta: isize) -> Option<usize> {
-        self.view.matched_step_index(delta)
-    }
-    fn edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
-        self.view.edge_index(edge)
-    }
-    fn matched_edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
-        self.view.matched_edge_index(edge)
-    }
-    fn page_index(&self, direction: isize) -> Option<usize> {
-        self.view.page_index(direction)
-    }
-    fn select_command(&self, index: usize) -> Self::Command {
-        TooltipCommand::Host(self.view.select_command(index))
-    }
-    fn activate_command(
-        &self,
-        index: usize,
-        trigger: crate::list::ActivateTrigger,
-    ) -> Self::Command {
-        TooltipCommand::Host(self.view.activate_command(index, trigger))
-    }
-    fn selected_index(command: &Self::Command) -> Option<usize> {
-        match command {
-            TooltipCommand::Host(inner) => V::selected_index(inner),
-            _ => None,
-        }
-    }
-    fn activated(command: &Self::Command) -> Option<(usize, crate::list::ActivateTrigger)> {
-        match command {
-            TooltipCommand::Host(inner) => V::activated(inner),
-            _ => None,
-        }
     }
 }
 
@@ -180,56 +121,28 @@ where
                     self.view.perform(store, ui, command, fx)
                 });
             }
-            TooltipCommand::Moved(point) => match (self.provide)(&self.view, store, point) {
-                None => self.hover = Hover::Idle,
-                Some((anchor, tip)) => {
-                    self.hover = match std::mem::replace(&mut self.hover, Hover::Idle) {
-                        Hover::Arming {
-                            anchor: standing,
-                            tip: cached,
-                            rested,
-                            last,
-                        } if standing == anchor => Hover::Arming {
-                            anchor,
-                            tip: cached,
-                            rested,
-                            last,
-                        },
-                        Hover::Shown {
-                            anchor: standing,
-                            tip: cached,
-                        } if standing == anchor => Hover::Shown {
-                            anchor,
-                            tip: cached,
-                        },
-
-                        Hover::Shown { .. } => Hover::Shown { anchor, tip },
-                        _ => Hover::Arming {
-                            anchor,
-                            tip,
-                            rested: 0.0,
-                            last: None,
-                        },
+            TooltipCommand::Entered => {
+                if let (Hover::Idle, Some(tip)) = (&self.hover, (self.provide)(&self.view, store))
+                {
+                    self.hover = Hover::Arming {
+                        tip,
+                        rested: 0.0,
+                        last: None,
                     };
                 }
-            },
+            }
             TooltipCommand::Left => self.hover = Hover::Idle,
             TooltipCommand::Tick(now) => {
-                if let Hover::Arming {
-                    anchor,
-                    tip,
-                    rested,
-                    last,
-                } = std::mem::replace(&mut self.hover, Hover::Idle)
+                if let Hover::Arming { tip, rested, last } =
+                    std::mem::replace(&mut self.hover, Hover::Idle)
                 {
                     let rested = rested
                         + last
                             .map(|last| now.millis_since(last) as f32)
                             .unwrap_or(0.0);
                     self.hover = match rested >= HOVER_DELAY_MS {
-                        true => Hover::Shown { anchor, tip },
+                        true => Hover::Shown { tip },
                         false => Hover::Arming {
-                            anchor,
                             tip,
                             rested,
                             last: Some(now),
@@ -255,138 +168,51 @@ where
         ui: &'a crate::ui::UiCtx,
     ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
         crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let inner = ThunkBox::new(
+            let active = !matches!(self.hover, Hover::Idle);
+            let armed = matches!(self.hover, Hover::Arming { .. });
+            let inner = crate::layout::Layout::layout(
+                self.view.display(arena, store, ui),
                 arena,
-                crate::layout::Layout::layout(
-                    self.view.display(arena, store, ui),
-                    arena,
-                    constraints,
-                )
-                .map(TooltipCommand::Host),
-            );
-            let tip = match &self.hover {
-                Hover::Shown { anchor, tip } => Some((
-                    *anchor,
-                    ThunkBox::new(
-                        arena,
-                        crate::layout::Layout::layout(
-                            tip.display(arena, store, ui),
-                            arena,
-                            Constraints::tight(constraints.max).loosen(),
-                        )
-                        .map(|never: Infallible| match never {}),
-                    ),
-                )),
-                _ => None,
-            };
-            TooltipThunk {
-                inner,
-                tip,
-                armed: matches!(self.hover, Hover::Arming { .. }),
-                active: !matches!(self.hover, Hover::Idle),
-            }
-        })
-    }
-}
-
-struct TooltipThunk<'a, C> {
-    inner: ThunkBox<'a, TooltipCommand<C>>,
-    tip: Option<(Rect, ThunkBox<'a, TooltipCommand<C>>)>,
-    armed: bool,
-    active: bool,
-}
-
-impl<'a, C: 'a> Thunk<'a, TooltipCommand<C>> for TooltipThunk<'a, C> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn realize(self, arena: &'a Arena, viewport: Rect) -> WidgetBox<'a, TooltipCommand<C>> {
-        let size = self.inner.size();
-        WidgetBox::new(
-            arena,
-            TooltipWidget {
-                inner: self.inner.realize(arena, viewport),
-                tip: self.tip,
-                armed: self.armed,
-                active: self.active,
-                size,
-            },
-        )
-    }
-}
-
-struct TooltipWidget<'a, C> {
-    inner: WidgetBox<'a, TooltipCommand<C>>,
-    tip: Option<(Rect, ThunkBox<'a, TooltipCommand<C>>)>,
-    armed: bool,
-    active: bool,
-    size: Size,
-}
-
-impl<'a, C: 'a> Widget<'a, TooltipCommand<C>> for TooltipWidget<'a, C> {
-    fn size(&self) -> Size {
-        self.size
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<TooltipCommand<C>> {
-        let inner = self.inner.handle_event(arena, event, viewport);
-        let mine = match event {
-            Event::HitTest { point, miss, .. } => {
-                let inside = !miss && Rect::from_size(self.size).contains(*point);
-                match (inside, self.active) {
-                    (true, _) => EventResult::Command(TooltipCommand::Moved(*point)),
-                    (false, true) => EventResult::Command(TooltipCommand::Left),
-
-                    (false, false) => EventResult::Ignored,
-                }
-            }
-            Event::AnimationClock { now } if self.armed => {
-                EventResult::Command(TooltipCommand::Tick(*now))
-            }
-            _ => EventResult::Ignored,
-        };
-        inner.merge(mine)
-    }
-
-    fn blocks_pointer(&self, point: Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
-    fn overlays(&mut self) -> Vec<overlay::Overlay<'a, TooltipCommand<C>>> {
-        let mut overlays = self.inner.overlays();
-        if let Some((anchor, tip)) = self.tip.take() {
-            overlays.push(overlay::Overlay {
-                host: overlay::WINDOW,
-                anchor,
-                content: Box::new(move |host_size: Size, anchor: Rect| {
-                    let size = tip.size();
-
-                    let mut x = anchor.right + TIP_GAP;
-                    if x + size.width > host_size.width {
-                        x = (anchor.left - TIP_GAP - size.width).max(0.0);
+                constraints,
+            )
+            .map(TooltipCommand::Host)
+            .event(move |_arena, event, size| match event {
+                Event::HitTest { point, miss, .. } => {
+                    let inside = !miss && Rect::from_size(size).contains(*point);
+                    match (inside, active) {
+                        (true, false) => EventResult::Command(TooltipCommand::Entered),
+                        (false, true) => EventResult::Command(TooltipCommand::Left),
+                        _ => EventResult::Ignored,
                     }
-                    let y = anchor.top.min(host_size.height - size.height).max(0.0);
-                    vec![(Point::new(x, y), tip)]
-                }),
+                }
+                Event::AnimationClock { now } if armed => {
+                    EventResult::Command(TooltipCommand::Tick(*now))
+                }
+                _ => EventResult::Ignored,
             });
-        }
-        overlays
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: crate::focus::SeatKey,
-    ) -> crate::focus::LayoutData<'w, TooltipCommand<C>>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
+            let Hover::Shown { tip } = &self.hover else {
+                return ThunkBox::new(arena, inner);
+            };
+            ThunkBox::new(
+                arena,
+                inner.overlay(
+                    crate::overlay::WINDOW,
+                    move |host: Size, anchor: Rect| {
+                        let content = ThunkBox::new(
+                            arena,
+                            crate::layout::Layout::layout(
+                                tip.display(arena, store, ui),
+                                arena,
+                                Constraints::tight(host).loosen(),
+                            )
+                            .map(|never: Infallible| match never {}),
+                        );
+                        let origin = Placement::Beside.origin(host, anchor, content.size());
+                        vec![(origin, content)]
+                    },
+                ),
+            )
+        })
     }
 }
 
@@ -395,6 +221,7 @@ mod tests {
     use super::*;
     use crate::anim::AnimationClock;
     use crate::leaf::leaf;
+    use crate::Widget;
 
     struct Body;
     impl View for Body {
@@ -419,6 +246,7 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct Tip;
     impl View for Tip {
         type Command = Infallible;
@@ -440,14 +268,6 @@ mod tests {
             crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
                 leaf(60.0, 24.0)
             })
-        }
-    }
-
-    fn rows(_view: &Body, _store: &Store, point: Point) -> Option<(Rect, Tip)> {
-        match point.y {
-            y if (0.0..20.0).contains(&y) => Some((Rect::from_xywh(0.0, 0.0, 200.0, 20.0), Tip)),
-            y if (20.0..40.0).contains(&y) => Some((Rect::from_xywh(0.0, 20.0, 200.0, 20.0), Tip)),
-            _ => None,
         }
     }
 
@@ -490,140 +310,58 @@ mod tests {
         count
     }
 
+    fn hit(x: f32, y: f32) -> Event<'static> {
+        Event::HitTest {
+            point: skia_safe::Point::new(x, y),
+            miss: false,
+            mods: Default::default(),
+        }
+    }
+
+    fn rest(view: &mut TooltipView<Body, Tip>) {
+        for ms in [0.0, 500.0] {
+            drive(
+                view,
+                Event::AnimationClock {
+                    now: AnimationClock::from_millis(ms),
+                },
+            );
+        }
+    }
+
     #[test]
-    fn a_rested_hover_shows_walks_and_hides() {
-        let mut view = TooltipView::new(Body, rows);
-        let inside = Point::new(50.0, 10.0);
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: inside,
-                miss: false,
-                mods: Default::default(),
-            },
-        );
+    fn a_rested_hover_shows_and_leaving_hides() {
+        let mut view = TooltipView::new(Body, |_: &Body, _: &Store| Some(Tip));
+        drive(&mut view, hit(50.0, 10.0));
         assert!(!view.showing(), "arming, not shown");
-
-        drive(
-            &mut view,
-            Event::AnimationClock {
-                now: AnimationClock::from_millis(0.0),
-            },
-        );
-        drive(
-            &mut view,
-            Event::AnimationClock {
-                now: AnimationClock::from_millis(500.0),
-            },
-        );
+        assert_eq!(overlay_count(&view), 0);
+        rest(&mut view);
         assert!(view.showing(), "the rest showed the tip");
-        assert_eq!(overlay_count(&view), 1, "the tip is an overlay");
+        assert_eq!(overlay_count(&view), 1, "the tip is an overlay on the view");
 
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: Point::new(50.0, 30.0),
-                miss: false,
-                mods: Default::default(),
-            },
-        );
-        assert!(view.showing(), "the tip walks across rows");
-
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: Point::new(500.0, 300.0),
-                miss: false,
-                mods: Default::default(),
-            },
-        );
+        drive(&mut view, hit(500.0, 300.0));
         assert!(!view.showing(), "leaving hides");
         assert_eq!(overlay_count(&view), 0);
     }
 
     #[test]
     fn a_mouse_leaving_the_window_hides_the_tip() {
-        let mut view = TooltipView::new(Body, rows);
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: Point::new(50.0, 10.0),
-                miss: false,
-                mods: Default::default(),
-            },
-        );
-        drive(
-            &mut view,
-            Event::AnimationClock {
-                now: AnimationClock::from_millis(0.0),
-            },
-        );
-        drive(
-            &mut view,
-            Event::AnimationClock {
-                now: AnimationClock::from_millis(500.0),
-            },
-        );
-        assert!(view.showing(), "the rest showed the tip");
-
+        let mut view = TooltipView::new(Body, |_: &Body, _: &Store| Some(Tip));
+        drive(&mut view, hit(50.0, 10.0));
+        rest(&mut view);
+        assert!(view.showing());
         // The shells' cursor-left road: a HitTest beyond any
-        // component's reach. Without it the tip sticks — no
-        // MouseMove ever arrives from outside the window.
+        // component's reach.
         drive(&mut view, Event::window_left());
         assert!(!view.showing(), "the off-window miss hid the tip");
-        assert_eq!(overlay_count(&view), 0);
     }
 
     #[test]
-    fn bare_spots_and_outside_moves_stay_silent() {
-        let mut view = TooltipView::new(Body, rows);
-
-        let arena = Arena::default();
-        let store = Store::new();
-        let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let widget = crate::layout::Layout::layout(
-            view.display(&arena, &store, &ui),
-            &arena,
-            Constraints::tight(Size::new(200.0, 40.0)),
-        )
-        .realize(&arena, Rect::from_wh(200.0, 40.0));
-        match widget.handle_event(
-            &arena,
-            &Event::HitTest {
-                point: Point::new(500.0, 300.0),
-                miss: false,
-                mods: Default::default(),
-            },
-            Rect::from_wh(200.0, 40.0),
-        ) {
-            EventResult::Ignored => {}
-            _ => panic!("an idle tooltip stays silent on outside moves"),
-        }
-        drop(widget);
-
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: Point::new(50.0, 39.9),
-                miss: false,
-                mods: Default::default(),
-            },
-        );
-        drive(
-            &mut view,
-            Event::HitTest {
-                point: Point::new(50.0, 45.0),
-                miss: false,
-                mods: Default::default(),
-            },
-        );
+    fn a_view_with_nothing_to_say_never_arms() {
+        let mut view = TooltipView::new(Body, |_: &Body, _: &Store| None);
+        drive(&mut view, hit(50.0, 10.0));
+        rest(&mut view);
         assert!(!view.showing());
-        drive(
-            &mut view,
-            Event::AnimationClock {
-                now: AnimationClock::from_millis(1_000.0),
-            },
-        );
-        assert!(!view.showing(), "nothing armed, nothing shows");
+        assert_eq!(overlay_count(&view), 0);
     }
 }

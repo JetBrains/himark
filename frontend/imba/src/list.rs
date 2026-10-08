@@ -10,12 +10,11 @@ use rope::{
     cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,
     rope::Rope,
 };
-use skia_safe::{Color, Paint, Rect, Size};
+use skia_safe::{Color, Contains, Paint, Rect, Size};
 
 use crate::{
     arena::Arena,
     constraints::Constraints,
-    container::viewport_for_child,
     event::{Event, EventResult},
     store::Store,
     thunk_ext::ThunkExt,
@@ -1257,6 +1256,7 @@ where
     T::Command: Send + 'static,
     K: Clone + Eq + Hash + Send + Sync + 'static,
 {
+
     /// `step_matched`'s walk minus the mutation: the matched row a
     /// ±delta step lands on (wrapping; delta 0 = the first match
     /// at/after the cursor).
@@ -1806,25 +1806,22 @@ where
         Rect::from_xywh(0.0, top, self.size.width, height)
     }
 
-    fn route(
-        &self,
-        cursor: &Cursor<ListElement<T>, ListMeasure>,
-        arena: &Arena,
-        event: &Event<'_>,
-        child_viewport: Rect,
-    ) -> EventResult<ListCommand<T::Command>> {
-        let index = cursor.index() as usize;
-        let rect = self.row_rect(cursor);
-        crate::layout::Layout::layout(
-            cursor.element().view.display(arena, self.store, self.ui),
-            arena,
-            self.child_constraints,
-        )
-        .focus_scope(self.focused == Some(index))
-        .realize(arena, child_viewport)
-        .handle_event(arena, event, child_viewport)
-        .map(move |command| ListCommand::Child(index, command))
-        .reveal_translated(rect.left, rect.top)
+    /// The row's selection chrome, if any (none without a selection
+    /// state, none for an untouched row).
+    fn backdrop(&self, index: u32) -> Option<Backdrop> {
+        let selection = self.selection?;
+        let covers = |intervals: &Intervals<K, ()>| {
+            intervals
+                .query(index..index.saturating_add(1), Order::Ascending)
+                .any(|interval| interval.range.contains(&index))
+        };
+        let matched = !self.matches.is_empty() && covers(self.matches);
+        let covered = covers(&selection.intervals);
+        (matched || covered).then_some(Backdrop {
+            style: selection.style,
+            matched,
+            covered,
+        })
     }
 
     fn cursor_at_y(&self, y: f32) -> Option<Cursor<ListElement<T>, ListMeasure>> {
@@ -2058,14 +2055,80 @@ where
         self.size
     }
 
+    /// The VISIBLE rows lay out and realize here, ONCE, as a
+    /// container's children: their overlays drain on the spot, and
+    /// paint, events and the IME fold run against the same widgets.
+    /// Rows past the viewport are never built; a row mid-unroll (a
+    /// splice animation) is clipped to its growing rect like any
+    /// child. Selection and match tints ride below each row,
+    /// separators are leaves of their own.
     fn realize(
         self,
         arena: &'a Arena,
         viewport: Rect,
     ) -> crate::WidgetBox<'a, ListCommand<T::Command>> {
+        let mut rows = crate::container::Container::new(arena, self.size);
+        let mut placed = Vec::new();
+        self.for_visible(viewport, |cursor, rect| {
+            placed.push((cursor.index() as usize, cursor.element().height, rect));
+        });
+        let mut visible = Vec::with_capacity(placed.len());
+        for (index, height, rect) in placed {
+            let mut cursor = self.items.cursor();
+            if !cursor.seek_to_index(index as u32) {
+                continue;
+            }
+            // The cursor moves into the arena so the row view's
+            // borrow reaches the frame lifetime.
+            let cursor: &'a _ = crate::arena::ArenaBox::leak(arena.boxed(cursor));
+            let thunk = crate::layout::Layout::layout(
+                cursor.element().view.display(arena, self.store, self.ui),
+                arena,
+                self.child_constraints,
+            );
+            let live = thunk.size().height;
+            let thunk = thunk
+                .focus_scope(self.focused == Some(index))
+                .map(move |command| ListCommand::Child(index, command));
+            match self.backdrop(index as u32) {
+                Some(backdrop) => rows.place(
+                    rect.left,
+                    rect.top,
+                    thunk.paint_below(move |_, canvas, rect| backdrop.paint(canvas, rect)),
+                ),
+                None => rows.place(rect.left, rect.top, thunk),
+            }
+            visible.push(VisibleRow {
+                index,
+                rect,
+                height,
+                live,
+            });
+        }
+        if let Some(style) = self.separators {
+            for row in visible.iter().filter(|row| row.index > 0) {
+                let rect = row.rect;
+                rows.place(
+                    rect.left + style.inset,
+                    rect.top - style.thickness * 0.5,
+                    crate::leaf::leaf::<ListCommand<T::Command>>(
+                        (rect.width() - style.inset * 2.0).max(0.0),
+                        style.thickness,
+                    )
+                    .paint_instead(move |_, canvas, rect| {
+                        let mut paint = Paint::default();
+                        paint.set_anti_alias(true);
+                        paint.set_color(style.color);
+                        canvas.draw_rect(rect, &paint);
+                    }),
+                );
+            }
+        }
         crate::WidgetBox::new(
             arena,
             RealizedList {
+                rows: rows.realize_into(viewport),
+                visible,
                 list: self,
                 viewport,
                 arena,
@@ -2074,35 +2137,84 @@ where
     }
 }
 
-struct RealizedList<'a, T: Clone, K: Clone + Eq + Hash> {
+/// What paints UNDER a row: the match tint, the selection fill with
+/// its accent — the list's selection state, read once at realize.
+#[derive(Clone, Copy)]
+struct Backdrop {
+    style: SelectionStyle,
+    matched: bool,
+    covered: bool,
+}
+
+impl Backdrop {
+    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+        let style = self.style;
+        if self.matched {
+            let fill = style.fill;
+            let mut paint = Paint::default();
+            paint.set_color(Color::from_argb(fill.a() / 3, fill.r(), fill.g(), fill.b()));
+            canvas.draw_rect(rect, &paint);
+        }
+        if self.covered {
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_color(style.fill);
+            canvas.draw_round_rect(rect, style.radius, style.radius, &paint);
+            if style.accent_width > 0.0 {
+                let mut accent = Paint::default();
+                accent.set_color(style.accent);
+                canvas.draw_rect(
+                    Rect::from_xywh(
+                        rect.left,
+                        rect.top + style.accent_inset,
+                        style.accent_width,
+                        (rect.height() - style.accent_inset * 2.0).max(0.0),
+                    ),
+                    &accent,
+                );
+            }
+        }
+    }
+}
+
+/// A placed row: its index and rect in the list, the height the
+/// rope holds and the height its layout measured.
+struct VisibleRow {
+    index: usize,
+    rect: Rect,
+    height: f32,
+    live: f32,
+}
+
+struct RealizedList<'a, T: View + Clone, K: Clone + Eq + Hash> {
     list: ListWidget<'a, T, K>,
 
-    #[allow(dead_code)]
+    /// The visible rows, realized once (see `ListWidget::realize`).
+    rows: crate::container::RealizedContainer<'a, ListCommand<T::Command>>,
+    visible: Vec<VisibleRow>,
+
     viewport: Rect,
 
     arena: &'a Arena,
 }
-impl<'a, T, K> Widget<'a, ListCommand<T::Command>> for RealizedList<'a, T, K>
+
+impl<'a, T, K> RealizedList<'a, T, K>
 where
     T: View + Clone,
     T::Command: 'a,
     K: Clone + Eq + Hash,
 {
-    fn size(&self) -> Size {
-        self.list.size
-    }
-
-    fn overlays(&mut self) -> Vec<crate::overlay::Overlay<'a, ListCommand<T::Command>>> {
-        let Some(style) = self.list.sticky else {
-            return Vec::new();
-        };
-        let viewport = self.viewport;
+    fn sticky_overlay(
+        &self,
+        viewport: Rect,
+    ) -> Option<crate::overlay::Overlay<'a, ListCommand<T::Command>>> {
+        let style = self.list.sticky?;
         if viewport.top <= 0.0 || viewport.height() <= 0.0 {
-            return Vec::new();
+            return None;
         }
         let rows = self.list.sticky_chain(viewport);
         if rows.is_empty() {
-            return Vec::new();
+            return None;
         }
         let height: f32 = rows.iter().map(|line| line.height).sum();
         let width = self.list.size.width;
@@ -2110,7 +2222,7 @@ where
         let ui = self.list.ui;
         let child_constraints = self.list.child_constraints;
         let arena = self.arena;
-        vec![crate::overlay::Overlay {
+        Some(crate::overlay::Overlay {
             host: STICKY_HOST,
             anchor: Rect::from_xywh(0.0, viewport.top, width.max(1.0), height),
             content: Box::new(move |host_size: Size, anchor: Rect| {
@@ -2128,7 +2240,141 @@ where
                     crate::ThunkBox::new(arena, crate::eager(widget)),
                 )]
             }),
-        }]
+        })
+    }
+
+    /// Paint is the container's; the list adds what paint REPORTS
+    /// (docs/ui/UI.md, "Paint: layout reports back"): a row whose
+    /// laid height differs from the rope's, and the viewport top.
+    fn paint(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: Rect,
+    ) -> EventResult<ListCommand<T::Command>> {
+        let list = &self.list;
+        let mut merged = self.rows.handle_event(arena, event, viewport);
+        for row in &self.visible {
+            let animating = list.animations.iter().any(|animation| {
+                (animation.start..animation.start + animation.len()).contains(&row.index)
+            });
+            if !animating && (row.live - row.height).abs() > 0.5 {
+                merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
+                    EventResult::Command(ListCommand::SetHeight(row.index, row.live)),
+                );
+            }
+        }
+        // Re-observe the viewport top from paint too — the belt for
+        // programmatic `set_scroll_y` placements, which raise no
+        // pulse (docs §3.1).
+        if (viewport.top - list.viewport_top).abs() > 0.5 {
+            merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
+                EventResult::Command(ListCommand::ViewportTop(
+                    viewport.top,
+                    viewport.height(),
+                )),
+            );
+        }
+        match merged {
+            EventResult::Ignored => EventResult::Handled,
+            merged => merged,
+        }
+    }
+
+    fn broadcast(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: Rect,
+    ) -> EventResult<ListCommand<T::Command>> {
+        let list = &self.list;
+        let mut merged = self.rows.handle_event(arena, event, viewport);
+        if let Event::Settle = event {
+            // The pulse delivers the honest viewport: a drifted
+            // retained top means the scroll moved since the last
+            // observation — refresh it FIRST. Its perform also drops
+            // any pending correction (the move supersedes the door),
+            // so no reveal rides this round; the next round, if any,
+            // speaks from fresh state.
+            if (viewport.top - list.viewport_top).abs() > 0.5 {
+                let mine = EventResult::Command(ListCommand::ViewportTop(
+                    viewport.top,
+                    viewport.height(),
+                ));
+                merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+                return merged;
+            }
+            // The deepest anchor speaks: a row's inner editor that
+            // already answered owns the corner; the list's own note
+            // only fills silence. The target is absolute, so
+            // re-emitting until the next Viewport report clears it
+            // converges at the scroll instead of compounding.
+            if !matches!(merged, EventResult::Reveal(_)) {
+                if let Some(fresh) = list.settle_to {
+                    let mine = EventResult::Reveal(crate::event::Reveal::top_left_at(
+                        Rect::from_xywh(0.0, fresh, list.size.width, viewport.height()),
+                    ));
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+                }
+            }
+            return match merged {
+                EventResult::Ignored => EventResult::Handled,
+                merged => merged,
+            };
+        }
+        if let Event::AnimationClock { now } = event {
+            if !list.animations.is_empty() {
+                merged = std::mem::replace(&mut merged, EventResult::Ignored)
+                    .merge(EventResult::Command(ListCommand::Animate(*now)));
+            }
+
+            if list.reveal_lost {
+                merged = std::mem::replace(&mut merged, EventResult::Ignored)
+                    .merge(EventResult::Command(ListCommand::Revealed));
+            }
+            if let Some((rect, placement)) = list.reveal {
+                let mine = match placement {
+                    crate::event::Placement::EnsureVisible => {
+                        match crate::event::reveal_satisfied(viewport, rect) {
+                            true => EventResult::Command(ListCommand::Revealed),
+                            false => EventResult::Reveal(crate::event::Reveal::visible(rect)),
+                        }
+                    }
+                    crate::event::Placement::TopLeftAt => {
+                        // The scroll clamps at the end of the list;
+                        // satisfaction must measure against the
+                        // clamped target or a tail row re-emits
+                        // forever.
+                        let best = rect
+                            .top
+                            .min((list.size.height - viewport.height()).max(0.0));
+                        match (viewport.top - best).abs() < 0.5 {
+                            true => EventResult::Command(ListCommand::Revealed),
+                            false => EventResult::Reveal(crate::event::Reveal::top_left_at(rect)),
+                        }
+                    }
+                };
+                merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+            }
+        }
+        merged
+    }
+}
+
+impl<'a, T, K> Widget<'a, ListCommand<T::Command>> for RealizedList<'a, T, K>
+where
+    T: View + Clone,
+    T::Command: 'a,
+    K: Clone + Eq + Hash,
+{
+    fn size(&self) -> Size {
+        self.list.size
+    }
+
+    fn overlays(&mut self) -> Vec<crate::overlay::Overlay<'a, ListCommand<T::Command>>> {
+        let mut overlays = self.rows.overlays();
+        overlays.extend(self.sticky_overlay(self.viewport));
+        overlays
     }
 
     fn handle_event(
@@ -2137,7 +2383,59 @@ where
         event: &Event<'_>,
         viewport: Rect,
     ) -> EventResult<ListCommand<T::Command>> {
-        self.list.handle_event(arena, event, viewport)
+        let list = &self.list;
+        match event {
+            Event::Paint { .. } => self.paint(arena, event, viewport),
+
+            Event::AnimationClock { .. } | Event::Settle | Event::ThemeChanged => {
+                self.broadcast(arena, event, viewport)
+            }
+
+            // A press is the container's routing plus the list's own
+            // say: focus moves to the row under it, and on a
+            // selectable list the row body selects and activates.
+            Event::MouseDown { point, .. } => {
+                let Some(row) = self.visible.iter().find(|row| row.rect.contains(*point))
+                else {
+                    return EventResult::Ignored;
+                };
+                let index = row.index;
+                match self.rows.handle_event(arena, event, viewport) {
+                    // A row affordance consumed the click (a
+                    // chevron's Toggle, a button) — that is not
+                    // activation.
+                    EventResult::Command(command) => EventResult::Command(ListCommand::Focus(
+                        index,
+                        Some(Box::new(command)),
+                    )),
+                    // The ROW BODY: routing, selection and
+                    // activation, each its own inspectable command
+                    // (docs/ui/list-keyboard.md §2).
+                    _ if list.selectable => EventResult::Commands(vec![
+                        ListCommand::Focus(index, Some(Box::new(ListCommand::Select(index)))),
+                        ListCommand::Activate(index, ActivateTrigger::Click),
+                    ]),
+                    _ => EventResult::Command(ListCommand::Focus(index, None)),
+                }
+            }
+
+            // Focus-bound traffic (text, keys, drags) is the FOCUSED
+            // row's, while it is on screen.
+            Event::TextInput { .. }
+            | Event::KeyDown { .. }
+            | Event::MouseDrag { .. }
+            | Event::MouseUp { .. } => {
+                let focused = list.focused;
+                match self.visible.iter().position(|row| Some(row.index) == focused) {
+                    Some(position) => self.rows.route_to(position, arena, event, viewport),
+                    None => EventResult::Ignored,
+                }
+            }
+
+            // The rest (hit tests, moves, scrolls) route as a
+            // container's children do.
+            _ => self.rows.handle_event(arena, event, viewport),
+        }
     }
 
     fn layout_data<'w>(
@@ -2147,343 +2445,7 @@ where
     where
         'a: 'w,
     {
-        use crate::focus::LayoutData;
-        // The list realizes rows per traversal, so there is nothing
-        // standing to fold. The FOCUSED row (the list's own state, a
-        // hint — not a second copy of anyone else's routing) is
-        // realized here into the frame arena, and the target key
-        // decides by RECOGNITION whether the seat is really inside.
-        let Some(index) = self.list.focused else {
-            return LayoutData::default();
-        };
-        if self.list.items.is_empty() {
-            return LayoutData::default();
-        }
-        let mut cursor = self.list.items.cursor();
-        if !cursor.seek_to_index(index as u32) {
-            return LayoutData::default();
-        }
-        let rect = self.list.row_rect(&cursor);
-        let child_viewport = viewport_for_child(self.viewport, rect).unwrap_or_default();
-        // The cursor moves into the arena so the row view's borrow
-        // reaches the frame lifetime; the realized row rides along.
-        let cursor: &'a _ = crate::arena::ArenaBox::leak(self.arena.boxed(cursor));
-        let widget = crate::layout::Layout::layout(
-            cursor
-                .element()
-                .view
-                .display(self.arena, self.list.store, self.list.ui),
-            self.arena,
-            self.list.child_constraints,
-        )
-        .realize(self.arena, child_viewport);
-        let widget: &'w mut crate::WidgetBox<'a, T::Command> =
-            crate::arena::ArenaBox::leak(self.arena.boxed(widget));
-        widget
-            .layout_data(target)
-            .translated(rect.left, rect.top)
-            .map(move |command| ListCommand::Child(index, command))
-    }
-}
-
-impl<'a, T, K> Widget<'a, ListCommand<T::Command>> for ListWidget<'a, T, K>
-where
-    T: View + Clone,
-    K: Clone + Eq + Hash,
-{
-    fn size(&self) -> Size {
-        self.size
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<ListCommand<T::Command>> {
-        match event {
-            Event::Paint { .. } => {
-                let canvas = match event {
-                    Event::Paint { canvas, .. } => *canvas,
-                    _ => unreachable!(),
-                };
-                let mut merged = EventResult::Ignored;
-                self.for_visible(viewport, |cursor, rect| {
-                    let Some(child_viewport) = viewport_for_child(viewport, rect) else {
-                        return;
-                    };
-
-                    let entering = {
-                        let index = cursor.index() as usize;
-                        self.animations.iter().any(|animation| {
-                            index >= animation.start
-                                && index < animation.start + animation.len()
-                                && cursor.element().height + 0.01
-                                    < animation.targets()[index - animation.start]
-                        })
-                    };
-                    if entering {
-                        return;
-                    }
-
-                    if let Some(selection) = self.selection {
-                        let index = cursor.index();
-
-                        if !self.matches.is_empty() {
-                            let matched = self
-                                .matches
-                                .query(index..index.saturating_add(1), Order::Ascending)
-                                .any(|interval| interval.range.contains(&index));
-                            if matched {
-                                let fill = selection.style.fill;
-                                let mut paint = Paint::default();
-                                paint.set_color(Color::from_argb(
-                                    fill.a() / 3,
-                                    fill.r(),
-                                    fill.g(),
-                                    fill.b(),
-                                ));
-                                canvas.draw_rect(rect, &paint);
-                            }
-                        }
-                        let covered = selection
-                            .intervals
-                            .query(index..index.saturating_add(1), Order::Ascending)
-                            .any(|interval| interval.range.contains(&index));
-                        if covered {
-                            let style = selection.style;
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(style.fill);
-                            canvas.draw_round_rect(rect, style.radius, style.radius, &paint);
-                            if style.accent_width > 0.0 {
-                                let mut accent = Paint::default();
-                                accent.set_color(style.accent);
-                                canvas.draw_rect(
-                                    Rect::from_xywh(
-                                        rect.left,
-                                        rect.top + style.accent_inset,
-                                        style.accent_width,
-                                        (rect.height() - style.accent_inset * 2.0).max(0.0),
-                                    ),
-                                    &accent,
-                                );
-                            }
-                        }
-                    }
-                    canvas.save();
-                    canvas.translate((rect.left, rect.top));
-                    canvas.clip_rect(Rect::from_size(rect.size()), None, true);
-
-                    let index = cursor.index() as usize;
-                    let widget = crate::layout::Layout::layout(
-                        cursor.element().view.display(arena, self.store, self.ui),
-                        arena,
-                        self.child_constraints,
-                    );
-                    let live = widget.size().height;
-                    let result = widget
-                        .focus_scope(self.focused == Some(index))
-                        .realize(arena, child_viewport)
-                        .handle_event(arena, event, child_viewport)
-                        .map(move |command| ListCommand::Child(index, command));
-                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(result);
-                    canvas.restore();
-
-                    let animating = self.animations.iter().any(|animation| {
-                        (animation.start..animation.start + animation.len()).contains(&index)
-                    });
-                    if !animating && (live - cursor.element().height).abs() > 0.5 {
-                        merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
-                            EventResult::Command(ListCommand::SetHeight(
-                                cursor.index() as usize,
-                                live,
-                            )),
-                        );
-                    }
-
-                    if let Some(style) = self.separators {
-                        if cursor.index() > 0 {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(style.color);
-                            canvas.draw_rect(
-                                Rect::from_xywh(
-                                    rect.left + style.inset,
-                                    rect.top - style.thickness * 0.5,
-                                    (rect.width() - style.inset * 2.0).max(0.0),
-                                    style.thickness,
-                                ),
-                                &paint,
-                            );
-                        }
-                    }
-                });
-                // Re-observe the viewport top from paint too — the
-                // belt for programmatic `set_scroll_y` placements,
-                // which raise no pulse (docs §3.1).
-                if (viewport.top - self.viewport_top).abs() > 0.5 {
-                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
-                        EventResult::Command(ListCommand::ViewportTop(
-                            viewport.top,
-                            viewport.height(),
-                        )),
-                    );
-                }
-                match merged {
-                    EventResult::Ignored => EventResult::Handled,
-                    merged => merged,
-                }
-            }
-
-            Event::AnimationClock { .. } | Event::Settle | Event::ThemeChanged => {
-                let mut merged = EventResult::Ignored;
-                self.for_visible(viewport, |cursor, rect| {
-                    let child_viewport = viewport_for_child(viewport, rect).unwrap_or_default();
-                    let result = self.route(cursor, arena, event, child_viewport);
-                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(result);
-                });
-                if let Event::Settle = event {
-                    // The pulse delivers the honest viewport: a
-                    // drifted retained top means the scroll moved
-                    // since the last observation — refresh it FIRST.
-                    // Its perform also drops any pending correction
-                    // (the move supersedes the door), so no reveal
-                    // rides this round; the next round, if any,
-                    // speaks from fresh state.
-                    if (viewport.top - self.viewport_top).abs() > 0.5 {
-                        let mine = EventResult::Command(ListCommand::ViewportTop(
-                            viewport.top,
-                            viewport.height(),
-                        ));
-                        merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
-                        return merged;
-                    }
-                    // The deepest anchor speaks: a row's inner editor
-                    // that already answered owns the corner; the
-                    // list's own note only fills silence. The target
-                    // is absolute, so re-emitting until the next
-                    // Viewport report clears it converges at the
-                    // scroll instead of compounding.
-                    if !matches!(merged, EventResult::Reveal(_)) {
-                        if let Some(fresh) = self.settle_to {
-                            let mine = EventResult::Reveal(crate::event::Reveal::top_left_at(
-                                Rect::from_xywh(0.0, fresh, self.size.width, viewport.height()),
-                            ));
-                            merged =
-                                std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
-                        }
-                    }
-                    return match merged {
-                        EventResult::Ignored => EventResult::Handled,
-                        merged => merged,
-                    };
-                }
-                if let Event::AnimationClock { now } = event {
-                    if !self.animations.is_empty() {
-                        merged = std::mem::replace(&mut merged, EventResult::Ignored)
-                            .merge(EventResult::Command(ListCommand::Animate(*now)));
-                    }
-
-                    if self.reveal_lost {
-                        merged = std::mem::replace(&mut merged, EventResult::Ignored)
-                            .merge(EventResult::Command(ListCommand::Revealed));
-                    }
-                    if let Some((rect, placement)) = self.reveal {
-                        let mine = match placement {
-                            crate::event::Placement::EnsureVisible => {
-                                match crate::event::reveal_satisfied(viewport, rect) {
-                                    true => EventResult::Command(ListCommand::Revealed),
-                                    false => {
-                                        EventResult::Reveal(crate::event::Reveal::visible(rect))
-                                    }
-                                }
-                            }
-                            crate::event::Placement::TopLeftAt => {
-                                // The scroll clamps at the end of the
-                                // list; satisfaction must measure
-                                // against the clamped target or a
-                                // tail row re-emits forever.
-                                let best = rect
-                                    .top
-                                    .min((self.size.height - viewport.height()).max(0.0));
-                                match (viewport.top - best).abs() < 0.5 {
-                                    true => EventResult::Command(ListCommand::Revealed),
-                                    false => {
-                                        EventResult::Reveal(crate::event::Reveal::top_left_at(rect))
-                                    }
-                                }
-                            }
-                        };
-                        merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
-                    }
-                }
-                merged
-            }
-
-            Event::MouseDown { point, .. }
-            | Event::Scroll { point, .. }
-            | Event::MouseMove { point, .. }
-            | Event::HitTest { point, .. } => {
-                let Some(cursor) = self.cursor_at_y(point.y) else {
-                    return EventResult::Ignored;
-                };
-                let rect = self.row_rect(&cursor);
-                if point.x < rect.left || point.x >= rect.right || point.y < rect.top {
-                    return EventResult::Ignored;
-                }
-                let child_viewport = viewport_for_child(viewport, rect).unwrap_or_default();
-                let local = event.translated(-rect.left, -rect.top);
-                let result = self.route(&cursor, arena, &local, child_viewport);
-                match event {
-                    Event::MouseDown { .. } => {
-                        let index = cursor.index() as usize;
-                        match result {
-                            // A row affordance consumed the click (a
-                            // chevron's Toggle, a button) — that is
-                            // not activation.
-                            EventResult::Command(command) => EventResult::Command(
-                                ListCommand::Focus(index, Some(Box::new(command))),
-                            ),
-                            // The ROW BODY: routing, selection and
-                            // activation, each its own inspectable
-                            // command (docs/ui/list-keyboard.md §2).
-                            _ if self.selectable => EventResult::Commands(vec![
-                                ListCommand::Focus(
-                                    index,
-                                    Some(Box::new(ListCommand::Select(index))),
-                                ),
-                                ListCommand::Activate(index, ActivateTrigger::Click),
-                            ]),
-                            _ => EventResult::Command(ListCommand::Focus(index, None)),
-                        }
-                    }
-                    _ => result,
-                }
-            }
-
-            _ => {
-                let Some(focused) = self.focused else {
-                    return EventResult::Ignored;
-                };
-                if self.items.is_empty() {
-                    return EventResult::Ignored;
-                }
-                let mut cursor = self.items.cursor();
-                if !cursor.seek_to_index(focused as u32) {
-                    return EventResult::Ignored;
-                }
-                let rect = self.row_rect(&cursor);
-                let child_viewport = viewport_for_child(viewport, rect).unwrap_or_default();
-                // Into ROW coordinates, like the hit-tested arm above —
-                // a drag routed to the focused row with list-level
-                // points lands past the row's content (selects to the
-                // end of a chat cell); point-less events pass through
-                // `translated` untouched.
-                let local = event.translated(-rect.left, -rect.top);
-                self.route(&cursor, arena, &local, child_viewport)
-            }
-        }
+        self.rows.layout_data(target)
     }
 }
 

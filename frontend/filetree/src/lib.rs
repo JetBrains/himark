@@ -12,7 +12,8 @@
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
-use hikit::menu::{MenuCommand, MenuView, PopupMenuView};
+use hikit::menu::MenuView;
+use imba::with_overlay::{Placement, WithOverlay, WithOverlayCommand};
 use hikit::{
     forest::TreeRow, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController,
     modal::ModalRequest, modal::ModalView,
@@ -24,8 +25,8 @@ use imba::{
     container::container,
     event::{Event, EventResult, Key as InputKey},
     leaf::leaf,
-    list::{ListSlice, ListView},
-    scroll::ScrollView,
+    list::{ListCommand, ListSlice, ListView},
+    scroll::{ScrollCommand, ScrollView},
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,
@@ -45,7 +46,9 @@ enum Activation {
     Open(ResourceLocation),
 }
 
-type TreeList = ScrollView<ListView<TreeRow, ResourceLocation>>;
+/// A tree row with its context menu standing on it when one is open.
+type Row = WithOverlay<TreeRow, MenuView>;
+type TreeList = ScrollView<ListView<Row, ResourceLocation>>;
 
 #[derive(Clone)]
 struct LocationSearcher;
@@ -99,7 +102,7 @@ impl LocationTree {
         }
     }
 
-    fn row(&self, location: &ResourceLocation, depth: u16, expanded: bool) -> TreeRow {
+    fn row(&self, location: &ResourceLocation, depth: u16, expanded: bool) -> Row {
         let directory = location.kind().is_directory();
         let name = location.name().to_owned();
         let label =
@@ -107,12 +110,13 @@ impl LocationTree {
                 true => hikit::tree_item::TreeTint::Directory,
                 false => hikit::tree_item::TreeTint::File,
             });
-        match directory {
+        let row = match directory {
             true => {
                 hikit::tree_item::TreeItemView::branch(label, depth, expanded).toggling_on_body()
             }
             false => hikit::tree_item::TreeItemView::leaf(label, depth),
-        }
+        };
+        WithOverlay::new(row, Placement::Below).dismissing_on_outside_press()
     }
 
     fn len(&self) -> usize {
@@ -167,7 +171,7 @@ impl LocationTree {
     }
 
     fn ensure_roots(&mut self, folders: &[ResourceLocation], store: &Store, ui: &UiCtx) {
-        let mut slice: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
         for folder in folders {
             if self.is_visible(folder) {
                 continue;
@@ -202,7 +206,7 @@ impl LocationTree {
         };
         if range.len() > 1 {
             let depth = self.list.inner().content().depth_at(range.start) as u16;
-            let mut slice: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+            let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
             slice.push_keyed(
                 location.clone(),
                 self.row(location, depth, false),
@@ -267,7 +271,7 @@ impl LocationTree {
             return Vec::new();
         }
 
-        let old_rows: Vec<TreeRow> = self
+        let old_rows: Vec<Row> = self
             .list
             .inner()
             .content()
@@ -284,7 +288,7 @@ impl LocationTree {
             .collect();
         let expanded = self.list.inner().content().spans_within(range.clone());
 
-        let mut slice: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
         slice.push_keyed(parent.clone(), self.row(&parent, depth, true), store, ui);
 
         let by_key: std::collections::HashMap<&ResourceLocation, &std::ops::Range<usize>> =
@@ -378,7 +382,7 @@ impl SessionTree {
 
 #[derive(Clone)]
 pub enum TreeCommand {
-    Rows(ListKeyCommand<hikit::tree_item::TreeListCommand>),
+    Rows(ListKeyCommand<<TreeList as imba::View>::Command>),
 
     Retheme,
 
@@ -400,9 +404,6 @@ pub enum TreeCommand {
         missing: Vec<ResourceLocation>,
         stale: Vec<ResourceLocation>,
     },
-
-    /// The row context menu's traffic while one stands open.
-    Menu(MenuCommand),
 
     /// The inline row editor's traffic while a rename/create rides.
     Edit(::editor::editor_view::EditorCommand),
@@ -435,7 +436,6 @@ impl std::fmt::Display for TreeCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TreeCommand::Rows(command) => command.fmt(out),
-            TreeCommand::Menu(command) => command.fmt(out),
             TreeCommand::Edit(command) => command.fmt(out),
             TreeCommand::Retheme => out.write_str("tree retheme"),
             TreeCommand::Listed { .. } => out.write_str("tree listed"),
@@ -450,13 +450,6 @@ impl std::fmt::Display for TreeCommand {
             TreeCommand::Follow { .. } => out.write_str("tree follow"),
         }
     }
-}
-
-/// The context menu standing over a row, with the row it serves.
-#[derive(Clone)]
-struct TreeMenu {
-    target: ResourceLocation,
-    view: PopupMenuView,
 }
 
 #[derive(Clone)]
@@ -516,7 +509,6 @@ pub struct SessionTreeView {
     followed: u64,
     request: Option<ModalRequest>,
 
-    menu: Option<TreeMenu>,
     edit: Option<RowEdit>,
 }
 
@@ -532,7 +524,6 @@ impl Clone for SessionTreeView {
             followed: self.followed,
 
             request: None,
-            menu: self.menu.clone(),
             edit: self.edit.clone(),
         }
     }
@@ -568,7 +559,6 @@ impl SessionTreeView {
             follow: None,
             followed: 0,
             request: None,
-            menu: None,
             edit: None,
         };
         panel.drive_reveal(fx);
@@ -681,7 +671,16 @@ impl SessionTreeView {
         }
     }
 
-    fn open_menu(&mut self, index: usize, store: &Store, ui: &UiCtx) {
+    /// The menu stands on its row: shown through the row's own
+    /// command, it anchors there and rides to the window as the
+    /// row's overlay.
+    fn open_menu(
+        &mut self,
+        index: usize,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut imba::effect::Effects<'_, TreeCommand>,
+    ) {
         let Some(target) = self.tree.list.inner().content().key_at(index).cloned() else {
             return;
         };
@@ -692,10 +691,18 @@ impl SessionTreeView {
             .content_mut()
             .select_only(target.clone());
         self.pending_reveal = None;
-        let items = menu_items(&target, root);
-        self.menu = Some(TreeMenu {
-            target,
-            view: PopupMenuView::new(store, ui, items),
+        // The row takes the focus with the menu: a standing menu
+        // owns the keys (see `focus_data`).
+        let menu = MenuView::new(store, ui, menu_items(&target, root));
+        let show = ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Focus(
+            index,
+            Some(Box::new(ListCommand::Child(
+                index,
+                WithOverlayCommand::Show(menu),
+            ))),
+        )));
+        fx.scope(TreeCommand::Rows, |fx| {
+            self.tree.list.perform(store, ui, show, fx)
         });
     }
 
@@ -762,7 +769,7 @@ impl SessionTreeView {
         if self.tree.is_visible(&placeholder) {
             return;
         }
-        let mut slice: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
         slice.push_keyed(
             placeholder.clone(),
             self.tree.row(&placeholder, depth + 1, false),
@@ -860,7 +867,7 @@ impl SessionTreeView {
         else {
             return;
         };
-        let empty: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        let empty: ListSlice<Row, ResourceLocation> = ListSlice::new();
         self.tree
             .list
             .inner_mut()
@@ -892,7 +899,7 @@ impl SessionTreeView {
         let Some(range) = self.tree.list.inner().content().row_range(root) else {
             return;
         };
-        let empty: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        let empty: ListSlice<Row, ResourceLocation> = ListSlice::new();
         self.tree
             .list
             .inner_mut()
@@ -922,6 +929,14 @@ const NEW_FILE: &str = "new-file";
 const RENAME: &str = "rename";
 const DELETE: &str = "delete";
 const REMOVE_ROOT: &str = "remove-root";
+
+/// A command addressed to one row of the tree list.
+fn row_command(
+    index: usize,
+    command: <Row as imba::View>::Command,
+) -> ListKeyCommand<<TreeList as imba::View>::Command> {
+    ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Child(index, command)))
+}
 
 fn menu_items(target: &ResourceLocation, root: bool) -> Vec<hikit::combo::ComboOption> {
     use hikit::combo::ComboOption;
@@ -985,7 +1000,7 @@ fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view:
 /// O(roots × log n): each root's range jumps the walk past its
 /// subtree.
 fn stale_roots(
-    content: &ListView<TreeRow, ResourceLocation>,
+    content: &ListView<Row, ResourceLocation>,
     folders: &[ResourceLocation],
 ) -> Vec<ResourceLocation> {
     let mut stale = Vec::new();
@@ -1033,8 +1048,21 @@ impl View for SessionTreeView {
             };
             return own.merge_under(edit.input.focus_data(store, ui).map(TreeCommand::Edit));
         }
-        if let Some(menu) = &self.menu {
-            return menu.view.focus_data(store, ui).map(TreeCommand::Menu);
+        // A standing row menu owns the keys ahead of the controller's
+        // table.
+        let content = self.tree.list.inner().content();
+        if let Some(index) = content.focused() {
+            if content
+                .view_at(index)
+                .is_some_and(|row| row.overlay().is_some())
+            {
+                return self
+                    .tree
+                    .list
+                    .inner()
+                    .focus_data(store, ui)
+                    .map(|command| TreeCommand::Rows(ListKeyCommand::Inner(command)));
+            }
         }
         // The key table is the controller's; the surface keeps only
         // its own dismissal.
@@ -1071,6 +1099,31 @@ impl View for SessionTreeView {
                     self.abort_edit();
                 }
                 type Rows = ListKeyboardController<TreeList, LocationSearcher>;
+                // A pick in a row's menu: the menu goes, the pick acts
+                // on the row it stood on.
+                if let ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Child(
+                    index,
+                    WithOverlayCommand::Overlay(pick),
+                ))) = &command
+                {
+                    let index = *index;
+                    let content = self.tree.list.inner().content();
+                    let picked = content
+                        .view_at(index)
+                        .and_then(|row| row.overlay().and_then(|menu| menu.picked(pick)));
+                    if let (Some(id), Some(target)) = (picked, content.key_at(index).cloned()) {
+                        fx.scope(TreeCommand::Rows, |fx| {
+                            self.tree.list.perform(
+                                store,
+                                ui,
+                                row_command(index, WithOverlayCommand::Dismiss),
+                                fx,
+                            )
+                        });
+                        self.menu_pick(&id, target, store, ui, fx);
+                        return self.persist(store);
+                    }
+                }
                 match &command {
                     // The bespoke lazy fold: Right lists an unlisted
                     // directory, Left collapses a listed one or walks
@@ -1107,7 +1160,7 @@ impl View for SessionTreeView {
                     }
                     ListKeyCommand::Inner(inner) => {
                         if let Some(index) = hikit::tree_item::tree_context(inner) {
-                            self.open_menu(index, store, ui);
+                            self.open_menu(index, store, ui, fx);
                             return self.persist(store);
                         }
                         if let Some(index) = hikit::tree_item::tree_toggle(inner) {
@@ -1205,22 +1258,6 @@ impl View for SessionTreeView {
                 }
                 self.tree.ensure_roots(&missing, store, ui);
             }
-            TreeCommand::Menu(command) => {
-                let Some(menu) = self.menu.as_mut() else {
-                    return;
-                };
-                if let Some(id) = menu.view.picked(&command) {
-                    let target = menu.target.clone();
-                    self.menu = None;
-                    self.menu_pick(&id, target, store, ui, fx);
-                } else if MenuView::closes(&command) {
-                    self.menu = None;
-                } else {
-                    fx.scope(TreeCommand::Menu, |fx| {
-                        menu.view.perform(store, ui, command, fx)
-                    });
-                }
-            }
             TreeCommand::Edit(command) => {
                 let Some(edit) = self.edit.as_mut() else {
                     return;
@@ -1301,7 +1338,6 @@ impl View for SessionTreeView {
             // the surface keeps only its dismissal and retheme.
             let searching = self.tree.list.searching();
             let editing = self.edit.is_some();
-            let menu_open = self.menu.is_some();
             let keymap =
                 leaf::<TreeCommand>(size.width, size.height).event(move |_arena, event, _size| {
                     if editing {
@@ -1322,12 +1358,6 @@ impl View for SessionTreeView {
                         Event::KeyDown {
                             key: InputKey::Escape,
                             ..
-                        } if menu_open => {
-                            EventResult::Command(TreeCommand::Menu(hikit::menu::MenuCommand::Close))
-                        }
-                        Event::KeyDown {
-                            key: InputKey::Escape,
-                            ..
                         } if !searching => EventResult::Command(TreeCommand::Dismiss),
 
                         Event::ThemeChanged => EventResult::Command(TreeCommand::Retheme),
@@ -1335,27 +1365,6 @@ impl View for SessionTreeView {
                     }
                 });
             overlay.place(0.0, 0.0, keymap);
-
-            if let Some(menu) = &self.menu {
-                if let Some(range) = self.tree.list.inner().content().row_range(&menu.target) {
-                    if let Some((top, height)) =
-                        self.tree.list.inner().content().row_span(range.start)
-                    {
-                        let tree_theme = editor::env::Themes::of(store).ui().tree.clone();
-                        let depth = self.tree.list.inner().content().depth_at(range.start) as f32;
-                        let x = (depth * tree_theme.indent + tree_theme.text_x).min(size.width);
-                        let y = (PANEL_PAD + top + height - self.tree.list.inner().scroll_y())
-                            .clamp(0.0, size.height);
-                        overlay.place(
-                            x,
-                            y,
-                            menu.view
-                                .overlay_at(arena, store, ui)
-                                .map(TreeCommand::Menu),
-                        );
-                    }
-                }
-            }
 
             if let Some(edit) = &self.edit {
                 if let Some(range) = self.tree.list.inner().content().row_range(edit.row_key()) {

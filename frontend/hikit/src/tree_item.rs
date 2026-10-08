@@ -543,72 +543,84 @@ where
     }
 }
 
-pub type TreeListCommand =
-    imba::scroll::ScrollCommand<imba::list::ListCommand<TreeItemCommand<TreeLabelCommand>>>;
+pub type TreeListCommand<C = TreeItemCommand<TreeLabelCommand>> =
+    imba::scroll::ScrollCommand<imba::list::ListCommand<C>>;
+
+/// A row command that is, or carries, the tree item's own: rows a
+/// surface wraps (a tooltip, an overlay) peel their layer so the
+/// press decoders below read through them.
+pub trait TreeRowCommand {
+    fn tree_item(&self) -> Option<&TreeItemCommand<TreeLabelCommand>>;
+}
+
+impl TreeRowCommand for TreeItemCommand<TreeLabelCommand> {
+    fn tree_item(&self) -> Option<&TreeItemCommand<TreeLabelCommand>> {
+        Some(self)
+    }
+}
+
+impl<C: TreeRowCommand, D, O> TreeRowCommand for imba::with_overlay::WithOverlayCommand<C, D, O> {
+    fn tree_item(&self) -> Option<&TreeItemCommand<TreeLabelCommand>> {
+        match self {
+            imba::with_overlay::WithOverlayCommand::Host(command) => command.tree_item(),
+            _ => None,
+        }
+    }
+}
+
+impl<C: TreeRowCommand> TreeRowCommand for imba::tooltip::TooltipCommand<C> {
+    fn tree_item(&self) -> Option<&TreeItemCommand<TreeLabelCommand>> {
+        match self {
+            imba::tooltip::TooltipCommand::Host(command) => command.tree_item(),
+            _ => None,
+        }
+    }
+}
+
+/// The row a press landed on and what it pressed — straight from the
+/// list, or through the focus shift a press rides.
+fn row_press<C: TreeRowCommand>(
+    command: &TreeListCommand<C>,
+) -> Option<(usize, &TreeItemCommand<TreeLabelCommand>)> {
+    use imba::list::ListCommand;
+    use imba::scroll::ScrollCommand;
+    let ScrollCommand::Content(command) = command else {
+        return None;
+    };
+    let (index, command) = match command {
+        ListCommand::Child(index, command) => (*index, command),
+        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
+            ListCommand::Child(_, command) => (*index, command),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some((index, command.tree_item()?))
+}
 
 /// A press on a row's chevron (or a toggling body): the fold
 /// protocol's click half. Body picks are NOT here — those arrive as
 /// `ListCommand::Select`/`Activate` from the list itself
 /// (docs/ui/list-keyboard.md §2).
-pub fn tree_toggle(command: &TreeListCommand) -> Option<usize> {
-    use imba::list::ListCommand;
-    use imba::scroll::ScrollCommand;
-    let ScrollCommand::Content(command) = command else {
-        return None;
-    };
-    let (index, command) = match command {
-        ListCommand::Child(index, command) => (*index, command),
-        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
-            ListCommand::Child(_, command) => (*index, command),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    match command {
-        TreeItemCommand::Toggle => Some(index),
-        TreeItemCommand::Inner(TreeLabelCommand::Action | TreeLabelCommand::Context) => None,
-    }
-}
-
-/// A press on a row's right-aligned action chip, decoded like
-/// `tree_interaction`.
-pub fn tree_action(command: &TreeListCommand) -> Option<usize> {
-    use imba::list::ListCommand;
-    use imba::scroll::ScrollCommand;
-    let ScrollCommand::Content(command) = command else {
-        return None;
-    };
-    let (index, command) = match command {
-        ListCommand::Child(index, command) => (*index, command),
-        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
-            ListCommand::Child(_, command) => (*index, command),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    match command {
-        TreeItemCommand::Inner(TreeLabelCommand::Action) => Some(index),
+pub fn tree_toggle<C: TreeRowCommand>(command: &TreeListCommand<C>) -> Option<usize> {
+    match row_press(command)? {
+        (index, TreeItemCommand::Toggle) => Some(index),
         _ => None,
     }
 }
 
-/// A secondary press on a row body, decoded like `tree_action`.
-pub fn tree_context(command: &TreeListCommand) -> Option<usize> {
-    use imba::list::ListCommand;
-    use imba::scroll::ScrollCommand;
-    let ScrollCommand::Content(command) = command else {
-        return None;
-    };
-    let (index, command) = match command {
-        ListCommand::Child(index, command) => (*index, command),
-        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
-            ListCommand::Child(_, command) => (*index, command),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    match command {
-        TreeItemCommand::Inner(TreeLabelCommand::Context) => Some(index),
+/// A press on a row's right-aligned action chip.
+pub fn tree_action<C: TreeRowCommand>(command: &TreeListCommand<C>) -> Option<usize> {
+    match row_press(command)? {
+        (index, TreeItemCommand::Inner(TreeLabelCommand::Action)) => Some(index),
+        _ => None,
+    }
+}
+
+/// A secondary press on a row body.
+pub fn tree_context<C: TreeRowCommand>(command: &TreeListCommand<C>) -> Option<usize> {
+    match row_press(command)? {
+        (index, TreeItemCommand::Inner(TreeLabelCommand::Context)) => Some(index),
         _ => None,
     }
 }

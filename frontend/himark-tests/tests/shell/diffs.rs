@@ -4889,7 +4889,7 @@ fn completion_serves_a_canvas_diff_face() {
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let mut settle = |app: &mut Application| {
+    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -4899,7 +4899,7 @@ fn completion_serves_a_canvas_diff_face() {
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
     };
-    settle(&mut app);
+    settle(&mut app, &mut surface);
 
     let documents = app.sole_documents();
     let pair = {
@@ -4932,7 +4932,7 @@ fn completion_serves_a_canvas_diff_face() {
     // line end and the face holds the keyboard.
     let _ = himark::test_driver::click(&mut app, 900.0, 240.0, 1100.0, 800.0);
     let _ = himark::test_driver::mouse_up(&mut app, 900.0, 240.0);
-    settle(&mut app);
+    settle(&mut app, &mut surface);
     let focus = OpenDocuments::document_ref(app.store(), documents, right)
         .expect("right")
         .focus(face);
@@ -4950,6 +4950,18 @@ fn completion_serves_a_canvas_diff_face() {
         himark::editor_accessories::Seats::seat(app.store(), face)
             .is_some_and(|seat| seat.completion.open())
     };
+    let frame = |surface: &mut skia_safe::Surface| -> Vec<u8> {
+        let info = skia_safe::ImageInfo::new(
+            (1100, 800),
+            skia_safe::ColorType::RGBA8888,
+            skia_safe::AlphaType::Unpremul,
+            None,
+        );
+        let mut pixels = vec![0u8; 1100 * 800 * 4];
+        assert!(surface.read_pixels(&info, &mut pixels, 1100 * 4, (0, 0)));
+        pixels
+    };
+    let quiet = frame(&mut surface);
     let trigger = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == "completion.trigger")
@@ -4957,7 +4969,20 @@ fn completion_serves_a_canvas_diff_face() {
         .command;
     assert!(app.perform_command(trigger));
     assert!(completion_open(&app), "the explicit ask opened on the face");
-    settle(&mut app);
+    settle(&mut app, &mut surface);
+    // The popup PAINTS: the rows below the clicked line (y 240, one
+    // line tall) change against the quiet frame. A canvas row is a
+    // list child realized per traversal, and the window never saw
+    // the face's popup until the list surfaced it.
+    let popped = frame(&mut surface);
+    let changed_below = (300..800)
+        .flat_map(|y| (0..1100).map(move |x| (y * 1100 + x) * 4))
+        .filter(|&at| quiet[at..at + 3] != popped[at..at + 3])
+        .count();
+    assert!(
+        changed_below > 1000,
+        "the popup paints under the caret line ({changed_below} pixels changed)"
+    );
     let focus = OpenDocuments::document_ref(app.store(), documents, right)
         .expect("right")
         .focus(face);
@@ -4981,9 +5006,178 @@ fn completion_serves_a_canvas_diff_face() {
         Key::Enter,
         Modifiers::default()
     ));
-    settle(&mut app);
+    settle(&mut app, &mut surface);
     let after = text(&app);
     assert_ne!(after, before, "the pick wrote into the diffed document");
     assert!(after.contains("push"), "the picked item landed: {after:?}");
     assert!(!completion_open(&app), "the popup closed on the pick");
+}
+
+/// A wholly ADDED file (an empty base) with a feature markup landing
+/// on its right document during the first dressing — a diagnostics or
+/// semantic-token landing on a freshly opened file — must not strand
+/// the row under its skeleton. (It did: the split halves shown while
+/// the inline face was deferred reported half widths, and the pair
+/// never agreed on one.)
+#[test]
+fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
+    use documents::OpenDocuments;
+    let mut app = Application::new(AppFonts::embedded());
+    let window = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "new.rs".to_owned(),
+        old: location("new.rs.old", editor::location::ResourceType::document()),
+        new: location("new.rs", editor::location::ResourceType::document()),
+        added: Some(3),
+        removed: Some(0),
+        updated: 0,
+    };
+    let mut body = String::new();
+    for n in 0..60 {
+        body.push_str(&format!("fn added_{n}() {{}}\n"));
+    }
+    let built = prepared_pair(
+        file.old.clone(),
+        ::editor::test_document::plain_document(""),
+        file.new.clone(),
+        ::editor::test_document::plain_document(&body),
+        1100.0,
+    );
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: location("proj", editor::location::ResourceType::directory()),
+            },
+            file.clone(),
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    let documents = app.sole_documents();
+    let pair = {
+        let mut found = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                found = view.probe_pair(app.store(), &file.new);
+            }
+        });
+        found.expect("the row built")
+    };
+    let right = OpenDocuments::diff_view_ref(app.store(), documents, pair)
+        .expect("pair")
+        .right
+        .document();
+
+    // The landing, the way the diagnostics and enrich lanes land one:
+    // the store document, a wholesale markup swap, put back — with
+    // the reshape effects addressed to the document.
+    struct Land(
+        imba::store::Id<documents::OpenDocuments>,
+        documents::DocumentId,
+    );
+    impl himark::commands::WindowedCommand for Land {
+        fn id(&self) -> &'static str {
+            "test.land-markup"
+        }
+        fn name(&self) -> String {
+            "Land Markup".to_owned()
+        }
+        fn perform(
+            &self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            _window: ::workbench::window::WindowId,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let (documents, id) = (self.0, self.1);
+            let Some(mut document) = OpenDocuments::document(store, documents, id) else {
+                return;
+            };
+            let markup = editor::markup::MarkupId::mint();
+            document.ensure_document_markup(markup);
+            let mut builder = editor::markup::Markup::builder();
+            for line in 0..60u32 {
+                let start = line * 17 + 3;
+                builder.push_styled(start..start + 5, editor::theme::StyleId::Function);
+            }
+            let replacement = builder.finish();
+            let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
+            let fonts = editor::env::ui_collection(store, ui);
+            let theme = editor::env::Themes::of(store);
+            fx.scope(
+                move |command| {
+                    himark::app::AppCommand::Verb(imba::command::Verb::at(
+                        documents,
+                        documents::DocumentsCommand::Editor(id, command),
+                    ))
+                },
+                |fx| {
+                    document.replace_markup(
+                        markup,
+                        replacement,
+                        &changed,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    )
+                },
+            );
+            OpenDocuments::put_document(store, documents, id, document);
+        }
+    }
+    // One draw arms the row; the landing arrives before the dressing
+    // could complete.
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    assert!(app.perform_command(himark::app::AppCommand::Windowed(
+        window,
+        Arc::new(Land(documents, right)),
+    )));
+
+    let dressed = |app: &Application| -> bool {
+        OpenDocuments::diff_view_ref(app.store(), documents, pair)
+            .and_then(|held| documents::diff_views::gather_diff_view(held, app.store(), documents))
+            .is_some_and(|view| view.ever_dressed())
+    };
+    let started = std::time::Instant::now();
+    let mut rounds = 0;
+    while !dressed(&app) && started.elapsed() < std::time::Duration::from_secs(10) {
+        let _ = himark::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(rounds as f64 * 16.0),
+        );
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        rounds += 1;
+    }
+    assert!(
+        dressed(&app),
+        "the row dressed despite the landing ({rounds} rounds)"
+    );
 }
