@@ -1,16 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Find in the document: the bar over the editor's viewport, the
+//! background scan, the match tints, the walk.
+
 use std::ops::Range;
 
-use editor::{
-    editor::EditorId, editor_view::EditorCommand, editor_view::EditorView, markup::MarkupId,
-};
-use imba::effect::AnyEffect;
+use imba::effect::{AnyEffect, Effects};
 use imba::{
     arena::Arena,
     constraints::Constraints,
-    effect::Effects,
     event::{Event, EventResult, Key},
     store::Store,
     thunk_ext::ThunkExt,
@@ -19,11 +18,20 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
+use crate::document::Document;
+use crate::editor::EditorId;
+use crate::editor_view::{EditorCommand, EditorView};
+use crate::markup::MarkupId;
+
 const MAX_MATCHES: usize = 20_000;
 
 #[derive(Clone)]
 pub enum FindCommand {
-    Input(EditorCommand),
+    /// ⌘F: open the bar, seeded from a short one-line selection, or
+    /// refocus the standing one.
+    Open,
+
+    Input(Box<EditorCommand>),
 
     Next,
     Previous,
@@ -36,6 +44,7 @@ pub enum FindCommand {
 impl std::fmt::Display for FindCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            FindCommand::Open => out.write_str("find open"),
             FindCommand::Input(command) => command.fmt(out),
             FindCommand::Next => out.write_str("find next"),
             FindCommand::Previous => out.write_str("find previous"),
@@ -93,8 +102,8 @@ pub struct FindBar {
 
     stepped: bool,
 
-    /// The match tints: on the editor the bar serves.
-    installed: Option<(EditorId, MarkupId)>,
+    /// The match tints on the editor the bar serves.
+    installed: Option<MarkupId>,
 
     scanned: Option<(u64, String)>,
 
@@ -106,12 +115,11 @@ pub struct FindBar {
 }
 
 impl FindBar {
-    pub fn focus_data<'w>(
+    pub(crate) fn focus_data<'w>(
         &'w self,
-        store: &'w imba::store::Store,
-        ui: &'w imba::ui::UiCtx,
+        store: &'w Store,
+        ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, FindCommand> {
-        use imba::event::EventResult;
         use imba::focus::FocusData;
         if !self.focused {
             return FocusData::default();
@@ -125,11 +133,15 @@ impl FindBar {
             })),
             ..FocusData::default()
         };
-        own.merge_under(self.input.focus_data(store, ui).map(FindCommand::Input))
+        own.merge_under(
+            self.input
+                .focus_data(store, ui)
+                .map(|command| FindCommand::Input(Box::new(command))),
+        )
     }
 
-    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
-        let mut input = EditorView::input(600.0, store, ui, hikit::fonts::source());
+    fn new(store: &Store, ui: &UiCtx) -> Self {
+        let mut input = EditorView::input(600.0, store, ui, crate::env::Fonts::of(store));
         input.focus_text();
         Self {
             input,
@@ -145,19 +157,13 @@ impl FindBar {
         }
     }
 
-    pub fn seed(&mut self, store: &imba::store::Store, ui: &imba::ui::UiCtx, query: &str) {
-        let mut markup = editor::markup::Markup::new();
-        markup.push_styled_covering(0..query.len() as u32, editor::theme::StyleId::Input);
-        let document =
-            editor::document::Document::new(text::text::Text::from_string_exact(query), markup);
-        let mut input = EditorView::of_document(
-            document,
-            600.0,
-            store,
-            ui,
-            &hikit::fonts::source()(),
-            &editor::theme::Theme::embedded(),
-        );
+    fn seed(&mut self, store: &Store, ui: &UiCtx, query: &str) {
+        let mut markup = crate::markup::Markup::new();
+        markup.push_styled_covering(0..query.len() as u32, crate::theme::StyleId::Input);
+        let document = Document::new(text::text::Text::from_string_exact(query), markup);
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        let mut input = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
         input.focus_text();
         self.input = input;
         self.refocus();
@@ -180,7 +186,7 @@ impl FindBar {
         self.input.document.text().view().substring(0..end)
     }
 
-    pub fn refocus(&mut self) {
+    fn refocus(&mut self) {
         self.focused = true;
         self.input.focus_text();
         let end = self
@@ -191,7 +197,7 @@ impl FindBar {
             .min(u32::MAX as usize) as u32;
         self.input.document.set_carets(
             self.input.editor,
-            editor::caret::MultiCaret::one(editor::caret::Caret::selecting(0, end)),
+            crate::caret::MultiCaret::one(crate::caret::Caret::selecting(0, end)),
         );
     }
 
@@ -203,39 +209,25 @@ impl FindBar {
         }
     }
 
-    /// Keep up with the editor after a command: an emptied query takes
-    /// its tints away.
-    pub fn sync(
+    /// Keep up with the editor: an emptied query takes its tints
+    /// away; a changed text or query asks for a fresh scan, unless
+    /// that very pair was scanned or is in flight.
+    fn sync(
         &mut self,
         store: &Store,
-        document: &mut editor::document::Document,
-        ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::theme::Theme,
+        document: &mut Document,
+        ui: &UiCtx,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        if self.query().is_empty() {
+        let query = self.query();
+        if query.is_empty() {
             if self.installed.is_some() {
-                self.uninstall(store, document, ui, fonts, theme, fx);
+                self.uninstall(store, document, ui, fx);
             }
             self.matches.clear();
             self.scanned = None;
             self.launched = None;
-
             self.serial += 1;
-        }
-    }
-
-    /// Ask for the matches of the current query against the current
-    /// text, unless that very pair was scanned or is in flight.
-    pub fn launch<R: 'static>(
-        &mut self,
-        document: &editor::document::Document,
-        fx: &mut Effects<'_, R>,
-        wrap: impl Fn(Scan) -> R + Send + Sync + 'static,
-    ) {
-        let query = self.query();
-        if query.is_empty() {
             return;
         }
         let stamp = (document.revision(), query.clone());
@@ -250,67 +242,64 @@ impl FindBar {
             serial: self.serial,
             revision: document.revision(),
         };
-        fx.relaunch_erased(&mut self.lane, AnyEffect::new(effect).map(wrap));
+        fx.relaunch_erased(
+            &mut self.lane,
+            AnyEffect::new(effect).map(|scan| EditorCommand::Find(FindCommand::Scanned(scan))),
+        );
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn adopt(
+    fn adopt(
         &mut self,
         store: &Store,
-        document: &mut editor::document::Document,
+        document: &mut Document,
         editor: EditorId,
         landed: &Scan,
-        ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::theme::Theme,
+        ui: &UiCtx,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
         if landed.serial != self.serial || self.query() != landed.query {
             return;
         }
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
         let matches = landed.matches.clone();
 
         let mut changed: Vec<Range<u32>> = self.matches.clone();
         changed.extend(matches.iter().cloned());
-        let mut tints = editor::markup::Markup::new();
+        let mut tints = crate::markup::Markup::new();
         for range in &matches {
-            tints.push_styled(range.clone(), editor::theme::StyleId::Match);
+            tints.push_styled(range.clone(), crate::theme::StyleId::Match);
         }
         let markup = match self.installed {
-            Some((_, markup)) => markup,
+            Some(markup) => markup,
             None => {
                 let markup = document.add_markup();
                 document.show_markup(editor, markup);
                 document.mark_scroll_stripes(editor, markup);
-                self.installed = Some((editor, markup));
+                self.installed = Some(markup);
                 markup
             }
         };
-        document.replace_markup(markup, tints, &changed, store, ui, fonts, theme, fx);
+        document.replace_markup(markup, tints, &changed, store, ui, &fonts, &theme, fx);
         self.scanned = Some((landed.revision, landed.query.clone()));
 
         self.current = self.current.min(matches.len().saturating_sub(1));
         self.matches = matches;
     }
 
-    pub fn step(
+    fn step(
         &mut self,
         store: &Store,
-        document: &mut editor::document::Document,
+        document: &mut Document,
+        editor: EditorId,
         forward: bool,
-        ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::theme::Theme,
+        ui: &UiCtx,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        let Some((editor, _)) = self.installed else {
-            return;
-        };
         if self.matches.is_empty() {
             return;
         }
         let count = self.matches.len();
-
         if self.stepped {
             self.current = match forward {
                 true => (self.current + 1) % count,
@@ -321,48 +310,35 @@ impl FindBar {
             self.stepped = true;
         }
         let found = self.matches[self.current].clone();
-        document.reveal_selecting(editor, found, store, ui, fonts, theme, fx);
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        document.reveal_selecting(editor, found, store, ui, &fonts, &theme, fx);
     }
 
-    pub fn uninstall(
+    fn uninstall(
         &mut self,
         store: &Store,
-        document: &mut editor::document::Document,
-        ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::theme::Theme,
+        document: &mut Document,
+        ui: &UiCtx,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
-        let Some((_, markup)) = self.installed.take() else {
+        let Some(markup) = self.installed.take() else {
             return;
         };
-        document.remove_markup(markup, &self.matches, store, ui, fonts, theme, fx);
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        document.remove_markup(markup, &self.matches, store, ui, &fonts, &theme, fx);
     }
 
-    pub fn perform_input(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: EditorCommand,
-        fx: &mut Effects<'_, FindCommand>,
-    ) {
-        self.focused = true;
-        fx.scope(FindCommand::Input, |fx| {
-            imba::View::perform(&mut self.input, store, ui, command, fx)
-        });
-
-        self.stepped = false;
-    }
-
-    pub fn layout<'a>(
+    pub(crate) fn layout<'a>(
         &'a self,
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
         width: f32,
     ) -> impl Thunk<'a, FindCommand> + 'a {
-        let chrome = ::editor::env::Themes::of(store).ui().search.clone();
-        let height = Self::height(&chrome);
+        let chrome = crate::env::Themes::of(store).ui().search.clone();
+        let height = chrome.input_height + chrome.pad;
         let pad = chrome.pad;
         let inner_height = (chrome.input_height - chrome.input_pad_y * 2.0).max(1.0);
 
@@ -413,12 +389,12 @@ impl FindBar {
                     ),
                 },
             )
-            .map(FindCommand::Input)
+            .map(|command| FindCommand::Input(Box::new(command)))
             .focus_scope(self.focused),
         );
 
         let status = self.status();
-        let font = hikit::fonts::ui_text_font(ui, 22.0);
+        let font = status_font(ui);
         let label_x = width - pad - status_width;
         let label = imba::leaf::leaf::<FindCommand>(status_width, height).paint_instead(
             move |_arena, canvas, rect| {
@@ -437,26 +413,122 @@ impl FindBar {
             },
         );
         bar.place(label_x, 0.0, label);
-
-        let focused = self.focused;
-        let keymap =
-            imba::leaf::leaf::<FindCommand>(width, height).event(move |_arena, event, _size| {
-                match event {
-                    Event::KeyDown { key, mods } if focused => match key {
-                        Key::Enter if mods.shift => EventResult::Command(FindCommand::Previous),
-                        Key::Enter => EventResult::Command(FindCommand::Next),
-                        Key::Escape => EventResult::Command(FindCommand::Close),
-                        _ => EventResult::Ignored,
-                    },
-                    _ => EventResult::Ignored,
-                }
-            });
-        bar.place(0.0, 0.0, keymap);
         bar
     }
+}
 
-    pub fn height(chrome: &editor::theme::SearchChrome) -> f32 {
-        chrome.input_height + chrome.pad
+fn status_font(ui: &UiCtx) -> skia_safe::Font {
+    struct StatusTypeface(skia_safe::Typeface);
+    let typeface = ui.env(|| {
+        StatusTypeface(
+            crate::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::normal())
+                .expect("a ui typeface"),
+        )
+    });
+    let mut font = skia_safe::Font::from_typeface(typeface.0.clone(), 22.0);
+    font.set_edging(skia_safe::font::Edging::AntiAlias);
+    font
+}
+
+impl Document {
+    pub fn find(&self, editor: EditorId) -> Option<&FindBar> {
+        self.editor(editor).find.as_ref()
+    }
+
+    /// TEST SUPPORT: no production caller outside this crate.
+    #[doc(hidden)]
+    pub fn find_mut(&mut self, editor: EditorId) -> Option<&mut FindBar> {
+        self.editor_mut(editor).find.as_mut()
+    }
+
+    pub(crate) fn find_perform(
+        &mut self,
+        editor: EditorId,
+        command: FindCommand,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
+        let mut find = self.editor_mut(editor).find.take();
+        match command {
+            FindCommand::Open => {
+                let seed = {
+                    let caret = self.carets(editor).primary();
+                    caret
+                        .has_selection()
+                        .then(|| caret.selection())
+                        .and_then(|selection| {
+                            if selection.end - selection.start > 200 {
+                                return None;
+                            }
+                            let text = self.text().view().substring(selection);
+                            (!text.contains('\n')).then_some(text)
+                        })
+                };
+                match (&mut find, seed) {
+                    (Some(find), Some(seed)) => find.seed(store, ui, &seed),
+                    (Some(find), None) => find.refocus(),
+                    (None, seed) => {
+                        let mut fresh = FindBar::new(store, ui);
+                        if let Some(seed) = &seed {
+                            fresh.seed(store, ui, seed);
+                        }
+                        find = Some(fresh);
+                    }
+                }
+            }
+            FindCommand::Input(command) => {
+                if let Some(find) = &mut find {
+                    find.focused = true;
+                    fx.scope(
+                        |command| EditorCommand::Find(FindCommand::Input(Box::new(command))),
+                        |fx| imba::View::perform(&mut find.input, store, ui, *command, fx),
+                    );
+                    find.stepped = false;
+                }
+            }
+            FindCommand::Next | FindCommand::Previous => {
+                let forward = matches!(command, FindCommand::Next);
+                if let Some(find) = &mut find {
+                    find.sync(store, self, ui, fx);
+                    find.step(store, self, editor, forward, ui, fx);
+                }
+            }
+            FindCommand::Close => {
+                if let Some(mut closing) = find.take() {
+                    closing.uninstall(store, self, ui, fx);
+                }
+            }
+            FindCommand::Scanned(landed) => {
+                if let Some(find) = &mut find {
+                    find.adopt(store, self, editor, &landed, ui, fx);
+                }
+            }
+        }
+        if let Some(find) = &mut find {
+            find.sync(store, self, ui, fx);
+        }
+        self.editor_mut(editor).find = find;
+    }
+
+    /// After a command on the text: the tints follow it, and a press
+    /// in the text takes the keys back from the bar.
+    pub(crate) fn find_sync(
+        &mut self,
+        editor: EditorId,
+        clicked: bool,
+        store: &Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
+        let Some(mut find) = self.editor_mut(editor).find.take() else {
+            return;
+        };
+        if clicked {
+            find.focused = false;
+        }
+        find.sync(store, self, ui, fx);
+        self.editor_mut(editor).find = Some(find);
     }
 }
 

@@ -389,8 +389,6 @@ pub enum ChatPanelCommand {
     Blurred(bool),
 
     ToolbarSync,
-
-    CompletionFound(crate::completion::CompletionFound),
 }
 
 impl std::fmt::Display for ChatPanelCommand {
@@ -415,7 +413,6 @@ impl std::fmt::Display for ChatPanelCommand {
             ChatPanelCommand::Dispatched { .. } => out.write_str("chat dispatched"),
             ChatPanelCommand::Blurred(_) => out.write_str("chat blurred"),
             ChatPanelCommand::ToolbarSync => out.write_str("toolbar sync"),
-            ChatPanelCommand::CompletionFound(_) => out.write_str("completion found"),
         }
     }
 }
@@ -555,9 +552,9 @@ pub struct ChatView {
 
     composer: Composer,
 
-    completion: crate::completion::Completion,
-
-    picked: rpds::VectorSync<crate::completion::PickedFile>,
+    /// The files picked from the composer's `@` completions, for the
+    /// send's attachments.
+    picked: rpds::VectorSync<::editor::completion::PickedFile>,
 
     focus: ChatArea,
 
@@ -575,7 +572,6 @@ impl Clone for ChatView {
         Self {
             rows: self.rows.clone(),
             composer: self.composer.clone(),
-            completion: self.completion.clone(),
             picked: self.picked.clone(),
             focus: self.focus,
             has_loader: self.has_loader,
@@ -608,10 +604,9 @@ fn sleeping_height(turn: &model::Turn, chrome: &editor::theme::ChatChrome) -> f3
     body.max(line) + chrome.gap
 }
 
-fn completion_editor(command: ::editor::editor_view::EditorCommand) -> ChatPanelCommand {
-    ChatPanelCommand::Composer(ComposerCommand::Editor(
-        imba::scroll::ScrollCommand::Content(command),
-    ))
+/// A command to the composer's editor.
+fn composer_editor(command: ::editor::editor_view::EditorCommand) -> ComposerCommand {
+    ComposerCommand::Editor(imba::scroll::ScrollCommand::Content(command))
 }
 
 impl ChatPanel {
@@ -717,13 +712,23 @@ impl ChatPanel {
 
     #[doc(hidden)]
     pub fn completion_open(&self) -> bool {
-        self.first_view().is_some_and(|view| view.completion.open())
+        self.first_view().is_some_and(|view| {
+            view.composer
+                .document()
+                .completion(view.composer.editor())
+                .open()
+        })
     }
 
     #[doc(hidden)]
     pub fn completion_rows(&self) -> Vec<String> {
         self.first_view()
-            .map(|view| view.completion.row_labels())
+            .map(|view| {
+                view.composer
+                    .document()
+                    .completion(view.composer.editor())
+                    .row_labels()
+            })
             .unwrap_or_default()
     }
 
@@ -1670,20 +1675,10 @@ impl ChatPanel {
                     return;
                 }
                 let text = view.composer.text().trim().to_owned();
-                if view.completion.open() {
-                    fx.scope(
-                        move |command| ChatPanelCommand::InView(id, Box::new(command)),
-                        |fx| {
-                            view.completion.drop_state(
-                                view.composer.document_mut(),
-                                store,
-                                ui,
-                                fx,
-                                completion_editor,
-                            )
-                        },
-                    );
-                }
+                fx.scope(
+                    move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                    |fx| view.close_completion(store, ui, fx),
+                );
                 let uris = (self.catalog.uris)(store, self.server);
                 let attachments = view.completion_attachments(uris, &text);
                 let model = view.toolbar.model_selection();
@@ -1724,32 +1719,13 @@ impl ChatPanel {
                 let Some(mut view) = self.views.get(&id).cloned() else {
                     return;
                 };
-                fx.scope(
-                    move |command| ChatPanelCommand::InView(id, Box::new(command)),
-                    |fx| {
-                        if blurred && view.completion.open() {
-                            view.completion.drop_state(
-                                view.composer.document_mut(),
-                                store,
-                                ui,
-                                fx,
-                                completion_editor,
-                            );
-                        }
-                    },
-                );
+                if blurred {
+                    fx.scope(
+                        move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                        |fx| view.close_completion(store, ui, fx),
+                    );
+                }
                 view.composer.set_blurred(blurred);
-                self.views.insert_mut(id, view);
-            }
-
-            ChatPanelCommand::CompletionFound(found) => {
-                let Some(mut view) = self.views.get(&id).cloned() else {
-                    return;
-                };
-                let editor = view.composer.editor();
-                let (completion, mut composer) = (&mut view.completion, &mut view.composer);
-                completion.land(store, ui, composer.document_mut(), editor, found);
-                let _ = &mut composer;
                 self.views.insert_mut(id, view);
             }
 
@@ -2165,7 +2141,6 @@ impl ChatView {
         Self {
             rows: ScrollView::new(ListView::empty()),
             composer: Composer::new(store, ui),
-            completion: crate::completion::Completion::new(),
             picked: rpds::VectorSync::new_sync(),
             focus: ChatArea::Composer,
             has_loader: false,
@@ -2431,133 +2406,57 @@ impl ChatView {
         command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        let Some(command) = self.completion_intercept(store, ui, command, fx) else {
-            return;
-        };
-        let typed_at = matches!(
-            &command,
-            ComposerCommand::Editor(imba::scroll::ScrollCommand::Content(
-                ::editor::editor_view::EditorCommand::InsertText { text }
-            )) if text == "@"
-        );
+        use ::editor::editor_view::EditorCommand;
+        use imba::scroll::ScrollCommand;
+        let editor = self.composer.editor();
+        match &command {
+            // The editor wrote the mention; the view records the file
+            // for the send's attachments.
+            ComposerCommand::Editor(ScrollCommand::Content(EditorCommand::MentionPicked(pick))) => {
+                self.picked.push_back_mut(pick.clone());
+                return;
+            }
+            // An `@` completes against this session: the composer's
+            // editor takes the context before the character lands.
+            ComposerCommand::Editor(ScrollCommand::Content(EditorCommand::InsertText { text }))
+                if text == "@" =>
+            {
+                self.composer.document_mut().set_mentions(
+                    editor,
+                    Some(::editor::completion::MentionContext {
+                        folders,
+                        recents: recents::RecentLocations::list(store, recents),
+                    }),
+                );
+            }
+            _ => {}
+        }
         fx.scope(ChatPanelCommand::Composer, |fx| {
             self.composer.perform(store, ui, command, fx)
         });
-
-        let editor = self.composer.editor();
-        let at = typed_at.then(|| {
-            self.composer
-                .document()
-                .caret_byte(editor)
-                .saturating_sub(1)
-        });
-        self.completion.sync_path(
-            store,
-            ui,
-            self.composer.document_mut(),
-            editor,
-            at,
-            folders,
-            recents,
-            None,
-            fx,
-            ChatPanelCommand::CompletionFound,
-            completion_editor,
-        );
     }
 
-    fn completion_intercept(
+    /// A standing completion popup goes (a send, a blur).
+    fn close_completion(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> Option<ComposerCommand> {
-        use imba::scroll::ScrollCommand;
-        let ComposerCommand::Editor(ScrollCommand::Content(
-            ::editor::editor_view::EditorCommand::Inlay {
-                key,
-                command: inlay,
-            },
-        )) = command
-        else {
-            return Some(command);
-        };
-        if Some(key) != self.completion.inlay_key() {
-            return Some(ComposerCommand::Editor(ScrollCommand::Content(
-                ::editor::editor_view::EditorCommand::Inlay {
-                    key,
-                    command: inlay,
-                },
-            )));
-        }
-        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
-            Some(_) => inlay
-                .downcast::<crate::completion::CompletionCommand>()
-                .expect("probed above"),
-            None => {
-                return Some(ComposerCommand::Editor(ScrollCommand::Content(
-                    ::editor::editor_view::EditorCommand::Inlay {
-                        key,
-                        command: inlay,
-                    },
-                )))
-            }
-        };
-        use crate::completion::CompletionCommand;
+    ) {
+        use ::editor::completion::CompletionCommand;
+        use ::editor::editor_view::EditorCommand;
         let editor = self.composer.editor();
-        match popup {
-            CompletionCommand::Select(delta) => {
-                self.completion
-                    .select(store, self.composer.document_mut(), editor, delta);
-            }
-            CompletionCommand::PickCursor => {
-                let row = self.completion.selected();
-                if let Some(pick) = self.completion.apply_pick(
-                    store,
-                    ui,
-                    self.composer.document_mut(),
-                    editor,
-                    row,
-                    fx,
-                    completion_editor,
-                ) {
-                    self.picked.push_back_mut(pick);
-                }
-            }
-            CompletionCommand::Rows(rows) => {
-                let picked = self.completion.rows_command(
-                    store,
-                    ui,
-                    self.composer.document_mut(),
-                    editor,
-                    rows,
-                );
-                if let Some(row) = picked {
-                    if let Some(pick) = self.completion.apply_pick(
-                        store,
-                        ui,
-                        self.composer.document_mut(),
-                        editor,
-                        row,
-                        fx,
-                        completion_editor,
-                    ) {
-                        self.picked.push_back_mut(pick);
-                    }
-                }
-            }
-            CompletionCommand::Close => {
-                self.completion.drop_state(
-                    self.composer.document_mut(),
-                    store,
-                    ui,
-                    fx,
-                    completion_editor,
-                );
-            }
+        if !self.composer.document().completion(editor).open() {
+            return;
         }
-        None
+        fx.scope(ChatPanelCommand::Composer, |fx| {
+            self.composer.perform(
+                store,
+                ui,
+                composer_editor(EditorCommand::Completion(CompletionCommand::Close)),
+                fx,
+            )
+        });
     }
 
     fn completion_attachments(
@@ -2566,7 +2465,7 @@ impl ChatView {
         text: &str,
     ) -> Option<Vec<ahp_types::state::MessageAttachment>> {
         let uris = uris?;
-        let picked: Vec<crate::completion::PickedFile> = std::mem::take(&mut self.picked)
+        let picked: Vec<::editor::completion::PickedFile> = std::mem::take(&mut self.picked)
             .into_iter()
             .cloned()
             .collect();

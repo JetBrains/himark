@@ -4,38 +4,8 @@
 //! The lsp@1 pass-through domain: the completion and hover asks a
 //! himark shell routes to whichever host serves a location's LSP.
 
-#[derive(Clone, Debug)]
-pub struct LspAnswer {
-    pub items: Vec<LspItem>,
-
-    pub incomplete: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct LspItem {
-    pub label: String,
-    pub detail: Option<String>,
-    pub filter_text: Option<String>,
-    pub sort_text: Option<String>,
-
-    pub edit: Option<(std::ops::Range<documents::text_ext::LineCol>, String)>,
-    pub insert_text: Option<String>,
-}
-
-pub struct LspCompletionEffect {
-    pub location: editor::location::ResourceLocation,
-    pub position: documents::text_ext::LineCol,
-}
-
-impl std::fmt::Display for LspCompletionEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "lsp completion /{}", self.location.path().join("/"))
-    }
-}
-
-impl imba::effect::Effect for LspCompletionEffect {
-    type Result = Option<LspAnswer>;
-}
+pub use editor::completion::{Completion, CompletionEffect, CompletionItem};
+pub use editor::hover::{HoverEffect, HoverInfo};
 
 pub mod diagnostics;
 pub mod enrich;
@@ -53,8 +23,8 @@ pub struct CompletionRoute {
     pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
-impl EffectHandler<LspCompletionEffect> for CompletionRoute {
-    async fn handle(&self, effect: LspCompletionEffect) -> Option<LspAnswer> {
+impl EffectHandler<CompletionEffect> for CompletionRoute {
+    async fn handle(&self, effect: CompletionEffect) -> Option<Completion> {
         let (client, session) = ahp_wire::fs::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
@@ -70,7 +40,7 @@ impl EffectHandler<LspCompletionEffect> for CompletionRoute {
     }
 }
 
-pub(crate) fn parse_completion(result: &serde_json::Value) -> LspAnswer {
+pub(crate) fn parse_completion(result: &serde_json::Value) -> Completion {
     const PARSE_CAP: usize = 512;
     let (items, incomplete) = match result {
         serde_json::Value::Array(items) => (items.as_slice(), false),
@@ -109,7 +79,7 @@ pub(crate) fn parse_completion(result: &serde_json::Value) -> LspAnswer {
                     .and_then(range_of)?;
                 Some((range, text))
             });
-            Some(LspItem {
+            Some(CompletionItem {
                 label,
                 detail: item.get("detail").and_then(text_of),
                 filter_text: item.get("filterText").and_then(text_of),
@@ -119,7 +89,7 @@ pub(crate) fn parse_completion(result: &serde_json::Value) -> LspAnswer {
             })
         })
         .collect();
-    LspAnswer {
+    Completion {
         items: parsed,
         incomplete,
     }
@@ -130,11 +100,8 @@ pub struct HoverRoute {
     pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
-impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
-    async fn handle(
-        &self,
-        effect: documents::hover::LspHoverEffect,
-    ) -> Option<documents::hover::HoverInfo> {
+impl EffectHandler<HoverEffect> for HoverRoute {
+    async fn handle(&self, effect: HoverEffect) -> Option<HoverInfo> {
         let (client, session) = ahp_wire::fs::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
@@ -151,7 +118,7 @@ impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
     }
 }
 
-pub(crate) fn parse_hover(result: &serde_json::Value) -> documents::hover::HoverInfo {
+pub(crate) fn parse_hover(result: &serde_json::Value) -> HoverInfo {
     const LINE_CAP: usize = 80;
     let mut text = String::new();
     collect_hover(
@@ -170,7 +137,7 @@ pub(crate) fn parse_hover(result: &serde_json::Value) -> documents::hover::Hover
     if capped {
         markdown.push_str("\n…");
     }
-    documents::hover::HoverInfo { markdown }
+    HoverInfo { markdown }
 }
 
 fn collect_hover(node: &serde_json::Value, out: &mut String) {

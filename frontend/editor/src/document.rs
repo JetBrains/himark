@@ -1350,6 +1350,12 @@ impl Document {
         self.editors.keys().copied()
     }
 
+    pub(crate) fn editor_mut(&mut self, editor: EditorId) -> &mut Editor {
+        self.editors
+            .get_mut(&editor)
+            .expect("a registered editor")
+    }
+
     pub(crate) fn editor(&self, editor: EditorId) -> &Editor {
         self.editors
             .get(&editor)
@@ -1537,12 +1543,9 @@ impl Document {
                         || command
                             .downcast_ref::<crate::before_inlay::BeforeCommand>()
                             .is_some_and(crate::before_inlay::BeforeCommand::passive)
-                        || self.markup_of(key.layer).is_some_and(|markup| {
-                            matches!(
-                                markup.inlay_interval(key.key),
-                                Some((_, crate::markup::InlayMode::Popup(_)))
-                            ) || markup.inlay_passive(key.key, &command)
-                        });
+                        || self
+                            .markup_of(key.layer)
+                            .is_some_and(|markup| markup.inlay_passive(key.key, &command));
                     self.perform_inlay(store, ui, editor, key, command, !passive, fx);
                     if fold_tick
                         && self
@@ -1681,8 +1684,13 @@ impl Document {
 
             EditorCommand::Hover(_) => {}
             EditorCommand::HoverLink(range) => self.set_hovered_link(editor, range),
-            // The clock belongs to the accessories; the view answered it.
-            EditorCommand::AccessoryTick(_) => {}
+            // The editor's own assists perform at the view
+            // (`EditorView::perform`); nothing reaches the text.
+            EditorCommand::Find(_)
+            | EditorCommand::Completion(_)
+            | EditorCommand::HoverFound(_)
+            | EditorCommand::Tick(_)
+            | EditorCommand::MentionPicked(_) => {}
         };
         if arms_reveal {
             if let Some(state) = self.editors.get_mut(&editor) {
@@ -2184,46 +2192,6 @@ impl Document {
             .collect()
     }
 
-    pub fn popups_in(
-        &self,
-        editor: EditorId,
-        range: std::ops::Range<u32>,
-    ) -> Vec<(
-        crate::markup::InlayKey,
-        std::ops::Range<u32>,
-        crate::markup::Inlay,
-        crate::markup::PopupSpec,
-    )> {
-        let extras = self.extras_keyed(editor);
-        let markups = crate::markup::OverlaidMarkup::new(self.markup(), &extras);
-        if !markups.has_popups() {
-            return Vec::new();
-        }
-        markups
-            .all_inlays_in(range)
-            .into_iter()
-            .filter_map(|interval| match interval.inlay.mode {
-                crate::markup::InlayMode::Popup(spec) => Some((
-                    interval.key,
-                    interval.range.clone(),
-                    interval.inlay.clone(),
-                    spec,
-                )),
-                _ => None,
-            })
-            .collect()
-    }
-
-    /// TEST SUPPORT: no production caller outside this crate.
-    #[doc(hidden)]
-    pub fn has_popups(&self, editor: EditorId) -> bool {
-        self.markup().has_popups()
-            || self
-                .extras_keyed(editor)
-                .iter()
-                .any(|(_, markup)| markup.has_popups())
-    }
-
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn extras_keyed(&self, editor: EditorId) -> Vec<(MarkupId, &Markup)> {
@@ -2333,17 +2301,6 @@ impl Document {
                 editor.layout.byte_at_y(top)..editor.layout.byte_at_y(bottom).saturating_add(1);
             editor.layout.damage_intersects(visible)
         })
-    }
-
-    pub(crate) fn visible_byte_band(
-        &self,
-        editor: EditorId,
-        top: f32,
-        bottom: f32,
-    ) -> std::ops::Range<u32> {
-        self.editors
-            .get(&editor)
-            .map_or(0..0, |editor| editor.layout.byte_band(top, bottom))
     }
 
     /// TEST SUPPORT: no production caller outside this crate.

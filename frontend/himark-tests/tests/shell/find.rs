@@ -36,19 +36,26 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     settle(&mut app);
 
     let matches_now = |app: &Application| -> Vec<std::ops::Range<u32>> {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .and_then(|seat| seat.find.as_ref())
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .and_then(|document| document.find(editor).map(|find| find.matches().to_vec()))
             .expect("the bar is open")
-            .matches()
-            .to_vec()
     };
     assert_eq!(matches_now(&app), vec![0..5, 10..15]);
 
     {
-        let editor = app.focused_editor_id().1;
-        himark::editor_accessories::Seats::update(&mut app.store_mut(), editor, |seat| {
-            seat.find.as_mut().expect("the bar is open").focused = false;
-        });
+        let (document_id, editor) = app.focused_editor_id();
+        let documents = app.sole_documents();
+        let mut document =
+            documents::OpenDocuments::document(app.store(), documents, document_id)
+                .expect("the document");
+        document.find_mut(editor).expect("the bar is open").focused = false;
+        documents::OpenDocuments::put_document(
+            &mut app.store_mut(),
+            documents,
+            document_id,
+            document,
+        );
     }
 
     assert!(himark::test_driver::type_text(&mut app, "alpha"));
@@ -107,14 +114,13 @@ fn find_bar_highlights_and_walks_occurrences() {
     );
 
     app.draw_window(app.sole_window(), surface.canvas());
-    let seat = |app: &Application| -> himark::editor_accessories::Seat {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .cloned()
-            .expect("the seat stood")
+    let find = |app: &Application| -> Option<::editor::find::FindBar> {
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .and_then(|document| document.find(editor).cloned())
     };
     {
-        let seat = seat(&app);
-        let find = seat.find.as_ref().expect("the bar is open");
+        let find = find(&app).expect("the bar is open");
         assert_eq!(find.query(), "alpha");
 
         assert_eq!(find.matches().len(), 3, "{:?}", find.matches());
@@ -159,7 +165,7 @@ fn find_bar_highlights_and_walks_occurrences() {
         imba::event::Key::Escape,
         imba::event::Modifiers::default()
     ));
-    assert!(seat(&app).find.is_none(), "Escape closed the bar");
+    assert!(find(&app).is_none(), "Escape closed the bar");
     let document =
         documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
             .expect("the document");
@@ -203,8 +209,7 @@ fn find_bar_highlights_and_walks_occurrences() {
         }
     }
     {
-        let seat = seat(&app);
-        let find = seat.find.as_ref().expect("re-opened");
+        let find = find(&app).expect("re-opened");
         assert_eq!(find.query(), "beta", "the selection seeded the query");
         assert_eq!(find.matches().len(), 1);
     }
@@ -234,12 +239,10 @@ fn keymap_backspace_edits_the_find_bar_query() {
     assert!(himark::test_driver::type_text(&mut app, "ab"));
 
     let query = |app: &Application| -> Option<String> {
-        Some(
-            himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)?
-                .find
-                .as_ref()?
-                .query(),
-        )
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)?
+            .find(editor)
+            .map(|find| find.query())
     };
     assert_eq!(
         query(&app).as_deref(),

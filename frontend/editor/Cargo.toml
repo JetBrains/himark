@@ -13,6 +13,7 @@ operation = { path = "../operation" }
 rope = { path = "../rope" }
 sumtree = { path = "../sumtree" }
 rpds = "1"
+regex = "1"
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 tokenize = { path = "../tokenize" }

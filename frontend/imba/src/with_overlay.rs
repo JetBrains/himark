@@ -36,6 +36,10 @@ pub enum Placement {
     /// To the right of the box, top-aligned; to its left when the
     /// room runs out (a tip).
     Beside,
+
+    /// Over the box, left-aligned; under it when the room above runs
+    /// out (a card over a word).
+    Above,
 }
 
 impl Placement {
@@ -49,6 +53,17 @@ impl Placement {
                     anchor.top - size.height
                 } else {
                     (host.height - size.height).max(0.0)
+                };
+                Point::new(x, y)
+            }
+            Placement::Above => {
+                let x = anchor.left.min(host.width - size.width).max(0.0);
+                let y = if anchor.top - size.height >= 0.0 {
+                    anchor.top - size.height
+                } else if anchor.bottom + size.height <= host.height {
+                    anchor.bottom
+                } else {
+                    0.0
                 };
                 Point::new(x, y)
             }

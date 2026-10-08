@@ -7777,19 +7777,19 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
 
     struct FakeHover;
-    impl imba::effect::EffectHandler<documents::hover::LspHoverEffect> for FakeHover {
+    impl imba::effect::EffectHandler<::editor::hover::HoverEffect> for FakeHover {
         async fn handle(
             &self,
-            _effect: documents::hover::LspHoverEffect,
-        ) -> Option<documents::hover::HoverInfo> {
-            Some(documents::hover::HoverInfo {
+            _effect: ::editor::hover::HoverEffect,
+        ) -> Option<::editor::hover::HoverInfo> {
+            Some(::editor::hover::HoverInfo {
                 markdown: "```rust\nfn value()\n```\n\ndocs for value".to_owned(),
             })
         }
     }
     engine
         .app
-        .register_handler::<documents::hover::LspHoverEffect>(FakeHover);
+        .register_handler::<::editor::hover::HoverEffect>(FakeHover);
 
     let sole = engine.app.sole_window();
     let (x, y, w, h) = engine
@@ -7810,7 +7810,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
             engine.app.sole_documents(),
             document_id,
         )
-        .is_some_and(|document| document.has_popups(editor_id))
+        .is_some_and(|document| document.hover(editor_id).open())
     }
 
     settle(&mut engine);

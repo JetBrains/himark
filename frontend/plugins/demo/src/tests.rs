@@ -880,7 +880,6 @@ fn mode_index(mode: InlayMode) -> usize {
         InlayMode::Under => 2,
         InlayMode::Above => 3,
         InlayMode::Instead(_) => 4,
-        InlayMode::Popup(_) => 5,
     }
 }
 

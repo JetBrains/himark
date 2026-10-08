@@ -1122,12 +1122,12 @@ impl HimarkEngine {
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app
-                .register_handler::<ahp_lsp::LspCompletionEffect>(ahp_lsp::CompletionRoute {
+                .register_handler::<::editor::completion::CompletionEffect>(ahp_lsp::CompletionRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app
-                .register_handler::<documents::hover::LspHoverEffect>(ahp_lsp::HoverRoute {
+                .register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 });
@@ -1173,6 +1173,12 @@ impl HimarkEngine {
                 );
         }
         if capabilities.list_directory && !installed.list_directory {
+            self.app
+                .register_handler::<::editor::completion::PathCompletionEffect>(
+                    find::NativeFindHandler {
+                        directory: Arc::clone(&self.clients),
+                    },
+                );
             self.app
                 .register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
                     directory: Arc::clone(&self.clients),

@@ -19,10 +19,10 @@ fn the_at_completion_opens_finds_and_picks() {
     let session = himark::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-    impl imba::effect::EffectHandler<ahp_locations::FindEffect> for StubFind {
+    impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
         async fn handle(
             &self,
-            effect: ahp_locations::FindEffect,
+            effect: ::editor::completion::PathCompletionEffect,
         ) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
             let file = |path: &[&str]| {
@@ -39,7 +39,7 @@ fn the_at_completion_opens_finds_and_picks() {
         }
     }
     let terms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    app.register_handler::<ahp_locations::FindEffect>(StubFind(std::sync::Arc::clone(&terms)));
+    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(std::sync::Arc::clone(&terms)));
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -177,10 +177,10 @@ fn the_at_completion_serves_markdown_panes() {
     let session = himark::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-    impl imba::effect::EffectHandler<ahp_locations::FindEffect> for StubFind {
+    impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
         async fn handle(
             &self,
-            effect: ahp_locations::FindEffect,
+            effect: ::editor::completion::PathCompletionEffect,
         ) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
             vec![editor::location::ResourceLocation::new(
@@ -191,7 +191,7 @@ fn the_at_completion_serves_markdown_panes() {
         }
     }
     let terms = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    app.register_handler::<ahp_locations::FindEffect>(StubFind(std::sync::Arc::clone(&terms)));
+    app.register_handler::<::editor::completion::PathCompletionEffect>(StubFind(std::sync::Arc::clone(&terms)));
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -252,12 +252,14 @@ fn the_at_completion_serves_markdown_panes() {
     app.draw_window(window, surface.canvas());
 
     let completion_open = |app: &Application| -> bool {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .is_some_and(|seat| seat.completion.open())
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .is_some_and(|document| document.completion(editor).open())
     };
     let rows = |app: &Application| -> Vec<String> {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .map(|seat| seat.completion.row_labels())
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .map(|document| document.completion(editor).row_labels())
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
@@ -360,12 +362,12 @@ fn lsp_completion_serves_code_panes() {
     let window = app.add_window();
 
     struct StubLsp(Arc<std::sync::Mutex<Vec<documents::text_ext::LineCol>>>);
-    impl imba::effect::EffectHandler<ahp_lsp::LspCompletionEffect> for StubLsp {
-        async fn handle(&self, effect: ahp_lsp::LspCompletionEffect) -> Option<ahp_lsp::LspAnswer> {
+    impl imba::effect::EffectHandler<::editor::completion::CompletionEffect> for StubLsp {
+        async fn handle(&self, effect: ::editor::completion::CompletionEffect) -> Option<::editor::completion::Completion> {
             self.0.lock().expect("asks").push(effect.position);
-            Some(ahp_lsp::LspAnswer {
+            Some(::editor::completion::Completion {
                 items: vec![
-                    ahp_lsp::LspItem {
+                    ::editor::completion::CompletionItem {
                         label: "insert".to_owned(),
                         detail: Some("fn insert(k, v)".to_owned()),
                         filter_text: None,
@@ -379,7 +381,7 @@ fn lsp_completion_serves_code_panes() {
                         )),
                         insert_text: None,
                     },
-                    ahp_lsp::LspItem {
+                    ::editor::completion::CompletionItem {
                         label: "push".to_owned(),
                         detail: None,
                         filter_text: None,
@@ -393,7 +395,7 @@ fn lsp_completion_serves_code_panes() {
         }
     }
     let asks = Arc::new(std::sync::Mutex::new(Vec::new()));
-    app.register_handler::<ahp_lsp::LspCompletionEffect>(StubLsp(Arc::clone(&asks)));
+    app.register_handler::<::editor::completion::CompletionEffect>(StubLsp(Arc::clone(&asks)));
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -423,12 +425,14 @@ fn lsp_completion_serves_code_panes() {
     app.draw_window(window, surface.canvas());
 
     let completion_open = |app: &Application| -> bool {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .is_some_and(|seat| seat.completion.open())
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .is_some_and(|document| document.completion(editor).open())
     };
     let rows = |app: &Application| -> Vec<String> {
-        himark::editor_accessories::Seats::seat(app.store(), app.focused_editor_id().1)
-            .map(|seat| seat.completion.row_labels())
+        let (document, editor) = app.focused_editor_id();
+        documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
+            .map(|document| document.completion(editor).row_labels())
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {

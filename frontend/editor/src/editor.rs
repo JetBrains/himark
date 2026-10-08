@@ -102,6 +102,18 @@ pub struct Editor {
     /// by the settle pulse, cleared when the next Viewport report
     /// lands. Absolute, so repeated pulses converge.
     pub(crate) settle_to: Option<f32>,
+
+    /// The editor's own assists: the completion popup, the hover
+    /// card, the find bar — view state like the carets, so a clone
+    /// of the editor carries them.
+    pub(crate) completion: crate::completion::Completer,
+    pub(crate) hover: crate::hover::Hover,
+    pub(crate) find: Option<crate::find::FindBar>,
+
+    /// What `@` completes against when the owner says so (a chat
+    /// composer); otherwise the host's `Mentions` answers by
+    /// location.
+    pub(crate) mentions: Option<std::sync::Arc<crate::completion::MentionContext>>,
 }
 
 impl Editor {
@@ -196,6 +208,10 @@ impl Editor {
             placeholder: None,
             scroll_stripes: crate::scroll_stripe::StripeSlot::default(),
             settle_to: None,
+            completion: Default::default(),
+            hover: Default::default(),
+            find: None,
+            mentions: None,
         }
     }
 }

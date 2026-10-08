@@ -16,6 +16,23 @@ pub struct NativeFindHandler {
     pub directory: Arc<ClientDirectory>,
 }
 
+/// An `@` completion's file search: the same walk as `FindEffect`.
+impl EffectHandler<editor::completion::PathCompletionEffect> for NativeFindHandler {
+    async fn handle(
+        &self,
+        effect: editor::completion::PathCompletionEffect,
+    ) -> Vec<ResourceLocation> {
+        EffectHandler::<FindEffect>::handle(
+            self,
+            FindEffect {
+                folders: effect.folders,
+                term: effect.term,
+            },
+        )
+        .await
+    }
+}
+
 impl EffectHandler<FindEffect> for NativeFindHandler {
     async fn handle(&self, effect: FindEffect) -> Vec<ResourceLocation> {
         let cap = PATH_CAP;

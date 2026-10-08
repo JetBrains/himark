@@ -1,36 +1,38 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The hover card: a rest-armed LSP ask under the pointer's word,
-//! landing a markdown popup inlay on the document. Document-level
-//! machinery like the diff views — no window anywhere; the pane
-//! drives sync/tick/land through its own command scope.
+//! The hover card: a rest-armed ask under the pointer's word, shown
+//! as the editor's own overlay above it. Who answers the ask is the
+//! host's business (`HoverEffect`).
 
 use imba::effect::{CancellationToken, Effects};
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::ui::UiCtx;
 
-use crate::{text_ext::LineCol, DocumentId};
-use editor::location::ResourceLocation;
+use crate::document::Document;
+use crate::editor::EditorId;
+use crate::editor_view::EditorCommand;
+use crate::linecol::LineCol;
+use crate::location::ResourceLocation;
 
 #[derive(Clone, Debug)]
 pub struct HoverInfo {
     pub markdown: String,
 }
 
-pub struct LspHoverEffect {
+pub struct HoverEffect {
     pub location: ResourceLocation,
     pub position: LineCol,
 }
 
-impl std::fmt::Display for LspHoverEffect {
+impl std::fmt::Display for HoverEffect {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "lsp hover /{}", self.location.path().join("/"))
+        write!(out, "hover /{}", self.location.path().join("/"))
     }
 }
 
-impl imba::effect::Effect for LspHoverEffect {
+impl imba::effect::Effect for HoverEffect {
     type Result = Option<HoverInfo>;
 }
 
@@ -49,6 +51,8 @@ struct Arming {
     last: Option<imba::anim::AnimationClock>,
 }
 
+/// One editor's hover: the word under the pointer, the rest that
+/// arms the ask, and the card once it lands.
 #[derive(Clone, Default)]
 pub struct Hover {
     lane: Option<CancellationToken>,
@@ -58,44 +62,47 @@ pub struct Hover {
 
     arming: Option<Arming>,
 
-    installed: Option<(DocumentId, ::editor::editor::EditorId)>,
-    markup: Option<::editor::markup::MarkupId>,
-    key: Option<::editor::markup::InlayKey>,
+    card: Option<HoverView>,
 }
 
 impl Hover {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn open(&self) -> bool {
+        self.card.is_some()
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn sync<C, E>(
+    pub fn armed(&self) -> bool {
+        self.arming.is_some()
+    }
+
+    pub(crate) fn anchor(&self) -> Option<std::ops::Range<u32>> {
+        self.anchor.clone()
+    }
+
+    pub(crate) fn card(&self) -> Option<&HoverView> {
+        self.card.as_ref()
+    }
+
+    /// The pointer rests over `byte` (or nowhere): a new word arms
+    /// the ask, the same word keeps what stands, no word retracts.
+    pub(crate) fn sync(
         &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        document: &mut editor::document::Document,
-        _editor: ::editor::editor::EditorId,
+        document: &Document,
         byte: Option<u32>,
         location: &ResourceLocation,
-        installed: Option<(DocumentId, ::editor::editor::EditorId)>,
-        fx: &mut Effects<'_, C>,
-        to_editor: E,
-    ) where
-        C: 'static,
-        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
-    {
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
         let word = byte.and_then(|byte| word_range(document, byte));
-
         if word == self.anchor {
             return;
         }
-
-        self.retract(store, ui, document, fx, to_editor);
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
+            eprintln!("[lsp] hover sync byte={byte:?} word={word:?} (was {:?})", self.anchor);
+        }
+        self.retract(fx);
         self.anchor = word.clone();
         if word.is_none() || location.is_synthetic() {
             return;
         }
-        self.installed = installed;
         self.arming = Some(Arming {
             location: location.clone(),
             rested: 0.0,
@@ -103,20 +110,12 @@ impl Hover {
         });
     }
 
-    pub fn armed(&self) -> bool {
-        self.arming.is_some()
-    }
-
-    pub fn tick<C, W>(
+    pub(crate) fn tick(
         &mut self,
-        document: &editor::document::Document,
+        document: &Document,
         now: imba::anim::AnimationClock,
-        fx: &mut Effects<'_, C>,
-        wrap: W,
-    ) where
-        C: 'static,
-        W: Fn(HoverFound) -> C + Send + Sync + Clone + 'static,
-    {
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
         let (Some(arming), Some(word)) = (&mut self.arming, self.anchor.clone()) else {
             return;
         };
@@ -131,30 +130,35 @@ impl Hover {
         let arming = self.arming.take().expect("matched above");
         self.serial += 1;
         let serial = self.serial;
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
+            eprintln!("[lsp] hover ask #{serial} for {word:?}");
+        }
         let mut view = document.text().view();
-        let position = crate::text_ext::line_col_at(&mut view, word.start as usize);
-        let effect = imba::effect::AnyEffect::new(LspHoverEffect {
+        let position = crate::linecol::line_col_at(&mut view, word.start as usize);
+        let effect = imba::effect::AnyEffect::new(HoverEffect {
             location: arming.location,
             position,
         })
-        .map(move |answer| wrap(HoverFound { serial, answer }));
+        .map(move |answer| EditorCommand::HoverFound(HoverFound { serial, answer }));
         fx.relaunch_erased(&mut self.lane, effect);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn land<C, E>(
+    pub(crate) fn land(
         &mut self,
-        store: &mut Store,
+        store: &Store,
         ui: &UiCtx,
-        document: &mut editor::document::Document,
-        editor: ::editor::editor::EditorId,
+        document: &Document,
         found: HoverFound,
-        fx: &mut Effects<'_, C>,
-        to_editor: E,
-    ) where
-        C: 'static,
-        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
-    {
+    ) {
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() {
+            eprintln!(
+                "[lsp] hover landed #{} (standing #{}, anchor {:?}, answer {})",
+                found.serial,
+                self.serial,
+                self.anchor,
+                found.answer.as_ref().map_or(0, |info| info.markdown.len())
+            );
+        }
         if found.serial != self.serial {
             return;
         }
@@ -164,100 +168,29 @@ impl Hover {
         if info.markdown.trim().is_empty() {
             return;
         }
-
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         if word.end > len {
             return;
         }
-        let markup = document.add_markup();
-        document.show_markup(editor, markup);
-        self.markup = Some(markup);
-        let fonts = editor::env::ui_collection(store, ui);
-        let theme = editor::env::Themes::of(store);
-        let view = HoverView::build(store, &info.markdown, ui, &fonts, &theme);
-        let mut key = None;
-        fx.scope(to_editor, |fx| {
-            key = Some(document.push_inlay(
-                markup,
-                word.clone(),
-                editor::markup::Inlay::new(
-                    editor::markup::InlayMode::Popup(editor::markup::PopupSpec {
-                        host: imba::overlay::WINDOW,
-                        position: imba::overlay::fit::PreferredPosition::At {
-                            x: imba::overlay::fit::RangeEnd::Begin,
-                            side: imba::overlay::fit::Side::Top,
-                            align: imba::overlay::fit::Align::Left,
-                        },
-                    }),
-                    view,
-                ),
-                store,
-                ui,
-                &fonts,
-                &theme,
-                fx,
-            ));
-        });
-        self.key = key;
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        self.card = Some(HoverView::build(store, &info.markdown, ui, &fonts, &theme));
     }
 
-    pub fn open(&self) -> bool {
-        self.key.is_some()
-    }
-
-    pub fn inlay_key(&self) -> Option<::editor::markup::InlayKey> {
-        self.key
-    }
-
-    pub fn retract<C, E>(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        document: &mut editor::document::Document,
-        fx: &mut Effects<'_, C>,
-        to_editor: E,
-    ) where
-        C: 'static,
-        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
-    {
+    pub(crate) fn retract(&mut self, fx: &mut Effects<'_, EditorCommand>) {
+        if std::env::var_os("HIMARK_TRACE_LSP").is_some() && (self.card.is_some() || self.arming.is_some() || self.lane.is_some()) {
+            eprintln!("[lsp] hover retract (card {}, arming {}, lane {})", self.card.is_some(), self.arming.is_some(), self.lane.is_some());
+        }
         if let Some(token) = self.lane.take() {
             fx.cancel(token);
         }
-        let fonts = editor::env::ui_collection(store, ui);
-        let theme = editor::env::Themes::of(store);
-        let key = self.key.take();
-        let markup = self.markup.take();
-        if key.is_some() || markup.is_some() {
-            fx.scope(to_editor, |fx| {
-                if let Some(key) = key {
-                    document.remove_inlay(key, store, ui, &fonts, &theme, fx);
-                }
-
-                if let Some(markup) = markup {
-                    document.remove_markup(markup, &[], store, ui, &fonts, &theme, fx);
-                }
-            });
-        }
-        self.installed = None;
+        self.card = None;
         self.anchor = None;
         self.arming = None;
-    }
-
-    pub fn clear(&mut self) {
-        self.lane = None;
-        self.anchor = None;
-        self.arming = None;
-        self.installed = None;
-        self.markup = None;
-        self.key = None;
-    }
-
-    pub fn installed(&self) -> Option<(DocumentId, ::editor::editor::EditorId)> {
-        self.installed
     }
 }
 
-fn word_range(document: &editor::document::Document, byte: u32) -> Option<std::ops::Range<u32>> {
+fn word_range(document: &Document, byte: u32) -> Option<std::ops::Range<u32>> {
     let mut view = document.text().view();
     let len = view.byte_count().min(u32::MAX as usize) as u32;
     if byte > len {
@@ -290,32 +223,32 @@ fn word_range(document: &editor::document::Document, byte: u32) -> Option<std::o
 const CARD_WIDTH: f32 = 560.0;
 const CARD_PAD: f32 = 10.0;
 
+/// The card: the answer's markdown, rendered by an editor of its own.
 #[derive(Clone)]
 pub struct HoverView {
-    view: editor::editor_view::EditorView,
+    view: crate::editor_view::EditorView,
 }
 
 impl HoverView {
     fn build(
         store: &Store,
         markdown: &str,
-        ui: &imba::ui::UiCtx,
+        ui: &UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::theme::Theme,
+        theme: &crate::theme::Theme,
     ) -> Self {
         let text = text::text::Text::from_string_exact(markdown);
-        let document = match editor::env::Parsers::of(store) {
-            Some(parsers) => editor::document::Document::from_language(
-                text, "markdown", &parsers, store, ui, fonts, theme,
+        let document = match crate::env::Parsers::of(store) {
+            Some(parsers) => {
+                Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
+            }
+            None => Document::new(text, crate::markup::Markup::new()).with_syntax(
+                crate::markup::Syntax::new("markdown", None, crate::markup::Markup::new()),
+                &[],
             ),
-            None => editor::document::Document::new(text, editor::markup::Markup::new())
-                .with_syntax(
-                    editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-                    &[],
-                ),
         };
         Self {
-            view: editor::editor_view::EditorView::complete(
+            view: crate::editor_view::EditorView::complete(
                 document, CARD_WIDTH, store, ui, fonts, theme,
             ),
         }
@@ -323,7 +256,7 @@ impl HoverView {
 }
 
 impl imba::View for HoverView {
-    type Command = ::editor::editor_view::EditorCommand;
+    type Command = EditorCommand;
 
     fn perform(
         &mut self,
@@ -342,7 +275,7 @@ impl imba::View for HoverView {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
-                let theme = editor::env::Themes::of(store);
+                let theme = crate::env::Themes::of(store);
                 let fill = theme.ui().combo.menu_fill.0;
                 let document = &self.view.document;
 
@@ -379,5 +312,59 @@ impl imba::View for HoverView {
     }
 }
 
-#[cfg(test)]
-mod tests;
+impl Document {
+    /// The pointer moved over this editor (or off it): the hover
+    /// follows the word under it.
+    pub(crate) fn hover_sync(
+        &mut self,
+        editor: EditorId,
+        point: Option<skia_safe::Point>,
+        location: Option<&ResourceLocation>,
+        store: &Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
+        let mut hover = std::mem::take(&mut self.editor_mut(editor).hover);
+        match (point, location) {
+            (Some(point), Some(location)) if !location.is_synthetic() => {
+                let fonts = crate::env::ui_collection(store, ui);
+                let theme = crate::env::Themes::of(store);
+                let byte = self.byte_at_point(editor, point.x, point.y, store, ui, &fonts, &theme);
+                hover.sync(self, byte, location, fx);
+            }
+            _ => {
+                if hover.open() || hover.armed() {
+                    hover.retract(fx);
+                }
+            }
+        }
+        self.editor_mut(editor).hover = hover;
+    }
+
+    pub(crate) fn hover_tick(
+        &mut self,
+        editor: EditorId,
+        now: imba::anim::AnimationClock,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) {
+        let mut hover = std::mem::take(&mut self.editor_mut(editor).hover);
+        hover.tick(self, now, fx);
+        self.editor_mut(editor).hover = hover;
+    }
+
+    pub(crate) fn hover_land(
+        &mut self,
+        editor: EditorId,
+        found: HoverFound,
+        store: &Store,
+        ui: &UiCtx,
+    ) {
+        let mut hover = std::mem::take(&mut self.editor_mut(editor).hover);
+        hover.land(store, ui, self, found);
+        self.editor_mut(editor).hover = hover;
+    }
+
+    pub fn hover(&self, editor: EditorId) -> &Hover {
+        &self.editor(editor).hover
+    }
+}

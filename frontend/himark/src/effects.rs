@@ -130,7 +130,7 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers
         .register::<documents::diffs::DiffNormalizeEffect>(documents::diffs::DiffNormalizeHandler);
     handlers.register::<toc::OutlineEffect>(toc::OutlineHandler);
-    handlers.register::<findbar::FindScanEffect>(findbar::FindScanHandler);
+    handlers.register::<::editor::find::FindScanEffect>(::editor::find::FindScanHandler);
     handlers.register::<hikit::list_keyboard::SpeedSearchEffect>(
         hikit::list_keyboard::SpeedSearchHandler,
     );

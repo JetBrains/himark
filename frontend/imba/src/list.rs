@@ -1223,6 +1223,21 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
 /// deeper) without knowing the nesting — one line of forwarding per
 /// wrapper (docs/ui/list-keyboard.md §3). Operations, never
 /// structure: the row type never appears.
+/// `term`'s characters appear in `haystack` in order (case folded
+/// for ASCII) — the speed-search and completion filter.
+pub fn subsequence_match(haystack: &str, term: &str) -> bool {
+    let mut chars = term.chars();
+    let mut wanted = chars.next();
+    for present in haystack.chars() {
+        match wanted {
+            Some(next) if next.eq_ignore_ascii_case(&present) => wanted = chars.next(),
+            Some(_) => {}
+            None => break,
+        }
+    }
+    wanted.is_none()
+}
+
 pub trait ListOps: crate::View {
     type Key: Clone + Eq + Hash + Send + Sync + 'static;
 

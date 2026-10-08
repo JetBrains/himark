@@ -10,7 +10,6 @@
 pub mod cell;
 pub mod chat;
 pub mod chats;
-pub mod completion;
 pub mod composer;
 pub(crate) mod file_completion;
 pub mod file_edit;

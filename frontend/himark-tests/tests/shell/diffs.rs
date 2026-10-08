@@ -4821,14 +4821,14 @@ fn completion_serves_a_canvas_diff_face() {
     let mut app = Application::new(AppFonts::embedded());
     let window = app.add_window();
     struct StubLsp(Arc<std::sync::atomic::AtomicUsize>);
-    impl imba::effect::EffectHandler<ahp_lsp::LspCompletionEffect> for StubLsp {
+    impl imba::effect::EffectHandler<::editor::completion::CompletionEffect> for StubLsp {
         async fn handle(
             &self,
-            _effect: ahp_lsp::LspCompletionEffect,
-        ) -> Option<ahp_lsp::LspAnswer> {
+            _effect: ::editor::completion::CompletionEffect,
+        ) -> Option<::editor::completion::Completion> {
             self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            Some(ahp_lsp::LspAnswer {
-                items: vec![ahp_lsp::LspItem {
+            Some(::editor::completion::Completion {
+                items: vec![::editor::completion::CompletionItem {
                     label: "push".to_owned(),
                     detail: None,
                     filter_text: None,
@@ -4841,7 +4841,7 @@ fn completion_serves_a_canvas_diff_face() {
         }
     }
     let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    app.register_handler::<ahp_lsp::LspCompletionEffect>(StubLsp(Arc::clone(&asks)));
+    app.register_handler::<::editor::completion::CompletionEffect>(StubLsp(Arc::clone(&asks)));
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -4947,8 +4947,8 @@ fn completion_serves_a_canvas_diff_face() {
     assert!(caret > 0, "the click placed the caret in the face: {caret}");
 
     let completion_open = |app: &Application| -> bool {
-        himark::editor_accessories::Seats::seat(app.store(), face)
-            .is_some_and(|seat| seat.completion.open())
+        OpenDocuments::document_ref(app.store(), documents, right)
+            .is_some_and(|document| document.completion(face).open())
     };
     let frame = |surface: &mut skia_safe::Surface| -> Vec<u8> {
         let info = skia_safe::ImageInfo::new(
@@ -4990,8 +4990,8 @@ fn completion_serves_a_canvas_diff_face() {
         completion_open(&app),
         "the popup survives the settle ticks (face focus {focus:?})"
     );
-    let rows = himark::editor_accessories::Seats::seat(app.store(), face)
-        .map(|seat| seat.completion.row_labels())
+    let rows = OpenDocuments::document_ref(app.store(), documents, right)
+        .map(|document| document.completion(face).row_labels())
         .unwrap_or_default();
     assert_eq!(
         rows,

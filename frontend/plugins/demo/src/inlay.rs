@@ -317,7 +317,7 @@ impl DemoInlay {
                 true => Size::new(220.0, 56.0),
                 false => Size::new(128.0, 40.0),
             },
-            InlayMode::Above | InlayMode::Under | InlayMode::Popup(_) => match expanded {
+            InlayMode::Above | InlayMode::Under => match expanded {
                 true => Size::new(520.0, 96.0),
                 false => Size::new(360.0, 72.0),
             },
@@ -382,7 +382,7 @@ impl DemoInlay {
     fn title_font(&self) -> Font {
         let font_size = match self.mode {
             InlayMode::Instead(_) => 18.0,
-            InlayMode::Above | InlayMode::Under | InlayMode::Popup(_) => 18.0,
+            InlayMode::Above | InlayMode::Under => 18.0,
             InlayMode::Left | InlayMode::Right => 16.0,
         };
         demo_font(font_size)
@@ -545,7 +545,6 @@ fn mode_label(mode: InlayMode) -> &'static str {
         InlayMode::Under => "below",
         InlayMode::Above => "above",
         InlayMode::Instead(_) => "instead",
-        InlayMode::Popup(_) => "popup",
     }
 }
 

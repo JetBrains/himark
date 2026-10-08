@@ -551,6 +551,13 @@ same shape with a rested-hover gate in front: a list row that has a
 tip carries it, and no surface re-derives a row's rectangle to anchor
 anything.
 
+The editor's own assists are the same thing one level in: the
+completion popup and the hover card are the editor's state
+(`editor::completion`, `editor::hover`, beside the carets), and its
+display emits each as one request anchored at the caret's rect or
+the word's inside the editor's box. No markup carries a popup, and
+no outer layer intercepts the editor's commands to serve them.
+
 ### Hosts
 
 `thunk.overlay_host(key)` — a thunk combinator, sizing-transparent

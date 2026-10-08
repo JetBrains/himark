@@ -386,7 +386,24 @@ impl Application {
             registry.drawer_button = Some(crate::toc::toolbar_button());
         });
         crate::higent::chat_roads::install_shell_roads(&mut store);
-        crate::editor_accessories::install(&mut store);
+        // What `@` completes against in a located document: the
+        // session the document lives in.
+        ::editor::completion::Mentions::install(&mut store, |store, location| {
+            let state = ahp_session::session::state::Hosts::states(store)
+                .into_iter()
+                .find(|state| {
+                    documents::OpenDocuments::by_location(store, state.documents(), location)
+                        .is_some()
+                })?;
+            let (session, state) =
+                ahp_session::session::state::Hosts::home_of_documents(store, state.documents())?;
+            Some(::editor::completion::MentionContext {
+                folders: Arc::new(ahp_session::session::folders::session_folders(
+                    store, &session,
+                )),
+                recents: recents::RecentLocations::list(store, state.recents()),
+            })
+        });
         // The locations wash hook is no longer boot-global: the
         // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).

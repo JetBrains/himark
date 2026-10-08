@@ -11,55 +11,7 @@ use skia_safe::{Point, Rect, Size};
 use crate::document::Document;
 use crate::editor::EditorId;
 use crate::editor_view::EditorCommand;
-use crate::markup::{Inlay, InlayKey};
-
-pub(crate) fn visible_popups<'a>(
-    document: &Document,
-    editor: EditorId,
-    fonts: &skia_safe::textlayout::FontCollection,
-    theme: &crate::theme::Theme,
-    arena: &'a Arena,
-    store: &'a Store,
-    ui: &'a UiCtx,
-    viewport: Rect,
-    origin: Point,
-) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-    if !document.has_popups(editor) || viewport.height() <= 0.0 {
-        return Vec::new();
-    }
-
-    let band = document.visible_byte_band(editor, viewport.top, viewport.bottom);
-    let mut overlays = Vec::new();
-    for (key, range, inlay, spec) in document.popups_in(editor, band) {
-        let Some((x, y, width, height)) =
-            document.caret_content_rect(editor, range.start, store, ui, fonts, theme)
-        else {
-            continue;
-        };
-        let width = document
-            .caret_content_rect(editor, range.end, store, ui, fonts, theme)
-            .filter(|(_, end_y, _, _)| *end_y == y)
-            .map(|(end_x, _, _, _)| (end_x - x).max(width))
-            .unwrap_or(width);
-        if y + height < viewport.top || y > viewport.bottom {
-            continue;
-        }
-        let seed = PopupSeed {
-            inlay,
-            key,
-            position: spec.position,
-            store,
-            ui,
-            arena,
-        };
-        overlays.push(imba::overlay::Overlay {
-            host: spec.host,
-            anchor: Rect::from_xywh(origin.x + x, origin.y + y, width.max(1.0), height),
-            content: Box::new(move |host_size: Size, anchor: Rect| seed.layout(host_size, anchor)),
-        });
-    }
-    overlays
-}
+use crate::markup::Inlay;
 
 /// Inlays that target an overlay host (`Inlay::over`) — fold strips,
 /// before-cards — emitted exactly like popups: fully interactive,
@@ -105,9 +57,6 @@ pub(crate) fn projected_overlays<'a>(
         let mut under_y = content_top + content_height;
         for interval in &hits {
             if !inlay_anchors_line(interval.inlay.mode, &interval.range, &line_range) {
-                continue;
-            }
-            if matches!(interval.inlay.mode, InlayMode::Popup(_)) {
                 continue;
             }
             let size = interval.inlay.layout(arena, store, ui, constraints).size();
@@ -165,55 +114,4 @@ pub(crate) fn projected_overlays<'a>(
         }
     }
     overlays
-}
-
-pub(crate) struct PopupSeed<'a> {
-    pub inlay: Inlay,
-    pub key: InlayKey,
-    pub position: imba::overlay::fit::PreferredPosition,
-    pub store: &'a Store,
-    pub ui: &'a UiCtx,
-    pub arena: &'a Arena,
-}
-
-impl<'a> PopupSeed<'a> {
-    pub(crate) fn layout(
-        self,
-        host_size: Size,
-        anchor: Rect,
-    ) -> Vec<(Point, imba::ThunkBox<'a, EditorCommand>)> {
-        let desired = self
-            .inlay
-            .layout(
-                self.arena,
-                self.store,
-                self.ui,
-                Constraints {
-                    min: Size::default(),
-                    max: Size::new(f32::INFINITY, f32::INFINITY),
-                },
-            )
-            .size();
-        let resolved = imba::overlay::fit::resolve(
-            host_size,
-            anchor,
-            desired,
-            Size::new(1.0, 1.0),
-            self.position,
-        );
-        let key = self.key;
-        let inlay: &Inlay = self.arena.alloc(self.inlay);
-        let thunk = inlay
-            .layout(
-                self.arena,
-                self.store,
-                self.ui,
-                Constraints::tight(Size::new(resolved.width(), resolved.height())),
-            )
-            .map(move |command| EditorCommand::Inlay { key, command });
-        vec![(
-            Point::new(resolved.left, resolved.top),
-            imba::ThunkBox::new(self.arena, thunk),
-        )]
-    }
 }

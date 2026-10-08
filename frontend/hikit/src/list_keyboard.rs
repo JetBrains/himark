@@ -68,18 +68,7 @@ where
     }
 }
 
-pub fn subsequence_match(haystack: &str, term: &str) -> bool {
-    let mut chars = term.chars();
-    let mut wanted = chars.next();
-    for present in haystack.chars() {
-        match wanted {
-            Some(next) if next.eq_ignore_ascii_case(&present) => wanted = chars.next(),
-            Some(_) => {}
-            None => break,
-        }
-    }
-    wanted.is_none()
-}
+pub use imba::list::subsequence_match;
 
 pub struct SpeedSearchEffect {
     run: Box<dyn FnOnce() -> Box<dyn Any + Send + Sync> + Send + Sync>,

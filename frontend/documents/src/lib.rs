@@ -8,7 +8,6 @@ pub mod diff_views;
 pub mod diffs;
 pub mod dynamic;
 pub mod entity_view;
-pub mod hover;
 pub mod lanes;
 pub mod lifecycle;
 pub mod save;

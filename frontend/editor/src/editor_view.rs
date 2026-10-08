@@ -166,9 +166,17 @@ pub enum EditorCommand {
     /// shell's pointer shape; never emitted while the answer stands.
     HoverLink(Option<std::ops::Range<u32>>),
 
-    /// The animation clock, for an armed accessory (a hover resting
-    /// toward its ask) — see `crate::accessory`.
-    AccessoryTick(imba::anim::AnimationClock),
+    /// The animation clock while the hover rests toward its ask.
+    Tick(imba::anim::AnimationClock),
+
+    Find(crate::find::FindCommand),
+    Completion(crate::completion::CompletionCommand),
+    HoverFound(crate::hover::HoverFound),
+
+    /// A file picked from an `@` completion — the OWNER's signal
+    /// (a chat composer records the mention); the editor itself has
+    /// already written the text.
+    MentionPicked(crate::completion::PickedFile),
 
     Retheme {
         top: f32,
@@ -244,7 +252,11 @@ impl std::fmt::Display for EditorCommand {
             EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
             EditorCommand::Hover(_) => out.write_str("hover"),
             EditorCommand::HoverLink(_) => out.write_str("hover link"),
-            EditorCommand::AccessoryTick(_) => out.write_str("accessory tick"),
+            EditorCommand::Tick(_) => out.write_str("tick"),
+            EditorCommand::Find(command) => command.fmt(out),
+            EditorCommand::Completion(command) => command.fmt(out),
+            EditorCommand::HoverFound(_) => out.write_str("hover found"),
+            EditorCommand::MentionPicked(_) => out.write_str("mention picked"),
             EditorCommand::Retheme { .. } => out.write_str("retheme"),
             EditorCommand::InsertTextReplacing { .. } => out.write_str("insert text replacing"),
             EditorCommand::SetMarkedText { .. } => out.write_str("set marked text"),
@@ -712,9 +724,6 @@ impl EditorView {
                     continue;
                 }
 
-                if matches!(interval.inlay.mode, InlayMode::Popup(_)) {
-                    continue;
-                }
                 let widget = interval.inlay.layout(arena, store, ui, constraints);
                 let size = widget.size();
                 let y_centered = content_top + (content_height - size.height).max(0.0) * 0.5;
@@ -766,7 +775,6 @@ impl EditorView {
                         (anchor_x, y_centered)
                     }
 
-                    InlayMode::Popup(_) => unreachable!("popups mint overlays"),
                 };
 
                 let key = interval.key;
@@ -961,27 +969,37 @@ impl View for EditorView {
             },
             EditorFocus::None => FocusData::default(),
         };
-        // Standing popups (completion, hover actions) filter the
-        // keyboard before the text they decorate — semantic state,
-        // not z-order: they exist, so they answer first.
-        let inner = {
-            let mut over = FocusData::default();
-            for (key, _, _, _) in self.document.popups_in(self.editor, 0..u32::MAX) {
-                if let Some(data) = self.document.inlay_focus_data(store, ui, key) {
-                    over = over
-                        .merge_over(data.map(move |command| EditorCommand::Inlay { key, command }));
-                }
-            }
-            over.merge_over(inner)
-        };
         let inner = inner.merge_under(FocusData::of_commands(self.dynamic_surface(store)));
-        // An accessory holding the keys (a focused find input) answers
-        // before the text it serves.
-        let editor = self.editor;
-        crate::accessory::Accessories::of(store)
-            .iter()
-            .filter_map(|accessory| accessory.focus_data(store, ui, editor))
-            .fold(inner, |under, over| over.merge_over(under))
+        // The editor's own assists answer before the text: a standing
+        // completion popup takes the walk keys, a focused find input
+        // takes the typing.
+        let inner = match self.document.completion(self.editor).open() {
+            true => FocusData {
+                on_key: Some(Box::new(|key, _mods| {
+                    use crate::completion::CompletionCommand as C;
+                    use imba::event::Key;
+                    match key {
+                        Key::Up => EventResult::Command(EditorCommand::Completion(C::Select(-1))),
+                        Key::Down => EventResult::Command(EditorCommand::Completion(C::Select(1))),
+                        Key::Enter | Key::Tab => {
+                            EventResult::Command(EditorCommand::Completion(C::PickCursor))
+                        }
+                        Key::Escape => EventResult::Command(EditorCommand::Completion(C::Close)),
+                        _ => EventResult::Ignored,
+                    }
+                })),
+                ..FocusData::default()
+            }
+            .merge_under(inner),
+            false => inner,
+        };
+        match self.document.find(self.editor) {
+            Some(find) => find
+                .focus_data(store, ui)
+                .map(EditorCommand::Find)
+                .merge_under(inner),
+            None => inner,
+        }
     }
 
     fn perform(
@@ -991,39 +1009,42 @@ impl View for EditorView {
         command: Self::Command,
         fx: &mut Effects<'_, Self::Command>,
     ) {
-        // The accessories look first: the completion popup's own
-        // commands, the find bar's, the landings addressed to them.
-        let accessories = crate::accessory::Accessories::of(store);
-        let mut command = command;
-        for accessory in &accessories {
-            match accessory.intercept(
-                store,
-                ui,
-                &mut self.document,
-                self.editor,
-                self.location.as_ref(),
-                command,
-                fx,
-            ) {
-                Some(passed) => command = passed,
-                None => return,
+        let location = self.location.clone();
+        match command {
+            EditorCommand::Find(command) => {
+                return self
+                    .document
+                    .find_perform(self.editor, command, store, ui, fx);
             }
-        }
-        let performed = crate::accessory::Performed::of(&command);
-        if let EditorCommand::AccessoryTick(_) = command {
-            for accessory in &accessories {
-                accessory.after(
+            EditorCommand::Completion(command) => {
+                return self.document.completion_perform(
+                    self.editor,
+                    location.as_ref(),
+                    command,
                     store,
                     ui,
-                    &mut self.document,
-                    self.editor,
-                    self.location.as_ref(),
-                    &performed,
                     fx,
                 );
             }
-            return;
+            EditorCommand::HoverFound(found) => {
+                return self.document.hover_land(self.editor, found, store, ui);
+            }
+            EditorCommand::Tick(now) => {
+                return self.document.hover_tick(self.editor, now, fx);
+            }
+            // The owner's signal; the text is already written.
+            EditorCommand::MentionPicked(_) => return,
+            _ => {}
         }
+        let typed = match &command {
+            EditorCommand::InsertText { text } => Some(text.clone()),
+            _ => None,
+        };
+        let clicked = matches!(command, EditorCommand::Click { .. });
+        let hovered = match &command {
+            EditorCommand::Hover(point) => Some(*point),
+            _ => None,
+        };
 
         if let EditorCommand::ToggleBeforeInlay { at } = command {
             if let Some((base, diff)) = &self.base {
@@ -1095,16 +1116,26 @@ impl View for EditorView {
                 }
             }
         }
-        for accessory in &accessories {
-            accessory.after(
-                store,
-                ui,
-                &mut self.document,
-                self.editor,
-                self.location.as_ref(),
-                &performed,
-                fx,
-            );
+        // The assists follow the command: the hover tracks the
+        // pointer, the completion the caret and what was typed, the
+        // find tints the text.
+        match hovered {
+            Some(point) => {
+                self.document
+                    .hover_sync(self.editor, point, location.as_ref(), store, ui, fx)
+            }
+            None => {
+                self.document.completion_sync(
+                    self.editor,
+                    location.as_ref(),
+                    typed.as_deref(),
+                    false,
+                    store,
+                    ui,
+                    fx,
+                );
+                self.document.find_sync(self.editor, clicked, store, ui, fx);
+            }
         }
     }
 
@@ -1207,27 +1238,20 @@ impl View for EditorView {
                     }
                 }
 
-                // Accessory chrome (the find bar) pinned over the top
-                // of the VISIBLE viewport — re-placed per realize as
-                // the viewport moves, so it never scrolls away.
-                for accessory in crate::accessory::Accessories::of(store) {
-                    if let Some((_, bar)) = accessory.bar(arena, store, ui, editor_id, size.width) {
-                        root.place(0.0, viewport.top, bar);
-                    }
+                // The find bar pinned over the top of the VISIBLE
+                // viewport — re-placed per realize as the viewport
+                // moves, so it never scrolls away.
+                if let Some(find) = document.find(editor_id) {
+                    root.place(
+                        0.0,
+                        viewport.top,
+                        find.layout(arena, store, ui, size.width)
+                            .map(EditorCommand::Find),
+                    );
                 }
 
                 let popup_origin = skia_safe::Point::new(gutter - scroll_x, 0.0);
-                let mut popups = crate::popup::visible_popups(
-                    &document,
-                    editor_id,
-                    &fonts.collection(),
-                    &crate::env::Themes::of(store),
-                    arena,
-                    store,
-                    ui,
-                    viewport,
-                    popup_origin,
-                );
+                let mut popups = self.assist_overlays(arena, store, ui, &fonts.collection(), popup_origin);
                 popups.extend(crate::popup::projected_overlays(
                     &document,
                     editor_id,
@@ -1453,6 +1477,36 @@ impl EditorView {
                         EditorCommand::CollapseCarets,
                     ));
                 }
+                // The assists, on an editor of a LOCATED document — a
+                // bare input (the find bar's own well) has none to
+                // offer. The asks themselves only go where someone
+                // answers.
+                if self.location.is_some() {
+                    commands.extend([
+                        PresentableCommand::new(
+                            "find.open",
+                            "Find in Document",
+                            EditorCommand::Find(crate::find::FindCommand::Open),
+                        ),
+                        PresentableCommand::new(
+                            "completion.trigger",
+                            "Trigger Completion",
+                            EditorCommand::Completion(
+                                crate::completion::CompletionCommand::Trigger,
+                            ),
+                        ),
+                        PresentableCommand::new(
+                            "find.next",
+                            "Find Next",
+                            EditorCommand::Find(crate::find::FindCommand::Next),
+                        ),
+                        PresentableCommand::new(
+                            "find.previous",
+                            "Find Previous",
+                            EditorCommand::Find(crate::find::FindCommand::Previous),
+                        ),
+                    ]);
+                }
                 commands
             }
         }
@@ -1476,6 +1530,76 @@ impl EditorView {
             }
         }
         commands
+    }
+}
+
+impl EditorView {
+    /// The assists' overlays: the completion popup under its anchor,
+    /// the hover card above its word — anchored inside this editor's
+    /// box, placed by the window.
+    fn assist_overlays<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        origin: skia_safe::Point,
+    ) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
+        use imba::with_overlay::Placement;
+        let theme = crate::env::Themes::of(store);
+        let document = &self.document;
+        let editor = self.editor;
+        let rect_at = |byte: u32| {
+            document
+                .caret_content_rect(editor, byte, store, ui, fonts, &theme)
+                .map(|(x, y, w, h)| Rect::from_xywh(origin.x + x, origin.y + y, w.max(1.0), h))
+        };
+        let mut overlays = Vec::new();
+        let completion = document.completion(editor);
+        if let Some(anchor) = completion.anchor_start(document).and_then(rect_at) {
+            let view: &'a crate::completion::CompletionPopupView = arena.alloc(completion.view());
+            overlays.push(imba::overlay::Overlay {
+                host: imba::overlay::WINDOW,
+                anchor,
+                content: Box::new(move |host: Size, anchor: Rect| {
+                    let content = imba::ThunkBox::new(
+                        arena,
+                        imba::layout::Layout::layout(
+                            view.display(arena, store, ui),
+                            arena,
+                            Constraints::tight(host).loosen(),
+                        )
+                        .map(EditorCommand::Completion),
+                    );
+                    let at = Placement::Below.origin(host, anchor, content.size());
+                    vec![(at, content)]
+                }),
+            });
+        }
+        let hover = document.hover(editor);
+        if let (Some(card), Some(anchor)) = (
+            hover.card(),
+            hover.anchor().and_then(|word| rect_at(word.start)),
+        ) {
+            let card: &'a crate::hover::HoverView = arena.alloc(card.clone());
+            overlays.push(imba::overlay::Overlay {
+                host: imba::overlay::WINDOW,
+                anchor,
+                content: Box::new(move |host: Size, anchor: Rect| {
+                    let content = imba::ThunkBox::new(
+                        arena,
+                        imba::layout::Layout::layout(
+                            card.display(arena, store, ui),
+                            arena,
+                            Constraints::tight(host).loosen(),
+                        ),
+                    );
+                    let at = Placement::Above.origin(host, anchor, content.size());
+                    vec![(at, content)]
+                }),
+            });
+        }
+        overlays
     }
 }
 
@@ -1741,13 +1865,8 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
 
             Event::AnimationClock { now } => {
                 if !self.document().reveal_pending(self.editor()) {
-                    let editor = self.editor();
-                    let store = self.shared.store;
-                    let armed = crate::accessory::Accessories::of(store)
-                        .iter()
-                        .any(|accessory| accessory.wants_clock(store, editor));
-                    return match armed {
-                        true => EventResult::Command(EditorCommand::AccessoryTick(*now)),
+                    return match self.document().hover(self.editor()).armed() {
+                        true => EventResult::Command(EditorCommand::Tick(*now)),
                         false => EventResult::Ignored,
                     };
                 }

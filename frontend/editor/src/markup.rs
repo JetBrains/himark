@@ -59,8 +59,6 @@ pub struct Markup {
     syntaxes: rpds::HashTrieMapSync<SyntaxId, Syntax>,
 
     has_inlays: bool,
-
-    has_popups: bool,
 }
 
 impl IntervalQuery<IntervalId, Decoration> for Markup {
@@ -677,14 +675,6 @@ pub enum InlayMode {
     Above,
 
     Instead(InsteadKind),
-
-    Popup(PopupSpec),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PopupSpec {
-    pub host: imba::overlay::OverlayHost,
-    pub position: imba::overlay::fit::PreferredPosition,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -782,7 +772,6 @@ impl Markup {
             scope: MarkupScope::View,
             syntaxes: rpds::HashTrieMapSync::new_sync(),
             has_inlays: false,
-            has_popups: false,
         }
     }
 
@@ -838,8 +827,9 @@ impl Markup {
         self.has_inlays
     }
 
-    pub(crate) fn has_popups(&self) -> bool {
-        self.has_popups
+    /// The range a styled interval of this markup covers now.
+    pub(crate) fn styled_range_of(&self, key: IntervalId) -> Option<Range<u32>> {
+        self.styles.find_by_id(&key).map(|interval| interval.range)
     }
 }
 
@@ -1153,7 +1143,6 @@ fn classify_line_marks<'a, 'm>(
                                 metrics.instead_height.max(size.height.max(0.0));
                         }
 
-                        InlayMode::Popup(_) => {}
                     }
                 }
                 Decoration::Syntax(_) => {}
@@ -1175,9 +1164,6 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         self.document.has_inlays() || self.extras.iter().any(|(_, markup)| markup.has_inlays())
     }
 
-    pub(crate) fn has_popups(&self) -> bool {
-        self.document.has_popups() || self.extras.iter().any(|(_, markup)| markup.has_popups())
-    }
 
     pub fn all_inlays_in(&self, range: Range<u32>) -> Vec<InlayInterval<'a>> {
         if !self.has_inlays() || range.start >= range.end {
@@ -1262,7 +1248,6 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
                     metrics.instead_height = metrics.instead_height.max(size.height.max(0.0));
                 }
 
-                InlayMode::Popup(_) => {}
             }
         }
         metrics
@@ -1477,7 +1462,6 @@ impl Markup {
         let key = self.mint();
         let state = SyntaxId(key.0 as u64);
         self.has_inlays = self.has_inlays || syntax.markup.has_inlays;
-        self.has_popups = self.has_popups || syntax.markup.has_popups;
         self.syntaxes.insert_mut(state, syntax);
         self.shape.insert([intervals::Interval {
             range,
@@ -1517,7 +1501,6 @@ impl Markup {
         }
 
         self.has_inlays = self.has_inlays || syntax.markup.has_inlays;
-        self.has_popups = self.has_popups || syntax.markup.has_popups;
         self.syntaxes.insert_mut(key, syntax);
         true
     }
@@ -1563,7 +1546,6 @@ impl Markup {
                 Some((state, payload)) => {
                     inherited.insert(state.0);
                     self.has_inlays = self.has_inlays || payload.markup.has_inlays;
-                    self.has_popups = self.has_popups || payload.markup.has_popups;
                     self.syntaxes.insert_mut(state, payload.clone());
                     state
                 }
@@ -1635,7 +1617,6 @@ impl Markup {
         }
 
         self.has_inlays = true;
-        self.has_popups = self.has_popups || matches!(inlay.mode, InlayMode::Popup(_));
         self.shape.insert([Interval {
             range,
             greedy_left: false,
@@ -1848,7 +1829,6 @@ impl Markup {
             .map(|mut interval| {
                 if let Decoration::Inlay(inlay) = &mut interval.value {
                     self.has_inlays = true;
-                    self.has_popups = self.has_popups || matches!(inlay.mode, InlayMode::Popup(_));
 
                     let previous = stale_inlays.iter().find(|(_, range, prior)| {
                         intersects(range, &interval.range)
@@ -1991,16 +1971,12 @@ impl MarkupBuilder {
             .intervals
             .iter()
             .any(|interval| matches!(interval.value, Decoration::Inlay(_)));
-        let has_popups = self.intervals.iter().any(|interval| {
-            matches!(&interval.value, Decoration::Inlay(inlay) if matches!(inlay.mode, InlayMode::Popup(_)))
-        });
         let mut markup = Markup {
             styles: Intervals::new(),
             shape: Intervals::new(),
             next_key: self.next_key,
             scope: MarkupScope::View,
             has_inlays,
-            has_popups,
             syntaxes: rpds::HashTrieMapSync::new_sync(),
         };
         markup.insert_split(self.intervals);
@@ -2022,7 +1998,7 @@ pub fn inlay_anchors_line(mode: InlayMode, interval: &Range<u32>, line: &Range<u
     }
 
     match mode {
-        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) | InlayMode::Popup(_) => {
+        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) => {
             line.start <= interval.start && interval.start < line.end
         }
         InlayMode::Right | InlayMode::Under => {
@@ -2033,7 +2009,7 @@ pub fn inlay_anchors_line(mode: InlayMode, interval: &Range<u32>, line: &Range<u
 
 pub(crate) fn inlay_anchor_byte(mode: InlayMode, interval: &Range<u32>) -> u32 {
     match mode {
-        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) | InlayMode::Popup(_) => {
+        InlayMode::Left | InlayMode::Above | InlayMode::Instead(_) => {
             interval.start
         }
         InlayMode::Right | InlayMode::Under => interval.end,
@@ -2052,7 +2028,6 @@ pub(crate) fn instead_constraints(mode: InlayMode, constraints: Constraints) -> 
 
 pub fn inlay_repair_span(mode: InlayMode, interval: &Range<u32>) -> Range<u32> {
     match mode {
-        InlayMode::Popup(_) => interval.start..interval.start,
         InlayMode::Left | InlayMode::Above => interval.start..interval.start.saturating_add(1),
 
         InlayMode::Instead(_) => interval.clone(),
