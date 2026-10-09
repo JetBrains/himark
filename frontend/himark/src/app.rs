@@ -105,8 +105,13 @@ impl Frame {
     ) -> Frame {
         let store = Box::new(store);
         let tree = {
-            let thunk =
-                Application::layout(window, &arena, &store, ui.as_ref(), Constraints::tight(size));
+            let thunk = Application::layout(
+                window,
+                &arena,
+                &store,
+                ui.as_ref(),
+                Constraints::tight(size),
+            );
             Thunk::realize(thunk, &arena, Rect::from_size(size))
         };
         // SAFETY: the tree borrows the box and Rc contents moved into
@@ -585,7 +590,9 @@ impl Application {
             let frame = Frame::build(window, size, store, self.ui.clone(), arena);
             self.frames.insert(window, frame);
         }
-        self.frames.get_mut(&window).expect("the frame just ensured")
+        self.frames
+            .get_mut(&window)
+            .expect("the frame just ensured")
     }
 
     /// The store moved on: drop every realized frame (the safe-order
@@ -1489,8 +1496,7 @@ fn validate_panes(context: &str, store: &Store, editors: &WorkbenchNode) {
     });
 }
 
-impl Application {
-}
+impl Application {}
 
 /// The perform CLOSURE: what the command interpreter touches besides
 /// the store — borrowed from the application for one batch, so a

@@ -468,12 +468,10 @@ mod app {
                             uris: Arc::clone(&resource_uris),
                         },
                     );
-                    state.register_handler::<::editor::hover::HoverEffect>(
-                        ahp_lsp::HoverRoute {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                        },
-                    );
+                    state.register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
+                        directory: Arc::clone(&clients),
+                        uris: Arc::clone(&resource_uris),
+                    });
 
                     state.register_handler::<ahp_locations::SearchLocationsEffect>(
                         ahp_locations::routes::RouteSearchLocations {

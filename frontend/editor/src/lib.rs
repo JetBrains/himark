@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod assist;
+pub mod band_cache;
 pub(crate) mod before_inlay;
 pub mod caret;
 pub(crate) mod caret_ops;
@@ -29,9 +30,7 @@ pub mod popup;
 pub mod repair;
 pub mod reparse;
 pub mod scroll_stripe;
-pub mod band_cache;
 pub mod shape_cache;
-pub(crate) mod viewport_cache;
 pub(crate) mod shaped_line;
 pub mod split_diff;
 pub mod startup_profile;
@@ -41,6 +40,7 @@ pub mod theme;
 pub mod undo;
 pub mod unified_diff;
 pub mod viewport;
+pub(crate) mod viewport_cache;
 pub(crate) mod width_tree;
 
 pub type FontSource =

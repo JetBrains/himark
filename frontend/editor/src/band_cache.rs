@@ -135,7 +135,10 @@ pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
         let watch = cache
             .phases
             .entry((pass.token, pass.editor))
-            .or_insert(PhaseWatch { phase, still: false });
+            .or_insert(PhaseWatch {
+                phase,
+                still: false,
+            });
         watch.still = phases_close(watch.phase, phase);
         watch.phase = phase;
         watch.still
@@ -232,10 +235,8 @@ pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
                     }
                     cache.bytes += bytes;
                     while cache.bytes > MAX_BYTES {
-                        let Some((&victim, _)) = cache
-                            .entries
-                            .iter()
-                            .min_by_key(|(_, entry)| entry.last_use)
+                        let Some((&victim, _)) =
+                            cache.entries.iter().min_by_key(|(_, entry)| entry.last_use)
                         else {
                             break;
                         };
@@ -309,12 +310,7 @@ fn bake(
     band_canvas.translate((-x0, -band_top));
     for line in lines {
         let shaped = line.shaped.as_ref().expect("filtered on shaped");
-        shaped.paint_in_slot(
-            band_canvas,
-            line.top,
-            line.text_top,
-            line.top + line.height,
-        );
+        shaped.paint_in_slot(band_canvas, line.top, line.text_top, line.top + line.height);
     }
     Some(surface.image_snapshot())
 }
