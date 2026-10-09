@@ -9,7 +9,7 @@ editor = { path = "../../../editor" }
 hisitter = { path = "../../../hisitter" }
 
 [target.'cfg(not(target_os = "emscripten"))'.dependencies]
-tree-sitter-graphql = "0.2.1"
+tree-sitter-graphql = "0.3.0"
 
 [dev-dependencies]
 text = { path = "../../../text" }
