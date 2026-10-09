@@ -1468,7 +1468,7 @@ impl Host {
     /// (watches, changesets, document mirrors). Serves both wire
     /// forms — the request and the SDK's notification.
     fn unsubscribe(&self, connection: u64, channel: &Uri) {
-        self.update(|state| {
+        let closed = self.update(|state| {
             let empty = match state.subscribers.get(channel) {
                 Some(subscribers) => {
                     let kept = drop_subscriber(subscribers, connection);
@@ -1479,6 +1479,7 @@ impl Host {
                 None => true,
             };
 
+            let mut closed: Vec<(Vec<String>, Uri)> = Vec::new();
             if empty {
                 state.watches.remove_mut(channel);
                 state.changesets.remove_mut(channel);
@@ -1508,13 +1509,26 @@ impl Host {
                         .filter(|(_, held)| *held == channel)
                         .map(|(resource, _)| resource.clone())
                         .collect();
+                    let dirs = session
+                        .state
+                        .working_directories
+                        .clone()
+                        .unwrap_or_default();
                     for resource in mirrors {
                         session.mirrors.remove_mut(&resource);
+                        closed.push((dirs.clone(), resource));
                     }
                     state.sessions.insert_mut(uri, session);
                 }
             }
+            closed
         });
+        // The dropped mirror leaves the language server too — kept
+        // open, its text would shadow the file and serve stale
+        // positions until the host dies.
+        for (dirs, resource) in &closed {
+            self.lsp_feed_close(dirs, resource);
+        }
         // A closed session's folders leave the FSP registry.
         self.fsp_sync_folders();
     }
@@ -4331,6 +4345,14 @@ impl Host {
         if let Some((root, command)) = self.lsp_route(dirs, uri) {
             if let Some(server) = self.lsp.ensure(&root, &command) {
                 server.document_saved(uri);
+            }
+        }
+    }
+
+    fn lsp_feed_close(&self, dirs: &[String], uri: &str) {
+        if let Some((root, _)) = self.lsp_route(dirs, uri) {
+            if let Some(server) = self.lsp.live(&root) {
+                server.document_closed(uri);
             }
         }
     }

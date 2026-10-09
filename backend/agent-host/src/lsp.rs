@@ -112,6 +112,15 @@ impl Pool {
             }
         }
     }
+
+    /// The already-running server for a root — a close must never
+    /// spawn one.
+    pub(crate) fn live(&self, root: &Path) -> Option<Arc<Server>> {
+        match self.servers.lock().expect("lsp pool").get(root) {
+            Some(Slot::Live(server)) => Some(Arc::clone(server)),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) struct Server {
@@ -310,6 +319,21 @@ impl Server {
         }
         self.notify(
             "textDocument/didSave",
+            json!({ "textDocument": { "uri": uri } }),
+        );
+    }
+
+    /// The mirror is gone: `didClose` hands the document back to the
+    /// server's own file watching — an open document's text shadows
+    /// the disk until then, so a kept entry would serve stale
+    /// positions forever.
+    pub(crate) fn document_closed(&self, uri: &str) {
+        let mut synced = self.synced.lock().expect("lsp synced");
+        if synced.remove(uri).is_none() {
+            return;
+        }
+        self.notify(
+            "textDocument/didClose",
             json!({ "textDocument": { "uri": uri } }),
         );
     }
