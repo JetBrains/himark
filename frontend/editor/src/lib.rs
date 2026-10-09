@@ -29,6 +29,7 @@ pub mod popup;
 pub mod repair;
 pub mod reparse;
 pub mod scroll_stripe;
+pub mod band_cache;
 pub mod shape_cache;
 pub(crate) mod shaped_line;
 pub mod split_diff;

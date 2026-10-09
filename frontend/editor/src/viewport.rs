@@ -159,6 +159,11 @@ pub(crate) struct EditorViewport {
     pub(crate) layout_width: f32,
 
     pub(crate) tail_spacer: Option<(f32, f32)>,
+
+    /// The band cache's address: which document/editor these lines
+    /// rasterize for.
+    token: crate::document::DocumentToken,
+    editor: crate::editor::EditorId,
 }
 
 impl EditorViewport {
@@ -211,6 +216,8 @@ impl EditorViewport {
             selections,
             layout_width,
             tail_spacer: None,
+            token: document.token(),
+            editor,
         };
         if layout.is_empty() {
             return viewport;
@@ -585,8 +592,36 @@ impl EditorViewport {
                         );
                     }
                 }
+            }
+        }
 
-                shaped.paint_in_slot(canvas, line.top, line.text_top, line.top + line.height);
+        // The text layer rides the band cache: washes + glyphs baked
+        // into content-anchored rasters, composited over the live
+        // underlay just painted. A rule row draws its rule INSTEAD
+        // of text, so it never reaches the pass. A canvas the cache
+        // cannot serve paints the lines directly — the same calls
+        // `bake` makes.
+        let text_lines: Vec<&ViewportLine> = self
+            .lines
+            .iter()
+            .filter(|line| line.shaped.is_some())
+            .filter(|line| {
+                !(line.marks.resolved(theme).rule.is_some() && !line.inlays.has_instead())
+            })
+            .collect();
+        let banded = crate::band_cache::composite(
+            &crate::band_cache::BandPass {
+                token: self.token,
+                editor: self.editor,
+                lines: &text_lines,
+            },
+            canvas,
+        );
+        if !banded {
+            for line in &text_lines {
+                if let Some(shaped) = &line.shaped {
+                    shaped.paint_in_slot(canvas, line.top, line.text_top, line.top + line.height);
+                }
             }
         }
 
