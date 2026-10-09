@@ -31,6 +31,7 @@ pub mod reparse;
 pub mod scroll_stripe;
 pub mod band_cache;
 pub mod shape_cache;
+pub(crate) mod viewport_cache;
 pub(crate) mod shaped_line;
 pub mod split_diff;
 pub mod startup_profile;

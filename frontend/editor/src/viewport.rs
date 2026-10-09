@@ -8,6 +8,7 @@ use skia_safe::{Canvas, Color, Paint, Rect};
 use crate::markup::{BlockStyle, InlayMetrics, TextDecorationInterval};
 use crate::shaped_line::{line_text_x, ShapedLine};
 
+#[derive(Clone)]
 pub(crate) struct ViewportLine {
     pub(crate) byte_start: u32,
     pub(crate) byte_end: u32,
@@ -244,12 +245,32 @@ impl EditorViewport {
         let mut box_cache: Option<(Range<u32>, f32)> = None;
         let (mut cursor, mut document_y, mut byte_start) = layout.cursor_at_y(band.start);
 
-        let mut stripe_walk = (gutter)
+        // The stripe walk seeds LAZILY at the first derived line, so
+        // a memo-hit run costs nothing and the next miss re-seeds
+        // from its own byte — the same contract as the marks sweep.
+        let stripe_markup = (gutter)
             .then_some(stripes)
             .flatten()
             .and_then(|id| document.diff(id))
-            .and_then(|entry| document.feature_markup(entry.markup()))
-            .map(|markup| StripeWalk::new(markup, byte_start));
+            .and_then(|entry| document.feature_markup(entry.markup()));
+        let mut stripe_walk: Option<StripeWalk<'_>> = None;
+
+        let memo_stamp = crate::viewport_cache::BuildStamp {
+            token: document.token(),
+            editor,
+            revision: document.revision(),
+            markup_generation: document.markup_generation(),
+            theme: theme.name_shared(),
+            width_bits: layout_width.to_bits(),
+            focused: text_focused,
+            gutter,
+            stripes,
+            selections: viewport.selections.clone(),
+            marked: state.marked.clone(),
+            hovered: state.hovered_link.clone(),
+        };
+        let memo = crate::viewport_cache::take(&memo_stamp);
+        let mut memo_hits = 0usize;
         let mut inline_scratch = Vec::new();
         let mut hidden_scratch = Vec::new();
 
@@ -296,6 +317,41 @@ impl EditorViewport {
                 continue;
             }
             let line_range = byte_start..byte_end;
+            let item_top = document_y + item.spacer_above;
+            document_y += item.height + item.spacer_above;
+
+            if item_top > band.end {
+                let spacer = item.spacer_above + carried_spacer;
+                if spacer > 0.5 && item_top - spacer < band.end {
+                    viewport.tail_spacer = Some((item_top - spacer, spacer));
+                }
+                break;
+            }
+
+            // The memo short-circuit: the previous build already
+            // derived this line under the SAME inputs — reuse it and
+            // drop the sequential walks, which re-seed at the next
+            // derived line exactly like after a collapsed run.
+            if let Some(cached) = crate::viewport_cache::hit(
+                &memo,
+                byte_start,
+                byte_end,
+                item_top,
+                item.height,
+                item.spacer_above + carried_spacer,
+            ) {
+                memo_hits += 1;
+                carried_spacer = 0.0;
+                marks_sweep = None;
+                stripe_walk = None;
+                viewport.lines.push(cached);
+                if !cursor.advance() {
+                    break;
+                }
+                byte_start = byte_end;
+                continue;
+            }
+
             let (marks, inlays) = marks_sweep
                 .get_or_insert_with(|| overlaid.line_marks_sweep(byte_start, Some(measure)))
                 .line(line_range.clone(), &mut inline_scratch, &mut hidden_scratch);
@@ -310,16 +366,6 @@ impl EditorViewport {
                 document.foldables_into(from..to, &mut foldable_chunk);
                 foldable_chunk_range = from..to;
                 foldable_at = 0;
-            }
-            let item_top = document_y + item.spacer_above;
-            document_y += item.height + item.spacer_above;
-
-            if item_top > band.end {
-                let spacer = item.spacer_above + carried_spacer;
-                if spacer > 0.5 && item_top - spacer < band.end {
-                    viewport.tail_spacer = Some((item_top - spacer, spacer));
-                }
-                break;
             }
 
             let inline_start = viewport.inline.len();
@@ -444,9 +490,11 @@ impl EditorViewport {
                 }
             });
 
-            let diff = stripe_walk
-                .as_mut()
-                .and_then(|walk| walk.classify(byte_start..byte_end));
+            let diff = stripe_markup.and_then(|markup| {
+                stripe_walk
+                    .get_or_insert_with(|| StripeWalk::new(markup, byte_start))
+                    .classify(byte_start..byte_end)
+            });
 
             let box_extent = resolved
                 .background
@@ -492,12 +540,15 @@ impl EditorViewport {
             byte_start = byte_end;
         }
 
+        crate::viewport_cache::store(memo_stamp, &viewport.lines);
+
         if let Some(started) = probe {
             eprintln!(
-                "[paint-probe] build={:.1}us lines={} shaped={} iters={} flat={} pulls={} active_peak={} y={} byte={} bounded={}",
+                "[paint-probe] build={:.1}us lines={} shaped={} memo={} iters={} flat={} pulls={} active_peak={} y={} byte={} bounded={}",
                 started.elapsed().as_secs_f64() * 1e6,
                 viewport.lines.len(),
                 shaped_lines,
+                memo_hits,
                 probe_iterations,
                 probe_flat,
                 marks_sweep.as_ref().map_or(0, |sweep| sweep.pulls),
