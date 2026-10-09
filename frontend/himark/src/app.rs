@@ -16,7 +16,7 @@ use imba::{
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,
-    Thunk, View, Widget,
+    Thunk, View, Widget, WidgetBox,
 };
 use skia_safe::{Canvas, Rect, Size};
 use text::text::Text;
@@ -35,7 +35,7 @@ use editor::markup::Markup;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 
-use crate::stats::{Stats, StatsCommand};
+use crate::stats::Stats;
 
 pub struct Application {
     /// THE store — one, global, always live. Hosts, Windows and
@@ -46,7 +46,11 @@ pub struct Application {
     pub(crate) ui: std::rc::Rc<UiCtx>,
 
     stats: Stats,
-    pub(crate) ui_arena: Arena,
+
+    /// The realized frame of each window (see `Frame`), plus one
+    /// recycled arena the next rebuild starts from warm.
+    frames: std::collections::HashMap<WindowId, Frame>,
+    spare_arena: Option<Box<Arena>>,
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
@@ -63,6 +67,93 @@ pub struct Application {
     /// (docs/editor/viewport-preservation.md §3.2).
     settle_requested: bool,
     settling: bool,
+}
+
+/// One window's REALIZED widget tree, kept between command batches.
+/// The tree is a pure function of (store, viewport size): the store
+/// mutates only behind the application's few `&mut store` doors, and
+/// every door calls `invalidate_frames` — so every event, hit-test
+/// and paint in between replays against this one realization instead
+/// of laying the window out again.
+///
+/// SAFETY: `tree`'s `'static` is a lie, erased in `build`. What makes
+/// it sound, all local to this type:
+/// - the tree borrows only `arena`, `store` and `ui`, whose heap
+///   addresses are stable — boxes and an `Rc`, moved but never
+///   replaced while the tree lives;
+/// - the tree dies first: fields drop in declaration order, and
+///   `recycle` repeats that order by hand;
+/// - the arena is never reset and the store never mutated under a
+///   live tree;
+/// - no `'static` view escapes: every accessor reborrows at the
+///   caller's own lifetime.
+pub(crate) struct Frame {
+    tree: WidgetBox<'static, AppCommand>,
+    arena: Box<Arena>,
+    store: Box<Store>,
+    ui: std::rc::Rc<UiCtx>,
+    size: Size,
+}
+
+impl Frame {
+    fn build(
+        window: WindowId,
+        size: Size,
+        store: Store,
+        ui: std::rc::Rc<UiCtx>,
+        arena: Box<Arena>,
+    ) -> Frame {
+        let store = Box::new(store);
+        let tree = {
+            let thunk =
+                Application::layout(window, &arena, &store, ui.as_ref(), Constraints::tight(size));
+            Thunk::realize(thunk, &arena, Rect::from_size(size))
+        };
+        // SAFETY: the tree borrows the box and Rc contents moved into
+        // the frame right below; see the type's invariants.
+        let tree = unsafe {
+            std::mem::transmute::<WidgetBox<'_, AppCommand>, WidgetBox<'static, AppCommand>>(tree)
+        };
+        Frame {
+            tree,
+            arena,
+            store,
+            ui,
+            size,
+        }
+    }
+
+    pub(crate) fn handle(&self, event: &Event<'_>, viewport: Rect) -> EventResult<AppCommand> {
+        self.tree.handle_event(&self.arena, event, viewport)
+    }
+
+    pub(crate) fn layout_data(
+        &mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'_, AppCommand> {
+        self.tree.layout_data(target)
+    }
+
+    /// The store snapshot the tree was built against.
+    pub(crate) fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Tear down in the safe order and hand the arena back warm.
+    fn recycle(self) -> Box<Arena> {
+        let Frame {
+            tree,
+            mut arena,
+            store,
+            ui,
+            size: _,
+        } = self;
+        drop(tree);
+        drop(store);
+        drop(ui);
+        arena.reset();
+        arena
+    }
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
@@ -117,7 +208,6 @@ pub enum AppCommand {
     Verb(imba::command::Verb),
 
     Register(std::sync::Arc<dyn crate::commands::WindowedCommand>),
-    Stats(StatsCommand),
 
     /// THE one command road (docs/entities.md law 5): any collection,
     /// addressed by its id, stamped at launch, carried through the
@@ -426,7 +516,8 @@ impl Application {
             effects: crate::effects::EffectLauncher::new(),
             handlers,
             workshop,
-            ui_arena: Arena::default(),
+            frames: std::collections::HashMap::new(),
+            spare_arena: None,
             pending_file_events: Vec::new(),
             settle_requested: false,
             settling: false,
@@ -439,6 +530,7 @@ impl Application {
     /// one thing the old gather/scatter rite still did.
     fn sweep(&mut self) {
         ahp_session::session::state::Hosts::sweep_empty(&mut self.store);
+        self.invalidate_frames();
     }
 
     /// The windows catalog, read in place — a boot resident.
@@ -455,6 +547,7 @@ impl Application {
         let mut minted = ahp_wire::client::HostId::LOCAL;
         self.store
             .update::<ahp_wire::client::Servers>(|servers| minted = servers.mint(client));
+        self.invalidate_frames();
         minted
     }
 
@@ -475,6 +568,34 @@ impl Application {
         self.store.clone()
     }
 
+    /// The window's cached frame, rebuilt only when the store or the
+    /// viewport size moved on — every `&mut store` door calls
+    /// `invalidate_frames`, so a standing frame IS current.
+    pub(crate) fn ensure_frame(&mut self, window: WindowId, size: Size) -> &mut Frame {
+        let fresh = self
+            .frames
+            .get(&window)
+            .is_some_and(|frame| frame.size == size);
+        if !fresh {
+            if let Some(frame) = self.frames.remove(&window) {
+                self.spare_arena = Some(frame.recycle());
+            }
+            let arena = self.spare_arena.take().unwrap_or_default();
+            let store = self.frame_store(window);
+            let frame = Frame::build(window, size, store, self.ui.clone(), arena);
+            self.frames.insert(window, frame);
+        }
+        self.frames.get_mut(&window).expect("the frame just ensured")
+    }
+
+    /// The store moved on: drop every realized frame (the safe-order
+    /// teardown lives in `Frame::recycle`), keeping one arena warm.
+    fn invalidate_frames(&mut self) {
+        for (_, frame) in self.frames.drain() {
+            self.spare_arena = Some(frame.recycle());
+        }
+    }
+
     /// The frame's store: the window store plus the FOCUSED SEAT
     /// (the semantic walk's answer), so editors derive their
     /// selections-visible bit from STATE at build time — one
@@ -491,6 +612,7 @@ impl Application {
 
     fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
         mutate(&mut self.store);
+        self.invalidate_frames();
     }
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
@@ -527,6 +649,7 @@ impl Application {
             .update::<::workbench::window::Windows>(|windows| {
                 windows.adopt_workspaces_all(&crate::workspace::AdoptLocalHost(host))
             });
+        self.invalidate_frames();
     }
 
     pub fn add_window(&mut self) -> WindowId {
@@ -535,13 +658,15 @@ impl Application {
         let mut discarded = AppEffects::new();
         let state = ahp_session::session::state::Hosts::ensure_state(&mut self.store, &workspace);
         let editors = fresh_workbench_root(&mut self.store, &state, &ui, &mut discarded.effects());
-        Windows::add(
+        let window = Windows::add(
             &mut self.store,
             Window::new(
                 editors,
                 crate::workspace::SessionWorkspace::boxed(workspace.clone(), state),
             ),
-        )
+        );
+        self.invalidate_frames();
+        window
     }
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -727,29 +852,16 @@ impl Application {
     }
 
     pub(crate) fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas, size: Size) -> bool {
-        let mut arena = std::mem::take(&mut self.ui_arena);
-        arena.reset();
-
-        let store = self.frame_store(window);
-        let result = {
-            let widget = self.layout(
-                window,
-                &arena,
-                &store,
-                self.ui.as_ref(),
-                Constraints::tight(size),
-            );
-            let widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
-            widget.handle_event(
-                &arena,
-                &Event::Paint {
-                    canvas,
-                    focused: true,
-                },
-                Rect::from_size(size),
-            )
-        };
-        self.ui_arena = arena;
+        let result = self.ensure_frame(window, size).handle(
+            &Event::Paint {
+                canvas,
+                focused: true,
+            },
+            Rect::from_size(size),
+        );
+        let theme = ::editor::env::Themes::of(&self.store);
+        self.stats
+            .paint(canvas, Rect::from_size(size), &theme.ui().stats);
 
         match result {
             EventResult::Ignored | EventResult::Handled => false,
@@ -875,21 +987,9 @@ impl Application {
                 (result, fallback)
             }
             _ => {
-                let mut arena = std::mem::take(&mut self.ui_arena);
-                arena.reset();
-                let store = self.frame_store(window);
-                let result = {
-                    let widget = self.layout(
-                        window,
-                        &arena,
-                        &store,
-                        self.ui.as_ref(),
-                        Constraints::tight(size),
-                    );
-                    let widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
-                    widget.handle_event(&arena, &event, Rect::from_size(size))
-                };
-                self.ui_arena = arena;
+                let result = self
+                    .ensure_frame(window, size)
+                    .handle(&event, Rect::from_size(size));
                 (result, None)
             }
         };
@@ -944,10 +1044,14 @@ impl Application {
         let mut batch = AppEffects::new();
 
         let mut store = std::mem::take(&mut self.store);
+        let mut performer = Performer {
+            pending_file_events: &mut self.pending_file_events,
+            workshop: &self.workshop,
+        };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         while let Some(command) = queue.pop_front() {
             let mut fx = batch.effects();
-            self.perform(&mut store, &ui, command, &mut fx);
+            performer.perform(&mut store, &ui, command, &mut fx);
 
             // The performed command's follow-ups run next, in push
             // order — the loop's own lane, not a store note.
@@ -1067,6 +1171,10 @@ impl Application {
         ahp_lsp::enrich::drop_unclaimed(&store);
         // The safety net for a tail lane's follow-up: the queue loop
         // is over, so perform them here — late but never lost.
+        let mut performer = Performer {
+            pending_file_events: &mut self.pending_file_events,
+            workshop: &self.workshop,
+        };
         loop {
             let late = batch.take_follow_ups();
             if late.is_empty() {
@@ -1074,7 +1182,7 @@ impl Application {
             }
             for command in late {
                 let mut fx = batch.effects();
-                self.perform(&mut store, &ui, command, &mut fx);
+                performer.perform(&mut store, &ui, command, &mut fx);
             }
         }
         let probe_perform = probe.elapsed();
@@ -1320,7 +1428,6 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         AppCommand::RegisterLanguages(_) => "register languages",
         AppCommand::RegisterDiffPolicy(_) => "register diff policy",
         AppCommand::RegisterEnrichers(_) => "register enrichers",
-        AppCommand::Stats(_) => "stats",
         AppCommand::At(..) => unreachable!(),
         AppCommand::Opened(..) => "opened",
         AppCommand::FileChanged(..) => "file changed",
@@ -1383,6 +1490,17 @@ fn validate_panes(context: &str, store: &Store, editors: &WorkbenchNode) {
 }
 
 impl Application {
+}
+
+/// The perform CLOSURE: what the command interpreter touches besides
+/// the store — borrowed from the application for one batch, so a
+/// perform never holds the application itself.
+pub(crate) struct Performer<'app> {
+    pending_file_events: &'app mut Vec<documents::watch::Subscription>,
+    workshop: &'app Arc<::editor::env::Workshop>,
+}
+
+impl Performer<'_> {
     fn perform(&mut self, store: &mut Store, ui: &UiCtx, command: AppCommand, fx: &mut AppFx<'_>) {
         match command {
             AppCommand::Content(window, command) => {
@@ -1695,11 +1813,6 @@ impl Application {
                     self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
                 }
             }
-            AppCommand::Stats(command) => {
-                fx.scope(AppCommand::Stats, |fx| {
-                    self.stats.perform(store, ui, command, fx)
-                });
-            }
             AppCommand::At(addressed) => {
                 // The one command road (docs/entities.md law 5): lease
                 // the row, perform under its own address, put it back.
@@ -1858,9 +1971,14 @@ impl Application {
             }
         }
     }
+}
 
+impl Application {
+    /// The window's thunk tree — a pure function of its arguments:
+    /// no application borrow, so a cached realization owes nothing
+    /// to `self`. The stats HUD is painted OVER the tree by the
+    /// paint dispatch; per-frame numbers never ride a store walk.
     pub(crate) fn layout<'a>(
-        &'a self,
         window: WindowId,
         arena: &'a Arena,
         store: &'a Store,
@@ -1872,8 +1990,6 @@ impl Application {
             ::workbench::window::Windows::window_ref(store, window).expect("the window entity");
         let content =
             imba::layout::Layout::layout(entity.display(arena, store, ui), arena, constraints);
-        let stats =
-            imba::layout::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
 
         let mut container = imba::container::container(arena, size);
         container.place(
@@ -1883,8 +1999,6 @@ impl Application {
                 .map(move |command| AppCommand::Content(window, command))
                 .overlay_host(imba::overlay::WINDOW),
         );
-
-        container.place(0.0, 0.0, stats.map(AppCommand::Stats));
         container
     }
 }

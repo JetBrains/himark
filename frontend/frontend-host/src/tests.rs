@@ -8789,6 +8789,23 @@ fn published_diagnostics_squiggle_the_open_document() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let snapshot = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        // Mask the stats HUD before comparing: its text shows live
+        // maxima (fps, slowest draw in the window), so it is chrome
+        // outside the tree's determinism — and a draw-time blip must
+        // not fake the clear-vs-squiggled difference either.
+        let theme = editor::env::Themes::of(engine.app.store());
+        let chrome = &theme.ui().stats;
+        let mut mask = skia_safe::Paint::default();
+        mask.set_color(skia_safe::Color::BLACK);
+        surface.canvas().draw_rect(
+            skia_safe::Rect::from_xywh(
+                900.0 - chrome.right_margin - chrome.width - 2.0,
+                chrome.top - 2.0,
+                chrome.width + 4.0,
+                chrome.height + 4.0,
+            ),
+            &mask,
+        );
         let image = surface.image_snapshot();
         let data = image
             .encode(None, skia_safe::EncodedImageFormat::PNG, None)

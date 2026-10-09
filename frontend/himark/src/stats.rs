@@ -9,7 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, View};
 use skia_safe::{Canvas, Font, Paint, Rect};
 
 const FPS_WINDOW: Duration = Duration::from_millis(500);
@@ -26,15 +25,6 @@ pub struct Stats {
     latency_event_started_at: Option<f64>,
 
     reconcile_streak: u32,
-}
-
-#[derive(Clone)]
-pub enum StatsCommand {}
-
-impl std::fmt::Display for StatsCommand {
-    fn fmt(&self, _out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {}
-    }
 }
 
 impl Stats {
@@ -102,7 +92,10 @@ impl Stats {
         self.render_sample_index = (self.render_sample_index + 1) % RENDER_WINDOW;
     }
 
-    fn paint(&self, canvas: &Canvas, rect: Rect, chrome: &::editor::theme::StatsChrome) {
+    /// The HUD overlay, painted straight onto the frame AFTER the
+    /// widget tree: its numbers change every frame without a command,
+    /// so it must never live inside a store-derived (cacheable) tree.
+    pub(crate) fn paint(&self, canvas: &Canvas, rect: Rect, chrome: &::editor::theme::StatsChrome) {
         let latency_ns = self.latency_ns.load(Ordering::Relaxed);
         let latency = match latency_ns {
             0 => "--.- ms".to_string(),
@@ -147,29 +140,3 @@ impl Stats {
     }
 }
 
-impl View for Stats {
-    type Command = StatsCommand;
-    fn perform(
-        &mut self,
-        _store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        command: Self::Command,
-        _fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
-        match command {}
-    }
-
-    fn display<'a>(
-        &'a self,
-        _arena: &'a Arena,
-        store: &'a Store,
-        _ui: &'a imba::ui::UiCtx,
-    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let theme = ::editor::env::Themes::of(store);
-            imba::leaf::leaf(constraints.max.width, constraints.max.height).paint_instead(
-                move |_arena, canvas, rect| self.paint(canvas, rect, &theme.ui().stats),
-            )
-        })
-    }
-}

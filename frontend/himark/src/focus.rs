@@ -31,44 +31,29 @@ impl Application {
     ) -> Option<R> {
         // Two asks, one source of truth: the SEMANTIC walk names the
         // focused client, and the layout fold answers by RECOGNIZING
-        // that key — it never re-decides focus. This is the only
-        // remaining build-to-ask, and it fires only while composing.
+        // that key — it never re-decides focus. The fold runs over
+        // the window's standing frame; it fires only while composing.
         let size = self.window_viewport(window)?;
-        let store = self.frame_store(window);
-        let target = {
-            let mut data = window_focus_data(&store, self.ui.as_ref(), window)?;
-            data.seat.take()?
-        };
-        let mut arena = std::mem::take(&mut self.ui_arena);
-        arena.reset();
+        let ui = self.ui.clone();
         let mut f = Some(f);
         let mut answer = None;
         let performed = {
-            let widget = self.layout(
-                window,
-                &arena,
-                &store,
-                self.ui.as_ref(),
-                imba::constraints::Constraints::tight(size),
-            );
-            let mut widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(size));
-            let performed = imba::Widget::layout_data(&mut widget, target)
-                .ime
-                .take()
-                .map(|mut client| {
-                    if std::env::var("HIMARK_TRACE_IME").is_ok() {
-                        eprintln!("[ime] client origin = {:?}", client.origin);
+            let frame = self.ensure_frame(window, size);
+            let target = {
+                let mut data = window_focus_data(frame.store(), ui.as_ref(), window)?;
+                data.seat.take()?
+            };
+            frame.layout_data(target).ime.take().map(|mut client| {
+                if std::env::var("HIMARK_TRACE_IME").is_ok() {
+                    eprintln!("[ime] client origin = {:?}", client.origin);
+                }
+                (client.ask)(client.origin, client.clip, &mut |client| {
+                    if let Some(f) = f.take() {
+                        answer = Some(f(client));
                     }
-                    (client.ask)(client.origin, client.clip, &mut |client| {
-                        if let Some(f) = f.take() {
-                            answer = Some(f(client));
-                        }
-                    })
-                });
-            drop(widget);
-            performed
+                })
+            })
         };
-        self.ui_arena = arena;
 
         if let Some(result) = performed {
             self.perform_chain_result(result);
