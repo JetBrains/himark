@@ -1798,7 +1798,8 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
         0.0,
         HIMARK_SCROLL_PHASE_BEGAN
     ));
-    // The first real delta claims the left pane and scrolls it.
+    // The first real delta claims the left pane and scrolls it —
+    // deltas coalesce now, so the claim lands at the flush.
     assert!(scroll(
         &mut engine,
         a,
@@ -1806,6 +1807,10 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
         120.0,
         HIMARK_SCROLL_PHASE_CHANGED
     ));
+    assert!(
+        engine.flush_scroll(a),
+        "the flushed delta claims the left pane and scrolls it"
+    );
     assert!(!scroll(
         &mut engine,
         a,
@@ -1831,14 +1836,19 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
     ));
 
     // Momentum drifting over the right pane stays the left pane's: the
-    // right pane must not claim it.
-    assert!(!scroll(
+    // right pane must not claim it — the flush dispatches the drifted
+    // deltas against the standing claim and they fall.
+    assert!(scroll(
         &mut engine,
         a,
         right,
         40.0,
         HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED
     ));
+    assert!(
+        !engine.flush_scroll(a),
+        "the right pane refuses the owned gesture's drift"
+    );
     assert!(!scroll(
         &mut engine,
         a,

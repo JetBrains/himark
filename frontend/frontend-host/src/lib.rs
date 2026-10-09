@@ -99,12 +99,27 @@ pub struct HimarkEngine {
 }
 
 /// One window's scroll-gesture stream: the capture cell scroll events
-/// ride, and the time of the last event for the phaseless pause
-/// heuristic.
+/// ride, the time of the last event for the phaseless pause
+/// heuristic, and the deltas accumulated since the last flush.
 #[derive(Default)]
 struct WindowScroll {
     gesture: imba::event::ScrollGesture,
     last: Option<std::time::Instant>,
+    pending: Option<PendingScroll>,
+}
+
+/// Wheel deltas coalesced between flushes: the batch behind a scroll
+/// (frame invalidation, the settle pulse, the focus walk) runs once
+/// per display tick, not once per host event. Only same-point deltas
+/// merge — a moved point, a gesture boundary or any other input
+/// flushes first, so routing stays event-exact.
+struct PendingScroll {
+    point: Point,
+    delta_x: f32,
+    delta_y: f32,
+    /// The OLDEST unflushed event's start — latency is measured from
+    /// the input that has waited longest.
+    event_started_at: f64,
 }
 
 #[derive(Default)]
@@ -783,8 +798,12 @@ impl HimarkEngine {
         height: f32,
         _scale: f32,
     ) -> bool {
+        // A shell that draws without ticking (tests, direct renders)
+        // still applies the standing deltas before the frame.
+        let flushed = self.flush_scroll(window);
         self.app
             .draw_window_sized(wid(window), canvas, Size::new(width, height))
+            || flushed
     }
 
     pub fn record_latency(&mut self, now_secs: f64) {
@@ -804,6 +823,7 @@ impl HimarkEngine {
     }
 
     pub fn key_down_at(&mut self, window: u64, key: u32, mods: u32, event_started_at: f64) -> bool {
+        self.flush_scroll(window);
         match map_key(key) {
             Some(key) => {
                 let size = self.window_size(window);
@@ -829,6 +849,7 @@ impl HimarkEngine {
         if text.is_empty() {
             return false;
         }
+        self.flush_scroll(window);
         let size = self.window_size(window);
         self.app.dispatch_timed(
             wid(window),
@@ -893,6 +914,7 @@ impl HimarkEngine {
         click_count: u32,
         event_started_at: f64,
     ) -> bool {
+        self.flush_scroll(window);
         let count = match click_count {
             0 => self.clicks.count(x, y),
             real => real.min(3) as u8,
@@ -915,6 +937,7 @@ impl HimarkEngine {
     /// apart route their right-button downs here; the others reach
     /// the same rows via control-click.
     pub fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
+        self.flush_scroll(window);
         let size = self.window_size(window);
         self.app.dispatch_timed(
             wid(window),
@@ -949,6 +972,7 @@ impl HimarkEngine {
     }
 
     pub fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
+        self.flush_scroll(window);
         let size = self.window_size(window);
         let (changed, shape) = self.app.dispatch_pointed(
             wid(window),
@@ -970,6 +994,7 @@ impl HimarkEngine {
     }
 
     pub fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool {
+        self.flush_scroll(window);
         let size = self.window_size(window);
         self.app.dispatch(
             wid(window),
@@ -1030,13 +1055,23 @@ impl HimarkEngine {
         event_started_at: f64,
     ) -> bool {
         let now = std::time::Instant::now();
-        let state = self.scroll_states.entry(window).or_default();
-        let paused = state
-            .last
-            .is_none_or(|last| now.duration_since(last).as_millis() > 250);
-        state.last = Some(now);
-        if scroll_gesture_boundary(phase, paused) {
-            state.gesture.begin();
+        let boundary = {
+            let state = self.scroll_states.entry(window).or_default();
+            let paused = state
+                .last
+                .is_none_or(|last| now.duration_since(last).as_millis() > 250);
+            state.last = Some(now);
+            scroll_gesture_boundary(phase, paused)
+        };
+        if boundary {
+            // The old gesture's deltas route under ITS claim: flush
+            // before the owner resets.
+            self.flush_scroll(window);
+            self.scroll_states
+                .entry(window)
+                .or_default()
+                .gesture
+                .begin();
         }
         if delta_x == 0.0
             && delta_y == 0.0
@@ -1050,28 +1085,86 @@ impl HimarkEngine {
             // not claim the fresh gesture before its direction is known.
             return false;
         }
-        let size = self.window_size(window);
+        let point = Point::new(x, y);
+        if self
+            .scroll_states
+            .get(&window)
+            .and_then(|state| state.pending.as_ref())
+            .is_some_and(|pending| pending.point != point)
+        {
+            // The pointer moved mid-stream (a momentum drift over
+            // another pane): the standing deltas route from the OLD
+            // point, the new ones start fresh.
+            self.flush_scroll(window);
+        }
+        let state = self.scroll_states.entry(window).or_default();
+        match &mut state.pending {
+            Some(pending) => {
+                pending.delta_x += delta_x;
+                pending.delta_y += delta_y;
+            }
+            None => {
+                state.pending = Some(PendingScroll {
+                    point,
+                    delta_x,
+                    delta_y,
+                    event_started_at,
+                })
+            }
+        }
+        true
+    }
+
+    /// Dispatch the window's accumulated wheel deltas: the per-tick
+    /// application of a scroll. Also the ordering flush before any
+    /// other input, so a click or keystroke lands on scrolled
+    /// content, and before a gesture boundary or a moved point, so
+    /// claims resolve exactly as they would have per event.
+    pub(crate) fn flush_scroll(&mut self, window: u64) -> bool {
+        let Some(pending) = self
+            .scroll_states
+            .get_mut(&window)
+            .and_then(|state| state.pending.take())
+        else {
+            return false;
+        };
+        let Some(size) = self.app.window_viewport(wid(window)) else {
+            // The window is gone; its deltas die with it.
+            return false;
+        };
         self.app.dispatch_timed(
             wid(window),
             Event::Scroll {
-                point: Point::new(x, y),
-                delta_x,
-                delta_y,
+                point: pending.point,
+                delta_x: pending.delta_x,
+                delta_y: pending.delta_y,
                 gesture: &self.scroll_states[&window].gesture,
             },
             size,
-            event_started_at,
+            pending.event_started_at,
         )
     }
 
     pub fn animation_tick(&mut self, now_ms: f64) -> bool {
+        // The per-tick scroll application: every window's coalesced
+        // deltas land in ONE batch each, right before the clock.
+        let pending: Vec<u64> = self
+            .scroll_states
+            .iter()
+            .filter(|(_, state)| state.pending.is_some())
+            .map(|(window, _)| *window)
+            .collect();
+        let mut flushed = false;
+        for window in pending {
+            flushed |= self.flush_scroll(window);
+        }
         let windows: Vec<_> = self
             .app
             .window_ids()
             .into_iter()
             .filter_map(|id| self.app.window_viewport(id).map(|size| (id, size)))
             .collect();
-        let mut animating = false;
+        let mut animating = flushed;
         for (window, size) in windows {
             animating |= self.app.dispatch(
                 window,
