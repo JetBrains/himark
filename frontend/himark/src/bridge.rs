@@ -119,6 +119,19 @@ pub(crate) trait BridgeView {
         constraints: Constraints,
     ) -> ThunkBox<'a, AppCommand>;
 
+    /// The view's semantic focus chain — a STATE walk, no tree
+    /// (docs/ui/UI.md): who holds the keyboard inside this
+    /// mounted view, and the handlers a keystroke runs. `None` is
+    /// a view with no focusable state.
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let _ = (store, ui);
+        None
+    }
+
     /// Route one command to the retained view (`AppCommand::
     /// ToView`). The default is the store-routed view's answer:
     /// nothing should address it here (`WorkbenchView` routes over
@@ -146,6 +159,11 @@ pub struct ViewBridge {
 impl ViewBridge {
     pub(crate) fn new(view: Rc<dyn BridgeView>) -> ViewBridge {
         ViewBridge { view }
+    }
+
+    /// The retained view, shared — the focus walk's read door.
+    pub(crate) fn view(&self) -> &dyn BridgeView {
+        self.view.as_ref()
     }
 
     /// The retained view, mutably — available only while NOTHING

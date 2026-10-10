@@ -486,6 +486,25 @@ impl Himark {
         true
     }
 
+    /// One empty batch, for a shell with no first paint to
+    /// trigger it: the batch-end lanes run — hosts connect, the
+    /// catalog lists — and the effect road takes over from there.
+    pub fn sync(&mut self) -> bool {
+        struct Nudge;
+        impl imba::command::DynamicOnceCommand for Nudge {
+            fn perform(
+                self: Box<Self>,
+                _store: &mut Store,
+                _ui: &UiCtx,
+                _fx: &mut imba::command::Fx<'_>,
+            ) {
+            }
+        }
+        self.perform_batch(vec![crate::perform::AppCommand::Verb(
+            imba::command::Verb::once(Nudge),
+        )])
+    }
+
     /// The catalog epoch: moved means re-snapshot. Today it rides
     /// the store's frame revision — an over-approximation (any
     /// batch bumps it, catalog or not); snapshots are cheap, so a

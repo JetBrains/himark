@@ -232,7 +232,7 @@ impl Himark {
     }
 
     /// The windows catalog, read in place — a boot resident.
-    fn windows(&self) -> &::workbench::window::Windows {
+    pub(crate) fn windows(&self) -> &::workbench::window::Windows {
         self.store
             .get::<::workbench::window::Windows>()
             .expect("the windows catalog is a boot resident")
@@ -480,8 +480,16 @@ impl Himark {
             // keystroke.
             Event::KeyDown { .. } | Event::TextInput { .. } => {
                 let ui = self.ui.clone();
+                let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
                 let result = {
-                    let chain = crate::focus::window_focus_data(&store, ui.as_ref(), window);
+                    // The chain comes from the BRIDGE's view: the
+                    // workbench walks its window, a mounted view
+                    // walks itself.
+                    let chain = self
+                        .bridges
+                        .get(&id)
+                        .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                        .or_else(|| crate::focus::window_focus_data(&store, ui.as_ref(), window));
                     match (&event, chain) {
                         (Event::KeyDown { key, mods }, Some(mut data)) => data.key(*key, *mods),
                         (Event::TextInput { text }, Some(mut data)) => data.text(text),
@@ -503,7 +511,9 @@ impl Himark {
                     }
                 }
                 let fallback = match (key_down, &result) {
-                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
+                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_))
+                        if self.windows().entity(window).is_some() =>
+                    {
                         crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|id| {
                             crate::focus::window_focus_data(&store, ui.as_ref(), window)
                                 .map(|data| data.commands)
@@ -925,6 +935,14 @@ impl crate::bridge::BridgeView for WorkbenchView {
             ::editor::env::FrameFocus::set(&mut store, client);
         }
         store
+    }
+
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        crate::focus::window_focus_data(store, ui, self.window)
     }
 
     fn layout<'a>(

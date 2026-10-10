@@ -5,11 +5,12 @@ import SwiftUI
 import Metal
 import UIKit
 
-/// The iOS app, rebuilt on the library architecture: SwiftUI owns
-/// the wireframe, the engine owns the content, and the two meet at
-/// bridges (docs/himark-core.md). v0 mounts the workbench bridge
-/// whole — the degenerate case — and the native chrome grows
-/// screens as the session surface lands (docs/ui/himark-ffi.md).
+/// The iOS app on the library architecture (docs/himark-core.md):
+/// SwiftUI owns the wireframe — tabs, navigation, the glass — and
+/// the engine owns the content, met at session-scoped bridges.
+/// There is NO workbench and no window here: the engine runs
+/// windowless, sessions come off the catalog, and each tab mints
+/// its view by place.
 @main
 struct HimarkApp: App {
     @StateObject private var host = AppHost()
@@ -22,27 +23,30 @@ struct HimarkApp: App {
 }
 
 /// The ONE engine and its loop wiring, app-wide: wake drains on
-/// main, effect wake runs the worker — the handed-the-world
-/// contract (docs/editor/embedding-api.md), owned here and nowhere
-/// in any view.
-final class AppHost: NSObject, ObservableObject, UIDocumentPickerDelegate {
+/// main, effect wake runs the worker; the drain also watches the
+/// catalog epoch and publishes the session list the chrome reads.
+final class AppHost: NSObject, ObservableObject {
     let engine = HimarkEngine()
     let device = MTLCreateSystemDefaultDevice()!
 
-    let windowId: HimarkWindow
-    let bridgeId: HimarkBridge
+    struct Selected: Equatable {
+        let host: UInt64
+        let uri: String
+        var title: String
+    }
 
-    private let executor = DispatchQueue(label: "dev.himark.executor", qos: .userInteractive)
+    @Published var sessions: [HimarkEngine.CatalogSession] = []
+    @Published var current: Selected?
+
+    private var epoch: UInt64 = 0
     private var redraws: [ObjectIdentifier: () -> Void] = [:]
     private var hostInstalled = false
+    private var kicked = false
 
-    weak var workbenchView: HimarkBridgeView?
+    private let executor = DispatchQueue(label: "dev.himark.executor", qos: .userInteractive)
 
     override init() {
-        windowId = engine.addWindow()
-        bridgeId = engine.windowBridge(window: windowId)
         super.init()
-
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         engine.setWake(context: ctx) { ctx in
             let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
@@ -56,44 +60,69 @@ final class AppHost: NSObject, ObservableObject, UIDocumentPickerDelegate {
         executor.async { engine.runPending() }
     }
 
+    /// Boot: install the platform services and run the first batch
+    /// so the resident lanes connect and the catalog fills.
+    func kickoff() {
+        installHostIfNeeded()
+        guard !kicked else { return }
+        kicked = true
+        engine.sync()
+        syncCatalog()
+    }
+
     private func drain() {
-        guard engine.drain() else { return }
-        for redraw in redraws.values { redraw() }
+        if engine.drain() {
+            for redraw in redraws.values { redraw() }
+        }
+        syncCatalog()
+    }
+
+    private func syncCatalog() {
+        let now = engine.sessionsEpoch()
+        guard now != epoch else { return }
+        epoch = now
+        let rows = engine.sessions().sorted { $0.modified > $1.modified }
+        sessions = rows
+        if current == nil, let newest = rows.first {
+            select(newest)
+        } else if let selected = current,
+                  let row = rows.first(where: { $0.host == selected.host && $0.uri == selected.uri }),
+                  row.title != selected.title {
+            current?.title = row.title
+        }
+    }
+
+    func select(_ row: HimarkEngine.CatalogSession) {
+        guard engine.enterSession(host: row.host, uri: row.uri) else { return }
+        current = Selected(host: row.host, uri: row.uri, title: row.title)
+    }
+
+    func newSession() {
+        engine.newSession()
+    }
+
+    func mint(_ kind: HimarkEngine.SessionViewKind) -> HimarkBridge {
+        guard let selected = current else { return HimarkBridge(raw: 0) }
+        return engine.mint(kind, host: selected.host, uri: selected.uri)
     }
 
     func register(_ view: HimarkBridgeView) {
         redraws[ObjectIdentifier(view)] = { [weak view] in view?.request() }
-        if view.bridgeId.raw == bridgeId.raw { workbenchView = view }
     }
 
     func unregister(_ view: HimarkBridgeView) {
         redraws.removeValue(forKey: ObjectIdentifier(view))
     }
 
-    /// The platform services table, installed once a presenter
-    /// exists (file pickers need a view controller to hang off).
-    func installHostIfNeeded() {
+    func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func installHostIfNeeded() {
         guard !hostInstalled, let presenter = Self.rootViewController() else { return }
         hostInstalled = true
         HostBridge.install(engine: engine, presenter: presenter)
-    }
-
-    func perform(_ id: String) {
-        workbenchView?.performCommand(id)
-    }
-
-    func saveDocument() {
-        guard let text = workbenchView?.documentText(),
-              let presenter = Self.rootViewController() else { return }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("document.md")
-        do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            return
-        }
-        let picker = UIDocumentPickerViewController(forExporting: [url])
-        picker.delegate = self
-        presenter.present(picker, animated: true)
     }
 
     private static func rootViewController() -> UIViewController? {
@@ -103,18 +132,4 @@ final class AppHost: NSObject, ObservableObject, UIDocumentPickerDelegate {
             .first { $0.isKeyWindow }?
             .rootViewController
     }
-}
-
-/// The workbench bridge as a SwiftUI citizen.
-struct WorkbenchBridge: UIViewRepresentable {
-    let host: AppHost
-
-    func makeUIView(context: Context) -> HimarkBridgeView {
-        let view = HimarkBridgeView(frame: .zero, engine: host.engine,
-                                    bridge: host.bridgeId, device: host.device)
-        host.register(view)
-        return view
-    }
-
-    func updateUIView(_ view: HimarkBridgeView, context: Context) {}
 }

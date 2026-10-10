@@ -32,15 +32,39 @@ impl Himark {
         // Two asks, one source of truth: the SEMANTIC walk names the
         // focused client, and the layout fold answers by RECOGNIZING
         // that key — it never re-decides focus. The fold runs over
-        // the window's standing frame; it fires only while composing.
-        let size = self.window_viewport(window)?;
+        // the bridge's standing frame; it fires only while composing.
         let ui = self.ui.clone();
         let mut f = Some(f);
         let mut answer = None;
-        let performed = {
+        let performed = if self.windows().entity(window).is_some() {
+            // The window road keeps its exactness: a fresh frame
+            // at the live viewport, the window's own walk.
+            let size = self.window_viewport(window)?;
             let frame = self.ensure_frame(window, size);
             let target = {
                 let mut data = window_focus_data(frame.store(), ui.as_ref(), window)?;
+                data.seat.take()?
+            };
+            frame.layout_data(target).ime.take().map(|mut client| {
+                if std::env::var("HIMARK_TRACE_IME").is_ok() {
+                    eprintln!("[ime] client origin = {:?}", client.origin);
+                }
+                (client.ask)(client.origin, client.clip, &mut |client| {
+                    if let Some(f) = f.take() {
+                        answer = Some(f(client));
+                    }
+                })
+            })
+        } else {
+            // A mounted view folds over the STANDING frame the
+            // host last derived — there is no engine-held viewport
+            // to rebuild from — and walks ITSELF for the seat.
+            let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
+            let slot = self.bridges.get_mut(&id)?;
+            let crate::himark::Mounted { bridge, frame, .. } = slot;
+            let frame = frame.as_mut()?;
+            let target = {
+                let mut data = bridge.view().focus(frame.store(), ui.as_ref())?;
                 data.seat.take()?
             };
             frame.layout_data(target).ime.take().map(|mut client| {
@@ -68,10 +92,15 @@ impl Himark {
     ) -> Option<R> {
         let store = self.window_store(window);
         let ui = self.ui.clone();
+        let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
         let mut f = Some(f);
         let mut answer = None;
         let performed = {
-            let mut data = window_focus_data(&store, ui.as_ref(), window)?;
+            let mut data = self
+                .bridges
+                .get(&id)
+                .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                .or_else(|| window_focus_data(&store, ui.as_ref(), window))?;
             data.clipboard.as_mut().map(|client| {
                 client(&mut |client| {
                     if let Some(f) = f.take() {

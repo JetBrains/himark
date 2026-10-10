@@ -36,6 +36,19 @@ impl BridgeView for PanelMount {
         store.clone()
     }
 
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let id = self.id;
+        Some(
+            self.panel
+                .focus_data_dyn(store, ui)
+                .map(move |command| AppCommand::ToView(id, command)),
+        )
+    }
+
     fn layout<'a>(
         &'a self,
         arena: &'a Arena,
@@ -87,6 +100,18 @@ where
 {
     fn frame_store(&self, store: &Store, _ui: &UiCtx) -> Store {
         store.clone()
+    }
+
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let id = self.id;
+        Some(
+            imba::dyn_view::DynView::focus_data_dyn(&self.view, store, ui)
+                .map(move |command| AppCommand::ToView(id, command)),
+        )
     }
 
     fn layout<'a>(

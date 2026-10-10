@@ -2,75 +2,173 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SwiftUI
+import UIKit
 
-/// The native wireframe, v0: the workbench bridge full-bleed with
-/// a native bottom bar. The session-centric screens of the design
-/// (picker + Chat/Changes/Files tabs, one bridge each) replace
-/// this as the session surface lands — the bar below is already
-/// the pattern: SwiftUI chrome speaking commands, imba rendering
-/// content.
+/// The native wireframe (design 2026-10-10): a session-centric
+/// app — the picker up top, three tabs, native navigation and
+/// glass — with every piece of CONTENT rendered by himark through
+/// a session-scoped bridge. The composer stays the square imba
+/// one inside the chat bridge.
 struct RootView: View {
     @ObservedObject var host: AppHost
 
     var body: some View {
-        WorkbenchBridge(host: host)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                bar
-            }
-            .onAppear { host.installHostIfNeeded() }
-            .preferredColorScheme(.dark)
+        TabView {
+            NavigationStack { ChatScreen(host: host) }
+                .tabItem { Label("Chat", systemImage: "bubble.left") }
+            NavigationStack { ChangesScreen(host: host) }
+                .tabItem { Label("Changes", systemImage: "arrow.triangle.branch") }
+            NavigationStack { FilesScreen(host: host) }
+                .tabItem { Label("Files", systemImage: "folder") }
+        }
+        .onAppear { host.kickoff() }
+        .preferredColorScheme(.dark)
     }
+}
 
-    private var bar: some View {
-        HStack {
-            Menu {
-                Button { host.perform("workbench.new-document") } label: {
-                    Label("New", systemImage: "doc")
+struct ChatScreen: View {
+    @ObservedObject var host: AppHost
+
+    var body: some View {
+        MintedBridge(host: host, kind: .chat)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    SessionPicker(host: host)
                 }
-                Button { host.perform("file.open") } label: {
-                    Label("Open…", systemImage: "folder")
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { host.newSession() } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
                 }
-                Button { host.saveDocument() } label: {
-                    Label("Save…", systemImage: "square.and.arrow.down")
-                }
-                Button { host.perform("agent.toggle-agents") } label: {
-                    Label("Sessions", systemImage: "person.2")
-                }
-                Divider()
-                Button { host.perform("peeker.toggle"); host.workbenchView?.syncFocus() } label: {
-                    Label("Peeker", systemImage: "filemenu.and.selection")
-                }
-                Button { host.perform("files.tree") } label: {
-                    Label("Workspace Tree", systemImage: "sidebar.left")
-                }
-                Button { host.perform("workbench.split-pane") } label: {
-                    Label("Split Pane", systemImage: "rectangle.split.2x1")
-                }
-                Button { host.perform("workbench.close-pane") } label: {
-                    Label("Close Pane", systemImage: "xmark.rectangle")
-                }
-            } label: {
-                Image(systemName: "line.3.horizontal")
-                    .frame(width: 44, height: 44)
             }
+    }
+}
 
-            Spacer()
+struct ChangesScreen: View {
+    @ObservedObject var host: AppHost
 
-            Button {
-                host.perform("search.open")
-                host.workbenchView?.syncFocus()
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .frame(width: 44, height: 44)
+    var body: some View {
+        MintedBridge(host: host, kind: .changes)
+            .navigationTitle("Changes")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct FilesScreen: View {
+    @ObservedObject var host: AppHost
+
+    var body: some View {
+        MintedBridge(host: host, kind: .files)
+            .navigationTitle("Files")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The session picker — the nav title with a chevron, a menu of
+/// the catalog underneath.
+struct SessionPicker: View {
+    @ObservedObject var host: AppHost
+
+    var body: some View {
+        Menu {
+            ForEach(host.sessions, id: \.uri) { row in
+                Button {
+                    host.select(row)
+                } label: {
+                    if row.title.isEmpty {
+                        Text("Untitled")
+                    } else {
+                        Text(row.title)
+                    }
+                }
             }
-
-            Button { host.workbenchView?.dismissKeyboard() } label: {
-                Image(systemName: "keyboard.chevron.compact.down")
-                    .frame(width: 44, height: 44)
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 8)
-        .background(.bar)
+    }
+
+    private var title: String {
+        guard let current = host.current, !current.title.isEmpty else {
+            return "New Session"
+        }
+        return current.title
+    }
+}
+
+/// One tab's content: the bridge a place mints for the current
+/// session, re-minted when the session switches and retried when
+/// the catalog catches up (a fresh session's chat exists only
+/// after its entry lands).
+struct MintedBridge: UIViewRepresentable {
+    @ObservedObject var host: AppHost
+    let kind: HimarkEngine.SessionViewKind
+
+    func makeUIView(context: Context) -> MintedBridgeHost {
+        MintedBridgeHost(host: host, kind: kind)
+    }
+
+    func updateUIView(_ view: MintedBridgeHost, context: Context) {
+        view.sync()
+    }
+
+    static func dismantleUIView(_ view: MintedBridgeHost, coordinator: ()) {
+        view.teardown()
+    }
+}
+
+/// The UIKit side of one tab: owns the minted bridge's lifecycle
+/// and the `HimarkBridgeView` painting it.
+final class MintedBridgeHost: UIView {
+    private let host: AppHost
+    private let kind: HimarkEngine.SessionViewKind
+
+    private var mounted: AppHost.Selected?
+    private var bridge = HimarkBridge(raw: 0)
+    private var child: HimarkBridgeView?
+
+    init(host: AppHost, kind: HimarkEngine.SessionViewKind) {
+        self.host = host
+        self.kind = kind
+        super.init(frame: .zero)
+        backgroundColor = .black
+        sync()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func sync() {
+        let desired = host.current
+        if mounted == desired, bridge.raw != 0 { return }
+        teardown()
+        mounted = desired
+        guard desired != nil else { return }
+        bridge = host.mint(kind)
+        guard bridge.raw != 0 else { return }
+        let view = HimarkBridgeView(
+            frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(view)
+        host.register(view)
+        child = view
+    }
+
+    func teardown() {
+        if let child {
+            host.unregister(child)
+            child.removeFromSuperview()
+        }
+        child = nil
+        if bridge.raw != 0 {
+            host.engine.unmount(bridge: bridge)
+            bridge = HimarkBridge(raw: 0)
+        }
     }
 }

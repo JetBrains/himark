@@ -40,6 +40,71 @@ final class HimarkEngine {
 
     func runPending() { himark_run_pending(engine) }
 
+    // ─── the session surface: query + control ───
+
+    struct CatalogSession: Equatable {
+        let host: UInt64
+        let uri: String
+        let title: String
+        let provider: String
+        let status: Int64
+        let modified: String
+    }
+
+    func sessionsEpoch() -> UInt64 { himark_sessions_epoch(engine) }
+
+    @discardableResult
+    func sync() -> Bool { himark_sync(engine) }
+
+    func sessions() -> [CatalogSession] {
+        let catalog = himark_sessions_copy(engine)
+        guard catalog.raw != 0 else { return [] }
+        defer { himark_catalog_release(engine, catalog) }
+        let count = himark_catalog_sessions(engine, catalog)
+        var rows: [CatalogSession] = []
+        rows.reserveCapacity(Int(count))
+        for index in 0..<count {
+            rows.append(CatalogSession(
+                host: himark_catalog_session_host(engine, catalog, index),
+                uri: sizedString { himark_catalog_session_uri(engine, catalog, index, $0, $1) } ?? "",
+                title: sizedString { himark_catalog_session_title(engine, catalog, index, $0, $1) } ?? "",
+                provider: sizedString { himark_catalog_session_provider(engine, catalog, index, $0, $1) } ?? "",
+                status: himark_catalog_session_status(engine, catalog, index),
+                modified: sizedString { himark_catalog_session_modified(engine, catalog, index, $0, $1) } ?? ""
+            ))
+        }
+        return rows
+    }
+
+    @discardableResult
+    func enterSession(host: UInt64, uri: String) -> Bool {
+        uri.withCString { himark_session_enter(engine, host, $0, UInt(strlen($0))) }
+    }
+
+    @discardableResult
+    func newSession(host: UInt64 = 0) -> Bool { himark_session_new(engine, host) }
+
+    // ─── places and the minting door ───
+
+    enum SessionViewKind {
+        case chat, changes, files
+    }
+
+    func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
+        let place: HimarkPlace = uri.withCString { cstr in
+            switch kind {
+            case .chat: himark_place_chat(engine, host, cstr, UInt(strlen(cstr)))
+            case .changes: himark_place_changes(engine, host, cstr, UInt(strlen(cstr)))
+            case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
+            }
+        }
+        guard place.raw != 0 else { return HimarkBridge(raw: 0) }
+        defer { himark_place_release(engine, place) }
+        return himark_bridge_mint(engine, place)
+    }
+
+    func unmount(bridge: HimarkBridge) { himark_bridge_unmount(engine, bridge) }
+
     // ─── the normalized bridge surface: handles, never pointers ───
     // One event is minted once (himark_event_*), may be dispatched
     // to any number of bridges, and is released explicitly.
