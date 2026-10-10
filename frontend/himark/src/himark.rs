@@ -67,7 +67,7 @@ pub trait Shell: Send + Sync {
         place: hikit::navigation::NavigationLocation,
         store: &mut Store,
         ui: &UiCtx,
-        fx: &mut crate::perform::AppFx<'_>,
+        fx: &mut imba::command::Fx<'_>,
     ) -> bool;
 }
 

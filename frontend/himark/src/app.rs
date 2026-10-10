@@ -809,63 +809,96 @@ impl crate::himark::Shell for WorkbenchFrontend {
         place: hikit::navigation::NavigationLocation,
         store: &mut Store,
         ui: &UiCtx,
-        fx: &mut AppFx<'_>,
+        fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         let window = ::workbench::window::WindowId::from_raw(origin.raw());
         if let Some(place) = place.place::<crate::places::DocumentPlace>() {
             let Some(state) = crate::workspace::session_state(store, window) else {
                 return false;
             };
-            fx.push(crate::workspace::open_by_location_effect(
-                window,
-                state.documents(),
-                place.location.clone(),
-                true,
-                place.focus,
-                place.target.clone(),
-            ));
+            // The landing is an AppCommand; the verb lane carries
+            // it home through the shell-payload road.
+            fx.push(
+                crate::workspace::open_by_location_effect(
+                    window,
+                    state.documents(),
+                    place.location.clone(),
+                    true,
+                    place.focus,
+                    place.target.clone(),
+                )
+                .map(|command| imba::command::Verb::shell(Box::new(command))),
+            );
             return true;
         }
         if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
             let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
                 return false;
             };
-            fx.scope(AppCommand::Verb, |fx| {
-                entity.show_document(
-                    store,
-                    ui,
-                    window,
-                    place.document,
-                    place.target.clone(),
-                    place.focus,
-                    fx,
-                )
-            });
+            entity.show_document(
+                store,
+                ui,
+                window,
+                place.document,
+                place.target.clone(),
+                place.focus,
+                fx,
+            );
             ::workbench::window::Windows::put(store, window, entity);
             if let Some(state) = crate::workspace::session_state(store, window) {
-                fx.scope(AppCommand::Verb, |fx| {
-                    documents::lanes::sync_document_watches(store, state.documents(), fx)
-                });
-                fx.scope(AppCommand::Verb, |fx| {
-                    documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
-                });
+                documents::lanes::sync_document_watches(store, state.documents(), fx);
+                documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx);
             }
             return true;
         }
         if let Some(place) = place.place::<crate::places::DiffPlace>() {
-            use crate::commands::WindowedCommand;
-            crate::hichanges::OpenDiffForPair {
-                old: place.old.clone(),
-                new: place.new.clone(),
-            }
-            .perform(store, ui, window, fx);
+            // A windowed command performs the pane work; it rides
+            // the follow-up lane so it runs with its own scope.
+            fx.follow_up(imba::command::Verb::shell(Box::new(crate::shell::windowed(
+                window,
+                std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
+                    old: place.old.clone(),
+                    new: place.new.clone(),
+                }),
+            ))));
             return true;
         }
         if let Some(place) = place.place::<crate::places::LocationsPlace>() {
-            crate::workspace::open_locations(store, ui, window, &place.0, fx);
+            fx.follow_up(imba::command::Verb::shell(Box::new(crate::shell::windowed(
+                window,
+                std::sync::Arc::new(OpenLocationsAsk {
+                    locations: place.0.clone(),
+                }),
+            ))));
             return true;
         }
         false
+    }
+}
+
+/// The locations batch as a windowed command — the follow-up
+/// vehicle `WorkbenchFrontend` rides from the windowless lane.
+struct OpenLocationsAsk {
+    locations: Vec<editor::location::ResourceLocation>,
+}
+
+impl crate::commands::WindowedCommand for OpenLocationsAsk {
+    fn id(&self) -> &'static str {
+        "workspace.open-locations"
+    }
+
+    fn name(&self) -> String {
+        "Open Locations".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut AppFx<'_>,
+    ) {
+        crate::workspace::open_locations(store, ui, window, &self.locations, fx);
     }
 }
 

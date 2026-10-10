@@ -75,6 +75,12 @@ pub struct HimarkCatalog {
     pub raw: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkPlace {
+    pub raw: u64,
+}
+
 /// A dense handle table: ids start at 1 and never recycle, so a
 /// released handle stays dead forever instead of aliasing a
 /// newborn.
@@ -150,6 +156,7 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 #[derive(Default)]
 pub(crate) struct Stages {
     catalogs: Handles<himark::himark::Catalog>,
+    places: Handles<hikit::navigation::NavigationLocation>,
 }
 
 // ─── event factories ───
@@ -767,4 +774,108 @@ pub unsafe extern "C" fn himark_session_new(engine: *mut HimarkEngine, host: u64
         raw => Some(ahp_wire::client::HostId::from_raw(raw)),
     };
     engine.app.create_session(host)
+}
+
+// ─── places and the minting door (docs/ui/himark-ffi.md) ───
+
+unsafe fn mint_session_place(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+    place: impl Fn(ahp_wire::SessionId) -> hikit::navigation::NavigationLocation,
+) -> HimarkPlace {
+    let Some(engine) = engine.as_mut() else {
+        return HimarkPlace { raw: 0 };
+    };
+    let Some(uri) = str_from(uri, len) else {
+        return HimarkPlace { raw: 0 };
+    };
+    let session = ahp_wire::SessionId {
+        host: ahp_wire::client::HostId::from_raw(host),
+        session: ahp_wire::client::SessionUri::new(uri.to_owned()),
+    };
+    HimarkPlace {
+        raw: engine.stages.places.mint(place(session)),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_chat(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::ChatPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_changes(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::ChangesPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_files(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: HimarkPlace) {
+    let Some(engine) = engine.as_mut() else {
+        return;
+    };
+    if engine.stages.places.take(place.raw).is_none() {
+        refuse("place", place.raw);
+    }
+}
+
+/// Mint the view a place names, mounted as a bridge. The place
+/// handle stays usable (mint again, or release when done); 0
+/// refuses a place no view answers — typically a session the
+/// catalog cannot serve yet, worth retrying after the epoch moves.
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_mint(
+    engine: *mut HimarkEngine,
+    place: HimarkPlace,
+) -> HimarkBridge {
+    let Some(engine) = engine.as_mut() else {
+        return HimarkBridge { raw: 0 };
+    };
+    let Some(place) = engine.stages.places.get(place.raw).cloned() else {
+        refuse("place", place.raw);
+        return HimarkBridge { raw: 0 };
+    };
+    match himark::mounts::mount_place(&mut engine.app, &place) {
+        Some(id) => HimarkBridge { raw: id.raw() },
+        None => HimarkBridge { raw: 0 },
+    }
+}
+
+/// Unmount a minted bridge: the slot, its frame and every stage a
+/// host still holds for it go together.
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_unmount(engine: *mut HimarkEngine, bridge: HimarkBridge) {
+    let Some(engine) = engine.as_mut() else {
+        return;
+    };
+    if !engine.app.unmount(ViewBridgeId::from_raw(bridge.raw)) {
+        refuse("bridge", bridge.raw);
+    }
 }

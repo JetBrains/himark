@@ -262,11 +262,25 @@ fn navigate(
     place: impl hikit::navigation::Place,
     fx: &mut AppFx<'_>,
 ) {
+    let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
+    fx.scope(AppCommand::Verb, |fx| {
+        navigate_origin(store, ui, origin, place, fx)
+    });
+}
+
+/// The windowless door: any road holding the verb lane can hand
+/// the seated shell a place.
+pub(crate) fn navigate_origin(
+    store: &mut Store,
+    ui: &UiCtx,
+    origin: crate::bridge::ViewBridgeId,
+    place: impl hikit::navigation::Place,
+    fx: &mut imba::command::Fx<'_>,
+) {
     let Some(seat) = store.get::<crate::himark::ShellSeat>().cloned() else {
         eprintln!("[shell] no shell seated — navigation dropped");
         return;
     };
-    let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
     let place = hikit::navigation::NavigationLocation::new(place);
     if !seat.0.navigate(origin, place, store, ui, fx) {
         eprintln!("[shell] navigation declined by every shell — dropped");

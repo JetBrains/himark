@@ -45,3 +45,21 @@ impl Place for DiffPlace {}
 pub struct LocationsPlace(pub Vec<editor::location::ResourceLocation>);
 
 impl Place for LocationsPlace {}
+
+/// A session's CHAT — transcript and the square composer, whole.
+#[derive(Clone, PartialEq)]
+pub struct ChatPlace(pub ahp_wire::SessionId);
+
+impl Place for ChatPlace {}
+
+/// A session's CHANGES tree.
+#[derive(Clone, PartialEq)]
+pub struct ChangesPlace(pub ahp_wire::SessionId);
+
+impl Place for ChangesPlace {}
+
+/// A session's FILE tree.
+#[derive(Clone, PartialEq)]
+pub struct FilesPlace(pub ahp_wire::SessionId);
+
+impl Place for FilesPlace {}
