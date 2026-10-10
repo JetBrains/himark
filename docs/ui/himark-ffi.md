@@ -315,4 +315,8 @@ moves behind the whole-window surface, where it belongs).
   holds — too early, twice, after a session died. Ids into
   engine-owned tables make every such misuse a checked refusal at
   the door instead of UB in a table the host can't see. The cost
-  (one lookup per call) is noise against what any call does.
+  (one lookup per call) is noise against what any call does. The
+  ONE exception, by decision: the engine itself stays a pointer —
+  it is the object that OWNS the tables, its create/destroy
+  ownership is unambiguous, and there is no engine-owned place a
+  guard for it could live.

@@ -318,53 +318,48 @@ contract under a real foreign host.
    working. Gate: the suite + desktop parity by hand. This is
    where the cardinality becomes real: N windows, N bridges, one
    store.
-2. **Untangle the bridge from `Application`.** The bridge's
-   dependencies narrow to what the FFI contract names — store,
-   `UiCtx`, a perform/pump seam, an `Outcome` to react to — with
-   no reach into `Application`'s fields. Gate: a headless harness
-   mounts a bridge WITHOUT an `Application` window — the workbench
-   root, and a second non-workbench view (the changes list) —
-   and drives the whole loop: claim-as-move, measure,
-   draw-with-viewport, event → commands → perform → pump.
-3. **Extract `himark-core`, leave `Application` behind.** Now that
-   the seam is proven, the crate: the effects machinery
-   (`Handlers`, `EffectLauncher`, `BackgroundRunner`), the
-   inbox/wake edge from `frontend-host`'s `Shared`, and
-   `Core::drain` over `Verb` — window-free `Performer` arms,
-   follow-up ordering, the lanes registry, the `Outcome` tail.
-   `AppCommand::FileChanged` dissolves into an `At` at the
-   documents collection; `Register*` becomes boot-time store
-   writes. `Application` stays behind as the shell wrapper —
-   window arms, delegation, debris dying in place. Gate: the
-   suite, plus batch stall traces showing no regression — this
-   path is the hot one.
-4. **The Rust shells rebase.** winit desktop (and web behind it)
-   move off `Application`'s entry points onto `Core` + bridges
-   directly — mostly mechanical after step 1 did the internal
-   rewiring. Gate: desktop parity + suite; per-bridge frames earn
-   trust in Rust before any ABI exists.
-5. **The C ABI triage.** Classify every one of the ~49 `himark_*`
-   exports: core loop (create, wake, run_pending, drain) / host
-   services (`himark_set_host` and the picked/fetched family —
-   these keep their shape) / bridge contract (draw, events, IME,
-   clipboard, focus) / workbench-view options (toolbar height,
-   chrome clearance — they ride the workbench view, not the core)
-   / dead (demos). Then implement the new surface:
-   `himark_core_*`, `imba_event_*` factories, `view_bridge_*`,
-   per-bridge IME. Both surfaces coexist; `himark.h` regenerates.
-   The new surface's memory law: no object pointers cross the ABI
-   — every engine object is a HANDLE (a dense id into an
-   engine-owned table) with a dedicated release call; a stale,
-   foreign or double-released handle is a checked refusal, never
-   UB. Pointers appear only as borrowed payload within one call
-   (a canvas, UTF-8 in, snapshot strings out).
-6. **The mac port.** Swift grows `HimarkCore` + `HimarkBridge`
-   wrappers; each `NSWindow` hosts one workbench bridge in its own
-   metal layer; `NSTextInputClient` points at the focused bridge
-   (its only one); events are minted once through the factories;
-   pump after every drain. Gate: mac app parity, no legacy calls
-   left in Swift.
-7. **Burn the legacy surface.** The apple shell was the C ABI's
+2. **Mirror imba's pipeline into user space.** (LANDED 2026-10-10.)
+   The bridge is the staged pipeline, not an entry-point bundle:
+   `ViewBridge.layout(store, constraints) → BridgeLayout` (sized;
+   `size()` IS measure, a read), `realize(viewport) → Frame`
+   (consumed per viewport), `Frame.handle(event) → commands` —
+   paint is an event, exactly as inside imba. No caching in the
+   pipeline: the registry entry (`Mounted`) is plain data — the
+   bridge and the last derived frame with its tags — and each
+   CLIENT composes the stages visibly (the window client realizes
+   the full rect; a native scroller holds the layout and realizes
+   slices).
+3. **The normalized C ABI + the mac port, directly.** (Reordered
+   2026-10-10: the mac app is the better de-risk than any harness
+   — it IS the degenerate case, and it exercises IME, clipboard
+   and focus no harness would.) The C surface mirrors the
+   pipeline as STAGE HANDLES — `bridge_layout → layout`,
+   `layout_size`, `layout_realize(viewport) → frame` (consuming),
+   `frame_handle(event) → command handles` — with `draw` only
+   sugar minting `Event::Paint` around the per-call borrowed
+   canvas, commands host-held (`perform`/`pump`), handles never
+   pointers. On the Swift side: one generic `NSView` bridge
+   wrapper (metal layer, event factories, per-bridge
+   `NSTextInputClient`), the mac app's window content becoming
+   one workbench bridge in it. Gate: mac parity by hand.
+4. **Extract `himark-core`, leave `Application` behind** — after
+   parity, cut along the proven seam: effects machinery, the
+   inbox/wake edge, `perform_batch` with the lanes registry and
+   the `Outcome` tail. The winit and web shells rebase here too.
+   Step 3's ground rules, carried from the triage of the ~49
+   legacy `himark_*` exports: the core loop (create, wake,
+   run_pending, drain) and the host services (`himark_set_host`
+   and the picked/fetched family) keep their shape; draw/events/
+   IME/clipboard/focus normalize onto the bridge stages; toolbar
+   height and chrome clearance ride the workbench view, not the
+   core; the demos die. Memory law: no object pointers cross the
+   ABI — every engine object is a HANDLE (a dense id into an
+   engine-owned table) with a dedicated release call; stale,
+   foreign or double-released is a checked refusal, never UB.
+   Pointers appear only as borrowed payload within one call (a
+   canvas, UTF-8 in, snapshot strings out). Both surfaces coexist
+   during the port; `himark.h` regenerates.
+5. **Burn the legacy surface.** The apple shell was the C ABI's
    only consumer: the whole-window `himark_*` entries, the
    per-window draw path, and the engine-side IME plumbing they
    dragged along are deleted from `frontend-host`, not deprecated.

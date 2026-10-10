@@ -49,6 +49,28 @@ final class HimarkEngine {
         return reconciling
     }
 
+    // ─── the normalized bridge surface: handles, never pointers ───
+    // One event is minted once (himark_event_*), may be dispatched
+    // to any number of bridges, and is released explicitly.
+
+    func windowBridge(window: UInt64) -> UInt64 {
+        himark_window_bridge(engine, window)
+    }
+
+    @discardableResult
+    func bridgeEvent(bridge: UInt64, event: UInt64) -> HimarkPointed {
+        himark_bridge_event(engine, bridge, event)
+    }
+
+    @discardableResult
+    func renderBridge(bridge: UInt64, into surface: SkiaMetalSurface,
+                      pixelWidth w: Int32, pixelHeight h: Int32, scale: Float) -> Bool {
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return false }
+        let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
+        surface.end()
+        return reconciling
+    }
+
     @discardableResult func tick(nowMs: Double) -> Bool { himark_animation_tick(engine, nowMs) }
     @discardableResult func key(window: UInt64, _ code: UInt32, mods: UInt32 = 0) -> Bool {
         himark_key_down(engine, window, code, mods)

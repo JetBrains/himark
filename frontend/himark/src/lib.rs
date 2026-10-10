@@ -3,7 +3,7 @@
 
 pub mod app;
 pub mod app_ext;
-pub(crate) mod bridge;
+pub mod bridge;
 pub mod himark;
 pub mod perform;
 pub mod shell;

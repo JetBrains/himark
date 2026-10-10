@@ -1,15 +1,24 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! One mounted view (docs/himark-core.md, docs/ui/imba-ffi.md).
-//! The engine stores VIEW BRIDGES, not windows: a workbench window
-//! is just one kind of mounted view, adapted behind `BridgeView`,
-//! and its window id is that adapter's private business. A bridge
-//! retains two things — the view (the state carrier) and its
-//! realized frame — and nothing of the host's geometry: size
-//! arrives with every call, and the frame is a memo over
-//! (store revision × size), rebuilt from the retained view when
-//! either moves.
+//! The view bridge: imba's pipeline, mirrored into user space
+//! (docs/ui/UI.md, docs/ui/imba-ffi.md). The host drives the same
+//! curries the engine's own windows ride —
+//!
+//! ```text
+//! ViewBridge --layout(store, constraints)--> BridgeLayout   (sized)
+//! BridgeLayout --realize(viewport)--------> Frame           (materialized)
+//! Frame --handle(event)-------------------> commands
+//! ```
+//!
+//! — and each stage is a VALUE the host holds and re-derives when
+//! its own inputs move: the store changed → lay out again; the
+//! viewport moved → realize again; nothing here caches, keys or
+//! invalidates. Caching is a client's composition over the pure
+//! stages (`Mount` below is the engine's), never the pipeline's
+//! business.
+
+use std::rc::Rc;
 
 use imba::{
     arena::Arena,
@@ -17,11 +26,11 @@ use imba::{
     event::{Event, EventResult},
     store::Store,
     ui::UiCtx,
-    Thunk, Widget, WidgetBox,
+    Thunk, ThunkBox, Widget, WidgetBox,
 };
 use skia_safe::{Rect, Size};
 
-use crate::app::AppCommand;
+use crate::perform::AppCommand;
 
 /// The engine-side identity of one mounted view.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -59,67 +68,128 @@ pub(crate) trait BridgeView {
         store: &'a Store,
         ui: &'a UiCtx,
         constraints: Constraints,
-    ) -> imba::ThunkBox<'a, AppCommand>;
+    ) -> ThunkBox<'a, AppCommand>;
 }
 
-/// One bridge's REALIZED widget tree, kept between command batches.
-/// The tree is a pure function of (store revision, size): every
-/// event, hit-test and paint in between replays against this one
-/// realization instead of laying the view out again.
+/// One mounted view: the state carrier, retained. Everything else
+/// is a stage derived from it.
+pub struct ViewBridge {
+    view: Rc<dyn BridgeView>,
+}
+
+impl ViewBridge {
+    pub(crate) fn new(view: Rc<dyn BridgeView>) -> ViewBridge {
+        ViewBridge { view }
+    }
+
+    /// display → layout: cut the view's frame snapshot, read the
+    /// state, name the structure, size it. The returned stage is
+    /// self-contained — the caller hands the arena in (warm from a
+    /// recycled frame, or fresh) and gets it back at `recycle`.
+    pub(crate) fn layout(
+        &self,
+        store: &Store,
+        ui: &Rc<UiCtx>,
+        constraints: Constraints,
+        arena: Box<Arena>,
+    ) -> BridgeLayout {
+        let store = Box::new(self.view.frame_store(store, ui.as_ref()));
+        let ui = Rc::clone(ui);
+        let view = Rc::clone(&self.view);
+        // SAFETY: the erased-to-'static borrows below point into
+        // the box and Rc contents moved into the stage right after
+        // — heap addresses stable, owners live in the same struct,
+        // declared to drop AFTER the thunk. See `BridgeLayout`'s
+        // invariants.
+        let thunk = {
+            let arena_ref: &'static Arena = unsafe { &*(arena.as_ref() as *const Arena) };
+            let store_ref: &'static Store = unsafe { &*(store.as_ref() as *const Store) };
+            let ui_ref: &'static UiCtx = unsafe { &*(Rc::as_ptr(&ui)) };
+            let view_ref: &'static dyn BridgeView = unsafe { &*Rc::as_ptr(&view) };
+            view_ref.layout(arena_ref, store_ref, ui_ref, constraints)
+        };
+        BridgeLayout {
+            thunk,
+            arena,
+            store,
+            ui,
+            view,
+        }
+    }
+}
+
+/// The SIZED stage: display and layout have run, nothing is
+/// realized. `size` is the measure answer — the native scroller's
+/// question — and `realize` cuts the viewport's slice.
 ///
-/// SAFETY: `tree`'s `'static` is a lie, erased in `build`. What
-/// makes it sound:
-/// - the tree borrows only `arena`, `store` and `ui` below (boxes
-///   and an `Rc`, heap addresses stable, moved but never replaced
-///   while the tree lives) and the bridge's retained VIEW — boxed
-///   in `ViewBridge`, dropped after the frame (field order there),
-///   and never mutated under a live tree;
-/// - the tree dies first: fields drop in declaration order, and
-///   `recycle` repeats that order by hand;
+/// SAFETY: `thunk`'s `'static` is a lie, erased in
+/// `ViewBridge::layout`. What makes it sound:
+/// - the thunk borrows only `arena`, `store`, `ui` and `view`
+///   below — boxes and `Rc`s whose heap addresses are stable,
+///   moved but never replaced while the thunk lives;
+/// - the thunk dies first: fields drop in declaration order, and
+///   `realize` consumes in the same order;
 /// - the arena is never reset and the store never mutated under a
-///   live tree;
-/// - no `'static` view escapes: every accessor reborrows at the
+///   live thunk;
+/// - no `'static` borrow escapes: every accessor reborrows at the
 ///   caller's own lifetime.
-pub(crate) struct Frame {
-    tree: WidgetBox<'static, AppCommand>,
+pub struct BridgeLayout {
+    thunk: ThunkBox<'static, AppCommand>,
     arena: Box<Arena>,
     store: Box<Store>,
-    ui: std::rc::Rc<UiCtx>,
-    revision: u64,
-    size: Size,
+    ui: Rc<UiCtx>,
+    view: Rc<dyn BridgeView>,
 }
 
-impl Frame {
-    fn build(
-        view: &dyn BridgeView,
-        revision: u64,
-        size: Size,
-        store: Store,
-        ui: std::rc::Rc<UiCtx>,
-        arena: Box<Arena>,
-    ) -> Frame {
-        let store = Box::new(store);
+impl BridgeLayout {
+    /// The content size at the laid-out constraints — a READ on
+    /// this stage, nothing derived, nothing mutated.
+    pub fn size(&self) -> Size {
+        self.thunk.size()
+    }
+
+    /// layout → realize: materialize the viewport's slice. The
+    /// stage is consumed — a new viewport is a new realize off a
+    /// fresh layout, exactly as inside the engine.
+    pub fn realize(self, viewport: Rect) -> Frame {
+        let BridgeLayout {
+            thunk,
+            arena,
+            store,
+            ui,
+            view,
+        } = self;
+        // SAFETY: same owners, same invariants — the tree replaces
+        // the thunk as the one borrower and moves into `Frame`
+        // with the same fields in the same order.
         let tree = {
-            let thunk = view.layout(&arena, &store, ui.as_ref(), Constraints::tight(size));
-            Thunk::realize(thunk, &arena, Rect::from_size(size))
-        };
-        // SAFETY: the tree borrows the box and Rc contents moved
-        // into the frame right below, plus the bridge-owned view;
-        // see the type's invariants.
-        let tree = unsafe {
-            std::mem::transmute::<WidgetBox<'_, AppCommand>, WidgetBox<'static, AppCommand>>(tree)
+            let arena_ref: &'static Arena = unsafe { &*(arena.as_ref() as *const Arena) };
+            Thunk::realize(thunk, arena_ref, viewport)
         };
         Frame {
             tree,
             arena,
             store,
             ui,
-            revision,
-            size,
+            view,
         }
     }
+}
 
-    pub(crate) fn handle(&self, event: &Event<'_>, viewport: Rect) -> EventResult<AppCommand> {
+/// The REALIZED stage: one widget tree, routing events between
+/// store batches. See `BridgeLayout`'s invariants — they carry
+/// over whole.
+pub struct Frame {
+    tree: WidgetBox<'static, AppCommand>,
+    arena: Box<Arena>,
+    store: Box<Store>,
+    ui: Rc<UiCtx>,
+    #[allow(dead_code)] // the tree may borrow the view; kept alive here
+    view: Rc<dyn BridgeView>,
+}
+
+impl Frame {
+    pub fn handle(&self, event: &Event<'_>, viewport: Rect) -> EventResult<AppCommand> {
         self.tree.handle_event(&self.arena, event, viewport)
     }
 
@@ -136,72 +206,19 @@ impl Frame {
     }
 
     /// Tear down in the safe order and hand the arena back warm.
-    fn recycle(self) -> Box<Arena> {
+    pub fn recycle(self) -> Box<Arena> {
         let Frame {
             tree,
             mut arena,
             store,
             ui,
-            revision: _,
-            size: _,
+            view,
         } = self;
         drop(tree);
         drop(store);
         drop(ui);
+        drop(view);
         arena.reset();
         arena
-    }
-}
-
-/// One mounted view: the retained view and its retained frame.
-///
-/// Field order is load-bearing (see `Frame`'s invariants): the
-/// frame drops before the view its tree may borrow.
-pub(crate) struct ViewBridge {
-    frame: Option<Frame>,
-    view: Box<dyn BridgeView>,
-    spare_arena: Option<Box<Arena>>,
-}
-
-impl ViewBridge {
-    pub(crate) fn new(view: Box<dyn BridgeView>) -> ViewBridge {
-        ViewBridge {
-            frame: None,
-            view,
-            spare_arena: None,
-        }
-    }
-
-    /// The realized frame, current for (store revision × size) —
-    /// rebuilt from the retained view when either moved. The
-    /// caller hands the LIVE store; the view cuts its own frame
-    /// snapshot (`BridgeView::frame_store`).
-    pub(crate) fn frame(
-        &mut self,
-        store: &Store,
-        ui: &std::rc::Rc<UiCtx>,
-        revision: u64,
-        size: Size,
-    ) -> &mut Frame {
-        let fresh = self
-            .frame
-            .as_ref()
-            .is_some_and(|frame| frame.revision == revision && frame.size == size);
-        if !fresh {
-            if let Some(frame) = self.frame.take() {
-                self.spare_arena = Some(frame.recycle());
-            }
-            let arena = self.spare_arena.take().unwrap_or_default();
-            let snapshot = self.view.frame_store(store, ui.as_ref());
-            self.frame = Some(Frame::build(
-                self.view.as_ref(),
-                revision,
-                size,
-                snapshot,
-                ui.clone(),
-                arena,
-            ));
-        }
-        self.frame.as_mut().expect("the frame just built")
     }
 }

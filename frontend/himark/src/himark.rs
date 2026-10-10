@@ -13,8 +13,39 @@ use std::sync::Arc;
 
 use imba::{store::Store, ui::UiCtx};
 
-use crate::bridge::{ViewBridge, ViewBridgeId};
+use crate::bridge::ViewBridgeId;
 use crate::stats::Stats;
+
+/// One registry entry: the mounted view and, beside it, the last
+/// products its client derived through the pipeline — plain data,
+/// tagged with what they were derived FROM. Clients compose the
+/// stages themselves (`crate::app::Himark::ensure_frame` is the
+/// window client); nothing here decides when anything is stale.
+pub(crate) struct Mounted {
+    pub(crate) bridge: crate::bridge::ViewBridge,
+
+    /// The last realized widget tree, derived at `revision` ×
+    /// `size` — the standing frame events replay against between
+    /// store batches.
+    pub(crate) frame: Option<crate::bridge::Frame>,
+    pub(crate) revision: u64,
+    pub(crate) size: skia_safe::Size,
+
+    /// One warm arena from the last recycled frame.
+    pub(crate) spare_arena: Option<Box<imba::arena::Arena>>,
+}
+
+impl Mounted {
+    pub(crate) fn new(view: std::rc::Rc<dyn crate::bridge::BridgeView>) -> Mounted {
+        Mounted {
+            bridge: crate::bridge::ViewBridge::new(view),
+            frame: None,
+            revision: 0,
+            size: skia_safe::Size::new(-1.0, -1.0),
+            spare_arena: None,
+        }
+    }
+}
 
 pub struct Himark {
     /// THE store — one, global, always live. Hosts, Windows and
@@ -26,9 +57,9 @@ pub struct Himark {
 
     pub(crate) stats: Stats,
 
-    /// The mounted views, one bridge each — a workbench window is
-    /// just one kind of mounted view (`crate::app::WorkbenchView`).
-    pub(crate) bridges: std::collections::HashMap<ViewBridgeId, ViewBridge>,
+    /// The mounted views, one each — a workbench window is just
+    /// one kind of mounted view (`crate::app::WorkbenchView`).
+    pub(crate) bridges: std::collections::HashMap<ViewBridgeId, Mounted>,
 
     /// The store's frame revision, bumped by every `&mut store`
     /// door — a bridge's frame is a memo over (revision × size),
@@ -383,6 +414,34 @@ impl Himark {
             );
         }
         true
+    }
+
+    /// The pipeline's engine door for stage-holding hosts
+    /// (docs/ui/imba-ffi.md): lay a mounted view out at the given
+    /// size and hand the SIZED stage out whole. The slot's warm
+    /// arena rides along and comes home through `return_arena`.
+    /// `None` is an unmounted bridge — the caller's refusal.
+    pub fn layout_bridge(
+        &mut self,
+        id: ViewBridgeId,
+        size: skia_safe::Size,
+    ) -> Option<crate::bridge::BridgeLayout> {
+        let slot = self.bridges.get_mut(&id)?;
+        let arena = slot.spare_arena.take().unwrap_or_default();
+        Some(slot.bridge.layout(
+            &self.store,
+            &self.ui,
+            imba::constraints::Constraints::tight(size),
+            arena,
+        ))
+    }
+
+    /// A released frame's arena, back to its slot warm. A gone
+    /// slot just drops it — the race road, not an error.
+    pub fn return_arena(&mut self, id: ViewBridgeId, arena: Box<imba::arena::Arena>) {
+        if let Some(slot) = self.bridges.get_mut(&id) {
+            slot.spare_arena = Some(arena);
+        }
     }
 
     pub fn register_client(

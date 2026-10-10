@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use ahp_docsync as docsync;
 use ahp_locations::find;
 use ahp_session::fsroute;
-pub mod host;
+pub(crate) mod bridges;
+mod host;
 use himark::app::AppFonts;
 use host::{HimarkHostCallbacks, HimarkLocation};
 mod lsproute;
@@ -36,7 +37,7 @@ use skia_safe::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
-fn wid(window: u64) -> workbench::window::WindowId {
+pub(crate) fn wid(window: u64) -> workbench::window::WindowId {
     workbench::window::WindowId::from_raw(window)
 }
 
@@ -64,7 +65,10 @@ impl AgentHostFilesystemCapabilities {
 }
 
 pub struct HimarkEngine {
-    app: Himark,
+    pub(crate) app: Himark,
+
+    /// The normalized surface's stage tables (`bridges`).
+    pub(crate) stages: bridges::Stages,
 
     /// Per-window: a touch beginning in one window must not break the
     /// gesture — momentum included — still flowing in another.
@@ -301,7 +305,7 @@ fn scroll_gesture_boundary(phase: u32, paused: bool) -> bool {
     }
 }
 
-fn map_key(code: u32) -> Option<Key> {
+pub(crate) fn map_key(code: u32) -> Option<Key> {
     Some(match code {
         HIMARK_KEY_BACKSPACE => Key::Backspace,
         HIMARK_KEY_ENTER => Key::Enter,
@@ -324,7 +328,7 @@ fn map_key(code: u32) -> Option<Key> {
     })
 }
 
-fn map_mods(mods: u32) -> imba::event::Modifiers {
+pub(crate) fn map_mods(mods: u32) -> imba::event::Modifiers {
     imba::event::Modifiers {
         shift: mods & HIMARK_MOD_SHIFT != 0,
         control: mods & HIMARK_MOD_CONTROL != 0,
@@ -686,6 +690,7 @@ impl HimarkEngine {
             drain_chunk: Self::DRAIN_CHUNK,
             drain_budget: Self::DRAIN_BUDGET,
             clicks: ClickCounter::default(),
+            stages: Default::default(),
             pending_cut: None,
             host: None,
             agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
@@ -1819,7 +1824,7 @@ pub struct HimarkPointed {
     pub shape: u32,
 }
 
-fn pointed(pointed: Option<Pointed>) -> HimarkPointed {
+pub(crate) fn pointed(pointed: Option<Pointed>) -> HimarkPointed {
     let pointed = pointed.unwrap_or(Pointed {
         changed: false,
         shape: PointerShape::Default,
@@ -2274,7 +2279,7 @@ pub unsafe extern "C" fn himark_substring(
         .map_or(0, |engine| engine.substring_raw(window, range, out, cap))
 }
 
-unsafe fn str_from<'a>(utf8: *const c_char, len: usize) -> Option<&'a str> {
+pub(crate) unsafe fn str_from<'a>(utf8: *const c_char, len: usize) -> Option<&'a str> {
     if utf8.is_null() {
         return (len == 0).then_some("");
     }

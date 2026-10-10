@@ -259,12 +259,29 @@ impl Himark {
         size: Size,
     ) -> &mut crate::bridge::Frame {
         let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
-        self.bridges
+        let revision = self.revision;
+        let slot = self
+            .bridges
             .entry(id)
-            .or_insert_with(|| {
-                crate::bridge::ViewBridge::new(Box::new(WorkbenchView { window }))
-            })
-            .frame(&self.store, &self.ui, self.revision, size)
+            .or_insert_with(|| crate::himark::Mounted::new(std::rc::Rc::new(WorkbenchView { window })));
+        let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
+        if !fresh {
+            if let Some(frame) = slot.frame.take() {
+                slot.spare_arena = Some(frame.recycle());
+            }
+            let arena = slot.spare_arena.take().unwrap_or_default();
+            // The pipeline, staged in the open: lay the window out
+            // at its size, realize the WHOLE rect — a window fills
+            // its viewport; a native scroller holds the layout and
+            // realizes slices instead.
+            let layout = slot
+                .bridge
+                .layout(&self.store, &self.ui, Constraints::tight(size), arena);
+            slot.frame = Some(layout.realize(Rect::from_size(size)));
+            slot.revision = revision;
+            slot.size = size;
+        }
+        slot.frame.as_mut().expect("the frame just derived")
     }
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {

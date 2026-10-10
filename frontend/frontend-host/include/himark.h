@@ -285,4 +285,111 @@ uintptr_t himark_substring(HimarkEngine *engine,
                            char *out,
                            uintptr_t cap);
 
+uint64_t himark_event_mouse_down(float x, float y, uint32_t mods, uint32_t count);
+
+uint64_t himark_event_secondary_down(float x, float y, uint32_t mods);
+
+uint64_t himark_event_mouse_drag(float x, float y, uint32_t mods);
+
+uint64_t himark_event_mouse_up(float x, float y);
+
+uint64_t himark_event_mouse_move(float x, float y, uint32_t mods);
+
+/**
+ * The cursor-exit miss (`Event::window_left`): hover lets go.
+ */
+uint64_t himark_event_mouse_left(void);
+
+uint64_t himark_event_modifiers_changed(float x, float y, uint32_t mods);
+
+uint64_t himark_event_scroll(float x, float y, float delta_x, float delta_y, uint32_t phase);
+
+uint64_t himark_event_key_down(uint32_t key, uint32_t mods);
+
+uint64_t himark_event_text(const char *utf8, uintptr_t len);
+
+void himark_event_release(uint64_t event);
+
+/**
+ * The window AS a bridge — the degenerate case named. Today the
+ * identity is direct; the handle is the only currency the
+ * normalized entries below speak.
+ */
+uint64_t himark_window_bridge(HimarkEngine *engine, uint64_t window);
+
+/**
+ * One event into one window bridge, through the engine's own
+ * dispatch. The event stays alive for further bridges; release
+ * is the host's explicit call.
+ */
+HimarkPointed himark_bridge_event(HimarkEngine *engine, uint64_t bridge, uint64_t event);
+
+/**
+ * Paint the window bridge into the host's canvas — the canvas is
+ * borrowed payload for this one call, the only pointer shape the
+ * normalized surface allows.
+ */
+bool himark_bridge_draw(HimarkEngine *engine,
+                        uint64_t bridge,
+                        void *canvas,
+                        float width,
+                        float height,
+                        float scale);
+
+/**
+ * display → layout: the SIZED stage, as a handle. 0 refuses an
+ * unmounted bridge.
+ */
+uint64_t himark_bridge_layout(HimarkEngine *engine, uint64_t bridge, float width, float height);
+
+/**
+ * The measure read on the sized stage — the native scroller's
+ * content-size question.
+ */
+bool himark_layout_size(HimarkEngine *engine, uint64_t layout, float *out_width, float *out_height);
+
+/**
+ * layout → realize: materialize the viewport's slice. CONSUMES
+ * the layout handle — a new viewport is a new realize off a
+ * fresh layout, exactly as inside the engine.
+ */
+uint64_t himark_layout_realize(HimarkEngine *engine,
+                               uint64_t layout,
+                               float x,
+                               float y,
+                               float width,
+                               float height);
+
+void himark_layout_release(HimarkEngine *engine, uint64_t layout);
+
+/**
+ * One event into a realized stage frame, viewport in content
+ * coordinates handed per call. The commands the view answers
+ * with run through the engine's one batch loop.
+ */
+bool himark_frame_event(HimarkEngine *engine,
+                        uint64_t frame,
+                        uint64_t event,
+                        float x,
+                        float y,
+                        float width,
+                        float height);
+
+/**
+ * Paint the realized slice into the host's canvas.
+ */
+bool himark_frame_paint(HimarkEngine *engine,
+                        uint64_t frame,
+                        void *canvas,
+                        float x,
+                        float y,
+                        float width,
+                        float height);
+
+/**
+ * Release the frame; its arena goes home warm to the bridge it
+ * was derived from.
+ */
+void himark_frame_release(HimarkEngine *engine, uint64_t frame);
+
 #endif  /* HIMARK_H */
