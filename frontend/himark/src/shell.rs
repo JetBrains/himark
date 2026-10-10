@@ -251,6 +251,28 @@ pub fn viewport_resized(window: WindowId, size: Size) -> AppCommand {
     shell(ShellCommand::ViewportResized(window, size))
 }
 
+/// Hand a place to the seated shell (`crate::himark::Shell`) —
+/// the knife between app logic and placement: everything above
+/// this call is logic that stays in Rust; what the place becomes
+/// on screen is the shell's answer.
+fn navigate(
+    store: &mut Store,
+    ui: &UiCtx,
+    window: WindowId,
+    place: impl hikit::navigation::Place,
+    fx: &mut AppFx<'_>,
+) {
+    let Some(seat) = store.get::<crate::himark::ShellSeat>().cloned() else {
+        eprintln!("[shell] no shell seated — navigation dropped");
+        return;
+    };
+    let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
+    let place = hikit::navigation::NavigationLocation::new(place);
+    if !seat.0.navigate(origin, place, store, ui, fx) {
+        eprintln!("[shell] navigation declined by every shell — dropped");
+    }
+}
+
 /// The window ceremony — one shell command, run to completion.
 /// Recursions re-enter through `run_app`, so a shell command that
 /// raises another runs inline, exactly as the one big match always
@@ -303,35 +325,35 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                         |fx| entity.dismiss_modal(store, fx),
                     );
                     ::workbench::window::Windows::put(store, window, entity);
-                    if let Some(state) = crate::workspace::session_state(store, window) {
-                        fx.push(crate::workspace::open_by_location_effect(
-                            window,
-                            state.documents(),
+                    navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::DocumentPlace {
                             location,
-                            true,
-                            focus,
                             target,
-                        ));
-                    }
+                            focus,
+                        },
+                        fx,
+                    );
                 }
                 Some(ModalRequest::ShowDocument(document)) => {
                     fx.scope(
                         move |command| content(window, command),
                         |fx| entity.dismiss_modal(store, fx),
                     );
-                    fx.scope(AppCommand::Verb, |fx| {
-                        entity.show_document(store, ui, window, document, None, false, fx);
-                    });
                     ::workbench::window::Windows::put(store, window, entity);
-
-                    if let Some(state) = crate::workspace::session_state(store, window) {
-                        fx.scope(AppCommand::Verb, |fx| {
-                            documents::lanes::sync_document_watches(store, state.documents(), fx)
-                        });
-                        fx.scope(AppCommand::Verb, |fx| {
-                            documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
-                        });
-                    }
+                    navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::OpenDocumentPlace {
+                            document,
+                            target: None,
+                            focus: false,
+                        },
+                        fx,
+                    );
                 }
                 Some(ModalRequest::OpenLocations(locations)) => {
                     fx.scope(
@@ -339,7 +361,7 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                         |fx| entity.dismiss_modal(store, fx),
                     );
                     ::workbench::window::Windows::put(store, window, entity);
-                    crate::workspace::open_locations(store, ui, window, &locations, fx);
+                    navigate(store, ui, window, crate::places::LocationsPlace(locations), fx);
                 }
                 Some(ModalRequest::SelectWidget(widget)) => {
                     fx.scope(
@@ -376,44 +398,35 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                         focus,
                     } => {
                         ::workbench::window::Windows::put(store, window, entity);
-                        if let Some(state) = crate::workspace::session_state(store, window) {
-                            fx.push(crate::workspace::open_by_location_effect(
-                                window,
-                                state.documents(),
-                                location,
-                                true,
-                                focus,
-                                target,
-                            ));
-                        }
+                        navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::DocumentPlace {
+                            location,
+                            target,
+                            focus,
+                        },
+                        fx,
+                    );
                     }
                     ModalRequest::ShowDocument(document) => {
-                        fx.scope(AppCommand::Verb, |fx| {
-                            entity.show_document(store, ui, window, document, None, false, fx);
-                        });
                         ::workbench::window::Windows::put(store, window, entity);
-
-                        if let Some(state) = crate::workspace::session_state(store, window) {
-                            fx.scope(AppCommand::Verb, |fx| {
-                                documents::lanes::sync_document_watches(
-                                    store,
-                                    state.documents(),
-                                    fx,
-                                )
-                            });
-                            fx.scope(AppCommand::Verb, |fx| {
-                                documents::lanes::sync_stripe_bases(
-                                    store,
-                                    state.documents(),
-                                    ui,
-                                    fx,
-                                )
-                            });
-                        }
+                    navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::OpenDocumentPlace {
+                            document,
+                            target: None,
+                            focus: false,
+                        },
+                        fx,
+                    );
                     }
                     ModalRequest::OpenLocations(locations) => {
                         ::workbench::window::Windows::put(store, window, entity);
-                        crate::workspace::open_locations(store, ui, window, &locations, fx);
+                        navigate(store, ui, window, crate::places::LocationsPlace(locations), fx);
                     }
                     ModalRequest::SelectWidget(widget) => {
                         entity.mount_focused(store, widget);
@@ -444,43 +457,35 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                         focus,
                     } => {
                         ::workbench::window::Windows::put(store, window, entity);
-                        if let Some(state) = crate::workspace::session_state(store, window) {
-                            fx.push(crate::workspace::open_by_location_effect(
-                                window,
-                                state.documents(),
-                                location,
-                                true,
-                                focus,
-                                target,
-                            ));
-                        }
+                        navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::DocumentPlace {
+                            location,
+                            target,
+                            focus,
+                        },
+                        fx,
+                    );
                     }
                     ModalRequest::ShowDocument(document) => {
-                        fx.scope(AppCommand::Verb, |fx| {
-                            entity.show_document(store, ui, window, document, None, false, fx);
-                        });
                         ::workbench::window::Windows::put(store, window, entity);
-                        if let Some(state) = crate::workspace::session_state(store, window) {
-                            fx.scope(AppCommand::Verb, |fx| {
-                                documents::lanes::sync_document_watches(
-                                    store,
-                                    state.documents(),
-                                    fx,
-                                )
-                            });
-                            fx.scope(AppCommand::Verb, |fx| {
-                                documents::lanes::sync_stripe_bases(
-                                    store,
-                                    state.documents(),
-                                    ui,
-                                    fx,
-                                )
-                            });
-                        }
+                    navigate(
+                        store,
+                        ui,
+                        window,
+                        crate::places::OpenDocumentPlace {
+                            document,
+                            target: None,
+                            focus: false,
+                        },
+                        fx,
+                    );
                     }
                     ModalRequest::OpenLocations(locations) => {
                         ::workbench::window::Windows::put(store, window, entity);
-                        crate::workspace::open_locations(store, ui, window, &locations, fx);
+                        navigate(store, ui, window, crate::places::LocationsPlace(locations), fx);
                     }
                     ModalRequest::SelectWidget(widget) => {
                         entity.mount_focused(store, widget);
@@ -490,19 +495,17 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
             }
             match panel_request {
                 Some(hikit::panel::PanelRequest::OpenLocations(locations)) => {
-                    crate::workspace::open_locations(store, ui, window, &locations, fx);
+                    navigate(store, ui, window, crate::places::LocationsPlace(locations), fx);
                 }
                 Some(hikit::panel::PanelRequest::OpenDiff(old_side, new_side)) => {
-                    run_app(
+                    navigate(
                         store,
                         ui,
-                        windowed(
-                            window,
-                            Arc::new(crate::hichanges::OpenDiffForPair {
-                                old: old_side,
-                                new: new_side,
-                            }),
-                        ),
+                        window,
+                        crate::places::DiffPlace {
+                            old: old_side,
+                            new: new_side,
+                        },
                         fx,
                     );
                 }
@@ -603,20 +606,17 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
             });
 
             if opened.primary {
-                if let Some(mut entity) = ::workbench::window::Windows::window(store, window) {
-                    fx.scope(AppCommand::Verb, |fx| {
-                        entity.show_document(
-                            store,
-                            ui,
-                            window,
-                            document_id,
-                            opened.target,
-                            opened.focus,
-                            fx,
-                        )
-                    });
-                    ::workbench::window::Windows::put(store, window, entity);
-                }
+                navigate(
+                    store,
+                    ui,
+                    window,
+                    crate::places::OpenDocumentPlace {
+                        document: document_id,
+                        target: opened.target,
+                        focus: opened.focus,
+                    },
+                    fx,
+                );
             }
         }
         ShellCommand::OpenAsync {

@@ -101,12 +101,13 @@ layer:
    that already exists (`hikit::navigation::Navigator`: place →
    `DynPanelView`, windowless by design; `NavigationLocation` is
    the erased place that crosses boundaries).
-4. **Callbacks, himark → host** — the intents layer: a view the
-   host mounted raises "navigate to this" (a file tapped in the
-   changes tree, a reference followed), and what it raises IS a
-   place. The HOST decides the screen — pushes it, and hands the
-   same place back through the minting door. In workbench shells
-   the workbench absorbs the same places internally.
+4. **Callbacks, himark → host** — the `FrontendHost` trait: a
+   view the host mounted raises "navigate to this" (a file tapped
+   in the changes tree, a reference followed), and what it raises
+   IS a place. The HOST decides the screen — pushes it, and hands
+   the same place back through the minting door. In workbench
+   shells the installed frontend IS the workbench, absorbing the
+   same places internally.
 
 The whole surface, and the rule is that it stays this size — every
 helper that wants to be `pub` on `Core` must displace something:
@@ -154,18 +155,35 @@ impl Core {
     pub fn drop_view(&mut self, ViewId);
 
     // ── callbacks, himark → host ──
-    pub fn set_intents(&mut self, impl Intents);
+    pub fn install_frontend(&mut self, impl FrontendHost);
 
     // ── for view layers (bridges, workbench) ──
     pub fn store(&self) -> &Store;
     pub fn ui(&self) -> &Rc<UiCtx>;
 }
 
-pub trait Intents {
-    /// A mounted view asked to navigate. What arrives is a PLACE —
-    /// the same currency `view` mints from: the host picks the
-    /// screen and hands the place back through the minting door.
-    fn navigate(&self, place: NavigationLocation);
+/// What himark calls when it wants the SHELL to show something
+/// or otherwise move the frame — THE callback API, installed at
+/// boot like every road. Every window-shaped command is app logic
+/// FUSED to a placement choice; this trait is the knife between
+/// them: the logic stays in Rust forever, and only the placement
+/// crosses to whoever owns the frame.
+pub trait FrontendHost {
+    /// The user asked to see `place` (the Navigator currency),
+    /// from the view mounted as `origin`. The WORKBENCH frontend
+    /// acts inline — panes, docks, splits — with the store and fx
+    /// in hand; a NATIVE frontend records and returns (its answer
+    /// is a screen push plus the minting door, with the same
+    /// place). `false` declines: a native frontend DECORATES the
+    /// workbench one and takes over one place kind at a time.
+    fn navigate(
+        &self,
+        origin: ViewBridgeId,
+        place: NavigationLocation,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut AppFx<'_>,
+    ) -> bool;
 }
 
 pub struct Outcome {
@@ -197,10 +215,20 @@ everything else uses.
 `SessionChannel` already names it) through the wire's existing
 `ChatClient::start_turn`/`cancel_turn`; the transcript bridge shows
 the consequences, and the running state the stop button needs rides
-the catalog snapshot's activity. `Intents` is the one outbound
+the catalog snapshot's activity. `FrontendHost` is the one outbound
 trait, and it is how the `PanelRequest` routing of
 [ui/imba-ffi.md](ui/imba-ffi.md) resolves in a native-frame shell:
-requests a workbench would absorb become intents the host sees.
+requests a workbench would absorb become calls the host sees. The
+shell ceremony's request arms (`ShellCommand`: show-document, the
+open-at and open-diff asks, the opened landing) shrink to
+logic-then-`navigate`; `WorkbenchFrontend` is today's placement
+code relocated behind the trait, so every shell — the iOS v0
+degenerate case included — keeps working until a native frontend
+chooses to take a place kind over. Out of the trait, deliberately:
+platform services (a different direction, already
+`himark_set_host`), palette/peeker (imba-internal modal layers),
+and pane mechanics (workbench vocabulary with no native meaning).
+`Reveal` joins the trait when the stage-road scrollers need it.
 
 The effects machinery moves nearly unchanged: `Handlers`,
 `EffectLauncher`, `BackgroundRunner`, the dispatcher/`Lift` types

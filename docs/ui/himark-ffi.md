@@ -169,10 +169,14 @@ a bridge for it. The workbench absorbs these same requests
 internally when it is the shell.
 
 ```
-himark_set_intents(engine, callbacks, ctx)
-  on_navigate(ctx, place)     // a PLACE handle — the same currency
-                              // minting takes; owned by the host
-                              // until spent or released
+himark_set_frontend(engine, callbacks, ctx)
+  on_navigate(ctx, origin, place) -> bool
+      // origin: the bridge the ask came from; place: a PLACE
+      // handle — the same currency minting takes, introspectable
+      // (kind, session, location) so the host can route a screen.
+      // false DECLINES: the call falls through to the workbench
+      // frontend, so a native shell takes over one place kind at
+      // a time instead of all navigation at once.
 ```
 
 What an intent carries is a **place** — the minting currency of the
@@ -183,7 +187,10 @@ answering on its own run loop — the same re-entrancy discipline as
 every wake. This is where [imba-ffi.md](imba-ffi.md)'s
 `PanelRequest` routing flag lands in a native-frame shell: an
 UNROUTED bridge's requests arrive here as places instead of
-surfacing raw on `pump`.
+surfacing raw on `pump`. The Rust home of this table is the
+`FrontendHost` trait ([himark-core.md](../himark-core.md)) — the
+app logic behind every navigation stays in Rust; only the
+placement choice crosses.
 
 ## From a place to a bridge: one minting door
 
@@ -311,8 +318,13 @@ moves behind the whole-window surface, where it belongs).
   host answers by handing the place back to the minting door. One
   callback table, main-thread, record-and-return.
 
-- **Handles, never pointers.** A foreign host WILL misuse what it
-  holds — too early, twice, after a session died. Ids into
+- **Handles, never pointers — and handles are NEWTYPES.** Each
+  handle kind crosses C as a single-field struct (`HimarkBridge`,
+  `HimarkEvent`, `HimarkLayout`, `HimarkFrame`, `HimarkWindow`),
+  never a bare integer: distinct types in C and Swift, so an event
+  where a layout belongs is a compile error — and the one-u64
+  struct's ABI is the u64 itself, so the law costs nothing. A
+  foreign host WILL misuse what it holds — too early, twice, after a session died. Ids into
   engine-owned tables make every such misuse a checked refusal at
   the door instead of UB in a table the host can't see. The cost
   (one lookup per call) is noise against what any call does. The

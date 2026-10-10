@@ -192,7 +192,7 @@ impl Himark {
     /// the workbench registry roads. A shell that composes its own
     /// frame boots `Himark::bare` and mounts the views it needs.
     pub fn new(fonts: AppFonts) -> Self {
-        let mut app = Himark::bare(fonts);
+        let mut app = Himark::bare(fonts, std::sync::Arc::new(WorkbenchFrontend));
         app.setup(|store| {
             store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
             crate::commands::register_builtins(store);
@@ -793,6 +793,80 @@ fn validate_panes(context: &str, store: &Store, editors: &WorkbenchNode) {
         }
         index += 1;
     });
+}
+
+/// The workbench AS the shell (`crate::himark::Shell`): placement
+/// answered inline — panes, docks, splits — with the store and fx
+/// in hand. This is the placement half of the old window arms,
+/// relocated behind the trait; a native shell decorates it and
+/// takes places over one kind at a time.
+pub struct WorkbenchFrontend;
+
+impl crate::himark::Shell for WorkbenchFrontend {
+    fn navigate(
+        &self,
+        origin: crate::bridge::ViewBridgeId,
+        place: hikit::navigation::NavigationLocation,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut AppFx<'_>,
+    ) -> bool {
+        let window = ::workbench::window::WindowId::from_raw(origin.raw());
+        if let Some(place) = place.place::<crate::places::DocumentPlace>() {
+            let Some(state) = crate::workspace::session_state(store, window) else {
+                return false;
+            };
+            fx.push(crate::workspace::open_by_location_effect(
+                window,
+                state.documents(),
+                place.location.clone(),
+                true,
+                place.focus,
+                place.target.clone(),
+            ));
+            return true;
+        }
+        if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
+            let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+                return false;
+            };
+            fx.scope(AppCommand::Verb, |fx| {
+                entity.show_document(
+                    store,
+                    ui,
+                    window,
+                    place.document,
+                    place.target.clone(),
+                    place.focus,
+                    fx,
+                )
+            });
+            ::workbench::window::Windows::put(store, window, entity);
+            if let Some(state) = crate::workspace::session_state(store, window) {
+                fx.scope(AppCommand::Verb, |fx| {
+                    documents::lanes::sync_document_watches(store, state.documents(), fx)
+                });
+                fx.scope(AppCommand::Verb, |fx| {
+                    documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
+                });
+            }
+            return true;
+        }
+        if let Some(place) = place.place::<crate::places::DiffPlace>() {
+            use crate::commands::WindowedCommand;
+            crate::hichanges::OpenDiffForPair {
+                old: place.old.clone(),
+                new: place.new.clone(),
+            }
+            .perform(store, ui, window, fx);
+            return true;
+        }
+        if let Some(place) = place.place::<crate::places::LocationsPlace>() {
+            crate::workspace::open_locations(store, ui, window, &place.0, fx);
+            return true;
+        }
+        false
+    }
 }
 
 /// The workbench window as a REGULAR mounted view — all that

@@ -47,6 +47,34 @@ impl Mounted {
     }
 }
 
+/// THE shell: the callback API himark uses to control whoever
+/// owns the frame (docs/himark-core.md). Every window-shaped
+/// command is app logic FUSED to a placement choice; this trait is
+/// the knife between them — the logic stays in Rust forever, only
+/// the placement crosses. Handed to the engine at construction
+/// and SEATED in the store, where every command road reaches it.
+pub trait Shell: Send + Sync {
+    /// The user asked to see `place` (the Navigator currency),
+    /// from the view mounted as `origin`. A workbench shell acts
+    /// inline — panes, docks, splits — with the store and fx in
+    /// hand; a native shell records and returns (its answer is a
+    /// screen push plus the minting door, with the same place).
+    /// `false` DECLINES: a native shell decorates the workbench
+    /// one and takes places over one kind at a time.
+    fn navigate(
+        &self,
+        origin: ViewBridgeId,
+        place: hikit::navigation::NavigationLocation,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut crate::perform::AppFx<'_>,
+    ) -> bool;
+}
+
+/// The seated shell — a boot resident like every road.
+#[derive(Clone)]
+pub struct ShellSeat(pub Arc<dyn Shell>);
+
 pub struct Himark {
     /// THE store — one, global, always live. Hosts, Windows and
     /// Servers are residents like everything else; a batch borrows
@@ -110,7 +138,7 @@ impl Himark {
     /// — and not one workbench wire. Shells add their own dressing
     /// over this (`crate::app`'s `Himark::new` is the workbench
     /// shell's boot).
-    pub fn bare(fonts: AppFonts) -> Self {
+    pub fn bare(fonts: AppFonts, shell: Arc<dyn Shell>) -> Self {
         let total_started = crate::startup_profile::start();
         let mut store = Store::new();
 
@@ -152,6 +180,7 @@ impl Himark {
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());
         crate::effects::register_builtins(&handlers, &workshop);
+        store.put(ShellSeat(shell));
         store.put(ahp_session::session::state::Hosts::default());
         store.put(ahp_wire::client::Servers::default());
         let engine = Self {

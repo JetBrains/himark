@@ -35,6 +35,40 @@ use skia_safe::{Canvas, Point, Rect, Size};
 
 use crate::{map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed};
 
+/// The handle NEWTYPES: single-field structs, so C and Swift see
+/// DISTINCT types — an event where a layout belongs is a compile
+/// error, not a mixed-up integer. The ABI of a one-u64 struct is
+/// the u64 itself; `raw` is 0 for a refusal.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkWindow {
+    pub raw: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkBridge {
+    pub raw: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkEvent {
+    pub raw: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkLayout {
+    pub raw: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkFrame {
+    pub raw: u64,
+}
+
 /// A dense handle table: ids start at 1 and never recycle, so a
 /// released handle stays dead forever instead of aliasing a
 /// newborn.
@@ -97,8 +131,10 @@ enum OwnedEvent {
 /// mistake from becoming UB.
 static EVENTS: LazyLock<Mutex<Handles<OwnedEvent>>> = LazyLock::new(Default::default);
 
-fn mint_event(event: OwnedEvent) -> u64 {
-    EVENTS.lock().expect("the event table").mint(event)
+fn mint_event(event: OwnedEvent) -> HimarkEvent {
+    HimarkEvent {
+        raw: EVENTS.lock().expect("the event table").mint(event),
+    }
 }
 
 /// The per-engine stage tables: each row remembers the bridge it
@@ -112,38 +148,38 @@ pub(crate) struct Stages {
 // ─── event factories ───
 
 #[no_mangle]
-pub extern "C" fn himark_event_mouse_down(x: f32, y: f32, mods: u32, count: u32) -> u64 {
+pub extern "C" fn himark_event_mouse_down(x: f32, y: f32, mods: u32, count: u32) -> HimarkEvent {
     mint_event(OwnedEvent::MouseDown { x, y, mods, count })
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_secondary_down(x: f32, y: f32, mods: u32) -> u64 {
+pub extern "C" fn himark_event_secondary_down(x: f32, y: f32, mods: u32) -> HimarkEvent {
     mint_event(OwnedEvent::SecondaryDown { x, y, mods })
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_mouse_drag(x: f32, y: f32, mods: u32) -> u64 {
+pub extern "C" fn himark_event_mouse_drag(x: f32, y: f32, mods: u32) -> HimarkEvent {
     mint_event(OwnedEvent::MouseDrag { x, y, mods })
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_mouse_up(x: f32, y: f32) -> u64 {
+pub extern "C" fn himark_event_mouse_up(x: f32, y: f32) -> HimarkEvent {
     mint_event(OwnedEvent::MouseUp { x, y })
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_mouse_move(x: f32, y: f32, mods: u32) -> u64 {
+pub extern "C" fn himark_event_mouse_move(x: f32, y: f32, mods: u32) -> HimarkEvent {
     mint_event(OwnedEvent::MouseMove { x, y, mods })
 }
 
 /// The cursor-exit miss (`Event::window_left`): hover lets go.
 #[no_mangle]
-pub extern "C" fn himark_event_mouse_left() -> u64 {
+pub extern "C" fn himark_event_mouse_left() -> HimarkEvent {
     mint_event(OwnedEvent::MouseLeft)
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_modifiers_changed(x: f32, y: f32, mods: u32) -> u64 {
+pub extern "C" fn himark_event_modifiers_changed(x: f32, y: f32, mods: u32) -> HimarkEvent {
     mint_event(OwnedEvent::ModifiersChanged { x, y, mods })
 }
 
@@ -154,7 +190,7 @@ pub extern "C" fn himark_event_scroll(
     delta_x: f32,
     delta_y: f32,
     phase: u32,
-) -> u64 {
+) -> HimarkEvent {
     mint_event(OwnedEvent::Scroll {
         x,
         y,
@@ -165,15 +201,15 @@ pub extern "C" fn himark_event_scroll(
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_key_down(key: u32, mods: u32) -> u64 {
+pub extern "C" fn himark_event_key_down(key: u32, mods: u32) -> HimarkEvent {
     mint_event(OwnedEvent::KeyDown { key, mods })
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_event_text(utf8: *const c_char, len: usize) -> u64 {
+pub unsafe extern "C" fn himark_event_text(utf8: *const c_char, len: usize) -> HimarkEvent {
     let Some(text) = str_from(utf8, len) else {
         refuse("text payload for event", 0);
-        return 0;
+        return HimarkEvent { raw: 0 };
     };
     mint_event(OwnedEvent::TextInput {
         text: text.to_owned(),
@@ -181,14 +217,14 @@ pub unsafe extern "C" fn himark_event_text(utf8: *const c_char, len: usize) -> u
 }
 
 #[no_mangle]
-pub extern "C" fn himark_event_release(event: u64) {
+pub extern "C" fn himark_event_release(event: HimarkEvent) {
     if EVENTS
         .lock()
         .expect("the event table")
-        .take(event)
+        .take(event.raw)
         .is_none()
     {
-        refuse("event", event);
+        refuse("event", event.raw);
     }
 }
 
@@ -198,12 +234,15 @@ pub extern "C" fn himark_event_release(event: u64) {
 /// identity is direct; the handle is the only currency the
 /// normalized entries below speak.
 #[no_mangle]
-pub unsafe extern "C" fn himark_window_bridge(engine: *mut HimarkEngine, window: u64) -> u64 {
+pub unsafe extern "C" fn himark_window_bridge(
+    engine: *mut HimarkEngine,
+    window: HimarkWindow,
+) -> HimarkBridge {
     if engine.is_null() {
-        refuse("engine for window bridge", window);
-        return 0;
+        refuse("engine for window bridge", window.raw);
+        return HimarkBridge { raw: 0 };
     }
-    window
+    HimarkBridge { raw: window.raw }
 }
 
 /// One event into one window bridge, through the engine's own
@@ -212,8 +251,8 @@ pub unsafe extern "C" fn himark_window_bridge(engine: *mut HimarkEngine, window:
 #[no_mangle]
 pub unsafe extern "C" fn himark_bridge_event(
     engine: *mut HimarkEngine,
-    bridge: u64,
-    event: u64,
+    bridge: HimarkBridge,
+    event: HimarkEvent,
 ) -> HimarkPointed {
     let missed = HimarkPointed {
         changed: false,
@@ -222,13 +261,14 @@ pub unsafe extern "C" fn himark_bridge_event(
     let Some(engine) = engine.as_mut() else {
         return missed;
     };
-    let owned = match EVENTS.lock().expect("the event table").get(event) {
+    let owned = match EVENTS.lock().expect("the event table").get(event.raw) {
         Some(owned) => owned.clone(),
         None => {
-            refuse("event", event);
+            refuse("event", event.raw);
             return missed;
         }
     };
+    let bridge = bridge.raw;
     let changed = |changed: bool| HimarkPointed { changed, shape: 0 };
     match owned {
         OwnedEvent::MouseDown { x, y, mods, count } => {
@@ -264,7 +304,7 @@ pub unsafe extern "C" fn himark_bridge_event(
 #[no_mangle]
 pub unsafe extern "C" fn himark_bridge_draw(
     engine: *mut HimarkEngine,
-    bridge: u64,
+    bridge: HimarkBridge,
     canvas: *mut c_void,
     width: f32,
     height: f32,
@@ -276,7 +316,7 @@ pub unsafe extern "C" fn himark_bridge_draw(
     let canvas = &*(canvas as *const Canvas);
     engine
         .as_mut()
-        .map_or(false, |engine| engine.draw(bridge, canvas, width, height, scale))
+        .map_or(false, |engine| engine.draw(bridge.raw, canvas, width, height, scale))
 }
 
 // ─── the stage road ───
@@ -286,19 +326,21 @@ pub unsafe extern "C" fn himark_bridge_draw(
 #[no_mangle]
 pub unsafe extern "C" fn himark_bridge_layout(
     engine: *mut HimarkEngine,
-    bridge: u64,
+    bridge: HimarkBridge,
     width: f32,
     height: f32,
-) -> u64 {
+) -> HimarkLayout {
     let Some(engine) = engine.as_mut() else {
-        return 0;
+        return HimarkLayout { raw: 0 };
     };
-    let id = ViewBridgeId::from_raw(bridge);
+    let id = ViewBridgeId::from_raw(bridge.raw);
     match engine.app.layout_bridge(id, Size::new(width, height)) {
-        Some(layout) => engine.stages.layouts.mint((id, layout)),
+        Some(layout) => HimarkLayout {
+            raw: engine.stages.layouts.mint((id, layout)),
+        },
         None => {
-            refuse("bridge", bridge);
-            0
+            refuse("bridge", bridge.raw);
+            HimarkLayout { raw: 0 }
         }
     }
 }
@@ -308,15 +350,15 @@ pub unsafe extern "C" fn himark_bridge_layout(
 #[no_mangle]
 pub unsafe extern "C" fn himark_layout_size(
     engine: *mut HimarkEngine,
-    layout: u64,
+    layout: HimarkLayout,
     out_width: *mut f32,
     out_height: *mut f32,
 ) -> bool {
     let Some(engine) = engine.as_ref() else {
         return false;
     };
-    let Some((_, stage)) = engine.stages.layouts.get(layout) else {
-        refuse("layout", layout);
+    let Some((_, stage)) = engine.stages.layouts.get(layout.raw) else {
+        refuse("layout", layout.raw);
         return false;
     };
     let size = stage.size();
@@ -335,30 +377,32 @@ pub unsafe extern "C" fn himark_layout_size(
 #[no_mangle]
 pub unsafe extern "C" fn himark_layout_realize(
     engine: *mut HimarkEngine,
-    layout: u64,
+    layout: HimarkLayout,
     x: f32,
     y: f32,
     width: f32,
     height: f32,
-) -> u64 {
+) -> HimarkFrame {
     let Some(engine) = engine.as_mut() else {
-        return 0;
+        return HimarkFrame { raw: 0 };
     };
-    let Some((id, stage)) = engine.stages.layouts.take(layout) else {
-        refuse("layout", layout);
-        return 0;
+    let Some((id, stage)) = engine.stages.layouts.take(layout.raw) else {
+        refuse("layout", layout.raw);
+        return HimarkFrame { raw: 0 };
     };
     let frame = stage.realize(Rect::from_xywh(x, y, width, height));
-    engine.stages.frames.mint((id, frame))
+    HimarkFrame {
+        raw: engine.stages.frames.mint((id, frame)),
+    }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout: u64) {
+pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout: HimarkLayout) {
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if engine.stages.layouts.take(layout).is_none() {
-        refuse("layout", layout);
+    if engine.stages.layouts.take(layout.raw).is_none() {
+        refuse("layout", layout.raw);
     }
 }
 
@@ -368,8 +412,8 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_event(
     engine: *mut HimarkEngine,
-    frame: u64,
-    event: u64,
+    frame: HimarkFrame,
+    event: HimarkEvent,
     x: f32,
     y: f32,
     width: f32,
@@ -378,17 +422,17 @@ pub unsafe extern "C" fn himark_frame_event(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let owned = match EVENTS.lock().expect("the event table").get(event) {
+    let owned = match EVENTS.lock().expect("the event table").get(event.raw) {
         Some(owned) => owned.clone(),
         None => {
-            refuse("event", event);
+            refuse("event", event.raw);
             return false;
         }
     };
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some((_, stage)) = engine.stages.frames.get(frame) else {
-            refuse("frame", frame);
+        let Some((_, stage)) = engine.stages.frames.get(frame.raw) else {
+            refuse("frame", frame.raw);
             return false;
         };
         let event = match &owned {
@@ -453,7 +497,7 @@ pub unsafe extern "C" fn himark_frame_event(
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_paint(
     engine: *mut HimarkEngine,
-    frame: u64,
+    frame: HimarkFrame,
     canvas: *mut c_void,
     x: f32,
     y: f32,
@@ -469,8 +513,8 @@ pub unsafe extern "C" fn himark_frame_paint(
     let canvas = &*(canvas as *const Canvas);
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some((_, stage)) = engine.stages.frames.get(frame) else {
-            refuse("frame", frame);
+        let Some((_, stage)) = engine.stages.frames.get(frame.raw) else {
+            refuse("frame", frame.raw);
             return false;
         };
         stage.handle(
@@ -493,12 +537,12 @@ pub unsafe extern "C" fn himark_frame_paint(
 /// Release the frame; its arena goes home warm to the bridge it
 /// was derived from.
 #[no_mangle]
-pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: u64) {
+pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: HimarkFrame) {
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    let Some((id, stage)) = engine.stages.frames.take(frame) else {
-        refuse("frame", frame);
+    let Some((id, stage)) = engine.stages.frames.take(frame.raw) else {
+        refuse("frame", frame.raw);
         return;
     };
     engine.app.return_arena(id, stage.recycle());

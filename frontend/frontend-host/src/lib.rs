@@ -9,7 +9,7 @@ use ahp_docsync as docsync;
 use ahp_locations::find;
 use ahp_session::fsroute;
 pub(crate) mod bridges;
-mod host;
+pub mod host;
 use himark::app::AppFonts;
 use host::{HimarkHostCallbacks, HimarkLocation};
 mod lsproute;
@@ -1637,8 +1637,10 @@ pub extern "C" fn himark_create() -> *mut HimarkEngine {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> u64 {
-    engine.as_mut().map_or(0, HimarkEngine::add_window)
+pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> bridges::HimarkWindow {
+    bridges::HimarkWindow {
+        raw: engine.as_mut().map_or(0, HimarkEngine::add_window),
+    }
 }
 
 #[no_mangle]
@@ -1683,68 +1685,21 @@ pub unsafe extern "C" fn himark_drain(engine: *mut HimarkEngine) -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_draw(
-    engine: *mut HimarkEngine,
-    window: u64,
-    canvas: *mut c_void,
-    width: f32,
-    height: f32,
-    _scale: f32,
-) -> bool {
-    if engine.is_null() || canvas.is_null() {
-        return false;
-    }
-
-    let canvas = &*(canvas as *const Canvas);
-    engine.as_mut().map_or(false, |engine| {
-        engine.draw(window, canvas, width, height, _scale)
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_key_down(
-    engine: *mut HimarkEngine,
-    window: u64,
-    key: u32,
-    mods: u32,
-) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.key_down(window, key, mods))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_text_input(
-    engine: *mut HimarkEngine,
-    window: u64,
-    utf8: *const c_char,
-    len: usize,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let Some(text) = str_from(utf8, len) else {
-        return false;
-    };
-    engine.text_input(window, text)
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn himark_copy(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
     engine.as_mut().map_or(0, |engine| {
-        copy_optional_utf8(engine.clipboard_copy(window), out, cap)
+        copy_optional_utf8(engine.clipboard_copy(bridge.raw), out, cap)
     })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_cut(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
@@ -1755,7 +1710,7 @@ pub unsafe extern "C" fn himark_cut(
         // stashed text instead of cutting again (which would find no
         // selection and hand the pasteboard nothing).
         if out.is_null() {
-            engine.pending_cut = engine.clipboard_cut(window);
+            engine.pending_cut = engine.clipboard_cut(bridge.raw);
             return engine.pending_cut.as_ref().map_or(0, String::len);
         }
         copy_optional_utf8(engine.pending_cut.take(), out, cap)
@@ -1765,7 +1720,7 @@ pub unsafe extern "C" fn himark_cut(
 #[no_mangle]
 pub unsafe extern "C" fn himark_paste(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
 ) -> bool {
@@ -1775,13 +1730,13 @@ pub unsafe extern "C" fn himark_paste(
     let Some(text) = str_from(utf8, len) else {
         return false;
     };
-    engine.clipboard_paste(window, text)
+    engine.clipboard_paste(bridge.raw, text)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_text_input_replacing(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
     replacement: HimarkRange,
@@ -1792,7 +1747,7 @@ pub unsafe extern "C" fn himark_text_input_replacing(
     let Some(text) = str_from(utf8, len) else {
         return false;
     };
-    engine.text_input_replacing(window, text, replacement)
+    engine.text_input_replacing(bridge.raw, text, replacement)
 }
 
 #[no_mangle]
@@ -1800,19 +1755,6 @@ pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32
     engine
         .as_mut()
         .map_or(0.0, |engine| engine.toolbar_height())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_mouse_drag(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    mods: u32,
-) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.mouse_drag(window, x, y, mods))
 }
 
 /// The pointer event's answer across the FFI: `changed` owes a frame;
@@ -1839,111 +1781,6 @@ pub(crate) fn pointed(pointed: Option<Pointed>) -> HimarkPointed {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_modifiers_changed(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    mods: u32,
-) -> HimarkPointed {
-    pointed(
-        engine
-            .as_mut()
-            .map(|engine| engine.modifiers_changed(window, x, y, mods)),
-    )
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_mouse_move(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    mods: u32,
-) -> HimarkPointed {
-    pointed(
-        engine
-            .as_mut()
-            .map(|engine| engine.mouse_move(window, x, y, mods)),
-    )
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_mouse_up(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.mouse_up(window, x, y))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_mouse_left(engine: *mut HimarkEngine, window: u64) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.mouse_left(window))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_mouse_down(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    mods: u32,
-    click_count: u32,
-) -> bool {
-    engine.as_mut().map_or(false, |engine| {
-        engine.mouse_down(window, x, y, mods, click_count)
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_secondary_down(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    mods: u32,
-) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.secondary_down(window, x, y, mods))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_scroll(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    _delta_x: f32,
-    delta_y: f32,
-) -> bool {
-    engine.as_mut().map_or(false, |engine| {
-        engine.scroll(window, x, y, _delta_x, delta_y)
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_scroll_phased(
-    engine: *mut HimarkEngine,
-    window: u64,
-    x: f32,
-    y: f32,
-    delta_x: f32,
-    delta_y: f32,
-    phase: u32,
-) -> bool {
-    engine.as_mut().map_or(false, |engine| {
-        engine.scroll_phased_at_time(window, x, y, delta_x, delta_y, phase, 0.0)
-    })
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn himark_animation_tick(engine: *mut HimarkEngine, now_ms: f64) -> bool {
     engine
         .as_mut()
@@ -1953,7 +1790,7 @@ pub unsafe extern "C" fn himark_animation_tick(engine: *mut HimarkEngine, now_ms
 #[no_mangle]
 pub unsafe extern "C" fn himark_perform_command(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     id: *const c_char,
 ) -> bool {
     let Some(engine) = engine.as_mut() else {
@@ -1965,7 +1802,7 @@ pub unsafe extern "C" fn himark_perform_command(
     let Ok(id) = std::ffi::CStr::from_ptr(id).to_str() else {
         return false;
     };
-    engine.perform_command(window, id)
+    engine.perform_command(bridge.raw, id)
 }
 
 #[no_mangle]
@@ -2090,7 +1927,7 @@ pub unsafe extern "C" fn himark_host_listed(
 #[no_mangle]
 pub unsafe extern "C" fn himark_open_document(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     name: *const c_char,
     name_len: usize,
     utf8: *const c_char,
@@ -2106,7 +1943,7 @@ pub unsafe extern "C" fn himark_open_document(
     let Some(source) = str_from(utf8, len) else {
         return false;
     };
-    engine.open_document(window, name, source, primary)
+    engine.open_document(bridge.raw, name, source, primary)
 }
 
 fn document_for(
@@ -2121,37 +1958,37 @@ fn document_for(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_open_demo(engine: *mut HimarkEngine, window: u64) {
+pub unsafe extern "C" fn himark_open_demo(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) {
     if let Some(engine) = engine.as_mut() {
-        engine.open_demo(window);
+        engine.open_demo(bridge.raw);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_open_demo_wall(engine: *mut HimarkEngine, window: u64) {
+pub unsafe extern "C" fn himark_open_demo_wall(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) {
     if let Some(engine) = engine.as_mut() {
-        engine.open_demo_wall(window);
+        engine.open_demo_wall(bridge.raw);
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_has_text_focus(engine: *mut HimarkEngine, window: u64) -> bool {
+pub unsafe extern "C" fn himark_has_text_focus(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) -> bool {
     engine
         .as_mut()
-        .map_or(false, |engine| engine.has_text_focus(window))
+        .map_or(false, |engine| engine.has_text_focus(bridge.raw))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_has_marked_text(engine: *mut HimarkEngine, window: u64) -> bool {
+pub unsafe extern "C" fn himark_has_marked_text(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) -> bool {
     engine
         .as_mut()
-        .map_or(false, |engine| engine.has_marked_text(window))
+        .map_or(false, |engine| engine.has_marked_text(bridge.raw))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_marked_text(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
     selected: HimarkRange,
@@ -2165,96 +2002,96 @@ pub unsafe extern "C" fn himark_set_marked_text(
         return false;
     };
     let replacement = has_replacement.then_some(replacement);
-    engine.set_marked_text(window, text, selected, replacement)
+    engine.set_marked_text(bridge.raw, text, selected, replacement)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_unmark_text(engine: *mut HimarkEngine, window: u64) -> bool {
+pub unsafe extern "C" fn himark_unmark_text(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) -> bool {
     engine
         .as_mut()
-        .map_or(false, |engine| engine.unmark_text(window))
+        .map_or(false, |engine| engine.unmark_text(bridge.raw))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_marked_range(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.marked_range_raw(window, out))
+        .is_some_and(|engine| engine.marked_range_raw(bridge.raw, out))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_selected_range(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.selected_range_raw(window, out))
+        .is_some_and(|engine| engine.selected_range_raw(bridge.raw, out))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_selected_range(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     range: HimarkRange,
 ) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.set_selected_range(window, range))
+        .is_some_and(|engine| engine.set_selected_range(bridge.raw, range))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_document_length(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     out: *mut u32,
 ) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.document_length_raw(window, out))
+        .is_some_and(|engine| engine.document_length_raw(bridge.raw, out))
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_reveal_selection(engine: *mut HimarkEngine, window: u64) -> bool {
+pub unsafe extern "C" fn himark_reveal_selection(engine: *mut HimarkEngine, bridge: bridges::HimarkBridge) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.reveal_selection(window))
+        .is_some_and(|engine| engine.reveal_selection(bridge.raw))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_selection_rects(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut HimarkRect,
     cap: usize,
 ) -> usize {
     engine.as_mut().map_or(0, |engine| {
-        engine.selection_rects_raw(window, range, out, cap)
+        engine.selection_rects_raw(bridge.raw, range, out, cap)
     })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_first_rect(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut HimarkRect,
 ) -> bool {
     engine
         .as_mut()
-        .is_some_and(|engine| engine.first_rect_raw(window, range, out))
+        .is_some_and(|engine| engine.first_rect_raw(bridge.raw, range, out))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_char_index_at(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     x: f32,
     y: f32,
 ) -> i64 {
@@ -2262,21 +2099,21 @@ pub unsafe extern "C" fn himark_char_index_at(
         return -1;
     };
     engine
-        .char_index_at(window, x, y)
+        .char_index_at(bridge.raw, x, y)
         .map_or(-1, |index| index as i64)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_substring(
     engine: *mut HimarkEngine,
-    window: u64,
+    bridge: bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
     engine
         .as_mut()
-        .map_or(0, |engine| engine.substring_raw(window, range, out, cap))
+        .map_or(0, |engine| engine.substring_raw(bridge.raw, range, out, cap))
 }
 
 pub(crate) unsafe fn str_from<'a>(utf8: *const c_char, len: usize) -> Option<&'a str> {

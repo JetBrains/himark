@@ -73,20 +73,24 @@
 
 typedef struct HimarkEngine HimarkEngine;
 
+/**
+ * The handle NEWTYPES: single-field structs, so C and Swift see
+ * DISTINCT types — an event where a layout belongs is a compile
+ * error, not a mixed-up integer. The ABI of a one-u64 struct is
+ * the u64 itself; `raw` is 0 for a refusal.
+ */
+typedef struct {
+    uint64_t raw;
+} HimarkWindow;
+
+typedef struct {
+    uint64_t raw;
+} HimarkBridge;
+
 typedef struct {
     uint32_t start;
     uint32_t length;
 } HimarkRange;
-
-/**
- * The pointer event's answer across the FFI: `changed` owes a frame;
- * `shape` is 0 for the platform default arrow, 1 for the pointing
- * hand. The shell applies the shape right away and stores nothing.
- */
-typedef struct {
-    bool changed;
-    uint32_t shape;
-} HimarkPointed;
 
 typedef struct {
     const char *ptr;
@@ -123,9 +127,31 @@ typedef struct {
     float height;
 } HimarkRect;
 
+typedef struct {
+    uint64_t raw;
+} HimarkEvent;
+
+/**
+ * The pointer event's answer across the FFI: `changed` owes a frame;
+ * `shape` is 0 for the platform default arrow, 1 for the pointing
+ * hand. The shell applies the shape right away and stores nothing.
+ */
+typedef struct {
+    bool changed;
+    uint32_t shape;
+} HimarkPointed;
+
+typedef struct {
+    uint64_t raw;
+} HimarkLayout;
+
+typedef struct {
+    uint64_t raw;
+} HimarkFrame;
+
 HimarkEngine *himark_create(void);
 
-uint64_t himark_add_window(HimarkEngine *engine);
+HimarkWindow himark_add_window(HimarkEngine *engine);
 
 void himark_destroy(HimarkEngine *engine);
 
@@ -137,76 +163,23 @@ void himark_run_pending(HimarkEngine *engine);
 
 bool himark_drain(HimarkEngine *engine);
 
-bool himark_draw(HimarkEngine *engine,
-                 uint64_t window,
-                 void *canvas,
-                 float width,
-                 float height,
-                 float _scale);
+uintptr_t himark_copy(HimarkEngine *engine, HimarkBridge bridge, char *out, uintptr_t cap);
 
-bool himark_key_down(HimarkEngine *engine, uint64_t window, uint32_t key, uint32_t mods);
+uintptr_t himark_cut(HimarkEngine *engine, HimarkBridge bridge, char *out, uintptr_t cap);
 
-bool himark_text_input(HimarkEngine *engine, uint64_t window, const char *utf8, uintptr_t len);
-
-uintptr_t himark_copy(HimarkEngine *engine, uint64_t window, char *out, uintptr_t cap);
-
-uintptr_t himark_cut(HimarkEngine *engine, uint64_t window, char *out, uintptr_t cap);
-
-bool himark_paste(HimarkEngine *engine, uint64_t window, const char *utf8, uintptr_t len);
+bool himark_paste(HimarkEngine *engine, HimarkBridge bridge, const char *utf8, uintptr_t len);
 
 bool himark_text_input_replacing(HimarkEngine *engine,
-                                 uint64_t window,
+                                 HimarkBridge bridge,
                                  const char *utf8,
                                  uintptr_t len,
                                  HimarkRange replacement);
 
 float himark_toolbar_height(HimarkEngine *engine);
 
-bool himark_mouse_drag(HimarkEngine *engine, uint64_t window, float x, float y, uint32_t mods);
-
-HimarkPointed himark_modifiers_changed(HimarkEngine *engine,
-                                       uint64_t window,
-                                       float x,
-                                       float y,
-                                       uint32_t mods);
-
-HimarkPointed himark_mouse_move(HimarkEngine *engine,
-                                uint64_t window,
-                                float x,
-                                float y,
-                                uint32_t mods);
-
-bool himark_mouse_up(HimarkEngine *engine, uint64_t window, float x, float y);
-
-bool himark_mouse_left(HimarkEngine *engine, uint64_t window);
-
-bool himark_mouse_down(HimarkEngine *engine,
-                       uint64_t window,
-                       float x,
-                       float y,
-                       uint32_t mods,
-                       uint32_t click_count);
-
-bool himark_secondary_down(HimarkEngine *engine, uint64_t window, float x, float y, uint32_t mods);
-
-bool himark_scroll(HimarkEngine *engine,
-                   uint64_t window,
-                   float x,
-                   float y,
-                   float _delta_x,
-                   float delta_y);
-
-bool himark_scroll_phased(HimarkEngine *engine,
-                          uint64_t window,
-                          float x,
-                          float y,
-                          float delta_x,
-                          float delta_y,
-                          uint32_t phase);
-
 bool himark_animation_tick(HimarkEngine *engine, double now_ms);
 
-bool himark_perform_command(HimarkEngine *engine, uint64_t window, const char *id);
+bool himark_perform_command(HimarkEngine *engine, HimarkBridge bridge, const char *id);
 
 void himark_set_chrome_clearance(HimarkEngine *engine, float width);
 
@@ -234,95 +207,98 @@ bool himark_host_listed(HimarkEngine *engine,
                         uintptr_t count);
 
 bool himark_open_document(HimarkEngine *engine,
-                          uint64_t window,
+                          HimarkBridge bridge,
                           const char *name,
                           uintptr_t name_len,
                           const char *utf8,
                           uintptr_t len,
                           bool primary);
 
-void himark_open_demo(HimarkEngine *engine, uint64_t window);
+void himark_open_demo(HimarkEngine *engine, HimarkBridge bridge);
 
-void himark_open_demo_wall(HimarkEngine *engine, uint64_t window);
+void himark_open_demo_wall(HimarkEngine *engine, HimarkBridge bridge);
 
-bool himark_has_text_focus(HimarkEngine *engine, uint64_t window);
+bool himark_has_text_focus(HimarkEngine *engine, HimarkBridge bridge);
 
-bool himark_has_marked_text(HimarkEngine *engine, uint64_t window);
+bool himark_has_marked_text(HimarkEngine *engine, HimarkBridge bridge);
 
 bool himark_set_marked_text(HimarkEngine *engine,
-                            uint64_t window,
+                            HimarkBridge bridge,
                             const char *utf8,
                             uintptr_t len,
                             HimarkRange selected,
                             bool has_replacement,
                             HimarkRange replacement);
 
-bool himark_unmark_text(HimarkEngine *engine, uint64_t window);
+bool himark_unmark_text(HimarkEngine *engine, HimarkBridge bridge);
 
-bool himark_marked_range(HimarkEngine *engine, uint64_t window, HimarkRange *out);
+bool himark_marked_range(HimarkEngine *engine, HimarkBridge bridge, HimarkRange *out);
 
-bool himark_selected_range(HimarkEngine *engine, uint64_t window, HimarkRange *out);
+bool himark_selected_range(HimarkEngine *engine, HimarkBridge bridge, HimarkRange *out);
 
-bool himark_set_selected_range(HimarkEngine *engine, uint64_t window, HimarkRange range);
+bool himark_set_selected_range(HimarkEngine *engine, HimarkBridge bridge, HimarkRange range);
 
-bool himark_document_length(HimarkEngine *engine, uint64_t window, uint32_t *out);
+bool himark_document_length(HimarkEngine *engine, HimarkBridge bridge, uint32_t *out);
 
-bool himark_reveal_selection(HimarkEngine *engine, uint64_t window);
+bool himark_reveal_selection(HimarkEngine *engine, HimarkBridge bridge);
 
 uintptr_t himark_selection_rects(HimarkEngine *engine,
-                                 uint64_t window,
+                                 HimarkBridge bridge,
                                  HimarkRange range,
                                  HimarkRect *out,
                                  uintptr_t cap);
 
-bool himark_first_rect(HimarkEngine *engine, uint64_t window, HimarkRange range, HimarkRect *out);
+bool himark_first_rect(HimarkEngine *engine,
+                       HimarkBridge bridge,
+                       HimarkRange range,
+                       HimarkRect *out);
 
-int64_t himark_char_index_at(HimarkEngine *engine, uint64_t window, float x, float y);
+int64_t himark_char_index_at(HimarkEngine *engine, HimarkBridge bridge, float x, float y);
 
 uintptr_t himark_substring(HimarkEngine *engine,
-                           uint64_t window,
+                           HimarkBridge bridge,
                            HimarkRange range,
                            char *out,
                            uintptr_t cap);
 
-uint64_t himark_event_mouse_down(float x, float y, uint32_t mods, uint32_t count);
+HimarkEvent himark_event_mouse_down(float x, float y, uint32_t mods, uint32_t count);
 
-uint64_t himark_event_secondary_down(float x, float y, uint32_t mods);
+HimarkEvent himark_event_secondary_down(float x, float y, uint32_t mods);
 
-uint64_t himark_event_mouse_drag(float x, float y, uint32_t mods);
+HimarkEvent himark_event_mouse_drag(float x, float y, uint32_t mods);
 
-uint64_t himark_event_mouse_up(float x, float y);
+HimarkEvent himark_event_mouse_up(float x, float y);
 
-uint64_t himark_event_mouse_move(float x, float y, uint32_t mods);
+HimarkEvent himark_event_mouse_move(float x, float y, uint32_t mods);
 
 /**
  * The cursor-exit miss (`Event::window_left`): hover lets go.
  */
-uint64_t himark_event_mouse_left(void);
+HimarkEvent himark_event_mouse_left(void);
 
-uint64_t himark_event_modifiers_changed(float x, float y, uint32_t mods);
+HimarkEvent himark_event_modifiers_changed(float x, float y, uint32_t mods);
 
-uint64_t himark_event_scroll(float x, float y, float delta_x, float delta_y, uint32_t phase);
+HimarkEvent himark_event_scroll(float x, float y, float delta_x, float delta_y, uint32_t phase);
 
-uint64_t himark_event_key_down(uint32_t key, uint32_t mods);
+HimarkEvent himark_event_key_down(uint32_t key, uint32_t mods);
 
-uint64_t himark_event_text(const char *utf8, uintptr_t len);
+HimarkEvent himark_event_text(const char *utf8, uintptr_t len);
 
-void himark_event_release(uint64_t event);
+void himark_event_release(HimarkEvent event);
 
 /**
  * The window AS a bridge — the degenerate case named. Today the
  * identity is direct; the handle is the only currency the
  * normalized entries below speak.
  */
-uint64_t himark_window_bridge(HimarkEngine *engine, uint64_t window);
+HimarkBridge himark_window_bridge(HimarkEngine *engine, HimarkWindow window);
 
 /**
  * One event into one window bridge, through the engine's own
  * dispatch. The event stays alive for further bridges; release
  * is the host's explicit call.
  */
-HimarkPointed himark_bridge_event(HimarkEngine *engine, uint64_t bridge, uint64_t event);
+HimarkPointed himark_bridge_event(HimarkEngine *engine, HimarkBridge bridge, HimarkEvent event);
 
 /**
  * Paint the window bridge into the host's canvas — the canvas is
@@ -330,7 +306,7 @@ HimarkPointed himark_bridge_event(HimarkEngine *engine, uint64_t bridge, uint64_
  * normalized surface allows.
  */
 bool himark_bridge_draw(HimarkEngine *engine,
-                        uint64_t bridge,
+                        HimarkBridge bridge,
                         void *canvas,
                         float width,
                         float height,
@@ -340,27 +316,33 @@ bool himark_bridge_draw(HimarkEngine *engine,
  * display → layout: the SIZED stage, as a handle. 0 refuses an
  * unmounted bridge.
  */
-uint64_t himark_bridge_layout(HimarkEngine *engine, uint64_t bridge, float width, float height);
+HimarkLayout himark_bridge_layout(HimarkEngine *engine,
+                                  HimarkBridge bridge,
+                                  float width,
+                                  float height);
 
 /**
  * The measure read on the sized stage — the native scroller's
  * content-size question.
  */
-bool himark_layout_size(HimarkEngine *engine, uint64_t layout, float *out_width, float *out_height);
+bool himark_layout_size(HimarkEngine *engine,
+                        HimarkLayout layout,
+                        float *out_width,
+                        float *out_height);
 
 /**
  * layout → realize: materialize the viewport's slice. CONSUMES
  * the layout handle — a new viewport is a new realize off a
  * fresh layout, exactly as inside the engine.
  */
-uint64_t himark_layout_realize(HimarkEngine *engine,
-                               uint64_t layout,
-                               float x,
-                               float y,
-                               float width,
-                               float height);
+HimarkFrame himark_layout_realize(HimarkEngine *engine,
+                                  HimarkLayout layout,
+                                  float x,
+                                  float y,
+                                  float width,
+                                  float height);
 
-void himark_layout_release(HimarkEngine *engine, uint64_t layout);
+void himark_layout_release(HimarkEngine *engine, HimarkLayout layout);
 
 /**
  * One event into a realized stage frame, viewport in content
@@ -368,8 +350,8 @@ void himark_layout_release(HimarkEngine *engine, uint64_t layout);
  * with run through the engine's one batch loop.
  */
 bool himark_frame_event(HimarkEngine *engine,
-                        uint64_t frame,
-                        uint64_t event,
+                        HimarkFrame frame,
+                        HimarkEvent event,
                         float x,
                         float y,
                         float width,
@@ -379,7 +361,7 @@ bool himark_frame_event(HimarkEngine *engine,
  * Paint the realized slice into the host's canvas.
  */
 bool himark_frame_paint(HimarkEngine *engine,
-                        uint64_t frame,
+                        HimarkFrame frame,
                         void *canvas,
                         float x,
                         float y,
@@ -390,6 +372,6 @@ bool himark_frame_paint(HimarkEngine *engine,
  * Release the frame; its arena goes home warm to the bridge it
  * was derived from.
  */
-void himark_frame_release(HimarkEngine *engine, uint64_t frame);
+void himark_frame_release(HimarkEngine *engine, HimarkFrame frame);
 
 #endif  /* HIMARK_H */

@@ -1869,53 +1869,44 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
 
 #[test]
 fn ffi_null_engine_calls_are_noops() {
+    let bridge = crate::bridges::HimarkBridge { raw: 0 };
     unsafe {
-        assert_eq!(himark_add_window(null_mut()), 0);
+        assert_eq!(himark_add_window(null_mut()).raw, 0);
         assert!(!himark_drain(null_mut()));
-        assert!(!himark_key_down(null_mut(), 0, HIMARK_KEY_BACKSPACE, 0));
-        assert!(!himark_text_input(null_mut(), 0, null(), 0));
-        assert!(!himark_mouse_down(null_mut(), 0, 0.0, 0.0, 0, 1));
-        assert!(!himark_scroll(null_mut(), 0, 0.0, 0.0, 0.0, 0.0));
-        assert!(!himark_scroll_phased(
-            null_mut(),
-            0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            HIMARK_SCROLL_PHASE_BEGAN
-        ));
+        let key = crate::bridges::himark_event_key_down(HIMARK_KEY_BACKSPACE, 0);
+        assert!(!crate::bridges::himark_bridge_event(null_mut(), bridge, key).changed);
+        crate::bridges::himark_event_release(key);
         assert!(!himark_animation_tick(null_mut(), 0.0));
         assert!(!himark_perform_command(
             null_mut(),
-            0,
+            bridge,
             c"workbench.split-pane".as_ptr(),
         ));
-        assert!(!himark_has_text_focus(null_mut(), 0));
-        assert!(!himark_has_marked_text(null_mut(), 0));
-        assert!(!himark_unmark_text(null_mut(), 0));
-        assert!(!himark_marked_range(null_mut(), 0, null_mut()));
-        assert!(!himark_selected_range(null_mut(), 0, null_mut()));
+        assert!(!himark_has_text_focus(null_mut(), bridge));
+        assert!(!himark_has_marked_text(null_mut(), bridge));
+        assert!(!himark_unmark_text(null_mut(), bridge));
+        assert!(!himark_marked_range(null_mut(), bridge, null_mut()));
+        assert!(!himark_selected_range(null_mut(), bridge, null_mut()));
         assert!(!himark_first_rect(
             null_mut(),
-            0,
+            bridge,
             HimarkRange::default(),
             null_mut()
         ));
-        assert_eq!(himark_char_index_at(null_mut(), 0, 0.0, 0.0), -1);
+        assert_eq!(himark_char_index_at(null_mut(), bridge, 0.0, 0.0), -1);
         assert_eq!(
-            himark_substring(null_mut(), 0, HimarkRange::default(), null_mut(), 0),
+            himark_substring(null_mut(), bridge, HimarkRange::default(), null_mut(), 0),
             0
         );
         assert!(!himark_set_selected_range(
             null_mut(),
-            0,
+            bridge,
             HimarkRange::default()
         ));
-        assert!(!himark_document_length(null_mut(), 0, null_mut()));
-        assert!(!himark_reveal_selection(null_mut(), 0));
+        assert!(!himark_document_length(null_mut(), bridge, null_mut()));
+        assert!(!himark_reveal_selection(null_mut(), bridge));
         assert_eq!(
-            himark_selection_rects(null_mut(), 0, HimarkRange::default(), null_mut(), 0),
+            himark_selection_rects(null_mut(), bridge, HimarkRange::default(), null_mut(), 0),
             0
         );
     }
@@ -7499,13 +7490,18 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
 
     let two_call_cut = |engine: &mut HimarkEngine| -> Option<String> {
         let engine: *mut HimarkEngine = engine;
-        let needed = unsafe { crate::himark_cut(engine, window, std::ptr::null_mut(), 0) };
+        let needed = unsafe { crate::himark_cut(engine, crate::bridges::HimarkBridge { raw: window }, std::ptr::null_mut(), 0) };
         if needed == 0 {
             return None;
         }
         let mut buffer = vec![0i8; needed];
         let written =
-            unsafe { crate::himark_cut(engine, window, buffer.as_mut_ptr(), buffer.len()) };
+            unsafe { crate::himark_cut(
+                engine,
+                crate::bridges::HimarkBridge { raw: window },
+                buffer.as_mut_ptr(),
+                buffer.len(),
+            ) };
         assert_eq!(written, needed, "the fill answers what the probe sized");
         let bytes: Vec<u8> = buffer.iter().map(|byte| *byte as u8).collect();
         Some(String::from_utf8(bytes).expect("utf8"))

@@ -6,6 +6,7 @@ pub mod app_ext;
 pub mod bridge;
 pub mod himark;
 pub mod perform;
+pub mod places;
 pub mod shell;
 pub mod commands;
 pub mod effects;
