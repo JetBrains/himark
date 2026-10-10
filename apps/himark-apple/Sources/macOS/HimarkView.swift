@@ -10,8 +10,6 @@ import Metal
 /// dressing: titlebar drag and double-click on the chrome miss,
 /// and the menu bar's command actions.
 final class HimarkView: HimarkBridgeView {
-    var windowId: UInt64 { bridgeId }
-
     init(frame: NSRect, engine: HimarkEngine, device: MTLDevice) {
         let window = engine.addWindow()
         super.init(frame: frame, engine: engine, device: device,
@@ -44,15 +42,15 @@ final class HimarkView: HimarkBridgeView {
     }
 
     @objc func openDocument(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "file.open") { request() }
+        if engine.perform(bridge: bridgeId, command: "file.open") { request() }
     }
 
     @objc func saveDocument(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "file.save") { request() }
+        if engine.perform(bridge: bridgeId, command: "file.save") { request() }
     }
 
     @objc func saveDocumentAs(_ sender: Any?) {
-        guard let text = engine.documentText(window: windowId) else { return }
+        guard let text = engine.documentText(bridge: bridgeId) else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "document.md"
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -60,84 +58,84 @@ final class HimarkView: HimarkBridgeView {
     }
 
     @objc func newScratch(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "workbench.new-document") { request() }
+        if engine.perform(bridge: bridgeId, command: "workbench.new-document") { request() }
     }
 
     @objc func openDemoWall(_ sender: Any?) {
-        engine.openDemoWall(window: windowId)
+        engine.openDemoWall(bridge: bridgeId)
         request()
     }
 
     @objc func openDemo(_ sender: Any?) {
-        engine.openDemo(window: windowId)
+        engine.openDemo(bridge: bridgeId)
         request()
     }
 
     @objc func togglePeeker(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "peeker.toggle") { request() }
+        if engine.perform(bridge: bridgeId, command: "peeker.toggle") { request() }
     }
 
     @objc func togglePalette(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "palette.toggle") { request() }
+        if engine.perform(bridge: bridgeId, command: "palette.toggle") { request() }
     }
 
     @objc func toggleWorkspaceTree(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "files.tree") { request() }
+        if engine.perform(bridge: bridgeId, command: "files.tree") { request() }
     }
 
     @objc func toggleToc(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "toc.toggle") { request() }
+        if engine.perform(bridge: bridgeId, command: "toc.toggle") { request() }
     }
 
     @objc func toggleChangesView(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "changes.view") { request() }
+        if engine.perform(bridge: bridgeId, command: "changes.view") { request() }
     }
 
     @objc func toggleAgentsSwitcher(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "agent.toggle-agents") { request() }
+        if engine.perform(bridge: bridgeId, command: "agent.toggle-agents") { request() }
     }
 
     @objc func splitPane(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "workbench.split-pane") { request() }
+        if engine.perform(bridge: bridgeId, command: "workbench.split-pane") { request() }
     }
 
     @objc func openTerminal(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "terminal.open") { request() }
+        if engine.perform(bridge: bridgeId, command: "terminal.open") { request() }
     }
 
     @objc func openSearch(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "search.focus") { request() }
+        if engine.perform(bridge: bridgeId, command: "search.focus") { request() }
     }
 
     @objc func openFind(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "find.open") { request() }
+        if engine.perform(bridge: bridgeId, command: "find.open") { request() }
     }
 
     @objc func findNext(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "find.next") { request() }
+        if engine.perform(bridge: bridgeId, command: "find.next") { request() }
     }
 
     @objc func findPrevious(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "find.previous") { request() }
+        if engine.perform(bridge: bridgeId, command: "find.previous") { request() }
     }
 
     @objc func closeWidget(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "workbench.close") { request() }
+        if engine.perform(bridge: bridgeId, command: "workbench.close") { request() }
     }
 
     @objc func closePane(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "workbench.close-pane") { request() }
+        if engine.perform(bridge: bridgeId, command: "workbench.close-pane") { request() }
     }
 
     @objc func goBack(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "navigation.back") { request() }
+        if engine.perform(bridge: bridgeId, command: "navigation.back") { request() }
     }
 
     @objc func goForward(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "navigation.forward") { request() }
+        if engine.perform(bridge: bridgeId, command: "navigation.forward") { request() }
     }
 
     @objc func toggleTheme(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "theme.toggle") { request() }
+        if engine.perform(bridge: bridgeId, command: "theme.toggle") { request() }
     }
 }

@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return }
         let dark = NSApp.effectiveAppearance
             .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        if engine.perform(window: view.windowId, command: dark ? "theme.dark" : "theme.light") {
+        if engine.perform(bridge: view.bridgeId, command: dark ? "theme.dark" : "theme.light") {
             repaintAll()
         }
     }

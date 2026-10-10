@@ -15,7 +15,7 @@ import QuartzCore
 /// workbench-window special case on top.
 class HimarkBridgeView: NSView, NSTextInputClient {
     let engine: HimarkEngine
-    let bridgeId: UInt64
+    let bridgeId: HimarkBridge
 
     private var surface: SkiaMetalSurface!
 
@@ -27,7 +27,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     private static let idleGraceTicks = 30
 
-    init(frame: NSRect, engine: HimarkEngine, device: MTLDevice, bridge: UInt64) {
+    init(frame: NSRect, engine: HimarkEngine, device: MTLDevice, bridge: HimarkBridge) {
         self.engine = engine
         self.bridgeId = bridge
         super.init(frame: frame)
@@ -54,7 +54,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// release it. `shapes` applies the answered pointer shape —
     /// the move/modifier events' half of the contract.
     @discardableResult
-    func send(_ event: UInt64, shapes: Bool = false) -> Bool {
+    func send(_ event: HimarkEvent, shapes: Bool = false) -> Bool {
         let pointed = engine.bridgeEvent(bridge: bridgeId, event: event)
         himark_event_release(event)
         if pointed.changed { request() }
@@ -332,7 +332,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if replacementRange.location != NSNotFound {
             let range = HimarkRange(start: UInt32(max(0, replacementRange.location)),
                                     length: UInt32(max(0, replacementRange.length)))
-            if engine.text(window: bridgeId, text, replacing: range) { request() }
+            if engine.text(bridge: bridgeId, text, replacing: range) { request() }
         } else if !text.isEmpty {
             text.withCString {
                 send(himark_event_text($0, UInt(strlen($0))))
@@ -346,22 +346,22 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let replacement = replacementRange.location == NSNotFound ? nil
             : HimarkRange(start: UInt32(max(0, replacementRange.location)),
                           length: UInt32(max(0, replacementRange.length)))
-        if engine.setMarkedText(window: bridgeId, plain(string),
+        if engine.setMarkedText(bridge: bridgeId, plain(string),
                                 selected: selected, replacement: replacement) {
             request()
         }
     }
 
-    func unmarkText() { if engine.unmarkText(window: bridgeId) { request() } }
-    func hasMarkedText() -> Bool { engine.hasMarkedText(window: bridgeId) }
+    func unmarkText() { if engine.unmarkText(bridge: bridgeId) { request() } }
+    func hasMarkedText() -> Bool { engine.hasMarkedText(bridge: bridgeId) }
 
-    func markedRange() -> NSRange { nsRange(engine.markedRange(window: bridgeId)) }
-    func selectedRange() -> NSRange { nsRange(engine.selectedRange(window: bridgeId)) }
+    func markedRange() -> NSRange { nsRange(engine.markedRange(bridge: bridgeId)) }
+    func selectedRange() -> NSRange { nsRange(engine.selectedRange(bridge: bridgeId)) }
 
     func attributedSubstring(forProposedRange range: NSRange,
                              actualRange: NSRangePointer?) -> NSAttributedString? {
         guard let himark = himarkRange(range),
-              let s = engine.substring(window: bridgeId, himark) else { return nil }
+              let s = engine.substring(bridge: bridgeId, himark) else { return nil }
         actualRange?.pointee = range
         return NSAttributedString(string: s)
     }
@@ -369,7 +369,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     func firstRect(forCharacterRange range: NSRange,
                    actualRange: NSRangePointer?) -> NSRect {
         guard let himark = himarkRange(range),
-              let rect = engine.firstRect(window: bridgeId, himark) else { return .zero }
+              let rect = engine.firstRect(bridge: bridgeId, himark) else { return .zero }
         let s = metalLayer.contentsScale
         let viewRect = NSRect(x: CGFloat(rect.x) / s,
                               y: bounds.height - CGFloat(rect.y + rect.height) / s,
@@ -383,7 +383,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         guard let window else { return NSNotFound }
         let viewPoint = convert(window.convertPoint(fromScreen: point), from: nil)
         let s = Float(metalLayer.contentsScale)
-        return engine.charIndex(window: bridgeId, x: Float(viewPoint.x) * s,
+        return engine.charIndex(bridge: bridgeId, x: Float(viewPoint.x) * s,
                                 y: Float(bounds.height - viewPoint.y) * s) ?? NSNotFound
     }
 
@@ -452,13 +452,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     }
 
     @objc func copy(_ sender: Any?) {
-        guard let text = engine.clipboardCopy(window: bridgeId) else { return }
+        guard let text = engine.clipboardCopy(bridge: bridgeId) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
 
     @objc func cut(_ sender: Any?) {
-        guard let text = engine.clipboardCut(window: bridgeId) else { return }
+        guard let text = engine.clipboardCut(bridge: bridgeId) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         request()
@@ -466,7 +466,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     @objc func paste(_ sender: Any?) {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
-        if engine.clipboardPaste(window: bridgeId, text) { request() }
+        if engine.clipboardPaste(bridge: bridgeId, text) { request() }
     }
 
     private func plain(_ string: Any) -> String {
