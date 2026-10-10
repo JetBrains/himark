@@ -879,3 +879,11 @@ pub unsafe extern "C" fn himark_bridge_unmount(engine: *mut HimarkEngine, bridge
         refuse("bridge", bridge.raw);
     }
 }
+
+/// One empty batch: the resident lanes run (hosts connect, the
+/// catalog lists). A shell with no first paint calls this once at
+/// boot; the wakes carry everything after.
+#[no_mangle]
+pub unsafe extern "C" fn himark_sync(engine: *mut HimarkEngine) -> bool {
+    engine.as_mut().map_or(false, |engine| engine.app.sync())
+}

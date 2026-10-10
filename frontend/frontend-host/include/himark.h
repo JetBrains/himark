@@ -153,6 +153,10 @@ typedef struct {
     uint64_t raw;
 } HimarkCatalog;
 
+typedef struct {
+    uint64_t raw;
+} HimarkPlace;
+
 HimarkEngine *himark_create(void);
 
 HimarkWindow himark_add_window(HimarkEngine *engine);
@@ -449,5 +453,37 @@ bool himark_session_enter(HimarkEngine *engine, uint64_t host, const char *uri, 
  * default); the landing enters it.
  */
 bool himark_session_new(HimarkEngine *engine, uint64_t host);
+
+HimarkPlace himark_place_chat(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
+
+HimarkPlace himark_place_changes(HimarkEngine *engine,
+                                 uint64_t host,
+                                 const char *uri,
+                                 uintptr_t len);
+
+HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
+
+void himark_place_release(HimarkEngine *engine, HimarkPlace place);
+
+/**
+ * Mint the view a place names, mounted as a bridge. The place
+ * handle stays usable (mint again, or release when done); 0
+ * refuses a place no view answers — typically a session the
+ * catalog cannot serve yet, worth retrying after the epoch moves.
+ */
+HimarkBridge himark_bridge_mint(HimarkEngine *engine, HimarkPlace place);
+
+/**
+ * Unmount a minted bridge: the slot, its frame and every stage a
+ * host still holds for it go together.
+ */
+void himark_bridge_unmount(HimarkEngine *engine, HimarkBridge bridge);
+
+/**
+ * One empty batch: the resident lanes run (hosts connect, the
+ * catalog lists). A shell with no first paint calls this once at
+ * boot; the wakes carry everything after.
+ */
+bool himark_sync(HimarkEngine *engine);
 
 #endif  /* HIMARK_H */
