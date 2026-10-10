@@ -31,11 +31,14 @@ pub struct HostId(u64);
 impl HostId {
     pub const LOCAL: HostId = HostId(0);
 
-    fn raw(self) -> u64 {
+    /// The id's raw face for boundaries that cannot carry the
+    /// type (the C surface) — minting one from thin air names an
+    /// unregistered host, which every lookup refuses.
+    pub fn raw(self) -> u64 {
         self.0
     }
 
-    fn from_raw(raw: u64) -> Self {
+    pub fn from_raw(raw: u64) -> Self {
         Self(raw)
     }
 }

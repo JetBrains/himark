@@ -149,6 +149,10 @@ typedef struct {
     uint64_t raw;
 } HimarkFrame;
 
+typedef struct {
+    uint64_t raw;
+} HimarkCatalog;
+
 HimarkEngine *himark_create(void);
 
 HimarkWindow himark_add_window(HimarkEngine *engine);
@@ -373,5 +377,77 @@ bool himark_frame_paint(HimarkEngine *engine,
  * was derived from.
  */
 void himark_frame_release(HimarkEngine *engine, HimarkFrame frame);
+
+/**
+ * The catalog epoch — moved means re-copy. Read after every
+ * drain.
+ */
+uint64_t himark_sessions_epoch(HimarkEngine *engine);
+
+/**
+ * Snapshot the catalog — an owned, immutable copy behind a
+ * handle; strings read out of it stay valid until its release.
+ */
+HimarkCatalog himark_sessions_copy(HimarkEngine *engine);
+
+void himark_catalog_release(HimarkEngine *engine, HimarkCatalog catalog);
+
+uintptr_t himark_catalog_hosts(HimarkEngine *engine, HimarkCatalog catalog);
+
+uint64_t himark_catalog_host_id(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
+
+/**
+ * 0 idle · 1 connecting · 2 connected · 3 failed.
+ */
+uint32_t himark_catalog_host_status(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
+
+uintptr_t himark_catalog_host_name(HimarkEngine *engine,
+                                   HimarkCatalog catalog,
+                                   uintptr_t index,
+                                   char *out,
+                                   uintptr_t cap);
+
+uintptr_t himark_catalog_sessions(HimarkEngine *engine, HimarkCatalog catalog);
+
+uint64_t himark_catalog_session_host(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
+
+int64_t himark_catalog_session_status(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
+
+uintptr_t himark_catalog_session_uri(HimarkEngine *engine,
+                                     HimarkCatalog catalog,
+                                     uintptr_t index,
+                                     char *out,
+                                     uintptr_t cap);
+
+uintptr_t himark_catalog_session_title(HimarkEngine *engine,
+                                       HimarkCatalog catalog,
+                                       uintptr_t index,
+                                       char *out,
+                                       uintptr_t cap);
+
+uintptr_t himark_catalog_session_provider(HimarkEngine *engine,
+                                          HimarkCatalog catalog,
+                                          uintptr_t index,
+                                          char *out,
+                                          uintptr_t cap);
+
+uintptr_t himark_catalog_session_modified(HimarkEngine *engine,
+                                          HimarkCatalog catalog,
+                                          uintptr_t index,
+                                          char *out,
+                                          uintptr_t cap);
+
+/**
+ * Enter a session headlessly: subscribe, adopt, wire, poll — the
+ * native shell's selection. The session's views are mintable
+ * after the entry lands; the catalog carries the visible state.
+ */
+bool himark_session_enter(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
+
+/**
+ * Create a session headlessly on the host (0 = the local
+ * default); the landing enters it.
+ */
+bool himark_session_new(HimarkEngine *engine, uint64_t host);
 
 #endif  /* HIMARK_H */

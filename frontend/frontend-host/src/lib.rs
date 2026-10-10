@@ -2124,7 +2124,7 @@ pub(crate) unsafe fn str_from<'a>(utf8: *const c_char, len: usize) -> Option<&'a
     std::str::from_utf8(bytes).ok()
 }
 
-unsafe fn copy_optional_utf8(text: Option<String>, out: *mut c_char, cap: usize) -> usize {
+pub(crate) unsafe fn copy_optional_utf8(text: Option<String>, out: *mut c_char, cap: usize) -> usize {
     let Some(text) = text else {
         return 0;
     };

@@ -111,6 +111,28 @@ pub struct Himark {
     pub(crate) settling: bool,
 }
 
+/// One catalog snapshot — plain rows, cloned out, immutable.
+pub struct Catalog {
+    pub hosts: Vec<HostRow>,
+    pub sessions: Vec<SessionRow>,
+}
+
+pub struct HostRow {
+    pub host: ahp_wire::client::HostId,
+    pub name: String,
+    /// 0 idle · 1 connecting · 2 connected · 3 failed.
+    pub status: u32,
+}
+
+pub struct SessionRow {
+    pub host: ahp_wire::client::HostId,
+    pub uri: String,
+    pub provider: String,
+    pub title: String,
+    pub status: i64,
+    pub modified_at: String,
+}
+
 pub struct AppFonts {
     source: ::editor::FontSource,
 }
@@ -471,6 +493,72 @@ impl Himark {
         if let Some(slot) = self.bridges.get_mut(&id) {
             slot.spare_arena = Some(arena);
         }
+    }
+
+    /// The catalog epoch: moved means re-snapshot. Today it rides
+    /// the store's frame revision — an over-approximation (any
+    /// batch bumps it, catalog or not); snapshots are cheap, so a
+    /// spurious re-read costs a few clones. Tightens when the fold
+    /// gets its own counter.
+    pub fn sessions_epoch(&self) -> u64 {
+        self.revision
+    }
+
+    /// The session catalog, cloned out whole for native chrome —
+    /// the QUERY half of the session surface
+    /// (docs/ui/himark-ffi.md): a picker, nav titles, badges.
+    pub fn catalog(&self) -> Catalog {
+        let mut hosts = Vec::new();
+        let mut sessions = Vec::new();
+        for (host, record) in ahp_session::session::agents::Agents::list(&self.store) {
+            hosts.push(HostRow {
+                host,
+                name: record.name.clone(),
+                status: match record.status {
+                    ahp_session::session::state::HostStatus::Idle => 0,
+                    ahp_session::session::state::HostStatus::Connecting => 1,
+                    ahp_session::session::state::HostStatus::Connected => 2,
+                    ahp_session::session::state::HostStatus::Failed(_) => 3,
+                },
+            });
+            for summary in record.sessions.iter() {
+                sessions.push(SessionRow {
+                    host,
+                    uri: summary.resource.clone(),
+                    provider: summary.provider.clone(),
+                    title: summary.title.clone(),
+                    status: summary.status as i64,
+                    modified_at: summary.modified_at.clone(),
+                });
+            }
+        }
+        Catalog { hosts, sessions }
+    }
+
+    /// Enter a session HEADLESSLY — subscribe, adopt, ensure the
+    /// wires, relaunch the poll; no window switches, no chat
+    /// opens. The native shell's selection road: after this, the
+    /// session's views are mintable.
+    pub fn enter_session(
+        &mut self,
+        host: ahp_wire::client::HostId,
+        session: ahp_wire::client::SessionUri,
+    ) -> bool {
+        self.perform_batch(vec![crate::perform::AppCommand::Verb(
+            imba::command::Verb::once(crate::higent::open_session::EnterHeadless {
+                server: host,
+                session,
+            }),
+        )])
+    }
+
+    /// Create a session HEADLESSLY on the given host (or the local
+    /// default); the landing enters it, and the catalog carries
+    /// the rest — the shell watches the epoch.
+    pub fn create_session(&mut self, host: Option<ahp_wire::client::HostId>) -> bool {
+        self.perform_batch(vec![crate::perform::AppCommand::Verb(
+            imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host }),
+        )])
     }
 
     pub fn register_client(

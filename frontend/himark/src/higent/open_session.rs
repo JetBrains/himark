@@ -320,6 +320,142 @@ impl WindowedCommand for OpenCreatedSession {
     }
 }
 
+/// The HEADLESS create — the native shell's "new session": no
+/// window to seed from, so the host falls back to the local
+/// default and the provider to the server's own. The landing
+/// enters the session the same headless way.
+pub struct CreateHeadless {
+    pub host: Option<HostId>,
+}
+
+impl imba::command::DynamicOnceCommand for CreateHeadless {
+    fn perform(
+        self: Box<Self>,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) {
+        let Some(host) = self.host.or_else(|| {
+            store
+                .get::<ahp_wire::client::LocalHost>()
+                .and_then(|local| local.0)
+        }) else {
+            eprintln!("[new-session] no host to create on");
+            return;
+        };
+        let Some(client) = ahp_wire::client::Servers::client(store, host) else {
+            eprintln!("[new-session] unregistered host {host:?}");
+            return;
+        };
+        fx.push(
+            AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
+                client: client.session.clone(),
+                working_directories: Vec::new(),
+                options: ahp_wire::client::SessionOptions {
+                    provider: None,
+                    config: None,
+                    model: None,
+                },
+            })
+            .map(move |result| match result {
+                Ok(session) => imba::command::Verb::once(EnterHeadless {
+                    server: host,
+                    session,
+                }),
+                Err(error) => imba::command::Verb::once(HeadlessFailed { error }),
+            }),
+        );
+    }
+}
+
+/// The HEADLESS session entry — subscribe, adopt, ensure the
+/// wires, relaunch the poll. No window switches, no chat opens:
+/// the shell mounts the session's views itself.
+pub struct EnterHeadless {
+    pub server: HostId,
+    pub session: SessionUri,
+}
+
+impl imba::command::DynamicOnceCommand for EnterHeadless {
+    fn perform(
+        self: Box<Self>,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) {
+        let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
+            eprintln!("[higent] enter-session: unregistered server {:?}", self.server);
+            return;
+        };
+        let server = self.server;
+        let session = self.session.clone();
+        fx.push(
+            AnyEffect::new(SubscribeSessionEffect {
+                client: client.session.clone(),
+                session: self.session,
+            })
+            .map(move |result| {
+                imba::command::Verb::once(EnteredHeadless {
+                    server,
+                    session: session.clone(),
+                    result,
+                })
+            }),
+        );
+    }
+}
+
+struct EnteredHeadless {
+    server: HostId,
+    session: SessionUri,
+    result: Result<ahp_types::state::SessionState, String>,
+}
+
+impl imba::command::DynamicOnceCommand for EnteredHeadless {
+    fn perform(
+        self: Box<Self>,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) {
+        let state = match &self.result {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("[higent] subscribe session failed: {error}");
+                return;
+            }
+        };
+        let key = SessionId {
+            host: self.server,
+            session: self.session.clone(),
+        };
+        ahp_session::session::channel::adopt_subscribed(store, &key, state);
+        let row = ahp_session::session::state::Hosts::ensure_state(store, &key);
+        let folders = ahp_session::session::folders::session_folders(store, &key);
+        ahp_changes::changes::ensure(store, row.changes_wire(), folders.clone(), fx);
+        for folder in folders {
+            ahp_comments::ensure(store, row.comments_wire(), &folder, fx);
+            ahp_lsp::diagnostics::ensure(store, row.diagnostics_wire(), &folder, fx);
+        }
+        ahp_session::session::driver::relaunch_session_poll(store, key, fx);
+    }
+}
+
+struct HeadlessFailed {
+    error: String,
+}
+
+impl imba::command::DynamicOnceCommand for HeadlessFailed {
+    fn perform(
+        self: Box<Self>,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _fx: &mut imba::command::Fx<'_>,
+    ) {
+        eprintln!("[higent] createSession failed: {}", self.error);
+    }
+}
+
 pub(crate) struct OpenSessionRow {
     pub(crate) server: HostId,
     pub(crate) session: SessionUri,

@@ -33,7 +33,7 @@ use himark::bridge::{BridgeLayout, Frame, ViewBridgeId};
 use imba::event::{Event, EventResult, MouseButton};
 use skia_safe::{Canvas, Point, Rect, Size};
 
-use crate::{map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed};
+use crate::{copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed};
 
 /// The handle NEWTYPES: single-field structs, so C and Swift see
 /// DISTINCT types — an event where a layout belongs is a compile
@@ -66,6 +66,12 @@ pub struct HimarkLayout {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct HimarkFrame {
+    pub raw: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkCatalog {
     pub raw: u64,
 }
 
@@ -143,6 +149,7 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 pub(crate) struct Stages {
     layouts: Handles<(ViewBridgeId, BridgeLayout)>,
     frames: Handles<(ViewBridgeId, Frame)>,
+    catalogs: Handles<himark::himark::Catalog>,
 }
 
 // ─── event factories ───
@@ -546,4 +553,221 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: 
         return;
     };
     engine.app.return_arena(id, stage.recycle());
+}
+
+// ─── the session surface: query + control (docs/ui/himark-ffi.md) ───
+
+/// The catalog epoch — moved means re-copy. Read after every
+/// drain.
+#[no_mangle]
+pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64 {
+    engine.as_ref().map_or(0, |engine| engine.app.sessions_epoch())
+}
+
+/// Snapshot the catalog — an owned, immutable copy behind a
+/// handle; strings read out of it stay valid until its release.
+#[no_mangle]
+pub unsafe extern "C" fn himark_sessions_copy(engine: *mut HimarkEngine) -> HimarkCatalog {
+    let Some(engine) = engine.as_mut() else {
+        return HimarkCatalog { raw: 0 };
+    };
+    let snapshot = engine.app.catalog();
+    HimarkCatalog {
+        raw: engine.stages.catalogs.mint(snapshot),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_release(engine: *mut HimarkEngine, catalog: HimarkCatalog) {
+    let Some(engine) = engine.as_mut() else {
+        return;
+    };
+    if engine.stages.catalogs.take(catalog.raw).is_none() {
+        refuse("catalog", catalog.raw);
+    }
+}
+
+unsafe fn with_catalog<R>(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    missing: R,
+    read: impl FnOnce(&himark::himark::Catalog) -> R,
+) -> R {
+    let Some(engine) = engine.as_ref() else {
+        return missing;
+    };
+    match engine.stages.catalogs.get(catalog.raw) {
+        Some(snapshot) => read(snapshot),
+        None => {
+            refuse("catalog", catalog.raw);
+            missing
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_hosts(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+) -> usize {
+    with_catalog(engine, catalog, 0, |snapshot| snapshot.hosts.len())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_host_id(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+) -> u64 {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        snapshot.hosts.get(index).map_or(0, |host| host.host.raw())
+    })
+}
+
+/// 0 idle · 1 connecting · 2 connected · 3 failed.
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_host_status(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+) -> u32 {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        snapshot.hosts.get(index).map_or(0, |host| host.status)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_host_name(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        copy_optional_utf8(snapshot.hosts.get(index).map(|host| host.name.clone()), out, cap)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_sessions(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+) -> usize {
+    with_catalog(engine, catalog, 0, |snapshot| snapshot.sessions.len())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_host(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+) -> u64 {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        snapshot.sessions.get(index).map_or(0, |row| row.host.raw())
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_status(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+) -> i64 {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        snapshot.sessions.get(index).map_or(0, |row| row.status)
+    })
+}
+
+unsafe fn catalog_session_string(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+    read: impl Fn(&himark::himark::SessionRow) -> String,
+) -> usize {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        copy_optional_utf8(snapshot.sessions.get(index).map(read), out, cap)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_uri(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    catalog_session_string(engine, catalog, index, out, cap, |row| row.uri.clone())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_title(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    catalog_session_string(engine, catalog, index, out, cap, |row| row.title.clone())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_provider(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    catalog_session_string(engine, catalog, index, out, cap, |row| row.provider.clone())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_session_modified(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    catalog_session_string(engine, catalog, index, out, cap, |row| row.modified_at.clone())
+}
+
+/// Enter a session headlessly: subscribe, adopt, wire, poll — the
+/// native shell's selection. The session's views are mintable
+/// after the entry lands; the catalog carries the visible state.
+#[no_mangle]
+pub unsafe extern "C" fn himark_session_enter(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some(uri) = str_from(uri, len) else {
+        return false;
+    };
+    engine.app.enter_session(
+        ahp_wire::client::HostId::from_raw(host),
+        ahp_wire::client::SessionUri::new(uri.to_owned()),
+    )
+}
+
+/// Create a session headlessly on the host (0 = the local
+/// default); the landing enters it.
+#[no_mangle]
+pub unsafe extern "C" fn himark_session_new(engine: *mut HimarkEngine, host: u64) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let host = match host {
+        0 => None,
+        raw => Some(ahp_wire::client::HostId::from_raw(raw)),
+    };
+    engine.app.create_session(host)
 }
