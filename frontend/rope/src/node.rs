@@ -55,6 +55,31 @@ impl<T: Clone, M: Measure<T>> Node<T, M> {
         }
     }
 
+    /// The element at `index`, borrowed from THIS subtree: a plain
+    /// descent that takes no path and clones no `Arc` — the borrow
+    /// lives as long as the tree it points into, which is what lets
+    /// a caller hand out element references without a CURSOR (an
+    /// owning path) outliving its function.
+    pub(crate) fn element_at(&self, mut index: usize) -> Option<&T> {
+        let mut node = self;
+        'descend: loop {
+            match node {
+                Self::Leaf(elements) => return elements.get(index),
+                Self::Internal(children) => {
+                    for child in children {
+                        let length = child.metrics.length as usize;
+                        if index < length {
+                            node = &child.node;
+                            continue 'descend;
+                        }
+                        index -= length;
+                    }
+                    return None;
+                }
+            }
+        }
+    }
+
     pub(crate) fn depth(&self) -> usize {
         match self {
             Self::Internal(children) => children.first().map_or(1, |child| child.node.depth() + 1),

@@ -64,6 +64,14 @@ impl<T: Clone, M: Measure<T>> Rope<T, M> {
         self.metrics.length == 0
     }
 
+    /// The element at `index`, borrowed from the rope ITSELF — no
+    /// cursor, no `Arc` clones: the reference lives exactly as long
+    /// as the rope, so a caller holding the rope at `'a` gets an
+    /// `'a` element with nothing to own, drop or leak.
+    pub fn get(&self, index: u32) -> Option<&T> {
+        self.root.element_at(index as usize)
+    }
+
     pub fn cursor(&self) -> Cursor<T, M> {
         Cursor::from_zipper(Zipper::new(Arc::clone(&self.root)))
             .expect("rope root must contain a leaf")

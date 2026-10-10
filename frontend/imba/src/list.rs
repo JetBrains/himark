@@ -2088,15 +2088,17 @@ where
         });
         let mut visible = Vec::with_capacity(placed.len());
         for (index, height, rect) in placed {
-            let mut cursor = self.items.cursor();
-            if !cursor.seek_to_index(index as u32) {
+            // The row view is borrowed from the ROPE, which the
+            // widget already holds at `'a` (the store-held list
+            // lends it through `display`): nothing owning outlives
+            // this loop. The leaked arena cursor that used to stand
+            // here pinned a full rope snapshot per realize — the
+            // canvas memory leak.
+            let Some(element) = self.items.get(index as u32) else {
                 continue;
-            }
-            // The cursor moves into the arena so the row view's
-            // borrow reaches the frame lifetime.
-            let cursor: &'a _ = crate::arena::ArenaBox::leak(arena.boxed(cursor));
+            };
             let thunk = crate::layout::Layout::layout(
-                cursor.element().view.display(arena, self.store, self.ui),
+                element.view.display(arena, self.store, self.ui),
                 arena,
                 self.child_constraints,
             );
