@@ -11,6 +11,6 @@
 pub(crate) mod chat_roads;
 pub mod drawer;
 pub mod flows;
-pub(crate) mod folder_grant;
+pub mod folder_grant;
 pub mod new_chat;
 pub mod open_session;

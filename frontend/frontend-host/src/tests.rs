@@ -6133,7 +6133,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
 }
 
 #[test]
-fn the_new_session_composer_starts_the_session_with_the_prompt() {
+fn a_new_session_is_a_live_chat_from_the_first_frame() {
     let _host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -6173,7 +6173,6 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
 
     engine.compose_new_windows = true;
-    let window = engine.add_window();
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
         crate::test_connector(),
@@ -6193,243 +6192,54 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         unsubscribe: None,
         set_clipboard: None,
     });
+    // Production registers the local backend in the ENTRY, before the
+    // shell can add a window — the window comes after here too, so
+    // its `session.new` has a host to create on.
+    let window = engine.add_window();
     let root = dir.path().join("files");
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
 
-    let try_probe = |engine: &HimarkEngine| -> Option<himark::new_session::NewSessionProbe> {
-        let mut probe = None;
-        engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(pane) = panel
-                .as_any()
-                .downcast_ref::<himark::new_session::ComposerPane>()
-            {
-                probe =
-                    himark::new_session::Composers::composer_ref(engine.app.store(), pane.window())
-                        .map(|composer| composer.probe());
-            }
-        });
-        probe
-    };
-    let probe = |engine: &HimarkEngine| try_probe(engine).expect("the composer panel");
-
+    // The composer form is gone (new_session.rs, burned 2026-10-10):
+    // a fresh window CREATES its session immediately and fronts the
+    // REGULAR chat; the first message is an ordinary send, and the
+    // per-session knobs live in the session toolbar.
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
     settle_until(
         engine_mut(&mut engine),
-        "the composer combos populated",
+        "the fresh window's session stood",
         |engine| {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            let probe = probe(engine);
-            !probe.model.labels.is_empty() && !probe.edits.labels.is_empty()
+            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+                .map(|entity| himark::workspace::entity_session(&entity))
+                .filter(|session| session.names_session())
+                .is_some_and(|session| {
+                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                        .is_some()
+                })
         },
     );
-    let booted = probe(&engine);
-    assert_eq!(
-        booted.model.labels,
-        vec![
-            "Claude",
-            "Fable",
-            "Opus",
-            "Sonnet",
-            "Haiku",
-            "Codex",
-            "GPT-6 Astra",
-            "GPT-5.6 Sol",
-            "GPT-5.6 Terra",
-            "GPT-5.6 Luna",
-        ],
-        "one MODEL menu groups models under provider headings"
-    );
-    assert_eq!(booted.model.picked.as_deref(), Some("Fable"));
-    assert_eq!(booted.effort.picked.as_deref(), Some("High"));
-    assert_eq!(booted.edits.picked.as_deref(), Some("Ask first"));
-    assert_eq!(booted.mode.picked.as_deref(), Some("Agent"));
-    assert_eq!(
-        booted.dir.labels,
-        vec!["No folder".to_owned(), "Choose folder…".to_owned()],
-        "a fresh host offers the folderless start and the picker row"
-    );
-    assert!(!booted.ready, "no prompt yet — Start stays disarmed");
-
-    let model_cell = booted.cells[3];
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        model_cell.0 + model_cell.1 * 0.5,
-        800.0 - 37.0,
-        1200.0,
-        800.0,
-    ));
-    let opened = probe(&engine);
-    assert!(opened.model.open, "the grouped MODEL menu stands");
-    for _ in 0..5 {
-        assert!(himark::test_driver::key(
-            &mut engine.app,
-            imba::event::Key::Down,
-            imba::event::Modifiers::default()
-        ));
-    }
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    let codex = probe(&engine);
-    assert_eq!(codex.model.picked.as_deref(), Some("GPT-5.6 Sol"));
-    assert_eq!(codex.effort.picked.as_deref(), Some("Medium"));
-
-    settle_until(
-        engine_mut(&mut engine),
-        "the Codex placeholder session stood",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            himark::new_session::Placeholders::session_of(
-                engine.app.store(),
-                engine.app.sole_window(),
-            )
-            .is_some_and(|(_, provider, _)| provider == "codex")
-        },
-    );
-    let placeholder = himark::workspace::entity_session(
+    let first = himark::workspace::entity_session(
         workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
             .expect("window"),
     );
 
-    assert!(himark::test_driver::type_text(&mut engine.app, "Build me"));
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    assert!(himark::test_driver::type_text(&mut engine.app, "a parser"));
-    assert_eq!(probe(&engine).prompt, "Build me\na parser");
-
-    let row_mid = 800.0 - booted.cells[1].1.mul_add(0.0, 37.0);
-    let dir_cell = booted.cells[1];
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        dir_cell.0 + dir_cell.1 * 0.5,
-        800.0 - 37.0,
-        1200.0,
-        800.0,
-    ));
-    assert!(probe(&engine).dir.open, "the DIR menu stands");
-
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        dir_cell.0 + 30.0,
-        800.0 - 74.0 - 20.0,
-        1200.0,
-        800.0,
-    ));
-    assert!(!probe(&engine).dir.open, "the pick dismissed the menu");
-    settle(&mut engine);
-    let request = pick_request(&mut engine, &host_seat);
-    assert!(engine.host_picked(request, vec![fs.dir(&[])]));
-    settle(&mut engine);
-    let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
     settle_until(
         engine_mut(&mut engine),
-        "the picked folder landed",
+        "the chat panel fronted, ready and seeded",
         |engine| {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            probe(engine).dir.picked.as_deref() == Some("files")
+            shown_chat(engine).is_some_and(|chat| {
+                chat.ready() && chat.toolbar_probe().model.picked.is_some()
+            })
         },
     );
 
-    settle_until(
-        engine_mut(&mut engine),
-        "the placeholder gained the folder",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            ahp_session::session::agents::Agents::channel(engine.app.store(), &placeholder)
-                .is_some_and(|channel| !channel.working_directories.is_empty())
-        },
-    );
-
-    let cells = probe(&engine).cells.clone();
-    assert!(himark::test_driver::click(
+    assert!(himark::test_driver::type_text(
         &mut engine.app,
-        cells[3].0 + cells[3].1 * 0.5,
-        800.0 - 37.0,
-        1200.0,
-        800.0,
+        "Build me a parser"
     ));
-    assert!(probe(&engine).model.open);
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Down,
-        imba::event::Modifiers::default()
-    ));
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    let after = probe(&engine);
-    assert!(!after.model.open, "Enter picked and dismissed");
-    assert_eq!(after.model.picked.as_deref(), Some("GPT-5.6 Terra"));
-    assert!(after.ready, "prompt + folder + connected host arm Start");
-    let _ = row_mid;
-
-    // Move effort and edits off their defaults (Medium and Ask first), so
-    // the reopened composer provably restores the session's values rather
-    // than landing on the defaults again. The toolbar overflows the 1200px
-    // window by now, so those two cells need a wider viewport to reach.
-    let mut wide = skia_safe::surfaces::raster_n32_premul((2000, 800)).expect("surface");
-    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
-    let cells = probe(&engine).cells.clone();
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        cells[4].0 + cells[4].1 * 0.5,
-        800.0 - 37.0,
-        2000.0,
-        800.0,
-    ));
-    assert!(probe(&engine).effort.open, "the EFFORT menu stands");
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Down,
-        imba::event::Modifiers::default()
-    ));
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    assert_eq!(probe(&engine).effort.picked.as_deref(), Some("High"));
-    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
-    let cells = probe(&engine).cells.clone();
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        cells[5].0 + 20.0,
-        800.0 - 37.0,
-        2000.0,
-        800.0,
-    ));
-    assert!(probe(&engine).edits.open, "the EDITS menu stands");
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Down,
-        imba::event::Modifiers::default()
-    ));
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    assert_eq!(probe(&engine).edits.picked.as_deref(), Some("Accept edits"));
-    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
-    let cells = probe(&engine).cells.clone();
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        cells[6].0 + 20.0,
-        800.0 - 37.0,
-        2000.0,
-        800.0,
-    ));
-    assert!(probe(&engine).worktree, "the worktree checkbox toggled on");
-
     assert!(himark::test_driver::key(
         &mut engine.app,
         imba::event::Key::Enter,
@@ -6438,28 +6248,6 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
             ..Default::default()
         }
     ));
-    settle_until(engine_mut(&mut engine), "the session opened", |engine| {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .is_some_and(|entity| himark::workspace::entity_session(&entity).names_session())
-    });
-    let session = himark::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .expect("window"),
-    );
-
-    assert_eq!(
-        session, placeholder,
-        "start continued the placeholder session"
-    );
-    let channel = ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
-        .expect("the session channel mirror");
-    assert_eq!(
-        channel.provider, "codex",
-        "the selected agent created the session"
-    );
-    let chat = channel.default_chat.clone().expect("the default chat");
-
-    let _ = chat;
     settle_until(
         engine_mut(&mut engine),
         "the prompt landed in the transcript",
@@ -6469,237 +6257,40 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
                 rows.iter().any(|(_, cells)| {
                     cells
                         .iter()
-                        .any(|(_, text)| text.contains("Build me\na parser"))
+                        .any(|(_, text)| text.contains("Build me a parser"))
                 })
             })
         },
     );
-    assert_eq!(
-        shown_chat(&engine)
-            .expect("chat panel")
-            .toolbar_probe()
-            .model
-            .labels,
-        vec![
-            "GPT-6 Astra",
-            "GPT-5.6 Sol",
-            "GPT-5.6 Terra",
-            "GPT-5.6 Luna"
-        ],
-        "the live Codex toolbar stays provider-filtered"
-    );
 
-    // Reopening the composer over the live session carries its folder,
-    // agent, model, effort, and edits mode into the fresh form.
+    // `session.new` over a live session: a FRESH session takes the
+    // window and its chat fronts, seeded from the one it replaces.
     let app_window = engine.app.sole_window();
     assert!(engine.app.perform_registered(app_window, "session.new"));
     settle_until(
         engine_mut(&mut engine),
-        "the reopened composer prefilled from the current session",
+        "the next session took the window",
         |engine| {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            try_probe(engine).is_some_and(|probe| {
-                probe.dir.picked.as_deref() == Some("files")
-                    && probe.model.picked.as_deref() == Some("GPT-5.6 Terra")
-                    && probe.effort.picked.as_deref() == Some("High")
-                    && probe.edits.picked.as_deref() == Some("Accept edits")
-                    && probe.worktree
-            })
+            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+                .map(|entity| himark::workspace::entity_session(&entity))
+                .filter(|session| session.names_session() && *session != first)
+                .is_some_and(|session| {
+                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                        .is_some()
+                })
         },
     );
-    let reopened = probe(&engine);
-    assert_eq!(
-        reopened.dir.picked.as_deref(),
-        Some("files"),
-        "the session's folder carried over"
-    );
-    assert_eq!(
-        reopened.model.picked.as_deref(),
-        Some("GPT-5.6 Terra"),
-        "the session's agent and model carried over"
-    );
-    assert_eq!(
-        reopened.effort.picked.as_deref(),
-        Some("High"),
-        "the session's effort carried over"
-    );
-    assert_eq!(
-        reopened.edits.picked.as_deref(),
-        Some("Accept edits"),
-        "the session's edits mode carried over"
-    );
-    assert!(
-        reopened.worktree,
-        "the session's worktree flag carried over"
-    );
-    assert_eq!(
-        reopened.prompt, "",
-        "the prompt starts empty — only the setup carries over"
-    );
-
-    // Changing the folder after the prefill must retire the seeded grant:
-    // the placeholder session already holds the carried-over folder, and a
-    // session started from a different pick keeps only that pick.
     settle_until(
         engine_mut(&mut engine),
-        "the reopened placeholder gained the seeded folder",
+        "the fresh session's chat fronted",
         |engine| {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            let current = himark::workspace::entity_session(
-                workbench::window::Windows::window_ref(
-                    engine.app.store(),
-                    engine.app.sole_window(),
-                )
-                .expect("window"),
-            );
-            current.names_session()
-                && current != session
-                && ahp_session::session::agents::Agents::channel(engine.app.store(), &current)
-                    .is_some_and(|channel| {
-                        channel
-                            .working_directories
-                            .iter()
-                            .any(|held| held.ends_with("files"))
-                    })
+            shown_chat(engine).is_some_and(|chat| chat.toolbar_probe().model.picked.is_some())
         },
     );
-    let reseeded = himark::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .expect("window"),
-    );
-
-    std::fs::create_dir_all(fs.path(&["other"])).expect("other folder");
-    let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-    let dir_cell = probe(&engine).cells[1];
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        dir_cell.0 + dir_cell.1 * 0.5,
-        800.0 - 37.0,
-        1200.0,
-        800.0,
-    ));
-    assert!(probe(&engine).dir.open, "the DIR menu stands again");
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Down,
-        imba::event::Modifiers::default()
-    ));
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers::default()
-    ));
-    settle(&mut engine);
-    let request = pick_request(&mut engine, &host_seat);
-    assert!(engine.host_picked(request, vec![fs.dir(&["other"])]));
-    settle_until(
-        engine_mut(&mut engine),
-        "the replacement folder landed",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            probe(engine).dir.picked.as_deref() == Some("other")
-        },
-    );
-    {
-        // A full deadline here has never been caught with its state in
-        // hand. The revoke is issued from the PLACEHOLDER row's
-        // `applied` list (new_session.rs ensure_placeholder), and the
-        // window's session can be rekeyed out from under the id we
-        // captured — so on deadline name all three: which session the
-        // window holds now, what each mirror carries, and the row the
-        // revoke is computed from.
-        let dirs = |engine: &HimarkEngine, at: &ahp_wire::SessionId| {
-            ahp_session::session::agents::Agents::channel(engine.app.store(), at).map(|channel| {
-                channel
-                    .working_directories
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-            })
-        };
-        let revoked = |engine: &HimarkEngine| {
-            dirs(engine, &reseeded).is_some_and(|held| {
-                held.len() == 1 && held.iter().all(|dir| dir.ends_with("other"))
-            })
-        };
-        let started = std::time::Instant::now();
-        loop {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            settle(&mut engine);
-            if revoked(&engine) {
-                break;
-            }
-            if started.elapsed() > std::time::Duration::from_secs(30) {
-                let now = himark::workspace::entity_session(
-                    workbench::window::Windows::window_ref(
-                        engine.app.store(),
-                        engine.app.sole_window(),
-                    )
-                    .expect("window"),
-                );
-                panic!(
-                    "never settled: the seeded folder grant was revoked (waited {:?})\n\
-                     reseeded: {reseeded:?}\n\
-                     window session now: {now:?} (same: {})\n\
-                     reseeded dirs: {:?}\n\
-                     window dirs: {:?}\n\
-                     placeholder row (provider, session, applied, pending): {:?}",
-                    started.elapsed(),
-                    now == reseeded,
-                    dirs(&engine, &reseeded),
-                    dirs(&engine, &now),
-                    himark::new_session::Placeholders::probe(
-                        engine.app.store(),
-                        engine.app.sole_window()
-                    ),
-                );
-            }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-    }
-
-    assert!(himark::test_driver::type_text(&mut engine.app, "again"));
-    assert!(probe(&engine).ready, "prompt + folder re-arm Start");
-    settle(&mut engine);
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers {
-            command: true,
-            ..Default::default()
-        }
-    ));
-    settle(&mut engine);
-    settle_until(
-        engine_mut(&mut engine),
-        "the re-picked session started",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            himark::new_session::Placeholders::session_of(
-                engine.app.store(),
-                engine.app.sole_window(),
-            )
-            .is_none()
-        },
-    );
-    let restarted = himark::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .expect("window"),
-    );
-    assert_eq!(
-        restarted, reseeded,
-        "start continued the reseeded placeholder session"
-    );
-    settle(&mut engine);
-    let dirs = ahp_session::session::agents::Agents::channel(engine.app.store(), &restarted)
-        .expect("the restarted session channel mirror")
-        .working_directories
-        .clone();
-    assert_eq!(dirs.len(), 1, "only the picked folder remains: {dirs:?}");
-    assert!(
-        dirs[0].ends_with("other"),
-        "the picked folder replaced the seeded one: {dirs:?}"
-    );
+    let _ = &fs;
+    let _ = &host_seat;
 }
 
 fn engine_mut(engine: &mut HimarkEngine) -> &mut HimarkEngine {
@@ -6746,7 +6337,6 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
 
     engine.compose_new_windows = true;
-    let window = engine.add_window();
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
         crate::test_connector(),
@@ -6766,51 +6356,18 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         unsubscribe: None,
         set_clipboard: None,
     });
+    // Production registers the local backend in the ENTRY, before the
+    // shell can add a window — the window comes after here too, so
+    // its `session.new` has a host to create on.
+    let window = engine.add_window();
     let root = dir.path().join("files");
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
 
-    let probe = |engine: &HimarkEngine| -> himark::new_session::NewSessionProbe {
-        let mut probe = None;
-        engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(pane) = panel
-                .as_any()
-                .downcast_ref::<himark::new_session::ComposerPane>()
-            {
-                probe =
-                    himark::new_session::Composers::composer_ref(engine.app.store(), pane.window())
-                        .map(|composer| composer.probe());
-            }
-        });
-        probe.expect("the composer panel")
-    };
-
+    // The window's session auto-creates (compose_new_windows fires
+    // `session.new`); no prompt is needed for this test's subject.
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-    settle_until(
-        engine_mut(&mut engine),
-        "the composer combos populated",
-        |engine| {
-            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            !probe(engine).model.labels.is_empty()
-        },
-    );
-    assert_eq!(probe(&engine).dir.picked.as_deref(), Some("No folder"));
-    assert!(himark::test_driver::type_text(&mut engine.app, "hello"));
-    assert!(
-        probe(&engine).ready,
-        "prompt + host arm Start — no folder needed"
-    );
-
-    settle(&mut engine);
-    assert!(himark::test_driver::key(
-        &mut engine.app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers {
-            command: true,
-            ..Default::default()
-        }
-    ));
 
     settle_until(engine_mut(&mut engine), "the session opened", |engine| {
         let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);

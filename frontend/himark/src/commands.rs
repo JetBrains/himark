@@ -70,12 +70,6 @@ impl Commands {
     }
 }
 
-/// A window-coupled deferred ask carried through the kit's panel
-/// requests — the drain adds the window.
-pub(crate) fn shell_ask(command: Arc<dyn WindowedCommand>) -> hikit::panel::PanelRequest {
-    hikit::panel::PanelRequest::Shell(Arc::new(command))
-}
-
 #[derive(Clone, Default)]
 pub struct AppRequests(Vec<Arc<dyn WindowedCommand>>);
 
@@ -408,6 +402,6 @@ pub(crate) fn register_builtins(store: &mut Store) {
 
     Commands::register(
         store,
-        Arc::new(crate::new_session::OpenNewSession { host: None }),
+        Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
     );
 }

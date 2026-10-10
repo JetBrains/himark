@@ -707,7 +707,7 @@ impl HimarkEngine {
         if self.compose_new_windows {
             self.app.perform_command(himark::app::AppCommand::Windowed(
                 window,
-                std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
             ));
         }
         window.raw()
@@ -1313,7 +1313,7 @@ impl HimarkEngine {
                 )));
 
             self.app
-                .register_handler::<himark::new_session::PickFoldersEffect>(
+                .register_handler::<himark::higent::folder_grant::PickFoldersEffect>(
                     host::PickFoldersHandler(Arc::clone(&bridge)),
                 );
             self.app.register_command(Arc::new(host::OpenFilePicker));

@@ -2142,6 +2142,7 @@ impl Host {
                     }
                 });
                 self.republish_session_catalog(&channel);
+                self.republish_session_summary(&channel);
                 self.fsp_sync_folders();
             }
             StateAction::SessionWorkingDirectoryRemoved(removed) => {
@@ -2153,6 +2154,7 @@ impl Host {
                         .retain(|held| *held != directory);
                 });
                 self.republish_session_catalog(&channel);
+                self.republish_session_summary(&channel);
                 self.fsp_sync_folders();
             }
 
@@ -4452,6 +4454,31 @@ impl Host {
 
             crate::lsp::LsEvent::Progress => {}
         }
+    }
+
+    /// The ROOT catalog's view of one session changed shape: push
+    /// the working-directories summary delta, so the drawer's
+    /// project grouping follows a live grant — not only the next
+    /// boot's manifest read.
+    fn republish_session_summary(&self, channel: &Uri) {
+        let directories = {
+            let state = self.snapshot();
+            match state.sessions.get(channel) {
+                Some(entry) => entry.state.working_directories.clone().unwrap_or_default(),
+                None => return,
+            }
+        };
+        self.notify_root(
+            "root/sessionSummaryChanged",
+            serde_json::json!({
+                "channel": ROOT,
+                "session": channel,
+                "changes": PartialSessionSummary {
+                    working_directories: Some(directories),
+                    ..Default::default()
+                },
+            }),
+        );
     }
 
     fn republish_session_catalog(&self, channel: &Uri) {

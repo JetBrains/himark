@@ -858,7 +858,7 @@ fn any_open_road_lands_the_chat_in_the_slot() {
 }
 
 #[test]
-fn new_session_leaves_the_previous_session_and_its_chat() {
+fn new_session_without_a_host_keeps_the_current_chat() {
     let mut app = Application::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
@@ -936,26 +936,20 @@ fn new_session_leaves_the_previous_session_and_its_chat() {
     assert!(himark::workspace::entity_session(&entity).names_session());
     assert!(chat_mounted(&app), "the chat panel stands");
 
-    assert!(app.perform_command(AppCommand::Windowed(
+    // `session.new` creates a REAL session on a host now (the
+    // composer is gone); with no host registered there is nothing to
+    // create on, so the command is a no-op and the current session
+    // keeps its chat. The live road is covered end-to-end in
+    // frontend-host (a_new_session_is_a_live_chat_from_the_first_frame).
+    let _ = app.perform_command(AppCommand::Windowed(
         window,
-        Arc::new(himark::new_session::OpenNewSession { host: None }),
-    )));
+        Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
+    ));
     settle(&mut app, &mut surface);
     let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
     assert!(
-        !himark::workspace::entity_session(&entity).names_session(),
-        "the previous session is still current: {:?}",
-        himark::workspace::entity_session(&entity)
+        himark::workspace::entity_session(&entity).names_session(),
+        "no host: the current session stays"
     );
-    assert!(
-        !chat_mounted(&app),
-        "the previous session's chat panel is still mounted"
-    );
-    let title = ::workbench::window::Windows::window_ref(app.store(), window)
-        .expect("window")
-        .workbench()
-        .root
-        .focused_pane()
-        .title(app.store());
-    assert_eq!(title, "New session", "the composer holds the focus");
+    assert!(chat_mounted(&app), "no host: the chat panel stays");
 }

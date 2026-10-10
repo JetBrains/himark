@@ -282,10 +282,10 @@ impl EffectHandler<ahp_wire::effects::ShareHostEffect> for ShareHostHandler {
 
 pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
 
-impl EffectHandler<himark::new_session::PickFoldersEffect> for PickFoldersHandler {
+impl EffectHandler<himark::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
     async fn handle(
         &self,
-        effect: himark::new_session::PickFoldersEffect,
+        effect: himark::higent::folder_grant::PickFoldersEffect,
     ) -> Vec<ResourceLocation> {
         let Some(pick) = self.0.callbacks.pick_files else {
             return Vec::new();

@@ -16,7 +16,6 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod keymap;
 pub mod modal;
-pub mod new_session;
 pub mod registry;
 pub mod save;
 pub mod startup_profile;

@@ -9,11 +9,38 @@ use imba::{container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx, V
 use ahp_wire::client::SessionChannel;
 use hikit::combo::{Combo, ComboCommand, ComboOption};
 
+/// The dir combo's ACTION row: not a folder, a verb.
+const ADD_FOLDER: &str = "\u{0}add-folder";
+/// The dirless placeholder: display only.
+const NO_FOLDER: &str = "\u{0}no-folder";
+
+/// Installed by the SHELL: turns the toolbar's add-folder ask into
+/// the native-picker road — the picker needs a WINDOW, a concept
+/// this crate does not know. The returned command rides
+/// `imba::command::Requests`.
+#[derive(Clone)]
+pub struct AddFolderRoad(
+    pub  Arc<
+        dyn Fn(
+                ahp_wire::client::HostId,
+                ahp_wire::client::SessionUri,
+            ) -> Arc<dyn imba::command::DynamicCommand>
+            + Send
+            + Sync,
+    >,
+);
+
 #[derive(Clone)]
 pub struct SessionToolbar {
     pub model: Combo,
     pub effort: Combo,
     pub edits: Combo,
+    pub dir: Combo,
+
+    /// What the dir combo DISPLAYS: the first folder. The combo is a
+    /// menu of the session's folders plus the add action, never a
+    /// selection — any pick snaps the face back to this anchor.
+    dir_anchor: Option<String>,
 
     pub synced: u64,
 
@@ -27,6 +54,7 @@ pub enum ToolbarCommand {
     Model(ComboCommand),
     Effort(ComboCommand),
     Edits(ComboCommand),
+    Dir(ComboCommand),
 }
 
 impl std::fmt::Display for ToolbarCommand {
@@ -35,6 +63,7 @@ impl std::fmt::Display for ToolbarCommand {
             ToolbarCommand::Model(command) => command.fmt(out),
             ToolbarCommand::Effort(command) => command.fmt(out),
             ToolbarCommand::Edits(command) => command.fmt(out),
+            ToolbarCommand::Dir(command) => command.fmt(out),
         }
     }
 }
@@ -43,6 +72,9 @@ pub enum ToolbarAsk {
     None,
 
     Edits(String),
+
+    /// The dir combo's action row: open the native folder picker.
+    AddFolder,
 }
 
 impl SessionToolbar {
@@ -55,8 +87,10 @@ impl SessionToolbar {
             model: compact(Combo::new(store, ui, "MODEL")),
             effort: compact(Combo::new(store, ui, "EFFORT")),
             edits: compact(Combo::new(store, ui, "EDITS")),
+            dir: compact(Combo::new(store, ui, "DIR")),
+            dir_anchor: None,
             synced: 0,
-            cell_spans: Arc::new((0..4).map(|_| AtomicU64::new(0)).collect()),
+            cell_spans: Arc::new((0..5).map(|_| AtomicU64::new(0)).collect()),
             strip_origin: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -136,6 +170,36 @@ impl SessionToolbar {
                 self.edits.pick_id(current);
             }
         }
+
+        let mut folders: Vec<ComboOption> = session
+            .working_directories
+            .iter()
+            .map(|dir| {
+                let label = dir
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or(dir.as_str())
+                    .to_owned();
+                ComboOption::plain(dir.clone(), label)
+            })
+            .collect();
+        if folders.is_empty() {
+            folders.push(ComboOption::plain(NO_FOLDER, "No folder"));
+        }
+        folders.push(ComboOption::plain(ADD_FOLDER, "Add folder…"));
+        self.dir.set_options(store, ui, folders);
+        self.dir_anchor = Some(
+            session
+                .working_directories
+                .first()
+                .cloned()
+                .unwrap_or_else(|| NO_FOLDER.to_owned()),
+        );
+        if let Some(anchor) = &self.dir_anchor {
+            self.dir.pick_id(anchor);
+        }
     }
 
     pub(crate) fn model_selection(&self) -> Option<ahp_types::state::ModelSelection> {
@@ -184,6 +248,22 @@ impl SessionToolbar {
                     None => ToolbarAsk::None,
                 }
             }
+            ToolbarCommand::Dir(command) => {
+                let moved = command.picks();
+                fx.scope(ToolbarCommand::Dir, |fx| {
+                    self.dir.perform(store, ui, command, fx)
+                });
+                let picked = moved.then(|| self.dir.value()).flatten();
+                // A menu, not a selection: whatever was chosen, the
+                // face snaps back to the anchor.
+                if let Some(anchor) = self.dir_anchor.clone() {
+                    self.dir.pick_id(&anchor);
+                }
+                match picked {
+                    Some(option) if option.id == ADD_FOLDER => ToolbarAsk::AddFolder,
+                    _ => ToolbarAsk::None,
+                }
+            }
         }
     }
 
@@ -204,10 +284,12 @@ impl SessionToolbar {
         let themes = editor::env::Themes::of(store);
         let theme = themes.ui();
         let mut x = 0.0f32;
-        let combos: [(&Combo, fn(ComboCommand) -> ToolbarCommand); 3] = [
+        let combos: [(&Combo, fn(ComboCommand) -> ToolbarCommand); 4] = [
             (&self.model, ToolbarCommand::Model),
             (&self.effort, ToolbarCommand::Effort),
             (&self.edits, ToolbarCommand::Edits),
+            // LAST on purpose: the probe's cell indices predate it.
+            (&self.dir, ToolbarCommand::Dir),
         ];
         let span = |index: usize, x: f32, width: f32| {
             if let Some(span) = self.cell_spans.get(index) {
@@ -235,7 +317,7 @@ impl SessionToolbar {
             );
             x += width;
         }
-        span(3, x, 0.0);
+        span(4, x, 0.0);
         x
     }
 }
@@ -245,6 +327,7 @@ pub struct ToolbarProbe {
     pub model: hikit::combo::ComboProbe,
     pub effort: hikit::combo::ComboProbe,
     pub edits: hikit::combo::ComboProbe,
+    pub dir: hikit::combo::ComboProbe,
 
     pub cells: Vec<(f32, f32)>,
 
@@ -267,6 +350,7 @@ impl SessionToolbar {
             model: combo(&self.model),
             effort: combo(&self.effort),
             edits: combo(&self.edits),
+            dir: combo(&self.dir),
             origin: (
                 f32::from_bits((origin >> 32) as u32),
                 f32::from_bits(origin as u32),

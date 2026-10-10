@@ -14,6 +14,97 @@ use ahp_wire::SessionId;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
+/// ⌘N: a NEW SESSION is a regular chat. The session is created
+/// immediately — inheriting the current session's host, folders and
+/// agent config when one is showing — and the landing fronts the
+/// ordinary chat panel on it; the first message is a normal send.
+/// Model, effort and permission mode live in the session toolbar,
+/// folders in the add-folder road; `Hosts::sweep_empty` reaps a
+/// session that never gets a word. (This replaced the composer
+/// form — new_session.rs, 2.4k lines — 2026-10-10.)
+pub struct OpenNewSession {
+    pub host: Option<HostId>,
+}
+
+impl WindowedCommand for OpenNewSession {
+    fn id(&self) -> &'static str {
+        "session.new"
+    }
+
+    fn name(&self) -> String {
+        "New Session".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let seed = Windows::window_ref(store, window)
+            .map(crate::workspace::entity_session)
+            .filter(|session| session.names_session())
+            .filter(|session| self.host.is_none_or(|host| host == session.host));
+        let Some(host) = self
+            .host
+            .or(seed.as_ref().map(|session| session.host))
+            .or_else(|| {
+                store
+                    .get::<ahp_wire::client::LocalHost>()
+                    .and_then(|local| local.0)
+            })
+        else {
+            eprintln!("[new-session] no host to create on");
+            return;
+        };
+        let Some(client) = ahp_wire::client::Servers::client(store, host) else {
+            eprintln!("[new-session] unregistered host {host:?}");
+            return;
+        };
+
+        let mut working_directories = Vec::new();
+        let mut options = ahp_wire::client::SessionOptions {
+            provider: None,
+            config: None,
+            model: None,
+        };
+        if let Some(session) = &seed {
+            if let Some(uris) = ahp_session::session::state::Hosts::uris(store, session.host) {
+                for folder in ahp_session::session::folders::session_folders(store, session) {
+                    working_directories.push(uris.uri_of(&folder).as_str().to_owned());
+                }
+            }
+            if let Some(channel) = ahp_session::session::agents::Agents::channel(store, session) {
+                if !channel.provider.is_empty() {
+                    options.provider = Some(channel.provider.clone());
+                }
+                options.config = channel.config.as_ref().map(|config| config.values.clone());
+            }
+        }
+
+        let server = host;
+        fx.push(
+            AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
+                client: client.session.clone(),
+                working_directories,
+                options,
+            })
+            .map(move |result| {
+                AppCommand::Windowed(
+                    window,
+                    Arc::new(OpenCreatedSession {
+                        server,
+                        open_chat: true,
+                        initial_prompt: None,
+                        result,
+                    }),
+                )
+            }),
+        );
+    }
+}
+
 pub fn open_session(
     store: &mut Store,
     window: ::workbench::window::WindowId,

@@ -1784,6 +1784,19 @@ impl ChatPanel {
                         }
                     }
 
+                    crate::session_toolbar::ToolbarAsk::AddFolder => {
+                        // The native picker lives shell-side (it
+                        // needs a window): hand the ask to the
+                        // installed road through the request queue.
+                        if let Some(road) = store
+                            .get::<crate::session_toolbar::AddFolderRoad>()
+                            .cloned()
+                        {
+                            let request = (road.0)(self.server, self.session.clone());
+                            imba::command::Requests::push(store, request);
+                        }
+                    }
+
                     crate::session_toolbar::ToolbarAsk::None => {}
                 }
             }

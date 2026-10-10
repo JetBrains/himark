@@ -501,7 +501,7 @@ mod app {
 
             state.perform_command(himark::app::AppCommand::Windowed(
                 window,
-                std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
             ));
 
             #[cfg(target_feature = "atomics")]

@@ -15,6 +15,7 @@ use ahp_chat::chat::OpenEditedRoad;
 /// window hold for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
+    crate::higent::folder_grant::install_chat_road(store);
     // The chat ROW's minter: the row carries its collection, a pane
     // is minted off the id — and a dismantled chat has no home to
     // walk back to, so the holds-check gates the mint.
