@@ -101,6 +101,16 @@ pub struct Himark {
 
     pub(crate) workshop: Arc<::editor::env::Workshop>,
 
+    /// The stage tables (docs/ui/imba-ffi.md): layouts and frames
+    /// a host holds by handle. Engine-owned so the `ToView` road
+    /// can quiesce a view's stages before mutating it.
+    pub(crate) stage_layouts: crate::bridge::Handles<(ViewBridgeId, crate::bridge::BridgeLayout)>,
+    pub(crate) stage_frames: crate::bridge::Handles<(ViewBridgeId, crate::bridge::Frame)>,
+
+    /// Mount ids for non-window views, minted from the high half —
+    /// window bridges keep their window's raw id in the low half.
+    next_mount: u64,
+
     pub(crate) pending_file_events: Vec<documents::watch::Subscription>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
@@ -214,6 +224,9 @@ impl Himark {
             handlers,
             workshop,
             bridges: std::collections::HashMap::new(),
+            stage_layouts: Default::default(),
+            stage_frames: Default::default(),
+            next_mount: 1 << 32,
             revision: 0,
             pending_file_events: Vec::new(),
             settle_requested: false,
@@ -298,6 +311,9 @@ impl Himark {
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
             workshop: &self.workshop,
+            bridges: &mut self.bridges,
+            stage_layouts: &mut self.stage_layouts,
+            stage_frames: &mut self.stage_frames,
         };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         while let Some(command) = queue.pop_front() {
@@ -425,6 +441,9 @@ impl Himark {
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
             workshop: &self.workshop,
+            bridges: &mut self.bridges,
+            stage_layouts: &mut self.stage_layouts,
+            stage_frames: &mut self.stage_frames,
         };
         loop {
             let late = batch.take_follow_ups();
@@ -465,34 +484,6 @@ impl Himark {
             );
         }
         true
-    }
-
-    /// The pipeline's engine door for stage-holding hosts
-    /// (docs/ui/imba-ffi.md): lay a mounted view out at the given
-    /// size and hand the SIZED stage out whole. The slot's warm
-    /// arena rides along and comes home through `return_arena`.
-    /// `None` is an unmounted bridge — the caller's refusal.
-    pub fn layout_bridge(
-        &mut self,
-        id: ViewBridgeId,
-        size: skia_safe::Size,
-    ) -> Option<crate::bridge::BridgeLayout> {
-        let slot = self.bridges.get_mut(&id)?;
-        let arena = slot.spare_arena.take().unwrap_or_default();
-        Some(slot.bridge.layout(
-            &self.store,
-            &self.ui,
-            imba::constraints::Constraints::tight(size),
-            arena,
-        ))
-    }
-
-    /// A released frame's arena, back to its slot warm. A gone
-    /// slot just drops it — the race road, not an error.
-    pub fn return_arena(&mut self, id: ViewBridgeId, arena: Box<imba::arena::Arena>) {
-        if let Some(slot) = self.bridges.get_mut(&id) {
-            slot.spare_arena = Some(arena);
-        }
     }
 
     /// The catalog epoch: moved means re-snapshot. Today it rides
@@ -559,6 +550,95 @@ impl Himark {
         self.perform_batch(vec![crate::perform::AppCommand::Verb(
             imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host }),
         )])
+    }
+
+    /// Mount a view as a bridge: the build closure gets the store,
+    /// the minted id and a real effects scope (the `add_window`
+    /// idiom). `None` from the build aborts the mount whole.
+    pub fn mount(
+        &mut self,
+        build: impl FnOnce(
+            &mut Store,
+            &UiCtx,
+            ViewBridgeId,
+            &mut crate::perform::AppFx<'_>,
+        ) -> Option<std::rc::Rc<dyn crate::bridge::BridgeView>>,
+    ) -> Option<ViewBridgeId> {
+        let id = ViewBridgeId::from_raw(self.next_mount);
+        self.next_mount += 1;
+        let ui = self.ui.clone();
+        let mut batch = crate::perform::AppEffects::new();
+        let view = {
+            let mut fx = batch.effects();
+            build(&mut self.store, ui.as_ref(), id, &mut fx)?
+        };
+        self.bridges.insert(id, Mounted::new(view));
+        self.invalidate_frames();
+        let late = batch.take_follow_ups();
+        self.launch(batch);
+        if !late.is_empty() {
+            self.perform_batch(late);
+        }
+        Some(id)
+    }
+
+    /// Unmount: the slot, its frame and every stage a host still
+    /// holds for it go together.
+    pub fn unmount(&mut self, id: ViewBridgeId) -> bool {
+        let Some(mut slot) = self.bridges.remove(&id) else {
+            return false;
+        };
+        crate::bridge::quiesce(id, &mut slot, &mut self.stage_layouts, &mut self.stage_frames);
+        true
+    }
+
+    // ── the stage doors (the C surface delegates here) ──
+
+    pub fn stage_layout(&mut self, id: ViewBridgeId, size: skia_safe::Size) -> u64 {
+        let Some(slot) = self.bridges.get_mut(&id) else {
+            return 0;
+        };
+        let arena = slot.spare_arena.take().unwrap_or_default();
+        let stage = slot.bridge.layout(
+            &self.store,
+            &self.ui,
+            imba::constraints::Constraints::tight(size),
+            arena,
+        );
+        self.stage_layouts.mint((id, stage))
+    }
+
+    pub fn stage_layout_size(&self, handle: u64) -> Option<skia_safe::Size> {
+        self.stage_layouts
+            .get(handle)
+            .map(|(_, stage)| stage.size())
+    }
+
+    pub fn stage_realize(&mut self, handle: u64, viewport: skia_safe::Rect) -> u64 {
+        let Some((id, stage)) = self.stage_layouts.take(handle) else {
+            return 0;
+        };
+        let frame = stage.realize(viewport);
+        self.stage_frames.mint((id, frame))
+    }
+
+    pub fn stage_layout_release(&mut self, handle: u64) -> bool {
+        self.stage_layouts.take(handle).is_some()
+    }
+
+    pub fn stage_frame(&self, handle: u64) -> Option<&crate::bridge::Frame> {
+        self.stage_frames.get(handle).map(|(_, frame)| frame)
+    }
+
+    pub fn stage_frame_release(&mut self, handle: u64) -> bool {
+        let Some((id, frame)) = self.stage_frames.take(handle) else {
+            return false;
+        };
+        let arena = frame.recycle();
+        if let Some(slot) = self.bridges.get_mut(&id) {
+            slot.spare_arena = Some(arena);
+        }
+        true
     }
 
     pub fn register_client(

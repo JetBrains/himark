@@ -32,6 +32,13 @@ pub enum AppCommand {
     /// enum from growing an arm per collection.
     At(Addressed),
 
+    /// A command addressed to a MOUNTED VIEW — the engine's own
+    /// registry road (docs/himark-core.md): the bridge id names
+    /// the retained view, the erased command is its own. The road
+    /// QUIESCES the view's stages first, so the mutation never
+    /// happens under a borrow a host still holds.
+    ToView(crate::bridge::ViewBridgeId, imba::dyn_view::DynCommand),
+
     FileChanged(documents::watch::Subscription),
 
     RegisterLanguages(::editor::reparse::SyntaxLanguages),
@@ -101,6 +108,7 @@ pub(crate) fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, s
     // reads one.
     match command {
         AppCommand::At(addressed) => addressed.to_string().into(),
+        AppCommand::ToView(_, command) => command.to_string().into(),
         AppCommand::Verb(..) => std::borrow::Cow::Borrowed("verb"),
         AppCommand::FileChanged(..) => std::borrow::Cow::Borrowed("file changed"),
         AppCommand::RegisterLanguages(_) => std::borrow::Cow::Borrowed("register languages"),
@@ -115,6 +123,14 @@ pub(crate) fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, s
 pub(crate) struct Performer<'app> {
     pub(crate) pending_file_events: &'app mut Vec<documents::watch::Subscription>,
     pub(crate) workshop: &'app Arc<::editor::env::Workshop>,
+    pub(crate) bridges:
+        &'app mut std::collections::HashMap<crate::bridge::ViewBridgeId, crate::himark::Mounted>,
+    pub(crate) stage_layouts: &'app mut crate::bridge::Handles<(
+        crate::bridge::ViewBridgeId,
+        crate::bridge::BridgeLayout,
+    )>,
+    pub(crate) stage_frames:
+        &'app mut crate::bridge::Handles<(crate::bridge::ViewBridgeId, crate::bridge::Frame)>,
 }
 
 impl Performer<'_> {
@@ -152,6 +168,22 @@ impl Performer<'_> {
             }
             AppCommand::Verb(verb) => {
                 fx.scope(AppCommand::Verb, |fx| verb.run(store, ui, fx));
+            }
+            AppCommand::ToView(id, command) => {
+                let Some(slot) = self.bridges.get_mut(&id) else {
+                    eprintln!(
+                        "[app] a view command addressed an unmounted bridge — dropped: {command}"
+                    );
+                    return;
+                };
+                crate::bridge::quiesce(id, slot, self.stage_layouts, self.stage_frames);
+                let Some(view) = slot.bridge.view_mut() else {
+                    eprintln!(
+                        "[app] a view is still borrowed by foreign stages — dropped: {command}"
+                    );
+                    return;
+                };
+                view.perform(command, id, store, ui, fx);
             }
             AppCommand::FileChanged(subscription) => {
                 // The border road: the event names only a subscription;

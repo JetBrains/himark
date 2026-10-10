@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
 
-use himark::bridge::{BridgeLayout, Frame, ViewBridgeId};
+use himark::bridge::ViewBridgeId;
 use imba::event::{Event, EventResult, MouseButton};
 use skia_safe::{Canvas, Point, Rect, Size};
 
@@ -145,10 +145,10 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 
 /// The per-engine stage tables: each row remembers the bridge it
 /// was derived FROM, so a released frame's arena goes home warm.
+/// The C-only tables; the stage tables themselves live on the
+/// engine (`Himark`), where the `ToView` road can quiesce them.
 #[derive(Default)]
 pub(crate) struct Stages {
-    layouts: Handles<(ViewBridgeId, BridgeLayout)>,
-    frames: Handles<(ViewBridgeId, Frame)>,
     catalogs: Handles<himark::himark::Catalog>,
 }
 
@@ -341,14 +341,12 @@ pub unsafe extern "C" fn himark_bridge_layout(
         return HimarkLayout { raw: 0 };
     };
     let id = ViewBridgeId::from_raw(bridge.raw);
-    match engine.app.layout_bridge(id, Size::new(width, height)) {
-        Some(layout) => HimarkLayout {
-            raw: engine.stages.layouts.mint((id, layout)),
-        },
-        None => {
+    match engine.app.stage_layout(id, Size::new(width, height)) {
+        0 => {
             refuse("bridge", bridge.raw);
             HimarkLayout { raw: 0 }
         }
+        raw => HimarkLayout { raw },
     }
 }
 
@@ -364,11 +362,10 @@ pub unsafe extern "C" fn himark_layout_size(
     let Some(engine) = engine.as_ref() else {
         return false;
     };
-    let Some((_, stage)) = engine.stages.layouts.get(layout.raw) else {
+    let Some(size) = engine.app.stage_layout_size(layout.raw) else {
         refuse("layout", layout.raw);
         return false;
     };
-    let size = stage.size();
     if !out_width.is_null() {
         *out_width = size.width;
     }
@@ -393,13 +390,15 @@ pub unsafe extern "C" fn himark_layout_realize(
     let Some(engine) = engine.as_mut() else {
         return HimarkFrame { raw: 0 };
     };
-    let Some((id, stage)) = engine.stages.layouts.take(layout.raw) else {
-        refuse("layout", layout.raw);
-        return HimarkFrame { raw: 0 };
-    };
-    let frame = stage.realize(Rect::from_xywh(x, y, width, height));
-    HimarkFrame {
-        raw: engine.stages.frames.mint((id, frame)),
+    match engine
+        .app
+        .stage_realize(layout.raw, Rect::from_xywh(x, y, width, height))
+    {
+        0 => {
+            refuse("layout", layout.raw);
+            HimarkFrame { raw: 0 }
+        }
+        raw => HimarkFrame { raw },
     }
 }
 
@@ -408,7 +407,7 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if engine.stages.layouts.take(layout.raw).is_none() {
+    if !engine.app.stage_layout_release(layout.raw) {
         refuse("layout", layout.raw);
     }
 }
@@ -438,7 +437,7 @@ pub unsafe extern "C" fn himark_frame_event(
     };
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some((_, stage)) = engine.stages.frames.get(frame.raw) else {
+        let Some(stage) = engine.app.stage_frame(frame.raw) else {
             refuse("frame", frame.raw);
             return false;
         };
@@ -520,7 +519,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let canvas = &*(canvas as *const Canvas);
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some((_, stage)) = engine.stages.frames.get(frame.raw) else {
+        let Some(stage) = engine.app.stage_frame(frame.raw) else {
             refuse("frame", frame.raw);
             return false;
         };
@@ -548,11 +547,9 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: 
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    let Some((id, stage)) = engine.stages.frames.take(frame.raw) else {
+    if !engine.app.stage_frame_release(frame.raw) {
         refuse("frame", frame.raw);
-        return;
-    };
-    engine.app.return_arena(id, stage.recycle());
+    }
 }
 
 // ─── the session surface: query + control (docs/ui/himark-ffi.md) ───

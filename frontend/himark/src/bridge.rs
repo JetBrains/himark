@@ -32,6 +32,55 @@ use skia_safe::{Rect, Size};
 
 use crate::perform::AppCommand;
 
+/// A dense handle table: ids start at 1 and never recycle, so a
+/// released handle stays dead forever instead of aliasing a
+/// newborn (docs/ui/himark-ffi.md, handles law).
+pub(crate) struct Handles<T> {
+    next: u64,
+    rows: std::collections::HashMap<u64, T>,
+}
+
+impl<T> Default for Handles<T> {
+    fn default() -> Self {
+        Self {
+            next: 1,
+            rows: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl<T> Handles<T> {
+    pub(crate) fn mint(&mut self, row: T) -> u64 {
+        let handle = self.next;
+        self.next += 1;
+        self.rows.insert(handle, row);
+        handle
+    }
+
+    pub(crate) fn get(&self, handle: u64) -> Option<&T> {
+        self.rows.get(&handle)
+    }
+
+    pub(crate) fn take(&mut self, handle: u64) -> Option<T> {
+        self.rows.remove(&handle)
+    }
+
+    /// Pull every row matching the predicate out — the quiesce
+    /// road's sweep.
+    pub(crate) fn drain_matching(&mut self, keep_out: impl Fn(&T) -> bool) -> Vec<T> {
+        let handles: Vec<u64> = self
+            .rows
+            .iter()
+            .filter(|(_, row)| keep_out(row))
+            .map(|(handle, _)| *handle)
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| self.rows.remove(&handle))
+            .collect()
+    }
+}
+
 /// The engine-side identity of one mounted view.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ViewBridgeId(u64);
@@ -69,6 +118,23 @@ pub(crate) trait BridgeView {
         ui: &'a UiCtx,
         constraints: Constraints,
     ) -> ThunkBox<'a, AppCommand>;
+
+    /// Route one command to the retained view (`AppCommand::
+    /// ToView`). The default is the store-routed view's answer:
+    /// nothing should address it here (`WorkbenchView` routes over
+    /// `At` instead), so a delivery is a wiring bug, dropped
+    /// loudly.
+    fn perform(
+        &mut self,
+        command: imba::dyn_view::DynCommand,
+        origin: ViewBridgeId,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut crate::perform::AppFx<'_>,
+    ) {
+        let _ = (origin, store, ui, fx);
+        eprintln!("[bridge] a view command reached a view with no perform — dropped: {command}");
+    }
 }
 
 /// One mounted view: the state carrier, retained. Everything else
@@ -80,6 +146,15 @@ pub struct ViewBridge {
 impl ViewBridge {
     pub(crate) fn new(view: Rc<dyn BridgeView>) -> ViewBridge {
         ViewBridge { view }
+    }
+
+    /// The retained view, mutably — available only while NOTHING
+    /// borrows it: no standing frame, no stage out with a host.
+    /// The `ToView` road quiesces first, so `None` here is a
+    /// foreign stage still alive (the caller drops the command
+    /// loudly rather than mutate under it).
+    pub(crate) fn view_mut(&mut self) -> Option<&mut (dyn BridgeView + 'static)> {
+        Rc::get_mut(&mut self.view)
     }
 
     /// display → layout: cut the view's frame snapshot, read the
@@ -220,5 +295,27 @@ impl Frame {
         drop(view);
         arena.reset();
         arena
+    }
+}
+
+/// Quiesce one mounted view: drop its standing frame and every
+/// stage a host still holds for it, recycling what can be
+/// recycled — after this, the view has exactly one owner and may
+/// be mutated (`ToView`). A host's stale stage handles become
+/// checked refusals, which is the contract: the view moved on.
+pub(crate) fn quiesce(
+    id: ViewBridgeId,
+    slot: &mut crate::himark::Mounted,
+    layouts: &mut Handles<(ViewBridgeId, BridgeLayout)>,
+    frames: &mut Handles<(ViewBridgeId, Frame)>,
+) {
+    if let Some(frame) = slot.frame.take() {
+        slot.spare_arena = Some(frame.recycle());
+    }
+    for (_, stage) in layouts.drain_matching(|(owner, _)| *owner == id) {
+        drop(stage);
+    }
+    for (_, stage) in frames.drain_matching(|(owner, _)| *owner == id) {
+        slot.spare_arena = Some(stage.recycle());
     }
 }
