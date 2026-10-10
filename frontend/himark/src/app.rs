@@ -388,6 +388,13 @@ impl Himark {
     }
 
     pub(crate) fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas, size: Size) -> bool {
+        if self.windows().entity(window).is_none() {
+            return self.draw_mounted(
+                crate::bridge::ViewBridgeId::from_raw(window.raw()),
+                canvas,
+                size,
+            );
+        }
         let result = self.ensure_frame(window, size).handle(
             &Event::Paint {
                 canvas,
@@ -533,9 +540,18 @@ impl Himark {
                 (result, fallback)
             }
             _ => {
-                let result = self
-                    .ensure_frame(window, size)
-                    .handle(&event, Rect::from_size(size));
+                let result = if self.windows().entity(window).is_some() {
+                    self.ensure_frame(window, size)
+                        .handle(&event, Rect::from_size(size))
+                } else {
+                    // A mounted view routes against its STANDING
+                    // frame at its own size; the host's passed size
+                    // is the window road's business.
+                    self.handle_mounted(
+                        crate::bridge::ViewBridgeId::from_raw(window.raw()),
+                        &event,
+                    )
+                };
                 (result, None)
             }
         };

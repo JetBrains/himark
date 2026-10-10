@@ -571,6 +571,88 @@ impl Himark {
         )])
     }
 
+    /// A MOUNTED slot's current frame at its size — rebuilt
+    /// lazily off the revision, exactly the window client's memo
+    /// but for views the host composes directly. `size` sets a
+    /// new layout size (the draw road); `None` reuses the last
+    /// drawn one (the event road between paints).
+    fn mounted_frame(
+        &mut self,
+        id: ViewBridgeId,
+        size: Option<skia_safe::Size>,
+    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+        let revision = self.revision;
+        let slot = self.bridges.get_mut(&id)?;
+        let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
+        let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
+        if !fresh {
+            if let Some(frame) = slot.frame.take() {
+                slot.spare_arena = Some(frame.recycle());
+            }
+            let arena = slot.spare_arena.take().unwrap_or_default();
+            let layout = slot.bridge.layout(
+                &self.store,
+                &self.ui,
+                imba::constraints::Constraints::tight(size),
+                arena,
+            );
+            slot.frame = Some(layout.realize(skia_safe::Rect::from_size(size)));
+            slot.revision = revision;
+            slot.size = size;
+        }
+        slot.frame.as_mut().map(|frame| (frame, size))
+    }
+
+    /// One event into a mounted view, against its standing frame.
+    pub(crate) fn handle_mounted(
+        &mut self,
+        id: ViewBridgeId,
+        event: &imba::event::Event<'_>,
+    ) -> imba::event::EventResult<crate::perform::AppCommand> {
+        let Some((frame, size)) = self.mounted_frame(id, None) else {
+            return imba::event::EventResult::Ignored;
+        };
+        frame.handle(event, skia_safe::Rect::from_size(size))
+    }
+
+    /// Paint a mounted view into the host's canvas at the host's
+    /// size — the mounted twin of the window draw.
+    pub fn draw_mounted(
+        &mut self,
+        id: ViewBridgeId,
+        canvas: &skia_safe::Canvas,
+        size: skia_safe::Size,
+    ) -> bool {
+        let result = {
+            let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
+                return false;
+            };
+            frame.handle(
+                &imba::event::Event::Paint {
+                    canvas,
+                    focused: true,
+                },
+                skia_safe::Rect::from_size(size),
+            )
+        };
+        match result {
+            imba::event::EventResult::Ignored | imba::event::EventResult::Handled => false,
+            imba::event::EventResult::Command(command) => self.perform_batch(vec![command]),
+            imba::event::EventResult::Commands(commands)
+            | imba::event::EventResult::Pointer { commands, .. } => self.perform_batch(commands),
+            imba::event::EventResult::Reveal(_) => false,
+        }
+    }
+
+    /// Whether this bridge id is a WINDOW — the dispatch roads
+    /// fork on it: windows ride the workbench paths, mounts ride
+    /// their own frames.
+    pub fn is_window(&self, id: ViewBridgeId) -> bool {
+        self.windows()
+            .entity(::workbench::window::WindowId::from_raw(id.raw()))
+            .is_some()
+    }
+
     /// Mount a view as a bridge: the build closure gets the store,
     /// the minted id and a real effects scope (the `add_window`
     /// idiom). `None` from the build aborts the mount whole.
