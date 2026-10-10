@@ -11,7 +11,7 @@ use ahp_wire::client::{ChannelUri, Client, ClientFuture, LspClient, SessionClien
 use editor::location::{Authority, ResourceLocation, ResourceType};
 use editor::markup::Markup;
 use editor::theme::StyleId;
-use himark::app::{AppCommand, AppFonts, Application};
+use himark::app::{AppCommand, AppFonts, Himark};
 use himark_ahp_ext_types::lsp::{DiagnosticsPublished, DiagnosticsState, PublishedDiagnostics};
 use imba::command::{DynamicCommand, Fx, Verb};
 use imba::ui::UiCtx;
@@ -159,7 +159,7 @@ fn squiggles(document: &Document) -> Vec<(std::ops::Range<u32>, StyleId)> {
 
 #[test]
 fn the_snapshot_squiggles_the_open_document() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     himark::hiahp::register_all(&mut app);
 

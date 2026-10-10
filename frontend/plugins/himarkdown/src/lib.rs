@@ -967,7 +967,7 @@ fn keep_non_overlapping(tokens: Vec<InlineToken>) -> Vec<InlineToken> {
     kept
 }
 
-pub fn register_handlers(app: &mut himark::app::Application) {
+pub fn register_handlers(app: &mut himark::app::Himark) {
     app.register_handler::<table::TableRelayoutEffect>(table::TableRelayoutHandler(
         std::sync::Arc::clone(app.workshop()),
     ));

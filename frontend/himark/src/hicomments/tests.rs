@@ -14,7 +14,7 @@ use std::ops::Range;
 
 use crate::app::AppCommand;
 use crate::app::AppFonts;
-use crate::app::Application;
+use crate::app::Himark;
 use crate::app::OpenedDocument;
 use crate::app_ext::AppExt;
 use ::editor::test_document::plain_document;
@@ -55,8 +55,8 @@ impl editor::dynamic::DynamicEditorCommand for SelectRange {
     }
 }
 
-fn app_with_located_document(source: &str) -> (Application, ::workbench::window::WindowId) {
-    let mut app = Application::new(AppFonts::embedded());
+fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::WindowId) {
+    let mut app = Himark::new(AppFonts::embedded());
     app.register_syntax_languages(himarkdown::markdown_languages(
         editor::reparse::SyntaxLanguages::new(),
     ));
@@ -79,7 +79,7 @@ fn app_with_located_document(source: &str) -> (Application, ::workbench::window:
     (app, window)
 }
 
-fn invoke(app: &mut Application, window: ::workbench::window::WindowId, id: &str) {
+fn invoke(app: &mut Himark, window: ::workbench::window::WindowId, id: &str) {
     let command = crate::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
@@ -88,7 +88,7 @@ fn invoke(app: &mut Application, window: ::workbench::window::WindowId, id: &str
     assert!(app.perform_command(command));
 }
 
-fn commented_document(app: &Application) -> (documents::DocumentId, Vec<(InlayKey, Range<u32>)>) {
+fn commented_document(app: &Himark) -> (documents::DocumentId, Vec<(InlayKey, Range<u32>)>) {
     for (id, entity) in documents::OpenDocuments::list(app.store(), app.sole_documents()) {
         let document = entity.document();
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;

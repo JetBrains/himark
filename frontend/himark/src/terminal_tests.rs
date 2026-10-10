@@ -59,7 +59,7 @@ fn dismantle_hangs_up_exactly_once() {
 
 #[test]
 fn the_panel_reconciles_its_grid_and_routes_focused_input() {
-    let mut app = crate::app::Application::new(crate::app::AppFonts::embedded());
+    let mut app = crate::app::Himark::new(crate::app::AppFonts::embedded());
     let _ = app.add_window();
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
@@ -115,7 +115,7 @@ fn dump_terminal_screenshot() {
     };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).expect("shot dir");
-    let mut app = crate::app::Application::new(crate::app::AppFonts::embedded());
+    let mut app = crate::app::Himark::new(crate::app::AppFonts::embedded());
     let _ = app.add_window();
     let session = Session::new(Box::new(Recorder::default()));
     assert!(app.new_scratch(app.sole_window()));

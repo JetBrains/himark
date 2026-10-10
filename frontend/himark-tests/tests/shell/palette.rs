@@ -8,7 +8,7 @@ fn palette_commands_follow_the_modal_focus() {
     use hikit::modal::ModalView;
     use himark::app::AppCommand;
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
 
     #[derive(Clone)]
     struct TestModal {
@@ -85,11 +85,11 @@ fn palette_commands_follow_the_modal_focus() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    let ids = |app: &Application| -> Vec<&'static str> {
+    let ids = |app: &Himark| -> Vec<&'static str> {
         himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .iter()
             .map(|command| command.id)
@@ -225,7 +225,7 @@ fn palette_commands_follow_the_modal_focus() {
 #[test]
 fn registered_commands_present_and_dispatch_by_id() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::commands::WindowedCommand;
 
     #[derive(Clone)]
@@ -250,7 +250,7 @@ fn registered_commands_present_and_dispatch_by_id() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -334,10 +334,10 @@ fn registered_commands_present_and_dispatch_by_id() {
 #[test]
 fn keymap_chords_resolve_through_the_palette_surface() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use imba::event::{Key, Modifiers};
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());

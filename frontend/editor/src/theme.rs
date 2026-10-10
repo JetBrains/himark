@@ -1004,6 +1004,22 @@ pub struct ScrollbarChrome {
     pub track_inset: f32,
 }
 
+impl ScrollbarChrome {
+    /// This chrome as the live-UI style: imba paints scrollbars
+    /// from `UiCtx` state, not from the store's theme, so a shell
+    /// hands it this shape at boot and on every theme change.
+    pub fn style(&self) -> imba::scroll::ScrollbarStyle {
+        imba::scroll::ScrollbarStyle {
+            color: self.color.0,
+            width: self.width,
+            margin: self.margin,
+            radius: self.radius,
+            min_knob: self.min_knob,
+            track_inset: self.track_inset,
+        }
+    }
+}
+
 #[derive(Clone, Deserialize)]
 pub struct StatsChrome {
     pub background: Rgba,

@@ -3,7 +3,7 @@
 
 //! The shell flows the embedders install at boot: how to START a
 //! new session (a window command) and how to ADD a host (an
-//! Application-level registration) — both shell vocabulary, kept
+//! Himark-level registration) — both shell vocabulary, kept
 //! out of the catalog.
 
 use std::sync::Arc;

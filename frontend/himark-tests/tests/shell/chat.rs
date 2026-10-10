@@ -5,7 +5,7 @@ use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::test_driver;
 use imba::anim::AnimationClock;
@@ -48,7 +48,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    let switch = |app: &mut himark::app::Application,
+    let switch = |app: &mut himark::app::Himark,
                   target: Option<ahp_wire::SessionId>|
      -> ahp_wire::SessionId {
         let window = app.sole_window();
@@ -65,7 +65,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
     };
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Application::new(fonts);
+    let mut app = himark::app::Himark::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     let first = himark::workspace::entity_session(
@@ -90,7 +90,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         );
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
-    fn mounted_chat(app: &himark::app::Application) -> Option<String> {
+    fn mounted_chat(app: &himark::app::Himark) -> Option<String> {
         let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("window");
         let chat = entity.workbench().chat()?;
@@ -122,7 +122,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
 /// lands in the split tree or closes.
 #[test]
 fn the_composer_command_fronts_the_chat_panel() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -172,7 +172,7 @@ fn the_composer_command_fronts_the_chat_panel() {
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut surface);
 
-    let slot_chat = |app: &himark::app::Application| -> Option<String> {
+    let slot_chat = |app: &himark::app::Himark| -> Option<String> {
         let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("window");
         let chat = entity.workbench().chat()?;
@@ -184,7 +184,7 @@ fn the_composer_command_fronts_the_chat_panel() {
             ::workbench::workbench_node::Panel::Editor(_) => None,
         }
     };
-    let tree_chat = |app: &himark::app::Application| -> Option<String> {
+    let tree_chat = |app: &himark::app::Himark| -> Option<String> {
         let entity = ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("window");
         let mut found = None;
@@ -225,7 +225,7 @@ fn the_composer_command_fronts_the_chat_panel() {
     // ⌘I means "type here": a view parked on the transcript (a click
     // there sticks) is re-pointed at the composer by the command.
     let with_pane =
-        |app: &mut himark::app::Application,
+        |app: &mut himark::app::Himark,
          f: &mut dyn FnMut(&ahp_chat::chats::ChatPane, &mut Store)| {
             let entity = ::workbench::window::Windows::window(app.store(), app.sole_window())
                 .expect("window");
@@ -265,7 +265,7 @@ fn the_composer_command_fronts_the_chat_panel() {
 /// panel hands it all back.
 #[test]
 fn the_chat_docks_left_when_the_window_is_wide() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     // House units are 2x pixels: 3200 here is a 1600pt window.
@@ -316,12 +316,12 @@ fn the_chat_docks_left_when_the_window_is_wide() {
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut wide);
 
-    fn held(app: &himark::app::Application) -> &::workbench::window::Window {
+    fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
     let slot_filled =
-        |app: &himark::app::Application| -> bool { held(app).workbench().chat().is_some() };
-    let tree_chat = |app: &himark::app::Application| -> Option<String> {
+        |app: &himark::app::Himark| -> bool { held(app).workbench().chat().is_some() };
+    let tree_chat = |app: &himark::app::Himark| -> Option<String> {
         let mut found = None;
         held(app).workbench().root.for_each_pane(&mut |panel| {
             if let ::workbench::workbench_node::Panel::Plugin(view) = panel {
@@ -333,7 +333,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
         found
     };
     let vacant =
-        |app: &himark::app::Application| -> bool { held(app).workbench().root.is_vacant() };
+        |app: &himark::app::Himark| -> bool { held(app).workbench().root.is_vacant() };
 
     assert!(app.perform_registered(window, "chat.composer"));
     settle(&mut app, &mut wide);
@@ -404,7 +404,7 @@ fn dump_chat_narrow_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     // The user's real squeezed window: 1392pt at 2x = 2784 device px.
@@ -505,7 +505,7 @@ fn dump_chat_column_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((1920, 1080)).expect("surface");
@@ -570,7 +570,7 @@ fn dump_chat_column_screenshot() {
 /// never block it. Closing the last panel returns the chat.
 #[test]
 fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -619,7 +619,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     settle(&mut app, &mut narrow);
 
-    fn held(app: &himark::app::Application) -> &::workbench::window::Window {
+    fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
 
@@ -705,7 +705,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
 /// minimize button bring it back.
 #[test]
 fn maximize_hides_the_chat_and_restore_brings_it_back() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
@@ -756,7 +756,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
     assert!(app.perform_registered(window, "chat.composer"));
     settle(&mut app, &mut wide);
 
-    fn held(app: &himark::app::Application) -> &::workbench::window::Window {
+    fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
 
@@ -804,7 +804,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
 /// down the generic `open_panel` lands there, never in the tree.
 #[test]
 fn any_open_road_lands_the_chat_in_the_slot() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -859,7 +859,7 @@ fn any_open_road_lands_the_chat_in_the_slot() {
 
 #[test]
 fn new_session_without_a_host_keeps_the_current_chat() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -920,7 +920,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
     settle(&mut app, &mut surface);
-    let chat_mounted = |app: &himark::app::Application| -> bool {
+    let chat_mounted = |app: &himark::app::Himark| -> bool {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("window")
             .workbench()

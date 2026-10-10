@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::app::AppCommand;
-use crate::app::Application;
+use crate::app::Himark;
 use crate::app::OpenedDocument;
 use crate::commands::WindowedCommand;
 use editor::document::Document;
@@ -68,7 +68,7 @@ pub trait AppExt {
     ) -> bool;
 }
 
-impl AppExt for Application {
+impl AppExt for Himark {
     fn perform_command(&mut self, command: AppCommand) -> bool {
         self.perform_batch(vec![command])
     }

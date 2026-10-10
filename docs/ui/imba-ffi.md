@@ -18,6 +18,10 @@ driven with the same handed-the-world discipline the engine already
 follows.** The engine remains the owner of the world (`Store`,
 `UiCtx`, effects, the wake); the host becomes the owner of the frame
 — which views exist on screen, where, and in what native company.
+This is the imba half of the layered FFI — the mechanics of one
+bridge. The app half — which sessions exist, how the host manages
+them, and how a session is turned into views worth bridging — is
+[himark-ffi.md](himark-ffi.md).
 
 **The end game is the iOS app rewrite: native touch and Liquid
 Glass controls around bridged content.** The current iOS shell
@@ -41,6 +45,13 @@ ViewBridge   — one mounted view: state carrier + event handler
 ImbaCommand  — an opaque boxed command, in flight between the two
 ```
 
+All three cross as HANDLES — dense ids into engine-owned tables,
+never pointers — each with its dedicated release call. The engine
+validates every handle at the door: stale, foreign, or
+double-released is a checked refusal, not UB. (The signatures
+below name the handle types; raw pointers appear only as borrowed
+within-call payload — the canvas, UTF-8 text.)
+
 ## Events: `ImbaEvent` factories
 
 `imba::Event<'_>` is a borrowing enum — it cannot cross C as-is. The
@@ -49,20 +60,20 @@ plus one destructor. The mirror follows `frontend/imba/src/event.rs`
 as closely as the ABI allows:
 
 ```
-imba_event_mouse_down(x, y, button, mods, count) -> ImbaEvent*
-imba_event_mouse_drag(x, y, mods)                -> ImbaEvent*
-imba_event_mouse_up(x, y)                        -> ImbaEvent*
-imba_event_mouse_move(x, y)                      -> ImbaEvent*
-imba_event_hit_test(x, y, miss)                  -> ImbaEvent*
-imba_event_scroll(x, y, dx, dy)                  -> ImbaEvent*
-imba_event_text_input(utf8, len)                 -> ImbaEvent*
-imba_event_key_down(key, mods)                   -> ImbaEvent*
-imba_event_animation_clock(now_ms)               -> ImbaEvent*
-imba_event_settle()                              -> ImbaEvent*
-imba_event_theme_changed()                       -> ImbaEvent*
-imba_event_window_left()                         -> ImbaEvent*
+imba_event_mouse_down(x, y, button, mods, count) -> ImbaEvent
+imba_event_mouse_drag(x, y, mods)                -> ImbaEvent
+imba_event_mouse_up(x, y)                        -> ImbaEvent
+imba_event_mouse_move(x, y)                      -> ImbaEvent
+imba_event_hit_test(x, y, miss)                  -> ImbaEvent
+imba_event_scroll(x, y, dx, dy)                  -> ImbaEvent
+imba_event_text_input(utf8, len)                 -> ImbaEvent
+imba_event_key_down(key, mods)                   -> ImbaEvent
+imba_event_animation_clock(now_ms)               -> ImbaEvent
+imba_event_settle()                              -> ImbaEvent
+imba_event_theme_changed()                       -> ImbaEvent
+imba_event_window_left()                         -> ImbaEvent
 
-imba_free_event(ImbaEvent*)
+imba_release_event(ImbaEvent)
 ```
 
 An event is minted once and may be dispatched to ANY number of
@@ -70,7 +81,7 @@ bridges before it is freed — that is the point of reifying it. A
 host that routes one `NSEvent` across three bridged views builds one
 `ImbaEvent`, hands it to each, and frees it; per-bridge flattened
 argument lists would triple the marshalling and drift from the enum.
-Dispatch borrows; `imba_free_event` is the only owner-side call.
+Dispatch borrows; `imba_release_event` is the only owner-side call.
 
 What deliberately does NOT get a factory:
 
@@ -115,21 +126,22 @@ it needs to run:
 
 ```
 // minting — the app layer hands views out (next section)
-view_bridge_destroy(ViewBridge*)                    // destroy_dyn + release
+view_bridge_destroy(ViewBridge)                    // destroy_dyn + release
 
 // the frame
-view_bridge_measure(ViewBridge*, w, h)              -> content_size
-view_bridge_draw(ViewBridge*, canvas,
+view_bridge_measure(ViewBridge, w, h)              -> content_size
+view_bridge_draw(ViewBridge, canvas,
                  w, h, viewport, scale)             -> needs_redraw
-view_bridge_event(ViewBridge*, ImbaEvent*)          -> BridgeAnswer
+view_bridge_event(ViewBridge, ImbaEvent,
+                  w, h, viewport)                   -> BridgeAnswer
 
 // commands
-view_bridge_perform(ViewBridge*, ImbaCommand*)      -> needs_redraw
-view_bridge_pump(ViewBridge*)                       -> ImbaCommand*  // or null
+view_bridge_perform(ViewBridge, ImbaCommand)      -> needs_redraw
+view_bridge_pump(ViewBridge)                       -> ImbaCommand  // or null
 
 // focus
-view_bridge_set_focused(ViewBridge*, bool)
-imba_free_command(ImbaCommand*)
+view_bridge_set_focused(ViewBridge, bool)
+imba_release_command(ImbaCommand)
 ```
 
 - **`draw` takes the layout size AND a viewport — that is what lets
@@ -152,18 +164,20 @@ imba_free_command(ImbaCommand*)
   in the same content coordinates, so the answer to "a deep view
   wants to be seen" is precisely "scroll your native scroller to
   this rect of the document."
-- **Event points arrive in content coordinates too**; the host
-  translates from its scroller exactly as it translates for draw.
-  The bridge realizes event dispatch at the last-drawn layout size
-  and viewport — between a native scroll and its next paint the
-  pointer is inside the last viewport by construction.
+- **Event points arrive in content coordinates too**, and every
+  dispatch carries the layout size and viewport, exactly like
+  `draw` — the bridge retains none of the host's geometry, because
+  the native scroller owns it and it moves between paints. Inside,
+  realization is a memo keyed on (store state, size, viewport): a
+  dispatch at unchanged keys reuses the standing realization and
+  pays nothing.
 - The host owns the surface, the scroller, and the compositor — the
   bridge, like the engine, is handed canvas, size, and viewport per
   frame and retains only the numbers it needs to route the next
   event.
 - **`event`** runs the same realize-and-route pass and returns a
   `BridgeAnswer`: the `EventResult` made ABI-shaped —
-  `needs_redraw`, zero or more `ImbaCommand*`s (from
+  `needs_redraw`, zero or more `ImbaCommand` handles (from
   `Command`/`Commands`), and an optional **reveal rect**
   (`EventResult::Reveal`: a deep view asking to be scrolled into
   view). Inside the engine a `ScrollView` ancestor absorbs reveals;
@@ -200,7 +214,7 @@ imba_free_command(ImbaCommand*)
 
 An `ImbaCommand` is a boxed `DynCommand` in flight. Ownership is
 linear: minted by `event` or `pump`, it is consumed by exactly one
-`perform` or released by `imba_free_command`. It is bound to the
+`perform` or released by `imba_release_command`. It is bound to the
 view family that minted it — performing a command at a foreign
 bridge is a checked error (each command carries its bridge's brand),
 because `DynCommand` downcasts by type and a wrong-view downcast is
@@ -210,14 +224,16 @@ the floor. The FFI turns that into a refusal the host can see.
 ## Where views come from: the workbench hands them out
 
 The imba layer does not invent views; **the app layer mints bridges
-for views it already owns.** The workbench keeps being the factory
-and the registry — sessions own state, panels are built against a
-window's store (`frame_store(window)` — stores are per-window, so a
-bridge is minted against an engine AND a window and shares that
-window's store, `UiCtx`, theme, and fonts):
+for views it already owns.** Sessions own the state — each session's
+row of collections ([entities.md](../entities.md)) is the registry a
+view is built from — and the workbench is just one client of it: the
+biggest composite view there is, itself mounted as a single bridge
+by whole-window shells ([himark-core.md](../himark-core.md)). The
+concrete minting surface — place-addressed, not panel-addressed —
+is [himark-ffi.md](himark-ffi.md)'s:
 
 ```
-himark_bridge_panel(engine, window, panel_id) -> ViewBridge*
+himark_bridge_view(engine, window, place) -> ViewBridge
 ```
 
 Claiming a view is a MOVE, not a copy: a panel mounted by the host

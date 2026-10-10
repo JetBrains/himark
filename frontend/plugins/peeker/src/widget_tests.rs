@@ -4,7 +4,7 @@
 use super::*;
 use ::editor::test_document::plain_document;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 
 #[derive(Clone)]
@@ -45,7 +45,7 @@ impl hikit::panel::PanelView for StubWidget {
     }
 }
 
-fn mounted_titles(app: &Application) -> Vec<String> {
+fn mounted_titles(app: &Himark) -> Vec<String> {
     let mut titles = Vec::new();
     app.for_each_plugin_panel(&mut |panel| titles.push(panel.title(app.store())));
     titles
@@ -53,7 +53,7 @@ fn mounted_titles(app: &Application) -> Vec<String> {
 
 /// A PTY-less terminal session: the cheap seedable session row now
 /// that result lists live in the session feed, not a session.
-fn seed_terminal_row(app: &mut Application, title: &str) -> terminals::TerminalId {
+fn seed_terminal_row(app: &mut Himark, title: &str) -> terminals::TerminalId {
     struct NullBackend;
     impl terminals::TerminalBackend for NullBackend {
         fn write(&self, _bytes: &[u8]) {}
@@ -72,7 +72,7 @@ fn seed_terminal_row(app: &mut Application, title: &str) -> terminals::TerminalI
 
 #[test]
 fn displaced_handles_drop_and_their_rows_survive() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -100,7 +100,7 @@ fn displaced_handles_drop_and_their_rows_survive() {
 
 #[test]
 fn the_peeker_lists_previews_and_selects_widgets() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");

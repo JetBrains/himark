@@ -4,11 +4,11 @@ use super::*;
 #[test]
 fn two_windows_edit_independently() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use imba::event::Event;
     use skia_safe::Size;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let first = app.add_window();
     let second = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -16,7 +16,7 @@ fn two_windows_edit_independently() {
     app.draw_window_sized(second, surface.canvas(), Size::new(500.0, 400.0));
 
     let focused_text =
-        |app: &Application, window: ::workbench::window::WindowId| -> Option<String> {
+        |app: &Himark, window: ::workbench::window::WindowId| -> Option<String> {
             let store = &app.window_store(window);
             let session = himark::workspace::window_session(store, window)?;
             let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
@@ -44,14 +44,14 @@ fn two_windows_edit_independently() {
     assert_eq!(focused_text(&app, first).as_deref(), Some("one"));
     assert_eq!(focused_text(&app, second).as_deref(), Some("two"));
 
-    let viewport = |app: &Application, window: ::workbench::window::WindowId| {
+    let viewport = |app: &Himark, window: ::workbench::window::WindowId| {
         app.window_viewport(window).expect("the window entity")
     };
     assert_eq!(viewport(&app, first).width, 800.0);
     assert_eq!(viewport(&app, second).width, 500.0);
 
     assert!(app.perform_registered(second, "workbench.split-pane"));
-    let panes = |app: &Application, window: ::workbench::window::WindowId| {
+    let panes = |app: &Himark, window: ::workbench::window::WindowId| {
         let mut count = 0;
         let store = app.window_store(window);
         ::workbench::window::Windows::window_ref(&store, window)
@@ -68,9 +68,9 @@ fn two_windows_edit_independently() {
 #[test]
 fn closing_a_split_pane_collapses_to_the_sibling() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -150,7 +150,7 @@ fn open_documents_list_recently_opened_first() {
 #[test]
 fn navigation_back_and_forward_walk_pane_history() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app::OpenedDocument;
     fn located(name: &str) -> editor::location::ResourceLocation {
         editor::location::ResourceLocation::new(
@@ -159,7 +159,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             vec!["project".to_owned(), name.to_owned()],
         )
     }
-    fn editor_count(app: &Application, location: &editor::location::ResourceLocation) -> usize {
+    fn editor_count(app: &Himark, location: &editor::location::ResourceLocation) -> usize {
         let id = documents::OpenDocuments::by_location(app.store(), app.sole_documents(), location)
             .expect("registered");
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), id)
@@ -169,13 +169,13 @@ fn navigation_back_and_forward_walk_pane_history() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
 
-    let open = |app: &mut Application, name: &str, text: &str| {
+    let open = |app: &mut Himark, name: &str, text: &str| {
         let document = plain_document(text);
         assert!(app.perform_command(himark::app::AppCommand::Opened(
             window,
@@ -228,7 +228,7 @@ fn navigation_back_and_forward_walk_pane_history() {
     assert!(app.perform_registered(window, "navigation.forward"));
     assert_eq!(app.focused_document_text().as_deref(), Some("ybeta\n"));
 
-    let caret = |app: &Application| -> u32 {
+    let caret = |app: &Himark| -> u32 {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .expect("document")
@@ -265,7 +265,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 #[test]
 fn close_widget_walks_the_pane_history() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app::OpenedDocument;
     fn located(name: &str) -> editor::location::ResourceLocation {
         editor::location::ResourceLocation::new(
@@ -275,12 +275,12 @@ fn close_widget_walks_the_pane_history() {
         )
     }
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
-    let open = |app: &mut Application, name: &str, text: &str| {
+    let open = |app: &mut Himark, name: &str, text: &str| {
         assert!(app.perform_command(himark::app::AppCommand::Opened(
             window,
             OpenedDocument {
@@ -361,10 +361,10 @@ fn close_widget_walks_the_pane_history() {
 fn scroll_stripes_follow_the_diff_through_the_app() {
     let ui = ::editor::test_document::test_ui();
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -375,7 +375,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         for _ in 0..5 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -410,13 +410,13 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     let home = app.sole_window_session();
     let documents =
         ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
-    let tick = move |app: &mut Application| {
+    let tick = move |app: &mut Himark| {
         app.perform_batch(vec![himark::app::AppCommand::at(
             documents,
             documents::DocumentsCommand::Editor(target, EditorCommand::ApplyRepair(Vec::new())),
         )]);
     };
-    let stripes = |app: &Application| -> Vec<u32> {
+    let stripes = |app: &Himark| -> Vec<u32> {
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
             .and_then(|document| document.scroll_stripes(editor))
             .map(|landed| landed.segments.iter().map(|segment| segment.byte).collect())

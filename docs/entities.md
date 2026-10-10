@@ -143,7 +143,7 @@ and sync lanes, drive a chat turn, assert against the store.
 ### Step 7 — Shells hold ids
 
 The workbench becomes one client of the table; a native shell is
-another ([ui/ffi.md](ui/ffi.md), rewritten: bridges mint against
+another ([ui/imba-ffi.md](ui/imba-ffi.md), rewritten: bridges mint against
 `(core, frame)`, holding ids + private keys — the same currency as
 panes). The payoff, not the work.
 

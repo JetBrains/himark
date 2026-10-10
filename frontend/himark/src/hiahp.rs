@@ -24,7 +24,7 @@ use crate::workspace::OpenByLocationEffect;
 /// filesystem capability — the chat's cells build off-thread with no host
 /// in sight. It installs at boot, on its own.
 pub fn install_build_handler(
-    app: &mut crate::app::Application,
+    app: &mut crate::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
@@ -45,7 +45,7 @@ pub fn install_build_handler(
 }
 
 pub fn install_open_handlers(
-    app: &mut crate::app::Application,
+    app: &mut crate::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn editor::diff::DiffPolicy>,
 ) {
@@ -250,7 +250,7 @@ impl WindowedCommand for FetchFailed {
     }
 }
 
-pub fn register_all(app: &mut crate::app::Application) {
+pub fn register_all(app: &mut crate::app::Himark) {
     app.register_handler::<ahp_wire::effects::ConnectServerEffect>(
         ::ahp_wire::registry::HandleConnectServer,
     );

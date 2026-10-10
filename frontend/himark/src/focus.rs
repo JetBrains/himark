@@ -6,7 +6,7 @@ use imba::focus::FocusData;
 use imba::{clipboard::ClipboardClient, ime::ImeClient};
 
 use crate::app::AppCommand;
-use crate::app::Application;
+use crate::app::Himark;
 
 /// The semantic focus chain of a window — a STATE WALK over the view
 /// tree. No arena, no layout, no realize: focus is state, and the
@@ -23,7 +23,7 @@ pub(crate) fn window_focus_data<'a>(
     )
 }
 
-impl Application {
+impl Himark {
     pub fn with_ime_client<R>(
         &mut self,
         window: ::workbench::window::WindowId,

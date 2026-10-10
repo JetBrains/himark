@@ -4,12 +4,12 @@ use super::*;
 #[test]
 fn the_at_completion_opens_finds_and_picks() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::test_driver;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let folder = editor::location::ResourceLocation::new(
         editor::location::ResourceType::directory(),
@@ -84,10 +84,10 @@ fn the_at_completion_opens_finds_and_picks() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(window, surface.canvas());
 
-    let panel = |app: &Application| -> ahp_chat::chat::ChatPanel {
+    let panel = |app: &Himark| -> ahp_chat::chat::ChatPanel {
         ahp_chat::chats::Chats::chat(app.store(), chats, &uri).expect("the panel")
     };
-    let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -162,14 +162,14 @@ fn the_at_completion_opens_finds_and_picks() {
 fn the_at_completion_serves_markdown_panes() {
     use himark::app::AppCommand;
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app::OpenedDocument;
     use himark::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let folder = editor::location::ResourceLocation::new(
         editor::location::ResourceType::directory(),
@@ -255,18 +255,18 @@ fn the_at_completion_serves_markdown_panes() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(window, surface.canvas());
 
-    let completion_open = |app: &Application| -> bool {
+    let completion_open = |app: &Himark| -> bool {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .is_some_and(|document| document.completion(editor).open())
     };
-    let rows = |app: &Application| -> Vec<String> {
+    let rows = |app: &Himark| -> Vec<String> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .map(|document| document.completion(editor).row_labels())
             .unwrap_or_default()
     };
-    let pane_text = |app: &Application| -> String {
+    let pane_text = |app: &Himark| -> String {
         let (_, held) = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "notes.md")
@@ -276,7 +276,7 @@ fn the_at_completion_serves_markdown_panes() {
         let end = view.byte_count();
         view.byte_string(0, end)
     };
-    let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -355,14 +355,14 @@ fn the_at_completion_serves_markdown_panes() {
 fn lsp_completion_serves_code_panes() {
     use himark::app::AppCommand;
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app::OpenedDocument;
     use himark::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
 
     struct StubLsp(Arc<std::sync::Mutex<Vec<documents::text_ext::LineCol>>>);
@@ -431,18 +431,18 @@ fn lsp_completion_serves_code_panes() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(window, surface.canvas());
 
-    let completion_open = |app: &Application| -> bool {
+    let completion_open = |app: &Himark| -> bool {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .is_some_and(|document| document.completion(editor).open())
     };
-    let rows = |app: &Application| -> Vec<String> {
+    let rows = |app: &Himark| -> Vec<String> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .map(|document| document.completion(editor).row_labels())
             .unwrap_or_default()
     };
-    let pane_text = |app: &Application| -> String {
+    let pane_text = |app: &Himark| -> String {
         let (_, held) = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "main.rs")
@@ -452,7 +452,7 @@ fn lsp_completion_serves_code_panes() {
         let end = view.byte_count();
         view.byte_string(0, end)
     };
-    let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {

@@ -24,7 +24,7 @@ use himark::app_ext::AppExt;
 
 use himark::app::AppFonts;
 
-use himark::app::Application;
+use himark::app::Himark;
 
 use hikit::modal::ModalRequest;
 
@@ -162,7 +162,7 @@ impl himark::commands::WindowedCommand for ShowStubDock {
 
 #[test]
 fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -195,7 +195,7 @@ fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
 
 #[test]
 fn escape_closes_the_dock_after_the_slide_settles() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -218,7 +218,7 @@ fn escape_closes_the_dock_after_the_slide_settles() {
 
 #[test]
 fn the_dock_resizes_by_dragging_its_edge() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -251,7 +251,7 @@ fn the_dock_resizes_by_dragging_its_edge() {
 
 #[test]
 fn an_editor_drag_still_selects_while_the_dock_is_up() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -281,7 +281,7 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
 
 #[test]
 fn dock_picks_keep_the_panel_up() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -316,7 +316,7 @@ fn dock_header_buttons_dispatch_their_commands() {
             self.hits.fetch_add(1, Ordering::Relaxed);
         }
     }
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let hits = Arc::new(AtomicUsize::new(0));
     {
@@ -357,7 +357,7 @@ fn dock_header_buttons_dispatch_their_commands() {
 
 #[test]
 fn the_dock_swaps_content_in_place() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -395,7 +395,7 @@ fn the_dock_swaps_content_in_place() {
 
 #[test]
 fn the_dock_and_the_floating_drawer_coexist() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -421,7 +421,7 @@ fn the_dock_and_the_floating_drawer_coexist() {
 #[test]
 fn the_dock_and_the_families_ride_their_session_across_switches() {
     let fonts = himark::app::AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -440,7 +440,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     let terminals =
         ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     terminals::Terminals::put(&mut app.store_mut(), terminals, hidden, session);
-    let entity = |app: &Application| {
+    let entity = |app: &Himark| {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("the window entity")
             .clone()
@@ -525,7 +525,7 @@ pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
     )
 }
 
-pub(super) fn show_dock(app: &mut Application, label: &'static str, owner: &'static str) {
+pub(super) fn show_dock(app: &mut Himark, label: &'static str, owner: &'static str) {
     let window = app.sole_window();
     assert!(app.perform_command(AppCommand::Windowed(
         window,
@@ -533,7 +533,7 @@ pub(super) fn show_dock(app: &mut Application, label: &'static str, owner: &'sta
     )));
 }
 
-pub(super) fn settle(app: &mut Application, surface: &mut skia_safe::Surface) {
+pub(super) fn settle(app: &mut Himark, surface: &mut skia_safe::Surface) {
     for tick in 0..60 {
         app.draw_window(app.sole_window(), surface.canvas());
         let busy = test_driver::animate(app, AnimationClock::from_millis(tick as f64 * 32.0));
@@ -543,6 +543,6 @@ pub(super) fn settle(app: &mut Application, surface: &mut skia_safe::Surface) {
     }
 }
 
-pub(super) fn entity(app: &Application) -> &::workbench::window::Window {
+pub(super) fn entity(app: &Himark) -> &::workbench::window::Window {
     ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("the window")
 }

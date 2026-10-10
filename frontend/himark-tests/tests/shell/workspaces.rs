@@ -32,7 +32,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    let switch = |app: &mut himark::app::Application,
+    let switch = |app: &mut himark::app::Himark,
                   target: Option<ahp_wire::SessionId>|
      -> ahp_wire::SessionId {
         let window = app.sole_window();
@@ -49,7 +49,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     };
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Application::new(fonts);
+    let mut app = himark::app::Himark::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     let first = himark::workspace::entity_session(
@@ -179,7 +179,7 @@ fn switching_dismisses_the_overlays_first() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Application::new(fonts);
+    let mut app = himark::app::Himark::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     assert!(app.open_modal(window, Box::new(NullModal)));

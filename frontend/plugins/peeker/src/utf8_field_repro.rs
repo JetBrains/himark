@@ -3,14 +3,14 @@
 
 use super::*;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
 
 #[test]
 fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     let mut languages = editor::reparse::SyntaxLanguages::new();
@@ -55,7 +55,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
 
     let size = skia_safe::Size::new(1200.0, 900.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);

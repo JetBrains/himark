@@ -20,7 +20,7 @@ mod app {
     };
 
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app_ext::AppExt;
     use skia_safe::{
         gpu::{
@@ -282,7 +282,7 @@ mod app {
     }
 
     struct WebApp {
-        state: Application,
+        state: Himark,
 
         scroll_gesture: imba::event::ScrollGesture,
         last_scroll_ms: Option<f64>,
@@ -304,7 +304,7 @@ mod app {
 
     impl WebApp {
         fn new(context: DirectContext) -> Self {
-            let mut state = Application::new(app_fonts());
+            let mut state = Himark::new(app_fonts());
             state.register_syntax_languages(web_languages());
 
             himarkdown::register_handlers(&mut state);

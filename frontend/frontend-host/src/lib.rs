@@ -16,7 +16,7 @@ use ahp_wire::uris;
 
 use demo::demo_location;
 use himark::app::AppCommand;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
@@ -64,7 +64,7 @@ impl AgentHostFilesystemCapabilities {
 }
 
 pub struct HimarkEngine {
-    app: Application,
+    app: Himark,
 
     /// Per-window: a touch beginning in one window must not break the
     /// gesture — momentum included — still flowing in another.
@@ -147,7 +147,7 @@ impl ClickCounter {
 }
 
 fn register_agent_server(
-    app: &mut Application,
+    app: &mut Himark,
     clients: &ahp_wire::fs::ClientDirectory,
     name: &str,
     client: ahp_wire::client::Client,
@@ -490,7 +490,7 @@ impl HimarkEngine {
     }
 
     pub(crate) fn with_fonts(fonts: AppFonts) -> Self {
-        let mut app = Application::new(fonts);
+        let mut app = Himark::new(fonts);
         app.register_syntax_languages(syntax_languages());
         // ONE policy: what the diff view computes with is what the
         // chat's cells are built with. Myers, time-bounded — the

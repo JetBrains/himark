@@ -8,7 +8,7 @@
 
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::diff_pane::*;
 use std::sync::{mpsc, Arc};
@@ -78,7 +78,7 @@ fn idle_diff_goes_quiet() {
 
 fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -178,7 +178,7 @@ fn probe(repetitions: usize) {
 
 fn probe_pair(left: String, right: String) {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -305,7 +305,7 @@ fn probe_pair(left: String, right: String) {
             let _ = himark::test_driver::scroll(&mut app, -2000.0);
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
-        let cell_focused = |app: &Application| {
+        let cell_focused = |app: &Himark| {
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
@@ -356,7 +356,7 @@ fn probe_pair(left: String, right: String) {
             layout.height_before(byte)
         };
 
-        let viewport_start = |app: &Application| -> f32 {
+        let viewport_start = |app: &Himark| -> f32 {
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
@@ -461,7 +461,7 @@ fn diff_panel_survives_a_medium_monster() {
 #[ignore = "profiling soak; run with --ignored --nocapture and sample it"]
 fn scroll_soak_for_profiling() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -552,7 +552,7 @@ fn canvas_landing_breakdown_probe() {
         .unwrap_or(8);
     let (left, right) = monster_pair(repetitions);
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();

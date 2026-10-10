@@ -2,7 +2,7 @@ use super::*;
 use ahp_locations::driver::DisposeFeed;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app::OpenedDocument;
 use locations::FeedId;
 use locations::FoundLocation;
@@ -18,7 +18,7 @@ fn located(name: &str) -> editor::location::ResourceLocation {
     )
 }
 
-fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
+fn state_lists(app: &Himark) -> imba::store::Id<LocationLists> {
     let window = app.sole_window();
     himark::workspace::entity_state(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
@@ -26,7 +26,7 @@ fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
     .lists()
 }
 
-fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
+fn state_wire(app: &Himark) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
     let window = app.sole_window();
     himark::workspace::entity_state(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
@@ -34,7 +34,7 @@ fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::Locat
     .locations_wire()
 }
 
-fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {
+fn seeded_feed(app: &mut Himark, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {
     let lists = state_lists(app);
     let feed = FeedId::mint();
     let mut row = LocationsFeedRow {
@@ -67,7 +67,7 @@ fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLi
 
 #[test]
 fn a_search_pick_washes_the_opened_editor() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     assert!(app.perform_command(AppCommand::Opened(
         window,
@@ -134,7 +134,7 @@ fn a_search_pick_washes_the_opened_editor() {
 
 #[test]
 fn a_pick_before_the_open_washes_at_registration() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     let (lists, feed) = seeded_feed(&mut app, "late.md");
 

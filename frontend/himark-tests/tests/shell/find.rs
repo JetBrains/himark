@@ -4,10 +4,10 @@ use super::*;
 #[test]
 fn find_bar_rescans_in_the_background_after_document_edits() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -18,7 +18,7 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         for _ in 0..3 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -35,7 +35,7 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     assert!(himark::test_driver::type_text(&mut app, "alpha"));
     settle(&mut app);
 
-    let matches_now = |app: &Application| -> Vec<std::ops::Range<u32>> {
+    let matches_now = |app: &Himark| -> Vec<std::ops::Range<u32>> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .and_then(|document| document.find(editor).map(|find| find.matches().to_vec()))
@@ -75,10 +75,10 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
 #[test]
 fn find_bar_highlights_and_walks_occurrences() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -113,7 +113,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     );
 
     app.draw_window(app.sole_window(), surface.canvas());
-    let find = |app: &Application| -> Option<::editor::find::FindBar> {
+    let find = |app: &Himark| -> Option<::editor::find::FindBar> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .and_then(|document| document.find(editor).cloned())
@@ -146,7 +146,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     drop(document);
 
     assert!(app.perform_registered(window, "find.next"));
-    let selection = |app: &Application| {
+    let selection = |app: &Himark| {
         let document =
             documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
                 .expect("the document");
@@ -217,10 +217,10 @@ fn find_bar_highlights_and_walks_occurrences() {
 #[test]
 fn keymap_backspace_edits_the_find_bar_query() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use imba::event::{Key, Modifiers};
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -237,7 +237,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "ab"));
 
-    let query = |app: &Application| -> Option<String> {
+    let query = |app: &Himark| -> Option<String> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)?
             .find(editor)

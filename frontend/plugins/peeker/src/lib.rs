@@ -10,7 +10,7 @@ use editor::location::ResourceLocation;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::panel::WidgetOrigin;
-use himark::app::Application;
+use himark::app::Himark;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -1038,22 +1038,22 @@ impl himark::commands::WindowedCommand for TogglePeeker {
     }
 }
 
-pub fn labels(app: &Application) -> Option<Vec<String>> {
+pub fn labels(app: &Himark) -> Option<Vec<String>> {
     Some(peeker_of(app)?.labels().to_vec())
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
 #[doc(hidden)]
-pub fn preview_height(app: &Application, store: &Store) -> Option<f32> {
+pub fn preview_height(app: &Himark, store: &Store) -> Option<f32> {
     peeker_of(app)?.preview_height(store)
 }
 
 #[cfg(test)]
-pub(crate) fn previewed_widget(app: &Application) -> Option<String> {
+pub(crate) fn previewed_widget(app: &Himark) -> Option<String> {
     peeker_of(app)?.previewed_widget_title()
 }
 
-fn peeker_of(app: &Application) -> Option<&Peeker> {
+fn peeker_of(app: &Himark) -> Option<&Peeker> {
     app.plugin_modal()?.as_any().downcast_ref::<Peeker>()
 }
 

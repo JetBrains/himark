@@ -1,6 +1,6 @@
 use super::*;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app::OpenedDocument;
 use himark::app_ext::AppExt;
 
@@ -54,7 +54,7 @@ fn run_outline(batch: imba::effect::Batch<::toc::OutlineCommand>) -> Option<::to
 
 #[test]
 fn the_outline_derives_lands_and_jumps() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -158,7 +158,7 @@ fn the_outline_derives_lands_and_jumps() {
 
 #[test]
 fn a_structureless_pane_offers_no_toc() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -364,7 +364,7 @@ fn result_directories_fold_and_unfold() {
 fn outline_speedsearch_filters_steps_and_clears() {
     use imba::effect::{block_on, EffectHandler, Message};
 
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -475,7 +475,7 @@ fn speedsearch_arrows_step_the_matches() {
     use imba::event::{Event, EventResult, Key, Modifiers};
     use imba::Widget as _;
 
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -618,7 +618,7 @@ fn speedsearch_arrows_step_the_matches() {
 
 #[test]
 fn outline_folds_survive_relandings() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());

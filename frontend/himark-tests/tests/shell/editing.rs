@@ -794,9 +794,9 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
 #[test]
 fn ime_composition_reaches_the_focused_editor() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -832,9 +832,9 @@ fn ime_composition_reaches_the_focused_editor() {
 #[test]
 fn ime_hit_test_answers_only_over_the_focused_text() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -872,9 +872,9 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
 #[test]
 fn ime_selection_sets_reads_back_and_answers_rects() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -937,9 +937,9 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
 #[test]
 fn ime_popup_positions_in_window_coordinates_and_hides() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1007,9 +1007,9 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
 #[test]
 fn accent_popup_replaces_the_held_character() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1035,9 +1035,9 @@ fn accent_popup_replaces_the_held_character() {
 #[test]
 fn typing_into_the_empty_startup_document_inserts() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1271,9 +1271,9 @@ fn a_stale_theme_repair_landing_discards_itself() {
 #[test]
 fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1311,13 +1311,13 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 #[test]
 fn caret_commands_glide_the_pane_to_the_caret() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -1377,13 +1377,13 @@ fn caret_commands_glide_the_pane_to_the_caret() {
 #[test]
 fn a_manual_scroll_cancels_the_reveal_in_flight() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -1443,11 +1443,11 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     use documents::text_ext::LineCol;
     use himark::app::AppCommand;
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     use himark::app::OpenedDocument;
     use himark::app_ext::AppExt;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let window = app.add_window();
 
     let source: String = (0..200).map(|n| format!("line {n}\n")).collect();
@@ -1501,9 +1501,9 @@ fn opening_with_a_target_lands_the_caret_revealed() {
 #[test]
 fn clipboard_reaches_the_focused_editor() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -1756,9 +1756,9 @@ fn drag_extends_selection_by_the_press_unit() {
 #[test]
 fn ime_hit_test_covers_an_empty_document() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1787,9 +1787,9 @@ fn ime_hit_test_covers_an_empty_document() {
 #[test]
 fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     use himark::app::AppFonts;
-    use himark::app::Application;
+    use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -1802,7 +1802,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     });
     app.draw_window(app.sole_window(), surface.canvas());
 
-    let hit = |app: &mut Application, y: f32| {
+    let hit = |app: &mut Himark, y: f32| {
         app.with_ime_client(app.sole_window(), |client| client.char_index_at(400.0, y))
             .expect("focused")
     };

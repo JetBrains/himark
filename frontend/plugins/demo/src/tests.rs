@@ -12,7 +12,7 @@ use skia_safe::{surfaces, textlayout::FontCollection};
 
 use himark::app::AppCommand;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 
 struct TestHost {
     arriving: std::sync::mpsc::Receiver<AppCommand>,
@@ -38,7 +38,7 @@ impl Drop for TestHost {
     }
 }
 
-fn attach_test_host() -> (Application, TestHost) {
+fn attach_test_host() -> (Himark, TestHost) {
     let (mut app, host) = attach_bare_host();
     app.open_async(
         app.sole_window(),
@@ -54,9 +54,9 @@ fn attach_test_host() -> (Application, TestHost) {
     (app, host)
 }
 
-fn attach_bare_host() -> (Application, TestHost) {
+fn attach_bare_host() -> (Himark, TestHost) {
     use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc, Arc};
-    let mut app = Application::new(app_fonts());
+    let mut app = Himark::new(app_fonts());
     let _ = app.add_window();
 
     app.register_command(Arc::new(peeker::TogglePeeker));
@@ -107,13 +107,13 @@ fn heavy() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn registered(app: &Application, name: &str) -> bool {
+fn registered(app: &Himark, name: &str) -> bool {
     documents::OpenDocuments::list(app.store(), app.sole_documents())
         .iter()
         .any(|(_, entity)| entity.name() == name)
 }
 
-fn boot() -> (Application, TestHost) {
+fn boot() -> (Himark, TestHost) {
     let (mut app, arriving) = attach_test_host();
 
     while !registered(&app, "torture sample") {
@@ -125,7 +125,7 @@ fn boot() -> (Application, TestHost) {
     (app, arriving)
 }
 
-fn drain_until_quiet(app: &mut Application, arriving: &std::sync::mpsc::Receiver<AppCommand>) {
+fn drain_until_quiet(app: &mut Himark, arriving: &std::sync::mpsc::Receiver<AppCommand>) {
     while let Ok(command) = arriving.recv_timeout(Duration::from_secs(30)) {
         app.perform_batch(vec![command]);
         if app.unconverged_panes().is_empty() {
@@ -271,7 +271,7 @@ fn dump_workbench_screenshots() {
     app.draw_window(app.sole_window(), surface.canvas());
     drain_until_quiet(&mut app, &arriving);
 
-    let mut shoot = |app: &mut Application, name: &str| {
+    let mut shoot = |app: &mut Himark, name: &str| {
         app.draw_window(app.sole_window(), surface.canvas());
         app.draw_window(app.sole_window(), surface.canvas());
         let image = surface.image_snapshot();
@@ -288,7 +288,7 @@ fn dump_workbench_screenshots() {
     shoot(&mut app, "deep.png");
 
     let mut probe = surfaces::raster_n32_premul((1920, 1080)).expect("probe surface");
-    let mut settle = move |app: &mut Application,
+    let mut settle = move |app: &mut Himark,
                            arriving: &std::sync::mpsc::Receiver<AppCommand>| {
         loop {
             app.draw_window(app.sole_window(), probe.canvas());
@@ -351,7 +351,7 @@ fn background_repair_finishes_the_whole_document_after_a_resize() {
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
     app.draw_window(app.sole_window(), surface.canvas());
 
-    let drain = |app: &mut Application| drain_until_quiet(app, &arriving);
+    let drain = |app: &mut Himark| drain_until_quiet(app, &arriving);
     drain(&mut app);
     assert_eq!(
         app.unconverged_panes(),
@@ -798,7 +798,7 @@ fn opening_at_window_size_converges_and_styles() {
 
 const MAX_SCROLL_STEPS: usize = 10_000;
 
-fn scroll_steps(app: &himark::app::Application, step: f32) -> usize {
+fn scroll_steps(app: &himark::app::Himark, step: f32) -> usize {
     let extent = documents::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .filter_map(|(_, entity)| {
@@ -810,7 +810,7 @@ fn scroll_steps(app: &himark::app::Application, step: f32) -> usize {
     (((extent / step).ceil() as usize).saturating_add(2)).min(MAX_SCROLL_STEPS - 1)
 }
 
-fn scroll_pass(app: &mut Application, surface: &mut skia_safe::Surface) -> Vec<Duration> {
+fn scroll_pass(app: &mut Himark, surface: &mut skia_safe::Surface) -> Vec<Duration> {
     app.draw_window(app.sole_window(), surface.canvas());
 
     let mut samples = Vec::new();
@@ -824,7 +824,7 @@ fn scroll_pass(app: &mut Application, surface: &mut skia_safe::Surface) -> Vec<D
     samples
 }
 
-fn scroll_to_top(app: &mut Application, surface: &mut skia_safe::Surface) {
+fn scroll_to_top(app: &mut Himark, surface: &mut skia_safe::Surface) {
     himark::test_driver::scroll(app, f32::MIN);
     app.draw_window(app.sole_window(), surface.canvas());
 }
@@ -898,7 +898,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
         }
     }
 
-    let measure = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let measure = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         let mut samples = Vec::new();
         for _ in 0..60 {
             std::thread::sleep(Duration::from_millis(10));
@@ -1234,7 +1234,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     ));
     app.draw_window(window, surface.canvas());
 
-    let row_count = |app: &himark::app::Application| -> usize {
+    let row_count = |app: &himark::app::Himark| -> usize {
         let mut count = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(tree) = panel
@@ -1270,7 +1270,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     assert_eq!(row_count(&app), 100_010, "the first root expanded");
     app.draw_window(window, surface.canvas());
 
-    let content_height = |app: &himark::app::Application| -> f32 {
+    let content_height = |app: &himark::app::Himark| -> f32 {
         let mut height = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(tree) = panel
@@ -1351,7 +1351,7 @@ fn rust_document_settles_and_stops_reconciling() {
     for (w, h) in [(1920.0f32, 1080.0f32), (1100.0, 763.0)] {
         let size = skia_safe::Size::new(w, h);
         let mut surface = surfaces::raster_n32_premul((w as i32, h as i32)).expect("surface");
-        let settle = |app: &mut Application, surface: &mut skia_safe::Surface, tag: &str| {
+        let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, tag: &str| {
             let mut settled_streak = 0;
             for frame in 0..1500 {
                 let mut landed = false;
@@ -1465,7 +1465,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
         }
     }
 
-    let measure = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let measure = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         let mut samples = Vec::new();
         for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(10));

@@ -5,7 +5,7 @@ use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::test_driver;
 use imba::anim::AnimationClock;
@@ -82,8 +82,8 @@ fn the_sessions_subscription_runs_without_any_view() {
     }
 
     use himark::app::AppFonts;
-    use himark::app::Application;
-    let mut app = Application::new(AppFonts::embedded());
+    use himark::app::Himark;
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     himark::hiahp::register_all(&mut app);
 
@@ -136,7 +136,7 @@ fn the_sessions_subscription_runs_without_any_view() {
 
 #[test]
 fn the_add_host_row_takes_a_url_and_dispatches() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let received = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
@@ -225,7 +225,7 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
 
 #[test]
 fn the_drawer_groups_sessions_by_folder_most_recent_first() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut store = app.store_mut().clone();
@@ -356,7 +356,7 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
 
 #[test]
 fn the_drawer_lands_on_the_window_s_open_session() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut store = app.store_mut().clone();
@@ -429,7 +429,7 @@ fn the_drawer_lands_on_the_window_s_open_session() {
 fn the_drawer_speed_search_filters_sessions() {
     use imba::effect::{block_on, EffectHandler, Message};
 
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut store = app.store_mut().clone();

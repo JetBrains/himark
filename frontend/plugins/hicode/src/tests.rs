@@ -6,7 +6,7 @@ use super::*;
 use ::editor::test_document::plain_document;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app::OpenedDocument;
 use himark::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
@@ -49,8 +49,8 @@ impl imba::effect::EffectHandler<CodeNavigationEffect> for StubNavigation {
     }
 }
 
-fn app_with_located_document(source: &str) -> (Application, workbench::window::WindowId) {
-    let mut app = Application::new(AppFonts::embedded());
+fn app_with_located_document(source: &str) -> (Himark, workbench::window::WindowId) {
+    let mut app = Himark::new(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
     let window = app.add_window();
@@ -69,7 +69,7 @@ fn app_with_located_document(source: &str) -> (Application, workbench::window::W
     (app, window)
 }
 
-fn invoke(app: &mut Application, window: workbench::window::WindowId, id: &str) {
+fn invoke(app: &mut Himark, window: workbench::window::WindowId, id: &str) {
     let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
@@ -80,10 +80,10 @@ fn invoke(app: &mut Application, window: workbench::window::WindowId, id: &str) 
 
 #[test]
 fn located_editors_offer_the_commands_on_the_focus_path() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     let window = app.add_window();
-    let listed = |app: &Application| {
+    let listed = |app: &Himark| {
         himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
             .iter()
             .any(|presentable| presentable.id == "code.definition")

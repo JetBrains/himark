@@ -7,7 +7,7 @@ use imba::store::Store;
 
 use super::*;
 use crate::app::AppFonts;
-use crate::app::Application;
+use crate::app::Himark;
 use crate::app::OpenedDocument;
 use ::editor::test_document::plain_document;
 use documents::watch::{
@@ -743,7 +743,7 @@ fn opens_watch_and_events_refetch() {
     }
 
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     app.register_handler::<SubscribeEffect>(StubWatch);
     app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     app.observe_file_changes();
@@ -755,7 +755,7 @@ fn opens_watch_and_events_refetch() {
         }),
         Arc::new(|| {}),
     );
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         for _ in 0..4 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -813,7 +813,7 @@ fn the_palette_reload_follows_the_disk() {
     }
 
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     let window = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -823,7 +823,7 @@ fn the_palette_reload_follows_the_disk() {
         }),
         Arc::new(|| {}),
     );
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         for _ in 0..4 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {

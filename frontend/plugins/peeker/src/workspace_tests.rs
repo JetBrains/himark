@@ -6,7 +6,7 @@ use ::editor::test_document::plain_document;
 use editor::location::Authority;
 use editor::location::ResourceType;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app::OpenedDocument;
 use himark::app_ext::AppExt;
 use imba::effect::EffectHandler;
@@ -102,11 +102,11 @@ impl himark::commands::WindowedCommand for AddFolder {
 fn boot(
     fetches: &Arc<AtomicUsize>,
 ) -> (
-    Application,
+    Himark,
     mpsc::Receiver<himark::app::AppCommand>,
     himark::effects::BackgroundRunner,
 ) {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(Arc::new(TogglePeeker));
     app.register_handler::<FindEffect>(StubFind);
@@ -136,7 +136,7 @@ fn boot(
 }
 
 fn settle(
-    app: &mut Application,
+    app: &mut Himark,
     arriving: &mpsc::Receiver<himark::app::AppCommand>,
     runner: &himark::effects::BackgroundRunner,
 ) {

@@ -6,7 +6,7 @@ use std::sync::{
 use imba::store::Store;
 
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::test_driver;
 
 struct Mark {
@@ -49,7 +49,7 @@ fn button(
 
 #[test]
 fn a_right_button_press_dispatches_its_own_command() {
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let left_hits = Arc::new(AtomicUsize::new(0));
     let right_hits = Arc::new(AtomicUsize::new(0));

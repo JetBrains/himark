@@ -24,7 +24,7 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::diff_pane::*;
 use std::sync::{mpsc, Arc};
@@ -65,7 +65,7 @@ fn prepared_pair(
 fn the_diff_panel_opens_edits_and_dismantles() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -105,7 +105,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..4 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -173,7 +173,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 fn the_optimizer_landing_cancels_matching_edits() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -203,7 +203,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -269,7 +269,7 @@ fn identical_documents_settle_spacer_free() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -294,7 +294,7 @@ fn identical_documents_settle_spacer_free() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -345,7 +345,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -368,7 +368,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -425,7 +425,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -458,7 +458,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -481,7 +481,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         });
         shot.expect("the diff pane is open")
     };
-    let right_height = |app: &Application| {
+    let right_height = |app: &Himark| {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() {
@@ -548,7 +548,7 @@ fn typed_insertions_paint_washes() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -573,7 +573,7 @@ fn typed_insertions_paint_washes() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -654,7 +654,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -683,7 +683,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -764,7 +764,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -792,7 +792,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
 
     let size = skia_safe::Size::new(2000.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -959,7 +959,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
 }
 
 #[allow(dead_code)]
-fn dump_pair(app: &Application) {
+fn dump_pair(app: &Himark) {
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
             return;
@@ -993,7 +993,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1034,7 +1034,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -1056,7 +1056,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     // birth, no window to chase (docs/editor/scroll-stripe.md §7). The deep
     // change is washed before any scroll; the scroll still proves the
     // pair aligns all the way down.
-    let right_marks = |app: &Application| -> Vec<std::ops::Range<u32>> {
+    let right_marks = |app: &Himark| -> Vec<std::ops::Range<u32>> {
         let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == "right.md")
@@ -1108,7 +1108,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1146,7 +1146,7 @@ fn scrolling_after_a_theme_toggle_converges() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -1190,7 +1190,7 @@ fn scrolling_after_a_theme_toggle_converges() {
 
     let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
     let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
-    let cell_focused = |app: &Application| {
+    let cell_focused = |app: &Himark| {
         let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == "right.md")
@@ -1372,7 +1372,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1395,7 +1395,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -1440,7 +1440,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     }
     assert!(cell_focused, "a table cell took focus");
 
-    let table_heights = |app: &Application, name: &str| -> (f32, f32) {
+    let table_heights = |app: &Himark, name: &str| -> (f32, f32) {
         let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == name)
@@ -1494,11 +1494,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     assert_pair_aligned(&app);
 }
 
-pub(crate) fn assert_pair_aligned(app: &Application) {
+pub(crate) fn assert_pair_aligned(app: &Himark) {
     assert_pair_consistent(app, true);
 }
 
-pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
+pub(crate) fn assert_pair_consistent(app: &Himark, expect_pairs: bool) {
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
@@ -1626,7 +1626,7 @@ fn an_edited_markdown_pair_settles_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1670,7 +1670,7 @@ fn an_edited_markdown_pair_settles_aligned() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -1697,7 +1697,7 @@ fn an_edited_markdown_pair_settles_aligned() {
     assert_pair_aligned(&app);
 }
 
-fn document_text(app: &Application, name: &str) -> String {
+fn document_text(app: &Himark, name: &str) -> String {
     let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, info)| info.name() == name)
@@ -1822,7 +1822,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         }
     }
 
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1985,7 +1985,7 @@ fn a_settled_diff_pane_goes_quiet() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = himark::app::AppFonts::embedded();
-    let mut app = himark::app::Application::new(fonts);
+    let mut app = himark::app::Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(OpenDiff));
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -2013,7 +2013,7 @@ fn a_settled_diff_pane_goes_quiet() {
     }
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut himark::app::Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut himark::app::Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..8 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -2047,7 +2047,7 @@ fn a_settled_diff_pane_goes_quiet() {
 fn the_unified_view_switches_between_split_and_inline() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -2089,7 +2089,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..4 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -2118,7 +2118,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         });
         id.expect("the diff pane stands")
     };
-    let pair_state = |app: &Application| {
+    let pair_state = |app: &Himark| {
         documents::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id)
             .and_then(|pair| pair.state.clone())
             .expect("the pair's state row")
@@ -2128,7 +2128,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         editor::unified_diff::DiffLayout::Split
     );
 
-    let toggle = |app: &mut Application| {
+    let toggle = |app: &mut Himark| {
         let command =
             himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
                 .into_iter()
@@ -2231,7 +2231,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -2272,7 +2272,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -2294,7 +2294,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     assert!(app.perform_command(toggle));
     settle(&mut app, &mut surface);
 
-    let paint_floor_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+    let paint_floor_ms = |app: &mut Himark, surface: &mut skia_safe::Surface| -> f64 {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
@@ -2336,7 +2336,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
 #[test]
 fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let theme = editor::theme::Theme::embedded();
     let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
@@ -2416,7 +2416,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
             let _ = himark::test_driver::animate(
                 &mut *app,
@@ -2427,7 +2427,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     };
     settle(&mut app, &mut surface);
 
-    let paint_floor_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+    let paint_floor_ms = |app: &mut Himark, surface: &mut skia_safe::Surface| -> f64 {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
@@ -2471,7 +2471,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
 fn folded_squash_paint_cost_is_size_independent() {
     let floor_for = |line_count: usize| -> f64 {
         let fonts = AppFonts::embedded();
-        let mut app = Application::new(fonts);
+        let mut app = Himark::new(fonts);
         let _ = app.add_window();
 
         let mut old_body = String::new();
@@ -2583,7 +2583,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     // Small diff: a changed head, unchanged middle, changed tail —
@@ -2659,7 +2659,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     }
 
-    let host_focus = |app: &Application| -> String {
+    let host_focus = |app: &Himark| -> String {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
@@ -2673,7 +2673,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         });
         shot.expect("the built row")
     };
-    let full_click = |app: &mut Application, y: f32| {
+    let full_click = |app: &mut Himark, y: f32| {
         let _ = himark::test_driver::click(app, 550.0, y, 1100.0, 800.0);
         let _ = himark::test_driver::mouse_up(app, 550.0, y);
     };
@@ -2708,7 +2708,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     // face in place — the old per-generation rebuild tore the inline
     // editor down mid-typing, snapping the caret (and focus) to the
     // top of the document.
-    let inline_of = |app: &Application| {
+    let inline_of = |app: &Himark| {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
@@ -2755,7 +2755,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -2816,7 +2816,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let mut settle = |app: &mut Application| {
+    let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -2828,7 +2828,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     };
     settle(&mut app);
 
-    let probe = |app: &Application| -> (
+    let probe = |app: &Himark| -> (
         Vec<(String, canvas::RowPhase, f32)>,
         Vec<(String, editor::unified_diff::DiffLayout)>,
         f32,
@@ -2846,7 +2846,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         });
         shot.expect("the canvas panel")
     };
-    let click = |app: &mut Application, x: f32, y: f32| {
+    let click = |app: &mut Himark, x: f32, y: f32| {
         let _ = himark::test_driver::click(app, x, y, 1100.0, 800.0);
         let _ = himark::test_driver::mouse_up(app, x, y);
     };
@@ -2946,7 +2946,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3015,7 +3015,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     };
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
-    let row_height = |app: &Application| -> f32 {
+    let row_height = |app: &Himark| -> f32 {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
@@ -3066,7 +3066,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3137,7 +3137,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let draw_settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let draw_settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -3160,7 +3160,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     };
     draw_settle(&mut app, &mut surface, 40);
 
-    let row_height = |app: &Application| -> f32 {
+    let row_height = |app: &Himark| -> f32 {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
@@ -3222,7 +3222,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
@@ -3282,7 +3282,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     );
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let mut settle = |app: &mut Application| {
+    let mut settle = |app: &mut Himark| {
         for _ in 0..40 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -3294,7 +3294,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     };
     settle(&mut app);
 
-    let probe = |app: &Application| {
+    let probe = |app: &Himark| {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
@@ -3304,7 +3304,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         });
         shot.expect("the canvas panel")
     };
-    let halves = |app: &Application| {
+    let halves = |app: &Himark| {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
@@ -3382,7 +3382,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
 #[test]
 fn reconcile_follows_the_change_set_without_flashing() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let location = |name: &str, kind| {
@@ -3506,7 +3506,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 fn typing_in_a_canvas_row_updates_its_diff() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     // The seed is the whole-replace; the diff is dressed by the normalize
@@ -3520,7 +3520,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         Arc::new(|| {}),
     );
     let size = skia_safe::Size::new(1100.0, 800.0);
-    let settle = |app: &mut Application| {
+    let settle = |app: &mut Himark| {
         for _ in 0..8 {
             let window = app.sole_window();
             app.perform_batch(vec![himark::app::AppCommand::ViewportResized(window, size)]);
@@ -3593,7 +3593,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         .expect("the tracked diff view")
         .diff;
 
-    let op_of = |app: &Application| {
+    let op_of = |app: &Himark| {
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target_id)
             .and_then(|document| {
                 document
@@ -3658,7 +3658,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3716,7 +3716,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -3726,7 +3726,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
     };
-    let stale_now = |app: &Application| -> bool {
+    let stale_now = |app: &Himark| -> bool {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() else {
@@ -3813,7 +3813,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
 #[test]
 fn canvases_sync_is_a_safe_no_op_when_current() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let doc_loc = |name: &str| {
@@ -3890,7 +3890,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
 #[test]
 fn reconcile_keeps_the_sticky_cover() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let (view, key, built2) = seeded_working_canvas(&mut app);
@@ -3930,7 +3930,7 @@ fn reconcile_keeps_the_sticky_cover() {
 #[test]
 fn a_committed_change_set_empties_the_canvas() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let (view, key, _built2) = seeded_working_canvas(&mut app);
@@ -3992,7 +3992,7 @@ fn a_committed_change_set_empties_the_canvas() {
 #[test]
 fn releasing_the_last_view_frees_the_rows_documents() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let location = |name: &str| {
@@ -4051,7 +4051,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
             built(&file),
         )
     };
-    let registered = |app: &Application| {
+    let registered = |app: &Himark| {
         let store = app.store();
         documents::OpenDocuments::by_location(&store, documents, &file.old).is_some()
             && documents::OpenDocuments::by_location(&store, documents, &file.new).is_some()
@@ -4105,7 +4105,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
 #[test]
 fn an_armed_row_prefetches_a_bounded_horizon() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let location = |name: &str| {
@@ -4233,7 +4233,7 @@ fn canvas_file(
 }
 
 fn seeded_working_canvas(
-    app: &mut Application,
+    app: &mut Himark,
 ) -> (
     DiffCanvasView,
     editor::location::ResourceLocation,
@@ -4291,7 +4291,7 @@ fn seeded_working_canvas(
 #[test]
 fn a_retired_file_leaves_no_orphan_row() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let loc = |name: &str| {
@@ -4388,7 +4388,7 @@ fn a_retired_file_leaves_no_orphan_row() {
 #[test]
 fn membership_follows_every_adopted_listing() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
 
     let pool: Vec<editor::location::ResourceLocation> = (0..8)
@@ -4489,7 +4489,7 @@ fn membership_follows_every_adopted_listing() {
 #[test]
 fn membership_minimal_repro() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let key = |name: &str| {
         editor::location::ResourceLocation::new(
@@ -4547,7 +4547,7 @@ fn membership_minimal_repro() {
 #[test]
 fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     let fonts = AppFonts::embedded();
-    let mut app = Application::new(fonts);
+    let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let (view, key, built2) = seeded_working_canvas(&mut app);
 
@@ -4585,7 +4585,7 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
 #[test]
 fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     use documents::OpenDocuments;
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     app.register_document_command(Arc::new(hicode::GoDefinition));
     let (posted, arriving) = mpsc::channel();
@@ -4669,7 +4669,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let mut settle = |app: &mut Application| {
+    let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -4682,7 +4682,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     settle(&mut app);
 
     let documents = app.sole_documents();
-    let canvas_view = |app: &Application| -> DiffCanvasView {
+    let canvas_view = |app: &Himark| -> DiffCanvasView {
         let mut found = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
@@ -4703,7 +4703,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
             state.right_marks_oracle(),
         )
     };
-    let offset = |app: &Application, id: documents::DocumentId, line: u32, col: u32| -> u32 {
+    let offset = |app: &Himark, id: documents::DocumentId, line: u32, col: u32| -> u32 {
         let document = OpenDocuments::document_ref(app.store(), documents, id).expect("doc");
         documents::text_ext::offset_at(
             &mut document.text().view(),
@@ -4711,7 +4711,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         ) as u32
     };
     let byte_a = offset(&app, right_a, 61, 5);
-    let hidden_at = |app: &Application| -> bool {
+    let hidden_at = |app: &Himark| -> bool {
         let document = OpenDocuments::document_ref(app.store(), documents, right_a).expect("a");
         document
             .feature_markup(marks_a)
@@ -4725,7 +4725,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         "the identical tail is folded over the target"
     );
     let panes_before = app.pane_count();
-    let navigate = |app: &mut Application,
+    let navigate = |app: &mut Himark,
                     target: editor::location::ResourceLocation,
                     line: u32,
                     built: Vec<(
@@ -4818,7 +4818,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
 fn completion_serves_a_canvas_diff_face() {
     use documents::OpenDocuments;
     use imba::event::{Key, Modifiers};
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     struct StubLsp(Arc<std::sync::atomic::AtomicUsize>);
     impl imba::effect::EffectHandler<::editor::completion::CompletionEffect> for StubLsp {
@@ -4889,7 +4889,7 @@ fn completion_serves_a_canvas_diff_face() {
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
@@ -4922,7 +4922,7 @@ fn completion_serves_a_canvas_diff_face() {
                 .expect("face"),
         )
     };
-    let text = |app: &Application| -> String {
+    let text = |app: &Himark| -> String {
         let document = OpenDocuments::document_ref(app.store(), documents, right).expect("right");
         let mut view = document.text().view();
         let end = view.byte_count();
@@ -4946,7 +4946,7 @@ fn completion_serves_a_canvas_diff_face() {
         .caret_byte(face);
     assert!(caret > 0, "the click placed the caret in the face: {caret}");
 
-    let completion_open = |app: &Application| -> bool {
+    let completion_open = |app: &Himark| -> bool {
         OpenDocuments::document_ref(app.store(), documents, right)
             .is_some_and(|document| document.completion(face).open())
     };
@@ -5022,7 +5022,7 @@ fn completion_serves_a_canvas_diff_face() {
 #[test]
 fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     use documents::OpenDocuments;
-    let mut app = Application::new(AppFonts::embedded());
+    let mut app = Himark::new(AppFonts::embedded());
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -5157,7 +5157,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         Arc::new(Land(documents, right)),
     )));
 
-    let dressed = |app: &Application| -> bool {
+    let dressed = |app: &Himark| -> bool {
         OpenDocuments::diff_view_ref(app.store(), documents, pair)
             .and_then(|held| documents::diff_views::gather_diff_view(held, app.store(), documents))
             .is_some_and(|view| view.ever_dressed())

@@ -3,7 +3,7 @@
 
 use imba::store::Store;
 
-use crate::app::Application;
+use crate::app::Himark;
 use ::workbench::workbench::pane_width;
 use ::workbench::workbench::workbench_geometry;
 use ::workbench::workbench_node::Panel;
@@ -104,7 +104,7 @@ fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
     )
 }
 
-impl Application {
+impl Himark {
     pub fn sole_window(&self) -> ::workbench::window::WindowId {
         let windows = self.window_ids();
         assert!(windows.len() <= 1, "multiple windows: tests must name one");

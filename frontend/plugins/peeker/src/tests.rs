@@ -4,11 +4,11 @@
 use super::*;
 use editor::test_document::plain_document;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app_ext::AppExt;
 
-fn boot() -> Application {
-    let mut app = Application::new(AppFonts::embedded());
+fn boot() -> Himark {
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     app
@@ -26,7 +26,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
             vec!["project".to_owned(), name.to_owned()],
         )
     };
-    let open = |app: &mut Application, name: &str, text: &str| {
+    let open = |app: &mut Himark, name: &str, text: &str| {
         assert!(app.perform_command(himark::app::AppCommand::Opened(
             app.sole_window(),
             himark::app::OpenedDocument {

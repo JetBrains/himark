@@ -1,6 +1,6 @@
 use super::plain_document;
 use himark::app::AppFonts;
-use himark::app::Application;
+use himark::app::Himark;
 use himark::app::OpenedDocument;
 use himark::app_ext::AppExt;
 
@@ -12,8 +12,8 @@ fn located(name: &str) -> editor::location::ResourceLocation {
     )
 }
 
-fn app() -> (Application, ::workbench::window::WindowId) {
-    let mut app = Application::new(AppFonts::embedded());
+fn app() -> (Himark, ::workbench::window::WindowId) {
+    let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
@@ -22,7 +22,7 @@ fn app() -> (Application, ::workbench::window::WindowId) {
 }
 
 fn land(
-    app: &mut Application,
+    app: &mut Himark,
     window: ::workbench::window::WindowId,
     name: &str,
     text: &str,
@@ -47,24 +47,24 @@ fn land(
     )));
 }
 
-fn depths(app: &Application) -> (usize, usize) {
+fn depths(app: &Himark) -> (usize, usize) {
     ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
         .expect("the window")
         .focused_history_depths()
 }
 
-fn focused_text(app: &Application) -> String {
+fn focused_text(app: &Himark) -> String {
     app.focused_document_text().expect("an editor pane")
 }
 
-fn caret(app: &Application) -> u32 {
+fn caret(app: &Himark) -> u32 {
     let (document, editor) = app.focused_editor_id();
     documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
         .expect("document")
         .caret_byte(editor)
 }
 
-fn registered(app: &Application, name: &str) -> bool {
+fn registered(app: &Himark, name: &str) -> bool {
     documents::OpenDocuments::by_location(app.store(), app.sole_documents(), &located(name))
         .is_some()
 }

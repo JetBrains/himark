@@ -6,7 +6,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use imba::event::{Key, Modifiers};
 
 use super::*;
-use crate::app::Application;
+use crate::app::Himark;
 use crate::app_ext::AppExt;
 use crate::test_driver;
 use ::editor::test_document::plain_document;
@@ -32,12 +32,12 @@ impl imba::effect::EffectHandler<StoreDocumentEffect> for StoreHandler {
 fn setup(
     succeeds: bool,
 ) -> (
-    Application,
+    Himark,
     crate::effects::BackgroundRunner,
     mpsc::Receiver<crate::app::AppCommand>,
     Writes,
 ) {
-    let mut app = Application::new(crate::app::AppFonts::embedded());
+    let mut app = Himark::new(crate::app::AppFonts::embedded());
     app.add_window();
     app.register_document_command(Arc::new(crate::save::save_document(false)));
     let writes = Writes::default();
@@ -65,7 +65,7 @@ fn location() -> ResourceLocation {
     )
 }
 
-fn open_file(app: &mut Application) -> documents::DocumentId {
+fn open_file(app: &mut Himark) -> documents::DocumentId {
     app.perform_command(crate::app::AppCommand::Opened(
         app.sole_window(),
         crate::app::OpenedDocument {
@@ -83,7 +83,7 @@ fn open_file(app: &mut Application) -> documents::DocumentId {
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
 
-fn land(app: &mut Application, arriving: &mpsc::Receiver<crate::app::AppCommand>) {
+fn land(app: &mut Himark, arriving: &mpsc::Receiver<crate::app::AppCommand>) {
     for command in arriving.try_iter() {
         app.perform_batch(vec![command]);
     }
@@ -183,7 +183,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
             vec![name.to_owned()],
         )
     };
-    let open = |app: &mut Application, name: &str| -> documents::DocumentId {
+    let open = |app: &mut Himark, name: &str| -> documents::DocumentId {
         app.perform_command(crate::app::AppCommand::Opened(
             app.sole_window(),
             crate::app::OpenedDocument {
@@ -200,7 +200,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         app.draw_window(app.sole_window(), surface.canvas());
         OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };
-    let title = |app: &Application| {
+    let title = |app: &Himark| {
         ::workbench::window::Windows::window_ref(app.store(), window)
             .expect("the window")
             .workbench()
