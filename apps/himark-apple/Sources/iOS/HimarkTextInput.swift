@@ -57,7 +57,7 @@ final class HimarkSelectionRect: UITextSelectionRect {
     override var isVertical: Bool { false }
 }
 
-extension HimarkView: UITextInput {
+extension HimarkBridgeView: UITextInput {
     private func offset(_ position: UITextPosition) -> UInt32? {
         (position as? HimarkTextPosition)?.offset
     }
@@ -67,7 +67,7 @@ extension HimarkView: UITextInput {
     }
 
     private var documentLength: UInt32 {
-        engine.documentLength(window: windowId) ?? 0
+        engine.documentLength(bridge: bridgeId) ?? 0
     }
 
     var beginningOfDocument: UITextPosition { HimarkTextPosition(0) }
@@ -75,26 +75,26 @@ extension HimarkView: UITextInput {
 
     func text(in range: UITextRange) -> String? {
         guard let range = self.range(range) else { return nil }
-        return range.length == 0 ? "" : engine.substring(window: windowId, range)
+        return range.length == 0 ? "" : engine.substring(bridge: bridgeId, range)
     }
 
     func replace(_ range: UITextRange, withText text: String) {
         guard let range = self.range(range) else { return }
-        if engine.text(window: windowId, text, replacing: range) { request() }
+        if engine.text(bridge: bridgeId, text, replacing: range) { request() }
     }
 
     var selectedTextRange: UITextRange? {
         get {
-            engine.selectedRange(window: windowId).map(HimarkTextRange.init)
+            engine.selectedRange(bridge: bridgeId).map(HimarkTextRange.init)
         }
         set {
             guard let range = newValue.flatMap({ self.range($0) }) else { return }
-            if engine.setSelectedRange(window: windowId, range) { request() }
+            if engine.setSelectedRange(bridge: bridgeId, range) { request() }
         }
     }
 
     var markedTextRange: UITextRange? {
-        engine.markedRange(window: windowId).map(HimarkTextRange.init)
+        engine.markedRange(bridge: bridgeId).map(HimarkTextRange.init)
     }
 
     func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
@@ -103,13 +103,13 @@ extension HimarkView: UITextInput {
         let selected = HimarkRange(start: UInt32(clamping: location),
                                    length: UInt32(clamping: max(0, selectedRange.length)))
 
-        if engine.setMarkedText(window: windowId, text, selected: selected, replacement: nil) {
+        if engine.setMarkedText(bridge: bridgeId, text, selected: selected, replacement: nil) {
             request()
         }
     }
 
     func unmarkText() {
-        if engine.unmarkText(window: windowId) { request() }
+        if engine.unmarkText(bridge: bridgeId) { request() }
     }
 
     func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? {
@@ -133,7 +133,7 @@ extension HimarkView: UITextInput {
         case .up, .down:
 
             guard let offset = self.offset(position),
-                  let engineRect = engine.firstRect(window: windowId,
+                  let engineRect = engine.firstRect(bridge: bridgeId,
                                                     HimarkRange(start: offset, length: 0)),
                   let caret = viewRect(engineRect),
                   caret.height > 0
@@ -199,7 +199,7 @@ extension HimarkView: UITextInput {
 
     func firstRect(for range: UITextRange) -> CGRect {
         guard let range = self.range(range),
-              let rect = engine.firstRect(window: windowId, range),
+              let rect = engine.firstRect(bridge: bridgeId, range),
               let out = viewRect(rect)
         else { return .null }
         return out
@@ -207,7 +207,7 @@ extension HimarkView: UITextInput {
 
     func caretRect(for position: UITextPosition) -> CGRect {
         guard let offset = self.offset(position),
-              let rect = engine.firstRect(window: windowId,
+              let rect = engine.firstRect(bridge: bridgeId,
                                           HimarkRange(start: offset, length: 0)),
               let out = viewRect(rect)
         else { return fallbackCaret }
@@ -216,7 +216,7 @@ extension HimarkView: UITextInput {
 
     func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
         guard let asked = self.range(range) else { return [] }
-        let rects = engine.selectionRects(window: windowId, asked)
+        let rects = engine.selectionRects(bridge: bridgeId, asked)
         let finite = rects.compactMap { viewRect($0) }
         return finite.enumerated().map { index, rect in
             HimarkSelectionRect(rect: rect,
@@ -227,7 +227,7 @@ extension HimarkView: UITextInput {
 
     func closestPosition(to point: CGPoint) -> UITextPosition? {
         let scale = Float(pixelScale)
-        guard let index = engine.charIndex(window: windowId,
+        guard let index = engine.charIndex(bridge: bridgeId,
                                            x: Float(point.x) * scale,
                                            y: Float(point.y) * scale)
         else { return nil }

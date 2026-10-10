@@ -5,13 +5,18 @@ import UIKit
 import Metal
 import QuartzCore
 
-final class HimarkView: UIView {
+/// One bridge in one UIView: the GENERIC host-side wrapper
+/// (docs/himark-core.md — a shell is the engine plus some number
+/// of mounted views). It owns the metal layer and skia surface,
+/// feeds the bridge through the normalized event handles, paints
+/// it with the bridge draw, and points UIKit's text input at the
+/// bridge. It creates NOTHING: the engine and the bridge are
+/// handed in.
+final class HimarkBridgeView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
-    private let device = MTLCreateSystemDefaultDevice()!
 
-    var engine: HimarkEngine!
-
-    var windowId: UInt64 = 0
+    let engine: HimarkEngine
+    let bridgeId: HimarkBridge
 
     weak var inputDelegate: UITextInputDelegate?
     var markedTextStyle: [NSAttributedString.Key: Any]?
@@ -22,32 +27,18 @@ final class HimarkView: UIView {
     private var link: CADisplayLink?
     private var needsRedraw = true
 
-    private let executor = DispatchQueue(label: "dev.himark.executor", qos: .userInteractive)
-
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
-    override init(frame: CGRect) {
+    init(frame: CGRect, engine: HimarkEngine, bridge: HimarkBridge, device: MTLDevice) {
+        self.engine = engine
+        self.bridgeId = bridge
         super.init(frame: frame)
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = false
         metalLayer.contentsScale = UIScreen.main.scale
 
-        engine = HimarkEngine()
-        windowId = engine.addWindow()
         surface = SkiaMetalSurface(layer: metalLayer, device: device)
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-        engine.setWake(context: ctx) { ctx in
-            let view = Unmanaged<HimarkView>.fromOpaque(ctx!).takeUnretainedValue()
-            DispatchQueue.main.async { view.drain() }
-        }
-        engine.setEffectWake(context: ctx) { ctx in
-            let view = Unmanaged<HimarkView>.fromOpaque(ctx!).takeUnretainedValue()
-            view.executor.async { view.engine.runPending() }
-        }
-
-        let engineRef = engine!
-        executor.async { engineRef.runPending() }
 
         let link = CADisplayLink(target: self, selector: #selector(tick))
         link.add(to: .main, forMode: .common)
@@ -70,17 +61,52 @@ final class HimarkView: UIView {
                            name: UIApplication.didBecomeActiveNotification, object: nil)
         center.addObserver(self, selector: #selector(pause),
                            name: UIApplication.willResignActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(keyboardChanged),
+                           name: UIResponder.keyboardDidShowNotification, object: nil)
+        center.addObserver(self, selector: #selector(keyboardChanged),
+                           name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
     }
 
     @objc private func resume() { link?.isPaused = false }
     @objc private func pause() { link?.isPaused = true }
 
+    @objc private func keyboardChanged() {
+        if engine.revealSelection(bridge: bridgeId) { request() }
+    }
+
     required init?(coder: NSCoder) { fatalError() }
     deinit { link?.invalidate() }
+
+    // ─── the event road: mint, dispatch, release ───
+
+    @discardableResult
+    func send(_ event: HimarkEvent) -> Bool {
+        let pointed = engine.bridgeEvent(bridge: bridgeId, event: event)
+        himark_event_release(event)
+        if pointed.changed { request() }
+        return pointed.changed
+    }
+
+    @discardableResult
+    func sendKey(_ code: UInt32, mods: UInt32 = 0) -> Bool {
+        send(himark_event_key_down(code, mods))
+    }
+
+    @discardableResult
+    func sendText(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        return text.withCString { send(himark_event_text($0, UInt(strlen($0)))) }
+    }
+
+    // ─── the frame loop ───
 
     @objc private func tick() {
         let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
 
+        // The hand-rolled momentum: imba's scroller owns the physics
+        // for now, so the flick decays here. This retires when the
+        // content bridges move into real UIScrollViews (the stage
+        // road — docs/ui/imba-ffi.md, touch section).
         if glide != .zero {
             let now = CACurrentMediaTime()
             let dt = min(now - lastTick, 1.0 / 30.0)
@@ -88,7 +114,7 @@ final class HimarkView: UIView {
             let s = Float(metalLayer.contentsScale)
             let (x, y) = devicePoint(glidePoint)
             let dy = Float(glide.y * dt) * s
-            if engine.scroll(window: windowId, x: x, y: y, dx: 0, dy: -dy) { needsRedraw = true }
+            send(himark_event_scroll(x, y, 0, -dy, UInt32(HIMARK_SCROLL_PHASE_NONE)))
             let decay = CGFloat(pow(0.998, dt * 1000.0))
             glide.x *= decay
             glide.y *= decay
@@ -100,73 +126,35 @@ final class HimarkView: UIView {
         }
     }
 
-    private func drain() { if engine.drain() { needsRedraw = true } }
-
     override func layoutSubviews() {
         super.layoutSubviews()
         render()
     }
 
     private func render() {
-        guard engine != nil, UIApplication.shared.applicationState == .active else { return }
+        guard surface != nil, UIApplication.shared.applicationState == .active else { return }
         let scale = window?.screen.scale ?? UIScreen.main.scale
         metalLayer.contentsScale = scale
         let w = Int32(bounds.width * scale)
         let h = Int32(bounds.height * scale)
+        guard w > 0, h > 0 else { return }
         metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
 
-        if engine.render(window: windowId, into: surface,
-                         pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
+        if engine.renderBridge(bridge: bridgeId, into: surface,
+                               pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
             needsRedraw = true
         }
     }
 
     func request() { needsRedraw = true }
 
-    func newScratch() {
-        if engine.perform(window: windowId, command: "workbench.new-document") { request() }
+    func performCommand(_ id: String) {
+        if engine.perform(bridge: bridgeId, command: id) { request() }
     }
 
-    func openDemo() {
-        engine.openDemo(window: windowId)
-        request()
-    }
+    func syncFocus() { syncFirstResponder() }
 
-    func toggleAgents() {
-        if engine.perform(window: windowId, command: "agent.toggle-agents") { request() }
-    }
-
-    func togglePeeker() {
-        if engine.perform(window: windowId, command: "peeker.toggle") { request() }
-        syncFirstResponder()
-    }
-
-    func toggleWorkspaceTree() {
-        if engine.perform(window: windowId, command: "files.tree") { request() }
-    }
-
-    func splitPane() {
-        if engine.perform(window: windowId, command: "workbench.split-pane") { request() }
-    }
-
-    func openSearch() {
-        if engine.perform(window: windowId, command: "search.open") { request() }
-        syncFirstResponder()
-    }
-
-    func closePane() {
-        if engine.perform(window: windowId, command: "workbench.close-pane") { request() }
-    }
-
-    func installHost(presenter: UIViewController) {
-        HostBridge.install(engine: engine, presenter: presenter)
-    }
-
-    func openFilePicker() {
-        if engine.perform(window: windowId, command: "file.open") { request() }
-    }
-
-    func documentText() -> String? { engine.documentText(window: windowId) }
+    func documentText() -> String? { engine.documentText(bridge: bridgeId) }
 
     private func devicePoint(_ p: CGPoint) -> (Float, Float) {
         let s = Float(metalLayer.contentsScale)
@@ -181,13 +169,13 @@ final class HimarkView: UIView {
         let point = gesture.location(in: self)
         let (x, y) = devicePoint(point)
         inputDelegate?.selectionWillChange(self)
-        if engine.mouseDown(window: windowId, x: x, y: y) { request() }
+        send(himark_event_mouse_down(x, y, 0, 1))
         inputDelegate?.selectionDidChange(self)
         syncFirstResponder(at: point)
     }
 
     func isEditableText(at point: CGPoint) -> Bool {
-        engine.hasTextFocus(window: windowId) && closestPosition(to: point) != nil
+        engine.hasTextFocus(bridge: bridgeId) && closestPosition(to: point) != nil
     }
 
     private func syncFirstResponder(at point: CGPoint? = nil) {
@@ -200,7 +188,7 @@ final class HimarkView: UIView {
             return
         }
 
-        if engine.hasTextFocus(window: windowId) {
+        if engine.hasTextFocus(bridge: bridgeId) {
             becomeFirstResponder()
         }
     }
@@ -225,7 +213,7 @@ final class HimarkView: UIView {
         let (dx, dy) = (Float(t.x - lastPan.x) * s, Float(t.y - lastPan.y) * s)
         lastPan = gesture.state == .ended ? .zero : t
         if gesture.state == .began { lastPan = .zero; glide = .zero }
-        if engine.scroll(window: windowId, x: x, y: y, dx: -dx, dy: -dy) { request() }
+        send(himark_event_scroll(x, y, -dx, -dy, UInt32(HIMARK_SCROLL_PHASE_NONE)))
 
         if gesture.state == .ended {
             glide = gesture.velocity(in: self)
@@ -235,7 +223,7 @@ final class HimarkView: UIView {
     }
 
     override var canBecomeFirstResponder: Bool { true }
-    var hasText: Bool { (engine.documentLength(window: windowId) ?? 0) > 0 }
+    var hasText: Bool { (engine.documentLength(bridge: bridgeId) ?? 0) > 0 }
 
     func dismissKeyboard() { resignFirstResponder() }
 
@@ -248,17 +236,13 @@ final class HimarkView: UIView {
     func insertText(_ text: String) {
         performTextChange {
             text == "\n"
-                ? engine.key(window: windowId, UInt32(HIMARK_KEY_ENTER))
-                : engine.text(window: windowId, text)
+                ? sendKey(UInt32(HIMARK_KEY_ENTER))
+                : sendText(text)
         }
     }
 
     func deleteBackward() {
-        performTextChange { engine.key(window: windowId, UInt32(HIMARK_KEY_BACKSPACE)) }
-    }
-
-    func revealCaretAfterKeyboardChange() {
-        if engine.revealSelection(window: windowId) { request() }
+        performTextChange { sendKey(UInt32(HIMARK_KEY_BACKSPACE)) }
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -269,31 +253,31 @@ final class HimarkView: UIView {
 
     override func paste(_ sender: Any?) {
         guard let text = UIPasteboard.general.string else { return }
-        performTextChange { engine.clipboardPaste(window: windowId, text) }
+        performTextChange { engine.clipboardPaste(bridge: bridgeId, text) }
     }
 
     override func copy(_ sender: Any?) {
-        guard let text = engine.clipboardCopy(window: windowId) else { return }
+        guard let text = engine.clipboardCopy(bridge: bridgeId) else { return }
         UIPasteboard.general.string = text
     }
 
     override func cut(_ sender: Any?) {
         performTextChange {
-            guard let text = engine.clipboardCut(window: windowId) else { return false }
+            guard let text = engine.clipboardCut(bridge: bridgeId) else { return false }
             UIPasteboard.general.string = text
             return true
         }
     }
 }
 
-extension HimarkView: UIGestureRecognizerDelegate {
+extension HimarkBridgeView: UIGestureRecognizerDelegate {
     override func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
         guard gesture is UITapGestureRecognizer else { return true }
         return !isEditableText(at: gesture.location(in: self))
     }
 }
 
-extension HimarkView: UITextInteractionDelegate {
+extension HimarkBridgeView: UITextInteractionDelegate {
     func interactionShouldBegin(_ interaction: UITextInteraction, at point: CGPoint) -> Bool {
         isEditableText(at: point)
     }
