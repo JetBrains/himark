@@ -53,7 +53,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
      -> ahp_wire::SessionId {
         let window = app.sole_window();
         let made = Arc::new(std::sync::Mutex::new(None));
-        app.perform_batch(vec![himark::app::AppCommand::Windowed(
+        app.perform_batch(vec![himark::app::windowed(
             window,
             Arc::new(Switch {
                 target,
@@ -150,7 +150,7 @@ fn the_composer_command_fronts_the_chat_panel() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -294,7 +294,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -383,7 +383,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut wide);
     assert!(!vacant(&app), "the document fills the vacant leaf");
     assert!(slot_filled(&app), "the chat stays beside it");
@@ -433,7 +433,7 @@ fn dump_chat_narrow_screenshot() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -488,7 +488,7 @@ fn dump_chat_narrow_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
 
     let image = narrow.image_snapshot();
@@ -533,7 +533,7 @@ fn dump_chat_column_screenshot() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -598,7 +598,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -662,7 +662,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
     assert!(!held(&app).workbench().root.is_vacant());
     assert!(
@@ -679,7 +679,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     );
 
     // Opening a panel hands the window back.
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
     assert!(
         !held(&app).workbench().chat_fronted(),
@@ -733,7 +733,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -760,7 +760,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
 
-    assert!(app.perform_command(AppCommand::Content(
+    assert!(app.perform_command(himark::app::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
@@ -779,7 +779,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         "\u{2318}I brings the chat back"
     );
 
-    assert!(app.perform_command(AppCommand::Content(
+    assert!(app.perform_command(himark::app::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
@@ -787,7 +787,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
     )));
     settle(&mut app, &mut wide);
     assert!(held(&app).workbench().chat_minimized());
-    assert!(app.perform_command(AppCommand::Content(
+    assert!(app.perform_command(himark::app::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::RestoreChat
@@ -887,7 +887,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             himark::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/live");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -941,7 +941,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
     // create on, so the command is a no-op and the current session
     // keeps its chat. The live road is covered end-to-end in
     // frontend-host (a_new_session_is_a_live_chat_from_the_first_frame).
-    let _ = app.perform_command(AppCommand::Windowed(
+    let _ = app.perform_command(himark::app::windowed(
         window,
         Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
     ));

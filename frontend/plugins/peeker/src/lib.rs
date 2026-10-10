@@ -1020,7 +1020,7 @@ impl himark::commands::WindowedCommand for TogglePeeker {
             // opens only over a clear window.
             let mut entity = entity.clone();
             fx.scope(
-                move |command| himark::app::AppCommand::Content(window, command),
+                move |command| himark::app::content(window, command),
                 |fx| entity.dismiss_modal(store, fx),
             );
             workbench::window::Windows::put(store, window, entity);
@@ -1031,7 +1031,7 @@ impl himark::commands::WindowedCommand for TogglePeeker {
         let mut entity =
             workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
-            move |command| himark::app::AppCommand::Content(window, command),
+            move |command| himark::app::content(window, command),
             |fx| entity.show_modal(store, modal, fx),
         );
         workbench::window::Windows::put(store, window, entity);

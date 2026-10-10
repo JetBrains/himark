@@ -223,7 +223,7 @@ fn the_at_completion_serves_markdown_panes() {
             himark::app::switch_session(store, window, self.0.clone(), fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Windowed(
+    assert!(app.perform_command(himark::app::windowed(
         window,
         Arc::new(EnterSeeded(session.clone()))
     )));
@@ -236,7 +236,7 @@ fn the_at_completion_serves_markdown_panes() {
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -327,7 +327,7 @@ fn the_at_completion_serves_markdown_panes() {
     ));
     assert!(!completion_open(&app), "Escape closed the popup");
 
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -412,7 +412,7 @@ fn lsp_completion_serves_code_panes() {
         std::sync::Arc::new(|| {}),
     );
 
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

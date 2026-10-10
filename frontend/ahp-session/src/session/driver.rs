@@ -96,7 +96,7 @@ fn connect(store: &mut Store, server: HostId, fx: &mut Fx<'_>) {
         AnyEffect::new(ConnectServerEffect {
             client: client.session.clone(),
         })
-        .map(move |result| Verb::Once(Box::new(Connected { server, result }))),
+        .map(move |result| Verb::once(Connected { server, result })),
     );
 }
 
@@ -116,7 +116,7 @@ fn drain(store: &mut Store, server: HostId, fx: &mut Fx<'_>) {
             AnyEffect::new(PollServerEffect {
                 client: client.session.clone(),
             })
-            .map(move |events| Verb::Once(Box::new(Drained { server, events }))),
+            .map(move |events| Verb::once(Drained { server, events })),
         );
         HostFeeds::update(store, |feeds| {
             feeds.drains.insert_mut(server, token);
@@ -135,11 +135,11 @@ fn list_page(store: &mut Store, server: HostId, cursor: Option<String>, fx: &mut
             cursor,
         })
         .map(move |result| {
-            Verb::Once(Box::new(Listed {
+            Verb::once(Listed {
                 server,
                 first,
                 result,
-            }))
+            })
         }),
     );
 }
@@ -242,10 +242,10 @@ pub fn relaunch_session_poll(store: &Store, key: ahp_wire::SessionId, fx: &mut F
             session: key.session.clone(),
         })
         .map(move |actions| {
-            Verb::Once(Box::new(SessionActionsLanded {
+            Verb::once(SessionActionsLanded {
                 key: key.clone(),
                 actions,
-            }))
+            })
         }),
     );
 }

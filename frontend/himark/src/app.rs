@@ -33,6 +33,10 @@ use editor::markup::Markup;
 
 pub use crate::himark::{AppFonts, Himark};
 pub use crate::perform::{shell_verb, verb_command, AppCommand, AppFx};
+pub use crate::shell::{
+    close_modal, content, open_async, open_modal, open_panel, opened, register, shell,
+    viewport_resized, windowed, OneShot, ShellCommand,
+};
 pub(crate) use crate::perform::{command_label, AppEffects};
 #[cfg(any(test, feature = "test-support"))]
 pub use crate::himark::StoreMut;
@@ -116,11 +120,11 @@ pub fn switch_session(
         return;
     }
     fx.scope(
-        move |command| AppCommand::Content(window, command),
+        move |command| crate::shell::content(window, command),
         |fx| entity.dismiss_modal(store, fx),
     );
     fx.scope(
-        move |command| AppCommand::Content(window, command),
+        move |command| crate::shell::content(window, command),
         |fx| entity.dismiss_side_panel(store, fx),
     );
 
@@ -130,7 +134,7 @@ pub fn switch_session(
     let owed = entity.switch_to(crate::workspace::SessionWorkspace::boxed(target, state));
     ::workbench::window::Windows::put(store, window, entity);
     if let Some(previous) = owed {
-        fx.follow_up(AppCommand::Windowed(
+        fx.follow_up(crate::shell::windowed(
             window,
             std::sync::Arc::new(EnterFreshSession {
                 previous: std::sync::Mutex::new(Some(previous)),
@@ -190,6 +194,7 @@ impl Himark {
     pub fn new(fonts: AppFonts) -> Self {
         let mut app = Himark::bare(fonts);
         app.setup(|store| {
+            store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
             crate::commands::register_builtins(store);
             ::workbench::navigation::Navigators::register_windowed(
                 store,
@@ -207,7 +212,7 @@ impl Himark {
                     |store, ui, documents, document, location, window| {
                         let jump = std::sync::Arc::new(move |place| {
                             hikit::modal::ModalRequest::Perform(crate::app::shell_verb(
-                                crate::app::AppCommand::Windowed(
+                                crate::shell::windowed(
                                     window,
                                     std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
                                 ),
@@ -400,7 +405,7 @@ impl Himark {
         event_started_at: f64,
     ) -> bool {
         if self.viewport_stale(window, size) {
-            self.perform_batch(vec![AppCommand::ViewportResized(window, size)]);
+            self.perform_batch(vec![crate::shell::viewport_resized(window, size)]);
         }
         let handled = self.dispatch(window, event, size);
         if handled {
@@ -491,7 +496,7 @@ impl Himark {
                                 .map(|presentable| presentable.command)
                                 .or_else(|| {
                                     crate::commands::Commands::of(&store).find(id.as_ref()).map(
-                                        |command| AppCommand::Windowed(window, command.clone()),
+                                        |command| crate::shell::windowed(window, command.clone()),
                                     )
                                 })
                         })
@@ -685,7 +690,7 @@ impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
         let document = self
             .0
             .with_ctx(|store, ui| (effect.build)(store, ui, &fonts, &theme));
-        AppCommand::Opened(
+        crate::shell::opened(
             effect.window,
             OpenedDocument {
                 documents: effect.documents,
@@ -817,7 +822,7 @@ impl crate::bridge::BridgeView for WorkbenchView {
             0.0,
             0.0,
             content
-                .map(move |command| AppCommand::Content(window, command))
+                .map(move |command| crate::shell::content(window, command))
                 .overlay_host(imba::overlay::WINDOW),
         );
         imba::ThunkBox::new(arena, container)
@@ -831,7 +836,7 @@ impl Himark {
         size: skia_safe::Size,
     ) {
         if self.viewport_stale(window, size) {
-            self.perform_batch(vec![AppCommand::ViewportResized(window, size)]);
+            self.perform_batch(vec![crate::shell::viewport_resized(window, size)]);
         }
     }
 

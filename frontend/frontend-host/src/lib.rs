@@ -625,7 +625,7 @@ impl HimarkEngine {
             let inbox = inbox.clone();
             let wake = wake.clone();
             Arc::new(move |window, flag| {
-                inbox.lock().expect("inbox").push_back(AppCommand::Windowed(
+                inbox.lock().expect("inbox").push_back(himark::app::windowed(
                     window,
                     Arc::new(host::RefreshTerminal(flag)),
                 ));
@@ -705,7 +705,7 @@ impl HimarkEngine {
     pub fn add_window(&mut self) -> u64 {
         let window = self.app.add_window();
         if self.compose_new_windows {
-            self.app.perform_command(himark::app::AppCommand::Windowed(
+            self.app.perform_command(himark::app::windowed(
                 window,
                 std::sync::Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
             ));

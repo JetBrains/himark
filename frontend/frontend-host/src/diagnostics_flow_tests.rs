@@ -342,7 +342,7 @@ impl himark::commands::WindowedCommand for OpenMain {
                 "main.rs".to_owned(),
             ],
         );
-        fx.follow_up(himark::app::AppCommand::Opened(
+        fx.follow_up(himark::app::opened(
             window,
             himark::app::OpenedDocument {
                 documents: state.documents(),
@@ -451,7 +451,7 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenScripted { host }),
         )]));
@@ -462,7 +462,7 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenMain),
         )]));
@@ -623,7 +623,7 @@ fn live_host_squiggles_the_opened_file() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenLiveSession {
                 host,
@@ -647,7 +647,7 @@ fn live_host_squiggles_the_opened_file() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenLivePath { path: path.clone() }),
         )]));
@@ -744,7 +744,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenScripted { host }),
         )]));
@@ -754,7 +754,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     });
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenMain),
         )]));
@@ -878,7 +878,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     }
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(ClearHints),
         )]));
@@ -900,7 +900,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             crate::wid(window),
             Arc::new(OpenLiveSession {
                 host,
@@ -946,7 +946,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         );
         assert!(engine
             .app
-            .perform_batch(vec![himark::app::AppCommand::Windowed(
+            .perform_batch(vec![himark::app::windowed(
                 crate::wid(window),
                 Arc::new(himark::diff_canvas::OpenDiffCanvas {
                     changes,

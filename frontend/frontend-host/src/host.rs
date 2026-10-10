@@ -325,7 +325,7 @@ impl WindowedCommand for OpenFilePicker {
     ) {
         let _ = fx.push(
             AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
-                AppCommand::Windowed(window, Arc::new(OpenPicked { locations }))
+                himark::app::windowed(window, Arc::new(OpenPicked { locations }))
             }),
         );
     }
@@ -374,7 +374,7 @@ fn open_folder_session(
                     working_directories: dirs,
                 })
                 .map(move |result| {
-                    AppCommand::Windowed(
+                    himark::app::windowed(
                         window,
                         Arc::new(himark::higent::open_session::OpenCreatedSession {
                             initial_prompt: None,
@@ -749,7 +749,7 @@ impl WindowedCommand for OpenTerminal {
                 window,
             })
             .map(move |session| {
-                AppCommand::Windowed(window, Arc::new(ShowTerminal { session, terminals }))
+                himark::app::windowed(window, Arc::new(ShowTerminal { session, terminals }))
             }),
         );
     }

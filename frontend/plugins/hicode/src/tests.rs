@@ -4,7 +4,6 @@
 use super::*;
 
 use ::editor::test_document::plain_document;
-use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app::OpenedDocument;
@@ -54,7 +53,7 @@ fn app_with_located_document(source: &str) -> (Himark, workbench::window::Window
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
     let window = app.add_window();
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -89,7 +88,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
             .any(|presentable| presentable.id == "code.definition")
     };
     assert!(!listed(&app), "the startup scratch has no location");
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

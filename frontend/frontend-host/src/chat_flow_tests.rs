@@ -537,7 +537,7 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     );
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             workbench::window::WindowId::from_raw(window),
             Arc::new(OpenScripted {
                 host,
@@ -604,7 +604,7 @@ fn two_windows_hold_one_conversation() {
     let second = engine.add_window();
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             workbench::window::WindowId::from_raw(second),
             Arc::new(OpenScripted {
                 host: script_host(&engine),

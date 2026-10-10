@@ -102,7 +102,7 @@ impl AppExt for Himark {
             };
             state.documents()
         };
-        self.perform_command(AppCommand::Opened(
+        self.perform_command(crate::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -141,13 +141,13 @@ impl AppExt for Himark {
             + Sync
             + 'static,
     ) -> bool {
-        self.perform_command(AppCommand::OpenAsync {
+        self.perform_command(crate::shell::open_async(
             window,
             name,
             primary,
             location,
-            build: Box::new(build),
-        })
+            Box::new(build),
+        ))
     }
 
     fn open_panel(
@@ -155,7 +155,7 @@ impl AppExt for Himark {
         window: ::workbench::window::WindowId,
         panel: Box<dyn hikit::panel::DynPanelView>,
     ) -> bool {
-        self.perform_command(AppCommand::OpenPanel(window, panel))
+        self.perform_command(crate::shell::open_panel(window, panel))
     }
 
     fn open_modal(
@@ -163,15 +163,15 @@ impl AppExt for Himark {
         window: ::workbench::window::WindowId,
         modal: Box<dyn ModalView>,
     ) -> bool {
-        self.perform_command(AppCommand::OpenModal(window, modal))
+        self.perform_command(crate::shell::open_modal(window, modal))
     }
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool {
-        self.perform_command(AppCommand::CloseModal(window))
+        self.perform_command(crate::shell::close_modal(window))
     }
 
     fn register_command(&mut self, command: Arc<dyn WindowedCommand>) -> bool {
-        self.perform_command(AppCommand::Register(command))
+        self.perform_command(crate::shell::register(command))
     }
 
     fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool {

@@ -57,7 +57,7 @@ impl crate::commands::WindowedCommand for AddSessionFolders {
         fx.push(
             AnyEffect::new(PickFoldersEffect { window }).map(
                 move |locations| {
-                    crate::app::AppCommand::Windowed(
+                    crate::shell::windowed(
                         window,
                         Arc::new(SessionFoldersPicked {
                             server,
@@ -262,7 +262,7 @@ impl crate::commands::WindowedCommand for SessionFoldersPicked {
                     ),
                 })
                 .map(move |result| {
-                    crate::app::AppCommand::Windowed(window, Arc::new(GrantAck { result }))
+                    crate::shell::windowed(window, Arc::new(GrantAck { result }))
                 }),
             );
         }

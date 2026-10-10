@@ -66,7 +66,7 @@ fn location() -> ResourceLocation {
 }
 
 fn open_file(app: &mut Himark) -> documents::DocumentId {
-    app.perform_command(crate::app::AppCommand::Opened(
+    app.perform_command(crate::shell::opened(
         app.sole_window(),
         crate::app::OpenedDocument {
             documents: app.sole_documents(),
@@ -184,7 +184,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         )
     };
     let open = |app: &mut Himark, name: &str| -> documents::DocumentId {
-        app.perform_command(crate::app::AppCommand::Opened(
+        app.perform_command(crate::shell::opened(
             app.sole_window(),
             crate::app::OpenedDocument {
                 documents: app.sole_documents(),

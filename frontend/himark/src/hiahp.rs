@@ -90,9 +90,9 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
                     documents::diff_views::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
-            return AppCommand::Windowed(effect.window, Arc::new(FetchFailed { location }));
+            return crate::shell::windowed(effect.window, Arc::new(FetchFailed { location }));
         }
-        AppCommand::Windowed(
+        crate::shell::windowed(
             effect.window,
             Arc::new(OpenDiffPair {
                 window: effect.window,
@@ -204,7 +204,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                         &self.workshop.theme(),
                     )
                 });
-                AppCommand::Opened(
+                crate::shell::opened(
                     effect.window,
                     crate::app::OpenedDocument {
                         documents: effect.documents,
@@ -218,7 +218,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 )
             }
 
-            None => AppCommand::Windowed(
+            None => crate::shell::windowed(
                 effect.window,
                 Arc::new(FetchFailed {
                     location: effect.location,

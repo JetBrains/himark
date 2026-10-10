@@ -64,7 +64,7 @@ fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::Wind
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(crate::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -304,7 +304,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         &ids,
         Err("wire died".to_owned()),
     );
-    assert!(app.perform_command(AppCommand::Content(
+    assert!(app.perform_command(crate::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));
@@ -312,7 +312,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
     comments::Comments::sent_outcome(&mut app.store_mut(), comments, &ids, Ok(()));
-    assert!(app.perform_command(AppCommand::Content(
+    assert!(app.perform_command(crate::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));

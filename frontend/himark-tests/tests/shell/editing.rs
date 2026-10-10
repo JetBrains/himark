@@ -1452,7 +1452,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
 
     let source: String = (0..200).map(|n| format!("line {n}\n")).collect();
     let target = LineCol { line: 150, col: 5 }..LineCol { line: 150, col: 7 };
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -1482,7 +1482,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
         "the scroll-to-caret is armed on mount"
     );
 
-    assert!(app.perform_command(AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

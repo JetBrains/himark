@@ -21,7 +21,7 @@ impl himark::commands::WindowedCommand for DummyCommand {
     }
 }
 fn dummy_command() -> AppCommand {
-    AppCommand::Windowed(
+    himark::app::windowed(
         workbench::window::WindowId::from_raw(0),
         std::sync::Arc::new(DummyCommand),
     )

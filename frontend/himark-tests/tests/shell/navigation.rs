@@ -28,7 +28,7 @@ fn land(
     text: &str,
     col: Option<u32>,
 ) {
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

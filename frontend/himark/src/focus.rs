@@ -19,7 +19,7 @@ pub(crate) fn window_focus_data<'a>(
     let entity = ::workbench::window::Windows::window_ref(store, window)?;
     Some(
         imba::View::focus_data(entity, store, ui)
-            .map(move |command| AppCommand::Content(window, command)),
+            .map(move |command| crate::shell::content(window, command)),
     )
 }
 

@@ -86,7 +86,7 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         // the closure; the view never holds one.
         let open_canvas: changesview::changes_view::CanvasOpener =
             Arc::new(move |source, reveal| {
-                crate::app::shell_verb(crate::app::AppCommand::Windowed(
+                crate::app::shell_verb(crate::shell::windowed(
                     window,
                     Arc::new(crate::diff_canvas::OpenDiffCanvas {
                         changes,
@@ -97,7 +97,7 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
             });
 
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let view = Changes::mint_view(
@@ -113,7 +113,7 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         );
         let owner = self.id();
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| {
                 entity.show_dock(
                     store,

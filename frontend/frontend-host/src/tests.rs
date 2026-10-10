@@ -1040,7 +1040,7 @@ fn the_docked_tree_follows_the_focused_document() {
     let entity_id = engine.app.sole_window();
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             entity_id,
             std::sync::Arc::new(OpenAt(fs.doc(&["project", "README.md"]))),
         )]));
@@ -1085,7 +1085,7 @@ fn the_docked_tree_follows_the_focused_document() {
 
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             entity_id,
             std::sync::Arc::new(OpenAt(fs.doc(&["project", "src", "lib.rs"]))),
         )]));
@@ -3094,7 +3094,7 @@ impl himark::commands::WindowedCommand for StubNewSession {
                 working_directories: vec![self.directory.clone()],
             })
             .map(move |result| {
-                himark::app::AppCommand::Windowed(
+                himark::app::windowed(
                     window,
                     std::sync::Arc::new(himark::higent::open_session::OpenCreatedSession {
                         server,
@@ -3167,7 +3167,7 @@ macro_rules! fs_probe {
             let id = engine.app.sole_window();
             engine
                 .app
-                .perform_batch(vec![himark::app::AppCommand::Windowed(
+                .perform_batch(vec![himark::app::windowed(
                     id,
                     std::sync::Arc::new(LaunchProbe {
                         launch: Box::new(move |window, fx| {
@@ -3176,7 +3176,7 @@ macro_rules! fs_probe {
                             let effect: $effect = ($build)(&location);
                             let _ =
                                 fx.push(imba::effect::AnyEffect::new(effect).map(move |result| {
-                                    himark::app::AppCommand::Windowed(
+                                    himark::app::windowed(
                                         window,
                                         std::sync::Arc::new(FillProbe {
                                             slot: std::sync::Arc::clone(&filled),
@@ -3625,7 +3625,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     let entity = engine.app.sole_window();
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             entity,
             std::sync::Arc::new(himark::higent::drawer::AddHost { url: ws.clone() }),
         )]));
@@ -4896,14 +4896,14 @@ fn the_chat_runs_through_the_himark_host() {
                     model: None,
                 })
                 .map(move |_result| {
-                    himark::app::AppCommand::Windowed(window, std::sync::Arc::new(DropLanding))
+                    himark::app::windowed(window, std::sync::Arc::new(DropLanding))
                 }),
             );
         }
     }
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             engine.app.sole_window(),
             std::sync::Arc::new(SendLikeComments("attached review comment")),
         )]));
@@ -4928,7 +4928,7 @@ fn the_chat_runs_through_the_himark_host() {
     );
     assert!(engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             engine.app.sole_window(),
             std::sync::Arc::new(SendLikeComments("sent while hidden")),
         )]));
@@ -6650,7 +6650,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     }
     assert!(engine
         .app
-        .perform_command(himark::app::AppCommand::Windowed(
+        .perform_command(himark::app::windowed(
             engine.app.sole_window(),
             std::sync::Arc::new(SwitchScratch),
         )));
@@ -7835,7 +7835,7 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     // The diff FIRST — its sides fetch and register.
     let _ = engine
         .app
-        .perform_batch(vec![himark::app::AppCommand::Windowed(
+        .perform_batch(vec![himark::app::windowed(
             workbench::window::WindowId::from_raw(window),
             std::sync::Arc::new(OpenWorkingDiff {
                 old: fs.doc(&["old.md"]),
@@ -7958,7 +7958,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     }
     assert!(engine
         .app
-        .perform_command(himark::app::AppCommand::Windowed(
+        .perform_command(himark::app::windowed(
             wid(window),
             Arc::new(Open(file.clone()))
         )));
@@ -8293,7 +8293,7 @@ fn published_diagnostics_squiggle_the_open_document() {
     }
     assert!(engine
         .app
-        .perform_command(himark::app::AppCommand::Windowed(
+        .perform_command(himark::app::windowed(
             wid(window),
             Arc::new(Open(file.clone()))
         )));
@@ -8442,7 +8442,7 @@ fn published_diagnostics_squiggle_the_open_document() {
     }
     assert!(engine
         .app
-        .perform_command(himark::app::AppCommand::Windowed(
+        .perform_command(himark::app::windowed(
             wid(window),
             Arc::new(Clear(engine.app.sole_documents(), file.clone()))
         )));

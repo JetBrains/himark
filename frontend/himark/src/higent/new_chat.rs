@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use crate::app::AppCommand;
 use crate::commands::WindowedCommand;
 use ::workbench::window::Windows;
 use ahp_session::session::agents::Agents;
@@ -51,7 +50,7 @@ impl WindowedCommand for NewChat {
                 session: key.session.clone(),
             })
             .map(move |created| {
-                AppCommand::Windowed(window, Arc::new(OpenCreatedChat { server, created }))
+                crate::shell::windowed(window, Arc::new(OpenCreatedChat { server, created }))
             }),
         );
     }

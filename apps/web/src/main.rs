@@ -499,7 +499,7 @@ mod app {
             }
             let window = state.add_window();
 
-            state.perform_command(himark::app::AppCommand::Windowed(
+            state.perform_command(himark::app::windowed(
                 window,
                 std::sync::Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
             ));

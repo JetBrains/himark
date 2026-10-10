@@ -527,7 +527,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     // The keystroke's own batch (any batch) runs the diff lanes and
     // the dressing sweep; the pane hears nothing through its panel.
     let window = app.sole_window();
-    app.perform_batch(vec![himark::app::AppCommand::ViewportResized(window, size)]);
+    app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
 
     settle(&mut app, &mut surface, 40);
     assert_pair_aligned(&app);
@@ -1836,7 +1836,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         )
     };
     for (name, body) in [("left.md", "left body\n"), ("right.md", "right body\n")] {
-        assert!(app.perform_command(himark::app::AppCommand::Opened(
+        assert!(app.perform_command(himark::app::opened(
             window,
             himark::app::OpenedDocument {
                 documents: app.sole_documents(),
@@ -3150,7 +3150,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
                 // A quiet round still runs a batch: the batch-tail
                 // lanes (diff, dressing, canvas) are what converge the
                 // state now — paint no longer carries probes.
-                app.perform_batch(vec![himark::app::AppCommand::ViewportResized(
+                app.perform_batch(vec![himark::app::viewport_resized(
                     app.sole_window(),
                     size,
                 )]);
@@ -3523,7 +3523,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let settle = |app: &mut Himark| {
         for _ in 0..8 {
             let window = app.sole_window();
-            app.perform_batch(vec![himark::app::AppCommand::ViewportResized(window, size)]);
+            app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3795,7 +3795,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             drained = true;
         }
         if !drained {
-            app.perform_batch(vec![himark::app::AppCommand::ViewportResized(window, size)]);
+            app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
         }
     }
     assert!(
@@ -3867,7 +3867,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     // The tick driver runs against every set-owned canvas — the real
     // batch tail (the sweep is a direct lane now).
     let window = app.sole_window();
-    app.perform_batch(vec![himark::app::AppCommand::ViewportResized(
+    app.perform_batch(vec![himark::app::viewport_resized(
         window,
         skia_safe::Size::new(800.0, 600.0),
     )]);
@@ -4732,7 +4732,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         editor::location::ResourceLocation,
         editor::document::Document,
     )>| {
-        assert!(app.perform_command(himark::app::AppCommand::Windowed(
+        assert!(app.perform_command(himark::app::windowed(
             window,
             Arc::new(hicode::ApplyNavigation {
                 outcome: hicode::NavigationOutcome {
@@ -5152,7 +5152,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
-    assert!(app.perform_command(himark::app::AppCommand::Windowed(
+    assert!(app.perform_command(himark::app::windowed(
         window,
         Arc::new(Land(documents, right)),
     )));

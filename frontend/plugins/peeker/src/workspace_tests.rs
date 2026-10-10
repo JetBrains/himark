@@ -63,7 +63,7 @@ impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocati
         &self,
         effect: himark::workspace::OpenByLocationEffect,
     ) -> himark::app::AppCommand {
-        himark::app::AppCommand::Opened(
+        himark::app::opened(
             effect.window,
             OpenedDocument {
                 documents: effect.documents,
@@ -160,7 +160,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "alpha".to_owned(),
         false
     ));
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
+    assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -239,7 +239,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
+    assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -299,7 +299,7 @@ fn outside_dismissal_releases_glanced_documents() {
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
+    assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));

@@ -118,7 +118,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         }
 
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
@@ -131,7 +131,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         });
         let owner = self.id();
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);

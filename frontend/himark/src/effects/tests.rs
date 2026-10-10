@@ -108,7 +108,7 @@ impl crate::commands::WindowedCommand for LiftedText {
 }
 
 fn lifted<E: Effect<Result = String>>(effect: E) -> AppEffect {
-    AnyEffect::new(effect).map(move |text| AppCommand::Register(Arc::new(LiftedText(text))))
+    AnyEffect::new(effect).map(move |text| crate::shell::register(Arc::new(LiftedText(text))))
 }
 
 fn batch_of(effects: Vec<AppEffect>) -> AppEffects {
@@ -132,7 +132,12 @@ fn harness(
     let dispatcher: EffectDispatcher = {
         let posted = Arc::clone(&posted);
         Arc::new(move |command| {
-            let AppCommand::Register(command) = command else {
+            let crate::app::AppCommand::At(addressed) = command else {
+                panic!("the probes lift into Register");
+            };
+            let Ok((_, crate::shell::ShellCommand::Register(command))) =
+                addressed.downcast::<crate::shell::WorkbenchShell>()
+            else {
                 panic!("the probes lift into Register");
             };
             posted.lock().expect("posted").push(command.name());

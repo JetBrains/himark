@@ -42,7 +42,7 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
         // the closure; the view never holds one.
         let open_canvas: changesview::changes_view::CanvasOpener =
             Arc::new(move |source, reveal| {
-                crate::app::shell_verb(crate::app::AppCommand::Windowed(
+                crate::app::shell_verb(crate::shell::windowed(
                     window,
                     Arc::new(crate::diff_canvas::OpenDiffCanvas {
                         changes,
@@ -52,7 +52,7 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
                 ))
             });
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let view = changesview::hichanges::Changes::mint_view(
@@ -68,7 +68,7 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
         );
         let owner = self.id();
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| {
                 entity.show_dock(
                     store,

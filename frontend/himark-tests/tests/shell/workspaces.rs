@@ -37,7 +37,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
      -> ahp_wire::SessionId {
         let window = app.sole_window();
         let made = Arc::new(std::sync::Mutex::new(None));
-        app.perform_batch(vec![himark::app::AppCommand::Windowed(
+        app.perform_batch(vec![himark::app::windowed(
             window,
             Arc::new(Switch {
                 target,
@@ -186,7 +186,7 @@ fn switching_dismisses_the_overlays_first() {
     assert!(app.plugin_modal().is_some());
 
     let made = Arc::new(std::sync::Mutex::new(None));
-    app.perform_batch(vec![himark::app::AppCommand::Windowed(
+    app.perform_batch(vec![himark::app::windowed(
         window,
         Arc::new(SwitchFresh(Arc::clone(&made))),
     )]);

@@ -153,7 +153,7 @@ impl himark::commands::WindowedCommand for ShowStubDock {
             return;
         };
         fx.scope(
-            move |command| AppCommand::Content(window, command),
+            move |command| himark::app::content(window, command),
             |fx| entity.show_dock(store, Box::new(DockStub::new(self.label)), self.owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -476,7 +476,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     }
     let first = himark::workspace::entity_session(&entity(&app));
     let minted = std::sync::Arc::new(Mutex::new(None));
-    assert!(app.perform_command(AppCommand::Windowed(
+    assert!(app.perform_command(himark::app::windowed(
         window,
         Arc::new(Switch(std::sync::Arc::clone(&minted))),
     )));
@@ -498,7 +498,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 
     let back = std::sync::Arc::new(Mutex::new(Some(first)));
-    assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(Switch(back)),)));
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(Switch(back)),)));
     let restored = entity(&app);
     assert!(restored.dock_panel().is_some(), "the dock rode its session");
     assert!(
@@ -527,7 +527,7 @@ pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
 
 pub(super) fn show_dock(app: &mut Himark, label: &'static str, owner: &'static str) {
     let window = app.sole_window();
-    assert!(app.perform_command(AppCommand::Windowed(
+    assert!(app.perform_command(himark::app::windowed(
         window,
         Arc::new(ShowStubDock { label, owner }),
     )));

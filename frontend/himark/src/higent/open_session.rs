@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use crate::app::AppCommand;
 use crate::commands::WindowedCommand;
 use ::workbench::window::Windows;
 use ahp_wire::client::ChatUri;
@@ -91,7 +90,7 @@ impl WindowedCommand for OpenNewSession {
                 options,
             })
             .map(move |result| {
-                AppCommand::Windowed(
+                crate::shell::windowed(
                     window,
                     Arc::new(OpenCreatedSession {
                         server,
@@ -136,7 +135,7 @@ pub(crate) fn open_session_with(
             session,
         })
         .map(move |result| {
-            AppCommand::Windowed(
+            crate::shell::windowed(
                 window,
                 Arc::new(OpenSubscribedSession {
                     server,
@@ -191,7 +190,7 @@ impl WindowedCommand for OpenSubscribedSession {
         ahp_session::session::channel::adopt_subscribed(store, &key, state);
         crate::app::switch_session(store, window, key.clone(), fx);
 
-        fx.follow_up(AppCommand::Windowed(
+        fx.follow_up(crate::shell::windowed(
             window,
             Arc::new(EnterSessionWork {
                 server: self.server,

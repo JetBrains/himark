@@ -60,7 +60,7 @@ fn the_outline_derives_lands_and_jumps() {
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
     let (source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -370,7 +370,7 @@ fn outline_speedsearch_filters_steps_and_clears() {
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -481,7 +481,7 @@ fn speedsearch_arrows_step_the_matches() {
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -624,7 +624,7 @@ fn outline_folds_survive_relandings() {
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

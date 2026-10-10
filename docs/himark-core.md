@@ -59,27 +59,28 @@ when that door opens, because command handling is part of the
 native event loop. Handing the library's client control over
 mutation is the point, not a leak. The vocabulary has two arms:
 
-- **`ToView(ViewId, DynCommand)`** — addressed to a registered
-  view in the engine's flat registry. This is today's
-  `AppCommand::Content(WindowId, …)` generalized: the window was
-  only ever the id of the one view the shell had registered.
-- **`Verb`** — the window-free vocabulary that already exists and
-  is already the law of the entities plan (`imba::command::Verb`:
-  `At(Addressed)` naming an entity id, `Dynamic`/`Once` for
-  registered commands; `frontend/imba/src/command.rs`).
+- **`At(Addressed)`** — THE addressed road (entities.md law 5),
+  and commands are DATA: `Verb` and `Addressed` clone (the typed
+  command underneath always could), an address opens back up
+  (`Addressed::downcast` → the typed `(id, command)` pair), and
+  the genuinely move-once payloads ride `OneShot` — clone shares
+  the in-flight slot, the value moves exactly once, a spent twin
+  drops loudly.
+- **`Verb`** — the window-free vocabulary that already exists
+  (`imba::command::Verb`: `At`, `Dynamic`/`Once` for registered
+  commands; `frontend/imba/src/command.rs`).
 
-Routing is symmetric: `ToView` leases the view from the registry
-and runs its `perform` against the global store; `At` routes to
-the entity's row. Today's remaining `AppCommand` arms dissolve
-rather than move: the window-shaped ones (`OpenPanel`, the modals,
-viewport) into `ToView` at the workbench view — along with the
-~300-line modal/side/dock request ceremony in `Performer::
-perform`'s `Content` arm, which is workbench VIEW logic
-masquerading as engine logic and moves into the workbench view's
-own perform; `FileChanged(subscription)` into an `At` on the
-owning documents collection, minted where the watch wiring lives;
-the `Register*` variants into boot-time writes through the store
-door.
+This section is LANDED (2026-10-10): the whole window/workbench
+vocabulary rides `At` at the `WorkbenchShell` entity
+(`frontend/himark/src/shell.rs`) — a real entity at one well-known
+id, whose command is the old window arm set and whose perform is
+the old ceremony, running with a genuine engine-vocabulary fx
+through its `App` wrap arm; self-addressed recursions unwrap via
+`Addressed::downcast` instead of re-entering their own lease. The
+engine's `AppCommand` is `Verb` + `At` + `FileChanged` + the three
+editor-environment registrations — nothing in it names a window.
+Still to dissolve: `FileChanged` into an `At` on the owning
+documents collection, `Register*` into boot-time store writes.
 
 ## The public API
 

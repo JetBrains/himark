@@ -33,6 +33,29 @@ pub trait DynamicOnceCommand: Send + Sync {
     fn perform(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut Fx<'_>);
 }
 
+/// A single-use payload with DATA citizenship: commands are data,
+/// so every command clones — but a landing's value still moves
+/// exactly once. Cloning shares the in-flight slot; whoever runs
+/// first takes the value, and a spent twin drops loudly.
+pub struct OneShot<T>(Arc<std::sync::Mutex<Option<T>>>);
+
+impl<T> OneShot<T> {
+    pub fn new(value: T) -> Self {
+        Self(Arc::new(std::sync::Mutex::new(Some(value))))
+    }
+
+    pub fn take(&self) -> Option<T> {
+        self.0.lock().expect("the one-shot payload").take()
+    }
+}
+
+impl<T> Clone for OneShot<T> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+#[derive(Clone)]
 pub enum Verb {
     /// The one addressed road (docs/entities.md law 5): lease the
     /// row, perform under its own address, put it back.
@@ -40,14 +63,14 @@ pub enum Verb {
 
     Dynamic(Arc<dyn DynamicCommand>),
 
-    Once(Box<dyn DynamicOnceCommand>),
+    Once(OneShot<Box<dyn DynamicOnceCommand>>),
 
     /// The OPAQUE escape: a shell-level payload (an application
     /// command, a window-coupled ask) carried through the verb lane.
     /// Built and interpreted only by the shell — the generic runner
     /// never sees one; a shell folds it back into its own stream
     /// before `run`.
-    Shell(Box<dyn std::any::Any + Send + Sync>),
+    Shell(OneShot<Box<dyn std::any::Any + Send + Sync>>),
 }
 
 impl Verb {
@@ -57,11 +80,24 @@ impl Verb {
         Verb::At(Addressed::at(id, command))
     }
 
+    /// The one-shot landing constructor.
+    pub fn once(command: impl DynamicOnceCommand + 'static) -> Verb {
+        Verb::Once(OneShot::new(Box::new(command)))
+    }
+
+    /// The opaque shell-payload constructor.
+    pub fn shell(payload: Box<dyn std::any::Any + Send + Sync>) -> Verb {
+        Verb::Shell(OneShot::new(payload))
+    }
+
     pub fn run(self, store: &mut Store, ui: &UiCtx, fx: &mut Fx<'_>) {
         match self {
             Verb::At(addressed) => addressed.run(store, ui, fx),
             Verb::Dynamic(command) => command.perform(store, ui, fx),
-            Verb::Once(command) => command.perform(store, ui, fx),
+            Verb::Once(command) => match command.take() {
+                Some(command) => command.perform(store, ui, fx),
+                None => eprintln!("[imba] a spent once-landing ran again — dropped"),
+            },
             Verb::Shell(_) => {
                 debug_assert!(false, "a shell verb reached the generic runner");
                 eprintln!("[imba] a shell verb reached the generic runner — dropped");
@@ -97,6 +133,30 @@ impl Addressed {
     pub fn run(self, store: &mut Store, ui: &UiCtx, fx: &mut Fx<'_>) {
         self.0.run(store, ui, fx)
     }
+
+    /// Commands are data — an address opens back up: the typed
+    /// `(id, command)` pair if this `At` targets `T`, else itself.
+    /// The road an entity uses to recognize a command addressed to
+    /// the row it is currently performing AS, instead of routing
+    /// into its own lease.
+    pub fn downcast<T: Entity>(self) -> Result<(Id<T>, T::Command), Addressed> {
+        if self.0.as_any().is::<AtVerb<T>>() {
+            let at = self
+                .0
+                .into_any()
+                .downcast::<AtVerb<T>>()
+                .expect("the probe just matched");
+            Ok((at.id, at.command))
+        } else {
+            Err(self)
+        }
+    }
+}
+
+impl Clone for Addressed {
+    fn clone(&self) -> Self {
+        Self(self.0.clone_box())
+    }
 }
 
 impl fmt::Display for Addressed {
@@ -110,6 +170,14 @@ impl fmt::Display for Addressed {
 /// `Display` is the reconcile trace's name for the command.
 trait AddressedCommand: Send + Sync + fmt::Display {
     fn run(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut Fx<'_>);
+
+    /// Commands are data: the typed command underneath is `Clone`
+    /// by bound, so the erasure clones too.
+    fn clone_box(&self) -> Box<dyn AddressedCommand>;
+
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
 }
 
 struct AtVerb<T: Entity> {
@@ -127,6 +195,21 @@ impl<T: Entity> AddressedCommand for AtVerb<T> {
     fn run(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut Fx<'_>) {
         let AtVerb { id, command } = *self;
         store.route(id, command, ui, move |command| Verb::at(id, command), fx);
+    }
+
+    fn clone_box(&self) -> Box<dyn AddressedCommand> {
+        Box::new(AtVerb {
+            id: self.id,
+            command: self.command.clone(),
+        })
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
     }
 }
 

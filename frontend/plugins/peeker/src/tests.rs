@@ -27,7 +27,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         )
     };
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(himark::app::AppCommand::Opened(
+        assert!(app.perform_command(himark::app::opened(
             app.sole_window(),
             himark::app::OpenedDocument {
                 documents: app.sole_documents(),

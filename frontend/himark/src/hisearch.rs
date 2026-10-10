@@ -114,12 +114,12 @@ impl crate::commands::WindowedCommand for ShowFeedInDock {
         LocationLists::set_search(store, self.lists, self.feed);
 
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = SearchView::open(store, ui, self.lists);
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -153,7 +153,7 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
         }
 
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
@@ -164,7 +164,7 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
         let panel = SearchView::open(store, ui, lists);
         let owner = self.id();
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -200,7 +200,7 @@ impl crate::commands::WindowedCommand for FocusSearchView {
             if let Some(panel) = entity.dock_panel_mut() {
                 fx.scope(
                     move |command| {
-                        crate::app::AppCommand::Content(
+                        crate::shell::content(
                             window,
                             ::workbench::window::WindowCommand::Dock(
                                 imba::dyn_view::DynCommand::new(

@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use crate::app::AppCommand;
 use crate::higent::open_session::OpenSessionRow;
 use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
 use imba::store::Store;
@@ -22,7 +21,7 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
     Arc::new(DrawerAsks {
         open_session: Arc::new(move |store| Some(crate::workspace::window_session(store, window)?)),
         open_row: Arc::new(move |server, session| {
-            crate::app::shell_verb(AppCommand::Windowed(
+            crate::app::shell_verb(crate::shell::windowed(
                 window,
                 Arc::new(OpenSessionRow { server, session }),
             ))
@@ -33,10 +32,10 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
                     Some(flow) => flow(server),
                     None => Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) }),
                 };
-            crate::app::shell_verb(AppCommand::Windowed(window, command))
+            crate::app::shell_verb(crate::shell::windowed(window, command))
         }),
         add_host: Arc::new(move |url| {
-            crate::app::shell_verb(AppCommand::Windowed(window, Arc::new(AddHost { url })))
+            crate::app::shell_verb(crate::shell::windowed(window, Arc::new(AddHost { url })))
         }),
     })
 }
@@ -98,7 +97,7 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
             return;
         }
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         // Opening the drawer is the retry nudge a failed host waits
@@ -108,7 +107,7 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
         )));
         let panel = AgentsPanel::open(store, ui, drawer_asks(window));
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -174,7 +173,7 @@ impl crate::commands::WindowedCommand for ShareHost {
             imba::effect::AnyEffect::new(ahp_wire::effects::ShareHostEffect {
                 client: client.session.clone(),
             })
-            .map(move |result| AppCommand::Windowed(window, Arc::new(SharedHost { result }))),
+            .map(move |result| crate::shell::windowed(window, Arc::new(SharedHost { result }))),
         );
     }
 }

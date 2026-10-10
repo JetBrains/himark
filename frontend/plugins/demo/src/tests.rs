@@ -1401,7 +1401,7 @@ fn rust_document_settles_and_stops_reconciling() {
             &fonts,
             &theme,
         );
-        app.perform_batch(vec![AppCommand::Opened(
+        app.perform_batch(vec![himark::app::opened(
             app.sole_window(),
             himark::app::OpenedDocument {
                 documents: app.sole_documents(),

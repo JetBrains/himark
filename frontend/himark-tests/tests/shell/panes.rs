@@ -177,7 +177,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 
     let open = |app: &mut Himark, name: &str, text: &str| {
         let document = plain_document(text);
-        assert!(app.perform_command(himark::app::AppCommand::Opened(
+        assert!(app.perform_command(himark::app::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),
@@ -235,7 +235,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             .caret_byte(editor)
     };
     let before_jump = caret(&app);
-    assert!(app.perform_command(himark::app::AppCommand::Opened(
+    assert!(app.perform_command(himark::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -281,7 +281,7 @@ fn close_widget_walks_the_pane_history() {
     app.draw_window(app.sole_window(), surface.canvas());
     let window = app.sole_window();
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(himark::app::AppCommand::Opened(
+        assert!(app.perform_command(himark::app::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),

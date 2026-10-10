@@ -21,7 +21,7 @@ pub fn palette_commands(
         imba::PresentableCommand::new(
             command.id(),
             command.name(),
-            AppCommand::Windowed(window, command.clone()),
+            crate::shell::windowed(window, command.clone()),
         )
     }));
     commands

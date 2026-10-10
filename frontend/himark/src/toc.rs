@@ -109,11 +109,11 @@ impl crate::commands::WindowedCommand for ToggleToc {
             return;
         };
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         fx.scope(
-            move |command| crate::app::AppCommand::Content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_side_panel(store, panel, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);

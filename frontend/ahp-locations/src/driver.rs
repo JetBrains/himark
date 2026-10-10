@@ -140,11 +140,11 @@ impl imba::command::DynamicCommand for AttachFeedStream {
                         channel: channel.channel,
                     })
                     .map(move |outcome| {
-                        imba::command::Verb::Once(Box::new(FeedBatch {
+                        imba::command::Verb::once(FeedBatch {
                             wire,
                             feed,
                             batches: outcome.map(|snapshot| vec![snapshot]),
-                        }))
+                        })
                     }),
                 );
             }
@@ -195,11 +195,11 @@ impl imba::command::DynamicOnceCommand for FeedBatch {
                     channel: held.channel.channel.clone(),
                 })
                 .map(move |batches| {
-                    imba::command::Verb::Once(Box::new(FeedBatch {
+                    imba::command::Verb::once(FeedBatch {
                         wire,
                         feed,
                         batches: Ok(batches),
-                    }))
+                    })
                 }),
             )
         });
@@ -298,7 +298,7 @@ fn unsubscribe(channel: crate::LocationsChannel, fx: &mut imba::command::Fx<'_>)
             client: channel.client,
             channel: channel.channel,
         })
-        .map(move |()| imba::command::Verb::Once(Box::new(NothingLanded))),
+        .map(move |()| imba::command::Verb::once(NothingLanded)),
     );
 }
 

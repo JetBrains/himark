@@ -198,7 +198,7 @@ fn palette_commands_follow_the_modal_focus() {
             request: Default::default(),
         })
     ));
-    app.perform_batch(vec![AppCommand::Content(
+    app.perform_batch(vec![himark::app::content(
         app.sole_window(),
         ::workbench::window::WindowCommand::Modal(imba::dyn_view::DynCommand::new(
             TestModalCommand::Show,
