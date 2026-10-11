@@ -317,18 +317,13 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
     }
 }
 
+/// The WHOLE chat pane — the workbench flavor: the transcript in
+/// its scroller over the composer band, one widget. Shares the
+/// claim/perform/park road (`PaneSeat`) with the native shell's
+/// part flavors (TranscriptPane, ComposerPane).
 #[derive(Clone)]
 pub struct ChatPane {
-    /// The collection that OWNS this chat — wired at mint, not
-    /// whichever session the window happens to be on when a command
-    /// arrives.
-    chats: imba::store::Id<Chats>,
-    chat: ChatUri,
-    /// The mount, CLAIMED on the pane's first command — the warm one a
-    /// previous pane parked when it closed, else a fresh one. Minting
-    /// an id here instead would re-lay the whole transcript on every
-    /// walk back to the chat.
-    view: Option<ChatViewId>,
+    seat: PaneSeat,
 }
 
 impl ChatPane {
@@ -337,67 +332,58 @@ impl ChatPane {
     /// (`claim_view`), which adopts the parked one when there is one.
     pub fn new(chats: imba::store::Id<Chats>, chat: ChatUri) -> Self {
         Self {
-            chats,
-            chat,
-            view: None,
+            seat: PaneSeat::new(chats, chat),
         }
     }
 
     pub fn chat(&self) -> &ChatUri {
-        &self.chat
+        &self.seat.chat
     }
 
     /// The collection this pane addresses.
     pub fn chats(&self) -> imba::store::Id<Chats> {
-        self.chats
+        self.seat.chats
     }
 
     /// Land the keyboard in the composer. A fresh view already starts
     /// there; an adopted one keeps its last area (a transcript click
     /// sticks), so fronting the chat resets it explicitly.
     pub fn focus_composer(&self, store: &mut Store) {
-        let Some(view) = self.view else {
+        let Some(view) = self.seat.view else {
             return;
         };
-        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, self.seat.chats, &self.seat.chat) else {
             return;
         };
         panel.focus_view(view, crate::chat::ChatArea::Composer);
-        Chats::put(store, self.chats, self.chat.clone(), panel);
+        Chats::put(store, self.seat.chats, self.seat.chat.clone(), panel);
     }
 
     /// Test probes for the ⌘I regression: which area the pane's view
     /// focuses, and a way to park it on the transcript first.
     #[doc(hidden)]
     pub fn focus_area(&self, store: &Store) -> Option<crate::chat::ChatArea> {
-        let view = self.view?;
-        Chats::chat_ref(store, self.chats, &self.chat)?.focus_area_view(view)
+        let view = self.seat.view?;
+        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)?.focus_area_view(view)
     }
 
     #[doc(hidden)]
     pub fn set_focus_area(&self, store: &mut Store, area: crate::chat::ChatArea) {
-        let Some(view) = self.view else {
+        let Some(view) = self.seat.view else {
             return;
         };
-        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, self.seat.chats, &self.seat.chat) else {
             return;
         };
         panel.focus_view(view, area);
-        Chats::put(store, self.chats, self.chat.clone(), panel);
+        Chats::put(store, self.seat.chats, self.seat.chat.clone(), panel);
     }
 
     /// The pane goes but the MOUNT stays — parked and still fed, so the
     /// walk back re-displays it instead of rebuilding every cell's
     /// document. The chat itself is session truth either way.
     fn park(&mut self, store: &mut Store) {
-        let Some(view) = self.view.take() else {
-            return;
-        };
-        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
-            return;
-        };
-        panel.park_view(view);
-        Chats::put(store, self.chats, self.chat.clone(), panel);
+        self.seat.park(store);
     }
 }
 
@@ -409,10 +395,7 @@ impl imba::View for ChatPane {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
-        match (self.view, Chats::chat_ref(store, self.chats, &self.chat)) {
-            (Some(view), Some(panel)) => panel.focus_data_view(store, ui, view),
-            _ => imba::focus::FocusData::default(),
-        }
+        self.seat.focus_data(store, ui)
     }
 
     fn destroy(&mut self, store: &mut Store, _fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -426,19 +409,7 @@ impl imba::View for ChatPane {
         command: Self::Command,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
-            return;
-        };
-        let view = match self.view {
-            Some(view) => view,
-            None => {
-                let view = panel.claim_view(store, ui, fx);
-                self.view = Some(view);
-                view
-            }
-        };
-        panel.perform_in_view(store, ui, view, command, fx);
-        Chats::put(store, self.chats, self.chat.clone(), panel);
+        self.seat.perform(store, ui, command, fx);
     }
 
     fn display<'a>(
@@ -449,8 +420,8 @@ impl imba::View for ChatPane {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, Self::Command> = match self.view.and_then(|view| {
-                    Chats::chat_ref(store, self.chats, &self.chat)
+                let widget: imba::ThunkBox<'a, Self::Command> = match self.seat.view.and_then(|view| {
+                    Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
                         .and_then(|panel| panel.display_view(arena, store, ui, view))
                 }) {
                     Some(laid) => imba::ThunkBox::new(
@@ -526,15 +497,15 @@ impl hikit::panel::PanelView for ChatPane {
 
     fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
         Some(hikit::pane_row::PaneRow::new(crate::chats::ChatRow(
-            self.chats,
-            self.chat.clone(),
+            self.seat.chats,
+            self.seat.chat.clone(),
         )))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<ChatPlace> {
         Some(ChatPlace {
-            chats: self.chats,
-            chat: self.chat.clone(),
+            chats: self.seat.chats,
+            chat: self.seat.chat.clone(),
         })
     }
 
@@ -544,17 +515,17 @@ impl hikit::panel::PanelView for ChatPane {
         place: &ChatPlace,
         _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
-        place.chats == self.chats && place.chat == self.chat
+        place.chats == self.seat.chats && place.chat == self.seat.chat
     }
 
     fn title(&self, store: &Store) -> String {
-        Chats::chat_ref(store, self.chats, &self.chat)
+        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
             .map(|panel| panel.title_text())
             .unwrap_or_else(|| "Agent Chat".to_owned())
     }
 
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
-        Chats::chat_ref(store, self.chats, &self.chat)
+        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
             .map(|panel| panel.footer_height(store, nominal_height))
     }
 
@@ -568,14 +539,7 @@ impl hikit::panel::PanelView for ChatPane {
     // The MOUNT does end here: closed is closed, and a mount nobody
     // shows must not keep laying every part that streams in.
     fn dismantle(&mut self, store: &mut Store) {
-        let Some(view) = self.view.take() else {
-            return;
-        };
-        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
-            return;
-        };
-        panel.close_view(store, view);
-        Chats::put(store, self.chats, self.chat.clone(), panel);
+        self.seat.dismantle(store);
     }
 
     /// Walked away from, or displaced by another panel — not closed:
