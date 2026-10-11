@@ -29,31 +29,35 @@ struct DesktopRoot: View {
         ZStack {
             WindowDresser().frame(width: 0, height: 0)
 
-            // ── the full-bleed document floor ──
-            Group {
-                if let opened = host.document {
-                    DocumentPane(host: host, opened: opened)
-                } else {
-                    EmptyDocumentHint(chatOpen: chatOpen, railOpen: railOpen)
+            // ── the split: chat column beside the document floor ──
+            HStack(spacing: 0) {
+                if chatOpen {
+                    ChatPaneColumn(host: host)
+                        .frame(width: 560)
+                        .transition(.move(edge: .leading))
+                    Rectangle()
+                        .fill(.white.opacity(0.07))
+                        .frame(width: 1)
+                        .ignoresSafeArea()
+                }
+                Group {
+                    if let opened = host.document {
+                        DocumentPane(host: host, opened: opened)
+                    } else {
+                        EmptyDocumentHint(chatOpen: false, railOpen: railOpen)
+                    }
                 }
             }
             .ignoresSafeArea()
         }
         .overlay(alignment: .topLeading) {
-            if chatOpen {
-                ChatIsland(
-                    host: host,
-                    sessionsOpen: $sessionsOpen,
-                    collapse: { withAnimation(spring) { chatOpen = false } })
-                    .matchedGeometryEffect(id: "chat", in: islands)
-                    .padding(12)
-            } else {
-                ChromeMiniIsland(
-                    host: host,
-                    expand: { withAnimation(spring) { chatOpen = true } })
-                    .matchedGeometryEffect(id: "chat", in: islands, properties: .position, anchor: .topLeading)
-                    .padding(12)
-            }
+            // THE island: semaphore + session selector, always
+            // afloat — it GROWS into the session list.
+            SessionIsland(
+                host: host,
+                open: $sessionsOpen,
+                chatOpen: $chatOpen)
+                .padding(12)
         }
         .overlay(alignment: .bottomLeading) {
             if !chatOpen {
@@ -139,40 +143,105 @@ struct TrafficDots: View {
     }
 }
 
-// ─── the chat island ───
+// ─── THE island: semaphore + session selector ───
 
-struct ChatIsland: View {
+/// Floats over the chat column (or the editor when the chat is
+/// collapsed). Closed: dots + the session pill. Open: it GROWS
+/// into the session list — same island, more of it.
+struct SessionIsland: View {
     @ObservedObject var host: DesktopHost
-    @Binding var sessionsOpen: Bool
-    let collapse: () -> Void
+    @Binding var open: Bool
+    @Binding var chatOpen: Bool
+
+    private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 TrafficDots()
                 Divider().frame(height: 14).overlay(.white.opacity(0.15))
-                SessionButton(host: host, open: $sessionsOpen)
-                Spacer()
-                Button(action: collapse) {
-                    Image(systemName: "rectangle.lefthalf.inset.filled.arrow.left")
-                        .foregroundStyle(.secondary)
+                SessionButton(host: host, open: $open)
+                if open || !chatOpen {
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
+                if !open {
+                    Button {
+                        withAnimation(spring) { chatOpen.toggle() }
+                    } label: {
+                        Image(systemName: chatOpen
+                            ? "rectangle.lefthalf.inset.filled.arrow.left"
+                            : "rectangle.lefthalf.inset.filled")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 14)
             .frame(height: 44)
 
-            if sessionsOpen {
-                SessionList(host: host, open: $sessionsOpen)
-            } else {
-                ChatColumn(host: host)
-                    .id(host.current?.uri)
+            if open {
+                SessionList(host: host, open: $open)
             }
         }
-        .frame(width: 560)
-        .frame(maxHeight: .infinity)
-        .background(IslandBackground())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .frame(width: open ? 536 : nil)
+        .frame(maxHeight: open ? 700 : 44, alignment: .top)
+        .fixedSize(horizontal: !open, vertical: false)
+        .background(IslandBackground(cornerRadius: open ? 16 : 14))
+        .clipShape(RoundedRectangle(cornerRadius: open ? 16 : 14))
+    }
+}
+
+enum SessionDates {
+    static let plain = ISO8601DateFormatter()
+    static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    static func parse(_ stamp: String) -> Date? {
+        fractional.date(from: stamp) ?? plain.date(from: stamp)
+    }
+}
+
+struct SessionRow: View {
+    let row: HimarkEngine.CatalogSession
+    let current: Bool
+    let pick: () -> Void
+
+    var body: some View {
+        Button(action: pick) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.title.isEmpty ? "Untitled" : row.title)
+                        .font(.system(size: 13, weight: current ? .semibold : .regular))
+                        .lineLimit(1)
+                    Text(meta)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if current {
+                    Circle().fill(.yellow).frame(width: 6, height: 6)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                current ? AnyShapeStyle(.white.opacity(0.07)) : AnyShapeStyle(.clear),
+                in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var meta: String {
+        guard let date = SessionDates.parse(row.modified) else {
+            return row.provider
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
     }
 }
 
@@ -208,19 +277,6 @@ struct SessionButton: View {
 
 /// The sessions face (himark-islands-sessions-open): new-session
 /// row, then the catalog grouped by day.
-enum SessionDates {
-    static let plain = ISO8601DateFormatter()
-    static let fractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    static func parse(_ stamp: String) -> Date? {
-        fractional.date(from: stamp) ?? plain.date(from: stamp)
-    }
-}
-
 struct SessionList: View {
     @ObservedObject var host: DesktopHost
     @Binding var open: Bool
@@ -299,75 +355,16 @@ struct SessionList: View {
     }
 }
 
-struct SessionRow: View {
-    let row: HimarkEngine.CatalogSession
-    let current: Bool
-    let pick: () -> Void
-
-    var body: some View {
-        Button(action: pick) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.title.isEmpty ? "Untitled" : row.title)
-                        .font(.system(size: 13, weight: current ? .semibold : .regular))
-                        .lineLimit(1)
-                    Text(meta)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-                if current {
-                    Circle().fill(.yellow).frame(width: 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                current ? AnyShapeStyle(.white.opacity(0.07)) : AnyShapeStyle(.clear),
-                in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var meta: String {
-        guard let date = SessionDates.parse(row.modified) else {
-            return row.provider
-        }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: .now)
-    }
-}
-
-// ─── collapsed chat: the mini island and the capsule ───
-
-/// Semaphore + session pill, all that remains up top when the chat
-/// island folds away.
-struct ChromeMiniIsland: View {
+/// The chat SPLIT: a plain column — transcript under the floating
+/// island, composer at its measured height.
+struct ChatPaneColumn: View {
     @ObservedObject var host: DesktopHost
-    let expand: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            TrafficDots()
-            Divider().frame(height: 14).overlay(.white.opacity(0.15))
-            Button(action: expand) {
-                HStack(spacing: 6) {
-                    Image(systemName: "shippingbox").foregroundStyle(.secondary)
-                    Text(host.current?.title.isEmpty == false
-                         ? String(host.current!.title.prefix(34)) : "New Session")
-                        .font(.system(size: 13, weight: .medium))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 44)
-        .background(IslandBackground(cornerRadius: 14))
+        ChatColumn(host: host)
+            .id(host.current?.uri)
+            .padding(.top, 60)
+            .background(Color(red: 0.045, green: 0.045, blue: 0.055))
     }
 }
 
