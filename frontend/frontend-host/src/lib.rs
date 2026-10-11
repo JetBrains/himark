@@ -507,6 +507,36 @@ impl HimarkEngine {
         app.register_enrichers(enrichment_passes());
         app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
+        // The go-to-file face on the MOUNTED road: the peeker whole
+        // (query, results, preview, the FSP search behind them),
+        // answered as an external place arm — the peeker crate sits
+        // above himark, so himark cannot name it itself.
+        app.register_place_arm(Arc::new(|store, ui, id, fx, place| {
+            let place = place.place::<himark::places::PeekerPlace>()?;
+            let key = place.0.clone();
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let documents = state.documents();
+            let recents = recents::RecentLocations::list(store, state.recents());
+            let folders = ahp_session::session::folders::session_folders(store, &key);
+            let view = fx.scope(
+                move |command: peeker::PeekerCommand| {
+                    himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
+                },
+                |fx| {
+                    peeker::Peeker::open(
+                        store,
+                        ui,
+                        documents,
+                        skia_safe::Size::new(1280.0, 800.0),
+                        recents,
+                        Vec::new(),
+                        folders,
+                        fx,
+                    )
+                },
+            );
+            Some(Box::new(view))
+        }));
 
         app.register_command(Arc::new(himark::diff_pane::OpenDiff));
         app.register_row_minter(canvas::diff_pane::pair_row_minter());

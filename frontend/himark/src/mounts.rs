@@ -191,6 +191,85 @@ where
     }
 }
 
+/// An EXTERNAL place arm: a crate ABOVE this one (a plugin)
+/// answers a place with a modal view. Registered at boot
+/// (`Himark::register_place_arm`); `mount_place` consults these
+/// after its own arms.
+pub type ModalPlaceArm = std::sync::Arc<
+    dyn Fn(
+            &mut Store,
+            &UiCtx,
+            ViewBridgeId,
+            &mut AppFx<'_>,
+            &hikit::navigation::NavigationLocation,
+        ) -> Option<Box<dyn hikit::modal::ModalView>>
+        + Send
+        + Sync,
+>;
+
+/// The dyn twin of `ModalMount`, for externally-answered places.
+pub(crate) struct DynModalMount {
+    id: ViewBridgeId,
+    view: Box<dyn hikit::modal::ModalView>,
+}
+
+impl BridgeView for DynModalMount {
+    fn frame_store(&self, store: &Store, _ui: &UiCtx) -> Store {
+        store.clone()
+    }
+
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let id = self.id;
+        Some(
+            self.view
+                .focus_data_dyn(store, ui)
+                .map(move |command| AppCommand::ToView(id, command)),
+        )
+    }
+
+    fn layout<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> ThunkBox<'a, AppCommand> {
+        let id = self.id;
+        let content = self.view.layout_dyn(arena, store, ui, constraints);
+        let size = imba::Thunk::size(&content);
+        let mut container = imba::container::container(arena, size);
+        container.place(
+            0.0,
+            0.0,
+            content
+                .map(move |command| AppCommand::ToView(id, command))
+                .overlay_host(imba::overlay::WINDOW),
+        );
+        ThunkBox::new(arena, container)
+    }
+
+    fn perform(
+        &mut self,
+        command: DynCommand,
+        origin: ViewBridgeId,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut AppFx<'_>,
+    ) {
+        fx.scope(
+            move |command: DynCommand| AppCommand::ToView(origin, command),
+            |fx| self.view.perform_dyn(store, ui, command, fx),
+        );
+        while let Some(request) = hikit::modal::ModalView::take_request(&mut *self.view) {
+            route_modal_request(request, origin, store, ui, fx);
+        }
+    }
+}
+
 fn route_panel_request(
     request: hikit::panel::PanelRequest,
     origin: ViewBridgeId,
@@ -587,6 +666,18 @@ pub fn mount_place(
                 panel: Box::new(panel),
             }) as Rc<dyn BridgeView>)
         });
+    }
+    // The EXTERNAL arms — plugins registered above this crate.
+    let arms = app.modal_place_arms.clone();
+    for arm in arms {
+        let place = place.clone();
+        let minted = app.mount(move |store, ui, id, fx| {
+            let view = arm(store, ui, id, fx, &place)?;
+            Some(Rc::new(DynModalMount { id, view }) as Rc<dyn BridgeView>)
+        });
+        if minted.is_some() {
+            return minted;
+        }
     }
     eprintln!("[mount] no view answers this place — refused");
     None

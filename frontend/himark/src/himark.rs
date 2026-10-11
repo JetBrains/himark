@@ -126,6 +126,10 @@ pub struct Himark {
     /// own scroller — the native half of the reveal mechanism.
     pub(crate) pending_reveal: Option<(ViewBridgeId, skia_safe::Rect)>,
 
+    /// External place arms (plugins) — `mount_place` consults them
+    /// after its own.
+    pub(crate) modal_place_arms: Vec<crate::mounts::ModalPlaceArm>,
+
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
     /// viewport corrections land in the SAME frame
@@ -243,6 +247,7 @@ impl Himark {
             revision: 0,
             pending_file_events: Vec::new(),
             pending_reveal: None,
+            modal_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
         };
@@ -717,6 +722,12 @@ impl Himark {
     /// Drain the parked reveal — the host scrolls it into view.
     pub fn take_reveal(&mut self) -> Option<(ViewBridgeId, skia_safe::Rect)> {
         self.pending_reveal.take()
+    }
+
+    /// A plugin's place arm — consulted by `mount_place` after the
+    /// built-in arms.
+    pub fn register_place_arm(&mut self, arm: crate::mounts::ModalPlaceArm) {
+        self.modal_place_arms.push(arm);
     }
 
     /// Re-seat the shell, wrapping the one seated now — the native

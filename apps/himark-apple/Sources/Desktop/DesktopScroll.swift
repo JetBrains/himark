@@ -276,6 +276,24 @@ final class PlainBridgeHost: NSView {
     private let host: DesktopHost
     private(set) var bridge = HimarkBridge(raw: 0)
     private(set) var content: HimarkBridgeView?
+    var grabsFocus = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if grabsFocus, let content, let window {
+            DispatchQueue.main.async { window.makeFirstResponder(content) }
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        // Autoresizing from a zero seed stays zero — size the child
+        // to the REAL bounds whenever they land.
+        if let content, content.frame != bounds {
+            content.frame = bounds
+            content.request()
+        }
+    }
 
     init(host: DesktopHost, bridge: HimarkBridge) {
         self.host = host
@@ -302,6 +320,26 @@ final class PlainBridgeHost: NSView {
             host.unmount(bridge: bridge)
             bridge = HimarkBridge(raw: 0)
         }
+    }
+}
+
+/// A session view minted UNSCROLLED — the peeker owns its own
+/// list scroll and input.
+struct PlainMintedBridge: NSViewRepresentable {
+    let host: DesktopHost
+    let kind: HimarkEngine.SessionViewKind
+    var grabsFocus = false
+
+    func makeNSView(context: Context) -> PlainBridgeHost {
+        let view = PlainBridgeHost(host: host, bridge: host.mint(kind))
+        if grabsFocus { view.grabsFocus = true }
+        return view
+    }
+
+    func updateNSView(_ view: PlainBridgeHost, context: Context) {}
+
+    static func dismantleNSView(_ view: PlainBridgeHost, coordinator: ()) {
+        view.teardown()
     }
 }
 

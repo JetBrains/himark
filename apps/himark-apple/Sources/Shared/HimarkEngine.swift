@@ -136,6 +136,8 @@ final class HimarkEngine {
         case changesCanvas
         /// The rail parity faces.
         case history, search, comments
+        /// The go-to-file face: the peeker, whole.
+        case peeker
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
@@ -148,6 +150,7 @@ final class HimarkEngine {
             case .history: himark_place_history(engine, host, cstr, UInt(strlen(cstr)))
             case .search: himark_place_search(engine, host, cstr, UInt(strlen(cstr)))
             case .comments: himark_place_comments(engine, host, cstr, UInt(strlen(cstr)))
+            case .peeker: himark_place_peeker(engine, host, cstr, UInt(strlen(cstr)))
             case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
             case .transcript:
                 himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))

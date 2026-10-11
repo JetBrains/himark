@@ -110,6 +110,13 @@ pub struct CommentsPlace(pub ahp_wire::SessionId);
 
 impl Place for CommentsPlace {}
 
+/// The go-to-file face — the peeker, whole: query, results,
+/// preview, the FSP search behind them.
+#[derive(Clone, PartialEq)]
+pub struct PeekerPlace(pub ahp_wire::SessionId);
+
+impl Place for PeekerPlace {}
+
 /// A session's FILE tree.
 #[derive(Clone, PartialEq)]
 pub struct FilesPlace(pub ahp_wire::SessionId);

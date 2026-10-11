@@ -1109,6 +1109,18 @@ pub unsafe extern "C" fn himark_place_comments(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn himark_place_peeker(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::PeekerPlace(session))
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn himark_place_files(
     engine: *mut HimarkEngine,
     host: u64,

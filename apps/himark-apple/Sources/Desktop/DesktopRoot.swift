@@ -31,6 +31,8 @@ struct DesktopRoot: View {
     }()
     @State private var paletteOpen =
         ProcessInfo.processInfo.environment["HIMARK_UI"] == "palette"
+    @State private var goToOpen =
+        ProcessInfo.processInfo.environment["HIMARK_UI"] == "go-to-file"
     @Namespace private var islands
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
@@ -85,6 +87,20 @@ struct DesktopRoot: View {
             }
         }
         .overlay(alignment: .top) {
+            if goToOpen {
+                PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
+                    .id("peeker-\(host.current?.uri ?? "")")
+                    .frame(width: 1_040, height: 620)
+                    .background(IslandBackground(cornerRadius: 14))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.top, 56)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                    .onExitCommand {
+                        withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
+                    }
+            }
+        }
+        .overlay(alignment: .top) {
             if paletteOpen {
                 CommandPalette(entries: paletteEntries) {
                     withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
@@ -114,11 +130,16 @@ struct DesktopRoot: View {
         .background(Color(red: 0.03, green: 0.03, blue: 0.038))
         .ignoresSafeArea()
         .background {
-            // The palette's summons — an invisible seat for ⇧⌘P.
+            // The palette's and the peeker's summons.
             Button("") {
                 withAnimation(.easeOut(duration: 0.15)) { paletteOpen.toggle() }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
+            .hidden()
+            Button("") {
+                withAnimation(.easeOut(duration: 0.15)) { goToOpen.toggle() }
+            }
+            .keyboardShortcut("p", modifiers: .command)
             .hidden()
         }
     }
