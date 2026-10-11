@@ -185,7 +185,15 @@ impl Chats {
         chat: ChatUri,
         initial_prompt: Option<String>,
     ) -> Box<dyn hikit::panel::DynPanelView> {
-        Self::ensure_chat(store, ui, chats, server, session, chat.clone(), initial_prompt);
+        Self::ensure_chat(
+            store,
+            ui,
+            chats,
+            server,
+            session,
+            chat.clone(),
+            initial_prompt,
+        );
         Box::new(ChatPane::new(chats, chat))
     }
 
@@ -420,34 +428,35 @@ impl imba::View for ChatPane {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, Self::Command> = match self.seat.view.and_then(|view| {
-                    Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
-                        .and_then(|panel| panel.display_view(arena, store, ui, view))
-                }) {
-                    Some(laid) => imba::ThunkBox::new(
-                        arena,
-                        imba::layout::Layout::layout(laid, arena, constraints),
-                    ),
-
-                    // No view record yet (panes mint storeless): a
-                    // blank frame whose paint asks for Boot — the
-                    // perform road builds the view and subscribes.
-                    None => imba::ThunkBox::new(
-                        arena,
-                        imba::thunk_ext::ThunkExt::event(
-                            imba::leaf::leaf::<Self::Command>(
-                                constraints.max.width,
-                                constraints.max.height,
-                            ),
-                            |_arena, event, _size| match event {
-                                imba::event::Event::Paint { .. } => {
-                                    imba::event::EventResult::Command(ChatPanelCommand::Boot)
-                                }
-                                _ => imba::event::EventResult::Ignored,
-                            },
+                let widget: imba::ThunkBox<'a, Self::Command> =
+                    match self.seat.view.and_then(|view| {
+                        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
+                            .and_then(|panel| panel.display_view(arena, store, ui, view))
+                    }) {
+                        Some(laid) => imba::ThunkBox::new(
+                            arena,
+                            imba::layout::Layout::layout(laid, arena, constraints),
                         ),
-                    ),
-                };
+
+                        // No view record yet (panes mint storeless): a
+                        // blank frame whose paint asks for Boot — the
+                        // perform road builds the view and subscribes.
+                        None => imba::ThunkBox::new(
+                            arena,
+                            imba::thunk_ext::ThunkExt::event(
+                                imba::leaf::leaf::<Self::Command>(
+                                    constraints.max.width,
+                                    constraints.max.height,
+                                ),
+                                |_arena, event, _size| match event {
+                                    imba::event::Event::Paint { .. } => {
+                                        imba::event::EventResult::Command(ChatPanelCommand::Boot)
+                                    }
+                                    _ => imba::event::EventResult::Ignored,
+                                },
+                            ),
+                        ),
+                    };
                 widget
             },
         )

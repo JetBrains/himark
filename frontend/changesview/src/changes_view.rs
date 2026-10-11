@@ -555,8 +555,7 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
         viewport: skia_safe::Rect,
     ) -> EventResult<ChangesViewCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
-        let near_tail =
-            viewport.bottom >= self.total_height - 2.0 * hikit::ui::space::XL;
+        let near_tail = viewport.bottom >= self.total_height - 2.0 * hikit::ui::space::XL;
         if matches!(event, Event::Paint { .. }) && self.pageable && near_tail {
             result = result.merge(EventResult::Command(ChangesViewCommand::AutoGrow));
         }

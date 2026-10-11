@@ -476,7 +476,6 @@ where
     }
 }
 
-
 pub struct ForestSearcher<K, R = TreeRow>(std::marker::PhantomData<fn() -> (K, R)>);
 
 impl<K, R> Clone for ForestSearcher<K, R> {

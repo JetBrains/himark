@@ -543,8 +543,7 @@ where
     }
 }
 
-pub type TreeListCommand<C = TreeItemCommand<TreeLabelCommand>> =
-    imba::list::ListCommand<C>;
+pub type TreeListCommand<C = TreeItemCommand<TreeLabelCommand>> = imba::list::ListCommand<C>;
 
 /// A row command that is, or carries, the tree item's own: rows a
 /// surface wraps (a tooltip, an overlay) peel their layer so the

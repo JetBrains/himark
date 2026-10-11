@@ -12,8 +12,9 @@ use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::tree_item::TreeLabel;
-type DrawerRowsCommand =
-    imba::scroll::ScrollCommand<imba::list::ListCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>>;
+type DrawerRowsCommand = imba::scroll::ScrollCommand<
+    imba::list::ListCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>,
+>;
 use imba::list::ActivateTrigger;
 use imba::list::ListOps;
 use imba::{

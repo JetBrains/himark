@@ -417,23 +417,16 @@ impl DiffPanelView {
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
-        documents::OpenDocuments::diff_view_ref(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        )?
-        .state
-        .as_ref()
+        documents::OpenDocuments::diff_view_ref(store, self.pane.documents, self.pane.id)?
+            .state
+            .as_ref()
     }
 
     #[doc(hidden)]
     pub fn halves(&self, store: &Store) -> (EditorIdView, EditorIdView) {
-        let pair = documents::OpenDocuments::diff_view_ref(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        )
-        .expect("the pane's state row");
+        let pair =
+            documents::OpenDocuments::diff_view_ref(store, self.pane.documents, self.pane.id)
+                .expect("the pane's state row");
         (pair.left, pair.right)
     }
 
@@ -517,11 +510,8 @@ impl hikit::panel::PanelView for DiffPanelView {
     }
 
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
-        let pair = documents::OpenDocuments::diff_view_ref(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        )?;
+        let pair =
+            documents::OpenDocuments::diff_view_ref(store, self.pane.documents, self.pane.id)?;
         Some(DiffPlace {
             old: OpenDocuments::location(store, pair.left.documents(), pair.left.document())?,
             new: OpenDocuments::location(store, pair.left.documents(), pair.right.document())?,
@@ -534,11 +524,9 @@ impl hikit::panel::PanelView for DiffPanelView {
         place: &DiffPlace,
         _fx: &mut imba::command::Fx<'_>,
     ) -> bool {
-        let Some(pair) = documents::OpenDocuments::diff_view_ref(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        ) else {
+        let Some(pair) =
+            documents::OpenDocuments::diff_view_ref(store, self.pane.documents, self.pane.id)
+        else {
             return false;
         };
         let (left, right) = (pair.left, pair.right);
@@ -549,14 +537,11 @@ impl hikit::panel::PanelView for DiffPanelView {
     }
 
     fn title(&self, store: &Store) -> String {
-        let named = documents::OpenDocuments::diff_view_ref(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        )
-        .and_then(|pair| {
-            OpenDocuments::location(store, pair.left.documents(), pair.right.document())
-        });
+        let named =
+            documents::OpenDocuments::diff_view_ref(store, self.pane.documents, self.pane.id)
+                .and_then(|pair| {
+                    OpenDocuments::location(store, pair.left.documents(), pair.right.document())
+                });
         match named {
             Some(location) => format!("Diff: {}", location.name()),
             None => "Diff".to_owned(),
@@ -564,11 +549,7 @@ impl hikit::panel::PanelView for DiffPanelView {
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        documents::diff_views::teardown_diff_view(
-            store,
-            self.pane.documents,
-            self.pane.id,
-        );
+        documents::diff_views::teardown_diff_view(store, self.pane.documents, self.pane.id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

@@ -441,7 +441,8 @@ impl ChatPanel {
     #[doc(hidden)]
     pub fn completion_open(&self) -> bool {
         self.first_view().is_some_and(|view| {
-            view.band.composer
+            view.band
+                .composer
                 .document()
                 .completion(view.band.composer.editor())
                 .open()
@@ -452,7 +453,8 @@ impl ChatPanel {
     pub fn completion_rows(&self) -> Vec<String> {
         self.first_view()
             .map(|view| {
-                view.band.composer
+                view.band
+                    .composer
                     .document()
                     .completion(view.band.composer.editor())
                     .row_labels()
@@ -1630,9 +1632,7 @@ impl ChatPanel {
                         arena,
                         constraints,
                     )
-                    .map(|command| {
-                        ChatPanelCommand::Rows(ScrollCommand::Content(command))
-                    }),
+                    .map(|command| ChatPanelCommand::Rows(ScrollCommand::Content(command))),
                 )
             },
         ))
@@ -1720,10 +1720,7 @@ impl ChatPanel {
                     imba::layout::Layout::layout(
                         view.band.display(arena, store, ui, band_props),
                         arena,
-                        Constraints::tight(Size::new(
-                            size.width,
-                            band_h + stack_h + toolbar_h,
-                        )),
+                        Constraints::tight(Size::new(size.width, band_h + stack_h + toolbar_h)),
                     ),
                 );
                 let strip_origin = std::sync::Arc::clone(&view.band.toolbar.strip_origin);

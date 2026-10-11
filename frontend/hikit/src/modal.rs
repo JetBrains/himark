@@ -263,7 +263,9 @@ where
     }
 
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
-        self.scroll.content().collapsed_height(store, nominal_height)
+        self.scroll
+            .content()
+            .collapsed_height(store, nominal_height)
     }
 
     fn pane_row(&self) -> Option<crate::pane_row::PaneRow> {

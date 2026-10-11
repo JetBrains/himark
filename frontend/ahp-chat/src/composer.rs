@@ -350,7 +350,6 @@ impl<'a> Widget<'a, ComposerCommand> for ComposerWidget<'a> {
     }
 }
 
-
 // ─── the BAND: composer + toolbar + send, one component ───
 
 /// The composer BAND — the input box, the session toolbar, the
@@ -433,10 +432,7 @@ impl ComposerBand {
                     self.heights(store, props.stack, props.nominal_height);
                 let theme = env::Themes::of(store);
                 let chrome = theme.ui().chat.clone();
-                let size = Size::new(
-                    constraints.max.width.max(1.0),
-                    band_h + stack_h + toolbar_h,
-                );
+                let size = Size::new(constraints.max.width.max(1.0), band_h + stack_h + toolbar_h);
                 let mut panel = imba::container::container(arena, size);
                 let status = props.status.clone();
                 let composer_empty = self.composer.is_empty();
@@ -461,7 +457,8 @@ impl ComposerBand {
                     panel.place(
                         0.0,
                         0.0,
-                        props.stack
+                        props
+                            .stack
                             .layout(arena, ui, &chrome, size.width)
                             .map(ChatPanelCommand::Stack),
                     );
@@ -713,8 +710,7 @@ impl imba::View for ComposerPane {
         ui: &'a imba::ui::UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(
-            move |_arena: &'a imba::arena::Arena,
-                  constraints: imba::constraints::Constraints| {
+            move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 match self.seat.view.and_then(|view| {
                     crate::chats::Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
                         .and_then(|panel| panel.display_band(arena, store, ui, view))

@@ -133,9 +133,7 @@ impl LocationTree {
     }
 
     fn select_and_reveal(&mut self, location: &ResourceLocation) {
-        self.list
-            .inner_mut()
-            .select_only(location.clone());
+        self.list.inner_mut().select_only(location.clone());
     }
 
     fn descend_toward(&mut self, target: &ResourceLocation) -> Descend {
@@ -178,9 +176,7 @@ impl LocationTree {
             return;
         }
         let len = self.len();
-        self.list
-            .inner_mut()
-            .splice_slice(len..len, slice);
+        self.list.inner_mut().splice_slice(len..len, slice);
     }
 
     fn activate_key(
@@ -189,9 +185,7 @@ impl LocationTree {
         store: &Store,
         ui: &UiCtx,
     ) -> Activation {
-        self.list
-            .inner_mut()
-            .select_only(location.clone());
+        self.list.inner_mut().select_only(location.clone());
         if !location.kind().is_directory() {
             return Activation::Open(location.clone());
         }
@@ -207,9 +201,7 @@ impl LocationTree {
                 store,
                 ui,
             );
-            self.list
-                .inner_mut()
-                .splice_slice_animated(range, slice);
+            self.list.inner_mut().splice_slice_animated(range, slice);
             return Activation::Collapsed(location.clone());
         }
 
@@ -328,9 +320,7 @@ impl LocationTree {
             .filter(|(key, _)| !survivors.contains(key))
             .map(|(key, _)| key.clone())
             .collect();
-        self.list
-            .inner_mut()
-            .splice_slice_animated(range, slice);
+        self.list.inner_mut().splice_slice_animated(range, slice);
         removed
     }
 }
@@ -676,10 +666,7 @@ impl SessionTreeView {
             return;
         };
         let root = self.tree.list.inner().depth_at(index) == 0;
-        self.tree
-            .list
-            .inner_mut()
-            .select_only(target.clone());
+        self.tree.list.inner_mut().select_only(target.clone());
         self.pending_reveal = None;
         // The row takes the focus with the menu: a standing menu
         // owns the keys (see `focus_data`).
@@ -767,10 +754,7 @@ impl SessionTreeView {
             ui,
         );
         let at = range.start + 1;
-        self.tree
-            .list
-            .inner_mut()
-            .splice_slice(at..at, slice);
+        self.tree.list.inner_mut().splice_slice(at..at, slice);
         let mut input =
             ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
@@ -856,10 +840,7 @@ impl SessionTreeView {
             return;
         };
         let empty: ListSlice<Row, ResourceLocation> = ListSlice::new();
-        self.tree
-            .list
-            .inner_mut()
-            .splice_slice(range, empty);
+        self.tree.list.inner_mut().splice_slice(range, empty);
     }
 
     /// Splices a departed root and its whole subtree out, with the
@@ -887,10 +868,7 @@ impl SessionTreeView {
             return;
         };
         let empty: ListSlice<Row, ResourceLocation> = ListSlice::new();
-        self.tree
-            .list
-            .inner_mut()
-            .splice_slice(range, empty);
+        self.tree.list.inner_mut().splice_slice(range, empty);
         let under: Vec<ResourceLocation> = self
             .tree
             .pending
@@ -1117,8 +1095,7 @@ impl View for SessionTreeView {
                     ListKeyCommand::Fold { expand, .. } => {
                         let expand = *expand;
                         self.pending_reveal = None;
-                        let Some(location) = self.tree.list.inner().cursor().cloned()
-                        else {
+                        let Some(location) = self.tree.list.inner().cursor().cloned() else {
                             return self.persist(store);
                         };
                         let directory = location.kind().is_directory();
@@ -1359,9 +1336,7 @@ impl View for SessionTreeView {
 
             if let Some(edit) = &self.edit {
                 if let Some(range) = self.tree.list.inner().row_range(edit.row_key()) {
-                    if let Some((top, height)) =
-                        self.tree.list.inner().row_span(range.start)
-                    {
+                    if let Some((top, height)) = self.tree.list.inner().row_span(range.start) {
                         let theme = editor::env::Themes::of(store);
                         let tree_theme = theme.ui().tree.clone();
                         let search = theme.ui().search.clone();

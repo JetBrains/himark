@@ -398,7 +398,6 @@ where
     }
 }
 
-
 /// The transcript PANE: the component bare, a native scroller's
 /// content — himark mounts it; the workbench never shows this
 /// flavor (its chat pane scrolls the transcript itself).
@@ -408,7 +407,10 @@ pub struct TranscriptPane {
 }
 
 impl TranscriptPane {
-    pub fn new(chats: imba::store::Id<crate::chats::Chats>, chat: ahp_wire::client::ChatUri) -> Self {
+    pub fn new(
+        chats: imba::store::Id<crate::chats::Chats>,
+        chat: ahp_wire::client::ChatUri,
+    ) -> Self {
         Self {
             seat: crate::chats::PaneSeat::new(chats, chat),
         }
@@ -446,20 +448,18 @@ impl View for TranscriptPane {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        imba::layout::laid(
-            move |_arena: &'a Arena, constraints: Constraints| {
-                match self.seat.view.and_then(|view| {
-                    crate::chats::Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
-                        .and_then(|panel| panel.display_transcript(arena, store, ui, view))
-                }) {
-                    Some(laid) => imba::ThunkBox::new(
-                        arena,
-                        imba::layout::Layout::layout(laid, arena, constraints),
-                    ),
-                    None => crate::chats::PaneSeat::boot_leaf(arena, constraints),
-                }
-            },
-        )
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            match self.seat.view.and_then(|view| {
+                crate::chats::Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
+                    .and_then(|panel| panel.display_transcript(arena, store, ui, view))
+            }) {
+                Some(laid) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(laid, arena, constraints),
+                ),
+                None => crate::chats::PaneSeat::boot_leaf(arena, constraints),
+            }
+        })
     }
 }
 
