@@ -145,6 +145,14 @@ where
             scroll: imba::scroll::ScrollView::new(view),
         }
     }
+
+    pub fn content(&self) -> &V {
+        self.scroll.content()
+    }
+
+    pub fn content_mut(&mut self) -> &mut V {
+        self.scroll.content_mut()
+    }
 }
 
 impl<V> Clone for Scrolled<V>
@@ -230,8 +238,10 @@ where
         self.scroll.content_mut().focus_lost();
     }
 
+    /// The wrapper is CHROME, not identity: whoever downcasts a
+    /// panel wants the view inside, not the scroller around it.
     fn as_any(&self) -> &dyn std::any::Any {
-        self
+        self.scroll.content().as_any()
     }
 
     fn clone_modal(&self) -> Box<dyn ModalView> {
@@ -272,8 +282,9 @@ where
         self.scroll.content().pane_row()
     }
 
+    /// Chrome, not identity (see the ModalView impl).
     fn as_any(&self) -> &dyn std::any::Any {
-        self
+        crate::panel::PanelView::as_any(self.scroll.content())
     }
 
     fn full_bleed(&self) -> bool {

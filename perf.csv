@@ -14233,3 +14233,7 @@ timestamp,commit,profile,bench,metric,value_ms
 1791673632,c86153a13,debug,chat-edits,frame_p95_ms,11.5703
 1791673632,c86153a13,debug,chat-edits,frame_max_ms,28.8431
 1791673632,c86153a13,debug,chat-edits,background_total_ms,2233.0882
+1791735025,0c964b8f0,debug,chat-edits,frame_p50_ms,10.3041
+1791735025,0c964b8f0,debug,chat-edits,frame_p95_ms,11.9178
+1791735025,0c964b8f0,debug,chat-edits,frame_max_ms,27.9469
+1791735025,0c964b8f0,debug,chat-edits,background_total_ms,2268.4265
