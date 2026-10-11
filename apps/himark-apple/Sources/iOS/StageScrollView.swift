@@ -46,6 +46,7 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
             scrollEmbedded: true)
         view.onContentMeasured = { [weak self] size in self?.contentMeasured(size) }
         view.onReveal = { [weak self] rect in self?.reveal(rect) }
+        view.seatRevealHandler()
         scroll.addSubview(view)
         host.register(view)
         content = view
@@ -66,6 +67,7 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
         }
         content = nil
         if bridge.raw != 0 {
+            host.engine.clearReveal(bridge: bridge)
             host.unmount(bridge: bridge)
             bridge = HimarkBridge(raw: 0)
         }

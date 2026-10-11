@@ -9,6 +9,32 @@ final class HimarkEngine {
 
     var raw: OpaquePointer { engine }
 
+    /// Reveal handlers by bridge — ANY road may drain the engine's
+    /// parked reveal (an animation tick is engine-wide), so the
+    /// drain routes to the owning view instead of guessing that
+    /// the drainer is the owner. Rect in device pixels.
+    private var revealHandlers: [UInt64: (CGRect) -> Void] = [:]
+
+    func onReveal(bridge: HimarkBridge, _ handler: @escaping (CGRect) -> Void) {
+        revealHandlers[bridge.raw] = handler
+    }
+
+    func clearReveal(bridge: HimarkBridge) {
+        revealHandlers.removeValue(forKey: bridge.raw)
+    }
+
+    func drainReveal() {
+        var owner: UInt64 = 0
+        var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
+        guard himark_take_reveal(engine, &owner, &x, &y, &w, &h) else { return }
+        guard let handler = revealHandlers[owner] else {
+            print("[reveal] parked by bridge \(owner) — no handler seated")
+            return
+        }
+        handler(CGRect(x: CGFloat(x), y: CGFloat(y),
+                       width: CGFloat(w), height: CGFloat(h)))
+    }
+
     init() {
         engine = himark_create()
     }

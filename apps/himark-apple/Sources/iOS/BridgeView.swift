@@ -101,6 +101,15 @@ class HimarkBridgeView: UIView {
         drainReveal()
     }
 
+    func seatRevealHandler() {
+        engine.onReveal(bridge: bridgeId) { [weak self] pixels in
+            guard let self, let onReveal = self.onReveal else { return }
+            let s = self.pixelScale
+            onReveal(CGRect(x: pixels.minX / s, y: pixels.minY / s,
+                            width: pixels.width / s, height: pixels.height / s))
+        }
+    }
+
     required init?(coder: NSCoder) { fatalError() }
     deinit { link?.invalidate() }
 
@@ -116,20 +125,10 @@ class HimarkBridgeView: UIView {
     }
 
     /// A mounted road parks its unconsumed Reveal in the engine —
-    /// the view owns no scroller. Drain it after every dispatch
-    /// and hand it (in points) to whoever embeds us.
-    private func drainReveal() {
-        var owner: UInt64 = 0
-        var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
-        guard himark_take_reveal(engine.raw, &owner, &x, &y, &w, &h) else { return }
-        guard owner == bridgeId.raw else {
-            print("[reveal] parked by bridge \(owner), drained at \(bridgeId.raw) — dropped")
-            return
-        }
-        let s = pixelScale
-        onReveal?(CGRect(x: CGFloat(x) / s, y: CGFloat(y) / s,
-                         width: CGFloat(w) / s, height: CGFloat(h) / s))
-    }
+    /// the view owns no scroller. Drain after every dispatch; the
+    /// engine routes to the OWNING view's handler, which lands in
+    /// `onReveal` below in points.
+    private func drainReveal() { engine.drainReveal() }
 
     @discardableResult
     func sendKey(_ code: UInt32, mods: UInt32 = 0) -> Bool {
@@ -146,6 +145,7 @@ class HimarkBridgeView: UIView {
 
     @objc private func tick() {
         let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
+        drainReveal()
 
         // The hand-rolled momentum: imba's scroller owns the physics
         // for now, so the flick decays here. This retires when the
@@ -318,6 +318,50 @@ class HimarkBridgeView: UIView {
             glide = gesture.velocity(in: self)
             glidePoint = gesture.location(in: self)
             lastTick = CACurrentMediaTime()
+        }
+    }
+
+    // ─── hardware-keyboard SPECIAL keys ───
+    //
+    // Text rides UIKeyInput (insertText/deleteBackward); arrows,
+    // home/end, paging, escape and forward-delete never reach that
+    // road — they arrive as presses and translate here. Character,
+    // return and backspace presses fall through to the input
+    // system, or they would land twice.
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var unhandled = Set<UIPress>()
+        for press in presses {
+            guard let key = press.key, let code = Self.specialKey(key.keyCode) else {
+                unhandled.insert(press)
+                continue
+            }
+            var mods: UInt32 = 0
+            if key.modifierFlags.contains(.shift) { mods |= UInt32(HIMARK_MOD_SHIFT) }
+            if key.modifierFlags.contains(.control) { mods |= UInt32(HIMARK_MOD_CONTROL) }
+            if key.modifierFlags.contains(.alternate) { mods |= UInt32(HIMARK_MOD_ALT) }
+            if key.modifierFlags.contains(.command) { mods |= UInt32(HIMARK_MOD_COMMAND) }
+            inputDelegate?.selectionWillChange(self)
+            sendKey(code, mods: mods)
+            inputDelegate?.selectionDidChange(self)
+        }
+        if !unhandled.isEmpty {
+            super.pressesBegan(unhandled, with: event)
+        }
+    }
+
+    private static func specialKey(_ code: UIKeyboardHIDUsage) -> UInt32? {
+        switch code {
+        case .keyboardLeftArrow: UInt32(HIMARK_KEY_LEFT)
+        case .keyboardRightArrow: UInt32(HIMARK_KEY_RIGHT)
+        case .keyboardUpArrow: UInt32(HIMARK_KEY_UP)
+        case .keyboardDownArrow: UInt32(HIMARK_KEY_DOWN)
+        case .keyboardHome: UInt32(HIMARK_KEY_HOME)
+        case .keyboardEnd: UInt32(HIMARK_KEY_END)
+        case .keyboardPageUp: UInt32(HIMARK_KEY_PAGE_UP)
+        case .keyboardPageDown: UInt32(HIMARK_KEY_PAGE_DOWN)
+        case .keyboardEscape: UInt32(HIMARK_KEY_ESCAPE)
+        case .keyboardDeleteForward: UInt32(HIMARK_KEY_DELETE)
+        default: nil
         }
     }
 

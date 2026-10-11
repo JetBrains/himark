@@ -641,13 +641,19 @@ impl Himark {
         event: &imba::event::Event<'_>,
     ) -> imba::event::EventResult<crate::perform::AppCommand> {
         let trace = std::env::var_os("HIMARK_TRACE_MOUNT").is_some();
+        // The HONEST viewport is the host scroller's band (stamped
+        // at every stage realize), not the whole content — the
+        // views read it: reveal_satisfied must see what's actually
+        // on screen or a caret-follow settles without ever asking.
+        let band = self.bridges.get(&id).and_then(|slot| slot.stage_viewport);
         let Some((frame, size)) = self.mounted_frame(id, None) else {
             if trace {
                 eprintln!("[mount] {id:?}: event against no frame");
             }
             return imba::event::EventResult::Ignored;
         };
-        let result = frame.handle(event, skia_safe::Rect::from_size(size));
+        let viewport = band.unwrap_or_else(|| skia_safe::Rect::from_size(size));
+        let result = frame.handle(event, viewport);
         if trace {
             eprintln!(
                 "[mount] {id:?} size {:?}x{:?} -> {}",
