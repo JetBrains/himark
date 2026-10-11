@@ -481,8 +481,7 @@ impl Himark {
             .saturating_sub(probe_perform)
             .saturating_sub(probe_commit);
 
-        let theme_changed =
-            theme_before.name() != ::editor::env::Themes::of(&self.store).name();
+        let theme_changed = theme_before.name() != ::editor::env::Themes::of(&self.store).name();
         self.batch_tail(&label, theme_changed);
 
         if crate::app::trace_stalls_enabled() && probe.elapsed().as_millis() >= 10 {
@@ -638,7 +637,13 @@ impl Himark {
     ) -> bool {
         // The workbench clears its window; a mounted view gets the
         // same floor, or it paints onto whatever the drawable held.
-        canvas.clear(::editor::env::Themes::of(&self.store).ui().window.background.0);
+        canvas.clear(
+            ::editor::env::Themes::of(&self.store)
+                .ui()
+                .window
+                .background
+                .0,
+        );
         let result = {
             let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
                 return false;
@@ -739,7 +744,12 @@ impl Himark {
         let Some(mut slot) = self.bridges.remove(&id) else {
             return false;
         };
-        crate::bridge::quiesce(id, &mut slot, &mut self.stage_layouts, &mut self.stage_frames);
+        crate::bridge::quiesce(
+            id,
+            &mut slot,
+            &mut self.stage_layouts,
+            &mut self.stage_frames,
+        );
         crate::mounts::forget_session(&mut self.store, id);
         true
     }
@@ -763,7 +773,9 @@ impl Himark {
         } else {
             imba::constraints::Constraints::tight(size)
         };
-        let stage = slot.bridge.layout(&self.store, &self.ui, constraints, arena);
+        let stage = slot
+            .bridge
+            .layout(&self.store, &self.ui, constraints, arena);
         self.stage_layouts.mint((id, stage))
     }
 

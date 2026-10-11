@@ -535,15 +535,13 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            workbench::window::WindowId::from_raw(window),
-            Arc::new(OpenScripted {
-                host,
-                session: SessionUri::new(SESSION),
-            }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        workbench::window::WindowId::from_raw(window),
+        Arc::new(OpenScripted {
+            host,
+            session: SessionUri::new(SESSION),
+        }),
+    )]));
     settle_until(&mut engine, window, "the scripted chat came up", |engine| {
         chat_record(engine).is_some_and(|chat| chat.ready())
             && transcript(engine).len() == expected_turns
@@ -602,15 +600,13 @@ fn a_scripted_stream_lands_whole() {
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            workbench::window::WindowId::from_raw(second),
-            Arc::new(OpenScripted {
-                host: script_host(&engine),
-                session: SessionUri::new(SESSION),
-            }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        workbench::window::WindowId::from_raw(second),
+        Arc::new(OpenScripted {
+            host: script_host(&engine),
+            session: SessionUri::new(SESSION),
+        }),
+    )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(second, surface.canvas(), 1100.0, 800.0, 1.0);
     settle(&mut engine);

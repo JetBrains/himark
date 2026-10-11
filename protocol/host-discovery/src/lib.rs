@@ -35,11 +35,7 @@ pub fn default_dir() -> Option<PathBuf> {
     // local daemon to find anyway.
     #[cfg(target_os = "ios")]
     if let Some(host_home) = std::env::var_os("SIMULATOR_HOST_HOME") {
-        return Some(
-            PathBuf::from(host_home)
-                .join(".himark")
-                .join("agent-host"),
-        );
+        return Some(PathBuf::from(host_home).join(".himark").join("agent-host"));
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".himark").join("agent-host"))

@@ -449,23 +449,19 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
     );
     engine.set_local_backend(host);
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenScripted { host }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenScripted { host }),
+    )]));
     settle_until(&mut engine, window, "the session came up", |engine| {
         himark::workspace::window_session(engine.app.store(), crate::wid(window))
             .is_some_and(|key| key.session.as_str() == SESSION)
     });
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenMain),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenMain),
+    )]));
     settle_until(&mut engine, window, "the document opened", |engine| {
         squiggles(engine, window).is_some()
     });
@@ -621,15 +617,13 @@ fn live_host_squiggles_the_opened_file() {
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
     eprintln!("[live] local host {host:?}");
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenLiveSession {
-                host,
-                session: session.clone(),
-            }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenLiveSession {
+            host,
+            session: session.clone(),
+        }),
+    )]));
     let started = std::time::Instant::now();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     while !himark::workspace::window_session(engine.app.store(), crate::wid(window))
@@ -645,12 +639,10 @@ fn live_host_squiggles_the_opened_file() {
     }
     eprintln!("[live] session entered after {:?}", started.elapsed());
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenLivePath { path: path.clone() }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenLivePath { path: path.clone() }),
+    )]));
     let started = std::time::Instant::now();
     let mut last = None;
     while started.elapsed() < std::time::Duration::from_secs(20) {
@@ -742,22 +734,18 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     );
     engine.set_local_backend(host);
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenScripted { host }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenScripted { host }),
+    )]));
     settle_until(&mut engine, window, "the session came up", |engine| {
         himark::workspace::window_session(engine.app.store(), crate::wid(window))
             .is_some_and(|key| key.session.as_str() == SESSION)
     });
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenMain),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenMain),
+    )]));
 
     let layer = |engine: &HimarkEngine,
                  markup: editor::markup::MarkupId|
@@ -876,12 +864,10 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             documents::OpenDocuments::put_document(store, documents, id, document);
         }
     }
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(ClearHints),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(ClearHints),
+    )]));
     let without_hint = frame(&mut engine, &mut surface);
     assert_ne!(with_hint, without_hint, "the hint chip reaches the pixels");
 }
@@ -898,15 +884,13 @@ fn live_canvas_face_serves_completion_and_hover() {
     let mut engine = HimarkEngine::new();
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
-            Arc::new(OpenLiveSession {
-                host,
-                session: session.clone(),
-            }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        crate::wid(window),
+        Arc::new(OpenLiveSession {
+            host,
+            session: session.clone(),
+        }),
+    )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let started = std::time::Instant::now();
     while !himark::workspace::window_session(engine.app.store(), crate::wid(window))
@@ -944,16 +928,14 @@ fn live_canvas_face_serves_completion_and_hover() {
                 .chain(["frontend", "imba", "src", "list.rs"].map(str::to_owned))
                 .collect::<Vec<String>>(),
         );
-        assert!(engine
-            .app
-            .perform_batch(vec![himark::app::windowed(
-                crate::wid(window),
-                Arc::new(himark::diff_canvas::OpenDiffCanvas {
-                    changes,
-                    source: changesview::hichanges::CanvasSource::WorkingCopy { folder },
-                    reveal: Some(reveal),
-                }),
-            )]));
+        assert!(engine.app.perform_batch(vec![himark::app::windowed(
+            crate::wid(window),
+            Arc::new(himark::diff_canvas::OpenDiffCanvas {
+                changes,
+                source: changesview::hichanges::CanvasSource::WorkingCopy { folder },
+                reveal: Some(reveal),
+            }),
+        )]));
     }
     let canvas = |engine: &HimarkEngine| -> Option<canvas::canvas::DiffCanvasView> {
         let mut found = None;

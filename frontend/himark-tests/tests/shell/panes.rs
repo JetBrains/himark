@@ -15,19 +15,18 @@ fn two_windows_edit_independently() {
     app.draw_window_sized(first, surface.canvas(), Size::new(800.0, 600.0));
     app.draw_window_sized(second, surface.canvas(), Size::new(500.0, 400.0));
 
-    let focused_text =
-        |app: &Himark, window: ::workbench::window::WindowId| -> Option<String> {
-            let store = &app.window_store(window);
-            let session = himark::workspace::window_session(store, window)?;
-            let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
-            let document = documents::OpenDocuments::document_ref(
-                store,
-                documents,
-                ::workbench::window::Windows::window_ref(store, window)?.focused_document_id()?,
-            )?;
-            let end = document.text().byte_count().min(u32::MAX as usize) as u32;
-            Some(document.text().view().substring(0..end))
-        };
+    let focused_text = |app: &Himark, window: ::workbench::window::WindowId| -> Option<String> {
+        let store = &app.window_store(window);
+        let session = himark::workspace::window_session(store, window)?;
+        let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
+        let document = documents::OpenDocuments::document_ref(
+            store,
+            documents,
+            ::workbench::window::Windows::window_ref(store, window)?.focused_document_id()?,
+        )?;
+        let end = document.text().byte_count().min(u32::MAX as usize) as u32;
+        Some(document.text().view().substring(0..end))
+    };
 
     assert!(app.dispatch_timed(
         first,

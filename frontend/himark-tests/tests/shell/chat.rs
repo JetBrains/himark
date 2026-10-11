@@ -332,8 +332,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
         });
         found
     };
-    let vacant =
-        |app: &himark::app::Himark| -> bool { held(app).workbench().root.is_vacant() };
+    let vacant = |app: &himark::app::Himark| -> bool { held(app).workbench().root.is_vacant() };
 
     assert!(app.perform_registered(window, "chat.composer"));
     settle(&mut app, &mut wide);

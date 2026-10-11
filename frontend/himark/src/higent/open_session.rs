@@ -384,7 +384,10 @@ impl imba::command::DynamicOnceCommand for EnterHeadless {
         fx: &mut imba::command::Fx<'_>,
     ) {
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
-            eprintln!("[higent] enter-session: unregistered server {:?}", self.server);
+            eprintln!(
+                "[higent] enter-session: unregistered server {:?}",
+                self.server
+            );
             return;
         };
         let server = self.server;

@@ -55,22 +55,19 @@ impl crate::commands::WindowedCommand for AddSessionFolders {
         let server = self.server;
         let session = self.session.clone();
         fx.push(
-            AnyEffect::new(PickFoldersEffect { window }).map(
-                move |locations| {
-                    crate::shell::windowed(
-                        window,
-                        Arc::new(SessionFoldersPicked {
-                            server,
-                            session: session.clone(),
-                            locations,
-                        }),
-                    )
-                },
-            ),
+            AnyEffect::new(PickFoldersEffect { window }).map(move |locations| {
+                crate::shell::windowed(
+                    window,
+                    Arc::new(SessionFoldersPicked {
+                        server,
+                        session: session.clone(),
+                        locations,
+                    }),
+                )
+            }),
         );
     }
 }
-
 
 /// Boot: the chat toolbar's add-folder road. The toolbar (ahp-chat)
 /// cannot name windows or the picker effect; it hands the ask back
@@ -97,12 +94,7 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
         "Add Session Folder…".to_owned()
     }
 
-    fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        fx: &mut imba::command::Fx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(windows) = store.get::<::workbench::window::Windows>() else {
             return;
         };
@@ -151,12 +143,7 @@ impl imba::command::DynamicCommand for ChatFoldersPicked {
         "Session Folder Granted".to_owned()
     }
 
-    fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        fx: &mut imba::command::Fx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
             eprintln!(
                 "[higent] chat folder grant DROPPED: no client for {:?} ({})",
@@ -261,9 +248,7 @@ impl crate::commands::WindowedCommand for SessionFoldersPicked {
                         SessionWorkingDirectorySetAction { directory },
                     ),
                 })
-                .map(move |result| {
-                    crate::shell::windowed(window, Arc::new(GrantAck { result }))
-                }),
+                .map(move |result| crate::shell::windowed(window, Arc::new(GrantAck { result }))),
             );
         }
     }

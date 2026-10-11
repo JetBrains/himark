@@ -33,7 +33,9 @@ use himark::bridge::ViewBridgeId;
 use imba::event::{Event, EventResult, MouseButton};
 use skia_safe::{Canvas, Point, Rect, Size};
 
-use crate::{copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed};
+use crate::{
+    copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed,
+};
 
 /// The handle NEWTYPES: single-field structs, so C and Swift see
 /// DISTINCT types — an event where a layout belongs is a compile
@@ -125,16 +127,51 @@ fn refuse(what: &str, handle: u64) {
 /// at dispatch, same as the legacy entries.
 #[derive(Clone)]
 enum OwnedEvent {
-    MouseDown { x: f32, y: f32, mods: u32, count: u32 },
-    SecondaryDown { x: f32, y: f32, mods: u32 },
-    MouseDrag { x: f32, y: f32, mods: u32 },
-    MouseUp { x: f32, y: f32 },
-    MouseMove { x: f32, y: f32, mods: u32 },
+    MouseDown {
+        x: f32,
+        y: f32,
+        mods: u32,
+        count: u32,
+    },
+    SecondaryDown {
+        x: f32,
+        y: f32,
+        mods: u32,
+    },
+    MouseDrag {
+        x: f32,
+        y: f32,
+        mods: u32,
+    },
+    MouseUp {
+        x: f32,
+        y: f32,
+    },
+    MouseMove {
+        x: f32,
+        y: f32,
+        mods: u32,
+    },
     MouseLeft,
-    ModifiersChanged { x: f32, y: f32, mods: u32 },
-    Scroll { x: f32, y: f32, delta_x: f32, delta_y: f32, phase: u32 },
-    KeyDown { key: u32, mods: u32 },
-    TextInput { text: String },
+    ModifiersChanged {
+        x: f32,
+        y: f32,
+        mods: u32,
+    },
+    Scroll {
+        x: f32,
+        y: f32,
+        delta_x: f32,
+        delta_y: f32,
+        phase: u32,
+    },
+    KeyDown {
+        key: u32,
+        mods: u32,
+    },
+    TextInput {
+        text: String,
+    },
 }
 
 /// The event table is process-wide: events are engine-independent
@@ -334,9 +371,9 @@ pub unsafe extern "C" fn himark_bridge_draw(
         return false;
     }
     let canvas = &*(canvas as *const Canvas);
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.draw(bridge.raw, canvas, width, height, scale))
+    engine.as_mut().map_or(false, |engine| {
+        engine.draw(bridge.raw, canvas, width, height, scale)
+    })
 }
 
 // ─── the stage road ───
@@ -588,7 +625,9 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: 
 /// drain.
 #[no_mangle]
 pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64 {
-    engine.as_ref().map_or(0, |engine| engine.app.sessions_epoch())
+    engine
+        .as_ref()
+        .map_or(0, |engine| engine.app.sessions_epoch())
 }
 
 /// Snapshot the catalog — an owned, immutable copy behind a
@@ -672,7 +711,11 @@ pub unsafe extern "C" fn himark_catalog_host_name(
     cap: usize,
 ) -> usize {
     with_catalog(engine, catalog, 0, |snapshot| {
-        copy_optional_utf8(snapshot.hosts.get(index).map(|host| host.name.clone()), out, cap)
+        copy_optional_utf8(
+            snapshot.hosts.get(index).map(|host| host.name.clone()),
+            out,
+            cap,
+        )
     })
 }
 
@@ -760,7 +803,9 @@ pub unsafe extern "C" fn himark_catalog_session_modified(
     out: *mut c_char,
     cap: usize,
 ) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, |row| row.modified_at.clone())
+    catalog_session_string(engine, catalog, index, out, cap, |row| {
+        row.modified_at.clone()
+    })
 }
 
 /// Enter a session headlessly: subscribe, adopt, wire, poll — the
@@ -951,8 +996,7 @@ impl himark::himark::Shell for CallbackShell {
         fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         if origin.is_mounted() {
-            let classified = if let Some(ready) =
-                place.place::<himark::places::OpenDocumentPlace>()
+            let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
             {
                 // The document's name: it is registered by the time
                 // this place is navigated (the open landing's law).

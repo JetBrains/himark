@@ -29,9 +29,7 @@ use crate::shell::navigate_origin;
 /// twin of "the window's session": the navigate resolver reads it
 /// to bind a mounted origin's opens to the right collections.
 #[derive(Clone, Default)]
-pub(crate) struct MountSessions(
-    pub(crate) rpds::HashTrieMapSync<u64, ahp_wire::SessionId>,
-);
+pub(crate) struct MountSessions(pub(crate) rpds::HashTrieMapSync<u64, ahp_wire::SessionId>);
 
 pub(crate) fn remember_session(store: &mut Store, id: ViewBridgeId, session: ahp_wire::SessionId) {
     let mut map = store.get::<MountSessions>().cloned().unwrap_or_default();
@@ -193,9 +191,13 @@ fn route_panel_request(
 ) {
     use hikit::panel::PanelRequest;
     fx.scope(AppCommand::Verb, |fx| match request {
-        PanelRequest::OpenLocations(locations) => {
-            navigate_origin(store, ui, origin, crate::places::LocationsPlace(locations), fx)
-        }
+        PanelRequest::OpenLocations(locations) => navigate_origin(
+            store,
+            ui,
+            origin,
+            crate::places::LocationsPlace(locations),
+            fx,
+        ),
         PanelRequest::OpenAt(location, target) => navigate_origin(
             store,
             ui,
@@ -210,9 +212,7 @@ fn route_panel_request(
         PanelRequest::OpenDiff(old, new) => {
             navigate_origin(store, ui, origin, crate::places::DiffPlace { old, new }, fx)
         }
-        PanelRequest::Perform(command) => {
-            imba::command::Verb::Dynamic(command).run(store, ui, fx)
-        }
+        PanelRequest::Perform(command) => imba::command::Verb::Dynamic(command).run(store, ui, fx),
         PanelRequest::Shell(_) => {
             eprintln!("[mount] a window-taking panel ask surfaced windowless — dropped")
         }
@@ -254,9 +254,13 @@ fn route_modal_request(
             },
             fx,
         ),
-        ModalRequest::OpenLocations(locations) => {
-            navigate_origin(store, ui, origin, crate::places::LocationsPlace(locations), fx)
-        }
+        ModalRequest::OpenLocations(locations) => navigate_origin(
+            store,
+            ui,
+            origin,
+            crate::places::LocationsPlace(locations),
+            fx,
+        ),
         ModalRequest::Perform(verb) => match verb {
             imba::command::Verb::Shell(_) => {
                 eprintln!("[mount] a window-taking ask surfaced windowless — dropped")
@@ -279,8 +283,7 @@ pub fn mount_place(
         return app.mount(move |store, ui, id, _fx| {
             remember_session(store, id, key.clone());
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let chat = ahp_session::session::agents::Agents::channel(store, &key)?
-                .default_chat?;
+            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
             let panel = ahp_chat::chats::Chats::open_with(
                 store,
                 ui,
@@ -493,12 +496,7 @@ struct OpenDiffFromChanges {
 }
 
 impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
-    fn perform(
-        self: Box<Self>,
-        store: &mut Store,
-        _ui: &UiCtx,
-        fx: &mut imba::command::Fx<'_>,
-    ) {
+    fn perform(self: Box<Self>, store: &mut Store, _ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(reveal) = self.reveal else {
             return;
         };
@@ -510,8 +508,8 @@ impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
             eprintln!("[mount] a changes row vanished before its diff opened — dropped");
             return;
         };
-        let documents = ahp_session::session::state::Hosts::ensure_state(store, &self.session)
-            .documents();
+        let documents =
+            ahp_session::session::state::Hosts::ensure_state(store, &self.session).documents();
         let old = documents::diff_views::DiffSideInput::resolve(store, documents, file.old);
         let new = documents::diff_views::DiffSideInput::resolve(store, documents, file.new);
         fx.push(

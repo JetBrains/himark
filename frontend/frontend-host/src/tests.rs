@@ -1038,12 +1038,10 @@ fn the_docked_tree_follows_the_focused_document() {
     settle_into_session(&mut engine);
 
     let entity_id = engine.app.sole_window();
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            entity_id,
-            std::sync::Arc::new(OpenAt(fs.doc(&["project", "README.md"]))),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        entity_id,
+        std::sync::Arc::new(OpenAt(fs.doc(&["project", "README.md"]))),
+    )]));
     settle_until(&mut engine, "README opened", |engine| {
         engine
             .substring(
@@ -1083,12 +1081,10 @@ fn the_docked_tree_follows_the_focused_document() {
         tree_selection(engine).as_deref() == Some("README.md")
     });
 
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            entity_id,
-            std::sync::Arc::new(OpenAt(fs.doc(&["project", "src", "lib.rs"]))),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        entity_id,
+        std::sync::Arc::new(OpenAt(fs.doc(&["project", "src", "lib.rs"]))),
+    )]));
     settle_until(&mut engine, "the tree followed the open", |engine| {
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
         tree_selection(engine).as_deref() == Some("lib.rs")
@@ -3156,28 +3152,25 @@ macro_rules! fs_probe {
                 std::sync::Arc::new(std::sync::Mutex::new(None));
             let filled = std::sync::Arc::clone(&slot);
             let id = engine.app.sole_window();
-            engine
-                .app
-                .perform_batch(vec![himark::app::windowed(
-                    id,
-                    std::sync::Arc::new(LaunchProbe {
-                        launch: Box::new(move |window, fx| {
-                            let filled = std::sync::Arc::clone(&filled);
-                            #[allow(clippy::redundant_closure_call)]
-                            let effect: $effect = ($build)(&location);
-                            let _ =
-                                fx.push(imba::effect::AnyEffect::new(effect).map(move |result| {
-                                    himark::app::windowed(
-                                        window,
-                                        std::sync::Arc::new(FillProbe {
-                                            slot: std::sync::Arc::clone(&filled),
-                                            value: std::sync::Mutex::new(Some(result)),
-                                        }),
-                                    )
-                                }));
-                        }),
+            engine.app.perform_batch(vec![himark::app::windowed(
+                id,
+                std::sync::Arc::new(LaunchProbe {
+                    launch: Box::new(move |window, fx| {
+                        let filled = std::sync::Arc::clone(&filled);
+                        #[allow(clippy::redundant_closure_call)]
+                        let effect: $effect = ($build)(&location);
+                        let _ = fx.push(imba::effect::AnyEffect::new(effect).map(move |result| {
+                            himark::app::windowed(
+                                window,
+                                std::sync::Arc::new(FillProbe {
+                                    slot: std::sync::Arc::clone(&filled),
+                                    value: std::sync::Mutex::new(Some(result)),
+                                }),
+                            )
+                        }));
                     }),
-                )]);
+                }),
+            )]);
 
             for _ in 0..40 {
                 let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -3614,12 +3607,10 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
     let entity = engine.app.sole_window();
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            entity,
-            std::sync::Arc::new(himark::higent::drawer::AddHost { url: ws.clone() }),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        entity,
+        std::sync::Arc::new(himark::higent::drawer::AddHost { url: ws.clone() }),
+    )]));
 
     let mut rows = Vec::new();
     for _ in 0..400 {
@@ -4892,12 +4883,10 @@ fn the_chat_runs_through_the_himark_host() {
             );
         }
     }
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            engine.app.sole_window(),
-            std::sync::Arc::new(SendLikeComments("attached review comment")),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        engine.app.sole_window(),
+        std::sync::Arc::new(SendLikeComments("attached review comment")),
+    )]));
     let shows = |engine: &HimarkEngine, needle: &str| -> bool {
         chat_transcript(engine).is_some_and(|rows| {
             rows.iter()
@@ -4917,12 +4906,10 @@ fn the_chat_runs_through_the_himark_host() {
         chat_transcript(&engine).is_some(),
         "the scratch opens beside the chat — the slot stays"
     );
-    assert!(engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            engine.app.sole_window(),
-            std::sync::Arc::new(SendLikeComments("sent while hidden")),
-        )]));
+    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+        engine.app.sole_window(),
+        std::sync::Arc::new(SendLikeComments("sent while hidden")),
+    )]));
     pump(&mut engine, &mut surface);
     let folded = {
         let key = ahp_session::session::agents::Agents::live_session(
@@ -6221,9 +6208,8 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         "the chat panel fronted, ready and seeded",
         |engine| {
             let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
-            shown_chat(engine).is_some_and(|chat| {
-                chat.ready() && chat.toolbar_probe().model.picked.is_some()
-            })
+            shown_chat(engine)
+                .is_some_and(|chat| chat.ready() && chat.toolbar_probe().model.picked.is_some())
         },
     );
 
@@ -6639,12 +6625,10 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             himark::app::switch_session(store, window, target, fx);
         }
     }
-    assert!(engine
-        .app
-        .perform_command(himark::app::windowed(
-            engine.app.sole_window(),
-            std::sync::Arc::new(SwitchScratch),
-        )));
+    assert!(engine.app.perform_command(himark::app::windowed(
+        engine.app.sole_window(),
+        std::sync::Arc::new(SwitchScratch),
+    )));
     pump(&mut engine, &mut surface);
     assert_ne!(current(&engine), created, "the scratch took the window");
 
@@ -7490,18 +7474,26 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
 
     let two_call_cut = |engine: &mut HimarkEngine| -> Option<String> {
         let engine: *mut HimarkEngine = engine;
-        let needed = unsafe { crate::himark_cut(engine, crate::bridges::HimarkBridge { raw: window }, std::ptr::null_mut(), 0) };
+        let needed = unsafe {
+            crate::himark_cut(
+                engine,
+                crate::bridges::HimarkBridge { raw: window },
+                std::ptr::null_mut(),
+                0,
+            )
+        };
         if needed == 0 {
             return None;
         }
         let mut buffer = vec![0i8; needed];
-        let written =
-            unsafe { crate::himark_cut(
+        let written = unsafe {
+            crate::himark_cut(
                 engine,
                 crate::bridges::HimarkBridge { raw: window },
                 buffer.as_mut_ptr(),
                 buffer.len(),
-            ) };
+            )
+        };
         assert_eq!(written, needed, "the fill answers what the probe sized");
         let bytes: Vec<u8> = buffer.iter().map(|byte| *byte as u8).collect();
         Some(String::from_utf8(bytes).expect("utf8"))
@@ -7829,15 +7821,13 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     fs.write(&["live.md"], "alpha\nbeta\n");
 
     // The diff FIRST — its sides fetch and register.
-    let _ = engine
-        .app
-        .perform_batch(vec![himark::app::windowed(
-            workbench::window::WindowId::from_raw(window),
-            std::sync::Arc::new(OpenWorkingDiff {
-                old: fs.doc(&["old.md"]),
-                new: fs.doc(&["live.md"]),
-            }),
-        )]);
+    let _ = engine.app.perform_batch(vec![himark::app::windowed(
+        workbench::window::WindowId::from_raw(window),
+        std::sync::Arc::new(OpenWorkingDiff {
+            old: fs.doc(&["old.md"]),
+            new: fs.doc(&["live.md"]),
+        }),
+    )]);
     settle_until(&mut engine, "the diff registered its sides", |engine| {
         documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
             .into_iter()
@@ -7952,12 +7942,10 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine
-        .app
-        .perform_command(himark::app::windowed(
-            wid(window),
-            Arc::new(Open(file.clone()))
-        )));
+    assert!(engine.app.perform_command(himark::app::windowed(
+        wid(window),
+        Arc::new(Open(file.clone()))
+    )));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
             engine.app.store(),
@@ -8287,12 +8275,10 @@ fn published_diagnostics_squiggle_the_open_document() {
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine
-        .app
-        .perform_command(himark::app::windowed(
-            wid(window),
-            Arc::new(Open(file.clone()))
-        )));
+    assert!(engine.app.perform_command(himark::app::windowed(
+        wid(window),
+        Arc::new(Open(file.clone()))
+    )));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
             engine.app.store(),
@@ -8436,12 +8422,10 @@ fn published_diagnostics_squiggle_the_open_document() {
             documents::OpenDocuments::put_document(store, documents_id, document_id, document);
         }
     }
-    assert!(engine
-        .app
-        .perform_command(himark::app::windowed(
-            wid(window),
-            Arc::new(Clear(engine.app.sole_documents(), file.clone()))
-        )));
+    assert!(engine.app.perform_command(himark::app::windowed(
+        wid(window),
+        Arc::new(Clear(engine.app.sole_documents(), file.clone()))
+    )));
     settle(&mut engine);
     let cleared = snapshot(&mut engine, &mut surface);
     assert_ne!(

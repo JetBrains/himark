@@ -288,8 +288,7 @@ fn dump_workbench_screenshots() {
     shoot(&mut app, "deep.png");
 
     let mut probe = surfaces::raster_n32_premul((1920, 1080)).expect("probe surface");
-    let mut settle = move |app: &mut Himark,
-                           arriving: &std::sync::mpsc::Receiver<AppCommand>| {
+    let mut settle = move |app: &mut Himark, arriving: &std::sync::mpsc::Receiver<AppCommand>| {
         loop {
             app.draw_window(app.sole_window(), probe.canvas());
             match arriving.recv_timeout(Duration::from_millis(1200)) {

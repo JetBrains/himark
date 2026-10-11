@@ -30,7 +30,9 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
             let command: Arc<dyn crate::commands::WindowedCommand> =
                 match crate::higent::flows::AgentFlows::new_session_flow(store) {
                     Some(flow) => flow(server),
-                    None => Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) }),
+                    None => {
+                        Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) })
+                    }
                 };
             crate::app::shell_verb(crate::shell::windowed(window, command))
         }),

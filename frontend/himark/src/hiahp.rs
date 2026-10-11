@@ -199,9 +199,7 @@ impl WindowedCommand for OpenDiffPair {
             documents::diff_views::DiffSide::Open(id) => {
                 documents::OpenDocuments::name(store, self.documents, *id).unwrap_or_default()
             }
-            documents::diff_views::DiffSide::Built { location, .. } => {
-                location.name().to_owned()
-            }
+            documents::diff_views::DiffSide::Built { location, .. } => location.name().to_owned(),
         };
         fx.scope(AppCommand::Verb, |fx| {
             documents::lanes::sync_document_watches(store, self.documents, fx);

@@ -3150,10 +3150,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
                 // A quiet round still runs a batch: the batch-tail
                 // lanes (diff, dressing, canvas) are what converge the
                 // state now — paint no longer carries probes.
-                app.perform_batch(vec![himark::app::viewport_resized(
-                    app.sole_window(),
-                    size,
-                )]);
+                app.perform_batch(vec![himark::app::viewport_resized(app.sole_window(), size)]);
             }
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }

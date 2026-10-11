@@ -31,15 +31,15 @@ use documents::OpenDocuments;
 use editor::document::Document;
 use editor::markup::Markup;
 
+#[cfg(any(test, feature = "test-support"))]
+pub use crate::himark::StoreMut;
 pub use crate::himark::{AppFonts, Himark};
+pub(crate) use crate::perform::{command_label, AppEffects};
 pub use crate::perform::{shell_verb, verb_command, AppCommand, AppFx};
 pub use crate::shell::{
     close_modal, content, open_async, open_modal, open_panel, opened, register, shell,
     viewport_resized, windowed, OneShot, ShellCommand,
 };
-pub(crate) use crate::perform::{command_label, AppEffects};
-#[cfg(any(test, feature = "test-support"))]
-pub use crate::himark::StoreMut;
 
 /// TEST SUPPORT: no production caller outside this crate.
 #[doc(hidden)]
@@ -207,9 +207,7 @@ impl Himark {
             );
             ::workbench::registry::Registry::update(store, |registry| {
                 registry.run_command = Some(std::sync::Arc::new(|store, id| {
-                    if let Some(command) =
-                        crate::commands::Commands::of(store).find(id).cloned()
-                    {
+                    if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
                         crate::commands::AppRequests::push(store, command);
                     }
                 }));
@@ -265,10 +263,9 @@ impl Himark {
     ) -> &mut crate::bridge::Frame {
         let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
         let revision = self.revision;
-        let slot = self
-            .bridges
-            .entry(id)
-            .or_insert_with(|| crate::himark::Mounted::new(std::rc::Rc::new(WorkbenchView { window })));
+        let slot = self.bridges.entry(id).or_insert_with(|| {
+            crate::himark::Mounted::new(std::rc::Rc::new(WorkbenchView { window }))
+        });
         let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
         if !fresh {
             if let Some(frame) = slot.frame.take() {
@@ -524,45 +521,37 @@ impl Himark {
                 }
                 let fallback = match (key_down, &result) {
                     (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
-                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(
-                            |binding| {
-                                // The chain source mirrors the dispatch
-                                // above: a mounted view's own focus, a
-                                // window's walk — bound EDITING keys
-                                // (backspace, enter, arrows) resolve
-                                // through presentables either way.
-                                self.bridges
-                                    .get(&id)
-                                    .and_then(|slot| {
-                                        slot.bridge.view().focus(&store, ui.as_ref())
-                                    })
-                                    .or_else(|| {
-                                        crate::focus::window_focus_data(
-                                            &store,
-                                            ui.as_ref(),
-                                            window,
-                                        )
-                                    })
-                                    .map(|data| data.commands)
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .find(|presentable| presentable.id == binding.as_ref())
-                                    .map(|presentable| presentable.command)
-                                    .or_else(|| {
-                                        // The global registry speaks
-                                        // WINDOWED commands — a window
-                                        // road only.
-                                        if self.windows().entity(window).is_none() {
-                                            return None;
-                                        }
-                                        crate::commands::Commands::of(&store)
-                                            .find(binding.as_ref())
-                                            .map(|command| {
-                                                crate::shell::windowed(window, command.clone())
-                                            })
-                                    })
-                            },
-                        )
+                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|binding| {
+                            // The chain source mirrors the dispatch
+                            // above: a mounted view's own focus, a
+                            // window's walk — bound EDITING keys
+                            // (backspace, enter, arrows) resolve
+                            // through presentables either way.
+                            self.bridges
+                                .get(&id)
+                                .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                                .or_else(|| {
+                                    crate::focus::window_focus_data(&store, ui.as_ref(), window)
+                                })
+                                .map(|data| data.commands)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .find(|presentable| presentable.id == binding.as_ref())
+                                .map(|presentable| presentable.command)
+                                .or_else(|| {
+                                    // The global registry speaks
+                                    // WINDOWED commands — a window
+                                    // road only.
+                                    if self.windows().entity(window).is_none() {
+                                        return None;
+                                    }
+                                    crate::commands::Commands::of(&store)
+                                        .find(binding.as_ref())
+                                        .map(|command| {
+                                            crate::shell::windowed(window, command.clone())
+                                        })
+                                })
+                        })
                     }
                     _ => None,
                 };
@@ -576,10 +565,7 @@ impl Himark {
                     // A mounted view routes against its STANDING
                     // frame at its own size; the host's passed size
                     // is the window road's business.
-                    self.handle_mounted(
-                        crate::bridge::ViewBridgeId::from_raw(window.raw()),
-                        &event,
-                    )
+                    self.handle_mounted(crate::bridge::ViewBridgeId::from_raw(window.raw()), &event)
                 };
                 (result, None)
             }
@@ -903,16 +889,10 @@ impl crate::himark::Shell for MountFrontend {
             };
             let documents =
                 ahp_session::session::state::Hosts::ensure_state(store, &session).documents();
-            let old = documents::diff_views::DiffSideInput::resolve(
-                store,
-                documents,
-                place.old.clone(),
-            );
-            let new = documents::diff_views::DiffSideInput::resolve(
-                store,
-                documents,
-                place.new.clone(),
-            );
+            let old =
+                documents::diff_views::DiffSideInput::resolve(store, documents, place.old.clone());
+            let new =
+                documents::diff_views::DiffSideInput::resolve(store, documents, place.new.clone());
             fx.push(
                 imba::effect::AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
                     window: rides,
@@ -1005,22 +985,26 @@ impl crate::himark::Shell for WorkbenchFrontend {
         if let Some(place) = place.place::<crate::places::DiffPlace>() {
             // A windowed command performs the pane work; it rides
             // the follow-up lane so it runs with its own scope.
-            fx.follow_up(imba::command::Verb::shell(Box::new(crate::shell::windowed(
-                window,
-                std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
-                    old: place.old.clone(),
-                    new: place.new.clone(),
-                }),
-            ))));
+            fx.follow_up(imba::command::Verb::shell(Box::new(
+                crate::shell::windowed(
+                    window,
+                    std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
+                        old: place.old.clone(),
+                        new: place.new.clone(),
+                    }),
+                ),
+            )));
             return true;
         }
         if let Some(place) = place.place::<crate::places::LocationsPlace>() {
-            fx.follow_up(imba::command::Verb::shell(Box::new(crate::shell::windowed(
-                window,
-                std::sync::Arc::new(OpenLocationsAsk {
-                    locations: place.0.clone(),
-                }),
-            ))));
+            fx.follow_up(imba::command::Verb::shell(Box::new(
+                crate::shell::windowed(
+                    window,
+                    std::sync::Arc::new(OpenLocationsAsk {
+                        locations: place.0.clone(),
+                    }),
+                ),
+            )));
             return true;
         }
         false
