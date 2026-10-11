@@ -444,8 +444,29 @@ pub fn mount_place(
     if let Some(place) = place.place::<crate::places::DiffViewPlace>() {
         let documents = place.documents;
         let view = place.view;
-        return app.mount(move |_store, _ui, id, _fx| {
-            let panel = ::canvas::diff_pane::DiffPanelView::over(documents, view);
+        return app.mount(move |store, ui, id, fx| {
+            let mut panel = ::canvas::diff_pane::DiffPanelView::over(documents, view);
+            // One file, one column: the phone shows diffs INLINE —
+            // the pane's own layout road, persisted in the view
+            // state (a no-op when already inline).
+            fx.scope(
+                move |command: imba::scroll::ScrollCommand<
+                    ::editor::unified_diff::UnifiedDiffCommand,
+                >| { AppCommand::ToView(id, DynCommand::new(command)) },
+                |fx| {
+                    imba::View::perform(
+                        &mut panel,
+                        store,
+                        ui,
+                        imba::scroll::ScrollCommand::Content(
+                            ::editor::unified_diff::UnifiedDiffCommand::SetLayout(
+                                ::editor::unified_diff::DiffLayout::Inline,
+                            ),
+                        ),
+                        fx,
+                    )
+                },
+            );
             Some(Rc::new(PanelMount {
                 id,
                 panel: Box::new(panel),
