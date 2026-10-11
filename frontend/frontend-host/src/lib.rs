@@ -1133,8 +1133,15 @@ impl HimarkEngine {
         else {
             return false;
         };
-        let Some(size) = self.app.window_viewport(wid(window)) else {
-            // The window is gone; its deltas die with it.
+        // A window answers with its viewport; a mounted bridge
+        // routes against its standing frame (the passed size is
+        // ignored there), so its deltas must not die here.
+        let viewport = self.app.window_viewport(wid(window)).or_else(|| {
+            self.app
+                .mounted_viewport(himark::bridge::ViewBridgeId::from_raw(window))
+        });
+        let Some(size) = viewport else {
+            // The bridge is gone; its deltas die with it.
             return false;
         };
         self.app.dispatch_timed(
@@ -1173,6 +1180,18 @@ impl HimarkEngine {
         for (window, size) in windows {
             animating |= self.app.dispatch(
                 window,
+                Event::AnimationClock {
+                    now: AnimationClock::from_millis(now_ms),
+                },
+                size,
+            );
+        }
+        // Mounted bridges tick too — their scrollers and fades ride
+        // the same clock; the mounted road ignores the passed size.
+        for id in self.app.mounted_ids() {
+            let size = self.app.mounted_viewport(id).unwrap_or_default();
+            animating |= self.app.dispatch(
+                wid(id.raw()),
                 Event::AnimationClock {
                     now: AnimationClock::from_millis(now_ms),
                 },

@@ -589,7 +589,7 @@ impl Himark {
     /// but for views the host composes directly. `size` sets a
     /// new layout size (the draw road); `None` reuses the last
     /// drawn one (the event road between paints).
-    fn mounted_frame(
+    pub(crate) fn mounted_frame(
         &mut self,
         id: ViewBridgeId,
         size: Option<skia_safe::Size>,
@@ -667,6 +667,27 @@ impl Himark {
         self.windows()
             .entity(::workbench::window::WindowId::from_raw(id.raw()))
             .is_some()
+    }
+
+    /// A mounted slot's last drawn size — the event roads'
+    /// viewport stand-in where a window would answer with its own
+    /// (the mounted dispatch arm routes against the standing frame
+    /// and ignores the passed size; this keeps those roads from
+    /// treating "no window viewport" as "gone").
+    pub fn mounted_viewport(&self, id: ViewBridgeId) -> Option<skia_safe::Size> {
+        id.is_mounted()
+            .then(|| self.bridges.get(&id).map(|slot| slot.size))
+            .flatten()
+    }
+
+    /// Every mounted bridge — the shell's animation clock fans out
+    /// over these the way it does over windows.
+    pub fn mounted_ids(&self) -> Vec<ViewBridgeId> {
+        self.bridges
+            .keys()
+            .copied()
+            .filter(|id| id.is_mounted())
+            .collect()
     }
 
     /// Mount a view as a bridge: the build closure gets the store,

@@ -56,10 +56,13 @@ impl Himark {
                 })
             })
         } else {
-            // A mounted view folds over the STANDING frame the
-            // host last derived — there is no engine-held viewport
-            // to rebuild from — and walks ITSELF for the seat.
+            // A mounted view folds over its frame at the LAST
+            // DRAWN size — rebuilt first if a batch quiesced it,
+            // or an ask landing between draws answers "no focus"
+            // and the host keyboard drops — and walks ITSELF for
+            // the seat.
             let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
+            self.mounted_frame(id, None)?;
             let slot = self.bridges.get_mut(&id)?;
             let crate::himark::Mounted { bridge, frame, .. } = slot;
             let frame = frame.as_mut()?;

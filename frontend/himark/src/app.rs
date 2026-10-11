@@ -518,22 +518,46 @@ impl Himark {
                     }
                 }
                 let fallback = match (key_down, &result) {
-                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_))
-                        if self.windows().entity(window).is_some() =>
-                    {
-                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|id| {
-                            crate::focus::window_focus_data(&store, ui.as_ref(), window)
-                                .map(|data| data.commands)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .find(|presentable| presentable.id == id.as_ref())
-                                .map(|presentable| presentable.command)
-                                .or_else(|| {
-                                    crate::commands::Commands::of(&store).find(id.as_ref()).map(
-                                        |command| crate::shell::windowed(window, command.clone()),
-                                    )
-                                })
-                        })
+                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
+                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(
+                            |binding| {
+                                // The chain source mirrors the dispatch
+                                // above: a mounted view's own focus, a
+                                // window's walk — bound EDITING keys
+                                // (backspace, enter, arrows) resolve
+                                // through presentables either way.
+                                self.bridges
+                                    .get(&id)
+                                    .and_then(|slot| {
+                                        slot.bridge.view().focus(&store, ui.as_ref())
+                                    })
+                                    .or_else(|| {
+                                        crate::focus::window_focus_data(
+                                            &store,
+                                            ui.as_ref(),
+                                            window,
+                                        )
+                                    })
+                                    .map(|data| data.commands)
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .find(|presentable| presentable.id == binding.as_ref())
+                                    .map(|presentable| presentable.command)
+                                    .or_else(|| {
+                                        // The global registry speaks
+                                        // WINDOWED commands — a window
+                                        // road only.
+                                        if self.windows().entity(window).is_none() {
+                                            return None;
+                                        }
+                                        crate::commands::Commands::of(&store)
+                                            .find(binding.as_ref())
+                                            .map(|command| {
+                                                crate::shell::windowed(window, command.clone())
+                                            })
+                                    })
+                            },
+                        )
                     }
                     _ => None,
                 };

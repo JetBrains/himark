@@ -170,6 +170,9 @@ final class HimarkBridgeView: UIView {
         let (x, y) = devicePoint(point)
         inputDelegate?.selectionWillChange(self)
         send(himark_event_mouse_down(x, y, 0, 1))
+        // A tap is a CLICK: rows, buttons and tree chevrons complete
+        // on the up, exactly as the mac shell sends it.
+        send(himark_event_mouse_up(x, y))
         inputDelegate?.selectionDidChange(self)
         syncFirstResponder(at: point)
     }
