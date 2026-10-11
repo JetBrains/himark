@@ -450,18 +450,16 @@ pub fn mount_place(
             // the pane's own layout road, persisted in the view
             // state (a no-op when already inline).
             fx.scope(
-                move |command: imba::scroll::ScrollCommand<
-                    ::editor::unified_diff::UnifiedDiffCommand,
-                >| { AppCommand::ToView(id, DynCommand::new(command)) },
+                move |command: ::editor::unified_diff::UnifiedDiffCommand| {
+                    AppCommand::ToView(id, DynCommand::new(command))
+                },
                 |fx| {
                     imba::View::perform(
                         &mut panel,
                         store,
                         ui,
-                        imba::scroll::ScrollCommand::Content(
-                            ::editor::unified_diff::UnifiedDiffCommand::SetLayout(
-                                ::editor::unified_diff::DiffLayout::Inline,
-                            ),
+                        ::editor::unified_diff::UnifiedDiffCommand::SetLayout(
+                            ::editor::unified_diff::DiffLayout::Inline,
                         ),
                         fx,
                     )

@@ -238,3 +238,60 @@ where
         Box::new(self.clone())
     }
 }
+
+impl<V> crate::panel::PanelView for Scrolled<V>
+where
+    V: crate::panel::PanelView + imba::View + Clone + Send + Sync + 'static,
+    V::Command: Send + 'static,
+{
+    type Place = V::Place;
+
+    fn title(&self, store: &Store) -> String {
+        self.scroll.content().title(store)
+    }
+
+    fn dismantle(&mut self, store: &mut Store) {
+        self.scroll.content_mut().dismantle(store);
+    }
+
+    fn displaced(&mut self, store: &mut Store) {
+        self.scroll.content_mut().displaced(store);
+    }
+
+    fn take_request(&mut self) -> Option<crate::panel::PanelRequest> {
+        self.scroll.content_mut().take_request()
+    }
+
+    fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
+        self.scroll.content().collapsed_height(store, nominal_height)
+    }
+
+    fn pane_row(&self) -> Option<crate::pane_row::PaneRow> {
+        self.scroll.content().pane_row()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn full_bleed(&self) -> bool {
+        self.scroll.content().full_bleed()
+    }
+
+    fn navigation_location(&self, store: &Store) -> Option<Self::Place> {
+        self.scroll.content().navigation_location(store)
+    }
+
+    fn navigate_to(
+        &mut self,
+        store: &mut Store,
+        place: &Self::Place,
+        fx: &mut imba::command::Fx<'_>,
+    ) -> bool {
+        self.scroll.content_mut().navigate_to(store, place, fx)
+    }
+
+    fn drawer_view(&self, store: &Store, ui: &imba::ui::UiCtx) -> Option<Box<dyn ModalView>> {
+        self.scroll.content().drawer_view(store, ui)
+    }
+}

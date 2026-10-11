@@ -393,7 +393,7 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
 
 #[derive(Clone)]
 pub struct DiffPanelView {
-    pane: ScrollView<PairPane>,
+    pane: PairPane,
 }
 
 impl DiffPanelView {
@@ -402,16 +402,16 @@ impl DiffPanelView {
         id: documents::diffs::DiffViewId,
     ) -> Self {
         Self {
-            pane: ScrollView::new(PairPane { documents, id }),
+            pane: PairPane { documents, id },
         }
     }
 
     pub fn pair(&self) -> documents::diffs::DiffViewId {
-        self.pane.content().id
+        self.pane.id
     }
 
     pub fn documents(&self) -> imba::store::Id<documents::OpenDocuments> {
-        self.pane.content().documents
+        self.pane.documents
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
@@ -419,8 +419,8 @@ impl DiffPanelView {
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
         documents::OpenDocuments::diff_view_ref(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         )?
         .state
         .as_ref()
@@ -430,8 +430,8 @@ impl DiffPanelView {
     pub fn halves(&self, store: &Store) -> (EditorIdView, EditorIdView) {
         let pair = documents::OpenDocuments::diff_view_ref(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         )
         .expect("the pane's state row");
         (pair.left, pair.right)
@@ -461,13 +461,13 @@ impl DiffPanelView {
             },
         );
         Self {
-            pane: ScrollView::new(PairPane { documents, id }),
+            pane: PairPane { documents, id },
         }
     }
 }
 
 impl View for DiffPanelView {
-    type Command = imba::scroll::ScrollCommand<UnifiedDiffCommand>;
+    type Command = UnifiedDiffCommand;
 
     fn focus_data<'w>(
         &'w self,
@@ -509,7 +509,7 @@ impl hikit::panel::PanelView for DiffPanelView {
     type Place = DiffPlace;
 
     fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
-        let pane = self.pane.content();
+        let pane = self.pane;
         Some(hikit::pane_row::PaneRow::new(crate::PairRow(
             pane.documents,
             pane.id,
@@ -519,8 +519,8 @@ impl hikit::panel::PanelView for DiffPanelView {
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
         let pair = documents::OpenDocuments::diff_view_ref(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         )?;
         Some(DiffPlace {
             old: OpenDocuments::location(store, pair.left.documents(), pair.left.document())?,
@@ -536,8 +536,8 @@ impl hikit::panel::PanelView for DiffPanelView {
     ) -> bool {
         let Some(pair) = documents::OpenDocuments::diff_view_ref(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         ) else {
             return false;
         };
@@ -551,8 +551,8 @@ impl hikit::panel::PanelView for DiffPanelView {
     fn title(&self, store: &Store) -> String {
         let named = documents::OpenDocuments::diff_view_ref(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         )
         .and_then(|pair| {
             OpenDocuments::location(store, pair.left.documents(), pair.right.document())
@@ -566,8 +566,8 @@ impl hikit::panel::PanelView for DiffPanelView {
     fn dismantle(&mut self, store: &mut Store) {
         documents::diff_views::teardown_diff_view(
             store,
-            self.pane.content().documents,
-            self.pane.content().id,
+            self.pane.documents,
+            self.pane.id,
         );
     }
 

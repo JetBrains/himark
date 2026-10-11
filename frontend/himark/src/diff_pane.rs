@@ -30,7 +30,7 @@ pub(crate) fn open_opened_diff_pane(
     let panel = DiffPanelView::over(documents, id);
     let mut entity =
         ::workbench::window::Windows::window(store, window).expect("the window entity");
-    let opened = entity.open_panel(store, ui, Box::new(panel), fx);
+    let opened = entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
     ::workbench::window::Windows::put(store, window, entity);
     opened
 }
@@ -49,7 +49,7 @@ pub(crate) fn open_diff_documents(
     };
     let mut entity =
         ::workbench::window::Windows::window(store, window).expect("the window entity");
-    let opened = entity.open_panel(store, ui, Box::new(panel), fx);
+    let opened = entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
     ::workbench::window::Windows::put(store, window, entity);
     opened
 }
