@@ -568,10 +568,12 @@ struct OpenDiffFromChanges {
 impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
     fn perform(self: Box<Self>, store: &mut Store, _ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(reveal) = self.reveal else {
+            eprintln!("[mount] changes open: no reveal (a folder row?)");
             return;
         };
         let (_, listing) = ::canvas::diff_canvas::canvas_files(store, self.changes, &self.source);
         let ::canvas::diff_canvas::CanvasListing::Ready(files) = listing else {
+            eprintln!("[mount] changes open: listing not ready");
             return;
         };
         let Some(file) = files.into_iter().find(|file| file.new == reveal) else {
