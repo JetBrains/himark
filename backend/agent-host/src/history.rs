@@ -18,7 +18,7 @@ pub(crate) fn catalog(directories: &[String]) -> Vec<ahp_types::state::Changeset
         .map(|abs| ahp_types::state::Changeset {
             label: "History".to_owned(),
             uri_template: format!("{CHANNEL_PREFIX}{abs}"),
-            description: Some(abs.to_owned()),
+            description: Some(abs.clone()),
             change_kind: himark_ahp_ext_types::history::HISTORY_CHANGE_KIND.to_owned(),
             capabilities: None,
         })

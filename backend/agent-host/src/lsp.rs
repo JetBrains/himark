@@ -191,7 +191,7 @@ impl Server {
             capabilities: Mutex::new(None),
             _child: Mutex::new(child),
         });
-        let root_uri = crate::uris::encoded_file_uri(root);
+        let root_uri = crate::uris::file_uri(root);
         let initialize = json!({
             "jsonrpc": "2.0",
             "id": INIT_ID,
