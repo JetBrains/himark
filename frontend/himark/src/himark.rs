@@ -325,6 +325,14 @@ impl Himark {
             for (index, follow_up) in batch.take_follow_ups().into_iter().enumerate() {
                 queue.insert(index, follow_up);
             }
+
+            // Deferred requests are the ENGINE's to run — a store
+            // note, not a window note. The window shell also drains
+            // them (its own commands see them first); whatever a
+            // windowless road pushed lands here, the same batch.
+            for request in imba::command::Requests::drain(&mut store) {
+                queue.push_back(AppCommand::Verb(imba::command::Verb::Dynamic(request)));
+            }
         }
 
         {
@@ -446,7 +454,12 @@ impl Himark {
             stage_frames: &mut self.stage_frames,
         };
         loop {
-            let late = batch.take_follow_ups();
+            let mut late = batch.take_follow_ups();
+            late.extend(
+                imba::command::Requests::drain(&mut store)
+                    .into_iter()
+                    .map(|request| AppCommand::Verb(imba::command::Verb::Dynamic(request))),
+            );
             if late.is_empty() {
                 break;
             }
