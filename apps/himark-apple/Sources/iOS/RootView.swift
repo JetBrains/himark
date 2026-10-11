@@ -69,9 +69,11 @@ struct ChatScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrolledMintedBridge(host: host, kind: .transcript, pinsToBottom: true)
+                .ignoresSafeArea(edges: .top)
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)
         }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -94,6 +96,8 @@ struct ChangesScreen: View {
 
     var body: some View {
         ScrolledMintedBridge(host: host, kind: .changes)
+            .ignoresSafeArea()
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: pushBinding(host, .changes)) {
@@ -107,6 +111,8 @@ struct FilesScreen: View {
 
     var body: some View {
         ScrolledMintedBridge(host: host, kind: .files)
+            .ignoresSafeArea()
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationTitle("Files")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: pushBinding(host, .files)) {
@@ -241,6 +247,8 @@ struct PlaceScreen: View {
         // Every pushed place scrolls NATIVELY — documents and the
         // (now scroller-free) inline diff alike.
         StagePlaceBridge(host: host, place: push.place)
+            .ignoresSafeArea()
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .navigationTitle(push.title)
             .navigationBarTitleDisplayMode(.inline)
     }
