@@ -64,9 +64,14 @@ private struct PushedDestination: View {
 
 struct ChatScreen: View {
     @ObservedObject var host: AppHost
+    @State private var composerHeight: CGFloat = 96
 
     var body: some View {
-        MintedBridge(host: host, kind: .chat)
+        VStack(spacing: 0) {
+            TranscriptBridge(host: host)
+            ComposerBridge(host: host, height: $composerHeight)
+                .frame(height: composerHeight)
+        }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {

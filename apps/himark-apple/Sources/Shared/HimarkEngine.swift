@@ -88,6 +88,9 @@ final class HimarkEngine {
 
     enum SessionViewKind {
         case chat, changes, files
+        /// The split chat: the transcript as a native scroller's
+        /// content, the composer band standalone.
+        case transcript, composer
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
@@ -96,6 +99,10 @@ final class HimarkEngine {
             case .chat: himark_place_chat(engine, host, cstr, UInt(strlen(cstr)))
             case .changes: himark_place_changes(engine, host, cstr, UInt(strlen(cstr)))
             case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
+            case .transcript:
+                himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))
+            case .composer:
+                himark_place_chat_composer(engine, host, cstr, UInt(strlen(cstr)))
             }
         }
         guard place.raw != 0 else { return HimarkBridge(raw: 0) }

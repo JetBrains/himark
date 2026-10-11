@@ -196,7 +196,9 @@ class HimarkBridgeView: UIView {
         var cw: Float = 0
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
-        onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
+        if ch.isFinite {
+            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
+        }
 
         let offsetY = Float(max(visible.minY, 0) * scale)
         let frame = himark_layout_realize(

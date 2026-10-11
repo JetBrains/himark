@@ -94,7 +94,10 @@ final class AppHost: NSObject, ObservableObject {
     }
 
     private func land(_ push: Push) {
-        let tab = tabs[push.origin] ?? .chat
+        let origin = tabs[push.origin] ?? .chat
+        // The split chat's parts live on the CHAT tab.
+        let tab: HimarkEngine.SessionViewKind =
+            (origin == .transcript || origin == .composer) ? .chat : origin
         if let standing = pushes[tab] { engine.release(place: standing.place) }
         pushes[tab] = push
     }

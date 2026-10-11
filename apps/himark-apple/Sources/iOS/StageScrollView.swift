@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import UIKit
+import SwiftUI
 
 /// The NATIVE-SCROLL document screen: a PLAIN UIScrollView whose
 /// content view is an ordinary `HimarkBridgeView` embedded at
@@ -16,11 +17,21 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     private let scroll = UIScrollView()
     private var content: HimarkBridgeView?
 
-    init(host: AppHost, place: HimarkPlace) {
+    /// Keep the view pinned to the BOTTOM as content grows — chat
+    /// behavior; releases when the user scrolls away, re-arms when
+    /// they return to the bottom.
+    var pinsToBottom = false
+    private var pinned = true
+
+    convenience init(host: AppHost, place: HimarkPlace) {
+        self.init(host: host, bridge: host.engine.mint(place: place))
+    }
+
+    init(host: AppHost, bridge: HimarkBridge) {
         self.host = host
         super.init(frame: .zero)
         backgroundColor = .black
-        bridge = host.engine.mint(place: place)
+        self.bridge = bridge
 
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scroll.alwaysBounceVertical = true
@@ -77,16 +88,37 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     }
 
     private func contentMeasured(_ size: CGSize) {
-        guard let content else { return }
+        guard let content, size.height.isFinite else { return }
         let height = max(size.height, bounds.height)
         if content.frame.size.height != height || scroll.contentSize.height != height {
             content.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
             scroll.contentSize = content.frame.size
+            if pinsToBottom && pinned {
+                scroll.contentOffset.y = max(
+                    0, height - scroll.bounds.height + scroll.contentInset.bottom)
+            }
         }
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         content?.renderNow()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        pinned = false
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
+        if !willDecelerate { pinned = nearBottom }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        pinned = nearBottom
+    }
+
+    private var nearBottom: Bool {
+        scroll.contentOffset.y + scroll.bounds.height
+            >= scroll.contentSize.height - 40
     }
 
     @objc private func keyboardChanged(_ note: Notification) {
@@ -114,5 +146,164 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
             width: max(CGFloat(rect.width) / scale, 2),
             height: CGFloat(rect.height) / scale + 16)
         scroll.scrollRectToVisible(target, animated: false)
+    }
+}
+
+// ─── the split chat's two hosts ───
+
+/// The chat TRANSCRIPT for the current session: minted per
+/// session like a tab bridge, scrolled natively, pinned to the
+/// bottom as turns stream.
+final class TranscriptHost: UIView {
+    private let host: AppHost
+    private var mounted: AppHost.Selected?
+    private var child: StageScrollHost?
+
+    init(host: AppHost) {
+        self.host = host
+        super.init(frame: .zero)
+        backgroundColor = .black
+        sync()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func sync() {
+        let desired = host.current
+        if mounted == desired, child != nil { return }
+        teardown()
+        mounted = desired
+        guard desired != nil else { return }
+        let bridge = host.mint(.transcript)
+        guard bridge.raw != 0 else { return }
+        let view = StageScrollHost(host: host, bridge: bridge)
+        view.pinsToBottom = true
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.frame = bounds
+        addSubview(view)
+        child = view
+    }
+
+    func teardown() {
+        child?.teardown()
+        child?.removeFromSuperview()
+        child = nil
+    }
+}
+
+struct TranscriptBridge: UIViewRepresentable {
+    @ObservedObject var host: AppHost
+
+    func makeUIView(context: Context) -> TranscriptHost {
+        TranscriptHost(host: host)
+    }
+
+    func updateUIView(_ view: TranscriptHost, context: Context) {
+        view.sync()
+    }
+
+    static func dismantleUIView(_ view: TranscriptHost, coordinator: ()) {
+        view.teardown()
+    }
+}
+
+/// The COMPOSER BAND for the current session, full-bleed at the
+/// height the engine measures — SwiftUI sizes the frame from the
+/// measure callback, so the band grows with the draft.
+final class ComposerHost: UIView {
+    private let host: AppHost
+    private var mounted: AppHost.Selected?
+    private var bridge = HimarkBridge(raw: 0)
+    private var child: HimarkBridgeView?
+    private var measured: CGFloat = 0
+
+    var onMeasured: ((CGFloat) -> Void)?
+
+    init(host: AppHost) {
+        self.host = host
+        super.init(frame: .zero)
+        backgroundColor = .black
+        host.registerRedraw(self) { [weak self] in
+            self?.child?.request()
+            self?.measure()
+        }
+        sync()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func sync() {
+        let desired = host.current
+        if mounted == desired, bridge.raw != 0 { return }
+        teardown()
+        mounted = desired
+        guard desired != nil else { return }
+        bridge = host.mint(.composer)
+        guard bridge.raw != 0 else { return }
+        let view = HimarkBridgeView(
+            frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(view)
+        host.register(view)
+        child = view
+        measure()
+    }
+
+    func teardown() {
+        if let child {
+            host.unregister(child)
+            child.removeFromSuperview()
+        }
+        child = nil
+        if bridge.raw != 0 {
+            host.unmount(bridge: bridge)
+            bridge = HimarkBridge(raw: 0)
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        measure()
+    }
+
+    /// The band's natural height off the sized stage — the measure
+    /// ask, released right after the read.
+    private func measure() {
+        guard bridge.raw != 0, bounds.width > 0 else { return }
+        let raw = host.engine.raw
+        let scale = UIScreen.main.scale
+        let layout = himark_bridge_layout(raw, bridge, Float(bounds.width * scale), .infinity)
+        guard layout.raw != 0 else { return }
+        var cw: Float = 0
+        var ch: Float = 0
+        _ = himark_layout_size(raw, layout, &cw, &ch)
+        himark_layout_release(raw, layout)
+        guard ch.isFinite else { return }
+        let height = CGFloat(ch) / scale
+        if abs(height - measured) > 0.5 {
+            measured = height
+            onMeasured?(height)
+        }
+    }
+}
+
+struct ComposerBridge: UIViewRepresentable {
+    @ObservedObject var host: AppHost
+    @Binding var height: CGFloat
+
+    func makeUIView(context: Context) -> ComposerHost {
+        let view = ComposerHost(host: host)
+        view.onMeasured = { measured in
+            DispatchQueue.main.async { height = measured }
+        }
+        return view
+    }
+
+    func updateUIView(_ view: ComposerHost, context: Context) {
+        view.sync()
+    }
+
+    static func dismantleUIView(_ view: ComposerHost, coordinator: ()) {
+        view.teardown()
     }
 }
