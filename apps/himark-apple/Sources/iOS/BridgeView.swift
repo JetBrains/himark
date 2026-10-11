@@ -215,9 +215,6 @@ class HimarkBridgeView: UIView {
         var cw: Float = 0
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
-        if ch.isFinite {
-            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
-        }
 
         let offsetY = Float(max(visible.minY, 0) * scale)
         let frame = himark_layout_realize(
@@ -232,6 +229,13 @@ class HimarkBridgeView: UIView {
             needsRedraw = true
         } else {
             himark_frame_release(raw, frame)
+        }
+        // The measure lands AFTER the pass: applying it resizes the
+        // scroller's content, which re-enters render synchronously —
+        // an outstanding layout would die refused and the band would
+        // paint twice per streamed change.
+        if ch.isFinite {
+            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
         }
     }
 
