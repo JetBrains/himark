@@ -102,7 +102,10 @@ final class AppHost: NSObject, ObservableObject {
     }
 
     func mint(_ kind: HimarkEngine.SessionViewKind) -> HimarkBridge {
-        guard let selected = current else { return HimarkBridge(raw: 0) }
+        guard let selected = current else {
+            NSLog("himark: mint \(kind) — no current session")
+            return HimarkBridge(raw: 0)
+        }
         return engine.mint(kind, host: selected.host, uri: selected.uri)
     }
 

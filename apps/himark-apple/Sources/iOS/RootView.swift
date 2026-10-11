@@ -12,14 +12,21 @@ import UIKit
 struct RootView: View {
     @ObservedObject var host: AppHost
 
+    // The dev screenshot road: pick the starting tab by env.
+    @State private var tab: String =
+        ProcessInfo.processInfo.environment["HIMARK_START_TAB"] ?? "chat"
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             NavigationStack { ChatScreen(host: host) }
                 .tabItem { Label("Chat", systemImage: "bubble.left") }
+                .tag("chat")
             NavigationStack { ChangesScreen(host: host) }
                 .tabItem { Label("Changes", systemImage: "arrow.triangle.branch") }
+                .tag("changes")
             NavigationStack { FilesScreen(host: host) }
                 .tabItem { Label("Files", systemImage: "folder") }
+                .tag("files")
         }
         .onAppear { host.kickoff() }
         .preferredColorScheme(.dark)
