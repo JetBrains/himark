@@ -238,18 +238,11 @@ struct PlaceScreen: View {
     let push: AppHost.Push
 
     var body: some View {
-        Group {
-            if push.kind == UInt32(HIMARK_PLACE_DOCUMENT) {
-                // The document screen scrolls NATIVELY — the stage
-                // road; the diff keeps its own column machinery
-                // until its root is scroller-free too.
-                StagePlaceBridge(host: host, place: push.place)
-            } else {
-                PlaceBridge(host: host, place: push.place)
-            }
-        }
-        .navigationTitle(push.title)
-        .navigationBarTitleDisplayMode(.inline)
+        // Every pushed place scrolls NATIVELY — documents and the
+        // (now scroller-free) inline diff alike.
+        StagePlaceBridge(host: host, place: push.place)
+            .navigationTitle(push.title)
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -268,51 +261,3 @@ struct StagePlaceBridge: UIViewRepresentable {
     }
 }
 
-struct PlaceBridge: UIViewRepresentable {
-    let host: AppHost
-    let place: HimarkPlace
-
-    func makeUIView(context: Context) -> PlaceBridgeHost {
-        PlaceBridgeHost(host: host, place: place)
-    }
-
-    func updateUIView(_ view: PlaceBridgeHost, context: Context) {}
-
-    static func dismantleUIView(_ view: PlaceBridgeHost, coordinator: ()) {
-        view.teardown()
-    }
-}
-
-final class PlaceBridgeHost: UIView {
-    private let host: AppHost
-    private var bridge = HimarkBridge(raw: 0)
-    private var child: HimarkBridgeView?
-
-    init(host: AppHost, place: HimarkPlace) {
-        self.host = host
-        super.init(frame: .zero)
-        backgroundColor = .black
-        bridge = host.engine.mint(place: place)
-        guard bridge.raw != 0 else { return }
-        let view = HimarkBridgeView(
-            frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
-        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        addSubview(view)
-        host.register(view)
-        child = view
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    func teardown() {
-        if let child {
-            host.unregister(child)
-            child.removeFromSuperview()
-        }
-        child = nil
-        if bridge.raw != 0 {
-            host.unmount(bridge: bridge)
-            bridge = HimarkBridge(raw: 0)
-        }
-    }
-}
