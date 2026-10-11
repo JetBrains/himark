@@ -50,277 +50,7 @@ use crate::composer::{Composer, ComposerCommand, ComposerProps};
 use crate::stack::{PermissionAsk, StackCommand, WidgetStack};
 use crate::turn::{CellSpec, TurnCommand, TurnView};
 
-#[derive(Clone)]
-pub enum RowCommand {
-    Activate,
-
-    /// A SLEEPING row painted: build me at the row's real width.
-    Wake,
-
-    /// A cell joins the turn where its key belongs.
-    Place {
-        key: crate::turn::CellKey,
-        cell: Cell,
-        height: f32,
-    },
-    Turn(TurnCommand),
-}
-
-impl std::fmt::Display for RowCommand {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RowCommand::Turn(command) => command.fmt(out),
-            RowCommand::Activate => out.write_str("row activate"),
-            RowCommand::Wake => out.write_str("row wake"),
-            RowCommand::Place { .. } => out.write_str("row place"),
-        }
-    }
-}
-
-#[derive(Clone)]
-enum ChatRow {
-    Loader {
-        armed: bool,
-    },
-
-    /// An off-viewport turn holds the MODEL turn, not its editors —
-    /// opening a chat is O(visible), not O(history). The first paint
-    /// wakes it (the loader's arm pattern); the height correction
-    /// rides the settle pulse, above the anchor.
-    Sleeping(model::Turn),
-
-    Turn(TurnView),
-}
-
-impl View for ChatRow {
-    type Command = RowCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, RowCommand> {
-        match self {
-            ChatRow::Turn(turn) => turn.focus_data(store, ui).map(RowCommand::Turn),
-            ChatRow::Loader { .. } | ChatRow::Sleeping(_) => imba::focus::FocusData::default(),
-        }
-    }
-
-    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        if let ChatRow::Turn(turn) = self {
-            fx.scope(RowCommand::Turn, |fx| turn.destroy(store, fx));
-        }
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match (self, command) {
-            (ChatRow::Turn(turn), RowCommand::Turn(command)) => {
-                fx.scope(RowCommand::Turn, |fx| turn.perform(store, ui, command, fx))
-            }
-            (ChatRow::Turn(turn), RowCommand::Place { key, cell, height }) => {
-                turn.place(key, cell, height);
-            }
-
-            _ => {}
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        imba::layout::laid(
-            move |_arena: &'a Arena, constraints: Constraints| match self {
-                ChatRow::Loader { armed } => {
-                    let chrome = env::Themes::of(store).ui().chat.clone();
-                    let width = constraints.max.width.max(1.0);
-                    let text = if *armed {
-                        "· · ·  older turns above  · · ·"
-                    } else {
-                        "loading older turns…"
-                    };
-                    let font = ui_text_font(ui, chrome.title_size * 0.8);
-                    let color = chrome.loader_color.0;
-                    let height = chrome.loader_height;
-                    let band = leaf::<RowCommand>(width, height).paint_instead(
-                        move |_arena, canvas, rect| {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(color);
-                            let label_width = font.measure_str(text, None).0;
-                            canvas.draw_str(
-                                text,
-                                (
-                                    rect.left + (rect.width() - label_width) / 2.0,
-                                    rect.top + rect.height() * 0.6,
-                                ),
-                                &font,
-                                &paint,
-                            );
-                        },
-                    );
-                    let mut row = container(arena, Size::new(width, height));
-                    row.place(0.0, 0.0, band);
-                    let armed = *armed;
-                    Either::Loader(row.wrap(move |inner| ArmedLoader { inner, armed }))
-                }
-                ChatRow::Sleeping(_) => {
-                    let width = constraints.max.width.max(1.0);
-                    let height = constraints.max.height.max(1.0);
-                    let band = imba::leaf::leaf::<RowCommand>(width, height).event(
-                        |_arena, event, _size| match event {
-                            Event::Paint { .. } => EventResult::Command(RowCommand::Wake),
-                            _ => EventResult::Ignored,
-                        },
-                    );
-                    let mut row = container(arena, Size::new(width, height));
-                    row.place(0.0, 0.0, band);
-                    Either::Sleeping(row.wrap(move |inner| ArmedLoader {
-                        inner,
-                        armed: false,
-                    }))
-                }
-                ChatRow::Turn(turn) => Either::Turn(
-                    imba::layout::Layout::layout(
-                        turn.display(arena, store, ui),
-                        arena,
-                        constraints,
-                    )
-                    .map(RowCommand::Turn),
-                ),
-            },
-        )
-    }
-}
-
-struct ArmedLoader<Inner> {
-    inner: Inner,
-    armed: bool,
-}
-
-impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedLoader<Inner> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, RowCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<RowCommand> {
-        let result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) && self.armed {
-            return result.merge(EventResult::Command(RowCommand::Activate));
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, RowCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
-enum Either<A, B, C> {
-    Loader(A),
-    Turn(B),
-    Sleeping(C),
-}
-
-impl<'a, A, B, C> imba::Thunk<'a, RowCommand> for Either<A, B, C>
-where
-    A: imba::Thunk<'a, RowCommand> + 'a,
-    B: imba::Thunk<'a, RowCommand> + 'a,
-    C: imba::Thunk<'a, RowCommand> + 'a,
-{
-    fn size(&self) -> Size {
-        match self {
-            Either::Loader(thunk) => thunk.size(),
-            Either::Turn(thunk) => thunk.size(),
-            Either::Sleeping(thunk) => thunk.size(),
-        }
-    }
-
-    fn realize(
-        self,
-        arena: &'a imba::arena::Arena,
-        viewport: Rect,
-    ) -> imba::WidgetBox<'a, RowCommand> {
-        match self {
-            Either::Loader(thunk) => thunk.realize(arena, viewport),
-            Either::Turn(thunk) => thunk.realize(arena, viewport),
-            Either::Sleeping(thunk) => thunk.realize(arena, viewport),
-        }
-    }
-}
-
-impl<'a, A, B, C> Widget<'a, RowCommand> for Either<A, B, C>
-where
-    A: Widget<'a, RowCommand>,
-    B: Widget<'a, RowCommand>,
-    C: Widget<'a, RowCommand>,
-{
-    fn size(&self) -> Size {
-        match self {
-            Either::Loader(widget) => widget.size(),
-            Either::Turn(widget) => widget.size(),
-            Either::Sleeping(widget) => widget.size(),
-        }
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, RowCommand>> {
-        match self {
-            Either::Loader(widget) => widget.overlays(),
-            Either::Turn(widget) => widget.overlays(),
-            Either::Sleeping(widget) => widget.overlays(),
-        }
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<RowCommand> {
-        match self {
-            Either::Loader(widget) => widget.handle_event(arena, event, viewport),
-            Either::Turn(widget) => widget.handle_event(arena, event, viewport),
-            Either::Sleeping(widget) => widget.handle_event(arena, event, viewport),
-        }
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, RowCommand>
-    where
-        'a: 'w,
-    {
-        match self {
-            Either::Loader(widget) => widget.layout_data(target),
-            Either::Turn(widget) => widget.layout_data(target),
-            Either::Sleeping(widget) => widget.layout_data(target),
-        }
-    }
-}
+use crate::transcript::{ChatRow, RowCommand, Transcript, TranscriptView};
 
 #[derive(Clone)]
 enum Link {
@@ -330,8 +60,7 @@ enum Link {
     Failed(String),
 }
 
-type Transcript = ListView<ChatRow, ahp_wire::client::TurnId>;
-type Rows = ScrollView<Transcript>;
+type Rows = ScrollView<TranscriptView>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -550,7 +279,9 @@ impl Clone for ChatPanel {
 pub struct ChatView {
     rows: Rows,
 
-    composer: Composer,
+    /// The composer BAND — input, toolbar, send — one component
+    /// (crate::composer::ComposerBand).
+    band: crate::composer::ComposerBand,
 
     /// The files picked from the composer's `@` completions, for the
     /// send's attachments.
@@ -559,8 +290,6 @@ pub struct ChatView {
     focus: ChatArea,
 
     has_loader: bool,
-
-    toolbar: super::session_toolbar::SessionToolbar,
 
     panel_width: AtomicU32,
 
@@ -571,11 +300,10 @@ impl Clone for ChatView {
     fn clone(&self) -> Self {
         Self {
             rows: self.rows.clone(),
-            composer: self.composer.clone(),
+            band: self.band.clone(),
             picked: self.picked.clone(),
             focus: self.focus,
             has_loader: self.has_loader,
-            toolbar: self.toolbar.clone(),
             panel_width: AtomicU32::new(self.panel_width.load(Ordering::Relaxed)),
             rows_height: AtomicU32::new(self.rows_height.load(Ordering::Relaxed)),
         }
@@ -713,9 +441,9 @@ impl ChatPanel {
     #[doc(hidden)]
     pub fn completion_open(&self) -> bool {
         self.first_view().is_some_and(|view| {
-            view.composer
+            view.band.composer
                 .document()
-                .completion(view.composer.editor())
+                .completion(view.band.composer.editor())
                 .open()
         })
     }
@@ -724,9 +452,9 @@ impl ChatPanel {
     pub fn completion_rows(&self) -> Vec<String> {
         self.first_view()
             .map(|view| {
-                view.composer
+                view.band.composer
                     .document()
-                    .completion(view.composer.editor())
+                    .completion(view.band.composer.editor())
                     .row_labels()
             })
             .unwrap_or_default()
@@ -741,14 +469,14 @@ impl ChatPanel {
 
     pub fn composer_text(&self) -> String {
         self.first_view()
-            .map(|view| view.composer.text())
+            .map(|view| view.band.composer.text())
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn blurred(&self) -> bool {
         self.first_view()
-            .is_some_and(|view| view.composer.blurred())
+            .is_some_and(|view| view.band.composer.blurred())
     }
 
     pub(crate) fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
@@ -756,7 +484,7 @@ impl ChatPanel {
         let chrome = theme.ui().chat.clone();
         let band = self
             .first_view()
-            .map(|view| view.composer.band_height(&chrome, nominal_height))
+            .map(|view| view.band.composer.band_height(&chrome, nominal_height))
             .unwrap_or(0.0);
         band + self.stack.height(&chrome) + theme.ui().toolbar.height
     }
@@ -792,6 +520,7 @@ impl ChatPanel {
     pub fn toolbar_probe(&self) -> super::session_toolbar::ToolbarProbe {
         self.first_view()
             .expect("a mounted chat view")
+            .band
             .toolbar
             .probe()
     }
@@ -913,7 +642,7 @@ impl ChatPanel {
         }
         fx.scope(ChatPanelCommand::Rows, |fx| view.rows.destroy(store, fx));
         fx.scope(ChatPanelCommand::Composer, |fx| {
-            view.composer.destroy(store, fx)
+            view.band.composer.destroy(store, fx)
         });
     }
 
@@ -1363,7 +1092,7 @@ impl ChatPanel {
         let Some(mut view) = self.views.get(&id).cloned() else {
             return;
         };
-        view.composer.clear(store, ui);
+        view.band.composer.clear(store, ui);
         view.reveal_tail(store);
         self.views.insert_mut(id, view);
     }
@@ -1671,17 +1400,17 @@ impl ChatPanel {
                 let Some(mut view) = self.views.get(&id).cloned() else {
                     return;
                 };
-                if view.composer.is_empty() {
+                if view.band.composer.is_empty() {
                     return;
                 }
-                let text = view.composer.text().trim().to_owned();
+                let text = view.band.composer.text().trim().to_owned();
                 fx.scope(
                     move |command| ChatPanelCommand::InView(id, Box::new(command)),
                     |fx| view.close_completion(store, ui, fx),
                 );
                 let uris = (self.catalog.uris)(store, self.server);
                 let attachments = view.completion_attachments(uris, &text);
-                let model = view.toolbar.model_selection();
+                let model = view.band.toolbar.model_selection();
                 // The view goes BACK before the send: `send_text` rolls
                 // the echo row into every mounted view, and a clone
                 // taken before that roll would carry the pre-send rows
@@ -1725,7 +1454,7 @@ impl ChatPanel {
                         |fx| view.close_completion(store, ui, fx),
                     );
                 }
-                view.composer.set_blurred(blurred);
+                view.band.composer.set_blurred(blurred);
                 self.views.insert_mut(id, view);
             }
 
@@ -1735,7 +1464,7 @@ impl ChatPanel {
                 };
                 if let Some(channel) = (self.catalog.channel)(store, &self.session_id()) {
                     let agents = (self.catalog.agents)(store, self.server);
-                    view.toolbar.sync(store, ui, &agents, &channel);
+                    view.band.toolbar.sync(store, ui, &agents, &channel);
                 }
                 self.views.insert_mut(id, view);
             }
@@ -1753,7 +1482,7 @@ impl ChatPanel {
                                 Box::new(ChatPanelCommand::Toolbar(command)),
                             )
                         },
-                        |fx| ask = view.toolbar.perform(store, ui, command, fx),
+                        |fx| ask = view.band.toolbar.perform(store, ui, command, fx),
                     );
                     ask
                 };
@@ -1816,8 +1545,8 @@ impl ChatPanel {
             return FocusData::default();
         };
         let ask = self.stack.ask_keys();
-        let composer_empty = view.composer.is_empty();
-        let expanded = view.composer.expanded();
+        let composer_empty = view.band.composer.is_empty();
+        let expanded = view.band.composer.expanded();
         let focus = view.focus;
 
         let own = FocusData {
@@ -1854,12 +1583,85 @@ impl ChatPanel {
         };
         let area = match view.focus {
             ChatArea::Composer => view
+                .band
                 .composer
                 .focus_data(store, ui)
                 .map(ChatPanelCommand::Composer),
             ChatArea::Transcript => view.rows.focus_data(store, ui).map(ChatPanelCommand::Rows),
         };
         own.merge_under(area)
+    }
+
+    /// The band's status legend — connecting, failed, responding.
+    pub(crate) fn link_status(&self) -> String {
+        match &self.state {
+            Link::Idle | Link::Subscribing => "connecting…".to_owned(),
+            Link::Failed(error) => format!("failed: {error}"),
+            Link::Ready if self.conversation.is_running() => "responding…".to_owned(),
+            Link::Ready => String::new(),
+        }
+    }
+
+    /// The transcript COMPONENT bare, under the caller's
+    /// constraints — a native scroller owns the viewport and the
+    /// measure (docs/ui/imba-ffi.md, the stage road). Commands keep
+    /// the panel's Rows vocabulary through `ScrollCommand::Content`.
+    pub(crate) fn display_transcript<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        id: ChatViewId,
+    ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a>
+    {
+        let view = self.views.get(&id)?;
+        Some(imba::layout::laid(
+            move |_arena: &'a Arena, constraints: Constraints| {
+                view.panel_width
+                    .store(constraints.max.width.max(1.0).to_bits(), Ordering::Relaxed);
+                if constraints.max.height.is_finite() {
+                    view.rows_height
+                        .store(constraints.max.height.to_bits(), Ordering::Relaxed);
+                }
+                imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        view.rows.content().display(arena, store, ui),
+                        arena,
+                        constraints,
+                    )
+                    .map(|command| {
+                        ChatPanelCommand::Rows(ScrollCommand::Content(command))
+                    }),
+                )
+            },
+        ))
+    }
+
+    /// The composer BAND standalone, at its natural height — the
+    /// native shell's bottom component.
+    pub(crate) fn display_band<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        id: ChatViewId,
+    ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a>
+    {
+        let view = self.views.get(&id)?;
+        Some(view.band.display(
+            arena,
+            store,
+            ui,
+            crate::composer::BandProps {
+                status: self.link_status(),
+                busy: self.busy(),
+                link_ready: matches!(self.state, Link::Ready),
+                focused: view.focus == ChatArea::Composer,
+                stack: &self.stack,
+                nominal_height: 800.0,
+            },
+        ))
     }
 
     pub(crate) fn display_view<'a>(
@@ -1879,7 +1681,7 @@ impl ChatPanel {
                 view.panel_width
                     .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
 
-                let band_h = view.composer.band_height(&chrome, size.height);
+                let band_h = view.band.composer.band_height(&chrome, size.height);
                 let stack_h = self.stack.height(&chrome);
 
                 let toolbar_h = theme.ui().toolbar.height;
@@ -1904,232 +1706,33 @@ impl ChatPanel {
                     .focus_scope(view.focus == ChatArea::Transcript),
                 );
 
-                let status = match &self.state {
-                    Link::Idle | Link::Subscribing => "connecting…".to_owned(),
-                    Link::Failed(error) => format!("failed: {error}"),
-                    Link::Ready if self.conversation.is_running() => "responding…".to_owned(),
-                    Link::Ready => String::new(),
+                let band_props = crate::composer::BandProps {
+                    status: self.link_status(),
+                    busy: self.busy(),
+                    link_ready: matches!(self.state, Link::Ready),
+                    focused: view.focus == ChatArea::Composer,
+                    stack: &self.stack,
+                    nominal_height: size.height,
                 };
-                let composer_empty = view.composer.is_empty();
                 panel.place(
                     0.0,
-                    rows_height + stack_h,
-                    view.composer
-                        .layout(
-                            arena,
-                            store,
-                            ui,
+                    rows_height,
+                    imba::layout::Layout::layout(
+                        view.band.display(arena, store, ui, band_props),
+                        arena,
+                        Constraints::tight(Size::new(
                             size.width,
-                            size.height,
-                            ComposerProps {
-                                focused: view.focus == ChatArea::Composer,
-                            },
-                        )
-                        .map(ChatPanelCommand::Composer),
+                            band_h + stack_h + toolbar_h,
+                        )),
+                    ),
                 );
-
-                if stack_h > 0.0 {
-                    panel.place(
-                        0.0,
-                        rows_height,
-                        self.stack
-                            .layout(arena, ui, &chrome, size.width)
-                            .map(ChatPanelCommand::Stack),
-                    );
-                }
-
-                // The SEND cell's width, computed up front: the combo
-                // strip's budget ends where SEND begins — the button
-                // always fits and nothing ever covers it.
-                let send_cell_width = {
-                    let ui_theme = theme.ui();
-                    let busy = self.busy();
-                    let stop = busy && composer_empty;
-                    let label = if stop {
-                        "STOP"
-                    } else if busy {
-                        "STEER"
-                    } else {
-                        "SEND"
-                    };
-                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                    label
-                        .chars()
-                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                        .sum::<f32>()
-                        + imba::layout::text_advance(ui, &key_font, "⌘⏎")
-                        + ui_theme.combo.gap
-                        + ui_theme.combo.pad * 2.0
-                };
-                let toolbar_cells_right = view.toolbar.place(
-                    arena,
-                    &mut panel,
-                    store,
-                    ui,
-                    size.height - toolbar_h + 1.0,
-                    toolbar_h - 1.0,
-                    (size.width - send_cell_width - theme.ui().combo.gap).max(0.0),
-                );
-
-                // The footer's edges: a hairline between the transcript
-                // and the composer band, and one above the toolbar row
-                // (whose placement already reserves the pixel).
-                {
-                    let rule = theme.ui().toolbar.rule.0;
-                    let hairline =
-                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                            let mut paint = skia_safe::Paint::default();
-                            paint.set_anti_alias(false);
-                            paint.set_color(rule);
-                            canvas.draw_rect(rect, &paint);
-                        };
-                    panel.place(
-                        0.0,
-                        rows_height,
-                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                    );
-                    panel.place(
-                        0.0,
-                        size.height - toolbar_h,
-                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                    );
-                }
-
-                {
-                    let ui_theme = theme.ui();
-                    let busy = self.busy();
-                    let sendable = !composer_empty && matches!(self.state, Link::Ready);
-                    let stop = busy && composer_empty;
-                    let label = if stop {
-                        "STOP"
-                    } else if busy {
-                        "STEER"
-                    } else {
-                        "SEND"
-                    };
-                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                    let pad = ui_theme.combo.pad;
-                    let cell_width = send_cell_width;
-                    let accent = if stop {
-                        chrome.stop_color.0
-                    } else {
-                        chrome.accent.0
-                    };
-                    let on_accent = chrome.on_accent.0;
-                    let accent_soft = ui_theme.peeker.dim_text.0;
-                    let gap = ui_theme.combo.gap;
-                    // The cell's two texts as a Row of `Text`s at exact
-                    // baseline parity: the old per-char loop advanced by
-                    // glyph width + 1.5 (= `.tracking(1.5)`) from x =
-                    // left + pad, and drew the key hint a `gap` after the
-                    // label's last advance (= the Row's `.gap`). Each text
-                    // pads down so its baseline lands on the old
-                    // mid + font.size() * 0.35 line. The accent fill and
-                    // left rule stay a backdrop painter; the press is
-                    // `.on_click`, minting Stop or Submit like the old
-                    // event closure.
-                    let cell_h = toolbar_h - 1.0;
-                    let mid = cell_h * 0.5;
-                    let caps_ascent = -caps_font.metrics().1.ascent;
-                    let key_ascent = -key_font.metrics().1.ascent;
-                    let mut row = imba::layout::Row::new(arena).gap(gap).child(
-                        imba::layout::text(ui, label, caps_font.clone(), on_accent)
-                            .tracking(1.5)
-                            .pad_insets(imba::layout::Insets {
-                                left: 0.0,
-                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            }),
-                    );
-                    if !stop {
-                        row = row.child(
-                            imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                                imba::layout::Insets {
-                                    left: 0.0,
-                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                    right: 0.0,
-                                    bottom: 0.0,
-                                },
-                            ),
-                        );
-                    }
-                    let cell = row
-                        .pad_insets(imba::layout::Insets {
-                            left: pad,
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                        })
-                        .sized(cell_width, cell_h)
-                        .backdrop(
-                            move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                                let mut paint = skia_safe::Paint::default();
-                                let mut fill = accent;
-                                if !sendable && !busy {
-                                    fill = fill.with_a(0x50);
-                                }
-                                paint.set_color(fill.with_a(fill.a() / 3));
-                                canvas.draw_rect(rect, &paint);
-                                paint.set_anti_alias(false);
-                                paint.set_color(fill);
-                                canvas.draw_rect(
-                                    skia_safe::Rect::from_xywh(
-                                        rect.left,
-                                        rect.top,
-                                        1.0,
-                                        rect.height(),
-                                    ),
-                                    &paint,
-                                );
-                            },
-                        )
-                        .on_click(move || {
-                            ChatPanelCommand::Composer(match stop {
-                                true => ComposerCommand::Stop,
-                                false => ComposerCommand::Submit,
-                            })
-                        });
-                    panel.place_boxed(
-                        size.width - cell_width,
-                        size.height - toolbar_h + 1.0,
-                        cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
-                    );
-
-                    // The shortcut legend (or the link's status) sits on
-                    // the toolbar, right against the SEND cell. The ⌘⏎
-                    // hint already lives on the cell itself.
-                    let legend = match status.is_empty() {
-                        true => "⎋ chat".to_owned(),
-                        false => status.clone(),
-                    };
-                    let legend_w = imba::layout::text_advance(ui, &key_font, &legend);
-                    let legend_x = size.width - cell_width - gap - legend_w;
-                    // Squeezed out by the combo cells? The legend yields.
-                    if legend_x >= toolbar_cells_right + gap {
-                        panel.place_boxed(
-                            legend_x,
-                            size.height - toolbar_h + 1.0,
-                            imba::layout::text(ui, legend, key_font.clone(), accent_soft)
-                                .pad_insets(imba::layout::Insets {
-                                    left: 0.0,
-                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                    right: 0.0,
-                                    bottom: 0.0,
-                                })
-                                .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
-                        );
-                    }
-                }
-                let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
+                let strip_origin = std::sync::Arc::clone(&view.band.toolbar.strip_origin);
                 let toolbar_stale = (self.catalog.channel)(store, &self.session_id())
                     .map(|channel| {
                         let agents = (self.catalog.agents)(store, self.server);
                         crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel)
                     })
-                    .is_some_and(|fingerprint| fingerprint != view.toolbar.synced);
+                    .is_some_and(|fingerprint| fingerprint != view.band.toolbar.synced);
 
                 let rows_height_ = rows_height;
                 let focus = view.focus;
@@ -2152,12 +1755,11 @@ impl ChatPanel {
 impl ChatView {
     fn new(store: &Store, ui: &UiCtx) -> Self {
         Self {
-            rows: ScrollView::new(ListView::empty()),
-            composer: Composer::new(store, ui),
+            rows: ScrollView::new(TranscriptView::empty()),
+            band: crate::composer::ComposerBand::new(store, ui),
             picked: rpds::VectorSync::new_sync(),
             focus: ChatArea::Composer,
             has_loader: false,
-            toolbar: super::session_toolbar::SessionToolbar::new(store, ui),
             panel_width: AtomicU32::new(800.0_f32.to_bits()),
             rows_height: AtomicU32::new(600.0_f32.to_bits()),
         }
@@ -2421,7 +2023,7 @@ impl ChatView {
     ) {
         use ::editor::editor_view::EditorCommand;
         use imba::scroll::ScrollCommand;
-        let editor = self.composer.editor();
+        let editor = self.band.composer.editor();
         match &command {
             // The editor wrote the mention; the view records the file
             // for the send's attachments.
@@ -2434,7 +2036,7 @@ impl ChatView {
             ComposerCommand::Editor(ScrollCommand::Content(EditorCommand::InsertText { text }))
                 if text == "@" =>
             {
-                self.composer.document_mut().set_mentions(
+                self.band.composer.document_mut().set_mentions(
                     editor,
                     Some(::editor::completion::MentionContext {
                         folders,
@@ -2445,7 +2047,7 @@ impl ChatView {
             _ => {}
         }
         fx.scope(ChatPanelCommand::Composer, |fx| {
-            self.composer.perform(store, ui, command, fx)
+            self.band.composer.perform(store, ui, command, fx)
         });
     }
 
@@ -2458,12 +2060,12 @@ impl ChatView {
     ) {
         use ::editor::completion::CompletionCommand;
         use ::editor::editor_view::EditorCommand;
-        let editor = self.composer.editor();
-        if !self.composer.document().completion(editor).open() {
+        let editor = self.band.composer.editor();
+        if !self.band.composer.document().completion(editor).open() {
             return;
         }
         fx.scope(ChatPanelCommand::Composer, |fx| {
-            self.composer.perform(
+            self.band.composer.perform(
                 store,
                 ui,
                 composer_editor(EditorCommand::Completion(CompletionCommand::Close)),

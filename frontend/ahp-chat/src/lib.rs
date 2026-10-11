@@ -17,4 +17,5 @@ pub mod open;
 pub mod session_toolbar;
 pub mod stack;
 pub mod tool_group;
+pub mod transcript;
 pub mod turn;

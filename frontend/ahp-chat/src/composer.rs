@@ -349,3 +349,403 @@ impl<'a> Widget<'a, ComposerCommand> for ComposerWidget<'a> {
         self.inner.layout_data(target)
     }
 }
+
+
+// ─── the BAND: composer + toolbar + send, one component ───
+
+/// The composer BAND — the input box, the session toolbar, the
+/// SEND cell and the ask stack's seat — as a view of its own,
+/// sized to its natural footprint. The workbench places it under
+/// the transcript; a native shell mounts it standalone at the
+/// height it measures. It speaks the panel's command vocabulary
+/// (the toolbar places itself with it).
+pub(crate) struct ComposerBand {
+    pub(crate) composer: Composer,
+    pub(crate) toolbar: crate::session_toolbar::SessionToolbar,
+}
+
+impl Clone for ComposerBand {
+    fn clone(&self) -> Self {
+        Self {
+            composer: self.composer.clone(),
+            toolbar: self.toolbar.clone(),
+        }
+    }
+}
+
+/// What the band shows of the PANEL's state — props in, commands
+/// out; the band never reads the conversation itself.
+pub(crate) struct BandProps<'a> {
+    pub(crate) status: String,
+    pub(crate) busy: bool,
+    pub(crate) link_ready: bool,
+    pub(crate) focused: bool,
+    pub(crate) stack: &'a crate::stack::WidgetStack,
+    /// The height the composer's growth caps against — the
+    /// window's where there is one, a nominal where the host asks
+    /// loose.
+    pub(crate) nominal_height: f32,
+}
+
+impl ComposerBand {
+    pub(crate) fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
+        Self {
+            composer: Composer::new(store, ui),
+            toolbar: crate::session_toolbar::SessionToolbar::new(store, ui),
+        }
+    }
+
+    /// (band, stack, toolbar) heights — the caller sizes panes and
+    /// containers from these.
+    pub(crate) fn heights(
+        &self,
+        store: &imba::store::Store,
+        stack: &crate::stack::WidgetStack,
+        nominal_height: f32,
+    ) -> (f32, f32, f32) {
+        let theme = env::Themes::of(store);
+        let chrome = theme.ui().chat.clone();
+        (
+            self.composer.band_height(&chrome, nominal_height),
+            stack.height(&chrome),
+            theme.ui().toolbar.height,
+        )
+    }
+
+    pub(crate) fn display<'a>(
+        &'a self,
+        arena: &'a imba::arena::Arena,
+        store: &'a imba::store::Store,
+        ui: &'a imba::ui::UiCtx,
+        props: BandProps<'a>,
+    ) -> impl imba::layout::Layout<'a, crate::chat::ChatPanelCommand> + imba::layout::LayoutValue + 'a
+    {
+        use crate::chat::ChatPanelCommand;
+        use imba::layout::Layout as _;
+        use imba::layout::LayoutExt as _;
+        use imba::leaf::leaf;
+        use imba::thunk_ext::ThunkExt as _;
+        use skia_safe::Paint;
+
+        imba::layout::laid(
+            move |arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
+                let (band_h, stack_h, toolbar_h) =
+                    self.heights(store, props.stack, props.nominal_height);
+                let theme = env::Themes::of(store);
+                let chrome = theme.ui().chat.clone();
+                let size = Size::new(
+                    constraints.max.width.max(1.0),
+                    band_h + stack_h + toolbar_h,
+                );
+                let mut panel = imba::container::container(arena, size);
+                let status = props.status.clone();
+                let composer_empty = self.composer.is_empty();
+                panel.place(
+                    0.0,
+                    stack_h,
+                    self.composer
+                        .layout(
+                            arena,
+                            store,
+                            ui,
+                            size.width,
+                            size.height,
+                            ComposerProps {
+                                focused: props.focused,
+                            },
+                        )
+                        .map(ChatPanelCommand::Composer),
+                );
+
+                if stack_h > 0.0 {
+                    panel.place(
+                        0.0,
+                        0.0,
+                        props.stack
+                            .layout(arena, ui, &chrome, size.width)
+                            .map(ChatPanelCommand::Stack),
+                    );
+                }
+
+                // The SEND cell's width, computed up front: the combo
+                // strip's budget ends where SEND begins — the button
+                // always fits and nothing ever covers it.
+                let send_cell_width = {
+                    let ui_theme = theme.ui();
+                    let busy = props.busy;
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    label
+                        .chars()
+                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                        .sum::<f32>()
+                        + imba::layout::text_advance(ui, &key_font, "⌘⏎")
+                        + ui_theme.combo.gap
+                        + ui_theme.combo.pad * 2.0
+                };
+                let toolbar_cells_right = self.toolbar.place(
+                    arena,
+                    &mut panel,
+                    store,
+                    ui,
+                    size.height - toolbar_h + 1.0,
+                    toolbar_h - 1.0,
+                    (size.width - send_cell_width - theme.ui().combo.gap).max(0.0),
+                );
+
+                // The footer's edges: a hairline between the transcript
+                // and the composer band, and one above the toolbar row
+                // (whose placement already reserves the pixel).
+                {
+                    let rule = theme.ui().toolbar.rule.0;
+                    let hairline =
+                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_anti_alias(false);
+                            paint.set_color(rule);
+                            canvas.draw_rect(rect, &paint);
+                        };
+                    panel.place(
+                        0.0,
+                        0.0,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                    panel.place(
+                        0.0,
+                        size.height - toolbar_h,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                }
+
+                {
+                    let ui_theme = theme.ui();
+                    let busy = props.busy;
+                    let sendable = !composer_empty && props.link_ready;
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    let pad = ui_theme.combo.pad;
+                    let cell_width = send_cell_width;
+                    let accent = if stop {
+                        chrome.stop_color.0
+                    } else {
+                        chrome.accent.0
+                    };
+                    let on_accent = chrome.on_accent.0;
+                    let accent_soft = ui_theme.peeker.dim_text.0;
+                    let gap = ui_theme.combo.gap;
+                    // The cell's two texts as a Row of `Text`s at exact
+                    // baseline parity: the old per-char loop advanced by
+                    // glyph width + 1.5 (= `.tracking(1.5)`) from x =
+                    // left + pad, and drew the key hint a `gap` after the
+                    // label's last advance (= the Row's `.gap`). Each text
+                    // pads down so its baseline lands on the old
+                    // mid + font.size() * 0.35 line. The accent fill and
+                    // left rule stay a backdrop painter; the press is
+                    // `.on_click`, minting Stop or Submit like the old
+                    // event closure.
+                    let cell_h = toolbar_h - 1.0;
+                    let mid = cell_h * 0.5;
+                    let caps_ascent = -caps_font.metrics().1.ascent;
+                    let key_ascent = -key_font.metrics().1.ascent;
+                    let mut row = imba::layout::Row::new(arena).gap(gap).child(
+                        imba::layout::text(ui, label, caps_font.clone(), on_accent)
+                            .tracking(1.5)
+                            .pad_insets(imba::layout::Insets {
+                                left: 0.0,
+                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            }),
+                    );
+                    if !stop {
+                        row = row.child(
+                            imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                                imba::layout::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                },
+                            ),
+                        );
+                    }
+                    let cell = row
+                        .pad_insets(imba::layout::Insets {
+                            left: pad,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: 0.0,
+                        })
+                        .sized(cell_width, cell_h)
+                        .backdrop(
+                            move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                                let mut paint = skia_safe::Paint::default();
+                                let mut fill = accent;
+                                if !sendable && !busy {
+                                    fill = fill.with_a(0x50);
+                                }
+                                paint.set_color(fill.with_a(fill.a() / 3));
+                                canvas.draw_rect(rect, &paint);
+                                paint.set_anti_alias(false);
+                                paint.set_color(fill);
+                                canvas.draw_rect(
+                                    skia_safe::Rect::from_xywh(
+                                        rect.left,
+                                        rect.top,
+                                        1.0,
+                                        rect.height(),
+                                    ),
+                                    &paint,
+                                );
+                            },
+                        )
+                        .on_click(move || {
+                            ChatPanelCommand::Composer(match stop {
+                                true => ComposerCommand::Stop,
+                                false => ComposerCommand::Submit,
+                            })
+                        });
+                    panel.place_boxed(
+                        size.width - cell_width,
+                        size.height - toolbar_h + 1.0,
+                        cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                    );
+
+                    // The shortcut legend (or the link's status) sits on
+                    // the toolbar, right against the SEND cell. The ⌘⏎
+                    // hint already lives on the cell itself.
+                    let legend = match status.is_empty() {
+                        true => "⎋ chat".to_owned(),
+                        false => status.clone(),
+                    };
+                    let legend_w = imba::layout::text_advance(ui, &key_font, &legend);
+                    let legend_x = size.width - cell_width - gap - legend_w;
+                    // Squeezed out by the combo cells? The legend yields.
+                    if legend_x >= toolbar_cells_right + gap {
+                        panel.place_boxed(
+                            legend_x,
+                            size.height - toolbar_h + 1.0,
+                            imba::layout::text(ui, legend, key_font.clone(), accent_soft)
+                                .pad_insets(imba::layout::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                })
+                                .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
+                        );
+                    }
+                }
+                panel
+            },
+        )
+    }
+}
+
+/// The composer-band PANE: the band standalone at its natural
+/// height — the native shell's bottom component; the workbench
+/// never shows this flavor.
+#[derive(Clone)]
+pub struct ComposerPane {
+    seat: crate::chats::PaneSeat,
+}
+
+impl ComposerPane {
+    pub fn new(
+        chats: imba::store::Id<crate::chats::Chats>,
+        chat: ahp_wire::client::ChatUri,
+    ) -> Self {
+        Self {
+            seat: crate::chats::PaneSeat::new(chats, chat),
+        }
+    }
+}
+
+impl imba::View for ComposerPane {
+    type Command = crate::chat::ChatPanelCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w imba::store::Store,
+        ui: &'w imba::ui::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        self.seat.focus_data(store, ui)
+    }
+
+    fn destroy(
+        &mut self,
+        store: &mut imba::store::Store,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.seat.park(store);
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.seat.perform(store, ui, command, fx);
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a imba::arena::Arena,
+        store: &'a imba::store::Store,
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
+            move |_arena: &'a imba::arena::Arena,
+                  constraints: imba::constraints::Constraints| {
+                match self.seat.view.and_then(|view| {
+                    crate::chats::Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
+                        .and_then(|panel| panel.display_band(arena, store, ui, view))
+                }) {
+                    Some(laid) => imba::ThunkBox::new(
+                        arena,
+                        imba::layout::Layout::layout(laid, arena, constraints),
+                    ),
+                    None => crate::chats::PaneSeat::boot_leaf(arena, constraints),
+                }
+            },
+        )
+    }
+}
+
+impl hikit::panel::PanelView for ComposerPane {
+    type Place = crate::chats::ChatPlace;
+
+    fn title(&self, store: &imba::store::Store) -> String {
+        self.seat.title(store)
+    }
+
+    fn dismantle(&mut self, store: &mut imba::store::Store) {
+        self.seat.dismantle(store);
+    }
+
+    fn displaced(&mut self, store: &mut imba::store::Store) {
+        self.seat.park(store);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}

@@ -145,7 +145,9 @@ impl Chats {
     /// Open a chat INTO its collection: the caller holds the id (the
     /// window's session at session entry); the record is minted here if
     /// the collection does not hold it yet.
-    pub fn open_with(
+    /// Ensure the chat RECORD exists — the model half of opening;
+    /// every pane flavor mints over it.
+    pub fn ensure_chat(
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         chats: imba::store::Id<Chats>,
@@ -153,7 +155,7 @@ impl Chats {
         session: SessionUri,
         chat: ChatUri,
         initial_prompt: Option<String>,
-    ) -> Box<dyn hikit::panel::DynPanelView> {
+    ) {
         let known = Self::chat_ref(store, chats, &chat).is_some();
         if !known {
             eprintln!("[higent] minting a chat record: {chat}");
@@ -172,6 +174,18 @@ impl Chats {
             }
             Self::put(store, chats, chat.clone(), panel);
         }
+    }
+
+    pub fn open_with(
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        chats: imba::store::Id<Chats>,
+        server: ahp_wire::client::HostId,
+        session: SessionUri,
+        chat: ChatUri,
+        initial_prompt: Option<String>,
+    ) -> Box<dyn hikit::panel::DynPanelView> {
+        Self::ensure_chat(store, ui, chats, server, session, chat.clone(), initial_prompt);
         Box::new(ChatPane::new(chats, chat))
     }
 
@@ -582,3 +596,114 @@ pub struct ChatRow(
 );
 
 impl hikit::pane_row::Row for ChatRow {}
+
+/// The shared SEAT of every chat pane flavor — the collection, the
+/// chat, and the claimed mount. The flavors (whole, transcript,
+/// composer band) differ only in what they DISPLAY; claiming,
+/// performing, parking and closing are one road.
+#[derive(Clone)]
+pub(crate) struct PaneSeat {
+    pub(crate) chats: imba::store::Id<Chats>,
+    pub(crate) chat: ChatUri,
+    pub(crate) view: Option<ChatViewId>,
+}
+
+impl PaneSeat {
+    pub(crate) fn new(chats: imba::store::Id<Chats>, chat: ChatUri) -> Self {
+        Self {
+            chats,
+            chat,
+            view: None,
+        }
+    }
+
+    pub(crate) fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: ChatPanelCommand,
+        fx: &mut imba::effect::Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        let view = match self.view {
+            Some(view) => view,
+            None => {
+                let view = panel.claim_view(store, ui, fx);
+                self.view = Some(view);
+                view
+            }
+        };
+        panel.perform_in_view(store, ui, view, command, fx);
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+    }
+
+    pub(crate) fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
+        match (self.view, Chats::chat_ref(store, self.chats, &self.chat)) {
+            (Some(view), Some(panel)) => panel.focus_data_view(store, ui, view),
+            _ => imba::focus::FocusData::default(),
+        }
+    }
+
+    /// The pane goes but the MOUNT stays — parked and still fed.
+    pub(crate) fn park(&mut self, store: &mut Store) {
+        let Some(view) = self.view.take() else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        panel.park_view(view);
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+    }
+
+    /// Closed for real: the mount goes; the chat stays session truth.
+    pub(crate) fn dismantle(&mut self, store: &mut Store) {
+        let Some(view) = self.view.take() else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        panel.close_view(store, view);
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+    }
+
+    pub(crate) fn title(&self, store: &Store) -> String {
+        Chats::chat_ref(store, self.chats, &self.chat)
+            .map(|panel| panel.title_text())
+            .unwrap_or_else(|| "Agent Chat".to_owned())
+    }
+
+    /// No view record yet (panes mint storeless): a blank frame
+    /// whose paint asks for Boot — the perform road builds the
+    /// view and subscribes. The height guards the MEASURE ask: an
+    /// infinite boot leaf would answer an infinite content size.
+    pub(crate) fn boot_leaf<'a>(
+        arena: &'a imba::arena::Arena,
+        constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, ChatPanelCommand> {
+        let height = if constraints.max.height.is_finite() {
+            constraints.max.height
+        } else {
+            100.0
+        };
+        imba::ThunkBox::new(
+            arena,
+            imba::thunk_ext::ThunkExt::event(
+                imba::leaf::leaf::<ChatPanelCommand>(constraints.max.width, height),
+                |_arena, event, _size| match event {
+                    imba::event::Event::Paint { .. } => {
+                        imba::event::EventResult::Command(crate::chat::ChatPanelCommand::Boot)
+                    }
+                    _ => imba::event::EventResult::Ignored,
+                },
+            ),
+        )
+    }
+}
