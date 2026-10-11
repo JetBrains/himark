@@ -28,6 +28,19 @@ pub fn default_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("HIMARK_HOST_HOME") {
         return Some(PathBuf::from(dir));
     }
+    // The iOS SIMULATOR shares the mac's filesystem but its $HOME is
+    // the app's sandbox container; the HOST user's home rides this
+    // variable, and the daemon lives there — an Xcode run reaches it
+    // with no scheme setup. Absent on device, where there is no
+    // local daemon to find anyway.
+    #[cfg(target_os = "ios")]
+    if let Some(host_home) = std::env::var_os("SIMULATOR_HOST_HOME") {
+        return Some(
+            PathBuf::from(host_home)
+                .join(".himark")
+                .join("agent-host"),
+        );
+    }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".himark").join("agent-host"))
 }
