@@ -69,6 +69,40 @@ impl crate::commands::WindowedCommand for OpenDiffCanvas {
         }
         ::workbench::window::Windows::put(store, window, entity);
     }
+
+    /// The MOUNTED landing: same ask, but the place goes to the
+    /// SEATED SHELL — the native side opens its canvas pane.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        origin: crate::bridge::ViewBridgeId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        if let CanvasSource::Commit { folder, id } = &self.source {
+            if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
+                changesview::hihistory::History::ask(
+                    store,
+                    history,
+                    changesview::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
+                );
+            }
+        }
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                CanvasPlace {
+                    changes: self.changes,
+                    source: self.source.clone(),
+                    reveal: self.reveal.clone(),
+                },
+                fx,
+            )
+        });
+        true
+    }
 }
 
 /// Open a canvas file's live side in an ordinary pane — the header's

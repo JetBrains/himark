@@ -335,14 +335,21 @@ where
                 let value = value.clone();
                 let shaper = imba::layout::TextShaper::of(ui);
                 move |_arena, canvas, rect| {
+                    let _ = rule;
+                    // The PILL: a capsule behind the cell, not a
+                    // ruled strip (docs/himark-islands-default.png).
                     let mut paint = Paint::default();
-                    paint.set_anti_alias(false);
-                    paint.set_color(rule);
-                    canvas.draw_rect(
-                        Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
-                        &paint,
-                    );
                     paint.set_anti_alias(true);
+                    paint.set_color(chrome.pill_fill.0);
+                    let inset = ((rect.height() - chrome.value_size - 14.0) * 0.5).max(3.0);
+                    let pill = Rect::from_ltrb(
+                        rect.left + 1.0,
+                        rect.top + inset,
+                        rect.right - 5.0,
+                        rect.bottom - inset,
+                    );
+                    let radius = pill.height() * 0.5;
+                    canvas.draw_round_rect(pill, radius, radius, &paint);
 
                     let mut x = rect.left + chrome.pad;
                     let mid = rect.top + rect.height() * 0.5;

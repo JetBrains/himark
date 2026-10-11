@@ -315,7 +315,8 @@ impl SessionToolbar {
                     .cell(arena, store, ui, height)
                     .map(move |command| super::chat::ChatPanelCommand::Toolbar(wrap(command))),
             );
-            x += width;
+            // Pills breathe — the ruled strip packed cells flush.
+            x += width + 6.0;
         }
         span(4, x, 0.0);
         x

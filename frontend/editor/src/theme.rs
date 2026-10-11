@@ -638,6 +638,8 @@ pub struct ComboChrome {
 
     pub chevron: f32,
     pub chevron_color: Rgba,
+    /// The capsule behind a toolbar pill (the composer's combos).
+    pub pill_fill: Rgba,
     pub menu_fill: Rgba,
     pub menu_border: Rgba,
     pub menu_row_height: f32,
@@ -661,6 +663,7 @@ impl Default for ComboChrome {
             value_color: Rgba(Color::from_argb(0xff, 0xdc, 0xe3, 0xf2)),
             chevron: 22.0,
             chevron_color: Rgba(Color::from_argb(0xb5, 0xc0, 0x8b, 0x96)),
+            pill_fill: Rgba(Color::from_argb(0x14, 0xff, 0xff, 0xff)),
             menu_fill: Rgba(Color::from_argb(0xff, 0x1d, 0x23, 0x33)),
             menu_border: Rgba(Color::from_argb(0xff, 0x2a, 0x2d, 0x3d)),
             menu_row_height: 44.0,

@@ -84,6 +84,13 @@ pub struct ChangesPlace(pub ahp_wire::SessionId);
 
 impl Place for ChangesPlace {}
 
+/// The session's changes tree whose rows open the DIFF CANVAS —
+/// the desktop flavor (iOS opens one inline diff per row).
+#[derive(Clone, PartialEq)]
+pub struct ChangesCanvasPlace(pub ahp_wire::SessionId);
+
+impl Place for ChangesCanvasPlace {}
+
 /// A session's FILE tree.
 #[derive(Clone, PartialEq)]
 pub struct FilesPlace(pub ahp_wire::SessionId);

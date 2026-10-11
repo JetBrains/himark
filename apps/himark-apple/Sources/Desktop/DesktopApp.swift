@@ -76,6 +76,7 @@ final class DesktopHost: NSObject, ObservableObject {
         // record the opened place and return; the pane mints later.
         engine.setShell(context: ctx) { ctx, _, place, kind, title, titleLen in
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
+                || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
             let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
             var name = ""

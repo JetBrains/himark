@@ -117,6 +117,8 @@ final class HimarkEngine {
         /// The split chat: the transcript as a native scroller's
         /// content, the composer band standalone.
         case transcript, composer
+        /// The desktop changes tree: rows open the DIFF CANVAS.
+        case changesCanvas
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
@@ -124,6 +126,8 @@ final class HimarkEngine {
             switch kind {
             case .chat: himark_place_chat(engine, host, cstr, UInt(strlen(cstr)))
             case .changes: himark_place_changes(engine, host, cstr, UInt(strlen(cstr)))
+            case .changesCanvas:
+                himark_place_changes_canvas(engine, host, cstr, UInt(strlen(cstr)))
             case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
             case .transcript:
                 himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))

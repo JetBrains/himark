@@ -268,3 +268,54 @@ struct ComposerBridge: NSViewRepresentable {
         view.teardown()
     }
 }
+
+/// A place-minted bridge WITHOUT the native scroller — the diff
+/// canvas owns its scroll inside the engine (wheels ride the
+/// bridge-event road); the view fills the pane and draws whole.
+final class PlainBridgeHost: NSView {
+    private let host: DesktopHost
+    private(set) var bridge = HimarkBridge(raw: 0)
+    private(set) var content: HimarkBridgeView?
+
+    init(host: DesktopHost, bridge: HimarkBridge) {
+        self.host = host
+        super.init(frame: .zero)
+        self.bridge = bridge
+        guard bridge.raw != 0 else { return }
+        let view = HimarkBridgeView(
+            frame: bounds, engine: host.engine, device: host.device, bridge: bridge)
+        view.autoresizingMask = [.width, .height]
+        addSubview(view)
+        host.register(view)
+        content = view
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func teardown() {
+        if let content {
+            host.unregister(content)
+            content.removeFromSuperview()
+        }
+        content = nil
+        if bridge.raw != 0 {
+            host.unmount(bridge: bridge)
+            bridge = HimarkBridge(raw: 0)
+        }
+    }
+}
+
+struct PlainPlaceBridge: NSViewRepresentable {
+    let host: DesktopHost
+    let place: HimarkPlace
+
+    func makeNSView(context: Context) -> PlainBridgeHost {
+        PlainBridgeHost(host: host, bridge: host.engine.mint(place: place))
+    }
+
+    func updateNSView(_ view: PlainBridgeHost, context: Context) {}
+
+    static func dismantleNSView(_ view: PlainBridgeHost, coordinator: ()) {
+        view.teardown()
+    }
+}

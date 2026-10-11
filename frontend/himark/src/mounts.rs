@@ -384,6 +384,58 @@ pub fn mount_place(
             }) as Rc<dyn BridgeView>)
         });
     }
+    if let Some(place) = place.place::<crate::places::ChangesCanvasPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let changes = state.changes();
+            // The DESKTOP flavor: a row opens the MULTI-DIFF CANVAS
+            // (user law — iOS keeps one inline diff per row). The
+            // windowed verb forks windowless at the missing entity
+            // and hands the shell a CanvasPlace.
+            let opener: changesview::changes_view::CanvasOpener =
+                Arc::new(move |source, reveal| {
+                    crate::app::shell_verb(crate::shell::windowed(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                            changes,
+                            source,
+                            reveal,
+                        }),
+                    ))
+                });
+            let view = changesview::changes_view::ChangesView::open(
+                store,
+                ui,
+                changes,
+                changesview::changes_view::ViewSets::WorkingCopies,
+                opener,
+            );
+            let view = changesview::hichanges::Changes::mint_view(store, changes, view);
+            Some(Rc::new(ModalMount {
+                id,
+                view: changesview::changes_view::ChangesPane::new(changes, view),
+            }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<::canvas::diff_canvas::CanvasPlace>() {
+        let place = place.clone();
+        return app.mount(move |store, ui, id, fx| {
+            // The canvas mints through ITS navigator — the same
+            // road a workbench pane rides.
+            let panel = fx.scope(crate::perform::AppCommand::Verb, |fx| {
+                hikit::navigation::Navigator::navigate(
+                    &::canvas::canvas::CanvasNavigator,
+                    store,
+                    ui,
+                    &place,
+                    fx,
+                )
+            })?;
+            Some(Rc::new(PanelMount { id, panel }) as Rc<dyn BridgeView>)
+        });
+    }
     if let Some(place) = place.place::<crate::places::FilesPlace>() {
         let key = place.0.clone();
         return app.mount(move |store, ui, id, fx| {

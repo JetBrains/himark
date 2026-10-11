@@ -86,6 +86,8 @@
 
 #define HIMARK_PLACE_DIFF 5
 
+#define HIMARK_PLACE_CANVAS 6
+
 typedef struct HimarkEngine HimarkEngine;
 
 /**
@@ -513,6 +515,14 @@ HimarkPlace himark_place_changes(HimarkEngine *engine,
                                  uint64_t host,
                                  const char *uri,
                                  uintptr_t len);
+
+/**
+ * The desktop flavor: rows open the DIFF CANVAS, not one file.
+ */
+HimarkPlace himark_place_changes_canvas(HimarkEngine *engine,
+                                        uint64_t host,
+                                        const char *uri,
+                                        uintptr_t len);
 
 HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
 

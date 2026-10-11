@@ -452,7 +452,8 @@ struct RailContent: View {
     var body: some View {
         switch tool {
         case .changes:
-            MintedScrollBridge(host: host, kind: .changes)
+            // Desktop rows open the CANVAS (user law).
+            MintedScrollBridge(host: host, kind: .changesCanvas)
                 .id("\(host.current?.uri ?? "")-changes")
         case .files:
             MintedScrollBridge(host: host, kind: .files)
@@ -503,8 +504,14 @@ struct DocumentPane: View {
     let opened: DesktopHost.Opened
 
     var body: some View {
-        PlaceScrollBridge(host: host, place: opened.place)
-            .id(opened.id)
+        if opened.kind == UInt32(HIMARK_PLACE_CANVAS) {
+            // The canvas scrolls ITSELF — no native scroller around it.
+            PlainPlaceBridge(host: host, place: opened.place)
+                .id(opened.id)
+        } else {
+            PlaceScrollBridge(host: host, place: opened.place)
+                .id(opened.id)
+        }
     }
 }
 
@@ -515,8 +522,8 @@ struct DocumentPill: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: opened.kind == UInt32(HIMARK_PLACE_DIFF)
-                ? "plus.forwardslash.minus" : "doc.text")
+            Image(systemName: opened.kind == UInt32(HIMARK_PLACE_DOCUMENT)
+                ? "doc.text" : "plus.forwardslash.minus")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Text(opened.title.isEmpty ? "Untitled" : opened.title)

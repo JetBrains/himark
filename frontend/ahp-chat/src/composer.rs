@@ -260,6 +260,67 @@ impl Composer {
             .focus_scope(focused),
         );
 
+        // The input row's companions (docs/himark-islands-default):
+        // attach and mention, both funneling into the mention road —
+        // a mentioned file IS the send's attachment.
+        {
+            use imba::leaf::leaf;
+            let icon_color = theme.ui().peeker.dim_text.0;
+            let shaper = imba::layout::TextShaper::of(ui);
+            let at_font = hikit::fonts::ui_text_font(ui, 16.0);
+            let mention = move || {
+                ComposerCommand::Editor(ScrollCommand::Content(EditorCommand::Paste {
+                    text: "@".to_owned(),
+                }))
+            };
+            let at = leaf::<ComposerCommand>(22.0, 22.0)
+                .paint_below({
+                    let shaper = shaper.clone();
+                    let at_font = at_font.clone();
+                    move |_arena, canvas, rect| {
+                        shaper.draw(
+                            canvas,
+                            &at_font,
+                            "@",
+                            icon_color,
+                            0.0,
+                            rect.left + 3.0,
+                            rect.top + 16.0,
+                        );
+                    }
+                })
+                .event(move |_arena, event, _size| match event {
+                    Event::MouseDown { .. } => EventResult::Command(mention()),
+                    _ => EventResult::Ignored,
+                });
+            let clip = leaf::<ComposerCommand>(22.0, 22.0)
+                .paint_below(move |_arena, canvas, rect| {
+                    let mut paint = skia_safe::Paint::default();
+                    paint.set_anti_alias(true);
+                    paint.set_stroke(true);
+                    paint.set_stroke_width(1.4);
+                    paint.set_stroke_cap(skia_safe::PaintCap::Round);
+                    paint.set_color(icon_color);
+                    let (x, y) = (rect.left, rect.top + 2.0);
+                    let mut path = skia_safe::PathBuilder::new();
+                    path.move_to((x + 6.2, y + 6.0));
+                    path.line_to((x + 6.2, y + 11.0));
+                    path.quad_to((x + 6.2, y + 14.0), (x + 9.0, y + 14.0));
+                    path.quad_to((x + 11.8, y + 14.0), (x + 11.8, y + 11.0));
+                    path.line_to((x + 11.8, y + 5.5));
+                    path.quad_to((x + 11.8, y + 2.8), (x + 9.4, y + 2.8));
+                    path.quad_to((x + 7.0, y + 2.8), (x + 7.0, y + 5.5));
+                    path.line_to((x + 7.0, y + 10.6));
+                    canvas.draw_path(&path.detach(), &paint);
+                })
+                .event(move |_arena, event, _size| match event {
+                    Event::MouseDown { .. } => EventResult::Command(mention()),
+                    _ => EventResult::Ignored,
+                });
+            band.place(width - pad - 24.0, box_pad + 4.0, at);
+            band.place(width - pad - 50.0, box_pad + 4.0, clip);
+        }
+
         let rewrap =
             ((self.input.content().layout_width() - editor_w).abs() > 1.0).then_some(editor_w);
 
@@ -472,11 +533,11 @@ impl ComposerBand {
                     let busy = props.busy;
                     let stop = busy && composer_empty;
                     let label = if stop {
-                        "STOP"
+                        "Stop"
                     } else if busy {
-                        "STEER"
+                        "Steer"
                     } else {
-                        "SEND"
+                        "Send"
                     };
                     let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
                     let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
@@ -528,11 +589,11 @@ impl ComposerBand {
                     let sendable = !composer_empty && props.link_ready;
                     let stop = busy && composer_empty;
                     let label = if stop {
-                        "STOP"
+                        "Stop"
                     } else if busy {
-                        "STEER"
+                        "Steer"
                     } else {
-                        "SEND"
+                        "Send"
                     };
                     let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
                     let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
@@ -562,7 +623,7 @@ impl ComposerBand {
                     let key_ascent = -key_font.metrics().1.ascent;
                     let mut row = imba::layout::Row::new(arena).gap(gap).child(
                         imba::layout::text(ui, label, caps_font.clone(), on_accent)
-                            .tracking(1.5)
+                            .tracking(0.2)
                             .pad_insets(imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
@@ -592,24 +653,22 @@ impl ComposerBand {
                         .sized(cell_width, cell_h)
                         .backdrop(
                             move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                                // A rounded PILL, not a ruled cell
+                                // (docs/himark-islands-default.png).
                                 let mut paint = skia_safe::Paint::default();
+                                paint.set_anti_alias(true);
                                 let mut fill = accent;
                                 if !sendable && !busy {
                                     fill = fill.with_a(0x50);
                                 }
-                                paint.set_color(fill.with_a(fill.a() / 3));
-                                canvas.draw_rect(rect, &paint);
-                                paint.set_anti_alias(false);
                                 paint.set_color(fill);
-                                canvas.draw_rect(
-                                    skia_safe::Rect::from_xywh(
-                                        rect.left,
-                                        rect.top,
-                                        1.0,
-                                        rect.height(),
-                                    ),
-                                    &paint,
+                                let pill = skia_safe::Rect::from_ltrb(
+                                    rect.left,
+                                    rect.top + 4.0,
+                                    rect.right - 5.0,
+                                    rect.bottom - 4.0,
                                 );
+                                canvas.draw_round_rect(pill, 8.0, 8.0, &paint);
                             },
                         )
                         .on_click(move || {

@@ -959,6 +959,19 @@ pub unsafe extern "C" fn himark_place_changes(
     })
 }
 
+/// The desktop flavor: rows open the DIFF CANVAS, not one file.
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_changes_canvas(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::ChangesCanvasPlace(session))
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn himark_place_files(
     engine: *mut HimarkEngine,
@@ -1023,6 +1036,7 @@ pub const HIMARK_PLACE_CHANGES: u32 = 2;
 pub const HIMARK_PLACE_FILES: u32 = 3;
 pub const HIMARK_PLACE_DOCUMENT: u32 = 4;
 pub const HIMARK_PLACE_DIFF: u32 = 5;
+pub const HIMARK_PLACE_CANVAS: u32 = 6;
 
 /// The host's navigate answer: called on the MAIN thread, in the
 /// middle of an engine batch — the host must only RECORD (push the
@@ -1078,6 +1092,8 @@ impl himark::himark::Shell for CallbackShell {
                 Some((HIMARK_PLACE_DOCUMENT, title))
             } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
                 Some((HIMARK_PLACE_DIFF, ready.title.clone()))
+            } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
+                Some((HIMARK_PLACE_CANVAS, ready.source.title(store, ready.changes)))
             } else {
                 None
             };
