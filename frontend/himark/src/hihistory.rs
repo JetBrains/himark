@@ -72,7 +72,9 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(changesview::changes_view::ChangesPane::new(changes, view)),
+                    Box::new(hikit::modal::Scrolled::new(
+                        changesview::changes_view::ChangesPane::new(changes, view),
+                    )),
                     owner,
                     fx,
                 )

@@ -117,7 +117,9 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(changesview::changes_view::ChangesPane::new(changes, view)),
+                    Box::new(hikit::modal::Scrolled::new(
+                        changesview::changes_view::ChangesPane::new(changes, view),
+                    )),
                     owner,
                     fx,
                 )

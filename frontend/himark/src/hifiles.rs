@@ -132,7 +132,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         let owner = self.id();
         fx.scope(
             move |command| crate::shell::content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| entity.show_dock(store, Box::new(hikit::modal::Scrolled::new(panel)), owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
     }
