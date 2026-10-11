@@ -79,6 +79,21 @@ final class HimarkEngine {
 
     func sessionsEpoch() -> UInt64 { himark_sessions_epoch(engine) }
 
+    /// The registered command verbs — palette material.
+    func commands() -> [(id: String, name: String)] {
+        let handle = himark_commands_copy(engine)
+        guard handle.raw != 0 else { return [] }
+        defer { himark_commands_release(engine, handle) }
+        let count = himark_commands_len(engine, handle)
+        return (0..<count).compactMap { index in
+            guard
+                let id = sizedString({ himark_command_id(engine, handle, index, $0, $1) }),
+                let name = sizedString({ himark_command_name(engine, handle, index, $0, $1) })
+            else { return nil }
+            return (id, name)
+        }
+    }
+
     @discardableResult
     func sync() -> Bool { himark_sync(engine) }
 

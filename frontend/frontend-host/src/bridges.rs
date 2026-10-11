@@ -695,6 +695,106 @@ pub unsafe extern "C" fn himark_catalog_release(engine: *mut HimarkEngine, catal
     }
 }
 
+/// A snapshot of the REGISTERED COMMANDS — the host-visible verbs
+/// (palette material). Same handle discipline as the catalog.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkCommands {
+    pub raw: u64,
+}
+
+static COMMAND_SNAPSHOTS: std::sync::LazyLock<
+    std::sync::Mutex<Handles<Vec<(String, String)>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_commands_copy(engine: *mut HimarkEngine) -> HimarkCommands {
+    let Some(engine) = engine.as_mut() else {
+        return HimarkCommands { raw: 0 };
+    };
+    let snapshot: Vec<(String, String)> = himark::commands::Commands::of(engine.app.store())
+        .iter()
+        .map(|command| (command.id().to_owned(), command.name()))
+        .collect();
+    HimarkCommands {
+        raw: COMMAND_SNAPSHOTS
+            .lock()
+            .expect("the commands table")
+            .mint(snapshot),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_commands_release(
+    engine: *mut HimarkEngine,
+    commands: HimarkCommands,
+) {
+    if engine.is_null() {
+        return;
+    }
+    if COMMAND_SNAPSHOTS
+        .lock()
+        .expect("the commands table")
+        .take(commands.raw)
+        .is_none()
+    {
+        refuse("commands", commands.raw);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_commands_len(
+    engine: *mut HimarkEngine,
+    commands: HimarkCommands,
+) -> usize {
+    if engine.is_null() {
+        return 0;
+    }
+    COMMAND_SNAPSHOTS
+        .lock()
+        .expect("the commands table")
+        .get(commands.raw)
+        .map_or(0, |snapshot| snapshot.len())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_command_id(
+    engine: *mut HimarkEngine,
+    commands: HimarkCommands,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    if engine.is_null() {
+        return 0;
+    }
+    let held = COMMAND_SNAPSHOTS
+        .lock()
+        .expect("the commands table")
+        .get(commands.raw)
+        .and_then(|snapshot| snapshot.get(index).cloned());
+    copy_optional_utf8(held.map(|(id, _)| id), out, cap)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_command_name(
+    engine: *mut HimarkEngine,
+    commands: HimarkCommands,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    if engine.is_null() {
+        return 0;
+    }
+    let held = COMMAND_SNAPSHOTS
+        .lock()
+        .expect("the commands table")
+        .get(commands.raw)
+        .and_then(|snapshot| snapshot.get(index).cloned());
+    copy_optional_utf8(held.map(|(_, name)| name), out, cap)
+}
+
 unsafe fn with_catalog<R>(
     engine: *mut HimarkEngine,
     catalog: HimarkCatalog,

@@ -29,6 +29,8 @@ struct DesktopRoot: View {
         default: .changes
         }
     }()
+    @State private var paletteOpen =
+        ProcessInfo.processInfo.environment["HIMARK_UI"] == "palette"
     @Namespace private var islands
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
@@ -82,6 +84,15 @@ struct DesktopRoot: View {
                     .padding(.top, 10)
             }
         }
+        .overlay(alignment: .top) {
+            if paletteOpen {
+                CommandPalette(entries: paletteEntries) {
+                    withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
+                }
+                .padding(.top, 64)
+                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
+        }
         .overlay(alignment: .topTrailing) {
             RailIsland(
                 host: host,
@@ -102,6 +113,37 @@ struct DesktopRoot: View {
         .frame(minWidth: 720, minHeight: 480)
         .background(Color(red: 0.03, green: 0.03, blue: 0.038))
         .ignoresSafeArea()
+        .background {
+            // The palette's summons — an invisible seat for ⇧⌘P.
+            Button("") {
+                withAnimation(.easeOut(duration: 0.15)) { paletteOpen.toggle() }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .hidden()
+        }
+    }
+
+    /// Native shell verbs first, the engine's registry after.
+    private var paletteEntries: [PaletteEntry] {
+        var entries: [PaletteEntry] = [
+            PaletteEntry(id: "view.toggle-chat", name: "View: Toggle Chat", shortcut: "⌘1") {
+                withAnimation(spring) { chatOpen.toggle() }
+            },
+            PaletteEntry(id: "view.toggle-rail", name: "View: Toggle Changes Rail", shortcut: "⌘2") {
+                withAnimation(spring) { railOpen.toggle() }
+            },
+            PaletteEntry(id: "session.new", name: "Session: New Session", shortcut: "⌘N") {
+                host.newSession()
+            },
+        ]
+        let native = Set(entries.map(\.id))
+        for (id, name) in host.engine.commands() where !native.contains(id) {
+            entries.append(PaletteEntry(id: id, name: name, shortcut: nil) { [weak host] in
+                guard let host else { return }
+                _ = host.engine.perform(bridge: HimarkBridge(raw: 0), command: id)
+            })
+        }
+        return entries
     }
 }
 

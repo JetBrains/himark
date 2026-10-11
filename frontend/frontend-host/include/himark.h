@@ -170,6 +170,14 @@ typedef struct {
     uint64_t raw;
 } HimarkCatalog;
 
+/**
+ * A snapshot of the REGISTERED COMMANDS — the host-visible verbs
+ * (palette material). Same handle discipline as the catalog.
+ */
+typedef struct {
+    uint64_t raw;
+} HimarkCommands;
+
 typedef struct {
     uint64_t raw;
 } HimarkPlace;
@@ -440,6 +448,24 @@ uint64_t himark_sessions_epoch(HimarkEngine *engine);
 HimarkCatalog himark_sessions_copy(HimarkEngine *engine);
 
 void himark_catalog_release(HimarkEngine *engine, HimarkCatalog catalog);
+
+HimarkCommands himark_commands_copy(HimarkEngine *engine);
+
+void himark_commands_release(HimarkEngine *engine, HimarkCommands commands);
+
+uintptr_t himark_commands_len(HimarkEngine *engine, HimarkCommands commands);
+
+uintptr_t himark_command_id(HimarkEngine *engine,
+                            HimarkCommands commands,
+                            uintptr_t index,
+                            char *out,
+                            uintptr_t cap);
+
+uintptr_t himark_command_name(HimarkEngine *engine,
+                              HimarkCommands commands,
+                              uintptr_t index,
+                              char *out,
+                              uintptr_t cap);
 
 uintptr_t himark_catalog_hosts(HimarkEngine *engine, HimarkCatalog catalog);
 
