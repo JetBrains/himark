@@ -345,7 +345,7 @@ impl Engine {
             "query": query,
             "isRegExp": regex,
             "isCaseSensitive": case_sensitive,
-            "dirs": dirs.iter().map(|dir| encoded_uri(dir)).collect::<Vec<_>>(),
+            "dirs": dirs.iter().map(|dir| crate::uris::file_uri(dir)).collect::<Vec<_>>(),
             "maxResults": max_results as u32,
         });
         if let Some(per_file) = max_results_per_file {
@@ -404,7 +404,7 @@ impl Engine {
         let params = json!({
             "query": query,
             "isCaseSensitive": case_sensitive,
-            "dirs": dirs.iter().map(|dir| encoded_uri(dir)).collect::<Vec<_>>(),
+            "dirs": dirs.iter().map(|dir| crate::uris::file_uri(dir)).collect::<Vec<_>>(),
             "maxResults": max_results as u32,
         });
         match call(&connection, "workspace/fileSearch", params, None, leash).await? {
@@ -543,7 +543,7 @@ impl Connection {
                 "capabilities": { "positionEncodings": ["utf-8"], "partialResults": true },
                 "searchFolders": folders
                     .iter()
-                    .map(|folder| json!({ "uri": encoded_uri(folder) }))
+                    .map(|folder| json!({ "uri": crate::uris::file_uri(folder) }))
                     .collect::<Vec<_>>(),
             },
         }));
@@ -639,7 +639,7 @@ impl Connection {
     }
 
     fn change_folders(&self, added: &[PathBuf], removed: &[PathBuf]) {
-        let folder = |path: &PathBuf| json!({ "uri": encoded_uri(path) });
+        let folder = |path: &PathBuf| json!({ "uri": crate::uris::file_uri(path) });
         self.notify(
             "workspace/didChangeSearchFolders",
             json!({ "event": {
@@ -851,11 +851,7 @@ fn byte_column(line: &str, character: u32, utf8: bool) -> usize {
 
 /// himark resource uri → a properly percent-encoded FSP uri.
 fn fsp_uri(uri: &str) -> Option<String> {
-    Some(encoded_uri(&crate::uris::file_path(uri)?))
-}
-
-fn encoded_uri(path: &Path) -> String {
-    crate::uris::encoded_file_uri(path)
+    Some(crate::uris::file_uri(&crate::uris::file_path(uri)?))
 }
 
 fn frame(message: &Value) -> Vec<u8> {

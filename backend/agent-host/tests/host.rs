@@ -1165,6 +1165,70 @@ async fn a_watch_reports_external_writes() {
 }
 
 #[tokio::test]
+async fn host_emitted_uris_round_trip_literal_escape_query_and_fragment_names() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+
+    let watched = dir.path().join("watched");
+    std::fs::create_dir_all(&watched).expect("watched dir");
+    let created = client
+        .request(
+            "createResourceWatch",
+            json!({"channel": session, "uri": format!("file://{}", watched.display())}),
+        )
+        .await;
+    let channel = created["channel"]
+        .as_str()
+        .expect("watch channel")
+        .to_owned();
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+
+    // A decoy whose name is what a naive decode of the first file yields.
+    std::fs::write(watched.join("report final.txt"), "decoy").expect("decoy");
+    let literal = [
+        ("report%20final.txt", "report%2520final.txt", "percent"),
+        ("q?.txt", "q%3F.txt", "question"),
+        ("h#1.txt", "h%231.txt", "hash"),
+    ];
+    for (name, _, content) in literal {
+        std::fs::write(watched.join(name), content).expect(name);
+    }
+
+    // Collect the uris the host emits until every literal name has shown up.
+    let mut emitted: Vec<String> = Vec::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while literal
+        .iter()
+        .any(|(_, encoded, _)| !emitted.iter().any(|uri| uri.ends_with(encoded)))
+    {
+        let action = tokio::time::timeout_at(deadline, client.next_action(&channel))
+            .await
+            .unwrap_or_else(|_| panic!("the watch reported every file; saw {emitted:?}"));
+        for item in action["changes"]["items"].as_array().into_iter().flatten() {
+            if let Some(uri) = item["uri"].as_str() {
+                emitted.push(uri.to_owned());
+            }
+        }
+    }
+
+    // Each emitted uri, handed straight back, opens the literal file.
+    for (name, encoded, content) in literal {
+        let uri = emitted
+            .iter()
+            .find(|uri| uri.ends_with(encoded))
+            .unwrap_or_else(|| panic!("{name} emitted as …/{encoded}"));
+        let read = client
+            .request("resourceRead", json!({"channel": session, "uri": uri}))
+            .await;
+        assert_eq!(read["data"], content, "{name} via {uri}");
+    }
+}
+
+#[tokio::test]
 async fn create_only_writes_refuse_an_existing_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = host_at(dir.path());

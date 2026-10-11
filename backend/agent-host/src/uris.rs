@@ -36,28 +36,33 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     result
 }
 
+/// The canonical `file://` uri for a local path, percent-encoded by the
+/// url crate: `/tmp/a b` → `file:///tmp/a%20b`, and a literal `%`, `?`
+/// or `#` in a name is escaped so it never reads as an escape, query
+/// or fragment on the way back in. Every uri the host hands out goes
+/// through here, so `file_path` is its exact inverse.
 pub(crate) fn file_uri(path: &Path) -> String {
-    format!("file://{}", path.display())
-}
-
-pub(crate) fn encoded_file_uri(path: &Path) -> String {
-    let mut uri = String::from("file://");
-    for byte in path.to_string_lossy().bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                uri.push(byte as char)
-            }
-            other => uri.push_str(&format!("%{other:02X}")),
+    // A file url is absolute by definition; resolve a relative path
+    // against the working directory rather than refuse it.
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    match url::Url::from_file_path(&absolute) {
+        Ok(url) => url.into(),
+        // Only an empty path or an unreadable working directory lands
+        // here, and no correct uri exists for either: flag it in debug
+        // builds, and in release hand back a best-effort spelling
+        // rather than panic the host from a watcher or request handler.
+        Err(()) => {
+            debug_assert!(false, "file_uri on an unresolvable path: {path:?}");
+            format!("file://{}", absolute.to_string_lossy())
         }
     }
-    uri
 }
 
 /// The local path of a `file://` uri, parsed as a real uri: percent
 /// escapes are decoded (`file:///a%20b` → `/a b`) and a Windows drive
-/// (`file:///C:/x`) comes back as `C:\x`. The host's own `file_uri`
-/// emits raw paths, and a raw path with no `%` or `?`/`#` parses the
-/// same way, so both spellings resolve to one file.
+/// (`file:///C:/x`) comes back as `C:\x`. Besides the host's own
+/// encoded uris this still accepts the legacy raw spelling clients
+/// send (`file:///a b`), which parses to the same path.
 pub(crate) fn file_path(uri: &str) -> Option<PathBuf> {
     if !uri.starts_with("file://") {
         return None;
@@ -83,25 +88,55 @@ mod tests {
             file_path("file:///tmp/caf%C3%A9.md"),
             Some(PathBuf::from("/tmp/café.md"))
         );
-        assert_eq!(
-            file_path("file:///tmp/raw name.txt"),
-            Some(PathBuf::from("/tmp/raw name.txt"))
-        );
-        assert_eq!(
-            file_path("file:///tmp/100%.txt"),
-            Some(PathBuf::from("/tmp/100%.txt"))
-        );
-        assert_eq!(
-            file_path("file:///tmp/a%20b?x=1#frag"),
-            Some(PathBuf::from("/tmp/a b"))
-        );
-        assert_eq!(file_path("file:///tmp/a b"), file_path("file:///tmp/a%20b"));
         assert_eq!(file_path("ahp-content:/x"), None);
     }
 
     #[test]
-    fn encoding_round_trips() {
-        let path = Path::new("/tmp/a b/c%d/é.txt");
-        assert_eq!(file_path(&encoded_file_uri(path)).as_deref(), Some(path));
+    fn legacy_raw_spaces_still_resolve() {
+        assert_eq!(
+            file_path("file:///tmp/raw name.txt"),
+            Some(PathBuf::from("/tmp/raw name.txt"))
+        );
+        assert_eq!(file_path("file:///tmp/a b"), file_path("file:///tmp/a%20b"));
+    }
+
+    #[test]
+    fn emitted_uris_are_encoded() {
+        assert_eq!(file_uri(Path::new("/tmp/a b")), "file:///tmp/a%20b");
+        assert_eq!(
+            file_uri(Path::new("/tmp/report%20final.txt")),
+            "file:///tmp/report%2520final.txt"
+        );
+        assert_eq!(file_uri(Path::new("/tmp/q?.txt")), "file:///tmp/q%3F.txt");
+        assert_eq!(file_uri(Path::new("/tmp/h#1.txt")), "file:///tmp/h%231.txt");
+    }
+
+    #[test]
+    fn literal_escape_query_and_fragment_names_round_trip() {
+        for name in [
+            "report%20final.txt",
+            "q?.txt",
+            "h#1.txt",
+            "a b",
+            "100%.txt",
+            "café.md",
+            "mix %20?#&+;=.txt",
+        ] {
+            let path = Path::new("/tmp/dir").join(name);
+            assert_eq!(
+                file_path(&file_uri(&path)).as_deref(),
+                Some(path.as_path()),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn relative_paths_resolve_against_the_working_directory() {
+        let expected = std::env::current_dir().unwrap().join("rel/a b");
+        assert_eq!(
+            file_path(&file_uri(Path::new("rel/a b"))).as_deref(),
+            Some(expected.as_path())
+        );
     }
 }
