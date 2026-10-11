@@ -2,125 +2,491 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SwiftUI
+import AppKit
 
-/// The window per the design (himark-empty-1600 … himark-680):
-/// chat column, document pane, inspector card — grown slice by
-/// slice. This slice: the chat column and the session picker.
-enum InspectorTab: String, CaseIterable {
-    case changes = "Changes"
-    case files = "Files"
-}
-
-/// The narrow window's one pane (himark-680): chat or the document,
-/// switched by the titlebar's segmented pill.
-enum NarrowFace {
-    case chat
-    case document
-}
-
+/// The ISLANDS window (docs/himark-islands-*.png): the document
+/// content runs FULL-BLEED behind everything; the chat lives in a
+/// full-height glass island on the left (traffic lights in its
+/// header), the tool rail in an island on the right, and a floating
+/// pill names the open document. Collapsed, the chat leaves a
+/// semaphore mini-island top-left and a message capsule bottom-left;
+/// the rail leaves its icon strip. Every change of shape animates.
 struct DesktopRoot: View {
     @ObservedObject var host: DesktopHost
-    @State private var inspectorShown = true
-    @State private var inspectorTab: InspectorTab = .changes
+    // Screenshot-loop hooks: HIMARK_UI=chat-collapsed|rail-collapsed|sessions
+    @State private var chatOpen =
+        ProcessInfo.processInfo.environment["HIMARK_UI"] != "chat-collapsed"
+    @State private var sessionsOpen =
+        ProcessInfo.processInfo.environment["HIMARK_UI"] == "sessions"
+    @State private var railOpen =
+        ProcessInfo.processInfo.environment["HIMARK_UI"] != "rail-collapsed"
+    @State private var railTool: RailTool = .changes
+    @Namespace private var islands
 
-    @State private var narrowFace: NarrowFace = .chat
+    private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
     var body: some View {
-        GeometryReader { geometry in
-            let narrow = geometry.size.width < 860
-            let roomy = geometry.size.width >= 1_160
+        ZStack {
+            WindowDresser().frame(width: 0, height: 0)
 
+            // ── the full-bleed document floor ──
             Group {
-                if narrow {
-                    // ONE pane (himark-680): the segmented pill picks
-                    // the face; an open document pulls itself front.
-                    if narrowFace == .document, let opened = host.document {
-                        DocumentPane(host: host, opened: opened)
-                    } else {
-                        ChatColumn(host: host).id(host.current?.uri)
-                    }
+                if let opened = host.document {
+                    DocumentPane(host: host, opened: opened)
                 } else {
-                    HSplitView {
-                        ChatColumn(host: host)
-                            .id(host.current?.uri)
-                            .frame(minWidth: 420, idealWidth: 560, maxWidth: .infinity)
-                        if let opened = host.document {
-                            DocumentPane(host: host, opened: opened)
-                                .frame(minWidth: 440, maxWidth: .infinity)
-                        } else if roomy {
-                            EmptyDocumentPane()
-                                .frame(minWidth: 440, maxWidth: .infinity)
-                        }
-                    }
+                    EmptyDocumentHint(chatOpen: chatOpen, railOpen: railOpen)
                 }
             }
-            .overlay(alignment: .topTrailing) {
-                if inspectorShown && !narrow {
-                    InspectorCard(host: host, tab: $inspectorTab)
-                        .padding(12)
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigation) { sessionPicker }
-                ToolbarItem(placement: .principal) {
-                    if narrow, let opened = host.document {
-                        NarrowFacePill(opened: opened, face: $narrowFace)
-                    } else if let opened = host.document {
-                        DocumentPill(host: host, opened: opened)
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        inspectorShown.toggle()
-                    } label: {
-                        Image(systemName: "sidebar.right")
-                    }
-                    .disabled(narrow)
-                }
-            }
-            .onChange(of: host.document) { opened in
-                // A fresh navigate fronts the document on the phone-
-                // narrow window, exactly like the iOS push.
-                if opened != nil { narrowFace = .document }
-                if opened == nil { narrowFace = .chat }
+            .ignoresSafeArea()
+        }
+        .overlay(alignment: .topLeading) {
+            if chatOpen {
+                ChatIsland(
+                    host: host,
+                    sessionsOpen: $sessionsOpen,
+                    collapse: { withAnimation(spring) { chatOpen = false } })
+                    .matchedGeometryEffect(id: "chat", in: islands)
+                    .padding(12)
+            } else {
+                ChromeMiniIsland(
+                    host: host,
+                    expand: { withAnimation(spring) { chatOpen = true } })
+                    .matchedGeometryEffect(id: "chat", in: islands, properties: .position, anchor: .topLeading)
+                    .padding(12)
             }
         }
-        .frame(minWidth: 480, minHeight: 420)
-        .background(Color(red: 0.055, green: 0.055, blue: 0.07))
-        .navigationTitle("")
-    }
-
-    private var sessionPicker: some View {
-        Menu {
-            Button("New Session…") { host.newSession() }
-            if !host.sessions.isEmpty {
-                Divider()
-                ForEach(host.sessions, id: \.uri) { row in
-                    Button {
-                        host.select(row)
-                    } label: {
-                        if row.uri == host.current?.uri {
-                            Label(pickerTitle(row.title), systemImage: "checkmark")
+        .overlay(alignment: .bottomLeading) {
+            if !chatOpen {
+                MessageCapsule(host: host) {
+                    withAnimation(spring) { chatOpen = true }
+                }
+                .transition(.move(edge: .leading).combined(with: .opacity))
+                .padding(12)
+            }
+        }
+        .overlay(alignment: .top) {
+            if let opened = host.document {
+                DocumentPill(host: host, opened: opened)
+                    .padding(.top, 10)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            RailIsland(
+                host: host,
+                open: railOpen,
+                tool: railTool,
+                pick: { tool in
+                    withAnimation(spring) {
+                        if railOpen && tool == railTool {
+                            railOpen = false
                         } else {
-                            Text(pickerTitle(row.title))
+                            railTool = tool
+                            railOpen = true
                         }
                     }
-                }
-            }
-        } label: {
-            Label(host.current.map { pickerTitle($0.title) } ?? "New Session",
-                  systemImage: "shippingbox")
+                })
+                .padding(12)
         }
-    }
-
-    private func pickerTitle(_ title: String) -> String {
-        title.isEmpty ? "Untitled" : String(title.prefix(42))
+        .frame(minWidth: 720, minHeight: 480)
+        .background(Color(red: 0.03, green: 0.03, blue: 0.038))
+        .ignoresSafeArea()
     }
 }
 
-/// Transcript over the composer — both himark-rendered; the
-/// transcript scrolls natively and stays pinned to the bottom as
-/// turns stream, the composer sits at its engine-measured height.
+// ─── window dressing: no titlebar, no native buttons ───
+
+/// The islands OWN the window chrome: full-size content, hidden
+/// titlebar, native buttons hidden — the chat island header draws
+/// the semaphore and performs the window verbs.
+struct WindowDresser: NSViewRepresentable {
+    final class Dressing: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
+            window.isMovableByWindowBackground = true
+            for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+                window.standardWindowButton(kind)?.isHidden = true
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> Dressing { Dressing() }
+    func updateNSView(_ view: Dressing, context: Context) {}
+}
+
+/// The three dots, drawn by the island that hosts them.
+struct TrafficDots: View {
+    @Environment(\.controlActiveState) private var active
+
+    var body: some View {
+        HStack(spacing: 8) {
+            dot(.init(red: 1.00, green: 0.38, blue: 0.35)) { NSApp.keyWindow?.performClose(nil) }
+            dot(.init(red: 1.00, green: 0.78, blue: 0.25)) { NSApp.keyWindow?.miniaturize(nil) }
+            dot(.init(red: 0.35, green: 0.80, blue: 0.36)) { NSApp.keyWindow?.zoom(nil) }
+        }
+    }
+
+    private func dot(_ color: Color, verb: @escaping () -> Void) -> some View {
+        Button(action: verb) {
+            Circle()
+                .fill(active == .key ? color : Color.white.opacity(0.2))
+                .frame(width: 12, height: 12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// ─── the chat island ───
+
+struct ChatIsland: View {
+    @ObservedObject var host: DesktopHost
+    @Binding var sessionsOpen: Bool
+    let collapse: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                TrafficDots()
+                Divider().frame(height: 14).overlay(.white.opacity(0.15))
+                SessionButton(host: host, open: $sessionsOpen)
+                Spacer()
+                Button(action: collapse) {
+                    Image(systemName: "rectangle.lefthalf.inset.filled.arrow.left")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+
+            if sessionsOpen {
+                SessionList(host: host, open: $sessionsOpen)
+            } else {
+                ChatColumn(host: host)
+                    .id(host.current?.uri)
+            }
+        }
+        .frame(width: 560)
+        .frame(maxHeight: .infinity)
+        .background(IslandBackground())
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+/// "📦 New Session ⌄" — the session face toggle.
+struct SessionButton: View {
+    @ObservedObject var host: DesktopHost
+    @Binding var open: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { open.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "shippingbox")
+                    .foregroundStyle(.secondary)
+                Text(host.current.map { title($0.title) } ?? "New Session")
+                    .font(.system(size: 13, weight: .medium))
+                Image(systemName: open ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.white.opacity(0.06), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func title(_ title: String) -> String {
+        title.isEmpty ? "New Session" : String(title.prefix(34))
+    }
+}
+
+/// The sessions face (himark-islands-sessions-open): new-session
+/// row, then the catalog grouped by day.
+enum SessionDates {
+    static let plain = ISO8601DateFormatter()
+    static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    static func parse(_ stamp: String) -> Date? {
+        fractional.date(from: stamp) ?? plain.date(from: stamp)
+    }
+}
+
+struct SessionList: View {
+    @ObservedObject var host: DesktopHost
+    @Binding var open: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                Button {
+                    host.newSession()
+                    close()
+                } label: {
+                    HStack {
+                        Label("New session", systemImage: "plus")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Text("⌘N").foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("n", modifiers: .command)
+
+                ForEach(groups, id: \.title) { group in
+                    Text(group.title.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 14)
+                        .padding(.bottom, 4)
+                    ForEach(group.rows, id: \.uri) { row in
+                        SessionRow(
+                            row: row,
+                            current: row.uri == host.current?.uri
+                        ) {
+                            host.select(row)
+                            close()
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+    }
+
+    private func close() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { open = false }
+    }
+
+    private struct Group {
+        let title: String
+        let rows: [HimarkEngine.CatalogSession]
+    }
+
+    private var groups: [Group] {
+        let calendar = Calendar.current
+        var today: [HimarkEngine.CatalogSession] = []
+        var yesterday: [HimarkEngine.CatalogSession] = []
+        var earlier: [HimarkEngine.CatalogSession] = []
+        for row in host.sessions {
+            let date = SessionDates.parse(row.modified)
+            if let date, calendar.isDateInToday(date) {
+                today.append(row)
+            } else if let date, calendar.isDateInYesterday(date) {
+                yesterday.append(row)
+            } else {
+                earlier.append(row)
+            }
+        }
+        return [
+            Group(title: "Today", rows: today),
+            Group(title: "Yesterday", rows: yesterday),
+            Group(title: "Earlier", rows: earlier),
+        ].filter { !$0.rows.isEmpty }
+    }
+}
+
+struct SessionRow: View {
+    let row: HimarkEngine.CatalogSession
+    let current: Bool
+    let pick: () -> Void
+
+    var body: some View {
+        Button(action: pick) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.title.isEmpty ? "Untitled" : row.title)
+                        .font(.system(size: 13, weight: current ? .semibold : .regular))
+                        .lineLimit(1)
+                    Text(meta)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if current {
+                    Circle().fill(.yellow).frame(width: 6, height: 6)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                current ? AnyShapeStyle(.white.opacity(0.07)) : AnyShapeStyle(.clear),
+                in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var meta: String {
+        guard let date = SessionDates.parse(row.modified) else {
+            return row.provider
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+}
+
+// ─── collapsed chat: the mini island and the capsule ───
+
+/// Semaphore + session pill, all that remains up top when the chat
+/// island folds away.
+struct ChromeMiniIsland: View {
+    @ObservedObject var host: DesktopHost
+    let expand: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            TrafficDots()
+            Divider().frame(height: 14).overlay(.white.opacity(0.15))
+            Button(action: expand) {
+                HStack(spacing: 6) {
+                    Image(systemName: "shippingbox").foregroundStyle(.secondary)
+                    Text(host.current?.title.isEmpty == false
+                         ? String(host.current!.title.prefix(34)) : "New Session")
+                        .font(.system(size: 13, weight: .medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(IslandBackground(cornerRadius: 14))
+    }
+}
+
+/// "💬 Message the agent" — the folded chat.
+struct MessageCapsule: View {
+    @ObservedObject var host: DesktopHost
+    let expand: () -> Void
+
+    var body: some View {
+        Button(action: expand) {
+            HStack(spacing: 8) {
+                Image(systemName: "bubble.left")
+                Text("Message the agent")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(IslandBackground(cornerRadius: 22))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// ─── the rail island ───
+
+enum RailTool: CaseIterable {
+    case changes, files, search, history, comments
+
+    var symbol: String {
+        switch self {
+        case .changes: "list.bullet.indent"
+        case .files: "doc.text"
+        case .search: "magnifyingglass"
+        case .history: "clock.arrow.circlepath"
+        case .comments: "bubble.left"
+        }
+    }
+}
+
+struct RailIsland: View {
+    @ObservedObject var host: DesktopHost
+    let open: Bool
+    let tool: RailTool
+    let pick: (RailTool) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                ForEach(RailTool.allCases, id: \.self) { candidate in
+                    Button {
+                        pick(candidate)
+                    } label: {
+                        Image(systemName: candidate.symbol)
+                            .font(.system(size: 13))
+                            .foregroundStyle(
+                                open && candidate == tool
+                                    ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                            .frame(width: 34, height: 28)
+                            .background(
+                                open && candidate == tool
+                                    ? AnyShapeStyle(.white.opacity(0.1))
+                                    : AnyShapeStyle(.clear),
+                                in: RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+
+            if open {
+                RailContent(host: host, tool: tool)
+            }
+        }
+        .frame(width: open ? 320 : nil)
+        .frame(maxHeight: open ? .infinity : nil, alignment: .top)
+        .background(IslandBackground())
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct RailContent: View {
+    let host: DesktopHost
+    let tool: RailTool
+
+    var body: some View {
+        switch tool {
+        case .changes:
+            MintedScrollBridge(host: host, kind: .changes)
+                .id("\(host.current?.uri ?? "")-changes")
+        case .files:
+            MintedScrollBridge(host: host, kind: .files)
+                .id("\(host.current?.uri ?? "")-files")
+        case .search, .history, .comments:
+            VStack {
+                Spacer()
+                Text("Soon").foregroundStyle(.tertiary)
+                Spacer()
+            }
+        }
+    }
+}
+
+// ─── shared island dressings ───
+
+struct IslandBackground: View {
+    var cornerRadius: CGFloat = 16
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(Color(red: 0.09, green: 0.09, blue: 0.105).opacity(0.94))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(.white.opacity(0.07)))
+            .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+    }
+}
+
+/// Transcript over the composer — both himark-rendered.
 struct ChatColumn: View {
     let host: DesktopHost
     @State private var composerHeight: CGFloat = 120
@@ -134,9 +500,7 @@ struct ChatColumn: View {
     }
 }
 
-/// The center pane: the document or diff himark asked the shell to
-/// open, scrolled natively. One standing document for now — a new
-/// navigate replaces it.
+/// The center pane: full-bleed document or diff content.
 struct DocumentPane: View {
     let host: DesktopHost
     let opened: DesktopHost.Opened
@@ -147,99 +511,54 @@ struct DocumentPane: View {
     }
 }
 
-/// The titlebar's document pill: name plus a close affordance.
+/// The floating glass pill naming the open document.
 struct DocumentPill: View {
     let host: DesktopHost
     let opened: DesktopHost.Opened
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Image(systemName: opened.kind == UInt32(HIMARK_PLACE_DIFF)
                 ? "plus.forwardslash.minus" : "doc.text")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Text(opened.title.isEmpty ? "Untitled" : opened.title)
-                .font(.system(.body, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
             Button {
                 host.closedDocument(opened)
             } label: {
-                Image(systemName: "xmark.circle.fill")
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(.quaternary.opacity(0.5), in: Capsule())
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(IslandBackground(cornerRadius: 18))
     }
 }
 
-/// The floating inspector card (himark-empty-1600): segmented
-/// Changes/Files over the session trees, himark-rendered and
-/// scrolled natively. Row taps ride the same navigate road the
-/// agent uses — a change opens its diff, a file opens its editor.
-struct InspectorCard: View {
-    let host: DesktopHost
-    @Binding var tab: InspectorTab
+struct EmptyDocumentHint: View {
+    let chatOpen: Bool
+    let railOpen: Bool
 
     var body: some View {
-        VStack(spacing: 8) {
-            Picker("", selection: $tab) {
-                ForEach(InspectorTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+        HStack(spacing: 0) {
+            if chatOpen { Spacer().frame(width: 584) }
+            VStack(spacing: 10) {
+                Image(systemName: "doc.badge.plus")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("No file open")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Pick a change on the right, or ask the agent to open something.")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-
-            MintedScrollBridge(
-                host: host,
-                kind: tab == .changes ? .changes : .files)
-                .id("\(host.current?.uri ?? "")-\(tab.rawValue)")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if railOpen { Spacer().frame(width: 344) }
         }
-        .frame(width: 320)
-        .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(.white.opacity(0.08)))
-    }
-}
-
-/// The wide window with nothing open (himark-empty-1600): the
-/// pane explains itself instead of sitting black.
-struct EmptyDocumentPane: View {
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "doc.badge.plus")
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text("No file open")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text("Pick a change on the right, or ask the agent to open something.")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// The narrow titlebar's face switch (himark-680): Chat on the
-/// left, the open document on the right.
-struct NarrowFacePill: View {
-    let opened: DesktopHost.Opened
-    @Binding var face: NarrowFace
-
-    var body: some View {
-        Picker("", selection: $face) {
-            Label("Chat", systemImage: "bubble.left").tag(NarrowFace.chat)
-            Text(opened.title.isEmpty ? "Untitled" : opened.title)
-                .tag(NarrowFace.document)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: 420)
     }
 }

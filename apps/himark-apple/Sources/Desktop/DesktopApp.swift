@@ -20,7 +20,7 @@ struct HimarkDesktopApp: App {
             DesktopRoot(host: host)
                 .onAppear { host.kickoff() }
         }
-        .defaultSize(width: 1_280, height: 860)
+        .defaultSize(width: 1_600, height: 1_000)
     }
 }
 
