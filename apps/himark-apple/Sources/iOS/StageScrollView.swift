@@ -151,16 +151,20 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
 
 // ─── the split chat's two hosts ───
 
-/// The chat TRANSCRIPT for the current session: minted per
-/// session like a tab bridge, scrolled natively, pinned to the
-/// bottom as turns stream.
-final class TranscriptHost: UIView {
+/// A session view minted per session and scrolled NATIVELY — the
+/// transcript (pinned to the bottom as turns stream), the changes
+/// tree, the file tree.
+final class MintedScrollHost: UIView {
     private let host: AppHost
+    private let kind: HimarkEngine.SessionViewKind
+    private let pinsToBottom: Bool
     private var mounted: AppHost.Selected?
     private var child: StageScrollHost?
 
-    init(host: AppHost) {
+    init(host: AppHost, kind: HimarkEngine.SessionViewKind, pinsToBottom: Bool = false) {
         self.host = host
+        self.kind = kind
+        self.pinsToBottom = pinsToBottom
         super.init(frame: .zero)
         backgroundColor = .black
         sync()
@@ -174,10 +178,10 @@ final class TranscriptHost: UIView {
         teardown()
         mounted = desired
         guard desired != nil else { return }
-        let bridge = host.mint(.transcript)
+        let bridge = host.mint(kind)
         guard bridge.raw != 0 else { return }
         let view = StageScrollHost(host: host, bridge: bridge)
-        view.pinsToBottom = true
+        view.pinsToBottom = pinsToBottom
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.frame = bounds
         addSubview(view)
@@ -191,18 +195,20 @@ final class TranscriptHost: UIView {
     }
 }
 
-struct TranscriptBridge: UIViewRepresentable {
+struct ScrolledMintedBridge: UIViewRepresentable {
     @ObservedObject var host: AppHost
+    let kind: HimarkEngine.SessionViewKind
+    var pinsToBottom = false
 
-    func makeUIView(context: Context) -> TranscriptHost {
-        TranscriptHost(host: host)
+    func makeUIView(context: Context) -> MintedScrollHost {
+        MintedScrollHost(host: host, kind: kind, pinsToBottom: pinsToBottom)
     }
 
-    func updateUIView(_ view: TranscriptHost, context: Context) {
+    func updateUIView(_ view: MintedScrollHost, context: Context) {
         view.sync()
     }
 
-    static func dismantleUIView(_ view: TranscriptHost, coordinator: ()) {
+    static func dismantleUIView(_ view: MintedScrollHost, coordinator: ()) {
         view.teardown()
     }
 }

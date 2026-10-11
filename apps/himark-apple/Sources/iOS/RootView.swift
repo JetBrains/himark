@@ -68,7 +68,7 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TranscriptBridge(host: host)
+            ScrolledMintedBridge(host: host, kind: .transcript, pinsToBottom: true)
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)
         }
@@ -93,7 +93,7 @@ struct ChangesScreen: View {
     @ObservedObject var host: AppHost
 
     var body: some View {
-        MintedBridge(host: host, kind: .changes)
+        ScrolledMintedBridge(host: host, kind: .changes)
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: pushBinding(host, .changes)) {
@@ -106,7 +106,7 @@ struct FilesScreen: View {
     @ObservedObject var host: AppHost
 
     var body: some View {
-        MintedBridge(host: host, kind: .files)
+        ScrolledMintedBridge(host: host, kind: .files)
             .navigationTitle("Files")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: pushBinding(host, .files)) {
