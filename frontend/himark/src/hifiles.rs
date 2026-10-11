@@ -125,9 +125,16 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         let workspace = crate::workspace::entity_session(&entity);
         let trees = crate::workspace::entity_state(&entity).trees();
         let panel = fx.scope(crate::modal::dock_scope(window), |fx| {
-            fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
-                open_panel(store, ui, Some(window), workspace, trees, reveal, fx)
-            })
+            // The dock modal is the SCROLLED wrapper now: the
+            // landings wrap into its content layer.
+            fx.scope(
+                |command: TreeCommand| {
+                    imba::dyn_view::DynCommand::new(imba::scroll::ScrollCommand::Content(command))
+                },
+                |fx| {
+                    open_panel(store, ui, Some(window), workspace, trees, reveal, fx)
+                },
+            )
         });
         let owner = self.id();
         fx.scope(
