@@ -605,13 +605,16 @@ impl Himark {
         // Invalidation is lazy (a revision bump), so a window that
         // closed this batch must drop its bridge here or the slot's
         // last frame — and the store snapshot it pins — lingers.
+        // MOUNTED slots are not window-claimed: the host owns their
+        // lifetime (`unmount`), so the reap must spare them.
         let live: std::collections::HashSet<u64> = self
             .windows()
             .ids()
             .into_iter()
             .map(|window| window.raw())
             .collect();
-        self.bridges.retain(|id, _| live.contains(&id.raw()));
+        self.bridges
+            .retain(|id, _| id.is_mounted() || live.contains(&id.raw()));
         if validate_enabled() {
             for id in self.windows().ids() {
                 let Some(window) = Windows::window_ref(&self.store, id) else {

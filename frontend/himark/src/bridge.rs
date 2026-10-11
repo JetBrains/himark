@@ -85,6 +85,12 @@ impl<T> Handles<T> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ViewBridgeId(u64);
 
+/// Where MOUNTED ids start: the id spaces must not collide, because
+/// a window's bridge shares the window's own id and the workbench
+/// tail reaps bridge slots by window liveness — a mounted id below
+/// this line would be reaped at the first batch tail.
+pub const MOUNT_BASE: u64 = 1 << 32;
+
 impl ViewBridgeId {
     pub fn from_raw(raw: u64) -> ViewBridgeId {
         ViewBridgeId(raw)
@@ -92,6 +98,11 @@ impl ViewBridgeId {
 
     pub fn raw(self) -> u64 {
         self.0
+    }
+
+    /// A host-minted mount, as opposed to a window's bridge.
+    pub fn is_mounted(self) -> bool {
+        self.0 >= MOUNT_BASE
     }
 }
 

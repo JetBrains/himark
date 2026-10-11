@@ -226,7 +226,7 @@ impl Himark {
             bridges: std::collections::HashMap::new(),
             stage_layouts: Default::default(),
             stage_frames: Default::default(),
-            next_mount: 1 << 32,
+            next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
             pending_file_events: Vec::new(),
             settle_requested: false,
