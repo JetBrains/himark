@@ -150,9 +150,14 @@ where
         constraints: Constraints,
     ) -> ThunkBox<'a, AppCommand> {
         let id = self.id;
-        let size = constraints.max;
         let content =
             imba::layout::Layout::layout(self.view.display(arena, store, ui), arena, constraints);
+        // The CONTENT's size, not the ceiling — under the native
+        // scroller's loose measure the ceiling is infinite, and an
+        // infinite container poisons the slot's size: the measure
+        // never reaches the scroller and hit-testing dies against
+        // an infinite rect. Tight constraints land the same.
+        let size = imba::Thunk::size(&content);
         let mut container = imba::container::container(arena, size);
         container.place(
             0.0,
