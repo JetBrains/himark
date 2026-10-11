@@ -11,44 +11,82 @@ enum InspectorTab: String, CaseIterable {
     case files = "Files"
 }
 
+/// The narrow window's one pane (himark-680): chat or the document,
+/// switched by the titlebar's segmented pill.
+enum NarrowFace {
+    case chat
+    case document
+}
+
 struct DesktopRoot: View {
     @ObservedObject var host: DesktopHost
     @State private var inspectorShown = true
     @State private var inspectorTab: InspectorTab = .changes
 
+    @State private var narrowFace: NarrowFace = .chat
+
     var body: some View {
-        HSplitView {
-            ChatColumn(host: host)
-                .id(host.current?.uri)
-                .frame(minWidth: 420, idealWidth: 560, maxWidth: .infinity)
-            if let opened = host.document {
-                DocumentPane(host: host, opened: opened)
-                    .frame(minWidth: 480, maxWidth: .infinity)
+        GeometryReader { geometry in
+            let narrow = geometry.size.width < 860
+            let roomy = geometry.size.width >= 1_160
+
+            Group {
+                if narrow {
+                    // ONE pane (himark-680): the segmented pill picks
+                    // the face; an open document pulls itself front.
+                    if narrowFace == .document, let opened = host.document {
+                        DocumentPane(host: host, opened: opened)
+                    } else {
+                        ChatColumn(host: host).id(host.current?.uri)
+                    }
+                } else {
+                    HSplitView {
+                        ChatColumn(host: host)
+                            .id(host.current?.uri)
+                            .frame(minWidth: 420, idealWidth: 560, maxWidth: .infinity)
+                        if let opened = host.document {
+                            DocumentPane(host: host, opened: opened)
+                                .frame(minWidth: 440, maxWidth: .infinity)
+                        } else if roomy {
+                            EmptyDocumentPane()
+                                .frame(minWidth: 440, maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if inspectorShown && !narrow {
+                    InspectorCard(host: host, tab: $inspectorTab)
+                        .padding(12)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigation) { sessionPicker }
+                ToolbarItem(placement: .principal) {
+                    if narrow, let opened = host.document {
+                        NarrowFacePill(opened: opened, face: $narrowFace)
+                    } else if let opened = host.document {
+                        DocumentPill(host: host, opened: opened)
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        inspectorShown.toggle()
+                    } label: {
+                        Image(systemName: "sidebar.right")
+                    }
+                    .disabled(narrow)
+                }
+            }
+            .onChange(of: host.document) { opened in
+                // A fresh navigate fronts the document on the phone-
+                // narrow window, exactly like the iOS push.
+                if opened != nil { narrowFace = .document }
+                if opened == nil { narrowFace = .chat }
             }
         }
         .frame(minWidth: 480, minHeight: 420)
         .background(Color(red: 0.055, green: 0.055, blue: 0.07))
-        .overlay(alignment: .topTrailing) {
-            if inspectorShown {
-                InspectorCard(host: host, tab: $inspectorTab)
-                    .padding(12)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) { sessionPicker }
-            if let opened = host.document {
-                ToolbarItem(placement: .principal) {
-                    DocumentPill(host: host, opened: opened)
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    inspectorShown.toggle()
-                } label: {
-                    Image(systemName: "sidebar.right")
-                }
-            }
-        }
         .navigationTitle("")
     }
 
@@ -166,5 +204,42 @@ struct InspectorCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(.white.opacity(0.08)))
+    }
+}
+
+/// The wide window with nothing open (himark-empty-1600): the
+/// pane explains itself instead of sitting black.
+struct EmptyDocumentPane: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "doc.badge.plus")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("No file open")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("Pick a change on the right, or ask the agent to open something.")
+                .font(.callout)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The narrow titlebar's face switch (himark-680): Chat on the
+/// left, the open document on the right.
+struct NarrowFacePill: View {
+    let opened: DesktopHost.Opened
+    @Binding var face: NarrowFace
+
+    var body: some View {
+        Picker("", selection: $face) {
+            Label("Chat", systemImage: "bubble.left").tag(NarrowFace.chat)
+            Text(opened.title.isEmpty ? "Untitled" : opened.title)
+                .tag(NarrowFace.document)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: 420)
     }
 }
