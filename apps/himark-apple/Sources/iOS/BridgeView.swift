@@ -12,11 +12,23 @@ import QuartzCore
 /// it with the bridge draw, and points UIKit's text input at the
 /// bridge. It creates NOTHING: the engine and the bridge are
 /// handed in.
-final class HimarkBridgeView: UIView {
-    override class var layerClass: AnyClass { CAMetalLayer.self }
-
+class HimarkBridgeView: UIView {
     let engine: HimarkEngine
     let bridgeId: HimarkBridge
+
+    /// Embedded as a SCROLL VIEW's content: the view spans the whole
+    /// content, its coordinates ARE content coordinates, and only the
+    /// VISIBLE band gets a drawable and a paint (the stage road). The
+    /// host scroller owns all physics — pans and the glide retire.
+    let scrollEmbedded: Bool
+
+    /// The measured content size (points) — the embedding scroller
+    /// sizes this view and its contentSize from it.
+    var onContentMeasured: ((CGSize) -> Void)?
+
+    /// An edit landed (insert/delete) — the embedding scroller
+    /// reveals the caret.
+    var onEdited: (() -> Void)?
 
     weak var inputDelegate: UITextInputDelegate?
     var markedTextStyle: [NSAttributedString.Key: Any]?
@@ -27,16 +39,27 @@ final class HimarkBridgeView: UIView {
     private var link: CADisplayLink?
     private var needsRedraw = true
 
-    private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
+    /// A SUBLAYER sized to the visible band, not the root layer: the
+    /// content-sized view must not back its whole (possibly huge)
+    /// bounds with a drawable.
+    private let metalLayer = CAMetalLayer()
 
-    init(frame: CGRect, engine: HimarkEngine, bridge: HimarkBridge, device: MTLDevice) {
+    init(
+        frame: CGRect,
+        engine: HimarkEngine,
+        bridge: HimarkBridge,
+        device: MTLDevice,
+        scrollEmbedded: Bool = false
+    ) {
         self.engine = engine
         self.bridgeId = bridge
+        self.scrollEmbedded = scrollEmbedded
         super.init(frame: frame)
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = false
         metalLayer.contentsScale = UIScreen.main.scale
+        layer.addSublayer(metalLayer)
 
         surface = SkiaMetalSurface(layer: metalLayer, device: device)
 
@@ -44,8 +67,10 @@ final class HimarkBridgeView: UIView {
         link.add(to: .main, forMode: .common)
         self.link = link
 
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(onPan))
-        addGestureRecognizer(pan)
+        if !scrollEmbedded {
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(onPan))
+            addGestureRecognizer(pan)
+        }
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(onTap))
         tap.delegate = self
@@ -107,7 +132,7 @@ final class HimarkBridgeView: UIView {
         // for now, so the flick decays here. This retires when the
         // content bridges move into real UIScrollViews (the stage
         // road — docs/ui/imba-ffi.md, touch section).
-        if glide != .zero {
+        if glide != .zero, !scrollEmbedded {
             let now = CACurrentMediaTime()
             let dt = min(now - lastTick, 1.0 / 30.0)
             lastTick = now
@@ -135,18 +160,66 @@ final class HimarkBridgeView: UIView {
         guard surface != nil, UIApplication.shared.applicationState == .active else { return }
         let scale = window?.screen.scale ?? UIScreen.main.scale
         metalLayer.contentsScale = scale
-        let w = Int32(bounds.width * scale)
-        let h = Int32(bounds.height * scale)
-        guard w > 0, h > 0 else { return }
+
+        // The VISIBLE band: the part of this view its superview
+        // shows — the whole bounds when full-bleed, the scrolled
+        // window when this view IS a scroller's content.
+        var visible = bounds
+        if let sv = superview {
+            visible = convert(sv.bounds, from: sv).intersection(bounds)
+        }
+        guard visible.width > 0.5, visible.height > 0.5 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        metalLayer.frame = visible
+        CATransaction.commit()
+        let w = Int32(visible.width * scale)
+        let h = Int32(visible.height * scale)
         metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
 
-        if engine.renderBridge(bridge: bridgeId, into: surface,
-                               pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
+        if scrollEmbedded {
+            renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+        } else if engine.renderBridge(bridge: bridgeId, into: surface,
+                                      pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
             needsRedraw = true
         }
     }
 
+    /// The stage road: layout at (width, ∞), content size off the
+    /// sized stage, realize + paint the visible band. The stages
+    /// are ONE-PASS values — a paint that changed state means the
+    /// engine quiesced them, and the next tick re-derives.
+    private func renderBand(_ visible: CGRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32) {
+        let raw = engine.raw
+        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        guard layout.raw != 0 else { return }
+        var cw: Float = 0
+        var ch: Float = 0
+        _ = himark_layout_size(raw, layout, &cw, &ch)
+        onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
+
+        let offsetY = Float(max(visible.minY, 0) * scale)
+        let frame = himark_layout_realize(
+            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        guard frame.raw != 0 else { return }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return }
+        let changed = himark_frame_paint(
+            raw, frame, canvas, 0, offsetY,
+            Float(visible.width * scale), Float(visible.height * scale))
+        surface.end()
+        if changed {
+            needsRedraw = true
+        } else {
+            himark_frame_release(raw, frame)
+        }
+    }
+
     func request() { needsRedraw = true }
+
+    /// The embedding scroller moved the viewport: repaint the band
+    /// NOW, in the same runloop turn — waiting for the display link
+    /// leaves one frame of the old band riding the scroll.
+    func renderNow() { render() }
 
     func performCommand(_ id: String) {
         if engine.perform(bridge: bridgeId, command: id) { request() }
@@ -242,10 +315,12 @@ final class HimarkBridgeView: UIView {
                 ? sendKey(UInt32(HIMARK_KEY_ENTER))
                 : sendText(text)
         }
+        onEdited?()
     }
 
     func deleteBackward() {
         performTextChange { sendKey(UInt32(HIMARK_KEY_BACKSPACE)) }
+        onEdited?()
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -282,6 +357,11 @@ extension HimarkBridgeView: UIGestureRecognizerDelegate {
 
 extension HimarkBridgeView: UITextInteractionDelegate {
     func interactionShouldBegin(_ interaction: UITextInteraction, at point: CGPoint) -> Bool {
-        isEditableText(at: point)
+        let editable = isEditableText(at: point)
+        // The interaction claims the tap INSTEAD of our recognizer,
+        // and on a custom view it does not reliably seat the
+        // responder itself — the keyboard follows the tap here.
+        if editable { becomeFirstResponder() }
+        return editable
     }
 }
