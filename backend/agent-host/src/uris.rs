@@ -53,10 +53,55 @@ pub(crate) fn encoded_file_uri(path: &Path) -> String {
     uri
 }
 
+/// The local path of a `file://` uri, parsed as a real uri: percent
+/// escapes are decoded (`file:///a%20b` → `/a b`) and a Windows drive
+/// (`file:///C:/x`) comes back as `C:\x`. The host's own `file_uri`
+/// emits raw paths, and a raw path with no `%` or `?`/`#` parses the
+/// same way, so both spellings resolve to one file.
 pub(crate) fn file_path(uri: &str) -> Option<PathBuf> {
-    uri.strip_prefix("file://").map(PathBuf::from)
+    if !uri.starts_with("file://") {
+        return None;
+    }
+    url::Url::parse(uri).ok()?.to_file_path().ok()
 }
 
-pub(crate) fn file_path_str(uri: &str) -> Option<&str> {
-    uri.strip_prefix("file://")
+pub(crate) fn file_path_str(uri: &str) -> Option<String> {
+    file_path(uri).map(|path| path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_paths_are_percent_decoded() {
+        assert_eq!(
+            file_path("file:///tmp/my%20docs/a%20b.txt"),
+            Some(PathBuf::from("/tmp/my docs/a b.txt"))
+        );
+        assert_eq!(
+            file_path("file:///tmp/caf%C3%A9.md"),
+            Some(PathBuf::from("/tmp/café.md"))
+        );
+        assert_eq!(
+            file_path("file:///tmp/raw name.txt"),
+            Some(PathBuf::from("/tmp/raw name.txt"))
+        );
+        assert_eq!(
+            file_path("file:///tmp/100%.txt"),
+            Some(PathBuf::from("/tmp/100%.txt"))
+        );
+        assert_eq!(
+            file_path("file:///tmp/a%20b?x=1#frag"),
+            Some(PathBuf::from("/tmp/a b"))
+        );
+        assert_eq!(file_path("file:///tmp/a b"), file_path("file:///tmp/a%20b"));
+        assert_eq!(file_path("ahp-content:/x"), None);
+    }
+
+    #[test]
+    fn encoding_round_trips() {
+        let path = Path::new("/tmp/a b/c%d/é.txt");
+        assert_eq!(file_path(&encoded_file_uri(path)).as_deref(), Some(path));
+    }
 }

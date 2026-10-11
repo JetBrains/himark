@@ -4294,7 +4294,7 @@ impl Host {
         let root = dirs
             .iter()
             .filter_map(|dir| crate::uris::file_path_str(dir))
-            .filter(|dir| under_dir(path, dir))
+            .filter(|dir| under_dir(path.as_str(), dir))
             .max_by_key(|dir| dir.len())?;
         row.map(|row| (PathBuf::from(root), row.command.clone()))
     }
@@ -4367,7 +4367,7 @@ impl Host {
                 diagnostics,
             } => {
                 let uid = server.uid_of(&uri, version).map(|uid| uid.to_string());
-                let path = crate::uris::file_path_str(&uri).unwrap_or(&uri).to_owned();
+                let path = crate::uris::file_path_str(&uri).unwrap_or_else(|| uri.clone());
                 self.update(|state| {
                     let empty = diagnostics.as_array().is_some_and(Vec::is_empty);
                     // Every session whose working directories hold the
@@ -4386,7 +4386,7 @@ impl Host {
                                 .iter()
                                 .flatten()
                                 .filter_map(|dir| crate::uris::file_path_str(dir))
-                                .any(|dir| under_dir(&path, dir))
+                                .any(|dir| under_dir(&path, dir.as_str()))
                         })
                         .map(|(session, _)| session.clone())
                         .collect();
@@ -4944,8 +4944,8 @@ struct DispatchEnvelope {
 }
 
 fn render_annotation(annotation: &Annotation) -> String {
-    let place =
-        crate::uris::file_path_str(&annotation.resource).unwrap_or(annotation.resource.as_str());
+    let place = crate::uris::file_path_str(&annotation.resource)
+        .unwrap_or_else(|| annotation.resource.clone());
     let anchor = match &annotation.range {
         Some(range) if range.start.line == range.end.line => {
             format!("{place}, line {}", range.start.line + 1)

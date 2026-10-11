@@ -1202,6 +1202,80 @@ async fn create_only_writes_refuse_an_existing_file() {
 }
 
 #[tokio::test]
+async fn resource_methods_decode_percent_encoded_uris() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+
+    let folder = dir.path().join("my docs");
+    std::fs::create_dir(&folder).expect("folder");
+    let encoded = |path: &Path| format!("file://{}", path.display()).replace(' ', "%20");
+
+    let spaced = folder.join("a b.txt");
+    client
+        .request(
+            "resourceWrite",
+            json!({
+                "channel": session, "uri": encoded(&spaced),
+                "data": "spaced\n", "encoding": "utf-8",
+            }),
+        )
+        .await;
+    assert_eq!(
+        std::fs::read_to_string(&spaced).expect("written at the decoded path"),
+        "spaced\n"
+    );
+
+    let read = client
+        .request(
+            "resourceRead",
+            json!({"channel": session, "uri": encoded(&spaced)}),
+        )
+        .await;
+    assert_eq!(read["data"], "spaced\n");
+
+    let listed = client
+        .request(
+            "resourceList",
+            json!({"channel": session, "uri": encoded(&folder)}),
+        )
+        .await;
+    assert_eq!(listed["entries"][0]["name"], "a b.txt", "{listed}");
+
+    let moved = folder.join("c d.txt");
+    client
+        .request(
+            "resourceMove",
+            json!({
+                "channel": session,
+                "source": encoded(&spaced), "destination": encoded(&moved),
+            }),
+        )
+        .await;
+    assert!(!spaced.exists() && moved.exists());
+
+    client
+        .request(
+            "resourceDelete",
+            json!({"channel": session, "uri": encoded(&moved)}),
+        )
+        .await;
+    assert!(!moved.exists());
+
+    // A raw, unencoded space keeps working: the host emits such URIs itself.
+    let raw = folder.join("raw name.txt");
+    std::fs::write(&raw, "raw\n").expect("raw");
+    let read = client
+        .request(
+            "resourceRead",
+            json!({"channel": session, "uri": format!("file://{}", raw.display())}),
+        )
+        .await;
+    assert_eq!(read["data"], "raw\n");
+}
+
+#[tokio::test]
 async fn resource_delete_removes_files_and_recursive_trees() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = host_at(dir.path());

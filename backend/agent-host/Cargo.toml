@@ -17,6 +17,7 @@ hifind = { path = "../find" }
 higit = { path = "../git" }
 host-discovery = { path = "../../protocol/host-discovery" }
 tracing = "0.1"
+url = "2"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 himark-text = { path = "../../frontend/text", package = "text" }
 humantime = "2"
