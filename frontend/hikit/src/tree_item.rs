@@ -544,7 +544,7 @@ where
 }
 
 pub type TreeListCommand<C = TreeItemCommand<TreeLabelCommand>> =
-    imba::scroll::ScrollCommand<imba::list::ListCommand<C>>;
+    imba::list::ListCommand<C>;
 
 /// A row command that is, or carries, the tree item's own: rows a
 /// surface wraps (a tooltip, an overlay) peel their layer so the
@@ -583,10 +583,6 @@ fn row_press<C: TreeRowCommand>(
     command: &TreeListCommand<C>,
 ) -> Option<(usize, &TreeItemCommand<TreeLabelCommand>)> {
     use imba::list::ListCommand;
-    use imba::scroll::ScrollCommand;
-    let ScrollCommand::Content(command) = command else {
-        return None;
-    };
     let (index, command) = match command {
         ListCommand::Child(index, command) => (*index, command),
         ListCommand::Focus(index, Some(then)) => match then.as_ref() {

@@ -316,7 +316,7 @@ fn folders_added_mid_session_join_on_paint() {
 
 fn context_press(index: usize) -> TreeCommand {
     TreeCommand::Rows(hikit::list_keyboard::ListKeyCommand::Inner(
-        imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Focus(
+        imba::list::ListCommand::Focus(
             index,
             Some(Box::new(imba::list::ListCommand::Child(
                 index,
@@ -326,14 +326,14 @@ fn context_press(index: usize) -> TreeCommand {
                     ),
                 ),
             ))),
-        )),
+        ),
     ))
 }
 
 /// Enter on the `item`th entry of the menu standing on row `row`.
 fn menu_activate(row: usize, item: usize) -> TreeCommand {
     TreeCommand::Rows(hikit::list_keyboard::ListKeyCommand::Inner(
-        imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Child(
+        imba::list::ListCommand::Child(
             row,
             imba::with_overlay::WithOverlayCommand::Overlay(hikit::menu::MenuCommand::Rows(
                 Box::new(hikit::list_keyboard::ListKeyCommand::Inner(
@@ -343,7 +343,7 @@ fn menu_activate(row: usize, item: usize) -> TreeCommand {
                     )),
                 )),
             )),
-        )),
+        ),
     ))
 }
 
@@ -352,7 +352,6 @@ fn menu_open(view: &SessionTreeView, row: usize) -> bool {
     view.tree
         .list
         .inner()
-        .content()
         .view_at(row)
         .is_some_and(|row| row.overlay().is_some())
 }
@@ -383,7 +382,7 @@ fn a_context_press_menus_and_rename_commits_a_move() {
     );
     assert!(menu_open(&view, 1), "the press opened the menu on the row");
     assert_eq!(
-        view.tree.list.inner().content().key_at(1),
+        view.tree.list.inner().key_at(1),
         Some(&document(&["project", "README.md"]))
     );
 
@@ -894,7 +893,6 @@ fn a_relist_keeps_expanded_subtrees() {
     view.tree
         .list
         .inner_mut()
-        .content_mut()
         .select_only(document(&["project", "src", "lib.rs"]));
 
     let removed = view.tree.splice_listing(
@@ -919,12 +917,12 @@ fn a_relist_keeps_expanded_subtrees() {
         "the subtree rows stand"
     );
     assert_eq!(
-        view.tree.list.inner().content().cursor(),
+        view.tree.list.inner().cursor(),
         Some(&document(&["project", "src", "lib.rs"])),
         "selection rode the merge"
     );
 
-    let generation = view.tree.list.inner().content().generation();
+    let generation = view.tree.list.inner().generation();
     let removed = view.tree.splice_listing(
         directory(&["project"]),
         Some(vec![
@@ -937,7 +935,7 @@ fn a_relist_keeps_expanded_subtrees() {
     );
     assert!(removed.is_empty());
     assert_eq!(
-        view.tree.list.inner().content().generation(),
+        view.tree.list.inner().generation(),
         generation,
         "an echo touches nothing"
     );
@@ -973,7 +971,6 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         view.tree
             .list
             .inner()
-            .content()
             .selection_style()
             .map(|style| style.fill),
         Some(dark),
@@ -1023,7 +1020,6 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         view.tree
             .list
             .inner()
-            .content()
             .selection_style()
             .map(|style| style.fill),
         Some(light),

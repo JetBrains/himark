@@ -48,7 +48,7 @@ enum Activation {
 
 /// A tree row with its context menu standing on it when one is open.
 type Row = WithOverlay<TreeRow, MenuView>;
-type TreeList = ScrollView<ListView<Row, ResourceLocation>>;
+type TreeList = ListView<Row, ResourceLocation>;
 
 #[derive(Clone)]
 struct LocationSearcher;
@@ -58,7 +58,7 @@ impl hikit::list_keyboard::Searcher for LocationSearcher {
     type Key = ResourceLocation;
 
     fn capture(&self, view: &Self::View) -> hikit::list_keyboard::ItemSource<ResourceLocation> {
-        let keys = view.content().structure_keys();
+        let keys = view.structure_keys();
         Box::new(move || {
             keys.ordered_keys()
                 .into_iter()
@@ -68,7 +68,7 @@ impl hikit::list_keyboard::Searcher for LocationSearcher {
     }
 
     fn generation(&self, view: &Self::View) -> u64 {
-        view.content().generation()
+        view.generation()
     }
 }
 
@@ -87,9 +87,7 @@ impl LocationTree {
     fn new(store: &Store, ui: &imba::ui::UiCtx) -> Self {
         Self {
             list: ListKeyboardController::searchable(
-                ScrollView::new(
-                    ListView::empty().with_selection(hikit::rows::selection_style(store)),
-                ),
+                ListView::empty().with_selection(hikit::rows::selection_style(store)),
                 LocationSearcher,
                 store,
                 ui,
@@ -120,17 +118,16 @@ impl LocationTree {
     }
 
     fn len(&self) -> usize {
-        self.list.inner().content().len()
+        self.list.inner().len()
     }
 
     fn is_visible(&self, location: &ResourceLocation) -> bool {
-        self.list.inner().content().row_range(location).is_some()
+        self.list.inner().row_range(location).is_some()
     }
 
     fn is_listed(&self, location: &ResourceLocation) -> bool {
         self.list
             .inner()
-            .content()
             .row_range(location)
             .is_some_and(|range| range.len() > 1)
     }
@@ -138,7 +135,6 @@ impl LocationTree {
     fn select_and_reveal(&mut self, location: &ResourceLocation) {
         self.list
             .inner_mut()
-            .content_mut()
             .select_only(location.clone());
     }
 
@@ -184,7 +180,6 @@ impl LocationTree {
         let len = self.len();
         self.list
             .inner_mut()
-            .content_mut()
             .splice_slice(len..len, slice);
     }
 
@@ -196,16 +191,15 @@ impl LocationTree {
     ) -> Activation {
         self.list
             .inner_mut()
-            .content_mut()
             .select_only(location.clone());
         if !location.kind().is_directory() {
             return Activation::Open(location.clone());
         }
-        let Some(range) = self.list.inner().content().row_range(location) else {
+        let Some(range) = self.list.inner().row_range(location) else {
             return Activation::Done;
         };
         if range.len() > 1 {
-            let depth = self.list.inner().content().depth_at(range.start) as u16;
+            let depth = self.list.inner().depth_at(range.start) as u16;
             let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
             slice.push_keyed(
                 location.clone(),
@@ -215,7 +209,6 @@ impl LocationTree {
             );
             self.list
                 .inner_mut()
-                .content_mut()
                 .splice_slice_animated(range, slice);
             return Activation::Collapsed(location.clone());
         }
@@ -240,14 +233,14 @@ impl LocationTree {
             return Vec::new();
         };
 
-        let Some(range) = self.list.inner().content().row_range(&parent) else {
+        let Some(range) = self.list.inner().row_range(&parent) else {
             return Vec::new();
         };
-        let depth = self.list.inner().content().depth_at(range.start) as u16;
+        let depth = self.list.inner().depth_at(range.start) as u16;
 
         let mut blocks: Vec<(ResourceLocation, std::ops::Range<usize>)> = Vec::new();
         {
-            let content = self.list.inner().content();
+            let content = self.list.inner();
             let mut index = range.start + 1;
             while index < range.end {
                 let Some(key) = content.key_at(index).cloned() else {
@@ -274,19 +267,18 @@ impl LocationTree {
         let old_rows: Vec<Row> = self
             .list
             .inner()
-            .content()
             .rows_from(range.start)
             .take(range.len())
             .collect();
         let old_heights: Vec<f32> = range
             .clone()
-            .map(|index| self.list.inner().content().height_at(index).unwrap_or(1.0))
+            .map(|index| self.list.inner().height_at(index).unwrap_or(1.0))
             .collect();
         let old_keys: Vec<Option<ResourceLocation>> = range
             .clone()
-            .map(|index| self.list.inner().content().key_at(index).cloned())
+            .map(|index| self.list.inner().key_at(index).cloned())
             .collect();
-        let expanded = self.list.inner().content().spans_within(range.clone());
+        let expanded = self.list.inner().spans_within(range.clone());
 
         let mut slice: ListSlice<Row, ResourceLocation> = ListSlice::new();
         slice.push_keyed(parent.clone(), self.row(&parent, depth, true), store, ui);
@@ -338,7 +330,6 @@ impl LocationTree {
             .collect();
         self.list
             .inner_mut()
-            .content_mut()
             .splice_slice_animated(range, slice);
         removed
     }
@@ -598,7 +589,7 @@ impl SessionTreeView {
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn selected_name(&self) -> Option<String> {
-        Some(self.tree.list.inner().content().cursor()?.name().to_owned())
+        Some(self.tree.list.inner().cursor()?.name().to_owned())
     }
 
     pub fn reveal_pending(&self) -> bool {
@@ -626,7 +617,7 @@ impl SessionTreeView {
         ui: &UiCtx,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) {
-        let Some(location) = self.tree.list.inner().content().key_at(index).cloned() else {
+        let Some(location) = self.tree.list.inner().key_at(index).cloned() else {
             return;
         };
         self.activate_key(&location, store, ui, fx);
@@ -681,26 +672,25 @@ impl SessionTreeView {
         ui: &UiCtx,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) {
-        let Some(target) = self.tree.list.inner().content().key_at(index).cloned() else {
+        let Some(target) = self.tree.list.inner().key_at(index).cloned() else {
             return;
         };
-        let root = self.tree.list.inner().content().depth_at(index) == 0;
+        let root = self.tree.list.inner().depth_at(index) == 0;
         self.tree
             .list
             .inner_mut()
-            .content_mut()
             .select_only(target.clone());
         self.pending_reveal = None;
         // The row takes the focus with the menu: a standing menu
         // owns the keys (see `focus_data`).
         let menu = MenuView::new(store, ui, menu_items(&target, root));
-        let show = ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Focus(
+        let show = ListKeyCommand::Inner(ListCommand::Focus(
             index,
             Some(Box::new(ListCommand::Child(
                 index,
                 WithOverlayCommand::Show(menu),
             ))),
-        )));
+        ));
         fx.scope(TreeCommand::Rows, |fx| {
             self.tree.list.perform(store, ui, show, fx)
         });
@@ -761,10 +751,10 @@ impl SessionTreeView {
     }
 
     fn start_create(&mut self, parent: ResourceLocation, store: &Store, ui: &UiCtx) {
-        let Some(range) = self.tree.list.inner().content().row_range(&parent) else {
+        let Some(range) = self.tree.list.inner().row_range(&parent) else {
             return;
         };
-        let depth = self.tree.list.inner().content().depth_at(range.start) as u16;
+        let depth = self.tree.list.inner().depth_at(range.start) as u16;
         let placeholder = parent.child(editor::location::ResourceType::document(), "");
         if self.tree.is_visible(&placeholder) {
             return;
@@ -780,7 +770,6 @@ impl SessionTreeView {
         self.tree
             .list
             .inner_mut()
-            .content_mut()
             .splice_slice(at..at, slice);
         let mut input =
             ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
@@ -861,7 +850,6 @@ impl SessionTreeView {
             .tree
             .list
             .inner()
-            .content()
             .row_range(key)
             .filter(|range| range.len() == 1)
         else {
@@ -871,7 +859,6 @@ impl SessionTreeView {
         self.tree
             .list
             .inner_mut()
-            .content_mut()
             .splice_slice(range, empty);
     }
 
@@ -882,10 +869,10 @@ impl SessionTreeView {
         root: &ResourceLocation,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) {
-        let Some(range) = self.tree.list.inner().content().row_range(root) else {
+        let Some(range) = self.tree.list.inner().row_range(root) else {
             return;
         };
-        if self.tree.list.inner().content().depth_at(range.start) != 0 {
+        if self.tree.list.inner().depth_at(range.start) != 0 {
             return;
         }
         if self
@@ -896,14 +883,13 @@ impl SessionTreeView {
             self.abort_edit();
         }
         self.drop_watches_under(root, fx);
-        let Some(range) = self.tree.list.inner().content().row_range(root) else {
+        let Some(range) = self.tree.list.inner().row_range(root) else {
             return;
         };
         let empty: ListSlice<Row, ResourceLocation> = ListSlice::new();
         self.tree
             .list
             .inner_mut()
-            .content_mut()
             .splice_slice(range, empty);
         let under: Vec<ResourceLocation> = self
             .tree
@@ -935,7 +921,7 @@ fn row_command(
     index: usize,
     command: <Row as imba::View>::Command,
 ) -> ListKeyCommand<<TreeList as imba::View>::Command> {
-    ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Child(index, command)))
+    ListKeyCommand::Inner(ListCommand::Child(index, command))
 }
 
 fn menu_items(target: &ResourceLocation, root: bool) -> Vec<hikit::combo::ComboOption> {
@@ -1050,7 +1036,7 @@ impl View for SessionTreeView {
         }
         // A standing row menu owns the keys ahead of the controller's
         // table.
-        let content = self.tree.list.inner().content();
+        let content = self.tree.list.inner();
         if let Some(index) = content.focused() {
             if content
                 .view_at(index)
@@ -1101,13 +1087,13 @@ impl View for SessionTreeView {
                 type Rows = ListKeyboardController<TreeList, LocationSearcher>;
                 // A pick in a row's menu: the menu goes, the pick acts
                 // on the row it stood on.
-                if let ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Child(
+                if let ListKeyCommand::Inner(ListCommand::Child(
                     index,
                     WithOverlayCommand::Overlay(pick),
-                ))) = &command
+                )) = &command
                 {
                     let index = *index;
-                    let content = self.tree.list.inner().content();
+                    let content = self.tree.list.inner();
                     let picked = content
                         .view_at(index)
                         .and_then(|row| row.overlay().and_then(|menu| menu.picked(pick)));
@@ -1131,7 +1117,7 @@ impl View for SessionTreeView {
                     ListKeyCommand::Fold { expand, .. } => {
                         let expand = *expand;
                         self.pending_reveal = None;
-                        let Some(location) = self.tree.list.inner().content().cursor().cloned()
+                        let Some(location) = self.tree.list.inner().cursor().cloned()
                         else {
                             return self.persist(store);
                         };
@@ -1199,7 +1185,6 @@ impl View for SessionTreeView {
                 self.tree
                     .list
                     .inner_mut()
-                    .content_mut()
                     .set_selection_style(hikit::rows::selection_style(store));
             }
             TreeCommand::Listed { parent, entries } => {
@@ -1303,7 +1288,6 @@ impl View for SessionTreeView {
                     .tree
                     .list
                     .inner()
-                    .content()
                     .cursor()
                     .is_some_and(|held| held == &location);
                 if !standing {
@@ -1323,15 +1307,22 @@ impl View for SessionTreeView {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut overlay = container(arena, size);
-
+            // SCROLLER-FREE: the view lays its content height; the
+            // scroll sits where the view is MOUNTED — the workbench
+            // pane's ScrollView, a native shell's scroller. Reveals
+            // ride the regular result chain to whichever it is.
+            let width = constraints.max.width.max(1.0);
             let rows = imba::layout::Layout::layout(
                 self.tree.list.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(size.width, size.height - PANEL_PAD)),
+                Constraints {
+                    min: Size::new(width, 0.0),
+                    max: Size::new(width, f32::INFINITY),
+                },
             )
             .map(TreeCommand::Rows);
+            let size = Size::new(width, imba::Thunk::size(&rows).height + PANEL_PAD);
+            let mut overlay = container(arena, size);
             overlay.place(0.0, PANEL_PAD, rows);
 
             // The key table lives in the controller's own overlay;
@@ -1367,16 +1358,16 @@ impl View for SessionTreeView {
             overlay.place(0.0, 0.0, keymap);
 
             if let Some(edit) = &self.edit {
-                if let Some(range) = self.tree.list.inner().content().row_range(edit.row_key()) {
+                if let Some(range) = self.tree.list.inner().row_range(edit.row_key()) {
                     if let Some((top, height)) =
-                        self.tree.list.inner().content().row_span(range.start)
+                        self.tree.list.inner().row_span(range.start)
                     {
                         let theme = editor::env::Themes::of(store);
                         let tree_theme = theme.ui().tree.clone();
                         let search = theme.ui().search.clone();
-                        let depth = self.tree.list.inner().content().depth_at(range.start) as f32;
+                        let depth = self.tree.list.inner().depth_at(range.start) as f32;
                         let x = depth * tree_theme.indent + tree_theme.text_x;
-                        let y = PANEL_PAD + top - self.tree.list.inner().scroll_y();
+                        let y = PANEL_PAD + top;
                         let well_width = (size.width - x - PANEL_PAD).max(1.0);
                         let input_fill = search.input_fill;
                         let well = leaf::<TreeCommand>(well_width, height).paint_instead(
@@ -1448,7 +1439,7 @@ impl View for SessionTreeView {
                 .filter(|folder| !self.tree.is_visible(folder))
                 .cloned()
                 .collect();
-            let stale_roots = stale_roots(self.tree.list.inner().content(), &folders);
+            let stale_roots = stale_roots(self.tree.list.inner(), &folders);
             let editing = self.edit.is_some();
             inner.wrap(move |inner| FollowShell {
                 inner,

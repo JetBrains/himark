@@ -121,3 +121,120 @@ impl View for Box<dyn ModalView> {
         })
     }
 }
+
+/// A scroller-free view under the TOP scroller — the desktop
+/// shells' half of the law: content views own no scroll, and the
+/// scroll sits where the view is MOUNTED (a native shell's
+/// scroller, or this). Reveals from the content land in the
+/// wrapped ScrollView through the regular result chain.
+pub struct Scrolled<V>
+where
+    V: imba::View + Clone,
+    V::Command: Send + 'static,
+{
+    scroll: imba::scroll::ScrollView<V>,
+}
+
+impl<V> Scrolled<V>
+where
+    V: imba::View + Clone,
+    V::Command: Send + 'static,
+{
+    pub fn new(view: V) -> Self {
+        Self {
+            scroll: imba::scroll::ScrollView::new(view),
+        }
+    }
+}
+
+impl<V> Clone for Scrolled<V>
+where
+    V: imba::View + Clone,
+    V::Command: Send + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            scroll: self.scroll.clone(),
+        }
+    }
+}
+
+impl<V> imba::View for Scrolled<V>
+where
+    V: imba::View + Clone,
+    V::Command: Send + 'static,
+{
+    type Command = imba::scroll::ScrollCommand<V::Command>;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::ui::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        self.scroll.focus_data(store, ui)
+    }
+
+    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
+        self.scroll.destroy(store, fx);
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.scroll.perform(store, ui, command, fx);
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a imba::arena::Arena,
+        store: &'a Store,
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        self.scroll.display(arena, store, ui)
+    }
+}
+
+impl<V> ModalView for Scrolled<V>
+where
+    V: ModalView + imba::View + Clone + Send + Sync + 'static,
+    V::Command: Send + 'static,
+{
+    fn take_request(&mut self) -> Option<ModalRequest> {
+        self.scroll.content_mut().take_request()
+    }
+
+    fn set_query(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        query: &str,
+        fx: &mut imba::effect::Effects<'_, DynCommand>,
+    ) {
+        self.scroll.content_mut().set_query(store, ui, query, fx);
+    }
+
+    fn release_widgets(
+        &mut self,
+    ) -> Vec<(
+        crate::panel::WidgetOrigin,
+        Box<dyn crate::panel::DynPanelView>,
+    )> {
+        self.scroll.content_mut().release_widgets()
+    }
+
+    fn focus_lost(&mut self) {
+        self.scroll.content_mut().focus_lost();
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn clone_modal(&self) -> Box<dyn ModalView> {
+        Box::new(self.clone())
+    }
+}

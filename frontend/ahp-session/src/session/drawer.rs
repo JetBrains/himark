@@ -12,7 +12,8 @@ use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::tree_item::TreeLabel;
-use hikit::tree_item::TreeListCommand;
+type DrawerRowsCommand =
+    imba::scroll::ScrollCommand<imba::list::ListCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>>;
 use imba::list::ActivateTrigger;
 use imba::list::ListOps;
 use imba::{
@@ -90,7 +91,7 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
 #[derive(Clone)]
 #[doc(hidden)]
 pub enum AgentsCommand {
-    Rows(ListKeyCommand<TreeListCommand>),
+    Rows(ListKeyCommand<DrawerRowsCommand>),
 
     /// The paint-side ask: the panel's rows lag the catalog — rebuild
     /// them. The catalog itself is kept true by the resident
@@ -593,7 +594,7 @@ impl View for AgentsPanel {
                         }
                         return;
                     }
-                    ListKeyCommand::Inner(inner) => {
+                    ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(inner)) => {
                         if let Some(index) = hikit::tree_item::tree_toggle(inner) {
                             self.activate(store, ui, index, fx);
                             return;

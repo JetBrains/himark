@@ -473,24 +473,28 @@ impl View for ChangesView {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
-            let mut section = container(arena, size);
-
-            // The commit composer lives in the diff canvas's first
-            // row and REFRESH rides each repository's root row — the
-            // dock is just the tree.
+            // SCROLLER-FREE: the view lays its content height; the
+            // scroll sits where the view is MOUNTED — the workbench
+            // pane's ScrollView, a native shell's scroller.
+            let width = size.width.max(1.0);
             let band = PANEL_PAD;
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
+                Constraints {
+                    min: Size::new(width, 0.0),
+                    max: Size::new(width, f32::INFINITY),
+                },
             )
             .map(ChangesViewCommand::Rows);
+            let content = Size::new(width, imba::Thunk::size(&rows).height + band);
+            let mut section = container(arena, content);
             section.place(0.0, band, rows);
 
             // The key table lives in the controller's own overlay;
             // the surface keeps only its dismissal.
             let searching = self.list.searching();
-            let keymap = leaf::<ChangesViewCommand>(size.width, size.height).event(
+            let keymap = leaf::<ChangesViewCommand>(content.width, content.height).event(
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
                         key: InputKey::Escape,
@@ -501,16 +505,10 @@ impl View for ChangesView {
             );
             section.place(0.0, 0.0, keymap);
 
-            // The load-more probe is genuinely LAYOUT-BOUND (it
-            // reads the laid viewport's nearness to the tail), so it
-            // stays on paint. Working-copy views never page — `grow`
-            // is simply never true for them.
-            let rows_height = (size.height - band).max(1.0);
-            let near_tail = {
-                let list = self.list.inner();
-                list.scroll_y() + rows_height
-                    >= list.list().total_height() - 2.0 * hikit::ui::space::XL
-            };
+            // The load-more probe reads the VIEWPORT it is handed —
+            // nearness to the tail is the mounting scroller's truth,
+            // whichever shell owns it. Working-copy views never page
+            // — `pageable` is simply never true for them.
             let history = Changes::of(store, self.changes).map(|held| held.history());
             let pageable = self.sets == ViewSets::History
                 && history.is_some_and(|history| {
@@ -522,8 +520,12 @@ impl View for ChangesView {
                         })
                     })
                 });
-            let grow = near_tail && pageable;
-            section.wrap(move |inner| GrowShell { inner, grow })
+            let total_height = content.height;
+            section.wrap(move |inner| GrowShell {
+                inner,
+                pageable,
+                total_height,
+            })
         })
     }
 }
@@ -531,7 +533,8 @@ impl View for ChangesView {
 struct GrowShell<Inner> {
     inner: Inner,
 
-    grow: bool,
+    pageable: bool,
+    total_height: f32,
 }
 
 impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesViewCommand>
@@ -552,7 +555,9 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
         viewport: skia_safe::Rect,
     ) -> EventResult<ChangesViewCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) && self.grow {
+        let near_tail =
+            viewport.bottom >= self.total_height - 2.0 * hikit::ui::space::XL;
+        if matches!(event, Event::Paint { .. }) && self.pageable && near_tail {
             result = result.merge(EventResult::Command(ChangesViewCommand::AutoGrow));
         }
         result

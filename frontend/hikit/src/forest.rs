@@ -354,7 +354,7 @@ where
     R: View + Clone,
 {
     pub forest: Forest<K>,
-    list: ScrollView<ListView<R, K>>,
+    list: ListView<R, K>,
     wrap: Wrap<K, R>,
 }
 
@@ -388,21 +388,19 @@ where
     pub fn wrapping(store: &Store, wrap: Wrap<K, R>) -> Self {
         Self {
             forest: Forest::new(store),
-            list: ScrollView::new(
-                ListView::empty().with_selection(crate::rows::selection_style(store)),
-            ),
+            list: ListView::empty().with_selection(crate::rows::selection_style(store)),
             wrap,
         }
     }
 
     pub fn set(&mut self, nodes: &[ForestNode<K>], store: &Store, ui: &imba::ui::UiCtx) {
         self.forest.set(nodes);
-        let len = self.list.content().len();
+        let len = self.list.len();
         let slice = self.forest.slice(store, ui, &self.wrap);
-        self.list.content_mut().splice_slice(0..len, slice);
-        if self.list.content().cursor().is_none() {
+        self.list.splice_slice(0..len, slice);
+        if self.list.cursor().is_none() {
             if let Some(first) = self.first_pickable(nodes) {
-                self.list.content_mut().select_only(first);
+                self.list.select_only(first);
             }
         }
     }
@@ -420,26 +418,22 @@ where
     }
 
     pub fn list(&self) -> &ListView<R, K> {
-        self.list.content()
-    }
-
-    pub fn scroll_y(&self) -> f32 {
-        self.list.scroll_y()
+        &self.list
     }
 
     pub fn list_mut(&mut self) -> &mut ListView<R, K> {
-        self.list.content_mut()
+        (&mut self.list)
     }
 
     pub fn toggle(&mut self, key: &K, store: &Store, ui: &imba::ui::UiCtx) {
         let mut forest = std::mem::replace(&mut self.forest, Forest::empty());
-        forest.toggle_in(self.list.content_mut(), key, store, ui, &self.wrap);
+        forest.toggle_in(&mut self.list, key, store, ui, &self.wrap);
         self.forest = forest;
     }
 
     pub fn fold_cursor(&mut self, expand: bool, store: &Store, ui: &imba::ui::UiCtx) {
         let mut forest = std::mem::replace(&mut self.forest, Forest::empty());
-        forest.fold_cursor(self.list.content_mut(), expand, store, ui, &self.wrap);
+        forest.fold_cursor(&mut self.list, expand, store, ui, &self.wrap);
         self.forest = forest;
     }
 }
@@ -460,7 +454,6 @@ where
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
         self.list
-            .content_mut()
             .set_selection_style(crate::rows::selection_style(store));
         self.list.perform(store, ui, command, fx)
     }
@@ -482,6 +475,7 @@ where
         self.list.display(arena, store, ui)
     }
 }
+
 
 pub struct ForestSearcher<K, R = TreeRow>(std::marker::PhantomData<fn() -> (K, R)>);
 
@@ -565,9 +559,9 @@ where
         self.list.activate_command(index, trigger)
     }
     fn selected_index(command: &Self::Command) -> Option<usize> {
-        <ScrollView<ListView<R, K>>>::selected_index(command)
+        <ListView<R, K>>::selected_index(command)
     }
     fn activated(command: &Self::Command) -> Option<(usize, ActivateTrigger)> {
-        <ScrollView<ListView<R, K>>>::activated(command)
+        <ListView<R, K>>::activated(command)
     }
 }
