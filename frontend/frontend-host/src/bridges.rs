@@ -882,6 +882,30 @@ pub unsafe extern "C" fn himark_place_chat(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn himark_place_chat_transcript(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::ChatTranscriptPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_chat_composer(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::ChatComposerPlace(session))
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn himark_place_changes(
     engine: *mut HimarkEngine,
     host: u64,

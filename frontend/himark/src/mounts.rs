@@ -81,8 +81,12 @@ impl BridgeView for PanelMount {
         constraints: Constraints,
     ) -> ThunkBox<'a, AppCommand> {
         let id = self.id;
-        let size = constraints.max;
         let content = self.panel.layout_dyn(arena, store, ui, constraints);
+        // The CONTENT's size, not the ceiling: under the native
+        // scroller's loose measure the ceiling is infinite, and
+        // the content's own height IS the answer. Tight
+        // constraints land on the same size either way.
+        let size = imba::Thunk::size(&content);
         let mut container = imba::container::container(arena, size);
         container.place(
             0.0,
@@ -294,6 +298,51 @@ pub fn mount_place(
                 None,
             );
             Some(Rc::new(PanelMount { id, panel }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::ChatTranscriptPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
+            ahp_chat::chats::Chats::ensure_chat(
+                store,
+                ui,
+                state.chats(),
+                key.host,
+                key.session.clone(),
+                chat.clone(),
+                None,
+            );
+            Some(Rc::new(PanelMount {
+                id,
+                panel: Box::new(ahp_chat::transcript::TranscriptPane::new(
+                    state.chats(),
+                    chat,
+                )),
+            }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::ChatComposerPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
+            ahp_chat::chats::Chats::ensure_chat(
+                store,
+                ui,
+                state.chats(),
+                key.host,
+                key.session.clone(),
+                chat.clone(),
+                None,
+            );
+            Some(Rc::new(PanelMount {
+                id,
+                panel: Box::new(ahp_chat::composer::ComposerPane::new(state.chats(), chat)),
+            }) as Rc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::ChangesPlace>() {

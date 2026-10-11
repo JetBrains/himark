@@ -66,6 +66,18 @@ pub struct ChatPlace(pub ahp_wire::SessionId);
 
 impl Place for ChatPlace {}
 
+/// A session chat's TRANSCRIPT alone — a native scroller's content.
+#[derive(Clone, PartialEq)]
+pub struct ChatTranscriptPlace(pub ahp_wire::SessionId);
+
+impl Place for ChatTranscriptPlace {}
+
+/// A session chat's COMPOSER BAND alone, at its natural height.
+#[derive(Clone, PartialEq)]
+pub struct ChatComposerPlace(pub ahp_wire::SessionId);
+
+impl Place for ChatComposerPlace {}
+
 /// A session's CHANGES tree.
 #[derive(Clone, PartialEq)]
 pub struct ChangesPlace(pub ahp_wire::SessionId);

@@ -486,6 +486,16 @@ bool himark_session_new(HimarkEngine *engine, uint64_t host);
 
 HimarkPlace himark_place_chat(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
 
+HimarkPlace himark_place_chat_transcript(HimarkEngine *engine,
+                                         uint64_t host,
+                                         const char *uri,
+                                         uintptr_t len);
+
+HimarkPlace himark_place_chat_composer(HimarkEngine *engine,
+                                       uint64_t host,
+                                       const char *uri,
+                                       uintptr_t len);
+
 HimarkPlace himark_place_changes(HimarkEngine *engine,
                                  uint64_t host,
                                  const char *uri,
