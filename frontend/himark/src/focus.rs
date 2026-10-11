@@ -83,7 +83,7 @@ impl Himark {
         };
 
         if let Some(result) = performed {
-            self.perform_chain_result(result);
+            self.perform_chain_result(window, result);
         }
         answer
     }
@@ -113,12 +113,16 @@ impl Himark {
             })
         };
         if let Some(result) = performed {
-            self.perform_chain_result(result);
+            self.perform_chain_result(window, result);
         }
         answer
     }
 
-    fn perform_chain_result(&mut self, result: EventResult<AppCommand>) {
+    fn perform_chain_result(
+        &mut self,
+        window: ::workbench::window::WindowId,
+        result: EventResult<AppCommand>,
+    ) {
         match result {
             EventResult::Command(command) => {
                 self.perform_batch(vec![command]);
@@ -126,7 +130,15 @@ impl Himark {
             EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
                 self.perform_batch(commands);
             }
-            EventResult::Ignored | EventResult::Handled | EventResult::Reveal(_) => {}
+            EventResult::Reveal(reveal) => {
+                // Typing on a mounted road asks a caret-follow the
+                // engine can't scroll — park it for the host.
+                let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
+                if id.is_mounted() {
+                    self.pending_reveal = Some((id, reveal.rect));
+                }
+            }
+            EventResult::Ignored | EventResult::Handled => {}
         }
     }
 }

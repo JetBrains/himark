@@ -605,7 +605,18 @@ impl Himark {
                 true => !clock,
                 false => self.perform_batch(commands),
             },
-            EventResult::Reveal(_) => false,
+            EventResult::Reveal(reveal) => {
+                // A mounted view's reveal is the HOST's to scroll —
+                // park it for `take_reveal`; a window's dies here as
+                // it always did (its scroller consumes en route).
+                let bridge = crate::bridge::ViewBridgeId::from_raw(window.raw());
+                if bridge.is_mounted() {
+                    self.pending_reveal = Some((bridge, reveal.rect));
+                    true
+                } else {
+                    false
+                }
+            }
         };
         (changed, shape)
     }

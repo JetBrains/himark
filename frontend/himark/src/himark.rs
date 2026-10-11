@@ -120,6 +120,12 @@ pub struct Himark {
 
     pub(crate) pending_file_events: Vec<documents::watch::Subscription>,
 
+    /// The last REVEAL a mounted road answered and nobody scrolled:
+    /// the engine owns no viewport for a mounted view, so the ask
+    /// parks here and the HOST drains it (`take_reveal`) into its
+    /// own scroller — the native half of the reveal mechanism.
+    pub(crate) pending_reveal: Option<(ViewBridgeId, skia_safe::Rect)>,
+
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
     /// viewport corrections land in the SAME frame
@@ -236,6 +242,7 @@ impl Himark {
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
             pending_file_events: Vec::new(),
+            pending_reveal: None,
             settle_requested: false,
             settling: false,
         };
@@ -633,10 +640,31 @@ impl Himark {
         id: ViewBridgeId,
         event: &imba::event::Event<'_>,
     ) -> imba::event::EventResult<crate::perform::AppCommand> {
+        let trace = std::env::var_os("HIMARK_TRACE_MOUNT").is_some();
         let Some((frame, size)) = self.mounted_frame(id, None) else {
+            if trace {
+                eprintln!("[mount] {id:?}: event against no frame");
+            }
             return imba::event::EventResult::Ignored;
         };
-        frame.handle(event, skia_safe::Rect::from_size(size))
+        let result = frame.handle(event, skia_safe::Rect::from_size(size));
+        if trace {
+            eprintln!(
+                "[mount] {id:?} size {:?}x{:?} -> {}",
+                size.width,
+                size.height,
+                match &result {
+                    imba::event::EventResult::Ignored => "ignored",
+                    imba::event::EventResult::Handled => "handled",
+                    imba::event::EventResult::Command(_) => "command",
+                    imba::event::EventResult::Commands(_) => "commands",
+                    imba::event::EventResult::Pointer { commands, .. } =>
+                        if commands.is_empty() { "pointer(empty)" } else { "pointer(commands)" },
+                    imba::event::EventResult::Reveal(_) => "reveal",
+                }
+            );
+        }
+        result
     }
 
     /// Paint a mounted view into the host's canvas at the host's
@@ -673,8 +701,16 @@ impl Himark {
             imba::event::EventResult::Command(command) => self.perform_batch(vec![command]),
             imba::event::EventResult::Commands(commands)
             | imba::event::EventResult::Pointer { commands, .. } => self.perform_batch(commands),
-            imba::event::EventResult::Reveal(_) => false,
+            imba::event::EventResult::Reveal(reveal) => {
+                self.pending_reveal = Some((id, reveal.rect));
+                true
+            }
         }
+    }
+
+    /// Drain the parked reveal — the host scrolls it into view.
+    pub fn take_reveal(&mut self) -> Option<(ViewBridgeId, skia_safe::Rect)> {
+        self.pending_reveal.take()
     }
 
     /// Re-seat the shell, wrapping the one seated now — the native
@@ -822,6 +858,14 @@ impl Himark {
 
     pub fn stage_frame(&self, handle: u64) -> Option<&crate::bridge::Frame> {
         self.stage_frames.get(handle).map(|(_, frame)| frame)
+    }
+
+    pub fn stage_frame_origin(&self, handle: u64) -> Option<ViewBridgeId> {
+        self.stage_frames.get(handle).map(|(id, _)| *id)
+    }
+
+    pub fn park_reveal(&mut self, id: ViewBridgeId, rect: skia_safe::Rect) {
+        self.pending_reveal = Some((id, rect));
     }
 
     pub fn stage_frame_release(&mut self, handle: u64) -> bool {

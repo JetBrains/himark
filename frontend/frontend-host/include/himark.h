@@ -396,6 +396,19 @@ bool himark_frame_event(HimarkEngine *engine,
                         float height);
 
 /**
+ * Drain the reveal a mounted road parked — a caret-follow or a
+ * selection the view asked to be brought on screen, rect in that
+ * bridge's content coordinates. The host scrolls it into view.
+ * False when nothing is parked.
+ */
+bool himark_take_reveal(HimarkEngine *engine,
+                        uint64_t *out_bridge,
+                        float *out_x,
+                        float *out_y,
+                        float *out_width,
+                        float *out_height);
+
+/**
  * Paint the realized slice into the host's canvas.
  */
 bool himark_frame_paint(HimarkEngine *engine,

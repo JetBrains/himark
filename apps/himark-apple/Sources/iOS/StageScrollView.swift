@@ -45,7 +45,7 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
             engine: host.engine, bridge: bridge, device: host.device,
             scrollEmbedded: true)
         view.onContentMeasured = { [weak self] size in self?.contentMeasured(size) }
-        view.onEdited = { [weak self] in self?.revealCaret() }
+        view.onReveal = { [weak self] rect in self?.reveal(rect) }
         scroll.addSubview(view)
         host.register(view)
         content = view
@@ -128,23 +128,15 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
         let overlap = max(0, bounds.maxY - convert(frame, from: nil).minY)
         scroll.contentInset.bottom = overlap
         scroll.verticalScrollIndicatorInsets.bottom = overlap
-        if overlap > 0 { revealCaret() }
     }
 
-    /// Scroll the caret's rect into the visible band — the host's
-    /// half of Reveal: the engine answers geometry in content
-    /// coordinates, the scroller moves.
-    private func revealCaret() {
-        guard bridge.raw != 0, let content,
-              let range = host.engine.selectedRange(bridge: bridge),
-              let rect = host.engine.firstRect(bridge: bridge, range)
-        else { return }
-        let scale = content.pixelScale
+    /// The host's half of Reveal: the view asked, the scroller
+    /// moves. The rect arrives in content points — pad it so the
+    /// caret never kisses the very edge.
+    private func reveal(_ rect: CGRect) {
         let target = CGRect(
-            x: CGFloat(rect.x) / scale,
-            y: CGFloat(rect.y) / scale - 8,
-            width: max(CGFloat(rect.width) / scale, 2),
-            height: CGFloat(rect.height) / scale + 16)
+            x: rect.minX, y: rect.minY - 8,
+            width: max(rect.width, 2), height: rect.height + 16)
         scroll.scrollRectToVisible(target, animated: false)
     }
 }

@@ -26,9 +26,10 @@ class HimarkBridgeView: UIView {
     /// sizes this view and its contentSize from it.
     var onContentMeasured: ((CGSize) -> Void)?
 
-    /// An edit landed (insert/delete) — the embedding scroller
-    /// reveals the caret.
-    var onEdited: (() -> Void)?
+    /// The view asked for a rect (points, content coordinates) to
+    /// be brought on screen — a caret-follow while typing, a
+    /// selection jump. The embedding scroller moves.
+    var onReveal: ((CGRect) -> Void)?
 
     weak var inputDelegate: UITextInputDelegate?
     var markedTextStyle: [NSAttributedString.Key: Any]?
@@ -97,6 +98,7 @@ class HimarkBridgeView: UIView {
 
     @objc private func keyboardChanged() {
         if engine.revealSelection(bridge: bridgeId) { request() }
+        drainReveal()
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -109,7 +111,24 @@ class HimarkBridgeView: UIView {
         let pointed = engine.bridgeEvent(bridge: bridgeId, event: event)
         himark_event_release(event)
         if pointed.changed { request() }
+        drainReveal()
         return pointed.changed
+    }
+
+    /// A mounted road parks its unconsumed Reveal in the engine —
+    /// the view owns no scroller. Drain it after every dispatch
+    /// and hand it (in points) to whoever embeds us.
+    private func drainReveal() {
+        var owner: UInt64 = 0
+        var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
+        guard himark_take_reveal(engine.raw, &owner, &x, &y, &w, &h) else { return }
+        guard owner == bridgeId.raw else {
+            print("[reveal] parked by bridge \(owner), drained at \(bridgeId.raw) — dropped")
+            return
+        }
+        let s = pixelScale
+        onReveal?(CGRect(x: CGFloat(x) / s, y: CGFloat(y) / s,
+                         width: CGFloat(w) / s, height: CGFloat(h) / s))
     }
 
     @discardableResult
@@ -225,6 +244,7 @@ class HimarkBridgeView: UIView {
 
     func performCommand(_ id: String) {
         if engine.perform(bridge: bridgeId, command: id) { request() }
+        drainReveal()
     }
 
     func syncFocus() { syncFirstResponder() }
@@ -275,6 +295,7 @@ class HimarkBridgeView: UIView {
         inputDelegate?.textWillChange(self)
         inputDelegate?.selectionWillChange(self)
         if body() { request() }
+        drainReveal()
         inputDelegate?.selectionDidChange(self)
         inputDelegate?.textDidChange(self)
     }
@@ -317,12 +338,10 @@ class HimarkBridgeView: UIView {
                 ? sendKey(UInt32(HIMARK_KEY_ENTER))
                 : sendText(text)
         }
-        onEdited?()
     }
 
     func deleteBackward() {
         performTextChange { sendKey(UInt32(HIMARK_KEY_BACKSPACE)) }
-        onEdited?()
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {

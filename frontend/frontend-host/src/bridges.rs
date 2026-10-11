@@ -413,7 +413,7 @@ pub unsafe extern "C" fn himark_layout_size(
         return false;
     };
     let Some(size) = engine.app.stage_layout_size(layout.raw) else {
-        refuse("layout", layout.raw);
+        refuse("layout (size)", layout.raw);
         return false;
     };
     if !out_width.is_null() {
@@ -445,7 +445,7 @@ pub unsafe extern "C" fn himark_layout_realize(
         .stage_realize(layout.raw, Rect::from_xywh(x, y, width, height))
     {
         0 => {
-            refuse("layout", layout.raw);
+            refuse("layout (realize)", layout.raw);
             HimarkFrame { raw: 0 }
         }
         raw => HimarkFrame { raw },
@@ -458,7 +458,7 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout
         return;
     };
     if !engine.app.stage_layout_release(layout.raw) {
-        refuse("layout", layout.raw);
+        refuse("layout (release)", layout.raw);
     }
 }
 
@@ -543,10 +543,52 @@ pub unsafe extern "C" fn himark_frame_event(
             true => true,
             false => engine.app.perform_batch(commands),
         },
-        // Reveal surfaces to the host with the intents layer
-        // (docs/ui/himark-ffi.md) — not yet on this road.
-        EventResult::Reveal(_) => false,
+        EventResult::Reveal(reveal) => {
+            // The stage road has no scroller — park the ask for
+            // the host to drain (`himark_take_reveal`) into its own.
+            if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
+                engine.app.park_reveal(id, reveal.rect);
+            }
+            true
+        }
     }
+}
+
+/// Drain the reveal a mounted road parked — a caret-follow or a
+/// selection the view asked to be brought on screen, rect in that
+/// bridge's content coordinates. The host scrolls it into view.
+/// False when nothing is parked.
+#[no_mangle]
+pub unsafe extern "C" fn himark_take_reveal(
+    engine: *mut HimarkEngine,
+    out_bridge: *mut u64,
+    out_x: *mut f32,
+    out_y: *mut f32,
+    out_width: *mut f32,
+    out_height: *mut f32,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some((id, rect)) = engine.app.take_reveal() else {
+        return false;
+    };
+    if !out_bridge.is_null() {
+        *out_bridge = id.raw();
+    }
+    if !out_x.is_null() {
+        *out_x = rect.x();
+    }
+    if !out_y.is_null() {
+        *out_y = rect.y();
+    }
+    if !out_width.is_null() {
+        *out_width = rect.width();
+    }
+    if !out_height.is_null() {
+        *out_height = rect.height();
+    }
+    true
 }
 
 /// Paint the realized slice into the host's canvas.
