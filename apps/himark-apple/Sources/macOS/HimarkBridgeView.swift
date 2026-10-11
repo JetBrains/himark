@@ -203,9 +203,6 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         var cw: Float = 0
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
-        if ch.isFinite {
-            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
-        }
 
         if ProcessInfo.processInfo.environment["HIMARK_TRACE_BAND"] != nil {
             NSLog("band bridge \(bridgeId.raw) bounds \(bounds.size) visible \(visible) content \(ch / Float(scale))")
@@ -224,6 +221,20 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         } else {
             himark_frame_release(raw, frame)
         }
+        // The measure lands AFTER the pass: applying it resizes the
+        // document view, which re-enters render synchronously — an
+        // outstanding layout would die refused and the band would
+        // paint twice per streamed change.
+        if ch.isFinite {
+            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
+        }
+    }
+
+    /// The embedding scroller's live-scroll bracket: present
+    /// synchronously while the user drags, or the repositioned band
+    /// shows its OLD contents for a frame and the text swims.
+    func setSyncPresent(_ on: Bool) {
+        surface?.setSyncPresent(on)
     }
 
     /// The embedding scroller moved the viewport: repaint the band

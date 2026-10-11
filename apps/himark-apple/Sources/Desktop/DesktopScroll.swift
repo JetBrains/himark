@@ -38,6 +38,12 @@ final class DesktopScrollHost: NSView {
             self, selector: #selector(boundsChanged),
             name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(liveScrollBegan),
+            name: NSScrollView.willStartLiveScrollNotification, object: scroll)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(liveScrollEnded),
+            name: NSScrollView.didEndLiveScrollNotification, object: scroll)
 
         if !mintContent() {
             host.registerRedraw(self) { [weak self] in
@@ -119,8 +125,20 @@ final class DesktopScrollHost: NSView {
     }
 
     @objc private func boundsChanged() {
-        pinned = nearBottom
         content?.renderNow()
+    }
+
+    /// Pinning follows the USER's hand only — a bounds change is
+    /// just as often the stream growing the content, and deciding
+    /// there yanks the scroll out from under a reading user.
+    @objc private func liveScrollBegan() {
+        pinned = false
+        content?.setSyncPresent(true)
+    }
+
+    @objc private func liveScrollEnded() {
+        pinned = nearBottom
+        content?.setSyncPresent(false)
     }
 
     private var nearBottom: Bool {
