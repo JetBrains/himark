@@ -4284,8 +4284,8 @@ impl Host {
     }
 
     fn lsp_route(&self, dirs: &[String], uri: &str) -> Option<(PathBuf, String)> {
-        let path = crate::uris::file_path_str(uri)?;
-        let extension = path.rsplit('.').next()?.to_lowercase();
+        let path = crate::uris::file_path(uri)?;
+        let extension = path.extension()?.to_str()?.to_lowercase();
         let row = self
             .config
             .language_servers
@@ -4293,10 +4293,10 @@ impl Host {
             .find(|row| row.extensions.contains(&extension));
         let root = dirs
             .iter()
-            .filter_map(|dir| crate::uris::file_path_str(dir))
-            .filter(|dir| under_dir(path.as_str(), dir))
-            .max_by_key(|dir| dir.len())?;
-        row.map(|row| (PathBuf::from(root), row.command.clone()))
+            .filter_map(|dir| crate::uris::file_path(dir))
+            .filter(|dir| path.starts_with(dir))
+            .max_by_key(|dir| dir.as_os_str().len())?;
+        row.map(|row| (root, row.command.clone()))
     }
 
     fn fsp_feed_open(&self, uri: &str, text: &str) {
@@ -4367,7 +4367,7 @@ impl Host {
                 diagnostics,
             } => {
                 let uid = server.uid_of(&uri, version).map(|uid| uid.to_string());
-                let path = crate::uris::file_path_str(&uri).unwrap_or_else(|| uri.clone());
+                let path = crate::uris::file_path(&uri).unwrap_or_else(|| PathBuf::from(&uri));
                 self.update(|state| {
                     let empty = diagnostics.as_array().is_some_and(Vec::is_empty);
                     // Every session whose working directories hold the
@@ -4385,8 +4385,8 @@ impl Host {
                                 .working_directories
                                 .iter()
                                 .flatten()
-                                .filter_map(|dir| crate::uris::file_path_str(dir))
-                                .any(|dir| under_dir(&path, dir.as_str()))
+                                .filter_map(|dir| crate::uris::file_path(dir))
+                                .any(|dir| path.starts_with(&dir))
                         })
                         .map(|(session, _)| session.clone())
                         .collect();
@@ -5043,16 +5043,6 @@ const LSP_METHOD_NOT_ALLOWED: i32 = -33001;
 const LSP_NO_LANGUAGE_SERVER: i32 = -33002;
 const LSP_DIAGNOSTICS_PREFIX: &str = "ahp-lsp-diagnostics:/";
 
-/// Is `path` the directory `dir` or inside it? A string prefix is
-/// not containment: `/p/himark-jb/x.rs` is not under `/p/himark`.
-fn under_dir(path: &str, dir: &str) -> bool {
-    let dir = dir.trim_end_matches('/');
-    match path.strip_prefix(dir) {
-        Some(rest) => rest.is_empty() || rest.starts_with('/'),
-        None => false,
-    }
-}
-
 const LOCATIONS_PREFIX: &str = "ahp-locations:/";
 
 /// Files read only to derive result context stay bounded.
@@ -5602,19 +5592,5 @@ mod state_tests {
             before + 1,
             "the host keeps serving"
         );
-    }
-}
-
-#[cfg(test)]
-mod under_dir_tests {
-    use super::under_dir;
-
-    #[test]
-    fn containment_is_a_path_boundary_not_a_string_prefix() {
-        assert!(under_dir("/p/himark/src/a.rs", "/p/himark"));
-        assert!(under_dir("/p/himark/src/a.rs", "/p/himark/"));
-        assert!(under_dir("/p/himark", "/p/himark"));
-        assert!(!under_dir("/p/himark-jb/src/a.rs", "/p/himark"));
-        assert!(!under_dir("/p/him", "/p/himark"));
     }
 }
