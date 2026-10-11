@@ -381,10 +381,11 @@ pub fn mount_place(
             );
             ::documents::OpenDocuments::put_document(store, collection, document, held);
             ::documents::OpenDocuments::touch(store, collection, document);
-            let view = imba::scroll::ScrollView::new(
-                ::documents::entity_view::EditorIdView::new(collection, document, editor)
-                    .with_gutter(),
-            );
+            // BARE — no imba scroller: the editor screen rides the
+            // stage road, and the native scroller owns the physics
+            // (docs/ui/imba-ffi.md, touch section).
+            let view = ::documents::entity_view::EditorIdView::new(collection, document, editor)
+                .with_gutter();
             Some(Rc::new(EditorMount { id, view }) as Rc<dyn BridgeView>)
         });
     }
@@ -404,12 +405,13 @@ pub fn mount_place(
 }
 
 /// A single editor over a registered document, as a mounted view —
-/// the pushed "file" screen. Scroll state lives in the view; the
-/// document and its editors live in the collection, exactly as a
-/// workbench editor pane holds them.
+/// the pushed "file" screen. The view is BARE: the host's scroller
+/// owns the viewport (the stage road); the document and its
+/// editors live in the collection, exactly as a workbench editor
+/// pane holds them.
 pub(crate) struct EditorMount {
     id: ViewBridgeId,
-    view: imba::scroll::ScrollView<::documents::entity_view::EditorIdView>,
+    view: ::documents::entity_view::EditorIdView,
 }
 
 impl BridgeView for EditorMount {
@@ -437,12 +439,15 @@ impl BridgeView for EditorMount {
         constraints: Constraints,
     ) -> ThunkBox<'a, AppCommand> {
         let id = self.id;
-        let size = constraints.max;
         let content = imba::layout::Layout::layout(
             imba::View::display(&self.view, arena, store, ui),
             arena,
             constraints,
         );
+        // The container takes the CONTENT's size, not the ceiling:
+        // under the native scroller's loose measure the ceiling is
+        // infinite, and the content's own height IS the answer.
+        let size = imba::Thunk::size(&content);
         let mut container = imba::container::container(arena, size);
         container.place(
             0.0,
@@ -462,8 +467,7 @@ impl BridgeView for EditorMount {
         ui: &UiCtx,
         fx: &mut AppFx<'_>,
     ) {
-        type PaneCommand =
-            imba::scroll::ScrollCommand<::editor::editor_view::EditorCommand>;
+        type PaneCommand = ::editor::editor_view::EditorCommand;
         let Some(command) = command.downcast::<PaneCommand>() else {
             eprintln!("[mount] a command of another view's type was dropped");
             return;

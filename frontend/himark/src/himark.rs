@@ -751,12 +751,19 @@ impl Himark {
             return 0;
         };
         let arena = slot.spare_arena.take().unwrap_or_default();
-        let stage = slot.bridge.layout(
-            &self.store,
-            &self.ui,
-            imba::constraints::Constraints::tight(size),
-            arena,
-        );
+        // An INFINITE height is the native scroller asking to
+        // measure: width pinned, height the content's own — the
+        // sized stage's `.size()` becomes the scroller's content
+        // size. A finite size stays the window-shaped tight fit.
+        let constraints = if size.height.is_infinite() {
+            imba::constraints::Constraints {
+                min: skia_safe::Size::new(size.width, 0.0),
+                max: size,
+            }
+        } else {
+            imba::constraints::Constraints::tight(size)
+        };
+        let stage = slot.bridge.layout(&self.store, &self.ui, constraints, arena);
         self.stage_layouts.mint((id, stage))
     }
 

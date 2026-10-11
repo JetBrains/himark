@@ -536,13 +536,20 @@ pub unsafe extern "C" fn himark_frame_paint(
             refuse("frame", frame.raw);
             return false;
         };
-        stage.handle(
+        // The host's canvas IS the slice: translate so content
+        // coordinates land at its origin — the widget paints at
+        // its layout position, the viewport names the band.
+        canvas.save();
+        canvas.translate((-x, -y));
+        let result = stage.handle(
             &Event::Paint {
                 canvas,
                 focused: true,
             },
             viewport,
-        )
+        );
+        canvas.restore();
+        result
     };
     match result {
         EventResult::Ignored | EventResult::Handled | EventResult::Reveal(_) => false,
