@@ -31,6 +31,12 @@ pub(crate) struct Mounted {
     pub(crate) revision: u64,
     pub(crate) size: skia_safe::Size,
 
+    /// The STAGE road's shadow: the band the host last realized.
+    /// A stage client never fills `frame`, but the IME fold needs
+    /// one — `mounted_frame` rebuilds at `size` and realizes this
+    /// band, so the folded geometry matches what is on screen.
+    pub(crate) stage_viewport: Option<skia_safe::Rect>,
+
     /// One warm arena from the last recycled frame.
     pub(crate) spare_arena: Option<Box<imba::arena::Arena>>,
 }
@@ -42,6 +48,7 @@ impl Mounted {
             frame: None,
             revision: 0,
             size: skia_safe::Size::new(-1.0, -1.0),
+            stage_viewport: None,
             spare_arena: None,
         }
     }
@@ -608,7 +615,12 @@ impl Himark {
                 imba::constraints::Constraints::tight(size),
                 arena,
             );
-            slot.frame = Some(layout.realize(skia_safe::Rect::from_size(size)));
+            // A stage client's shadow realizes the band the HOST
+            // shows; the retained road realizes its whole rect.
+            let viewport = slot
+                .stage_viewport
+                .unwrap_or_else(|| skia_safe::Rect::from_size(size));
+            slot.frame = Some(layout.realize(viewport));
             slot.revision = revision;
             slot.size = size;
         }
@@ -776,6 +788,12 @@ impl Himark {
         let stage = slot
             .bridge
             .layout(&self.store, &self.ui, constraints, arena);
+        if id.is_mounted() {
+            // The stage road's shadow: the measured size becomes
+            // the slot's, so the IME fold (`mounted_frame`)
+            // rebuilds the same layout the stage client shows.
+            slot.size = stage.size();
+        }
         self.stage_layouts.mint((id, stage))
     }
 
@@ -789,6 +807,11 @@ impl Himark {
         let Some((id, stage)) = self.stage_layouts.take(handle) else {
             return 0;
         };
+        if let Some(slot) = self.bridges.get_mut(&id) {
+            if id.is_mounted() {
+                slot.stage_viewport = Some(viewport);
+            }
+        }
         let frame = stage.realize(viewport);
         self.stage_frames.mint((id, frame))
     }

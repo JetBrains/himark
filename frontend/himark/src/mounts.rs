@@ -428,9 +428,11 @@ impl BridgeView for EditorMount {
         ui: &'a UiCtx,
     ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
         let id = self.id;
+        // `focus_data_dyn` ERASES already — wrapping its DynCommand
+        // in another DynCommand breaks the perform downcast.
         Some(
             imba::dyn_view::DynView::focus_data_dyn(&self.view, store, ui)
-                .map(move |command| AppCommand::ToView(id, DynCommand::new(command))),
+                .map(move |command| AppCommand::ToView(id, command)),
         )
     }
 
@@ -472,7 +474,7 @@ impl BridgeView for EditorMount {
     ) {
         type PaneCommand = ::editor::editor_view::EditorCommand;
         let Some(command) = command.downcast::<PaneCommand>() else {
-            eprintln!("[mount] a command of another view's type was dropped");
+            eprintln!("[mount] a foreign command was dropped by the editor mount");
             return;
         };
         let origin = self.id;
