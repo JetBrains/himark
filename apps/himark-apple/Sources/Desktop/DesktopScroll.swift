@@ -70,6 +70,20 @@ final class DesktopScrollHost: NSView {
         host.register(view)
         content = view
         needsLayout = true
+        // DEBUG harness: HIMARK_DEBUG_CLICK="x,y,delay" clicks this
+        // bridge at content points once, for screenshot loops.
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK"] {
+            let parts = spec.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view] in
+                    guard let view else { return }
+                    let s = Float(view.metalLayer.contentsScale)
+                    let (x, y) = (Float(parts[0]) * s, Float(parts[1]) * s)
+                    view.send(himark_event_mouse_down(x, y, 0, 1))
+                    view.send(himark_event_mouse_up(x, y))
+                }
+            }
+        }
         return true
     }
 
@@ -306,6 +320,20 @@ final class PlainBridgeHost: NSView {
         addSubview(view)
         host.register(view)
         content = view
+        // Same debug harness as the scroll host: HIMARK_DEBUG_CLICK2
+        // pokes THIS pane (the canvas) once.
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK2"] {
+            let parts = spec.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view] in
+                    guard let view else { return }
+                    let s = Float(view.metalLayer.contentsScale)
+                    let (x, y) = (Float(parts[0]) * s, Float(parts[1]) * s)
+                    view.send(himark_event_mouse_down(x, y, 0, 1))
+                    view.send(himark_event_mouse_up(x, y))
+                }
+            }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }

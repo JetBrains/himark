@@ -1021,6 +1021,9 @@ impl Canvas {
         };
         let old = documents::diff_views::DiffSideInput::resolve(store, documents, file.old.clone());
         let new = documents::diff_views::DiffSideInput::resolve(store, documents, file.new.clone());
+        if trace_wrap() {
+            eprintln!("[wrap] launch {} at width {width}", key.name());
+        }
         fx.push(
             AnyEffect::new(documents::diff_views::OpenDiffPairEffect { old, new, width }).map(
                 move |prep| CanvasCommand::Landed {
@@ -2520,9 +2523,15 @@ pub struct DiffRow {
     built_width: Option<f32>,
 }
 
+fn trace_wrap() -> bool {
+    std::env::var_os("HIMARK_TRACE_WRAP").is_some()
+}
+
 fn header_band(theme: &editor::theme::Theme) -> f32 {
-    let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
-    h1.font_size.unwrap_or(48.0) + h1.block_gap.unwrap_or(24.0)
+    // COMPACT headers (docs/himark-islands-default.png): a little
+    // over one body line — the H1-sized banner era is over.
+    let base = theme.resolve([]).font_size.unwrap_or(26.0);
+    base * 1.2 + 18.0
 }
 
 /// The composer banner's height — the CHAT COMPOSER's whole footprint
@@ -2796,12 +2805,21 @@ impl View for CanvasRow {
             }
             RowCommand::Rewrap(width) => {
                 if diff.rewrap_ask != Some(width) {
+                    if trace_wrap() {
+                        eprintln!("[wrap] ask recorded {}: {width}", diff.file.new.name());
+                    }
                     diff.rewrap_ask = Some(width);
                     return;
                 }
                 let RowBody::Built { pane } = &diff.body else {
+                    if trace_wrap() {
+                        eprintln!("[wrap] rewrap on UNBUILT row {}", diff.file.new.name());
+                    }
                     return;
                 };
+                if trace_wrap() {
+                    eprintln!("[wrap] rewrap RUNS {}: {width}", diff.file.new.name());
+                }
                 let id = pane.id();
                 let documents = pane.documents();
                 fx.scope(RowCommand::Diff, |fx| {
@@ -3058,7 +3076,8 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 use crate::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
                 let band = header_band(&theme);
                 let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
-                let size = h1.font_size.unwrap_or(48.0);
+                let base = theme.resolve([]).font_size.unwrap_or(26.0);
+                let size = base * 1.1;
                 let mut buttons = vec![DiffHeaderPress::OpenPane, DiffHeaderPress::OpenFile];
                 if header.built {
                     buttons.push(DiffHeaderPress::ToggleFace);
@@ -3074,7 +3093,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                         buttons,
                         primary: Some(DiffHeaderPress::OpenFile),
                         title_size: size,
-                        bold: h1.bold,
+                        bold: true,
                         title_color: h1.color,
                         baseline: size,
                     },
@@ -3199,7 +3218,14 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                                         .right
                                         .document
                                         .layout_width(view.split.right.editor);
-                                    ((laid - editor_target).abs() > 1.0).then_some(editor_target)
+                                    let armed = (laid - editor_target).abs() > 1.0;
+                                    if armed && trace_wrap() {
+                                        eprintln!(
+                                            "[wrap] arm {}: laid {laid} target {editor_target}",
+                                            diff.file.new.name()
+                                        );
+                                    }
+                                    armed.then_some(editor_target)
                                 }
                             },
                             None => None,

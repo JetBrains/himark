@@ -695,6 +695,17 @@ impl Himark {
                 for (window, size) in windows {
                     self.dispatch(window, Event::Settle, size);
                 }
+                // The MOUNTED bridges hear the pulse too: the canvas
+                // re-aims its row editors off Settle — a deaf mount
+                // shaped only each row's birth viewport and painted
+                // black below it.
+                for id in self.mounted_ids() {
+                    self.dispatch(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        Event::Settle,
+                        Size::default(),
+                    );
+                }
                 rounds += 1;
             }
             self.settling = false;

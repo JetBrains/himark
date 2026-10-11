@@ -53,6 +53,11 @@ struct Key {
     token: crate::document::DocumentToken,
     editor: crate::editor::EditorId,
     band: i64,
+    /// The GPU context the band was BAKED on: a snapshot is a
+    /// texture of its context — drawn on another it comes out
+    /// black (one shell, many surfaces: every pane owns a context,
+    /// panes are recreated per navigation).
+    context: u32,
 }
 
 struct Entry {
@@ -112,6 +117,16 @@ pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
         return false;
     }
     let scale = scale_x;
+    // repr(C) { id: u32 } — the field is private, the layout is the
+    // contract (skia-safe transmutes it natively itself). Off the
+    // GPU targets there is one raster world: 0.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    let context = canvas
+        .direct_context()
+        .map(|held| unsafe { std::mem::transmute::<_, u32>(held.id()) })
+        .unwrap_or(0);
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    let context = 0u32;
     let Some(clip) = canvas.local_clip_bounds() else {
         return false;
     };
@@ -193,6 +208,7 @@ pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
             token: pass.token,
             editor: pass.editor,
             band,
+            context,
         };
         let cached = CACHE.with(|cell| {
             let mut cache = cell.borrow_mut();
@@ -212,6 +228,16 @@ pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
                 let Some(image) = bake(canvas, &lines, band_top, x0, x1, scale, band_phase) else {
                     return false;
                 };
+                if std::env::var_os("HIMARK_TRACE_BANDS").is_some() {
+                    let first = lines.first().map(|line| (line.top, line.x, line.height));
+                    eprintln!(
+                        "[bands] bake ed{:?} band {band} lines {} scale {scale} x {x0}..{x1} top {band_top} first {first:?} px {}x{}",
+                        pass.editor,
+                        lines.len(),
+                        image.width(),
+                        image.height(),
+                    );
+                }
                 let bytes = image.width() as usize * image.height() as usize * 4;
                 let held: Vec<Rc<ShapedLine>> = lines
                     .iter()

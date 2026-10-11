@@ -191,6 +191,50 @@ where
     }
 }
 
+/// The mounted changes tree's canvas ask: a ONCE verb, because the
+/// modal-request channel refuses Shell verbs (that guard predates
+/// the windowless fork) — this one performs the windowless open
+/// directly: commit changeset ask, then the CanvasPlace to the
+/// seated shell.
+struct OpenCanvasFromChanges {
+    origin: ViewBridgeId,
+    changes: imba::store::Id<changesview::hichanges::Changes>,
+    source: changesview::hichanges::CanvasSource,
+    reveal: Option<editor::location::ResourceLocation>,
+}
+
+impl imba::command::DynamicOnceCommand for OpenCanvasFromChanges {
+    fn perform(
+        self: Box<Self>,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) {
+        if let changesview::hichanges::CanvasSource::Commit { folder, id } = &self.source {
+            if let Some(history) = changesview::hichanges::Changes::of(store, self.changes)
+                .map(|held| held.history())
+            {
+                changesview::hihistory::History::ask(
+                    store,
+                    history,
+                    changesview::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
+                );
+            }
+        }
+        crate::shell::navigate_origin(
+            store,
+            ui,
+            self.origin,
+            ::canvas::diff_canvas::CanvasPlace {
+                changes: self.changes,
+                source: self.source,
+                reveal: self.reveal,
+            },
+            fx,
+        );
+    }
+}
+
 /// An EXTERNAL place arm: a crate ABOVE this one (a plugin)
 /// answers a place with a modal view. Registered at boot
 /// (`Himark::register_place_arm`); `mount_place` consults these
@@ -475,14 +519,12 @@ pub fn mount_place(
             // and hands the shell a CanvasPlace.
             let opener: changesview::changes_view::CanvasOpener =
                 Arc::new(move |source, reveal| {
-                    crate::app::shell_verb(crate::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                            changes,
-                            source,
-                            reveal,
-                        }),
-                    ))
+                    imba::command::Verb::once(OpenCanvasFromChanges {
+                        origin: id,
+                        changes,
+                        source,
+                        reveal,
+                    })
                 });
             let view = changesview::changes_view::ChangesView::open(
                 store,
@@ -506,14 +548,12 @@ pub fn mount_place(
             let changes = state.changes();
             let opener: changesview::changes_view::CanvasOpener =
                 Arc::new(move |source, reveal| {
-                    crate::app::shell_verb(crate::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                            changes,
-                            source,
-                            reveal,
-                        }),
-                    ))
+                    imba::command::Verb::once(OpenCanvasFromChanges {
+                        origin: id,
+                        changes,
+                        source,
+                        reveal,
+                    })
                 });
             let view = changesview::changes_view::ChangesView::open(
                 store,

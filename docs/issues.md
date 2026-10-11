@@ -71,3 +71,4 @@ thread caused non-unwinding panic. aborting.
     plumbed through winit, the C ABI (`himark_secondary_down`) + Swift
     `rightMouseDown`, and the web shell. Tests: hifiles (menu/rename/create/
     validation/focus-loss/stale-root), menu.rs, agent-host resource ops.
+- [ ] chat still loses messages. At least when two clients are connected. some messages appear in new client but completely absent in the old.
