@@ -26,7 +26,6 @@ use imba::{
     event::{Event, EventResult, Key as InputKey},
     leaf::leaf,
     list::{ListCommand, ListSlice, ListView},
-    scroll::{ScrollCommand, ScrollView},
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,

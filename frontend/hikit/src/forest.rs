@@ -7,7 +7,6 @@ use std::sync::Arc;
 use imba::{
     arena::Arena,
     list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView},
-    scroll::ScrollView,
     store::Store,
     ui::UiCtx,
     View,
@@ -422,7 +421,7 @@ where
     }
 
     pub fn list_mut(&mut self) -> &mut ListView<R, K> {
-        (&mut self.list)
+        &mut self.list
     }
 
     pub fn toggle(&mut self, key: &K, store: &Store, ui: &imba::ui::UiCtx) {

@@ -12,7 +12,7 @@ use editor::{
     unified_diff::UnifiedDiffView,
 };
 use imba::{
-    arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, ui::UiCtx, View,
+    arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View,
     Widget,
 };
 

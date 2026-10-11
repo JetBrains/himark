@@ -413,7 +413,7 @@ impl ComposerBand {
 
     pub(crate) fn display<'a>(
         &'a self,
-        arena: &'a imba::arena::Arena,
+        _arena: &'a imba::arena::Arena,
         store: &'a imba::store::Store,
         ui: &'a imba::ui::UiCtx,
         props: BandProps<'a>,
@@ -424,7 +424,7 @@ impl ComposerBand {
         use imba::layout::LayoutExt as _;
         use imba::leaf::leaf;
         use imba::thunk_ext::ThunkExt as _;
-        use skia_safe::Paint;
+        
 
         imba::layout::laid(
             move |arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {

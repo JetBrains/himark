@@ -16,7 +16,6 @@ use imba::{
     container::container,
     effect::Effects,
     event::{Event, EventResult},
-    layout::LayoutExt as _,
     leaf::leaf,
     list::{ListCommand, ListView},
     store::Store,
@@ -127,7 +126,7 @@ impl View for TranscriptView {
 }
 
 #[derive(Clone)]
-pub(crate) enum RowCommand {
+pub enum RowCommand {
     Activate,
 
     /// A SLEEPING row painted: build me at the row's real width.

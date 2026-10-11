@@ -26,31 +26,27 @@ use ahp_wire::effects::{
     CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect,
 };
 use editor::env;
-use hikit::fonts::ui_text_font;
 use imba::{
     arena::Arena,
     constraints::Constraints,
     container::container,
     effect::{AnyEffect, CancellationToken, Effects},
     event::{Event, EventResult, Key},
-    layout::Layout as _,
-    layout::LayoutExt as _,
-    leaf::leaf,
-    list::{ListCommand, ListSlice, ListView},
+    list::{ListCommand, ListSlice},
     scroll::{ScrollCommand, ScrollView},
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Paint, Rect, Size};
+use skia_safe::{Rect, Size};
 
 use crate::cell::{Cell, CellCommand};
-use crate::composer::{Composer, ComposerCommand, ComposerProps};
+use crate::composer::ComposerCommand;
 use crate::stack::{PermissionAsk, StackCommand, WidgetStack};
 use crate::turn::{CellSpec, TurnCommand, TurnView};
 
-use crate::transcript::{ChatRow, RowCommand, Transcript, TranscriptView};
+use crate::transcript::{ChatRow, RowCommand, TranscriptView};
 
 #[derive(Clone)]
 enum Link {
