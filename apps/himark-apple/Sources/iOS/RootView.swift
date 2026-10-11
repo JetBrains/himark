@@ -79,14 +79,21 @@ struct SessionPicker: View {
 
     var body: some View {
         Menu {
+            if host.sessions.isEmpty {
+                // An EMPTY Menu never presents — the picker would
+                // read as dead. Name the real state instead.
+                Button("No sessions — is the agent host running?") {}
+                    .disabled(true)
+            }
             ForEach(host.sessions, id: \.uri) { row in
                 Button {
                     host.select(row)
                 } label: {
-                    if row.title.isEmpty {
-                        Text("Untitled")
+                    let title = row.title.isEmpty ? "Untitled" : row.title
+                    if host.current?.uri == row.uri, host.current?.host == row.host {
+                        Label(title, systemImage: "checkmark")
                     } else {
-                        Text(row.title)
+                        Text(title)
                     }
                 }
             }
