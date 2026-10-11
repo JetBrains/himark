@@ -660,6 +660,19 @@ impl Himark {
         }
     }
 
+    /// Re-seat the shell, wrapping the one seated now — the native
+    /// callback DECORATES the chain (claim some place kinds, pass
+    /// the rest through), it never replaces it.
+    pub fn seat_shell(&mut self, wrap: impl FnOnce(Arc<dyn Shell>) -> Arc<dyn Shell>) {
+        let seated = self
+            .store
+            .get::<ShellSeat>()
+            .map(|seat| seat.0.clone())
+            .expect("a shell is seated at boot");
+        let wrapped = wrap(seated);
+        self.setup(|store| store.put(ShellSeat(wrapped)));
+    }
+
     /// Whether this bridge id is a WINDOW — the dispatch roads
     /// fork on it: windows ride the workbench paths, mounts ride
     /// their own frames.
@@ -727,6 +740,7 @@ impl Himark {
             return false;
         };
         crate::bridge::quiesce(id, &mut slot, &mut self.stage_layouts, &mut self.stage_frames);
+        crate::mounts::forget_session(&mut self.store, id);
         true
     }
 

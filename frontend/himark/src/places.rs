@@ -46,6 +46,20 @@ pub struct LocationsPlace(pub Vec<editor::location::ResourceLocation>);
 
 impl Place for LocationsPlace {}
 
+/// An INSTALLED split-diff view — the ready half of `DiffPlace`,
+/// minted by the open landing once both sides are registered and
+/// the pair installed. A native shell mounts it synchronously.
+#[derive(Clone, PartialEq)]
+pub struct DiffViewPlace {
+    pub documents: imba::store::Id<documents::OpenDocuments>,
+    pub view: documents::diffs::DiffViewId,
+    /// The NEW side's name — the pushed screen's title, computed
+    /// at install where the pair is in hand.
+    pub title: String,
+}
+
+impl Place for DiffViewPlace {}
+
 /// A session's CHAT — transcript and the square composer, whole.
 #[derive(Clone, PartialEq)]
 pub struct ChatPlace(pub ahp_wire::SessionId);

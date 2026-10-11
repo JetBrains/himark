@@ -570,6 +570,21 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
             }
         }
         ShellCommand::Windowed(window, command) => {
+            if ::workbench::window::Windows::window_ref(store, window).is_none() {
+                // A MOUNTED origin rode the windowed lane (its id is
+                // no window's), or the window closed mid-flight: the
+                // landings that know the mounted road take it here,
+                // the rest drop loudly instead of panicking on the
+                // missing entity.
+                let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
+                if !command.perform_windowless(store, ui, origin, fx) {
+                    eprintln!(
+                        "[shell] a window-taking command landed windowless — dropped: {}",
+                        command.name()
+                    );
+                }
+                return;
+            }
             command.perform(store, ui, window, fx);
             // Deferred requests must not wait for the next CONTENT
             // command — an idle window (nothing painted, nothing

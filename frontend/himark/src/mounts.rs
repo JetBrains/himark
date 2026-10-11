@@ -25,6 +25,32 @@ use crate::bridge::{BridgeView, ViewBridgeId};
 use crate::perform::{AppCommand, AppFx};
 use crate::shell::navigate_origin;
 
+/// Which SESSION each mounted bridge belongs to — the windowless
+/// twin of "the window's session": the navigate resolver reads it
+/// to bind a mounted origin's opens to the right collections.
+#[derive(Clone, Default)]
+pub(crate) struct MountSessions(
+    pub(crate) rpds::HashTrieMapSync<u64, ahp_wire::SessionId>,
+);
+
+pub(crate) fn remember_session(store: &mut Store, id: ViewBridgeId, session: ahp_wire::SessionId) {
+    let mut map = store.get::<MountSessions>().cloned().unwrap_or_default();
+    map.0.insert_mut(id.raw(), session);
+    store.put(map);
+}
+
+pub(crate) fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId> {
+    store.get::<MountSessions>()?.0.get(&id.raw()).cloned()
+}
+
+pub(crate) fn forget_session(store: &mut Store, id: ViewBridgeId) {
+    let Some(mut map) = store.get::<MountSessions>().cloned() else {
+        return;
+    };
+    map.0.remove_mut(&id.raw());
+    store.put(map);
+}
+
 /// An erased panel (`DynPanelView`) as a mounted view.
 pub(crate) struct PanelMount {
     id: ViewBridgeId,
@@ -251,6 +277,7 @@ pub fn mount_place(
     if let Some(place) = place.place::<crate::places::ChatPlace>() {
         let key = place.0.clone();
         return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let chat = ahp_session::session::agents::Agents::channel(store, &key)?
                 .default_chat?;
@@ -269,15 +296,21 @@ pub fn mount_place(
     if let Some(place) = place.place::<crate::places::ChangesPlace>() {
         let key = place.0.clone();
         return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let changes = state.changes();
-            // The row tap opens the FILE for now; the diff screen
-            // takes this seat when the canvas mounts land.
+            // A row tap opens THAT ROW'S DIFF — no canvas on the
+            // mounted road (the desktop's multi-diff canvas stays a
+            // workbench face); the shell pushes one split-diff.
+            let row_key = key.clone();
             let opener: changesview::changes_view::CanvasOpener =
-                Arc::new(move |_source, location| {
-                    imba::command::Verb::once(OpenFromChanges {
+                Arc::new(move |source, location| {
+                    imba::command::Verb::once(OpenDiffFromChanges {
                         origin: id,
-                        location,
+                        session: row_key.clone(),
+                        changes,
+                        source,
+                        reveal: location,
                     })
                 });
             let view = changesview::changes_view::ChangesView::open(
@@ -297,6 +330,7 @@ pub fn mount_place(
     if let Some(place) = place.place::<crate::places::FilesPlace>() {
         let key = place.0.clone();
         return app.mount(move |store, ui, id, fx| {
+            remember_session(store, id, key.clone());
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let tree = fx.scope(
                 move |command: filetree::TreeCommand| {
@@ -317,36 +351,173 @@ pub fn mount_place(
             Some(Rc::new(ModalMount { id, view: tree }) as Rc<dyn BridgeView>)
         });
     }
+    if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
+        let document = place.document;
+        return app.mount(move |store, ui, id, fx| {
+            // Mounted places carry no window to ask for a session: a
+            // registered document lives in exactly one collection —
+            // find it across the (few) session states.
+            let collection = ahp_session::session::state::Hosts::states(store)
+                .into_iter()
+                .map(|state| state.documents())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .find(|collection| {
+                    ::documents::OpenDocuments::document(store, *collection, document).is_some()
+                })?;
+            let mut held = ::documents::OpenDocuments::document(store, collection, document)?;
+            let width = ::workbench::workbench::fallback_pane_editor_width(store);
+            let editor = fx.scope(
+                move |command: ::editor::editor_view::EditorCommand| {
+                    AppCommand::Verb(imba::command::Verb::at(
+                        collection,
+                        ::documents::DocumentsCommand::Editor(document, command),
+                    ))
+                },
+                |fx| ::documents::lifecycle::mount_editor(store, ui, &mut held, width, None, fx),
+            );
+            ::documents::scroll_stripes::enable_scroll_stripes(
+                store, collection, document, &mut held, editor,
+            );
+            ::documents::OpenDocuments::put_document(store, collection, document, held);
+            ::documents::OpenDocuments::touch(store, collection, document);
+            let view = imba::scroll::ScrollView::new(
+                ::documents::entity_view::EditorIdView::new(collection, document, editor)
+                    .with_gutter(),
+            );
+            Some(Rc::new(EditorMount { id, view }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::DiffViewPlace>() {
+        let documents = place.documents;
+        let view = place.view;
+        return app.mount(move |_store, _ui, id, _fx| {
+            let panel = ::canvas::diff_pane::DiffPanelView::over(documents, view);
+            Some(Rc::new(PanelMount {
+                id,
+                panel: Box::new(panel),
+            }) as Rc<dyn BridgeView>)
+        });
+    }
     eprintln!("[mount] no view answers this place — refused");
     None
 }
 
-/// The changes tree asked to open a row.
-struct OpenFromChanges {
-    origin: ViewBridgeId,
-    location: Option<editor::location::ResourceLocation>,
+/// A single editor over a registered document, as a mounted view —
+/// the pushed "file" screen. Scroll state lives in the view; the
+/// document and its editors live in the collection, exactly as a
+/// workbench editor pane holds them.
+pub(crate) struct EditorMount {
+    id: ViewBridgeId,
+    view: imba::scroll::ScrollView<::documents::entity_view::EditorIdView>,
 }
 
-impl imba::command::DynamicOnceCommand for OpenFromChanges {
+impl BridgeView for EditorMount {
+    fn frame_store(&self, store: &Store, _ui: &UiCtx) -> Store {
+        store.clone()
+    }
+
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let id = self.id;
+        Some(
+            imba::dyn_view::DynView::focus_data_dyn(&self.view, store, ui)
+                .map(move |command| AppCommand::ToView(id, DynCommand::new(command))),
+        )
+    }
+
+    fn layout<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> ThunkBox<'a, AppCommand> {
+        let id = self.id;
+        let size = constraints.max;
+        let content = imba::layout::Layout::layout(
+            imba::View::display(&self.view, arena, store, ui),
+            arena,
+            constraints,
+        );
+        let mut container = imba::container::container(arena, size);
+        container.place(
+            0.0,
+            0.0,
+            content
+                .map(move |command| AppCommand::ToView(id, DynCommand::new(command)))
+                .overlay_host(imba::overlay::WINDOW),
+        );
+        ThunkBox::new(arena, container)
+    }
+
+    fn perform(
+        &mut self,
+        command: DynCommand,
+        _origin: ViewBridgeId,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut AppFx<'_>,
+    ) {
+        type PaneCommand =
+            imba::scroll::ScrollCommand<::editor::editor_view::EditorCommand>;
+        let Some(command) = command.downcast::<PaneCommand>() else {
+            eprintln!("[mount] a command of another view's type was dropped");
+            return;
+        };
+        let origin = self.id;
+        fx.scope(
+            move |command: PaneCommand| AppCommand::ToView(origin, DynCommand::new(command)),
+            |fx| imba::View::perform(&mut self.view, store, ui, command, fx),
+        );
+    }
+}
+
+/// The changes tree asked to open a row: find THAT ROW'S pair in
+/// the set's listing (the same normalization the canvas rows use)
+/// and launch the pair-open with the MOUNTED origin — the landing
+/// installs the view and hands the shell a ready `DiffViewPlace`.
+struct OpenDiffFromChanges {
+    origin: ViewBridgeId,
+    session: ahp_wire::SessionId,
+    changes: imba::store::Id<changesview::hichanges::ChangeSets>,
+    source: changesview::hichanges::CanvasSource,
+    reveal: Option<editor::location::ResourceLocation>,
+}
+
+impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
     fn perform(
         self: Box<Self>,
         store: &mut Store,
-        ui: &UiCtx,
+        _ui: &UiCtx,
         fx: &mut imba::command::Fx<'_>,
     ) {
-        let Some(location) = self.location else {
+        let Some(reveal) = self.reveal else {
             return;
         };
-        navigate_origin(
-            store,
-            ui,
-            self.origin,
-            crate::places::DocumentPlace {
-                location,
-                target: None,
-                focus: true,
-            },
-            fx,
+        let (_, listing) = ::canvas::diff_canvas::canvas_files(store, self.changes, &self.source);
+        let ::canvas::diff_canvas::CanvasListing::Ready(files) = listing else {
+            return;
+        };
+        let Some(file) = files.into_iter().find(|file| file.new == reveal) else {
+            eprintln!("[mount] a changes row vanished before its diff opened — dropped");
+            return;
+        };
+        let documents = ahp_session::session::state::Hosts::ensure_state(store, &self.session)
+            .documents();
+        let old = documents::diff_views::DiffSideInput::resolve(store, documents, file.old);
+        let new = documents::diff_views::DiffSideInput::resolve(store, documents, file.new);
+        fx.push(
+            imba::effect::AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
+                window: ::workbench::window::WindowId::from_raw(self.origin.raw()),
+                documents,
+                old,
+                new,
+            })
+            .map(|command| imba::command::Verb::shell(Box::new(command))),
         );
     }
 }

@@ -192,7 +192,12 @@ impl Himark {
     /// the workbench registry roads. A shell that composes its own
     /// frame boots `Himark::bare` and mounts the views it needs.
     pub fn new(fonts: AppFonts) -> Self {
-        let mut app = Himark::bare(fonts, std::sync::Arc::new(WorkbenchFrontend));
+        let mut app = Himark::bare(
+            fonts,
+            std::sync::Arc::new(MountFrontend {
+                next: WorkbenchFrontend,
+            }),
+        );
         app.setup(|store| {
             store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
             crate::commands::register_builtins(store);
@@ -846,6 +851,99 @@ fn validate_panes(context: &str, store: &Store, editors: &WorkbenchNode) {
         }
         index += 1;
     });
+}
+
+/// The MOUNTED-origin resolver in the shell chain: places that
+/// need OPENING (a located document, a diff of two locations) are
+/// the engine's to resolve — it launches the same open effects the
+/// workbench does, bound to the mount's session, with the mounted
+/// id riding where a window id would. The landings re-navigate
+/// with READY places (`OpenDocumentPlace`, `DiffViewPlace`), which
+/// a native shell claims and mints synchronously. Window origins
+/// pass straight through.
+pub struct MountFrontend {
+    pub next: WorkbenchFrontend,
+}
+
+impl crate::himark::Shell for MountFrontend {
+    fn navigate(
+        &self,
+        origin: crate::bridge::ViewBridgeId,
+        place: hikit::navigation::NavigationLocation,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) -> bool {
+        if !origin.is_mounted() {
+            return self.next.navigate(origin, place, store, ui, fx);
+        }
+        let rides = ::workbench::window::WindowId::from_raw(origin.raw());
+        if let Some(place) = place.place::<crate::places::DocumentPlace>() {
+            let Some(session) = crate::mounts::session_of(store, origin) else {
+                return false;
+            };
+            let documents =
+                ahp_session::session::state::Hosts::ensure_state(store, &session).documents();
+            fx.push(
+                crate::workspace::open_by_location_effect(
+                    rides,
+                    documents,
+                    place.location.clone(),
+                    true,
+                    place.focus,
+                    place.target.clone(),
+                )
+                .map(|command| imba::command::Verb::shell(Box::new(command))),
+            );
+            return true;
+        }
+        if let Some(place) = place.place::<crate::places::DiffPlace>() {
+            let Some(session) = crate::mounts::session_of(store, origin) else {
+                return false;
+            };
+            let documents =
+                ahp_session::session::state::Hosts::ensure_state(store, &session).documents();
+            let old = documents::diff_views::DiffSideInput::resolve(
+                store,
+                documents,
+                place.old.clone(),
+            );
+            let new = documents::diff_views::DiffSideInput::resolve(
+                store,
+                documents,
+                place.new.clone(),
+            );
+            fx.push(
+                imba::effect::AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
+                    window: rides,
+                    documents,
+                    old,
+                    new,
+                })
+                .map(|command| imba::command::Verb::shell(Box::new(command))),
+            );
+            return true;
+        }
+        if let Some(batch) = place.place::<crate::places::LocationsPlace>() {
+            // v1 of the mounted batch: the FIRST location opens; a
+            // results screen takes this seat later.
+            let Some(location) = batch.0.first().cloned() else {
+                return true;
+            };
+            return self.navigate(
+                origin,
+                hikit::navigation::NavigationLocation::new(crate::places::DocumentPlace {
+                    location,
+                    target: None,
+                    focus: true,
+                }),
+                store,
+                ui,
+                fx,
+            );
+        }
+        false
+    }
 }
 
 /// The workbench AS the shell (`crate::himark::Shell`): placement

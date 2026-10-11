@@ -45,6 +45,20 @@ pub trait WindowedCommand: Send + Sync {
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     );
+
+    /// The MOUNTED landing: an effect launched from a mounted
+    /// bridge rides the windowed lane with the mount's id, and no
+    /// window entity answers it. A command that knows the mounted
+    /// road takes it here; `false` drops the landing loudly.
+    fn perform_windowless(
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _origin: crate::bridge::ViewBridgeId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Default)]

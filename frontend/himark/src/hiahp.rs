@@ -175,6 +175,51 @@ impl WindowedCommand for OpenDiffPair {
             documents::lanes::sync_stripe_bases(store, self.documents, ui, fx)
         });
     }
+
+    /// The MOUNTED landing: install the pair and hand the shell a
+    /// READY place — the native side pushes a screen and mints the
+    /// standalone split-diff over it.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        origin: crate::bridge::ViewBridgeId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        let Some(view) = documents::diff_views::install_opened_pair(
+            store,
+            self.documents,
+            ui,
+            self.pair.clone(),
+            false,
+        ) else {
+            return false;
+        };
+        let title = match &self.pair.new {
+            documents::diff_views::DiffSide::Open(id) => {
+                documents::OpenDocuments::name(store, self.documents, *id).unwrap_or_default()
+            }
+            documents::diff_views::DiffSide::Built { location, .. } => {
+                location.name().to_owned()
+            }
+        };
+        fx.scope(AppCommand::Verb, |fx| {
+            documents::lanes::sync_document_watches(store, self.documents, fx);
+            documents::lanes::sync_stripe_bases(store, self.documents, ui, fx);
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DiffViewPlace {
+                    documents: self.documents,
+                    view,
+                    title: title.clone(),
+                },
+                fx,
+            );
+        });
+        true
+    }
 }
 
 pub(crate) struct OpenByLocationHandler {
@@ -247,6 +292,17 @@ impl WindowedCommand for FetchFailed {
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
+    }
+
+    fn perform_windowless(
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _origin: crate::bridge::ViewBridgeId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        eprintln!("[himark] fetch failed: {:?}", self.location);
+        true
     }
 }
 
