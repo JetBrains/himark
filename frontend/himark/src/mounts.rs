@@ -419,6 +419,66 @@ pub fn mount_place(
             }) as Rc<dyn BridgeView>)
         });
     }
+    if let Some(place) = place.place::<crate::places::HistoryPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let changes = state.changes();
+            let opener: changesview::changes_view::CanvasOpener =
+                Arc::new(move |source, reveal| {
+                    crate::app::shell_verb(crate::shell::windowed(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                            changes,
+                            source,
+                            reveal,
+                        }),
+                    ))
+                });
+            let view = changesview::changes_view::ChangesView::open(
+                store,
+                ui,
+                changes,
+                changesview::changes_view::ViewSets::History,
+                opener,
+            );
+            let view = changesview::hichanges::Changes::mint_view(store, changes, view);
+            Some(Rc::new(ModalMount {
+                id,
+                view: changesview::changes_view::ChangesPane::new(changes, view),
+            }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::SearchPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, _fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let lists = state.lists();
+            let folders = ahp_session::session::folders::session_folders(store, &key);
+            ::locations::LocationLists::adopt_folders(store, lists, &folders);
+            let view = ::locations::search::SearchView::open(store, ui, lists);
+            Some(Rc::new(ModalMount { id, view }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::CommentsPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, fx| {
+            remember_session(store, id, key.clone());
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let comments = state.comments();
+            let wire = state.comments_wire();
+            let folders = ahp_session::session::folders::session_folders(store, &key);
+            fx.scope(crate::perform::AppCommand::Verb, |fx| {
+                for folder in folders {
+                    ahp_comments::ensure(store, wire, &folder, fx);
+                }
+            });
+            let view = ::comments::panel::CommentsView::open(store, ui, comments);
+            Some(Rc::new(ModalMount { id, view }) as Rc<dyn BridgeView>)
+        });
+    }
     if let Some(place) = place.place::<::canvas::diff_canvas::CanvasPlace>() {
         let place = place.clone();
         return app.mount(move |store, ui, id, fx| {

@@ -973,6 +973,42 @@ pub unsafe extern "C" fn himark_place_changes_canvas(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn himark_place_history(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::HistoryPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_search(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::SearchPlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_comments(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::CommentsPlace(session))
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn himark_place_files(
     engine: *mut HimarkEngine,
     host: u64,

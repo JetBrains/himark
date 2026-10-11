@@ -20,7 +20,15 @@ struct DesktopRoot: View {
         ProcessInfo.processInfo.environment["HIMARK_UI"] == "sessions"
     @State private var railOpen =
         ProcessInfo.processInfo.environment["HIMARK_UI"] != "rail-collapsed"
-    @State private var railTool: RailTool = .changes
+    @State private var railTool: RailTool = {
+        switch ProcessInfo.processInfo.environment["HIMARK_UI"] {
+        case "rail-search": .search
+        case "rail-history": .history
+        case "rail-comments": .comments
+        case "rail-files": .files
+        default: .changes
+        }
+    }()
     @Namespace private var islands
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
@@ -458,12 +466,15 @@ struct RailContent: View {
         case .files:
             MintedScrollBridge(host: host, kind: .files)
                 .id("\(host.current?.uri ?? "")-files")
-        case .search, .history, .comments:
-            VStack {
-                Spacer()
-                Text("Soon").foregroundStyle(.tertiary)
-                Spacer()
-            }
+        case .search:
+            MintedScrollBridge(host: host, kind: .search)
+                .id("\(host.current?.uri ?? "")-search")
+        case .history:
+            MintedScrollBridge(host: host, kind: .history)
+                .id("\(host.current?.uri ?? "")-history")
+        case .comments:
+            MintedScrollBridge(host: host, kind: .comments)
+                .id("\(host.current?.uri ?? "")-comments")
         }
     }
 }

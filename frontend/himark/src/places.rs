@@ -91,6 +91,25 @@ pub struct ChangesCanvasPlace(pub ahp_wire::SessionId);
 
 impl Place for ChangesCanvasPlace {}
 
+/// The session's commit HISTORY (the changes tree, History set),
+/// rows opening commit canvases.
+#[derive(Clone, PartialEq)]
+pub struct HistoryPlace(pub ahp_wire::SessionId);
+
+impl Place for HistoryPlace {}
+
+/// The session's search face — the location lists.
+#[derive(Clone, PartialEq)]
+pub struct SearchPlace(pub ahp_wire::SessionId);
+
+impl Place for SearchPlace {}
+
+/// The session's comments panel.
+#[derive(Clone, PartialEq)]
+pub struct CommentsPlace(pub ahp_wire::SessionId);
+
+impl Place for CommentsPlace {}
+
 /// A session's FILE tree.
 #[derive(Clone, PartialEq)]
 pub struct FilesPlace(pub ahp_wire::SessionId);

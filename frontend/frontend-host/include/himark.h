@@ -524,6 +524,21 @@ HimarkPlace himark_place_changes_canvas(HimarkEngine *engine,
                                         const char *uri,
                                         uintptr_t len);
 
+HimarkPlace himark_place_history(HimarkEngine *engine,
+                                 uint64_t host,
+                                 const char *uri,
+                                 uintptr_t len);
+
+HimarkPlace himark_place_search(HimarkEngine *engine,
+                                uint64_t host,
+                                const char *uri,
+                                uintptr_t len);
+
+HimarkPlace himark_place_comments(HimarkEngine *engine,
+                                  uint64_t host,
+                                  const char *uri,
+                                  uintptr_t len);
+
 HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
 
 void himark_place_release(HimarkEngine *engine, HimarkPlace place);

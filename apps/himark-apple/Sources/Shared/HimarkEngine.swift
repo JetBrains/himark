@@ -119,6 +119,8 @@ final class HimarkEngine {
         case transcript, composer
         /// The desktop changes tree: rows open the DIFF CANVAS.
         case changesCanvas
+        /// The rail parity faces.
+        case history, search, comments
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
@@ -128,6 +130,9 @@ final class HimarkEngine {
             case .changes: himark_place_changes(engine, host, cstr, UInt(strlen(cstr)))
             case .changesCanvas:
                 himark_place_changes_canvas(engine, host, cstr, UInt(strlen(cstr)))
+            case .history: himark_place_history(engine, host, cstr, UInt(strlen(cstr)))
+            case .search: himark_place_search(engine, host, cstr, UInt(strlen(cstr)))
+            case .comments: himark_place_comments(engine, host, cstr, UInt(strlen(cstr)))
             case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
             case .transcript:
                 himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))
