@@ -71,6 +71,21 @@
 
 #define HIMARK_SCROLL_PHASE_MOMENTUM_ENDED 7
 
+/**
+ * The place-kind vocabulary the callback speaks. `DOCUMENT` and
+ * `DIFF` are READY places — minting is synchronous; the session
+ * kinds are the tab places the host already knows how to mint.
+ */
+#define HIMARK_PLACE_CHAT 1
+
+#define HIMARK_PLACE_CHANGES 2
+
+#define HIMARK_PLACE_FILES 3
+
+#define HIMARK_PLACE_DOCUMENT 4
+
+#define HIMARK_PLACE_DIFF 5
+
 typedef struct HimarkEngine HimarkEngine;
 
 /**
@@ -156,6 +171,21 @@ typedef struct {
 typedef struct {
     uint64_t raw;
 } HimarkPlace;
+
+/**
+ * The host's navigate answer: called on the MAIN thread, in the
+ * middle of an engine batch — the host must only RECORD (push the
+ * screen async, mint from the handle later) and answer whether it
+ * claims the place. `true` claims: the handle is the host's to
+ * mint from and release. `false` declines: the engine releases
+ * the handle and the workbench fallthrough takes the place.
+ */
+typedef bool (*HimarkNavigateFn)(void *ctx,
+                                 HimarkBridge origin,
+                                 HimarkPlace place,
+                                 uint32_t kind,
+                                 const char *title,
+                                 uintptr_t title_len);
 
 HimarkEngine *himark_create(void);
 
@@ -472,6 +502,12 @@ void himark_place_release(HimarkEngine *engine, HimarkPlace place);
  * catalog cannot serve yet, worth retrying after the epoch moves.
  */
 HimarkBridge himark_bridge_mint(HimarkEngine *engine, HimarkPlace place);
+
+/**
+ * Seat the native navigate callback over the engine's shell
+ * chain. One installation per engine; the last one wins.
+ */
+void himark_set_shell(HimarkEngine *engine, void *ctx, HimarkNavigateFn on_navigate);
 
 /**
  * Unmount a minted bridge: the slot, its frame and every stage a

@@ -156,8 +156,14 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 #[derive(Default)]
 pub(crate) struct Stages {
     catalogs: Handles<himark::himark::Catalog>,
-    places: Handles<hikit::navigation::NavigationLocation>,
 }
+
+/// The place table is process-wide like the event table: places
+/// are engine-independent values, and the SEATED shell (called
+/// deep inside a batch, no engine struct in reach) mints the
+/// handles it hands the native callback.
+static PLACES: LazyLock<Mutex<Handles<hikit::navigation::NavigationLocation>>> =
+    LazyLock::new(Default::default);
 
 // ─── event factories ───
 
@@ -795,8 +801,9 @@ unsafe fn mint_session_place(
         host: ahp_wire::client::HostId::from_raw(host),
         session: ahp_wire::client::SessionUri::new(uri.to_owned()),
     };
+    let _ = engine;
     HimarkPlace {
-        raw: engine.stages.places.mint(place(session)),
+        raw: PLACES.lock().expect("the place table").mint(place(session)),
     }
 }
 
@@ -838,10 +845,15 @@ pub unsafe extern "C" fn himark_place_files(
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: HimarkPlace) {
-    let Some(engine) = engine.as_mut() else {
+    let Some(_engine) = engine.as_mut() else {
         return;
     };
-    if engine.stages.places.take(place.raw).is_none() {
+    if PLACES
+        .lock()
+        .expect("the place table")
+        .take(place.raw)
+        .is_none()
+    {
         refuse("place", place.raw);
     }
 }
@@ -858,7 +870,12 @@ pub unsafe extern "C" fn himark_bridge_mint(
     let Some(engine) = engine.as_mut() else {
         return HimarkBridge { raw: 0 };
     };
-    let Some(place) = engine.stages.places.get(place.raw).cloned() else {
+    let held = PLACES
+        .lock()
+        .expect("the place table")
+        .get(place.raw)
+        .cloned();
+    let Some(place) = held else {
         refuse("place", place.raw);
         return HimarkBridge { raw: 0 };
     };
@@ -866,6 +883,119 @@ pub unsafe extern "C" fn himark_bridge_mint(
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
     }
+}
+
+// ─── the shell callback: himark asks the host to navigate ───
+
+/// The place-kind vocabulary the callback speaks. `DOCUMENT` and
+/// `DIFF` are READY places — minting is synchronous; the session
+/// kinds are the tab places the host already knows how to mint.
+pub const HIMARK_PLACE_CHAT: u32 = 1;
+pub const HIMARK_PLACE_CHANGES: u32 = 2;
+pub const HIMARK_PLACE_FILES: u32 = 3;
+pub const HIMARK_PLACE_DOCUMENT: u32 = 4;
+pub const HIMARK_PLACE_DIFF: u32 = 5;
+
+/// The host's navigate answer: called on the MAIN thread, in the
+/// middle of an engine batch — the host must only RECORD (push the
+/// screen async, mint from the handle later) and answer whether it
+/// claims the place. `true` claims: the handle is the host's to
+/// mint from and release. `false` declines: the engine releases
+/// the handle and the workbench fallthrough takes the place.
+pub type HimarkNavigateFn = unsafe extern "C" fn(
+    ctx: *mut c_void,
+    origin: HimarkBridge,
+    place: HimarkPlace,
+    kind: u32,
+    title: *const c_char,
+    title_len: usize,
+) -> bool;
+
+struct ShellCtx(*mut c_void);
+unsafe impl Send for ShellCtx {}
+unsafe impl Sync for ShellCtx {}
+
+/// The native shell DECORATING the engine's chain: READY places
+/// from mounted origins go to the callback with a minted handle;
+/// everything declined falls through to the seated chain.
+struct CallbackShell {
+    ctx: ShellCtx,
+    on_navigate: HimarkNavigateFn,
+    next: std::sync::Arc<dyn himark::himark::Shell>,
+}
+
+impl himark::himark::Shell for CallbackShell {
+    fn navigate(
+        &self,
+        origin: ViewBridgeId,
+        place: hikit::navigation::NavigationLocation,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) -> bool {
+        if origin.is_mounted() {
+            let classified = if let Some(ready) =
+                place.place::<himark::places::OpenDocumentPlace>()
+            {
+                // The document's name: it is registered by the time
+                // this place is navigated (the open landing's law).
+                let title = ahp_session::session::state::Hosts::states(store)
+                    .into_iter()
+                    .map(|state| state.documents())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .find_map(|collection| {
+                        documents::OpenDocuments::name(store, collection, ready.document)
+                    })
+                    .unwrap_or_default();
+                Some((HIMARK_PLACE_DOCUMENT, title))
+            } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
+                Some((HIMARK_PLACE_DIFF, ready.title.clone()))
+            } else {
+                None
+            };
+            if let Some((kind, title)) = classified {
+                let handle = HimarkPlace {
+                    raw: PLACES.lock().expect("the place table").mint(place.clone()),
+                };
+                let claimed = unsafe {
+                    (self.on_navigate)(
+                        self.ctx.0,
+                        HimarkBridge { raw: origin.raw() },
+                        handle,
+                        kind,
+                        title.as_ptr() as *const c_char,
+                        title.len(),
+                    )
+                };
+                if claimed {
+                    return true;
+                }
+                PLACES.lock().expect("the place table").take(handle.raw);
+            }
+        }
+        self.next.navigate(origin, place, store, ui, fx)
+    }
+}
+
+/// Seat the native navigate callback over the engine's shell
+/// chain. One installation per engine; the last one wins.
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_shell(
+    engine: *mut HimarkEngine,
+    ctx: *mut c_void,
+    on_navigate: HimarkNavigateFn,
+) {
+    let Some(engine) = engine.as_mut() else {
+        return;
+    };
+    engine.app.seat_shell(move |next| {
+        std::sync::Arc::new(CallbackShell {
+            ctx: ShellCtx(ctx),
+            on_navigate,
+            next,
+        })
+    });
 }
 
 /// Unmount a minted bridge: the slot, its frame and every stage a
