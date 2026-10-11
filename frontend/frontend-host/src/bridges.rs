@@ -536,6 +536,16 @@ pub unsafe extern "C" fn himark_frame_paint(
             refuse("frame", frame.raw);
             return false;
         };
+        // The slice gets the same floor the window and the mounted
+        // draws get — or it paints onto the previous frame's
+        // pixels and scrolling smears.
+        canvas.clear(
+            editor::env::Themes::of(engine.app.store())
+                .ui()
+                .window
+                .background
+                .0,
+        );
         // The host's canvas IS the slice: translate so content
         // coordinates land at its origin — the widget paints at
         // its layout position, the viewport names the band.
