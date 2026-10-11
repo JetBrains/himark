@@ -171,6 +171,16 @@ final class AppHost: NSObject, ObservableObject {
         redraws.removeValue(forKey: ObjectIdentifier(view))
     }
 
+    /// The generic redraw seat — any content host (the stage-road
+    /// scroller) rides the same drain fanout.
+    func registerRedraw(_ owner: AnyObject, _ fn: @escaping () -> Void) {
+        redraws[ObjectIdentifier(owner)] = fn
+    }
+
+    func unregisterRedraw(_ owner: AnyObject) {
+        redraws.removeValue(forKey: ObjectIdentifier(owner))
+    }
+
     func dismissKeyboard() {
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

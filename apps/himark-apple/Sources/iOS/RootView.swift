@@ -233,9 +233,33 @@ struct PlaceScreen: View {
     let push: AppHost.Push
 
     var body: some View {
-        PlaceBridge(host: host, place: push.place)
-            .navigationTitle(push.title)
-            .navigationBarTitleDisplayMode(.inline)
+        Group {
+            if push.kind == UInt32(HIMARK_PLACE_DOCUMENT) {
+                // The document screen scrolls NATIVELY — the stage
+                // road; the diff keeps its own column machinery
+                // until its root is scroller-free too.
+                StagePlaceBridge(host: host, place: push.place)
+            } else {
+                PlaceBridge(host: host, place: push.place)
+            }
+        }
+        .navigationTitle(push.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct StagePlaceBridge: UIViewRepresentable {
+    let host: AppHost
+    let place: HimarkPlace
+
+    func makeUIView(context: Context) -> StageScrollHost {
+        StageScrollHost(host: host, place: place)
+    }
+
+    func updateUIView(_ view: StageScrollHost, context: Context) {}
+
+    static func dismantleUIView(_ view: StageScrollHost, coordinator: ()) {
+        view.teardown()
     }
 }
 
