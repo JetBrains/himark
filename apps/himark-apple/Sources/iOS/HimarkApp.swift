@@ -35,11 +35,27 @@ final class AppHost: NSObject, ObservableObject {
         var title: String
     }
 
+    /// One pushed screen, as himark asked for it: the place handle
+    /// is the host's to mint from and release when the screen pops.
+    struct Push: Identifiable, Equatable {
+        let id = UUID()
+        let place: HimarkPlace
+        let kind: UInt32
+        let title: String
+        let origin: UInt64
+
+        static func == (a: Push, b: Push) -> Bool { a.id == b.id }
+    }
+
     @Published var sessions: [HimarkEngine.CatalogSession] = []
     @Published var current: Selected?
+    /// The pending push per TAB — the navigate callback routes by
+    /// the origin bridge's tab.
+    @Published var pushes: [HimarkEngine.SessionViewKind: Push] = [:]
 
     private var epoch: UInt64 = 0
     private var redraws: [ObjectIdentifier: () -> Void] = [:]
+    private var tabs: [UInt64: HimarkEngine.SessionViewKind] = [:]
     private var hostInstalled = false
     private var kicked = false
 
@@ -56,8 +72,39 @@ final class AppHost: NSObject, ObservableObject {
             let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
             host.executor.async { host.engine.runPending() }
         }
+        // The navigate callback: fired mid-batch on the main thread —
+        // record the push and return; the screen mints later.
+        engine.setShell(context: ctx) { ctx, origin, place, kind, title, titleLen in
+            guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
+            else { return false }
+            let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
+            var name = ""
+            if let title, titleLen > 0 {
+                name = String(
+                    bytes: UnsafeRawBufferPointer(
+                        start: UnsafeRawPointer(title), count: Int(titleLen)),
+                    encoding: .utf8) ?? ""
+            }
+            let push = Push(place: place, kind: kind, title: name, origin: origin.raw)
+            DispatchQueue.main.async { host.land(push) }
+            return true
+        }
         let engine = self.engine
         executor.async { engine.runPending() }
+    }
+
+    private func land(_ push: Push) {
+        let tab = tabs[push.origin] ?? .chat
+        if let standing = pushes[tab] { engine.release(place: standing.place) }
+        pushes[tab] = push
+    }
+
+    /// The pushed screen popped: drop the record and the handle.
+    func popped(_ push: Push) {
+        for (tab, standing) in pushes where standing.id == push.id {
+            pushes[tab] = nil
+        }
+        engine.release(place: push.place)
     }
 
     /// Boot: install the platform services and run the first batch
@@ -106,7 +153,14 @@ final class AppHost: NSObject, ObservableObject {
             NSLog("himark: mint \(kind) — no current session")
             return HimarkBridge(raw: 0)
         }
-        return engine.mint(kind, host: selected.host, uri: selected.uri)
+        let bridge = engine.mint(kind, host: selected.host, uri: selected.uri)
+        if bridge.raw != 0 { tabs[bridge.raw] = kind }
+        return bridge
+    }
+
+    func unmount(bridge: HimarkBridge) {
+        tabs.removeValue(forKey: bridge.raw)
+        engine.unmount(bridge: bridge)
     }
 
     func register(_ view: HimarkBridgeView) {

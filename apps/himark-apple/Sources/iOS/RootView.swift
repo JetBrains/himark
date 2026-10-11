@@ -33,6 +33,35 @@ struct RootView: View {
     }
 }
 
+/// The push binding for one tab: the engine's navigate callback
+/// lands a `Push` for the tab; popping clears it and releases the
+/// place handle.
+private func pushBinding(_ host: AppHost, _ tab: HimarkEngine.SessionViewKind)
+    -> Binding<Bool>
+{
+    Binding(
+        get: { host.pushes[tab] != nil },
+        set: { presented in
+            if !presented, let standing = host.pushes[tab] {
+                host.popped(standing)
+            }
+        }
+    )
+}
+
+/// One tab's pushed destination — empty until the engine lands a
+/// push for this tab.
+private struct PushedDestination: View {
+    @ObservedObject var host: AppHost
+    let tab: HimarkEngine.SessionViewKind
+
+    var body: some View {
+        if let push = host.pushes[tab] {
+            PlaceScreen(host: host, push: push)
+        }
+    }
+}
+
 struct ChatScreen: View {
     @ObservedObject var host: AppHost
 
@@ -49,6 +78,9 @@ struct ChatScreen: View {
                     }
                 }
             }
+            .navigationDestination(isPresented: pushBinding(host, .chat)) {
+                PushedDestination(host: host, tab: .chat)
+            }
     }
 }
 
@@ -59,6 +91,9 @@ struct ChangesScreen: View {
         MintedBridge(host: host, kind: .changes)
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: pushBinding(host, .changes)) {
+                PushedDestination(host: host, tab: .changes)
+            }
     }
 }
 
@@ -69,6 +104,9 @@ struct FilesScreen: View {
         MintedBridge(host: host, kind: .files)
             .navigationTitle("Files")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: pushBinding(host, .files)) {
+                PushedDestination(host: host, tab: .files)
+            }
     }
 }
 
@@ -181,7 +219,70 @@ final class MintedBridgeHost: UIView {
         }
         child = nil
         if bridge.raw != 0 {
-            host.engine.unmount(bridge: bridge)
+            host.unmount(bridge: bridge)
+            bridge = HimarkBridge(raw: 0)
+        }
+    }
+}
+
+/// A pushed place screen: the engine asked for this navigation;
+/// the bridge mints from the handed place and the handle releases
+/// when the screen pops.
+struct PlaceScreen: View {
+    @ObservedObject var host: AppHost
+    let push: AppHost.Push
+
+    var body: some View {
+        PlaceBridge(host: host, place: push.place)
+            .navigationTitle(push.title)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct PlaceBridge: UIViewRepresentable {
+    let host: AppHost
+    let place: HimarkPlace
+
+    func makeUIView(context: Context) -> PlaceBridgeHost {
+        PlaceBridgeHost(host: host, place: place)
+    }
+
+    func updateUIView(_ view: PlaceBridgeHost, context: Context) {}
+
+    static func dismantleUIView(_ view: PlaceBridgeHost, coordinator: ()) {
+        view.teardown()
+    }
+}
+
+final class PlaceBridgeHost: UIView {
+    private let host: AppHost
+    private var bridge = HimarkBridge(raw: 0)
+    private var child: HimarkBridgeView?
+
+    init(host: AppHost, place: HimarkPlace) {
+        self.host = host
+        super.init(frame: .zero)
+        backgroundColor = .black
+        bridge = host.engine.mint(place: place)
+        guard bridge.raw != 0 else { return }
+        let view = HimarkBridgeView(
+            frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(view)
+        host.register(view)
+        child = view
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func teardown() {
+        if let child {
+            host.unregister(child)
+            child.removeFromSuperview()
+        }
+        child = nil
+        if bridge.raw != 0 {
+            host.unmount(bridge: bridge)
             bridge = HimarkBridge(raw: 0)
         }
     }

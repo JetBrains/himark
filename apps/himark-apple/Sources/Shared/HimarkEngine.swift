@@ -105,6 +105,21 @@ final class HimarkEngine {
 
     func unmount(bridge: HimarkBridge) { himark_bridge_unmount(engine, bridge) }
 
+    /// Mint from a place HANDLE — the navigate callback's road: the
+    /// engine handed the place over, the host mints when its screen
+    /// is up and releases when the screen pops.
+    func mint(place: HimarkPlace) -> HimarkBridge {
+        himark_bridge_mint(engine, place)
+    }
+
+    func release(place: HimarkPlace) {
+        himark_place_release(engine, place)
+    }
+
+    func setShell(context: UnsafeMutableRawPointer, onNavigate: HimarkNavigateFn) {
+        himark_set_shell(engine, context, onNavigate)
+    }
+
     // ─── the normalized bridge surface: handles, never pointers ───
     // One event is minted once (himark_event_*), may be dispatched
     // to any number of bridges, and is released explicitly.
