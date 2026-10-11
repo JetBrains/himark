@@ -17,6 +17,16 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     let engine: HimarkEngine
     let bridgeId: HimarkBridge
 
+    /// Embedded as a SCROLL VIEW's content: the view spans the whole
+    /// content, its coordinates ARE content coordinates (flipped),
+    /// and only the VISIBLE band gets a drawable and a paint (the
+    /// stage road). The host scroller owns all physics.
+    let scrollEmbedded: Bool
+
+    /// The measured content size (points) — the embedding scroller
+    /// sizes this view and its contentSize from it.
+    var onContentMeasured: ((CGSize) -> Void)?
+
     private var surface: SkiaMetalSurface!
 
     private var caLink: CADisplayLink?
@@ -27,17 +37,30 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     private static let idleGraceTicks = 30
 
-    init(frame: NSRect, engine: HimarkEngine, device: MTLDevice, bridge: HimarkBridge) {
+    init(
+        frame: NSRect,
+        engine: HimarkEngine,
+        device: MTLDevice,
+        bridge: HimarkBridge,
+        scrollEmbedded: Bool = false
+    ) {
         self.engine = engine
         self.bridgeId = bridge
+        self.scrollEmbedded = scrollEmbedded
         super.init(frame: frame)
         wantsLayer = true
-        let metal = CAMetalLayer()
         metal.device = device
         metal.pixelFormat = .bgra8Unorm
         metal.framebufferOnly = false
         metal.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        layer = metal
+        if scrollEmbedded {
+            // A SUBLAYER sized to the visible band, not the root
+            // layer: the content-sized view must not back its whole
+            // (possibly huge) bounds with a drawable.
+            layer?.addSublayer(metal)
+        } else {
+            layer = metal
+        }
 
         surface = SkiaMetalSurface(layer: metal, device: device)
         startDisplayLink()
@@ -46,7 +69,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     required init?(coder: NSCoder) { fatalError() }
     deinit { caLink?.invalidate() }
 
-    var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
+    private let metal = CAMetalLayer()
+    var metalLayer: CAMetalLayer { metal }
+
+    /// Content coordinates read top-down inside a scroller, exactly
+    /// as the engine lays out.
+    override var isFlipped: Bool { scrollEmbedded }
 
     // ─── the event road: mint, dispatch, release ───
 
@@ -59,6 +87,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         himark_event_release(event)
         if pointed.changed { request() }
         if shapes { applyPointerShape(pointed.shape) }
+        engine.drainReveal()
         return pointed.changed
     }
 
@@ -112,6 +141,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     private func tick() {
         let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
+        engine.drainReveal()
         if needsRedraw || animating {
             needsRedraw = false
             render()
@@ -126,8 +156,32 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     func render() {
         guard surface != nil else { return }
+        // SwiftUI's platform host can hand a NaN/infinite frame
+        // mid-layout — converting that to a drawable size traps.
+        guard bounds.width.isFinite, bounds.height.isFinite else { return }
         let scale = window?.backingScaleFactor ?? metalLayer.contentsScale
         metalLayer.contentsScale = scale
+
+        if scrollEmbedded {
+            // visibleRect is NOT clamped to bounds outside a clip
+            // view — a bare embedded view (the composer) reports
+            // the whole WINDOW in its coordinates.
+            let visible = visibleRect.intersection(bounds)
+            guard visible.width > 0.5, visible.height > 0.5,
+                  visible.width.isFinite, visible.height.isFinite,
+                  visible.minY.isFinite
+            else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            metalLayer.frame = visible
+            CATransaction.commit()
+            let w = Int32(visible.width * scale)
+            let h = Int32(visible.height * scale)
+            metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+            renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            return
+        }
+
         let w = Int32(bounds.width * scale)
         let h = Int32(bounds.height * scale)
         metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
@@ -135,6 +189,56 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if engine.renderBridge(bridge: bridgeId, into: surface,
                                pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
             request()
+        }
+    }
+
+    /// The stage road: layout at (width, ∞), content size off the
+    /// sized stage, realize + paint the visible band. The stages
+    /// are ONE-PASS values — a paint that changed state means the
+    /// engine quiesced them, and the next tick re-derives.
+    private func renderBand(_ visible: NSRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32) {
+        let raw = engine.raw
+        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        guard layout.raw != 0 else { return }
+        var cw: Float = 0
+        var ch: Float = 0
+        _ = himark_layout_size(raw, layout, &cw, &ch)
+        if ch.isFinite {
+            onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
+        }
+
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_BAND"] != nil {
+            NSLog("band bridge \(bridgeId.raw) bounds \(bounds.size) visible \(visible) content \(ch / Float(scale))")
+        }
+        let offsetY = Float(max(visible.minY, 0) * scale)
+        let frame = himark_layout_realize(
+            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        guard frame.raw != 0 else { return }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return }
+        let changed = himark_frame_paint(
+            raw, frame, canvas, 0, offsetY,
+            Float(visible.width * scale), Float(visible.height * scale))
+        surface.end()
+        if changed {
+            request()
+        } else {
+            himark_frame_release(raw, frame)
+        }
+    }
+
+    /// The embedding scroller moved the viewport: repaint the band
+    /// NOW, in the same runloop turn — waiting for the display link
+    /// leaves one frame of the old band riding the scroll.
+    func renderNow() { render() }
+
+    /// Seat this bridge's reveal handler — the engine routes the
+    /// parked rect (device pixels) here; hand it on in points.
+    func seatRevealHandler(_ onReveal: @escaping (CGRect) -> Void) {
+        engine.onReveal(bridge: bridgeId) { [weak self] pixels in
+            guard let self else { return }
+            let s = self.metalLayer.contentsScale
+            onReveal(CGRect(x: pixels.minX / s, y: pixels.minY / s,
+                            width: pixels.width / s, height: pixels.height / s))
         }
     }
 
@@ -150,7 +254,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     func devicePoint(_ event: NSEvent) -> (Float, Float) {
         let p = convert(event.locationInWindow, from: nil)
         let s = metalLayer.contentsScale
-        return (Float(p.x * s), Float((bounds.height - p.y) * s))
+        let y = isFlipped ? p.y : (bounds.height - p.y)
+        return (Float(p.x * s), Float(y * s))
     }
 
     override var mouseDownCanMoveWindow: Bool { false }
@@ -239,6 +344,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if scrollEmbedded {
+            // The stage road has no scroller — the enclosing
+            // NSScrollView owns the physics.
+            super.scrollWheel(with: event)
+            return
+        }
         let (x, y) = devicePoint(event)
         let s = Float(metalLayer.contentsScale)
         let perLine: Float = event.hasPreciseScrollingDeltas ? 1.0 : Self.lineScroll
@@ -371,8 +482,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         guard let himark = himarkRange(range),
               let rect = engine.firstRect(bridge: bridgeId, himark) else { return .zero }
         let s = metalLayer.contentsScale
+        let top = isFlipped
+            ? CGFloat(rect.y) / s
+            : bounds.height - CGFloat(rect.y + rect.height) / s
         let viewRect = NSRect(x: CGFloat(rect.x) / s,
-                              y: bounds.height - CGFloat(rect.y + rect.height) / s,
+                              y: top,
                               width: CGFloat(rect.width) / s,
                               height: CGFloat(rect.height) / s)
         let windowRect = convert(viewRect, to: nil)
@@ -383,8 +497,9 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         guard let window else { return NSNotFound }
         let viewPoint = convert(window.convertPoint(fromScreen: point), from: nil)
         let s = Float(metalLayer.contentsScale)
+        let y = isFlipped ? viewPoint.y : (bounds.height - viewPoint.y)
         return engine.charIndex(bridge: bridgeId, x: Float(viewPoint.x) * s,
-                                y: Float(bounds.height - viewPoint.y) * s) ?? NSNotFound
+                                y: Float(y) * s) ?? NSNotFound
     }
 
     func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }

@@ -33,6 +33,27 @@ targets:
     # the target "disappears" from the scheme picker.
     scheme: {}
 
+  himark-desktop:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/Shared
+      - Sources/Desktop
+      - path: Sources/macOS/HimarkBridgeView.swift
+      - path: Sources/macOS/HostBridge.swift
+    configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.himark.desktop
+        INFOPLIST_FILE: Info-Desktop.plist
+        ONLY_ACTIVE_ARCH: YES
+        SWIFT_VERSION: "5.9"
+        SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+        CLANG_CXX_LIBRARY: "libc++"
+    frameworks: [AppKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
+    scheme: {}
+
   himark-iOS:
     type: application
     platform: iOS
