@@ -355,6 +355,9 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+            NSLog("wheel reached bridge \(bridgeId.raw) dy \(event.scrollingDeltaY) embedded \(scrollEmbedded)")
+        }
         if scrollEmbedded {
             // The stage road has no scroller — the enclosing
             // NSScrollView owns the physics.

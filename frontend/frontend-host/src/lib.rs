@@ -1175,9 +1175,12 @@ impl HimarkEngine {
         });
         let Some(size) = viewport else {
             // The bridge is gone; its deltas die with it.
+            if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
+                eprintln!("[scroll] flush {window}: NO viewport — deltas die");
+            }
             return false;
         };
-        self.app.dispatch_timed(
+        let changed = self.app.dispatch_timed(
             wid(window),
             Event::Scroll {
                 point: pending.point,
@@ -1187,7 +1190,14 @@ impl HimarkEngine {
             },
             size,
             pending.event_started_at,
-        )
+        );
+        if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
+            eprintln!(
+                "[scroll] flush {window}: dy {} at {:?} viewport {size:?} -> changed {changed}",
+                pending.delta_y, pending.point
+            );
+        }
+        changed
     }
 
     pub fn animation_tick(&mut self, now_ms: f64) -> bool {

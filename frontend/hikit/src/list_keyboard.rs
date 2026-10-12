@@ -542,14 +542,31 @@ where
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut root = imba::container::container(arena, size);
             let inner = imba::layout::Layout::layout(
                 self.inner.display(arena, store, ui),
                 arena,
                 constraints,
             )
             .map(ListKeyCommand::Inner);
+            // The CONTENT's size where the ceiling is infinite — a
+            // native scroller's loose measure must see the list's
+            // true height, or every tree riding this controller
+            // reports an unscrollable infinity. Tight constraints
+            // (the workbench panes) land on the ceiling as before.
+            let measured = imba::Thunk::size(&inner);
+            let size = Size::new(
+                if constraints.max.width.is_finite() {
+                    constraints.max.width
+                } else {
+                    measured.width
+                },
+                if constraints.max.height.is_finite() {
+                    constraints.max.height
+                } else {
+                    measured.height
+                },
+            );
+            let mut root = imba::container::container(arena, size);
             root.place(0.0, 0.0, inner);
 
             let searching = self.searching();
