@@ -90,11 +90,13 @@ struct DesktopRoot: View {
             if goToOpen {
                 PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
                     .id("peeker-\(host.current?.uri ?? "")")
-                    .frame(width: 536)
+                    .frame(width: 1_040)
                     .frame(maxHeight: .infinity)
                     .background(IslandBackground(cornerRadius: 14))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(12)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 12)
+                    .padding(.top, 64)
                     .transition(.opacity.combined(with: .move(edge: .leading)))
                     .onExitCommand {
                         withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
@@ -493,7 +495,7 @@ struct RailIsland: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
+            HStack(spacing: 0) {
                 ForEach(RailTool.allCases, id: \.self) { candidate in
                     Button {
                         pick(candidate)
@@ -503,17 +505,19 @@ struct RailIsland: View {
                             .foregroundStyle(
                                 open && candidate == tool
                                     ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                            .frame(width: 34, height: 28)
+                            .frame(maxWidth: open ? .infinity : nil)
+                            .frame(width: open ? nil : 38, height: 30)
                             .background(
                                 open && candidate == tool
                                     ? AnyShapeStyle(.white.opacity(0.1))
                                     : AnyShapeStyle(.clear),
-                                in: RoundedRectangle(cornerRadius: 7))
+                                in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
 
             if open {
                 RailContent(host: host, tool: tool)

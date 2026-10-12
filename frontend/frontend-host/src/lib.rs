@@ -527,7 +527,10 @@ impl HimarkEngine {
                         store,
                         ui,
                         documents,
-                        skia_safe::Size::new(1280.0, 800.0),
+                        // The desktop go-to island's viewport (engine
+                        // pixels) — list left, preview right, inside
+                        // the glass.
+                        skia_safe::Size::new(2080.0, 1700.0),
                         recents,
                         Vec::new(),
                         folders,
