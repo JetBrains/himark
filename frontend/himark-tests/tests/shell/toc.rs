@@ -586,13 +586,18 @@ fn speedsearch_arrows_step_the_matches() {
         result
     };
     let stepped = match &result {
-        EventResult::Command(::toc::OutlineCommand::List(command)) => {
-            use imba::list::ListOps;
-            type Search = hikit::list_keyboard::ListKeyboardController<
-                hikit::forest::ForestList<::toc::OutlineKey>,
-                hikit::forest::ForestSearcher<::toc::OutlineKey>,
-            >;
-            Search::selected_index(command).is_some()
+        imba::event::EventResult::Handled(handled) => {
+            handled.commands.first().is_some_and(|command| match command {
+                ::toc::OutlineCommand::List(command) => {
+                    use imba::list::ListOps;
+                    type Search = hikit::list_keyboard::ListKeyboardController<
+                        hikit::forest::ForestList<::toc::OutlineKey>,
+                        hikit::forest::ForestSearcher<::toc::OutlineKey>,
+                    >;
+                    Search::selected_index(command).is_some()
+                }
+                _ => false,
+            })
         }
         _ => false,
     };
@@ -601,7 +606,7 @@ fn speedsearch_arrows_step_the_matches() {
         "Down while searching must answer the matched-step Select"
     );
 
-    if let EventResult::Command(command) = result {
+    if let Some(command) = result.into_command() {
         view.perform(
             &mut store,
             &ui,

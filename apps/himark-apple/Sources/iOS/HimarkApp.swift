@@ -74,7 +74,7 @@ final class AppHost: NSObject, ObservableObject {
         }
         // The navigate callback: fired mid-batch on the main thread —
         // record the push and return; the screen mints later.
-        engine.setShell(context: ctx) { ctx, origin, place, kind, title, titleLen in
+        engine.setShell(context: ctx) { ctx, origin, place, kind, title, titleLen, _ in
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
             else { return false }
             let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()

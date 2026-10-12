@@ -148,24 +148,120 @@ impl Surface {
 
     /// The painter, for `.backdrop(...)`.
     pub fn painter(self) -> impl Fn(&Arena, &skia_safe::Canvas, Rect) {
-        move |_arena, canvas, rect| {
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            if let Some(fill) = self.fill {
-                paint.set_color(fill);
-                canvas.draw_round_rect(rect, self.radius, self.radius, &paint);
-            }
-            if let Some(border) = self.border {
-                paint.set_stroke(true);
-                paint.set_stroke_width(1.0);
-                paint.set_color(border);
-                canvas.draw_round_rect(
-                    rect.with_inset((0.5, 0.5)),
-                    self.radius,
-                    self.radius,
-                    &paint,
-                );
-            }
+        move |_arena, canvas, rect| self.paint(canvas, rect)
+    }
+
+    /// The DECORATOR: the surface takes the widget it decorates
+    /// and paints itself under it, at the inner's laid bounds.
+    pub fn wrap<'a, Command: 'a>(
+        self,
+        inner: impl imba::thunk_ext::ThunkExt<'a, Command> + 'a,
+    ) -> impl imba::Thunk<'a, Command> + 'a {
+        inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
+    }
+
+    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        if let Some(fill) = self.fill {
+            paint.set_color(fill);
+            canvas.draw_round_rect(rect, self.radius, self.radius, &paint);
+        }
+        if let Some(border) = self.border {
+            paint.set_stroke(true);
+            paint.set_stroke_width(1.0);
+            paint.set_color(border);
+            canvas.draw_round_rect(
+                rect.with_inset((0.5, 0.5)),
+                self.radius,
+                self.radius,
+                &paint,
+            );
+        }
+    }
+}
+
+/// Per-edge 1px rules — the hairlines a sheet or panel wears where
+/// a full `Surface::outline` would be too much chrome.
+#[derive(Clone, Copy)]
+pub struct Hairline {
+    pub color: Color,
+    pub top: bool,
+    pub bottom: bool,
+    pub left: bool,
+    pub right: bool,
+}
+
+impl Hairline {
+    pub fn new(color: Color) -> Self {
+        Self {
+            color,
+            top: false,
+            bottom: false,
+            left: false,
+            right: false,
+        }
+    }
+
+    pub fn around(color: Color) -> Self {
+        Self {
+            color,
+            top: true,
+            bottom: true,
+            left: true,
+            right: true,
+        }
+    }
+
+    pub fn top(mut self) -> Self {
+        self.top = true;
+        self
+    }
+
+    pub fn bottom(mut self) -> Self {
+        self.bottom = true;
+        self
+    }
+
+    pub fn left(mut self) -> Self {
+        self.left = true;
+        self
+    }
+
+    pub fn right(mut self) -> Self {
+        self.right = true;
+        self
+    }
+
+    /// The DECORATOR: the rules take the widget they decorate and
+    /// paint under it, along the inner's laid edges.
+    pub fn wrap<'a, Command: 'a>(
+        self,
+        inner: impl imba::thunk_ext::ThunkExt<'a, Command> + 'a,
+    ) -> impl imba::Thunk<'a, Command> + 'a {
+        inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
+    }
+
+    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+        let mut paint = Paint::default();
+        paint.set_color(self.color);
+        if self.top {
+            canvas.draw_rect(Rect::from_xywh(rect.left, rect.top, rect.width(), 1.0), &paint);
+        }
+        if self.bottom {
+            canvas.draw_rect(
+                Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
+                &paint,
+            );
+        }
+        if self.left {
+            canvas.draw_rect(Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()), &paint);
+        }
+        if self.right {
+            canvas.draw_rect(
+                Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
+                &paint,
+            );
         }
     }
 }
@@ -321,6 +417,13 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for ListRow<'a, Command>
                 left: match badged {
                     true => space::S,
                     false => style.inset,
+                },
+                // A trail-less label keeps the trail inset off the
+                // right edge — the ellipsis lands short of the frame,
+                // not against it.
+                right: match trails.is_empty() {
+                    true => style.trail_inset,
+                    false => 0.0,
                 },
                 ..Default::default()
             }));

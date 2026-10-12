@@ -266,7 +266,7 @@ fn folders_added_mid_session_join_on_paint() {
         );
         let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
         let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
-        match imba::Widget::handle_event(
+        imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
@@ -274,11 +274,8 @@ fn folders_added_mid_session_join_on_paint() {
                 focused: true,
             },
             skia_safe::Rect::from_wh(400.0, 600.0),
-        ) {
-            imba::event::EventResult::Command(command) => vec![command],
-            imba::event::EventResult::Commands(commands) => commands,
-            _ => Vec::new(),
-        }
+        )
+        .into_commands()
     };
 
     assert!(
@@ -521,7 +518,7 @@ fn an_unfocused_paint_cancels_the_edit() {
         );
         let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
         let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
-        match imba::Widget::handle_event(
+        imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
@@ -529,11 +526,8 @@ fn an_unfocused_paint_cancels_the_edit() {
                 focused: false,
             },
             skia_safe::Rect::from_wh(400.0, 600.0),
-        ) {
-            imba::event::EventResult::Command(command) => vec![command],
-            imba::event::EventResult::Commands(commands) => commands,
-            _ => Vec::new(),
-        }
+        )
+        .into_commands()
     };
     assert!(
         commands
@@ -593,7 +587,7 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
         );
         let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
         let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
-        match imba::Widget::handle_event(
+        imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
@@ -601,11 +595,8 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
                 focused: true,
             },
             skia_safe::Rect::from_wh(400.0, 600.0),
-        ) {
-            imba::event::EventResult::Command(command) => vec![command],
-            imba::event::EventResult::Commands(commands) => commands,
-            _ => Vec::new(),
-        }
+        )
+        .into_commands()
     };
     assert!(
         commands.iter().any(
@@ -991,16 +982,13 @@ fn a_theme_switch_re_resolves_the_selection_style() {
             imba::constraints::Constraints::tight(size),
         );
         let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
-        match imba::Widget::handle_event(
+        imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::ThemeChanged,
             skia_safe::Rect::from_wh(400.0, 600.0),
-        ) {
-            imba::event::EventResult::Command(command) => vec![command],
-            imba::event::EventResult::Commands(commands) => commands,
-            _ => panic!("the broadcast answers the retheme"),
-        }
+        )
+        .into_commands()
     };
     assert!(
         commands
@@ -1050,7 +1038,7 @@ fn a_standing_row_menu_owns_the_keys_and_escape_dismisses_it() {
         let mut data = imba::View::focus_data(&view, &store, &ui);
         data.key(imba::event::Key::Escape, imba::event::Modifiers::default())
     };
-    let imba::event::EventResult::Command(command) = escape else {
+    let Some(command) = escape.into_command() else {
         panic!("Escape reaches the standing menu");
     };
     view.perform(

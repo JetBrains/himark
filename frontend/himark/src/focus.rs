@@ -123,22 +123,19 @@ impl Himark {
         window: ::workbench::window::WindowId,
         result: EventResult<AppCommand>,
     ) {
-        match result {
-            EventResult::Command(command) => {
-                self.perform_batch(vec![command]);
+        let EventResult::Handled(handled) = result else {
+            return;
+        };
+        if let Some(reveal) = handled.reveal {
+            // Typing on a mounted road asks a caret-follow the
+            // engine can't scroll — park it for the host.
+            let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
+            if id.is_mounted() {
+                self.park_reveal(id, reveal);
             }
-            EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
-                self.perform_batch(commands);
-            }
-            EventResult::Reveal(reveal) => {
-                // Typing on a mounted road asks a caret-follow the
-                // engine can't scroll — park it for the host.
-                let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
-                if id.is_mounted() {
-                    self.pending_reveal = Some((id, reveal.rect));
-                }
-            }
-            EventResult::Ignored | EventResult::Handled => {}
+        }
+        if !handled.commands.is_empty() {
+            self.perform_batch(handled.commands);
         }
     }
 }

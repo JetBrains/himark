@@ -261,7 +261,7 @@ impl View for Dock {
                     );
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Handled,
+                    Event::MouseDown { .. } => EventResult::handled(),
                     _ => EventResult::Ignored,
                 })
                 .hit_opaque();
@@ -344,7 +344,7 @@ impl View for Dock {
                     })
                     .event(move |_arena, event, _size| match event {
                         Event::MouseDown { .. } => {
-                            EventResult::Command(DockCommand::HeaderButton(index))
+                            EventResult::command(DockCommand::HeaderButton(index))
                         }
                         _ => EventResult::Ignored,
                     });
@@ -374,18 +374,18 @@ impl View for Dock {
             let handle = leaf::<DockCommand>(HANDLE_REACH * 2.0, size.height).event(
                 move |_arena, event, _leaf_size| match event {
                     Event::AnimationClock { now } if animating => {
-                        EventResult::Command(DockCommand::Tick(*now))
+                        EventResult::command(DockCommand::Tick(*now))
                     }
                     Event::MouseDown { .. } if !animating => {
-                        EventResult::Command(DockCommand::BeginResize)
+                        EventResult::command(DockCommand::BeginResize)
                     }
                     Event::MouseDrag { point, .. } if resizing => {
                         let width = (surface_width - (edge - HANDLE_REACH) - point.x)
                             .clamp(DOCK_MIN_WIDTH, surface_width * DOCK_MAX_RATIO);
-                        EventResult::Command(DockCommand::Resize(width))
+                        EventResult::command(DockCommand::Resize(width))
                     }
                     Event::MouseUp { .. } if resizing => {
-                        EventResult::Command(DockCommand::EndResize)
+                        EventResult::command(DockCommand::EndResize)
                     }
                     _ => EventResult::Ignored,
                 },
@@ -396,7 +396,7 @@ impl View for Dock {
                 let clock =
                     leaf::<DockCommand>(1.0, 1.0).event(move |_arena, event, _size| match event {
                         Event::AnimationClock { now } => {
-                            EventResult::Command(DockCommand::Tick(*now))
+                            EventResult::command(DockCommand::Tick(*now))
                         }
                         _ => EventResult::Ignored,
                     });

@@ -262,9 +262,9 @@ impl imba::View for FoldChip {
                         Event::MouseDown {
                             button: MouseButton::Left,
                             ..
-                        } => EventResult::Command(FoldCommand::Unfold),
+                        } => EventResult::command(FoldCommand::Unfold),
                         Event::AnimationClock { now } if animating => {
-                            EventResult::Command(FoldCommand::Tick(*now))
+                            EventResult::command(FoldCommand::Tick(*now))
                         }
                         _ => EventResult::Ignored,
                     });

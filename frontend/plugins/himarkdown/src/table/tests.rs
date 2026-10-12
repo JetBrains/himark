@@ -295,11 +295,8 @@ fn paint_reports_relayout_while_the_width_lags() {
             },
             viewport,
         );
-        match result {
-            EventResult::Command(command) => vec![command],
-            EventResult::Commands(commands) => commands,
-            _ => Vec::new(),
-        }
+        result
+        .into_commands()
     };
 
     let strip = editor.chrome.control_size + 6.0;

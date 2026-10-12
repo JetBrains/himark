@@ -200,7 +200,8 @@ typedef bool (*HimarkNavigateFn)(void *ctx,
                                  HimarkPlace place,
                                  uint32_t kind,
                                  const char *title,
-                                 uintptr_t title_len);
+                                 uintptr_t title_len,
+                                 bool focus);
 
 HimarkEngine *himark_create(void);
 
@@ -411,9 +412,31 @@ bool himark_frame_event(HimarkEngine *engine,
                         float height);
 
 /**
+ * A wheel OFFER on the stage road: the overlays that kept their
+ * scrolling after the descrollering (a completion popup's list, a
+ * horizontal pan in unwrapped code) consume it and `true` comes
+ * back; `false` hands the wheel to the host's scroller, which owns
+ * the vertical physics. Point and viewport in engine pixels,
+ * content coordinates; `phase` as in `himark_event_scroll`.
+ */
+bool himark_frame_offer_scroll(HimarkEngine *engine,
+                               HimarkFrame frame,
+                               float x,
+                               float y,
+                               float delta_x,
+                               float delta_y,
+                               uint32_t phase,
+                               float view_x,
+                               float view_y,
+                               float view_width,
+                               float view_height);
+
+/**
  * Drain the reveal a mounted road parked — a caret-follow or a
  * selection the view asked to be brought on screen, rect in that
- * bridge's content coordinates. The host scrolls it into view.
+ * bridge's content coordinates. The host scrolls it into view;
+ * `out_placement` says HOW (0 = ensure visible, 1 = the rect's
+ * origin becomes the viewport's corner — a canvas's row reveal).
  * False when nothing is parked.
  */
 bool himark_take_reveal(HimarkEngine *engine,
@@ -421,7 +444,8 @@ bool himark_take_reveal(HimarkEngine *engine,
                         float *out_x,
                         float *out_y,
                         float *out_width,
-                        float *out_height);
+                        float *out_height,
+                        uint32_t *out_placement);
 
 /**
  * Paint the realized slice into the host's canvas.

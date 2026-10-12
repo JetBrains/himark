@@ -624,16 +624,26 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
     ) -> imba::event::EventResult<BeforeCommand> {
         use imba::event::{Event, EventResult};
         let result = self.inner.handle_event(arena, event, viewport);
-        if !matches!(result, EventResult::Ignored | EventResult::Handled) {
+        // Pass through when something SUBSTANTIVE answered — an
+        // empty answer still yields to the inlay's own clock.
+        let substantive = match &result {
+            EventResult::Ignored => false,
+            EventResult::Handled(handled) => {
+                !handled.commands.is_empty()
+                    || handled.reveal.is_some()
+                    || handled.pointer.is_some()
+            }
+        };
+        if substantive {
             return result;
         }
         if self.animating {
             if let Event::AnimationClock { now } = event {
-                return EventResult::Command(BeforeCommand::Tick(*now));
+                return EventResult::command(BeforeCommand::Tick(*now));
             }
         }
         if self.stale && matches!(event, Event::Paint { .. }) {
-            return EventResult::Command(BeforeCommand::Rewrap(self.want));
+            return EventResult::command(BeforeCommand::Rewrap(self.want));
         }
         result
     }

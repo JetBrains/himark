@@ -166,13 +166,13 @@ impl<'a> Widget<'a, RowCommand> for TreeDemoRowWidget<'a> {
                     &self.font,
                     &paint,
                 );
-                EventResult::Handled
+                EventResult::handled()
             }
             Event::MouseDown {
                 mods: _,
                 button: MouseButton::Left,
                 ..
-            } if self.row.expandable() => EventResult::Command(RowCommand::Toggle),
+            } if self.row.expandable() => EventResult::command(RowCommand::Toggle),
             _ => EventResult::Ignored,
         }
     }

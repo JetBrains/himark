@@ -348,10 +348,15 @@ impl<'a, FirstCommand: 'a, SecondCommand: 'a> Widget<'a, SplitCommand<FirstComma
                 match (result, target) {
                     (result, None) => result,
 
-                    (EventResult::Command(command), Some(pane)) => {
-                        EventResult::Command(SplitCommand::Focus(pane, Some(Box::new(command))))
+                    (EventResult::Handled(mut handled), Some(pane))
+                        if !handled.commands.is_empty() =>
+                    {
+                        EventResult::command(SplitCommand::Focus(
+                            pane,
+                            Some(Box::new(handled.commands.remove(0))),
+                        ))
                     }
-                    (_, Some(pane)) => EventResult::Command(SplitCommand::Focus(pane, None)),
+                    (_, Some(pane)) => EventResult::command(SplitCommand::Focus(pane, None)),
                 }
             }
             _ => {

@@ -154,7 +154,7 @@ impl View for Drawer {
             let clock = leaf::<DrawerCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
                     Event::AnimationClock { now } if animating => {
-                        EventResult::Command(DrawerCommand::Tick(*now))
+                        EventResult::command(DrawerCommand::Tick(*now))
                     }
                     _ => EventResult::Ignored,
                 },

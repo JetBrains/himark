@@ -74,6 +74,10 @@ pub struct HimarkEngine {
     /// gesture — momentum included — still flowing in another.
     scroll_states: std::collections::HashMap<u64, WindowScroll>,
 
+    /// Per STAGE FRAME: the gesture stream behind `offer_stage_scroll`
+    /// — keyed by frame handle, a different space than bridge ids.
+    stage_wheels: std::collections::HashMap<u64, WindowScroll>,
+
     compose_new_windows: bool,
 
     host: Option<Arc<host::HostBridge>>,
@@ -527,15 +531,19 @@ impl HimarkEngine {
                         store,
                         ui,
                         documents,
-                        // The desktop go-to island's viewport (engine
-                        // pixels) — list left, preview right, inside
-                        // the glass.
-                        skia_safe::Size::new(2080.0, 1700.0),
+                        // The desktop go-to sheet's viewport (engine
+                        // pixels) — near-full-window glass; display
+                        // relays out live, this seeds the preview's
+                        // wrap width.
+                        skia_safe::Size::new(3_100.0, 1_850.0),
                         recents,
                         Vec::new(),
                         folders,
                         fx,
                     )
+                    // The island's glass is the floor — the peeker
+                    // keeps only its well and the list divider.
+                    .unfloored()
                 },
             );
             Some(Box::new(view))
@@ -723,6 +731,7 @@ impl HimarkEngine {
             app,
             compose_new_windows: false,
             scroll_states: std::collections::HashMap::new(),
+            stage_wheels: std::collections::HashMap::new(),
             drain_chunk: Self::DRAIN_CHUNK,
             drain_budget: Self::DRAIN_BUDGET,
             clicks: ClickCounter::default(),
@@ -1152,6 +1161,64 @@ impl HimarkEngine {
                     event_started_at,
                 })
             }
+        }
+        true
+    }
+
+    /// A synchronous wheel OFFER to a stage frame: the overlays that
+    /// still own their scrolling after the descrollering — a
+    /// completion popup's list, a horizontal pan in unwrapped code —
+    /// consume it; `false` hands the wheel back to the host's
+    /// scroller, which owns the vertical physics on the stage road
+    /// (`himark_frame_event` keeps refusing Scroll for that reason).
+    pub fn offer_stage_scroll(
+        &mut self,
+        frame: u64,
+        x: f32,
+        y: f32,
+        delta_x: f32,
+        delta_y: f32,
+        phase: u32,
+        viewport: skia_safe::Rect,
+    ) -> bool {
+        // Frames are one-pass handles — the gesture stream keys by
+        // the frame's ORIGIN bridge, which outlives them all.
+        let Some(origin) = self.app.stage_frame_origin(frame) else {
+            return false;
+        };
+        let now = std::time::Instant::now();
+        let state = self.stage_wheels.entry(origin.raw()).or_default();
+        let paused = state
+            .last
+            .is_none_or(|last| now.duration_since(last).as_millis() > 250);
+        state.last = Some(now);
+        if scroll_gesture_boundary(phase, paused) {
+            state.gesture.begin();
+        }
+        let result = {
+            let Some(stage) = self.app.stage_frame(frame) else {
+                return false;
+            };
+            stage.handle(
+                &Event::Scroll {
+                    point: Point::new(x, y),
+                    delta_x,
+                    delta_y,
+                    gesture: &state.gesture,
+                },
+                viewport,
+            )
+        };
+        let imba::event::EventResult::Handled(handled) = result else {
+            return false;
+        };
+        if let Some(reveal) = handled.reveal {
+            if let Some(id) = self.app.stage_frame_origin(frame) {
+                self.app.park_reveal(id, reveal);
+            }
+        }
+        if !handled.commands.is_empty() {
+            self.app.perform_batch(handled.commands);
         }
         true
     }

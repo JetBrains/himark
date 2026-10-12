@@ -368,14 +368,14 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
             Event::MouseDrag { point, .. } if self.drag.is_some() => {
                 let grab = self.drag.expect("guarded above");
                 match self.knob() {
-                    Some(band) => EventResult::Command(ScrollCommand::SetScrollY(
+                    Some(band) => EventResult::command(ScrollCommand::SetScrollY(
                         band.scroll_at(point.y - grab),
                     )),
-                    None => EventResult::Handled,
+                    None => EventResult::handled(),
                 }
             }
             Event::MouseUp { .. } if self.drag.is_some() => {
-                EventResult::Command(ScrollCommand::EndKnobDrag)
+                EventResult::command(ScrollCommand::EndKnobDrag)
             }
 
             Event::MouseDrag { .. }
@@ -419,9 +419,9 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
                 }
                 let next = (self.scroll_y + *delta_y).clamp(0.0, max_scroll);
                 match (next - self.scroll_y).abs() > 0.1 {
-                    true => EventResult::Command(ScrollCommand::SetScrollY(next)),
+                    true => EventResult::command(ScrollCommand::SetScrollY(next)),
 
-                    false => EventResult::Handled,
+                    false => EventResult::handled(),
                 }
             }
             Event::AnimationClock { now } => {
@@ -445,9 +445,9 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
                         if remaining.abs() > self.viewport.height {
                             next = glide.target - self.viewport.height.copysign(remaining);
                         }
-                        inner.merge(EventResult::Command(ScrollCommand::GlideStep(next, *now)))
+                        inner.merge(EventResult::command(ScrollCommand::GlideStep(next, *now)))
                     }
-                    Some(glide) => inner.merge(EventResult::Command(ScrollCommand::GlideStep(
+                    Some(glide) => inner.merge(EventResult::command(ScrollCommand::GlideStep(
                         glide.target,
                         *now,
                     ))),
@@ -486,7 +486,7 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
         self.paint_scrollbar(canvas);
 
         match result {
-            EventResult::Ignored => EventResult::Handled,
+            EventResult::Ignored => EventResult::handled(),
             result => result,
         }
     }
@@ -503,7 +503,7 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
             return EventResult::Ignored;
         }
         if let Some(command) = self.knob_grab(*point) {
-            return EventResult::Command(command);
+            return EventResult::command(command);
         }
         let event = event.translated(0.0, self.scroll_y);
         self.content
@@ -575,8 +575,19 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
         &self,
         result: EventResult<ScrollCommand<ContentCommand>>,
     ) -> EventResult<ScrollCommand<ContentCommand>> {
-        let EventResult::Reveal(reveal) = result else {
-            return result;
+        let (reveal, carried) = match result {
+            EventResult::Handled(crate::event::Handled {
+                reveal: Some(reveal),
+                commands,
+                ..
+            }) => (reveal, commands),
+            result => return result,
+        };
+        let carry = move |outcome: EventResult<ScrollCommand<ContentCommand>>| match carried
+            .is_empty()
+        {
+            true => outcome,
+            false => EventResult::commands(carried).merge(outcome),
         };
         let rect = reveal.rect;
         let max_scroll = (self.content.size().height - self.viewport.height).max(0.0);
@@ -603,15 +614,15 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
                 crate::event::Motion::Jump => true,
                 crate::event::Motion::Auto => distance.abs() <= self.viewport.height * 0.6,
             };
-            return match jump {
-                true => EventResult::Command(ScrollCommand::JumpTo(target)),
-                false => EventResult::Command(ScrollCommand::GlideTo(target)),
-            };
+            return carry(match jump {
+                true => EventResult::command(ScrollCommand::JumpTo(target)),
+                false => EventResult::command(ScrollCommand::GlideTo(target)),
+            });
         }
         if matches!(reveal.placement, crate::event::Placement::TopLeftAt) {
             // An exact placement is per-scroll business: satisfied
             // here, it must not leak into an outer scroll's anchor.
-            return EventResult::Handled;
+            return carry(EventResult::handled());
         }
 
         let lifted = Rect::from_ltrb(
@@ -620,10 +631,10 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
             rect.right.clamp(0.0, self.viewport.width),
             (rect.bottom - target).clamp(0.0, self.viewport.height),
         );
-        EventResult::Reveal(crate::event::Reveal {
+        carry(EventResult::reveal(crate::event::Reveal {
             rect: lifted,
             ..reveal
-        })
+        }))
     }
 
     fn content_viewport(&self) -> Rect {

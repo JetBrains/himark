@@ -450,7 +450,7 @@ impl imba::View for ChatPane {
                                 ),
                                 |_arena, event, _size| match event {
                                     imba::event::Event::Paint { .. } => {
-                                        imba::event::EventResult::Command(ChatPanelCommand::Boot)
+                                        imba::event::EventResult::command(ChatPanelCommand::Boot)
                                     }
                                     _ => imba::event::EventResult::Ignored,
                                 },
@@ -672,7 +672,7 @@ impl PaneSeat {
                 imba::leaf::leaf::<ChatPanelCommand>(constraints.max.width, height),
                 |_arena, event, _size| match event {
                     imba::event::Event::Paint { .. } => {
-                        imba::event::EventResult::Command(crate::chat::ChatPanelCommand::Boot)
+                        imba::event::EventResult::command(crate::chat::ChatPanelCommand::Boot)
                     }
                     _ => imba::event::EventResult::Ignored,
                 },

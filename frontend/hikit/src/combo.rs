@@ -394,7 +394,7 @@ where
                 Event::MouseDown {
                     button: MouseButton::Left,
                     ..
-                } => EventResult::Command(ComboCommand::Open),
+                } => EventResult::command(ComboCommand::Open),
                 _ => EventResult::Ignored,
             });
 
@@ -444,7 +444,7 @@ where
         let searching = self.menu.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Escape if !searching => EventResult::Command(ComboCommand::Close),
+                Key::Escape if !searching => EventResult::command(ComboCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -644,7 +644,7 @@ where
                 match event {
                     Event::KeyDown {
                         key: Key::Escape, ..
-                    } if !searching => EventResult::Command(ComboCommand::Close),
+                    } if !searching => EventResult::command(ComboCommand::Close),
                     _ => EventResult::Ignored,
                 }
             }),
@@ -652,7 +652,7 @@ where
 
         let backdrop = leaf::<ComboCommand<T::Command>>(host_size.width, host_size.height).event(
             |_arena, event, _size| match event {
-                Event::MouseDown { .. } => EventResult::Command(ComboCommand::Close),
+                Event::MouseDown { .. } => EventResult::command(ComboCommand::Close),
                 _ => EventResult::Ignored,
             },
         );

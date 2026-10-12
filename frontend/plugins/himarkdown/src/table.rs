@@ -1480,7 +1480,7 @@ where
             let result = self.inner.handle_event(arena, event, viewport);
             return match self.relayout {
                 Some(width) => {
-                    result.merge(imba::event::EventResult::Command(TableCommand::Relayout {
+                    result.merge(imba::event::EventResult::command(TableCommand::Relayout {
                         width,
                     }))
                 }
@@ -1549,12 +1549,12 @@ impl<'a> Widget<'a, TableCommand> for ControlButton<'a> {
                         &paint,
                     );
                 }
-                imba::event::EventResult::Handled
+                imba::event::EventResult::handled()
             }
             imba::event::Event::MouseDown { .. } if self.armed.load(Ordering::Relaxed) => {
                 match self.command.take() {
-                    Some(command) => imba::event::EventResult::Command(command),
-                    None => imba::event::EventResult::Handled,
+                    Some(command) => imba::event::EventResult::command(command),
+                    None => imba::event::EventResult::handled(),
                 }
             }
             _ => imba::event::EventResult::Ignored,
@@ -1642,8 +1642,8 @@ mod hitbox {
                 },
                 viewport,
             );
-            match result {
-                EventResult::Command(TableCommand::Cell { row, col: hit, .. }) => {
+            match result.into_command() {
+                Some(TableCommand::Cell { row, col: hit, .. }) => {
                     assert_eq!((row, hit), (2, col), "the click lands in the empty cell");
                 }
                 _ => panic!("the click at {point:?} missed the empty cell in column {col}"),
@@ -1707,11 +1707,8 @@ mod hitbox {
             );
             let viewport = Rect::from_size(imba::Thunk::size(&widget));
             let widget = imba::Thunk::realize(widget, &arena, viewport);
-            match imba::Widget::handle_event(&widget, &arena, event, viewport) {
-                EventResult::Command(command) => vec![command],
-                EventResult::Commands(commands) => commands,
-                _ => Vec::new(),
-            }
+            imba::Widget::handle_event(&widget, &arena, event, viewport)
+            .into_commands()
         };
 
         assert!(

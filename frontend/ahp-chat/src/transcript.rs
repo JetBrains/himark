@@ -252,7 +252,7 @@ impl View for ChatRow {
                     let height = constraints.max.height.max(1.0);
                     let band = imba::leaf::leaf::<RowCommand>(width, height).event(
                         |_arena, event, _size| match event {
-                            Event::Paint { .. } => EventResult::Command(RowCommand::Wake),
+                            Event::Paint { .. } => EventResult::command(RowCommand::Wake),
                             _ => EventResult::Ignored,
                         },
                     );
@@ -298,7 +298,7 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedLoader<I
     ) -> EventResult<RowCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) && self.armed {
-            return result.merge(EventResult::Command(RowCommand::Activate));
+            return result.merge(EventResult::command(RowCommand::Activate));
         }
         result
     }

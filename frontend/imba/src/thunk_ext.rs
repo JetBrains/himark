@@ -498,7 +498,7 @@ where
             PaintMode::Below => {
                 (self.paint)(arena, canvas, rect);
                 match self.inner.handle_event(arena, event, viewport) {
-                    EventResult::Ignored => EventResult::Handled,
+                    EventResult::Ignored => EventResult::handled(),
                     result => result,
                 }
             }
@@ -506,13 +506,13 @@ where
                 let result = self.inner.handle_event(arena, event, viewport);
                 (self.paint)(arena, canvas, rect);
                 match result {
-                    EventResult::Ignored => EventResult::Handled,
+                    EventResult::Ignored => EventResult::handled(),
                     result => result,
                 }
             }
             PaintMode::Instead => {
                 (self.paint)(arena, canvas, rect);
-                EventResult::Handled
+                EventResult::handled()
             }
         }
     }

@@ -301,7 +301,7 @@ where
         match event {
             Event::Paint { canvas, .. } => {
                 self.face.paint(canvas, Rect::from_size(self.size()));
-                EventResult::Handled
+                EventResult::handled()
             }
             Event::MouseDown {
                 button: imba::event::MouseButton::Left,
@@ -312,7 +312,7 @@ where
                 .press_at(point.x)
                 .and_then(|press| (self.map)(press))
             {
-                Some(command) => EventResult::Command(command),
+                Some(command) => EventResult::command(command),
                 None => EventResult::Ignored,
             },
             _ => EventResult::Ignored,

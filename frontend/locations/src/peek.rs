@@ -433,7 +433,7 @@ impl View for PeekView {
         // own close.
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape => EventResult::Command(PeekCommand::Close),
+                InputKey::Escape => EventResult::command(PeekCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -646,7 +646,7 @@ impl View for PeekView {
                     0.0,
                     imba::leaf::leaf::<PeekCommand>(1.0, 1.0).event(move |_arena, event, _size| {
                         match event {
-                            Event::Paint { .. } => EventResult::Command(PeekCommand::Refresh),
+                            Event::Paint { .. } => EventResult::command(PeekCommand::Refresh),
                             _ => EventResult::Ignored,
                         }
                     }),

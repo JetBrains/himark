@@ -356,7 +356,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
                     paint.set_color(color);
                     canvas.draw_rect(self.mark(segment, top, scale), &paint);
                 }
-                EventResult::Handled
+                EventResult::handled()
             }
 
             Event::MouseDown {
@@ -381,9 +381,9 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
                 }
                 match nearest {
                     Some((distance, byte)) if distance <= slop => {
-                        EventResult::Command(EditorCommand::RevealAt { byte })
+                        EventResult::command(EditorCommand::RevealAt { byte })
                     }
-                    _ => EventResult::Handled,
+                    _ => EventResult::handled(),
                 }
             }
 

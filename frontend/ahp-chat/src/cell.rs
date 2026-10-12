@@ -894,7 +894,7 @@ impl<'a, Inner: Widget<'a, CellCommand>> Widget<'a, CellCommand> for CellWidget<
     ) -> EventResult<CellCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if let (Event::Paint { .. }, Some(width)) = (event, self.rewrap) {
-            return result.merge(EventResult::Command(CellCommand::Rewrap(width)));
+            return result.merge(EventResult::command(CellCommand::Rewrap(width)));
         }
         result
     }

@@ -879,6 +879,10 @@ struct StyleKey {
     tracking: u32,
     argb: u32,
     embolden: bool,
+    /// Ellipsized labels: the clip width in whole pixels — 0 for the
+    /// unwrapped shape. Rounding bounds the memo's churn while a
+    /// column resizes.
+    clip: u32,
 }
 
 struct LabelEntry {
@@ -915,12 +919,26 @@ impl TextShaper {
         .clone()
     }
 
+    #[cfg(test)]
     fn shape(
         &self,
         font: &skia_safe::Font,
         text: &str,
         color: skia_safe::Color,
         tracking: f32,
+    ) -> skia_safe::textlayout::Paragraph {
+        self.shape_clipped(font, text, color, tracking, None)
+    }
+
+    /// Shape with an optional clip width: the paragraph ellipsizes
+    /// ("…") at the width instead of painting past its box.
+    fn shape_clipped(
+        &self,
+        font: &skia_safe::Font,
+        text: &str,
+        color: skia_safe::Color,
+        tracking: f32,
+        clip: Option<f32>,
     ) -> skia_safe::textlayout::Paragraph {
         let mut typeface = font.typeface();
         // Synthetic bold (`Font::set_embolden`) has no paragraph
@@ -956,13 +974,18 @@ impl TextShaper {
         }
         let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
         paragraph_style.set_text_style(&style);
+        if clip.is_some() {
+            paragraph_style.set_ellipsis("…");
+            paragraph_style.set_max_lines(1);
+        }
         let mut builder =
             skia_safe::textlayout::ParagraphBuilder::new(&paragraph_style, self.fonts.clone());
         builder.push_style(&style);
         builder.add_text(text);
         let mut paragraph = builder.build();
-        // Labels are single-line; the width only exists to not wrap.
-        paragraph.layout(f32::MAX);
+        // Labels are single-line; the width only exists to not wrap —
+        // or, clipped, to ellipsize.
+        paragraph.layout(clip.unwrap_or(f32::MAX));
         paragraph
     }
 
@@ -973,6 +996,17 @@ impl TextShaper {
         color: skia_safe::Color,
         tracking: f32,
     ) -> std::rc::Rc<ShapedLabel> {
+        self.label_clipped(font, text, color, tracking, None)
+    }
+
+    fn label_clipped(
+        &self,
+        font: &skia_safe::Font,
+        text: &str,
+        color: skia_safe::Color,
+        tracking: f32,
+        clip: Option<f32>,
+    ) -> std::rc::Rc<ShapedLabel> {
         let clock = self.clock.get() + 1;
         self.clock.set(clock);
         let style = StyleKey {
@@ -981,6 +1015,7 @@ impl TextShaper {
             tracking: tracking.to_bits(),
             argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
             embolden: font.is_embolden(),
+            clip: clip.map_or(0, |width| width.round().max(1.0) as u32),
         };
         if let Some(entry) = self
             .labels
@@ -991,9 +1026,14 @@ impl TextShaper {
             entry.last_use = clock;
             return std::rc::Rc::clone(&entry.label);
         }
-        let paragraph = self.shape(font, text, color, tracking);
+        let clip = clip.map(|width| width.round().max(1.0));
+        let paragraph = self.shape_clipped(font, text, color, tracking, clip);
         let label = std::rc::Rc::new(ShapedLabel {
-            width: paragraph.max_intrinsic_width(),
+            width: match clip {
+                // The ellipsized line's true extent, not the ask.
+                Some(_) => paragraph.longest_line().ceil(),
+                None => paragraph.max_intrinsic_width(),
+            },
             baseline: paragraph.alphabetic_baseline(),
             paragraph,
         });
@@ -1065,6 +1105,20 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
         let shaped = self
             .shaper
             .label(&self.font, &self.text, self.color, self.tracking);
+        // Wider than the bound: reshape ELLIPSIZED at it — a label
+        // never paints past its box (the later verse arrived).
+        let shaped = match shaped.width > constraints.max.width + 0.5
+            && constraints.max.width.is_finite()
+        {
+            true => self.shaper.label_clipped(
+                &self.font,
+                &self.text,
+                self.color,
+                self.tracking,
+                Some(constraints.max.width),
+            ),
+            false => shaped,
+        };
         let width = shaped
             .width
             .min(constraints.max.width)
@@ -1530,7 +1584,7 @@ impl<Command, F: Fn() -> Command> EventHandler<Command> for OnClick<F> {
         _size: Size,
     ) -> crate::event::EventResult<Command> {
         match event {
-            crate::event::Event::MouseDown { .. } => crate::event::EventResult::Command((self.0)()),
+            crate::event::Event::MouseDown { .. } => crate::event::EventResult::command((self.0)()),
             _ => crate::event::EventResult::Ignored,
         }
     }
@@ -1664,9 +1718,9 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Layout<'a, Command> for Button<'a
         });
         let armed = chrome.event(move |_arena, event, _size| match event {
             crate::event::Event::MouseDown { .. } if enabled => {
-                crate::event::EventResult::Command(on_click())
+                crate::event::EventResult::command(on_click())
             }
-            crate::event::Event::MouseDown { .. } => crate::event::EventResult::Handled,
+            crate::event::Event::MouseDown { .. } => crate::event::EventResult::handled(),
             _ => crate::event::EventResult::Ignored,
         });
         ThunkBox::new(arena, armed)
@@ -1708,7 +1762,7 @@ mod button_tests {
             },
             viewport,
         );
-        assert!(matches!(result, EventResult::Command(7)));
+        assert!(matches!(result.into_command(), Some(7)));
     }
 
     #[test]
@@ -1735,7 +1789,7 @@ mod button_tests {
             },
             viewport,
         );
-        assert!(matches!(result, EventResult::Handled));
+        assert!(matches!(result.into_handled(), Some(ref handled_) if handled_.commands.is_empty()));
     }
 }
 
@@ -1891,7 +1945,7 @@ impl<Command> EventHandler<Command> for Shield {
         _size: Size,
     ) -> crate::event::EventResult<Command> {
         match event {
-            crate::event::Event::MouseDown { .. } => crate::event::EventResult::Handled,
+            crate::event::Event::MouseDown { .. } => crate::event::EventResult::handled(),
             _ => crate::event::EventResult::Ignored,
         }
     }

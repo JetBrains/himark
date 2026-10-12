@@ -305,17 +305,17 @@ impl View for SearchView {
         // results area are the controller's table.
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match (focus, key) {
-                (_, InputKey::Escape) if !searching => EventResult::Command(SearchCommand::Dismiss),
+                (_, InputKey::Escape) if !searching => EventResult::command(SearchCommand::Dismiss),
                 (SearchArea::Input, InputKey::Down) | (SearchArea::Input, InputKey::Tab)
                     if rows > 0 =>
                 {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Results, None))
+                    EventResult::command(SearchCommand::Focus(SearchArea::Results, None))
                 }
                 (SearchArea::Input, InputKey::Enter) if rows > 0 => {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Results, None))
+                    EventResult::command(SearchCommand::Focus(SearchArea::Results, None))
                 }
                 (SearchArea::Results, InputKey::Tab) => {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Input, None))
+                    EventResult::command(SearchCommand::Focus(SearchArea::Input, None))
                 }
                 _ => EventResult::Ignored,
             })),
@@ -453,7 +453,7 @@ impl View for SearchView {
                         Event::MouseDown {
                             button: imba::event::MouseButton::Left,
                             ..
-                        } => EventResult::Command(SearchCommand::Focus(SearchArea::Input, None)),
+                        } => EventResult::command(SearchCommand::Focus(SearchArea::Input, None)),
                         _ => EventResult::Ignored,
                     },
                 ),
@@ -591,7 +591,7 @@ impl View for SearchView {
                 .on_event(
                     move |_arena: &Arena, event: &Event<'_>, _size| match event {
                         Event::MouseDown { .. } if running => {
-                            EventResult::Command(SearchCommand::Cancel)
+                            EventResult::command(SearchCommand::Cancel)
                         }
                         _ => EventResult::Ignored,
                     },
@@ -630,7 +630,7 @@ impl View for SearchView {
                     0.0,
                     imba::leaf::leaf::<SearchCommand>(1.0, 1.0).event(
                         move |_arena, event, _size| match event {
-                            Event::Paint { .. } => EventResult::Command(SearchCommand::Refresh),
+                            Event::Paint { .. } => EventResult::command(SearchCommand::Refresh),
                             _ => EventResult::Ignored,
                         },
                     ),
@@ -679,21 +679,16 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
                 // Activate) — fold the first into the Focus so it lands
                 // after the area switch, and keep the rest.
                 match self.panel.handle_event(arena, event, viewport) {
-                    EventResult::Command(command) => {
-                        EventResult::Command(SearchCommand::Focus(area, Some(Box::new(command))))
+                    EventResult::Handled(handled) if !handled.commands.is_empty() => {
+                        let mut commands = handled.commands.into_iter();
+                        let first = commands.next().expect("non-empty");
+                        EventResult::commands(
+                            std::iter::once(SearchCommand::Focus(area, Some(Box::new(first))))
+                                .chain(commands)
+                                .collect(),
+                        )
                     }
-                    EventResult::Commands(commands) => {
-                        let mut commands = commands.into_iter();
-                        match commands.next() {
-                            Some(first) => EventResult::Commands(
-                                std::iter::once(SearchCommand::Focus(area, Some(Box::new(first))))
-                                    .chain(commands)
-                                    .collect(),
-                            ),
-                            None => EventResult::Command(SearchCommand::Focus(area, None)),
-                        }
-                    }
-                    _ => EventResult::Command(SearchCommand::Focus(area, None)),
+                    _ => EventResult::command(SearchCommand::Focus(area, None)),
                 }
             }
             _ => self.panel.handle_event(arena, event, viewport),
@@ -959,16 +954,13 @@ mod tests {
                     mods: imba::event::Modifiers::default(),
                     count: 1,
                 };
-                match imba::Widget::handle_event(
+                imba::Widget::handle_event(
                     &widget,
                     &arena,
                     &event,
                     skia_safe::Rect::from_wh(400.0, 400.0),
-                ) {
-                    EventResult::Command(command) => vec![command],
-                    EventResult::Commands(commands) => commands,
-                    _ => Vec::new(),
-                }
+                )
+                .into_commands()
             };
             for command in commands {
                 view.perform(&mut store, &ui, command, &mut batch.effects());

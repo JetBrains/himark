@@ -458,9 +458,9 @@ impl View for DemoInlay {
                             mods: _,
                             button: MouseButton::Left,
                             ..
-                        } => EventResult::Command(DemoInlayCommand::Toggle),
+                        } => EventResult::command(DemoInlayCommand::Toggle),
                         Event::AnimationClock { now } if animating => {
-                            EventResult::Command(DemoInlayCommand::Tick(*now))
+                            EventResult::command(DemoInlayCommand::Tick(*now))
                         }
                         _ => EventResult::Ignored,
                     }

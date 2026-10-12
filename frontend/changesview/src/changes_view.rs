@@ -334,7 +334,7 @@ impl View for ChangesView {
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(ChangesViewCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::command(ChangesViewCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -499,7 +499,7 @@ impl View for ChangesView {
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
-                    } if !searching => EventResult::Command(ChangesViewCommand::Dismiss),
+                    } if !searching => EventResult::command(ChangesViewCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
             );
@@ -557,7 +557,7 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
         let mut result = self.inner.handle_event(arena, event, viewport);
         let near_tail = viewport.bottom >= self.total_height - 2.0 * hikit::ui::space::XL;
         if matches!(event, Event::Paint { .. }) && self.pageable && near_tail {
-            result = result.merge(EventResult::Command(ChangesViewCommand::AutoGrow));
+            result = result.merge(EventResult::command(ChangesViewCommand::AutoGrow));
         }
         result
     }

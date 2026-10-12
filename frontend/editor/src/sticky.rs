@@ -450,7 +450,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                     ),
                     &paint,
                 );
-                EventResult::Handled
+                EventResult::handled()
             }
 
             Event::MouseDown {
@@ -458,10 +458,10 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 point,
                 ..
             } => match self.sticky.row_at(point.y) {
-                Some((row, _)) => EventResult::Command(EditorCommand::RevealAt {
+                Some((row, _)) => EventResult::command(EditorCommand::RevealAt {
                     byte: row.scope_start,
                 }),
-                None => EventResult::Handled,
+                None => EventResult::handled(),
             },
 
             _ => EventResult::Ignored,

@@ -29,7 +29,7 @@ class HimarkBridgeView: UIView {
     /// The view asked for a rect (points, content coordinates) to
     /// be brought on screen — a caret-follow while typing, a
     /// selection jump. The embedding scroller moves.
-    var onReveal: ((CGRect) -> Void)?
+    var onReveal: ((CGRect, HimarkEngine.RevealPlacement) -> Void)?
 
     weak var inputDelegate: UITextInputDelegate?
     var markedTextStyle: [NSAttributedString.Key: Any]?
@@ -103,11 +103,12 @@ class HimarkBridgeView: UIView {
     }
 
     func seatRevealHandler() {
-        engine.onReveal(bridge: bridgeId) { [weak self] pixels in
+        engine.onReveal(bridge: bridgeId) { [weak self] pixels, placement in
             guard let self, let onReveal = self.onReveal else { return }
             let s = self.pixelScale
             onReveal(CGRect(x: pixels.minX / s, y: pixels.minY / s,
-                            width: pixels.width / s, height: pixels.height / s))
+                            width: pixels.width / s, height: pixels.height / s),
+                     placement)
         }
     }
 

@@ -44,6 +44,9 @@ final class DesktopHost: NSObject, ObservableObject {
         let place: HimarkPlace
         let kind: UInt32
         let title: String
+        /// A deliberate jump moves the keyboard INTO the landing;
+        /// a passive show (an agent opening files) must not.
+        let focus: Bool
 
         static func == (a: Opened, b: Opened) -> Bool { a.id == b.id }
     }
@@ -76,7 +79,7 @@ final class DesktopHost: NSObject, ObservableObject {
         }
         // The navigate callback: fired mid-batch on the main thread —
         // record the opened place and return; the pane mints later.
-        engine.setShell(context: ctx) { ctx, _, place, kind, title, titleLen in
+        engine.setShell(context: ctx) { ctx, _, place, kind, title, titleLen, focus in
             let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
             if kind == UInt32(HIMARK_PLACE_DISMISS) {
                 DispatchQueue.main.async { host.dismissals += 1 }
@@ -92,7 +95,7 @@ final class DesktopHost: NSObject, ObservableObject {
                         start: UnsafeRawPointer(title), count: Int(titleLen)),
                     encoding: .utf8) ?? ""
             }
-            let opened = Opened(place: place, kind: kind, title: name)
+            let opened = Opened(place: place, kind: kind, title: name, focus: focus)
             DispatchQueue.main.async { host.land(opened) }
             return true
         }

@@ -532,8 +532,8 @@ impl View for AgentsPanel {
         if let Some(input) = &self.adding {
             let own = FocusData {
                 on_key: Some(Box::new(|key, _mods| match key {
-                    InputKey::Enter => EventResult::Command(AgentsCommand::SubmitAddHost),
-                    InputKey::Escape => EventResult::Command(AgentsCommand::CancelAddHost),
+                    InputKey::Enter => EventResult::command(AgentsCommand::SubmitAddHost),
+                    InputKey::Escape => EventResult::command(AgentsCommand::CancelAddHost),
                     _ => EventResult::Ignored,
                 })),
                 ..FocusData::default()
@@ -545,7 +545,7 @@ impl View for AgentsPanel {
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(AgentsCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::command(AgentsCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -683,7 +683,7 @@ impl View for AgentsPanel {
                     );
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Handled,
+                    Event::MouseDown { .. } => EventResult::handled(),
                     _ => EventResult::Ignored,
                 })
                 .hit_opaque();
@@ -763,11 +763,11 @@ impl View for AgentsPanel {
                             Event::KeyDown {
                                 key: InputKey::Enter,
                                 ..
-                            } => EventResult::Command(AgentsCommand::SubmitAddHost),
+                            } => EventResult::command(AgentsCommand::SubmitAddHost),
                             Event::KeyDown {
                                 key: InputKey::Escape,
                                 ..
-                            } => EventResult::Command(AgentsCommand::CancelAddHost),
+                            } => EventResult::command(AgentsCommand::CancelAddHost),
                             _ => EventResult::Ignored,
                         };
                     }
@@ -775,7 +775,7 @@ impl View for AgentsPanel {
                         Event::KeyDown {
                             key: InputKey::Escape,
                             ..
-                        } if !searching => EventResult::Command(AgentsCommand::Dismiss),
+                        } if !searching => EventResult::command(AgentsCommand::Dismiss),
                         _ => EventResult::Ignored,
                     }
                 },
@@ -810,7 +810,7 @@ impl<'a, Inner: Widget<'a, AgentsCommand>> Widget<'a, AgentsCommand> for BootShe
     ) -> EventResult<AgentsCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) && self.boot {
-            return result.merge(EventResult::Command(AgentsCommand::Boot));
+            return result.merge(EventResult::command(AgentsCommand::Boot));
         }
         result
     }

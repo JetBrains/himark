@@ -124,7 +124,10 @@ pub struct Himark {
     /// the engine owns no viewport for a mounted view, so the ask
     /// parks here and the HOST drains it (`take_reveal`) into its
     /// own scroller — the native half of the reveal mechanism.
-    pub(crate) pending_reveal: Option<(ViewBridgeId, skia_safe::Rect)>,
+    /// Parked reveals, LATEST rect per bridge — one slot starved
+    /// honest asks: a caret-follow flooding every tick overwrote a
+    /// canvas's row reveal before the host drained it.
+    pub(crate) pending_reveals: Vec<(ViewBridgeId, imba::event::Reveal)>,
 
     /// External place arms (plugins) — `mount_place` consults them
     /// after its own.
@@ -246,7 +249,7 @@ impl Himark {
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
             pending_file_events: Vec::new(),
-            pending_reveal: None,
+            pending_reveals: Vec::new(),
             modal_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
@@ -666,12 +669,14 @@ impl Himark {
                 size.height,
                 match &result {
                     imba::event::EventResult::Ignored => "ignored",
-                    imba::event::EventResult::Handled => "handled",
-                    imba::event::EventResult::Command(_) => "command",
-                    imba::event::EventResult::Commands(_) => "commands",
-                    imba::event::EventResult::Pointer { commands, .. } =>
-                        if commands.is_empty() { "pointer(empty)" } else { "pointer(commands)" },
-                    imba::event::EventResult::Reveal(_) => "reveal",
+                    imba::event::EventResult::Handled(handled) => {
+                        match (handled.commands.is_empty(), handled.reveal.is_some()) {
+                            (true, true) => "reveal",
+                            (true, false) => "handled",
+                            (false, true) => "commands+reveal",
+                            (false, false) => "commands",
+                        }
+                    }
                 }
             );
         }
@@ -702,21 +707,32 @@ impl Himark {
                 skia_safe::Rect::from_size(size),
             )
         };
-        match result {
-            imba::event::EventResult::Ignored | imba::event::EventResult::Handled => false,
-            imba::event::EventResult::Command(command) => self.perform_batch(vec![command]),
-            imba::event::EventResult::Commands(commands)
-            | imba::event::EventResult::Pointer { commands, .. } => self.perform_batch(commands),
-            imba::event::EventResult::Reveal(reveal) => {
-                self.pending_reveal = Some((id, reveal.rect));
+        let imba::event::EventResult::Handled(handled) = result else {
+            return false;
+        };
+        let parked = match handled.reveal {
+            Some(reveal) => {
+                self.park_reveal(id, reveal);
                 true
             }
+            None => false,
+        };
+        match handled.commands.is_empty() {
+            true => parked,
+            false => self.perform_batch(handled.commands) || parked,
         }
     }
 
     /// Drain the parked reveal — the host scrolls it into view.
-    pub fn take_reveal(&mut self) -> Option<(ViewBridgeId, skia_safe::Rect)> {
-        self.pending_reveal.take()
+    pub fn take_reveal(&mut self) -> Option<(ViewBridgeId, imba::event::Reveal)> {
+        if self.pending_reveals.is_empty() {
+            return None;
+        }
+        let (id, reveal) = self.pending_reveals.remove(0);
+        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+            eprintln!("[reveal] drained: bridge {} {reveal:?}", id.raw());
+        }
+        Some((id, reveal))
     }
 
     /// A plugin's place arm — consulted by `mount_place` after the
@@ -876,8 +892,11 @@ impl Himark {
         self.stage_frames.get(handle).map(|(id, _)| *id)
     }
 
-    pub fn park_reveal(&mut self, id: ViewBridgeId, rect: skia_safe::Rect) {
-        self.pending_reveal = Some((id, rect));
+    pub fn park_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
+        match self.pending_reveals.iter_mut().find(|(owner, _)| *owner == id) {
+            Some(slot) => slot.1 = reveal,
+            None => self.pending_reveals.push((id, reveal)),
+        }
     }
 
     pub fn stage_frame_release(&mut self, handle: u64) -> bool {

@@ -179,13 +179,13 @@ where
                 Event::HitTest { point, miss, .. } => {
                     let inside = !miss && Rect::from_size(size).contains(*point);
                     match (inside, active) {
-                        (true, false) => EventResult::Command(TooltipCommand::Entered),
-                        (false, true) => EventResult::Command(TooltipCommand::Left),
+                        (true, false) => EventResult::command(TooltipCommand::Entered),
+                        (false, true) => EventResult::command(TooltipCommand::Left),
                         _ => EventResult::Ignored,
                     }
                 }
                 Event::AnimationClock { now } if armed => {
-                    EventResult::Command(TooltipCommand::Tick(*now))
+                    EventResult::command(TooltipCommand::Tick(*now))
                 }
                 _ => EventResult::Ignored,
             });
@@ -278,11 +278,9 @@ mod tests {
                 Constraints::tight(Size::new(200.0, 40.0)),
             )
             .realize(&arena, Rect::from_wh(200.0, 40.0));
-            match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 40.0)) {
-                EventResult::Command(command) => vec![command],
-                EventResult::Commands(commands) => commands,
-                _ => Vec::new(),
-            }
+            widget
+                .handle_event(&arena, &event, Rect::from_wh(200.0, 40.0))
+                .into_commands()
         };
         let mut store = Store::new();
         let mut batch = crate::effect::Batch::new();

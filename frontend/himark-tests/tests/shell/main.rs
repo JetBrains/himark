@@ -300,7 +300,7 @@ impl View for TestInlay {
                         mods: _,
                         button: MouseButton::Left,
                         ..
-                    } => EventResult::Command(TestInlayCommand::Grow),
+                    } => EventResult::command(TestInlayCommand::Grow),
                     _ => EventResult::Ignored,
                 })
             },
@@ -345,7 +345,7 @@ impl View for FocusProbe {
                 use imba::thunk_ext::ThunkExt;
 
                 imba::leaf::leaf(40.0, 20.0).event(|_, event, _| match event {
-                    Event::Paint { focused: false, .. } => EventResult::Command(ProbeCommand::Poke),
+                    Event::Paint { focused: false, .. } => EventResult::command(ProbeCommand::Poke),
                     _ => EventResult::Ignored,
                 })
             },

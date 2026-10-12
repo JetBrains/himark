@@ -37,7 +37,7 @@ pub(crate) fn remember_session(store: &mut Store, id: ViewBridgeId, session: ahp
     store.put(map);
 }
 
-pub(crate) fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId> {
+pub fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId> {
     store.get::<MountSessions>()?.0.get(&id.raw()).cloned()
 }
 
@@ -414,6 +414,23 @@ fn route_modal_request(
 pub fn mount_place(
     app: &mut crate::himark::Himark,
     place: &hikit::navigation::NavigationLocation,
+    session: Option<ahp_wire::SessionId>,
+) -> Option<ViewBridgeId> {
+    let minted = mount_place_inner(app, place)?;
+    // The READY places (a document, a diff view, a canvas) carry no
+    // session key of their own — the ORIGIN's session rode the place
+    // handle instead. Without it the mount answered `session_of`
+    // with nothing, and every open FROM it (goto-definition, a
+    // diff's walk-back) was declined by every shell.
+    if let Some(session) = session {
+        app.setup(|store| remember_session(store, minted, session));
+    }
+    Some(minted)
+}
+
+fn mount_place_inner(
+    app: &mut crate::himark::Himark,
+    place: &hikit::navigation::NavigationLocation,
 ) -> Option<ViewBridgeId> {
     if let Some(place) = place.place::<crate::places::ChatPlace>() {
         let key = place.0.clone();
@@ -646,7 +663,9 @@ pub fn mount_place(
     }
     if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
         let document = place.document;
+        let target = place.target.clone();
         return app.mount(move |store, ui, id, fx| {
+            let target = target.clone();
             // Mounted places carry no window to ask for a session: a
             // registered document lives in exactly one collection —
             // find it across the (few) session states.
@@ -667,7 +686,11 @@ pub fn mount_place(
                         ::documents::DocumentsCommand::Editor(document, command),
                     ))
                 },
-                |fx| ::documents::lifecycle::mount_editor(store, ui, &mut held, width, None, fx),
+                // The TARGET rides into the mount, exactly as the
+                // windowed road's `show_document` passes it — a
+                // goto-definition landed at the top of the file
+                // while this said `None`.
+                |fx| ::documents::lifecycle::mount_editor(store, ui, &mut held, width, target, fx),
             );
             ::documents::scroll_stripes::enable_scroll_stripes(
                 store, collection, document, &mut held, editor,

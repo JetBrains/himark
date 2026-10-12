@@ -211,7 +211,7 @@ impl Toolbar {
                     );
                 })
                 .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(ToolbarCommand::Button(index)),
+                    Event::MouseDown { .. } => EventResult::command(ToolbarCommand::Button(index)),
                     _ => EventResult::Ignored,
                 });
             strip.place(x, 0.0, cell);
@@ -271,7 +271,7 @@ impl Toolbar {
                     })
                     .event(move |_arena, event, _size| match event {
                         Event::MouseDown { .. } => {
-                            EventResult::Command(ToolbarCommand::Button(index))
+                            EventResult::command(ToolbarCommand::Button(index))
                         }
                         _ => EventResult::Ignored,
                     });

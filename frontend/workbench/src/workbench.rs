@@ -468,7 +468,7 @@ fn place_tree_buttons<'a>(
         })
         .event(|_arena, event, _size| match event {
             Event::MouseDown { .. } => {
-                EventResult::Command(WorkbenchCommand::RunCommand("toc.toggle"))
+                EventResult::command(WorkbenchCommand::RunCommand("toc.toggle"))
             }
             _ => EventResult::Ignored,
         });
@@ -518,7 +518,7 @@ fn chat_toggle_button<'a>(
             }
         })
         .event(move |_arena, event, _size| match event {
-            Event::MouseDown { .. } => EventResult::Command(command.clone()),
+            Event::MouseDown { .. } => EventResult::command(command.clone()),
             _ => EventResult::Ignored,
         })
 }
@@ -769,15 +769,15 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let surface_width = size.width;
         let handle = imba::leaf::leaf::<WorkbenchCommand>(HANDLE_REACH * 2.0, split_height).event(
             move |_arena, event, _leaf_size| match event {
-                Event::MouseDown { .. } => EventResult::Command(WorkbenchCommand::ChatBeginResize),
+                Event::MouseDown { .. } => EventResult::command(WorkbenchCommand::ChatBeginResize),
                 Event::MouseDrag { point, .. } if resizing => {
                     let width = (point.x + (root_x - HANDLE_REACH))
                         .clamp(CHAT_COLUMN_MIN, chat_column_max(surface_width));
                     // The STATE is the proportion, not the pixel.
-                    EventResult::Command(WorkbenchCommand::ChatResize(width / surface_width))
+                    EventResult::command(WorkbenchCommand::ChatResize(width / surface_width))
                 }
                 Event::MouseUp { .. } if resizing => {
-                    EventResult::Command(WorkbenchCommand::ChatEndResize)
+                    EventResult::command(WorkbenchCommand::ChatEndResize)
                 }
                 _ => EventResult::Ignored,
             },
@@ -928,11 +928,16 @@ impl<'a> imba::Widget<'a, WorkbenchCommand> for RealizedColumns<'a> {
                 match (result, target) {
                     (result, None) => result,
                     (result, Some(to_chat)) if to_chat == self.chat_focused => result,
-                    (EventResult::Command(command), Some(to_chat)) => EventResult::Command(
-                        WorkbenchCommand::ChatFocus(to_chat, Some(Box::new(command))),
-                    ),
+                    (EventResult::Handled(mut handled), Some(to_chat))
+                        if !handled.commands.is_empty() =>
+                    {
+                        EventResult::command(WorkbenchCommand::ChatFocus(
+                            to_chat,
+                            Some(Box::new(handled.commands.remove(0))),
+                        ))
+                    }
                     (_, Some(to_chat)) => {
-                        EventResult::Command(WorkbenchCommand::ChatFocus(to_chat, None))
+                        EventResult::command(WorkbenchCommand::ChatFocus(to_chat, None))
                     }
                 }
             }

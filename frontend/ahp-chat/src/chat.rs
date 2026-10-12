@@ -1557,19 +1557,19 @@ impl ChatPanel {
         let own = FocusData {
             on_key: Some(Box::new(move |key, mods| match (key, mods) {
                 (Key::Enter, mods) if ask.is_some() && composer_empty && !mods.shift => {
-                    EventResult::Command(ChatPanelCommand::Answer(0))
+                    EventResult::command(ChatPanelCommand::Answer(0))
                 }
                 (Key::Escape, _) if ask.is_some() => match ask.and_then(|ask| ask.deny) {
-                    Some(deny) => EventResult::Command(ChatPanelCommand::Answer(deny)),
+                    Some(deny) => EventResult::command(ChatPanelCommand::Answer(deny)),
                     None => EventResult::Ignored,
                 },
 
                 (Key::Escape, _) if expanded => {
-                    EventResult::Command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
+                    EventResult::command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
                 }
 
                 (Key::Enter, mods) if mods.command && focus == ChatArea::Composer => {
-                    EventResult::Command(ChatPanelCommand::Send)
+                    EventResult::command(ChatPanelCommand::Send)
                 }
                 _ => EventResult::Ignored,
             })),
@@ -1579,7 +1579,7 @@ impl ChatPanel {
                 };
                 match text.chars().next().and_then(|c| c.to_digit(10)) {
                     Some(digit) if digit >= 1 && (digit as usize) <= ask.count => {
-                        EventResult::Command(ChatPanelCommand::Answer(digit as usize - 1))
+                        EventResult::command(ChatPanelCommand::Answer(digit as usize - 1))
                     }
                     _ => EventResult::Ignored,
                 }
@@ -2367,10 +2367,10 @@ impl<'a> Widget<'a, ChatPanelCommand>
                 );
                 let mut result = self.panel.handle_event(arena, event, viewport);
                 if self.boot {
-                    result = result.merge(EventResult::Command(ChatPanelCommand::Boot));
+                    result = result.merge(EventResult::command(ChatPanelCommand::Boot));
                 }
                 if self.toolbar_stale {
-                    result = result.merge(EventResult::Command(ChatPanelCommand::ToolbarSync));
+                    result = result.merge(EventResult::command(ChatPanelCommand::ToolbarSync));
                 }
                 result
             }
@@ -2382,10 +2382,13 @@ impl<'a> Widget<'a, ChatPanelCommand>
                     ChatArea::Composer
                 };
                 match self.panel.handle_event(arena, event, viewport) {
-                    EventResult::Command(command) => {
-                        EventResult::Command(ChatPanelCommand::Focus(area, Some(Box::new(command))))
+                    EventResult::Handled(mut handled) if !handled.commands.is_empty() => {
+                        EventResult::command(ChatPanelCommand::Focus(
+                            area,
+                            Some(Box::new(handled.commands.remove(0))),
+                        ))
                     }
-                    _ => EventResult::Command(ChatPanelCommand::Focus(area, None)),
+                    _ => EventResult::command(ChatPanelCommand::Focus(area, None)),
                 }
             }
 
@@ -2449,7 +2452,7 @@ impl<'a, Inner: imba::Widget<'a, ChatPanelCommand>> imba::Widget<'a, ChatPanelCo
     ) -> EventResult<ChatPanelCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if self.stale && matches!(event, Event::Paint { .. }) {
-            return result.merge(EventResult::Command(ChatPanelCommand::ToolbarSync));
+            return result.merge(EventResult::command(ChatPanelCommand::ToolbarSync));
         }
         result
     }

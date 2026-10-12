@@ -394,7 +394,7 @@ impl WidgetStack {
                     );
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(StackCommand::ToggleQueue),
+                    Event::MouseDown { .. } => EventResult::command(StackCommand::ToggleQueue),
                     _ => EventResult::Ignored,
                 });
             stack.place(box_x, queue_y, header);
@@ -438,9 +438,9 @@ impl WidgetStack {
                         .event(move |_arena, event, size| match event {
                             Event::MouseDown { point, .. } => {
                                 if point.x > size.width - line {
-                                    EventResult::Command(StackCommand::RemoveQueued(id.clone()))
+                                    EventResult::command(StackCommand::RemoveQueued(id.clone()))
                                 } else {
-                                    EventResult::Handled
+                                    EventResult::handled()
                                 }
                             }
                             _ => EventResult::Ignored,

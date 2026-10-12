@@ -199,7 +199,9 @@ pub(crate) struct Stages {
 /// are engine-independent values, and the SEATED shell (called
 /// deep inside a batch, no engine struct in reach) mints the
 /// handles it hands the native callback.
-static PLACES: LazyLock<Mutex<Handles<hikit::navigation::NavigationLocation>>> =
+static PLACES: LazyLock<
+    Mutex<Handles<(hikit::navigation::NavigationLocation, Option<ahp_wire::SessionId>)>>,
+> =
     LazyLock::new(Default::default);
 
 // ─── event factories ───
@@ -534,29 +536,64 @@ pub unsafe extern "C" fn himark_frame_event(
         };
         stage.handle(&event, viewport)
     };
-    match result {
-        EventResult::Ignored => false,
-        EventResult::Handled => true,
-        EventResult::Command(command) => engine.app.perform_batch(vec![command]),
-        EventResult::Commands(commands) => engine.app.perform_batch(commands),
-        EventResult::Pointer { commands, .. } => match commands.is_empty() {
-            true => true,
-            false => engine.app.perform_batch(commands),
-        },
-        EventResult::Reveal(reveal) => {
-            // The stage road has no scroller — park the ask for
-            // the host to drain (`himark_take_reveal`) into its own.
-            if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
-                engine.app.park_reveal(id, reveal.rect);
+    let EventResult::Handled(handled) = result else {
+        return false;
+    };
+    if let Some(reveal) = handled.reveal {
+        // The stage road has no scroller — park the ask for
+        // the host to drain (`himark_take_reveal`) into its own.
+        if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
+            if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                eprintln!("[reveal] parked (stage EVENT) bridge {} {reveal:?}", id.raw());
             }
-            true
+            engine.app.park_reveal(id, reveal);
         }
     }
+    if !handled.commands.is_empty() {
+        engine.app.perform_batch(handled.commands);
+    }
+    true
+}
+
+/// A wheel OFFER on the stage road: the overlays that kept their
+/// scrolling after the descrollering (a completion popup's list, a
+/// horizontal pan in unwrapped code) consume it and `true` comes
+/// back; `false` hands the wheel to the host's scroller, which owns
+/// the vertical physics. Point and viewport in engine pixels,
+/// content coordinates; `phase` as in `himark_event_scroll`.
+#[no_mangle]
+pub unsafe extern "C" fn himark_frame_offer_scroll(
+    engine: *mut HimarkEngine,
+    frame: HimarkFrame,
+    x: f32,
+    y: f32,
+    delta_x: f32,
+    delta_y: f32,
+    phase: u32,
+    view_x: f32,
+    view_y: f32,
+    view_width: f32,
+    view_height: f32,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    engine.offer_stage_scroll(
+        frame.raw,
+        x,
+        y,
+        delta_x,
+        delta_y,
+        phase,
+        Rect::from_xywh(view_x, view_y, view_width, view_height),
+    )
 }
 
 /// Drain the reveal a mounted road parked — a caret-follow or a
 /// selection the view asked to be brought on screen, rect in that
-/// bridge's content coordinates. The host scrolls it into view.
+/// bridge's content coordinates. The host scrolls it into view;
+/// `out_placement` says HOW (0 = ensure visible, 1 = the rect's
+/// origin becomes the viewport's corner — a canvas's row reveal).
 /// False when nothing is parked.
 #[no_mangle]
 pub unsafe extern "C" fn himark_take_reveal(
@@ -566,27 +603,34 @@ pub unsafe extern "C" fn himark_take_reveal(
     out_y: *mut f32,
     out_width: *mut f32,
     out_height: *mut f32,
+    out_placement: *mut u32,
 ) -> bool {
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let Some((id, rect)) = engine.app.take_reveal() else {
+    let Some((id, reveal)) = engine.app.take_reveal() else {
         return false;
     };
     if !out_bridge.is_null() {
         *out_bridge = id.raw();
     }
     if !out_x.is_null() {
-        *out_x = rect.x();
+        *out_x = reveal.rect.x();
     }
     if !out_y.is_null() {
-        *out_y = rect.y();
+        *out_y = reveal.rect.y();
     }
     if !out_width.is_null() {
-        *out_width = rect.width();
+        *out_width = reveal.rect.width();
     }
     if !out_height.is_null() {
-        *out_height = rect.height();
+        *out_height = reveal.rect.height();
+    }
+    if !out_placement.is_null() {
+        *out_placement = match reveal.placement {
+            imba::event::Placement::EnsureVisible => 0,
+            imba::event::Placement::TopLeftAt => 1,
+        };
     }
     true
 }
@@ -635,12 +679,28 @@ pub unsafe extern "C" fn himark_frame_paint(
         canvas.restore();
         result
     };
-    match result {
-        EventResult::Ignored | EventResult::Handled | EventResult::Reveal(_) => false,
-        EventResult::Command(command) => engine.app.perform_batch(vec![command]),
-        EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
-            engine.app.perform_batch(commands)
+    let EventResult::Handled(handled) = result else {
+        return false;
+    };
+    if let Some(reveal) = handled.reveal {
+        // A reveal born AT the paint (a canvas revealing its
+        // row right after populate) parks exactly like the
+        // event road's — the stage road has no scroller, and
+        // dropping it here left the scroll waiting for the
+        // NEXT event to re-surface it.
+        if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
+            if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                eprintln!("[reveal] parked (stage PAINT) bridge {} {reveal:?}", id.raw());
+            }
+            engine.app.park_reveal(id, reveal);
         }
+        if handled.commands.is_empty() {
+            return true;
+        }
+    }
+    match handled.commands.is_empty() {
+        true => false,
+        false => engine.app.perform_batch(handled.commands),
     }
 }
 
@@ -1002,7 +1062,10 @@ unsafe fn mint_session_place(
     };
     let _ = engine;
     HimarkPlace {
-        raw: PLACES.lock().expect("the place table").mint(place(session)),
+        raw: PLACES
+            .lock()
+            .expect("the place table")
+            .mint((place(session.clone()), Some(session))),
     }
 }
 
@@ -1163,7 +1226,8 @@ pub unsafe extern "C" fn himark_bridge_mint(
         refuse("place", place.raw);
         return HimarkBridge { raw: 0 };
     };
-    match himark::mounts::mount_place(&mut engine.app, &place) {
+    let (place, session) = place;
+    match himark::mounts::mount_place(&mut engine.app, &place, session) {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
     }
@@ -1196,6 +1260,11 @@ pub type HimarkNavigateFn = unsafe extern "C" fn(
     kind: u32,
     title: *const c_char,
     title_len: usize,
+    // `focus`: a DELIBERATE jump (goto-definition, a picked search
+    // hit) asks the host to move keyboard focus to the landing; a
+    // passive show (an agent opening files mid-turn) must not
+    // steal it.
+    focus: bool,
 ) -> bool;
 
 struct ShellCtx(*mut c_void);
@@ -1221,8 +1290,10 @@ impl himark::himark::Shell for CallbackShell {
         fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         if origin.is_mounted() {
+            let mut focus = false;
             let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
             {
+                focus = ready.focus;
                 // The document's name: it is registered by the time
                 // this place is navigated (the open landing's law).
                 let title = ahp_session::session::state::Hosts::states(store)
@@ -1245,8 +1316,15 @@ impl himark::himark::Shell for CallbackShell {
                 None
             };
             if let Some((kind, title)) = classified {
+                // The ORIGIN's session rides the handle: the READY
+                // places carry none of their own, and the mount must
+                // answer `session_of` for the opens made FROM it.
+                let session = himark::mounts::session_of(store, origin);
                 let handle = HimarkPlace {
-                    raw: PLACES.lock().expect("the place table").mint(place.clone()),
+                    raw: PLACES
+                        .lock()
+                        .expect("the place table")
+                        .mint((place.clone(), session)),
                 };
                 let claimed = unsafe {
                     (self.on_navigate)(
@@ -1256,6 +1334,7 @@ impl himark::himark::Shell for CallbackShell {
                         kind,
                         title.as_ptr() as *const c_char,
                         title.len(),
+                        focus,
                     )
                 };
                 if claimed {

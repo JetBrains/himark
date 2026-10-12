@@ -356,7 +356,7 @@ impl View for CommentsView {
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => {
-                    EventResult::Command(CommentsViewCommand::Dismiss)
+                    EventResult::command(CommentsViewCommand::Dismiss)
                 }
                 _ => EventResult::Ignored,
             })),
@@ -497,7 +497,7 @@ impl View for CommentsView {
                     );
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(CommentsViewCommand::SendAll),
+                    Event::MouseDown { .. } => EventResult::command(CommentsViewCommand::SendAll),
                     _ => EventResult::Ignored,
                 });
 
@@ -509,7 +509,7 @@ impl View for CommentsView {
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
-                    } if !searching => EventResult::Command(CommentsViewCommand::Dismiss),
+                    } if !searching => EventResult::command(CommentsViewCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
             );
@@ -550,7 +550,7 @@ impl<'a, Inner: Widget<'a, CommentsViewCommand>> Widget<'a, CommentsViewCommand>
     ) -> EventResult<CommentsViewCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) && self.stale {
-            return result.merge(EventResult::Command(CommentsViewCommand::Refresh));
+            return result.merge(EventResult::command(CommentsViewCommand::Refresh));
         }
         result
     }

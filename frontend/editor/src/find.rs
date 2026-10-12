@@ -126,9 +126,9 @@ impl FindBar {
         }
         let own = FocusData {
             on_key: Some(Box::new(|key, mods| match key {
-                Key::Enter if mods.shift => EventResult::Command(FindCommand::Previous),
-                Key::Enter => EventResult::Command(FindCommand::Next),
-                Key::Escape => EventResult::Command(FindCommand::Close),
+                Key::Enter if mods.shift => EventResult::command(FindCommand::Previous),
+                Key::Enter => EventResult::command(FindCommand::Next),
+                Key::Escape => EventResult::command(FindCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -370,7 +370,7 @@ impl FindBar {
                 );
             })
             .event(|_arena, event, _size| match event {
-                Event::MouseDown { .. } => EventResult::Handled,
+                Event::MouseDown { .. } => EventResult::handled(),
                 _ => EventResult::Ignored,
             });
         bar.place(0.0, 0.0, backdrop);

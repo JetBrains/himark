@@ -45,7 +45,7 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
             engine: host.engine, bridge: bridge, device: host.device,
             scrollEmbedded: true)
         view.onContentMeasured = { [weak self] size in self?.contentMeasured(size) }
-        view.onReveal = { [weak self] rect in self?.reveal(rect) }
+        view.onReveal = { [weak self] rect, placement in self?.reveal(rect, placement) }
         view.seatRevealHandler()
         scroll.addSubview(view)
         host.register(view)
@@ -135,11 +135,21 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     /// The host's half of Reveal: the view asked, the scroller
     /// moves. The rect arrives in content points — pad it so the
     /// caret never kisses the very edge.
-    private func reveal(_ rect: CGRect) {
-        let target = CGRect(
-            x: rect.minX, y: rect.minY - 8,
-            width: max(rect.width, 2), height: rect.height + 16)
-        scroll.scrollRectToVisible(target, animated: false)
+    private func reveal(_ rect: CGRect, _ placement: HimarkEngine.RevealPlacement) {
+        switch placement {
+        case .topLeft:
+            let top = min(rect.minY, max(0, scroll.contentSize.height - scroll.bounds.height))
+            scroll.setContentOffset(CGPoint(x: 0, y: max(0, top)), animated: false)
+        case .visible:
+            let target = CGRect(
+                x: rect.minX, y: rect.minY - 8,
+                width: max(rect.width, 2), height: rect.height + 16)
+            scroll.scrollRectToVisible(target, animated: false)
+        }
+        // Keep the clock running through the landing — the engine
+        // disarms a satisfied reveal on a TICK (the macOS host's
+        // law, same here).
+        content?.request()
     }
 }
 

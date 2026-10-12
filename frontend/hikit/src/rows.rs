@@ -63,7 +63,7 @@ impl View for LabelRow {
         let _ = dim;
         row.on_event(
             move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                Event::MouseDown { .. } => EventResult::Handled,
+                Event::MouseDown { .. } => EventResult::handled(),
                 _ => EventResult::Ignored,
             },
         )
@@ -237,16 +237,13 @@ mod tests {
                 };
                 let widget =
                     imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(viewport));
-                match imba::Widget::handle_event(
+                imba::Widget::handle_event(
                     &widget,
                     &arena,
                     &event,
                     skia_safe::Rect::from_size(viewport),
-                ) {
-                    EventResult::Command(command) => vec![command],
-                    EventResult::Commands(commands) => commands,
-                    _ => Vec::new(),
-                }
+                )
+                .into_commands()
             };
             if commands.is_empty() {
                 break;

@@ -58,15 +58,23 @@ final class DesktopScrollHost: NSView {
     let scroll = NSScrollView()
     let pinsToBottom: Bool
     private var pinned = true
+    /// A deliberate landing moves the keyboard here on mint.
+    private let grabsFocus: Bool
 
     /// `minter` runs until it answers a live bridge: a session view
     /// can be minted BEFORE the catalog serves the session (the
     /// mint door refuses with 0, worth retrying after the epoch
     /// moves) — the drain fanout is exactly that retry clock.
-    init(host: DesktopHost, pinsToBottom: Bool = false, minter: @escaping () -> HimarkBridge) {
+    init(
+        host: DesktopHost,
+        pinsToBottom: Bool = false,
+        grabsFocus: Bool = false,
+        minter: @escaping () -> HimarkBridge
+    ) {
         self.host = host
         self.minter = minter
         self.pinsToBottom = pinsToBottom
+        self.grabsFocus = grabsFocus
         super.init(frame: .zero)
 
         scroll.autoresizingMask = [.width, .height]
@@ -88,6 +96,9 @@ final class DesktopScrollHost: NSView {
             name: NSScrollView.didEndLiveScrollNotification, object: scroll)
         WheelRouter.shared.register(self) { [weak self] event in
             guard let self else { return }
+            // A standing overlay (completion popup) takes the wheel
+            // before the scroller's physics do.
+            if self.content?.offerWheel(event) == true { return }
             if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
                 let before = self.scroll.contentView.bounds.origin.y
                 self.scroll.scrollWheel(with: event)
@@ -130,9 +141,16 @@ final class DesktopScrollHost: NSView {
             engine: host.engine, device: host.device, bridge: bridge,
             scrollEmbedded: true)
         view.onContentMeasured = { [weak self] size in self?.contentMeasured(size) }
-        view.seatRevealHandler { [weak self] rect in self?.reveal(rect) }
+        view.seatRevealHandler { [weak self] rect, placement in self?.reveal(rect, placement) }
         scroll.documentView = view
         host.register(view)
+        if grabsFocus {
+            // The window may still be seating the pane this turn —
+            // claim the keyboard once it is in the hierarchy.
+            DispatchQueue.main.async { [weak view] in
+                view?.window?.makeFirstResponder(view)
+            }
+        }
         content = view
         needsLayout = true
         if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
@@ -250,14 +268,30 @@ final class DesktopScrollHost: NSView {
     /// The host's half of Reveal: the view asked, the scroller
     /// moves. The rect arrives in content points — pad it so the
     /// caret never kisses the very edge.
-    private func reveal(_ rect: CGRect) {
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
-            NSLog("reveal bridge \(bridge.raw): rect \(rect) doc \(Int(content?.frame.height ?? -1))")
+    private func reveal(_ rect: CGRect, _ placement: HimarkEngine.RevealPlacement) {
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+            NSLog("[reveal] host scrolls bridge \(bridge.raw) to \(rect) \(placement) doc \(Int(content?.frame.height ?? -1)) clip \(Int(scroll.contentSize.height)) at \(scroll.contentView.bounds.origin.y)")
         }
-        let target = CGRect(
-            x: rect.minX, y: rect.minY - 8,
-            width: max(rect.width, 2), height: rect.height + 16)
-        _ = content?.scrollToVisible(target)
+        switch placement {
+        case .topLeft:
+            // The rect's origin becomes the viewport's corner — a
+            // canvas pins the revealed row's top, not "somewhere
+            // visible" (minimal scrolling never satisfies it).
+            let top = min(rect.minY, max(0, (content?.frame.height ?? 0) - scroll.contentSize.height))
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, top)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        case .visible:
+            let target = CGRect(
+                x: rect.minX, y: rect.minY - 8,
+                width: max(rect.width, 2), height: rect.height + 16)
+            _ = content?.scrollToVisible(target)
+        }
+        // Keep the clock running through the landing: the engine
+        // disarms a satisfied reveal on a TICK (`Revealed` rides
+        // the clock road). A scroll that never wakes the link
+        // leaves the ask armed — and the next tick, resumed by a
+        // stray mouse move, yanked the viewport back to the row.
+        content?.request()
     }
 }
 
@@ -284,9 +318,10 @@ struct MintedScrollBridge: NSViewRepresentable {
 struct PlaceScrollBridge: NSViewRepresentable {
     let host: DesktopHost
     let place: HimarkPlace
+    var grabsFocus = false
 
     func makeNSView(context: Context) -> DesktopScrollHost {
-        DesktopScrollHost(host: host) { [weak host] in
+        DesktopScrollHost(host: host, grabsFocus: grabsFocus) { [weak host] in
             host?.engine.mint(place: place) ?? HimarkBridge(raw: 0)
         }
     }

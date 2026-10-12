@@ -531,8 +531,10 @@ fn focus_moves_between_text_and_inlays() {
     {
         let ui = ::editor::test_document::test_ui();
         assert!(matches!(
-            imba::View::focus_data(&pane.view, &pane.store, &ui).text("x"),
-            EventResult::Command(EditorCommand::InsertText { .. })
+            imba::View::focus_data(&pane.view, &pane.store, &ui)
+                .text("x")
+                .into_command(),
+            Some(EditorCommand::InsertText { .. })
         ));
     }
 }
@@ -599,18 +601,15 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
         let mut surface = skia_safe::surfaces::raster_n32_premul((420, 600)).expect("a surface");
         let viewport = skia_safe::Rect::from_wh(420.0, 600.0);
         let widget = imba::Thunk::realize(widget, &arena, viewport);
-        match widget.handle_event(
+        widget.handle_event(
             &arena,
             &Event::Paint {
                 canvas: surface.canvas(),
                 focused: true,
             },
             viewport,
-        ) {
-            EventResult::Command(command) => vec![command],
-            EventResult::Commands(commands) => commands,
-            _ => Vec::new(),
-        }
+        )
+        .into_commands()
     };
     let probe_reports = |commands: &[EditorCommand]| {
         commands
@@ -1643,8 +1642,9 @@ fn double_and_triple_click_select_word_and_line() {
             Rect::from_wh(420.0, 400.0),
         )
         .handle_event(&arena, &mut event, Rect::from_wh(420.0, 400.0))
+        .into_command()
         {
-            EventResult::Command(EditorCommand::Click { kind, .. }) => Some(kind),
+            Some(EditorCommand::Click { kind, .. }) => Some(kind),
             _ => None,
         }
     };

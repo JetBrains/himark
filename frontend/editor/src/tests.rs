@@ -3995,9 +3995,8 @@ mod folding {
             },
             skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
-        let imba::event::EventResult::Command(crate::editor_view::EditorCommand::ToggleFold {
-            range,
-        }) = result
+        let Some(crate::editor_view::EditorCommand::ToggleFold { range }) =
+            result.into_command()
         else {
             panic!("the gutter click answers the toggle");
         };
@@ -4978,8 +4977,8 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         },
         skia_safe::Rect::from_size(size),
     );
-    match pressed {
-        imba::event::EventResult::Command(crate::editor_view::EditorCommand::RevealAt { byte }) => {
+    match pressed.into_command() {
+        Some(crate::editor_view::EditorCommand::RevealAt { byte }) => {
             assert_eq!(byte, inner.start, "the row's own scope header");
         }
         _ => panic!("a press must command the jump"),

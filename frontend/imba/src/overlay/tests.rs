@@ -63,9 +63,9 @@ impl Widget<'_, Cmd> for HitBox {
                 point,
                 button: MouseButton::Left,
                 ..
-            } => EventResult::Command(Cmd::Hit(self.name, *point)),
+            } => EventResult::command(Cmd::Hit(self.name, *point)),
             Event::TextInput { .. } if self.takes_text => {
-                EventResult::Command(Cmd::Text(self.name))
+                EventResult::command(Cmd::Text(self.name))
             }
             _ => EventResult::Ignored,
         }
@@ -82,14 +82,7 @@ fn press(x: f32, y: f32) -> Event<'static> {
 }
 
 fn command<C>(result: EventResult<C>) -> C {
-    match result {
-        EventResult::Command(command) => command,
-        EventResult::Commands(_) => panic!("expected one command, got a batch"),
-        EventResult::Handled => panic!("expected a command, got handled"),
-        EventResult::Ignored => panic!("expected a command, got ignored"),
-        EventResult::Reveal(_) => panic!("expected a command, got a reveal"),
-        EventResult::Pointer { .. } => panic!("expected a command, got a pointer answer"),
-    }
+    result.into_command().expect("expected a command")
 }
 
 fn viewport() -> Rect {
@@ -181,7 +174,7 @@ fn unclaimed_requests_keep_bubbling_out_of_a_host() {
 fn a_host_with_no_requests_is_transparent() {
     let arena = Arena::default();
     let host = leaf::<Cmd>(80.0, 60.0)
-        .event(|_, _, _| EventResult::Command(Cmd::Text("base")))
+        .event(|_, _, _| EventResult::command(Cmd::Text("base")))
         .overlay_host(HOST);
     assert_eq!(Thunk::size(&host), Size::new(80.0, 60.0));
     let mut host = host.realize(&arena, viewport());

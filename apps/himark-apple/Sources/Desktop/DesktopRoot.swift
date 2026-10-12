@@ -86,32 +86,6 @@ struct DesktopRoot: View {
                     .padding(.top, 10)
             }
         }
-        .overlay(alignment: .topLeading) {
-            if goToOpen {
-                PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
-                    .id("peeker-\(host.current?.uri ?? "")")
-                    .padding(6)
-                    .frame(width: 1_040)
-                    .frame(maxHeight: 760)
-                    .background(IslandBackground(cornerRadius: 16))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .padding(.leading, 16)
-                    .padding(.top, 64)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
-                    .onExitCommand {
-                        withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
-                    }
-            }
-        }
-        .overlay(alignment: .top) {
-            if paletteOpen {
-                CommandPalette(entries: paletteEntries) {
-                    withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
-                }
-                .padding(.top, 64)
-                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-            }
-        }
         .overlay(alignment: .topTrailing) {
             RailIsland(
                 host: host,
@@ -128,6 +102,34 @@ struct DesktopRoot: View {
                     }
                 })
                 .padding(12)
+        }
+        .overlay(alignment: .topLeading) {
+            if goToOpen {
+                // The mock's go-to is a near-full-window glass
+                // sheet below the toolbar, not a corner island —
+                // and the TOPMOST layer: it covers the rail.
+                PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
+                    .id("peeker-\(host.current?.uri ?? "")")
+                    .padding(6)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(IslandBackground(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding([.leading, .trailing, .bottom], 16)
+                    .padding(.top, 56)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+                    .onExitCommand {
+                        withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
+                    }
+            }
+        }
+        .overlay(alignment: .top) {
+            if paletteOpen {
+                CommandPalette(entries: paletteEntries) {
+                    withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
+                }
+                .padding(.top, 64)
+                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
         }
         .onChange(of: host.dismissals) { _ in
             withAnimation(.easeOut(duration: 0.15)) {
@@ -512,6 +514,9 @@ struct RailIsland: View {
                                     ? AnyShapeStyle(.white.opacity(0.1))
                                     : AnyShapeStyle(.clear),
                                 in: RoundedRectangle(cornerRadius: 8))
+                            // The WHOLE button answers the press,
+                            // not just the glyph's pixels.
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -519,7 +524,13 @@ struct RailIsland: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
+            // Folded, the content must contribute ZERO size in BOTH
+            // axes — the bridge view fills whatever width it is
+            // proposed, and an unbounded proposal would stretch the
+            // collapsed pill across the window. It stays MOUNTED
+            // through the fold (the growth animates over live rows).
             RailContent(host: host, tool: tool)
+                .frame(width: open ? 320 : 0)
                 .frame(maxHeight: open ? .infinity : 0, alignment: .top)
                 .clipped()
                 .opacity(open ? 1 : 0)
@@ -613,7 +624,7 @@ struct DocumentPane: View {
                 PlainPlaceBridge(host: host, place: opened.place)
                     .id(opened.id)
             } else {
-                PlaceScrollBridge(host: host, place: opened.place)
+                PlaceScrollBridge(host: host, place: opened.place, grabsFocus: opened.focus)
                     .id(opened.id)
             }
         }

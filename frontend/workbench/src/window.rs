@@ -239,7 +239,7 @@ impl View for Layers {
                         return match below(key, mods) {
                             EventResult::Ignored => EventResult::Ignored,
                             result => {
-                                result.merge(EventResult::Command(WindowCommand::SideFocusLost))
+                                result.merge(EventResult::command(WindowCommand::SideFocusLost))
                             }
                         };
                     }
@@ -594,7 +594,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         };
         let result = self.route(arena, event, viewport);
         match flip {
-            Some(flip) => result.merge(EventResult::Command(flip)),
+            Some(flip) => result.merge(EventResult::command(flip)),
             None => result,
         }
     }
@@ -687,7 +687,7 @@ impl<'a> RealizedLayers<'a> {
                         _ => false,
                     };
                     return match focus_moved {
-                        true => below.merge(EventResult::Command(WindowCommand::SideFocusLost)),
+                        true => below.merge(EventResult::command(WindowCommand::SideFocusLost)),
                         false => below,
                     };
                 }

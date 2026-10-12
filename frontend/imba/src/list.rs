@@ -1750,8 +1750,18 @@ where
             // to a `Revealed` round trip that disarms it.
             let (reveal, reveal_lost) = match &self.row_reveal {
                 Some((key, placement)) => match rect_of(key) {
-                    Some(rect) => (Some((rect, *placement)), false),
-                    None => (None, true),
+                    Some(rect) => {
+                        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                            eprintln!("[reveal] list realize: armed row resolves to {rect:?}");
+                        }
+                        (Some((rect, *placement)), false)
+                    }
+                    None => {
+                        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                            eprintln!("[reveal] list realize: armed row NOT IN LIST (lost)");
+                        }
+                        (None, true)
+                    }
                 },
                 None => (
                     self.selection
@@ -2046,13 +2056,16 @@ where
                 Some((line, top)) => {
                     let index = line.index;
                     match route(line, &event.translated(-self.content_left, -top)) {
-                        EventResult::Command(command) => {
-                            EventResult::Command(ListCommand::Focus(index, Some(Box::new(command))))
+                        EventResult::Handled(mut handled) if !handled.commands.is_empty() => {
+                            EventResult::command(ListCommand::Focus(
+                                index,
+                                Some(Box::new(handled.commands.remove(0))),
+                            ))
                         }
-                        _ => EventResult::Command(ListCommand::Focus(index, None)),
+                        _ => EventResult::command(ListCommand::Focus(index, None)),
                     }
                 }
-                None => EventResult::Handled,
+                None => EventResult::handled(),
             },
             _ => EventResult::Ignored,
         }
@@ -2276,7 +2289,7 @@ where
             });
             if !animating && (row.live - row.height).abs() > 0.5 {
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
-                    EventResult::Command(ListCommand::SetHeight(row.index, row.live)),
+                    EventResult::command(ListCommand::SetHeight(row.index, row.live)),
                 );
             }
         }
@@ -2285,11 +2298,11 @@ where
         // pulse (docs §3.1).
         if (viewport.top - list.viewport_top).abs() > 0.5 {
             merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
-                EventResult::Command(ListCommand::ViewportTop(viewport.top, viewport.height())),
+                EventResult::command(ListCommand::ViewportTop(viewport.top, viewport.height())),
             );
         }
         match merged {
-            EventResult::Ignored => EventResult::Handled,
+            EventResult::Ignored => EventResult::handled(),
             merged => merged,
         }
     }
@@ -2311,7 +2324,7 @@ where
             // speaks from fresh state.
             if (viewport.top - list.viewport_top).abs() > 0.5 {
                 let mine =
-                    EventResult::Command(ListCommand::ViewportTop(viewport.top, viewport.height()));
+                    EventResult::command(ListCommand::ViewportTop(viewport.top, viewport.height()));
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                 return merged;
             }
@@ -2320,35 +2333,46 @@ where
             // only fills silence. The target is absolute, so
             // re-emitting until the next Viewport report clears it
             // converges at the scroll instead of compounding.
-            if !matches!(merged, EventResult::Reveal(_)) {
+            if !matches!(
+                merged,
+                EventResult::Handled(crate::event::Handled {
+                    reveal: Some(_),
+                    ..
+                })
+            ) {
                 if let Some(fresh) = list.settle_to {
-                    let mine = EventResult::Reveal(crate::event::Reveal::top_left_at(
+                    let mine = EventResult::reveal(crate::event::Reveal::top_left_at(
                         Rect::from_xywh(0.0, fresh, list.size.width, viewport.height()),
                     ));
                     merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                 }
             }
             return match merged {
-                EventResult::Ignored => EventResult::Handled,
+                EventResult::Ignored => EventResult::handled(),
                 merged => merged,
             };
         }
         if let Event::AnimationClock { now } = event {
             if !list.animations.is_empty() {
                 merged = std::mem::replace(&mut merged, EventResult::Ignored)
-                    .merge(EventResult::Command(ListCommand::Animate(*now)));
+                    .merge(EventResult::command(ListCommand::Animate(*now)));
             }
 
             if list.reveal_lost {
                 merged = std::mem::replace(&mut merged, EventResult::Ignored)
-                    .merge(EventResult::Command(ListCommand::Revealed));
+                    .merge(EventResult::command(ListCommand::Revealed));
             }
             if let Some((rect, placement)) = list.reveal {
+                if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                    eprintln!(
+                        "[reveal] list clock: pending {rect:?} viewport {viewport:?} placement {placement:?}"
+                    );
+                }
                 let mine = match placement {
                     crate::event::Placement::EnsureVisible => {
                         match crate::event::reveal_satisfied(viewport, rect) {
-                            true => EventResult::Command(ListCommand::Revealed),
-                            false => EventResult::Reveal(crate::event::Reveal::visible(rect)),
+                            true => EventResult::command(ListCommand::Revealed),
+                            false => EventResult::reveal(crate::event::Reveal::visible(rect)),
                         }
                     }
                     crate::event::Placement::TopLeftAt => {
@@ -2360,8 +2384,8 @@ where
                             .top
                             .min((list.size.height - viewport.height()).max(0.0));
                         match (viewport.top - best).abs() < 0.5 {
-                            true => EventResult::Command(ListCommand::Revealed),
-                            false => EventResult::Reveal(crate::event::Reveal::top_left_at(rect)),
+                            true => EventResult::command(ListCommand::Revealed),
+                            false => EventResult::reveal(crate::event::Reveal::top_left_at(rect)),
                         }
                     }
                 };
@@ -2414,17 +2438,20 @@ where
                     // A row affordance consumed the click (a
                     // chevron's Toggle, a button) — that is not
                     // activation.
-                    EventResult::Command(command) => {
-                        EventResult::Command(ListCommand::Focus(index, Some(Box::new(command))))
+                    EventResult::Handled(mut handled) if !handled.commands.is_empty() => {
+                        EventResult::command(ListCommand::Focus(
+                            index,
+                            Some(Box::new(handled.commands.remove(0))),
+                        ))
                     }
                     // The ROW BODY: routing, selection and
                     // activation, each its own inspectable command
                     // (docs/ui/list-keyboard.md §2).
-                    _ if list.selectable => EventResult::Commands(vec![
+                    _ if list.selectable => EventResult::commands(vec![
                         ListCommand::Focus(index, Some(Box::new(ListCommand::Select(index)))),
                         ListCommand::Activate(index, ActivateTrigger::Click),
                     ]),
-                    _ => EventResult::Command(ListCommand::Focus(index, None)),
+                    _ => EventResult::command(ListCommand::Focus(index, None)),
                 }
             }
 

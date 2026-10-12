@@ -232,7 +232,7 @@ impl View for TocView {
         let searching = self.search.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(TocCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::command(TocCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -321,7 +321,7 @@ impl View for TocView {
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
-                    } if !searching => EventResult::Command(TocCommand::Dismiss),
+                    } if !searching => EventResult::command(TocCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
             }
@@ -593,7 +593,7 @@ impl View for OutlineView {
         let searching = self.search.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(OutlineCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::command(OutlineCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -729,11 +729,11 @@ impl View for OutlineView {
                 context: self.location.name().to_owned(),
                 scaled_pad: false,
                 keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
-                    Event::Paint { .. } if stale => EventResult::Command(OutlineCommand::Refresh),
+                    Event::Paint { .. } if stale => EventResult::command(OutlineCommand::Refresh),
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
-                    } if !searching => EventResult::Command(OutlineCommand::Dismiss),
+                    } if !searching => EventResult::command(OutlineCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
             }

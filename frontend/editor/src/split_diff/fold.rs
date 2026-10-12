@@ -509,7 +509,7 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
                                 Event::MouseDown {
                                     button: MouseButton::Left,
                                     ..
-                                } => EventResult::Command(command),
+                                } => EventResult::command(command),
                                 _ => EventResult::Ignored,
                             }
                         },
@@ -538,7 +538,7 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
                 Event::MouseDown {
                     button: MouseButton::Left,
                     ..
-                } => EventResult::Handled,
+                } => EventResult::handled(),
                 _ => EventResult::Ignored,
             },
         )

@@ -69,7 +69,7 @@ pub fn checkbox<'a>(checked: bool, style: CheckboxStyle) -> impl Thunk<'a, Check
             }
         })
         .event(|_arena, event, _size| match event {
-            Event::MouseDown { .. } => EventResult::Command(CheckboxCommand::Toggle),
+            Event::MouseDown { .. } => EventResult::command(CheckboxCommand::Toggle),
             _ => EventResult::Ignored,
         })
 }

@@ -1003,8 +1003,8 @@ impl View for SessionTreeView {
         if let Some(edit) = &self.edit {
             let own = FocusData {
                 on_key: Some(Box::new(|key, _mods| match key {
-                    InputKey::Enter => EventResult::Command(TreeCommand::CommitEdit),
-                    InputKey::Escape => EventResult::Command(TreeCommand::CancelEdit),
+                    InputKey::Enter => EventResult::command(TreeCommand::CommitEdit),
+                    InputKey::Escape => EventResult::command(TreeCommand::CancelEdit),
                     _ => EventResult::Ignored,
                 })),
                 ..FocusData::default()
@@ -1032,7 +1032,7 @@ impl View for SessionTreeView {
         let searching = self.tree.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(TreeCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::command(TreeCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -1312,12 +1312,12 @@ impl View for SessionTreeView {
                             Event::KeyDown {
                                 key: InputKey::Enter,
                                 ..
-                            } => EventResult::Command(TreeCommand::CommitEdit),
+                            } => EventResult::command(TreeCommand::CommitEdit),
                             Event::KeyDown {
                                 key: InputKey::Escape,
                                 ..
-                            } => EventResult::Command(TreeCommand::CancelEdit),
-                            Event::ThemeChanged => EventResult::Command(TreeCommand::Retheme),
+                            } => EventResult::command(TreeCommand::CancelEdit),
+                            Event::ThemeChanged => EventResult::command(TreeCommand::Retheme),
                             _ => EventResult::Ignored,
                         };
                     }
@@ -1325,9 +1325,9 @@ impl View for SessionTreeView {
                         Event::KeyDown {
                             key: InputKey::Escape,
                             ..
-                        } if !searching => EventResult::Command(TreeCommand::Dismiss),
+                        } if !searching => EventResult::command(TreeCommand::Dismiss),
 
-                        Event::ThemeChanged => EventResult::Command(TreeCommand::Retheme),
+                        Event::ThemeChanged => EventResult::command(TreeCommand::Retheme),
                         _ => EventResult::Ignored,
                     }
                 });
@@ -1388,7 +1388,7 @@ impl View for SessionTreeView {
                                 .collect();
                             match ours.is_empty() {
                                 true => EventResult::Ignored,
-                                false => EventResult::Command(TreeCommand::Changed(ours)),
+                                false => EventResult::command(TreeCommand::Changed(ours)),
                             }
                         }
                         _ => EventResult::Ignored,
@@ -1454,20 +1454,20 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
         let mut result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) {
             if let Some((location, generation)) = &self.follow {
-                result = result.merge(EventResult::Command(TreeCommand::Follow {
+                result = result.merge(EventResult::command(TreeCommand::Follow {
                     location: location.clone(),
                     generation: *generation,
                 }));
             }
             if !self.missing_roots.is_empty() || !self.stale_roots.is_empty() {
-                result = result.merge(EventResult::Command(TreeCommand::SyncRoots {
+                result = result.merge(EventResult::command(TreeCommand::SyncRoots {
                     missing: self.missing_roots.clone(),
                     stale: self.stale_roots.clone(),
                 }));
             }
             if let Event::Paint { focused: false, .. } = event {
                 if self.editing {
-                    result = result.merge(EventResult::Command(TreeCommand::CancelEdit));
+                    result = result.merge(EventResult::command(TreeCommand::CancelEdit));
                 }
             }
         }

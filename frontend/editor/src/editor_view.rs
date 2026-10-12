@@ -457,7 +457,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                         canvas.restore();
                     }
                 }
-                EventResult::Handled
+                EventResult::handled()
             }
 
             Event::MouseDown {
@@ -471,11 +471,11 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                     && point.x <= chrome.stripe_inset + chrome.stripe_width * 2.0
                 {
                     if let Some(at) = self.row_start_at(band.clone(), point.y) {
-                        return EventResult::Command(EditorCommand::ToggleBeforeInlay { at });
+                        return EventResult::command(EditorCommand::ToggleBeforeInlay { at });
                     }
                 }
                 match self.foldable_at(band, point.y) {
-                    Some(range) => EventResult::Command(EditorCommand::ToggleFold { range }),
+                    Some(range) => EventResult::command(EditorCommand::ToggleFold { range }),
                     None => EventResult::Ignored,
                 }
             }
@@ -941,7 +941,7 @@ impl View for EditorView {
 
                 on_key: None,
                 on_text: Some(Box::new(move |text| {
-                    EventResult::Command(EditorCommand::InsertText {
+                    EventResult::command(EditorCommand::InsertText {
                         text: text.to_owned(),
                     })
                 })),
@@ -954,8 +954,8 @@ impl View for EditorView {
                     };
                     visit(&mut client);
                     match client.command {
-                        Some(command) => EventResult::Command(command),
-                        None => EventResult::Handled,
+                        Some(command) => EventResult::command(command),
+                        None => EventResult::handled(),
                     }
                 })),
 
@@ -978,12 +978,12 @@ impl View for EditorView {
                     use crate::completion::CompletionCommand as C;
                     use imba::event::Key;
                     match key {
-                        Key::Up => EventResult::Command(EditorCommand::Completion(C::Select(-1))),
-                        Key::Down => EventResult::Command(EditorCommand::Completion(C::Select(1))),
+                        Key::Up => EventResult::command(EditorCommand::Completion(C::Select(-1))),
+                        Key::Down => EventResult::command(EditorCommand::Completion(C::Select(1))),
                         Key::Enter | Key::Tab => {
-                            EventResult::Command(EditorCommand::Completion(C::PickCursor))
+                            EventResult::command(EditorCommand::Completion(C::PickCursor))
                         }
-                        Key::Escape => EventResult::Command(EditorCommand::Completion(C::Close)),
+                        Key::Escape => EventResult::command(EditorCommand::Completion(C::Close)),
                         _ => EventResult::Ignored,
                     }
                 })),
@@ -1679,8 +1679,8 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                             };
                             visit(&mut client);
                             match client.command {
-                                Some(command) => EventResult::Command(command),
-                                None => EventResult::Handled,
+                                Some(command) => EventResult::command(command),
+                                None => EventResult::handled(),
                             }
                         }),
                     }),
@@ -1746,7 +1746,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     None => true,
                 };
                 if drifted {
-                    return EventResult::Command(EditorCommand::ViewportTop(viewport.top));
+                    return EventResult::command(EditorCommand::ViewportTop(viewport.top));
                 }
                 // The settle pulse (docs/editor/viewport-preservation.md
                 // §3.2): if this editor holds the viewport's corner
@@ -1760,7 +1760,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 }
                 match self.document().settle_target(self.editor()) {
                     Some(fresh) => {
-                        EventResult::Reveal(imba::event::Reveal::top_left_at(Rect::from_xywh(
+                        EventResult::reveal(imba::event::Reveal::top_left_at(Rect::from_xywh(
                             0.0,
                             fresh,
                             imba::Widget::size(self).width,
@@ -1785,7 +1785,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     );
                 }
                 if !self.reports_geometry {
-                    return EventResult::Handled;
+                    return EventResult::handled();
                 }
 
                 let width = self.target_width;
@@ -1814,7 +1814,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     });
 
                 if self.theme_stale() {
-                    return EventResult::Command(self.retheme_report(viewport));
+                    return EventResult::command(self.retheme_report(viewport));
                 }
 
                 let damaged = !bounded
@@ -1822,7 +1822,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                         .document()
                         .visible_damage(self.editor(), painted.start, painted.end);
                 if resized || grown || moved || damaged {
-                    return EventResult::Command(EditorCommand::Viewport {
+                    return EventResult::command(EditorCommand::Viewport {
                         width,
                         top: painted.start,
                         bottom: painted.end,
@@ -1831,11 +1831,11 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                             .first_visible_byte(self.editor(), viewport.top.max(0.0)),
                     });
                 }
-                EventResult::Handled
+                EventResult::handled()
             }
 
             Event::ThemeChanged => match self.theme_stale() {
-                true => EventResult::Command(self.retheme_report(viewport)),
+                true => EventResult::command(self.retheme_report(viewport)),
                 false => EventResult::Ignored,
             },
 
@@ -1848,8 +1848,8 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 let pans = !self.document().softwrap(self.editor());
                 if gesture.owned_by(self.surface) {
                     return match pans && delta_x.abs() > 0.01 {
-                        true => EventResult::Command(EditorCommand::HorizontalScroll(*delta_x)),
-                        false => EventResult::Handled,
+                        true => EventResult::command(EditorCommand::HorizontalScroll(*delta_x)),
+                        false => EventResult::handled(),
                     };
                 }
                 if gesture.owned_by_other(self.surface)
@@ -1860,13 +1860,13 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     return EventResult::Ignored;
                 }
                 let _ = gesture.claims(self.surface);
-                EventResult::Command(EditorCommand::HorizontalScroll(*delta_x))
+                EventResult::command(EditorCommand::HorizontalScroll(*delta_x))
             }
 
             Event::AnimationClock { now } => {
                 if !self.document().reveal_pending(self.editor()) {
                     return match self.document().hover(self.editor()).armed() {
-                        true => EventResult::Command(EditorCommand::Tick(*now)),
+                        true => EventResult::command(EditorCommand::Tick(*now)),
                         false => EventResult::Ignored,
                     };
                 }
@@ -1896,20 +1896,20 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     (y + h * 2.0).min(content_bottom.max(y + h)),
                 );
                 if imba::event::reveal_satisfied(viewport, rect) {
-                    return EventResult::Command(EditorCommand::RevealSettled);
+                    return EventResult::command(EditorCommand::RevealSettled);
                 }
                 let mut reveal = imba::event::Reveal::visible(rect);
                 if self.document().reveal_jump(self.editor()) {
                     reveal.motion = imba::event::Motion::Jump;
                 }
-                EventResult::Reveal(reveal)
+                EventResult::reveal(reveal)
             }
             Event::MouseDown {
                 button: MouseButton::Left,
                 point,
                 mods,
                 count,
-            } => EventResult::Command(EditorCommand::Click {
+            } => EventResult::command(EditorCommand::Click {
                 point: *point,
 
                 kind: match (mods.command, mods.alt, mods.shift, count) {
@@ -1928,10 +1928,10 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
             // text-focused gate here let a once-clicked before-card
             // claim every later release and steal the host's focus.
             Event::MouseDrag { point, .. } if self.dragging() => {
-                EventResult::Command(EditorCommand::Drag { point: *point })
+                EventResult::command(EditorCommand::Drag { point: *point })
             }
             Event::MouseUp { .. } if self.dragging() => {
-                EventResult::Command(EditorCommand::DragEnd)
+                EventResult::command(EditorCommand::DragEnd)
             }
 
             Event::HitTest { point, miss, mods } if self.location.is_some() => {
@@ -1970,7 +1970,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     true => vec![hover],
                     false => vec![hover, EditorCommand::HoverLink(desired)],
                 };
-                EventResult::Pointer { shape, commands }
+                EventResult::pointer(shape, commands)
             }
             _ => EventResult::Ignored,
         }

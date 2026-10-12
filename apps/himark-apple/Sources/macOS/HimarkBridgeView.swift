@@ -181,6 +181,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             let h = Int32(visible.height * scale)
             metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
             renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            // A reveal can be BORN at the paint (a canvas revealing
+            // its row right after populate) — drain it this pass,
+            // or the scroll waits for the next event.
+            engine.drainReveal()
             return
         }
 
@@ -192,6 +196,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                                pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
             request()
         }
+        engine.drainReveal()
     }
 
     /// The stage road: layout at (width, ∞), content size off the
@@ -246,12 +251,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     /// Seat this bridge's reveal handler — the engine routes the
     /// parked rect (device pixels) here; hand it on in points.
-    func seatRevealHandler(_ onReveal: @escaping (CGRect) -> Void) {
-        engine.onReveal(bridge: bridgeId) { [weak self] pixels in
+    func seatRevealHandler(_ onReveal: @escaping (CGRect, HimarkEngine.RevealPlacement) -> Void) {
+        engine.onReveal(bridge: bridgeId) { [weak self] pixels, placement in
             guard let self else { return }
             let s = self.metalLayer.contentsScale
             onReveal(CGRect(x: pixels.minX / s, y: pixels.minY / s,
-                            width: pixels.width / s, height: pixels.height / s))
+                            width: pixels.width / s, height: pixels.height / s),
+                     placement)
         }
     }
 
@@ -362,7 +368,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         }
         if scrollEmbedded {
             // The stage road has no scroller — the enclosing
-            // NSScrollView owns the physics.
+            // NSScrollView owns the physics. But the overlays that
+            // kept theirs (a completion popup's list, a horizontal
+            // pan in unwrapped code) get the wheel OFFERED first.
+            if offerWheel(event) { return }
             super.scrollWheel(with: event)
             return
         }
@@ -373,6 +382,36 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                                  Float(-event.scrollingDeltaX) * perLine * s,
                                  Float(-event.scrollingDeltaY) * perLine * s,
                                  himarkScrollPhase(event)))
+    }
+
+    /// Offer a wheel to the stage road synchronously: true when an
+    /// overlay (completion popup, horizontal pan) consumed it — the
+    /// embedding scroller keeps the event otherwise. Realizes the
+    /// current band's frame for the one call, like a paint pass.
+    func offerWheel(_ event: NSEvent) -> Bool {
+        let raw = engine.raw
+        let scale = metalLayer.contentsScale
+        let visible = visibleRect.intersection(bounds)
+        guard !visible.isEmpty else { return false }
+        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        guard layout.raw != 0 else { return false }
+        let offsetY = Float(max(visible.minY, 0) * scale)
+        let frame = himark_layout_realize(
+            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        guard frame.raw != 0 else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let s = Float(scale)
+        let perLine: Float = event.hasPreciseScrollingDeltas ? 1.0 : Self.lineScroll
+        let consumed = himark_frame_offer_scroll(
+            raw, frame,
+            Float(point.x) * s, Float(point.y) * s,
+            Float(-event.scrollingDeltaX) * perLine * s,
+            Float(-event.scrollingDeltaY) * perLine * s,
+            himarkScrollPhase(event),
+            0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        himark_frame_release(raw, frame)
+        if consumed { request() }
+        return consumed
     }
 
     private func himarkScrollPhase(_ event: NSEvent) -> UInt32 {

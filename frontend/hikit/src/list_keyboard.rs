@@ -354,11 +354,11 @@ where
         let searching = self.searching();
         let select = |index: Option<usize>| match index {
             Some(index) => {
-                EventResult::Command(ListKeyCommand::Inner(self.inner.select_command(index)))
+                EventResult::command(ListKeyCommand::Inner(self.inner.select_command(index)))
             }
             // The panel owns its movement keys even with nothing to
             // move to — they never leak to what sits behind it.
-            None => EventResult::Handled,
+            None => EventResult::handled(),
         };
         match key {
             InputKey::Up if searching => select(self.inner.matched_step_index(-1)),
@@ -372,18 +372,18 @@ where
             InputKey::PageUp => select(self.inner.page_index(-1)),
             InputKey::PageDown => select(self.inner.page_index(1)),
             InputKey::Enter => match self.inner.cursor_index() {
-                Some(index) => EventResult::Command(ListKeyCommand::Inner(
+                Some(index) => EventResult::command(ListKeyCommand::Inner(
                     self.inner.activate_command(index, ActivateTrigger::Enter),
                 )),
-                None => EventResult::Handled,
+                None => EventResult::handled(),
             },
-            InputKey::Escape if searching => EventResult::Command(ListKeyCommand::Clear),
+            InputKey::Escape if searching => EventResult::command(ListKeyCommand::Clear),
             InputKey::Left | InputKey::Right if self.folds => match self.inner.cursor_index() {
-                Some(index) => EventResult::Command(ListKeyCommand::Fold {
+                Some(index) => EventResult::command(ListKeyCommand::Fold {
                     index,
                     expand: key == InputKey::Right,
                 }),
-                None => EventResult::Handled,
+                None => EventResult::handled(),
             },
             _ => EventResult::Ignored,
         }
@@ -634,7 +634,7 @@ where
             // tree; the per-surface duplicates are gone.
             let keymap = imba::leaf::leaf::<Self::Command>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
-                    Event::Paint { .. } if stale => EventResult::Command(ListKeyCommand::Refresh),
+                    Event::Paint { .. } if stale => EventResult::command(ListKeyCommand::Refresh),
                     Event::KeyDown { key, .. } => self.table_key(*key),
                     _ => EventResult::Ignored,
                 },
@@ -714,7 +714,7 @@ mod tests {
             if let Event::Paint { focused, .. } = event {
                 self.0.set(Some(*focused));
             }
-            EventResult::Handled
+            EventResult::handled()
         }
     }
 

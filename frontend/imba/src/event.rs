@@ -249,25 +249,150 @@ impl ScrollSurfaceId {
     }
 }
 
+/// What a dispatch answered. NORMALIZED: either nobody answered,
+/// or someone did — and an answer is ONE product of everything it
+/// can carry (commands beside a reveal beside the pointer's shape),
+/// so no half is ever lost to a sibling's half in a merge. The old
+/// shape was one variant per combination; a canvas revealing its
+/// row lost the ask to its own animation tick, every tick.
 pub enum EventResult<Command> {
+    /// Nothing answered: the event falls through to whatever sits
+    /// beneath.
     Ignored,
-    Handled,
-    Command(Command),
+    Handled(Handled<Command>),
+}
 
-    Commands(Vec<Command>),
+/// The answer's payload.
+pub struct Handled<Command> {
+    pub commands: Vec<Command>,
 
-    Reveal(Reveal),
+    /// A scroll ask — the nearest scroller consumes it en route;
+    /// on the descrollered roads it travels all the way to the
+    /// HOST.
+    pub reveal: Option<Reveal>,
 
-    /// A hit test's answer: the shape the pointer takes over what it
-    /// hit, beside the commands the hit raised. DERIVED per dispatch
-    /// — the shell applies it to the platform cursor and nothing
-    /// stores it, so there is no stale shape to sync (a stored one
-    /// stuck as a hand whenever the view that set it stopped being
-    /// hit).
-    Pointer {
-        shape: PointerShape,
-        commands: Vec<Command>,
-    },
+    /// A hit test's answer: the shape the pointer takes over what
+    /// it hit. DERIVED per dispatch — the shell applies it to the
+    /// platform cursor and nothing stores it, so there is no stale
+    /// shape to sync (a stored one stuck as a hand whenever the
+    /// view that set it stopped being hit).
+    pub pointer: Option<PointerShape>,
+}
+
+impl<Command> Default for Handled<Command> {
+    fn default() -> Self {
+        Self {
+            commands: Vec::new(),
+            reveal: None,
+            pointer: None,
+        }
+    }
+}
+
+impl<Command> EventResult<Command> {
+    pub fn map<ParentCommand>(
+        self,
+        f: impl Fn(Command) -> ParentCommand,
+    ) -> EventResult<ParentCommand> {
+        match self {
+            EventResult::Ignored => EventResult::Ignored,
+            EventResult::Handled(handled) => EventResult::Handled(Handled {
+                commands: handled.commands.into_iter().map(f).collect(),
+                reveal: handled.reveal,
+                pointer: handled.pointer,
+            }),
+        }
+    }
+
+    pub fn reveal_translated(self, dx: f32, dy: f32) -> EventResult<Command> {
+        match self {
+            EventResult::Handled(mut handled) => {
+                handled.reveal = handled.reveal.map(|reveal| reveal.translated(dx, dy));
+                EventResult::Handled(handled)
+            }
+            result => result,
+        }
+    }
+
+    pub fn merge(self, other: EventResult<Command>) -> EventResult<Command> {
+        match (self, other) {
+            (EventResult::Ignored, other) => other,
+            (result, EventResult::Ignored) => result,
+            (EventResult::Handled(mut first), EventResult::Handled(second)) => {
+                match first.commands.is_empty() {
+                    true => first.commands = second.commands,
+                    false => first.commands.extend(second.commands),
+                }
+                first.reveal = first.reveal.or(second.reveal);
+                // A hit test's answer survives the merge: the one
+                // child that was hit names the shape, its missed
+                // siblings answer the arrow.
+                first.pointer = match (first.pointer, second.pointer) {
+                    (Some(mine), Some(theirs)) => Some(mine.or(theirs)),
+                    (mine, theirs) => mine.or(theirs),
+                };
+                EventResult::Handled(first)
+            }
+        }
+    }
+}
+
+impl<Command> EventResult<Command> {
+    /// Consumed, nothing to say.
+    pub fn handled() -> Self {
+        EventResult::Handled(Handled::default())
+    }
+
+    pub fn command(command: Command) -> Self {
+        EventResult::Handled(Handled {
+            commands: vec![command],
+            ..Default::default()
+        })
+    }
+
+    pub fn commands(commands: Vec<Command>) -> Self {
+        EventResult::Handled(Handled {
+            commands,
+            ..Default::default()
+        })
+    }
+
+    pub fn reveal(reveal: Reveal) -> Self {
+        EventResult::Handled(Handled {
+            reveal: Some(reveal),
+            ..Default::default()
+        })
+    }
+
+    pub fn pointer(shape: PointerShape, commands: Vec<Command>) -> Self {
+        EventResult::Handled(Handled {
+            commands,
+            pointer: Some(shape),
+            ..Default::default()
+        })
+    }
+
+    /// The commands, whatever else rode along — Ignored answers
+    /// none.
+    pub fn into_commands(self) -> Vec<Command> {
+        match self {
+            EventResult::Ignored => Vec::new(),
+            EventResult::Handled(handled) => handled.commands,
+        }
+    }
+
+    /// The FIRST command, if any — assertion sugar.
+    pub fn into_command(self) -> Option<Command> {
+        self.into_commands().into_iter().next()
+    }
+
+    /// The payload, if anyone answered.
+    pub fn into_handled(self) -> Option<Handled<Command>> {
+        match self {
+            EventResult::Ignored => None,
+            EventResult::Handled(handled) => Some(handled),
+        }
+    }
 }
 
 /// A parameterized reveal: WHAT to show and HOW to place it.
@@ -316,67 +441,6 @@ impl Reveal {
     pub fn translated(mut self, dx: f32, dy: f32) -> Self {
         self.rect = self.rect.with_offset((dx, dy));
         self
-    }
-}
-
-impl<Command> EventResult<Command> {
-    pub fn map<ParentCommand>(
-        self,
-        f: impl Fn(Command) -> ParentCommand,
-    ) -> EventResult<ParentCommand> {
-        match self {
-            EventResult::Ignored => EventResult::Ignored,
-            EventResult::Handled => EventResult::Handled,
-            EventResult::Command(command) => EventResult::Command(f(command)),
-            EventResult::Commands(commands) => {
-                EventResult::Commands(commands.into_iter().map(f).collect())
-            }
-            EventResult::Reveal(reveal) => EventResult::Reveal(reveal),
-            EventResult::Pointer { shape, commands } => EventResult::Pointer {
-                shape,
-                commands: commands.into_iter().map(f).collect(),
-            },
-        }
-    }
-
-    pub fn reveal_translated(self, dx: f32, dy: f32) -> EventResult<Command> {
-        match self {
-            EventResult::Reveal(reveal) => EventResult::Reveal(reveal.translated(dx, dy)),
-            result => result,
-        }
-    }
-
-    pub fn merge(self, other: EventResult<Command>) -> EventResult<Command> {
-        let mut reveal = None;
-        let mut shape: Option<PointerShape> = None;
-        let mut commands = Vec::new();
-        for result in [self, other] {
-            match result {
-                EventResult::Command(command) => commands.push(command),
-                EventResult::Commands(more) => match commands.is_empty() {
-                    true => commands = more,
-                    false => commands.extend(more),
-                },
-                EventResult::Reveal(inner) => reveal = reveal.or(Some(inner)),
-                // A hit test's answer survives the merge: the one
-                // child that was hit names the shape, its missed
-                // siblings answer the arrow.
-                EventResult::Pointer {
-                    shape: answered,
-                    commands: more,
-                } => {
-                    shape = Some(shape.unwrap_or_default().or(answered));
-                    commands.extend(more);
-                }
-                EventResult::Ignored | EventResult::Handled => {}
-            }
-        }
-        match (shape, commands.is_empty(), reveal) {
-            (Some(shape), _, _) => EventResult::Pointer { shape, commands },
-            (None, false, _) => EventResult::Commands(commands),
-            (None, true, Some(inner)) => EventResult::Reveal(inner),
-            (None, true, None) => EventResult::Ignored,
-        }
     }
 }
 

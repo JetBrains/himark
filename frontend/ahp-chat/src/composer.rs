@@ -290,7 +290,7 @@ impl Composer {
                     }
                 })
                 .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(mention()),
+                    Event::MouseDown { .. } => EventResult::command(mention()),
                     _ => EventResult::Ignored,
                 });
             let clip = leaf::<ComposerCommand>(22.0, 22.0)
@@ -314,7 +314,7 @@ impl Composer {
                     canvas.draw_path(&path.detach(), &paint);
                 })
                 .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(mention()),
+                    Event::MouseDown { .. } => EventResult::command(mention()),
                     _ => EventResult::Ignored,
                 });
             band.place(width - pad - 24.0, box_pad + 4.0, at);
@@ -378,7 +378,7 @@ impl<'a> Widget<'a, ComposerCommand> for ComposerWidget<'a> {
                 let result = self.inner.handle_event(arena, event, viewport);
                 match self.rewrap {
                     Some(width) => {
-                        result.merge(EventResult::Command(ComposerCommand::Rewrap(width)))
+                        result.merge(EventResult::command(ComposerCommand::Rewrap(width)))
                     }
                     None => result,
                 }
@@ -386,7 +386,7 @@ impl<'a> Widget<'a, ComposerCommand> for ComposerWidget<'a> {
             Event::AnimationClock { now } => {
                 let result = self.inner.handle_event(arena, event, viewport);
                 if self.animating {
-                    return result.merge(EventResult::Command(ComposerCommand::Tick(*now)));
+                    return result.merge(EventResult::command(ComposerCommand::Tick(*now)));
                 }
                 result
             }

@@ -106,14 +106,14 @@ impl View for TerminalView {
                 match encode_key(key, mods, app_cursor) {
                     Some(bytes) => {
                         session.write(&bytes);
-                        EventResult::Handled
+                        EventResult::handled()
                     }
                     None => EventResult::Ignored,
                 }
             })),
             on_text: Some(Box::new(move |text| {
                 session.write(text.as_bytes());
-                EventResult::Handled
+                EventResult::handled()
             })),
             clipboard: Some(Box::new(move |visit| {
                 struct PtyPaste<'a> {
@@ -132,7 +132,7 @@ impl View for TerminalView {
                     }
                 }
                 visit(&mut PtyPaste { session });
-                EventResult::Handled
+                EventResult::handled()
             })),
             ..imba::focus::FocusData::default()
         }
@@ -566,14 +566,14 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                 let (cols, rows) = self.grid_for();
                 let told = self.session.told();
                 if told != (cols, rows) {
-                    return EventResult::Command(TerminalCommand::Resize {
+                    return EventResult::command(TerminalCommand::Resize {
                         cols,
                         rows,
                         px_width: cols as f32 * self.cell.0,
                         px_height: rows as f32 * self.cell.1,
                     });
                 }
-                EventResult::Handled
+                EventResult::handled()
             }
             Event::Scroll {
                 delta_x,
@@ -592,11 +592,11 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                 }
                 let lines = (-delta_y / self.cell.1).round() as i32;
                 match lines {
-                    0 => EventResult::Handled,
-                    lines => EventResult::Command(TerminalCommand::Scroll { lines }),
+                    0 => EventResult::handled(),
+                    lines => EventResult::command(TerminalCommand::Scroll { lines }),
                 }
             }
-            Event::MouseDown { .. } => EventResult::Handled,
+            Event::MouseDown { .. } => EventResult::handled(),
             _ => EventResult::Ignored,
         }
     }

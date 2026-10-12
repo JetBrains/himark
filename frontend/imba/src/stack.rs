@@ -106,14 +106,14 @@ where
                 let mut inner_key = data.on_key.take();
                 data.on_key = Some(Box::new(move |key, mods| {
                     match inner_key.as_deref_mut().map(|h| h(key, mods)) {
-                        None | Some(EventResult::Ignored) => EventResult::Handled,
+                        None | Some(EventResult::Ignored) => EventResult::handled(),
                         Some(result) => result,
                     }
                 }));
                 let mut inner_text = data.on_text.take();
                 data.on_text = Some(Box::new(move |text| {
                     match inner_text.as_deref_mut().map(|h| h(text)) {
-                        None | Some(EventResult::Ignored) => EventResult::Handled,
+                        None | Some(EventResult::Ignored) => EventResult::handled(),
                         Some(result) => result,
                     }
                 }));
@@ -271,7 +271,7 @@ impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand,
         }
 
         match modal.handle_event(arena, event, viewport) {
-            EventResult::Ignored => EventResult::Handled,
+            EventResult::Ignored => EventResult::handled(),
             result => result.map(StackCommand::Modal),
         }
     }

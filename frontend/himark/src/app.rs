@@ -409,17 +409,17 @@ impl Himark {
             .paint(canvas, Rect::from_size(size), &theme.ui().stats);
 
         match result {
-            EventResult::Ignored | EventResult::Handled => false,
-            EventResult::Command(command) => {
-                trace_reconcile("paint", std::slice::from_ref(&command));
-                self.perform_batch(vec![command])
-            }
-            EventResult::Commands(commands) | EventResult::Pointer { commands, .. } => {
-                trace_reconcile("paint", &commands);
-                self.perform_batch(commands)
-            }
-
-            EventResult::Reveal(_) => false,
+            EventResult::Ignored => false,
+            // The WINDOW road: its scroller consumed reveals en
+            // route; one that reached the top dies as it always
+            // did — the commands still run.
+            EventResult::Handled(handled) => match handled.commands.is_empty() {
+                true => false,
+                false => {
+                    trace_reconcile("paint", &handled.commands);
+                    self.perform_batch(handled.commands)
+                }
+            },
         }
     }
 
@@ -511,16 +511,24 @@ impl Himark {
                             "[keys] {key:?} {mods:?}: chain says {}; binding {:?}",
                             match &result {
                                 EventResult::Ignored => "ignored",
-                                EventResult::Handled => "handled",
-                                EventResult::Reveal(_) => "reveal",
-                                _ => "command",
+                                EventResult::Handled(handled) => {
+                                    match (handled.commands.is_empty(), handled.reveal.is_some()) {
+                                        (true, true) => "reveal",
+                                        (true, false) => "handled",
+                                        (false, _) => "command",
+                                    }
+                                }
                             },
                             crate::keymap::Keymaps::binding_of(&store, key, mods)
                         );
                     }
                 }
-                let fallback = match (key_down, &result) {
-                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
+                let empty_handed = match &result {
+                    EventResult::Ignored => true,
+                    EventResult::Handled(handled) => handled.commands.is_empty(),
+                };
+                let fallback = match (key_down, empty_handed) {
+                    (Some((key, mods)), true) => {
                         crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|binding| {
                             // The chain source mirrors the dispatch
                             // above: a mounted view's own focus, a
@@ -581,44 +589,47 @@ impl Himark {
             );
         }
 
-        let shape = match &result {
-            EventResult::Pointer { shape, .. } => *shape,
-            _ => imba::event::PointerShape::Default,
-        };
         let changed = match result {
-            EventResult::Ignored => false,
-
-            EventResult::Handled => !clock,
-            EventResult::Command(command) => {
-                if clock {
-                    trace_reconcile("clock", std::slice::from_ref(&command));
-                }
-                self.perform_batch(vec![command])
-            }
-            EventResult::Commands(commands) => {
-                if clock {
-                    trace_reconcile("clock", &commands);
-                }
-                self.perform_batch(commands)
-            }
-            EventResult::Pointer { commands, .. } => match commands.is_empty() {
-                true => !clock,
-                false => self.perform_batch(commands),
-            },
-            EventResult::Reveal(reveal) => {
+            EventResult::Ignored => return (false, imba::event::PointerShape::Default),
+            EventResult::Handled(handled) => {
+                let shape = handled.pointer.unwrap_or_default();
                 // A mounted view's reveal is the HOST's to scroll —
                 // park it for `take_reveal`; a window's dies here as
                 // it always did (its scroller consumes en route).
-                let bridge = crate::bridge::ViewBridgeId::from_raw(window.raw());
-                if bridge.is_mounted() {
-                    self.pending_reveal = Some((bridge, reveal.rect));
-                    true
-                } else {
-                    false
+                let mut parked = false;
+                if let Some(reveal) = handled.reveal {
+                    let bridge = crate::bridge::ViewBridgeId::from_raw(window.raw());
+                    if bridge.is_mounted() {
+                        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                            let slot = self.bridges.get(&bridge);
+                            eprintln!(
+                                "[reveal] parked (mounted dispatch) bridge {} {:?} band {:?} size {:?}",
+                                bridge.raw(),
+                                reveal,
+                                slot.and_then(|slot| slot.stage_viewport),
+                                slot.map(|slot| slot.size),
+                            );
+                        }
+                        self.park_reveal(bridge, reveal);
+                        parked = true;
+                    }
                 }
+                let changed = match handled.commands.is_empty() {
+                    // An empty answer on a clock tick is NOT a
+                    // change — but a parked reveal is.
+                    true => parked || !clock,
+                    false => {
+                        if clock {
+                            trace_reconcile("clock", &handled.commands);
+                        }
+                        self.perform_batch(handled.commands) || parked
+                    }
+                };
+                return (changed, shape);
             }
         };
-        (changed, shape)
+        #[allow(unreachable_code)]
+        (changed, imba::event::PointerShape::Default)
     }
 
     /// The workbench shell's batch TAIL — every window-shaped
@@ -887,7 +898,16 @@ impl crate::himark::Shell for MountFrontend {
         }
         let rides = ::workbench::window::WindowId::from_raw(origin.raw());
         if let Some(place) = place.place::<crate::places::DocumentPlace>() {
-            let Some(session) = crate::mounts::session_of(store, origin) else {
+            let session = crate::mounts::session_of(store, origin);
+            if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+                eprintln!(
+                    "[nav] MountFrontend DocumentPlace '{}' origin {} session? {}",
+                    place.location.name(),
+                    origin.raw(),
+                    session.is_some()
+                );
+            }
+            let Some(session) = session else {
                 return false;
             };
             let documents =

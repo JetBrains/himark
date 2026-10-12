@@ -171,8 +171,8 @@ impl View for PaletteView {
         let empty = self.matches.is_empty();
         let own = imba::focus::FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Enter if empty => EventResult::Command(PaletteCommand::Close),
-                Key::Escape => EventResult::Command(PaletteCommand::Close),
+                Key::Enter if empty => EventResult::command(PaletteCommand::Close),
+                Key::Escape => EventResult::command(PaletteCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..imba::focus::FocusData::default()
@@ -264,7 +264,7 @@ impl View for PaletteView {
                     }
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(PaletteCommand::Close),
+                    Event::MouseDown { .. } => EventResult::command(PaletteCommand::Close),
                     _ => EventResult::Ignored,
                 });
             container.place(0.0, 0.0, backdrop);
@@ -334,10 +334,10 @@ impl View for PaletteView {
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
                         key: Key::Enter, ..
-                    } if empty => EventResult::Command(PaletteCommand::Close),
+                    } if empty => EventResult::command(PaletteCommand::Close),
                     Event::KeyDown {
                         key: Key::Escape, ..
-                    } => EventResult::Command(PaletteCommand::Close),
+                    } => EventResult::command(PaletteCommand::Close),
                     _ => EventResult::Ignored,
                 },
             );

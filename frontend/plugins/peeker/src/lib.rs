@@ -23,7 +23,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Paint, Rect, Size};
+use skia_safe::Size;
 use workbench::workbench_node::EditorPane;
 use workbench::workbench_node::PaneCommand;
 
@@ -67,6 +67,11 @@ pub struct Peeker {
     preview_width: f32,
 
     chrome: ::editor::theme::PeekerChrome,
+
+    /// The windowed modal paints its own opaque sheet; the mounted
+    /// GLASS road (`unfloored`) rides the host's island backdrop
+    /// and keeps only the input well and the list/preview divider.
+    floored: bool,
 
     request: hikit::modal::RequestSlot<ModalRequest>,
 }
@@ -203,11 +208,19 @@ impl Peeker {
             preview: None,
             preview_width: preview_width(viewport, &chrome),
             chrome,
+            floored: true,
             request: Default::default(),
         };
         peeker.filter(store, ui, "");
         peeker.ensure_preview(store, ui, fx);
         peeker
+    }
+
+    /// The GLASS face: no sheet of its own — the mounting host
+    /// paints the island floor behind the whole peeker.
+    pub fn unfloored(mut self) -> Self {
+        self.floored = false;
+        self
     }
 
     fn query(&self) -> String {
@@ -540,8 +553,8 @@ impl View for Peeker {
                 PeekerCommand::Close,
             )],
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Enter if empty => EventResult::Command(PeekerCommand::Close),
-                Key::Escape => EventResult::Command(PeekerCommand::Close),
+                Key::Enter if empty => EventResult::command(PeekerCommand::Close),
+                Key::Escape => EventResult::command(PeekerCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..imba::focus::FocusData::default()
@@ -712,10 +725,11 @@ impl View for Peeker {
             let row_height = chrome.row_height;
             let list_width = list_width(size, chrome);
             let preview_x = margin + list_width + chrome.list_preview_gap;
-            let preview_width = self.preview_width;
+            // Live, not the open-time snapshot: the mounted host
+            // resizes with its window and the preview fills to it.
+            let preview_width = preview_width(size, chrome);
 
             let inset = margin * 4.0 / 3.0;
-            let list_x = inset + 1.0;
             let input_height = chrome.input_height;
             let list_top = inset + 8.0 + input_height;
             let list_height = (size.height - inset - row_height - 2.0 - list_top).max(row_height);
@@ -739,90 +753,83 @@ impl View for Peeker {
             )
             .map(PeekerCommand::Input);
 
-            let backdrop = leaf::<PeekerCommand>(size.width, size.height)
-                .paint_instead(move |_arena, canvas, rect| {
-                    let chrome = &self.chrome;
-                    let mut surface = Paint::default();
-                    surface.set_color(chrome.background.0);
-                    canvas.draw_rect(rect, &surface);
+            use hikit::ui::{Hairline, Surface};
+            let floor = Surface::fill(chrome.background.0).radius(0.0);
+            let panel_size = Size::new(list_width + 2.0, (size.height - inset * 2.0).max(1.0));
 
-                    let panel = Rect::from_xywh(
-                        inset,
-                        inset,
-                        list_width + 2.0,
-                        (size.height - inset * 2.0).max(1.0),
-                    );
-
-                    let echo = inset * 0.5;
-                    let sheet = panel.with_offset((echo, echo));
-                    let mut rule = Paint::default();
-                    surface.set_color(chrome.background.0);
-                    canvas.draw_rect(sheet, &surface);
-                    rule.set_color(sheet_rule);
-                    for edge in [
-                        Rect::from_xywh(sheet.left, sheet.bottom - 1.0, sheet.width(), 1.0),
-                        Rect::from_xywh(sheet.right - 1.0, sheet.top, 1.0, sheet.height()),
-                    ] {
-                        canvas.draw_rect(edge, &rule);
-                    }
-                    surface.set_color(chrome.background.0);
-                    canvas.draw_rect(panel, &surface);
-                    rule.set_color(chrome.rule.0);
-                    for edge in [
-                        Rect::from_xywh(panel.left, panel.top, panel.width(), 1.0),
-                        Rect::from_xywh(panel.left, panel.bottom - 1.0, panel.width(), 1.0),
-                        Rect::from_xywh(panel.left, panel.top, 1.0, panel.height()),
-                        Rect::from_xywh(panel.right - 1.0, panel.top, 1.0, panel.height()),
-                    ] {
-                        canvas.draw_rect(edge, &rule);
-                    }
-                    rule.set_color(chrome.rule.0);
-                    canvas.draw_rect(
-                        Rect::from_xywh(
-                            panel.left,
-                            panel.bottom - chrome.row_height,
-                            panel.width(),
-                            1.0,
-                        ),
-                        &rule,
-                    );
-
-                    // The peeker's OWN input well, top of the panel.
-                    let well = Rect::from_xywh(
-                        panel.left + chrome.input_inset_x * 0.5,
-                        panel.top + chrome.input_inset_y * 0.5,
-                        panel.width() - chrome.input_inset_x,
-                        input_height - chrome.input_inset_y,
-                    );
-                    let mut fill = Paint::default();
-                    fill.set_anti_alias(true);
-                    fill.set_color(chrome.well.0);
-                    canvas.draw_round_rect(well, chrome.well_radius, chrome.well_radius, &fill);
-                })
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(PeekerCommand::Close),
+            // The click-away catcher behind everything — bare glass
+            // on the mounted road, dressed with the opaque floor and
+            // the sheet's offset echo on the windowed one.
+            let catcher = leaf::<PeekerCommand>(size.width, size.height).event(
+                |_arena, event, _size| match event {
+                    Event::MouseDown { .. } => EventResult::command(PeekerCommand::Close),
                     _ => EventResult::Ignored,
-                });
-            container.place(0.0, 0.0, backdrop);
-            container.place(
-                list_x + chrome.input_inset_x,
-                inset + chrome.input_inset_y + 2.0,
+                },
+            );
+            if self.floored {
+                container.place(0.0, 0.0, floor.wrap(catcher));
+                let echo = inset * 0.5;
+                container.place(
+                    inset + echo,
+                    inset + echo,
+                    floor.wrap(Hairline::new(sheet_rule).bottom().right().wrap(leaf::<
+                        PeekerCommand,
+                    >(
+                        panel_size.width,
+                        panel_size.height,
+                    ))),
+                );
+            } else {
+                container.place(0.0, 0.0, catcher);
+            }
+
+            // The list PANEL — the input in its well, the rows, the
+            // footer band — built in panel coordinates; the chrome
+            // DECORATES it (opaque sheet windowed, a single divider
+            // hairline on the glass).
+            let mut panel = imba::container::container(arena, panel_size);
+
+            let well_size = Size::new(
+                panel_size.width - chrome.input_inset_x,
+                input_height - chrome.input_inset_y,
+            );
+            let mut well = imba::container::container(arena, well_size);
+            well.place(
+                chrome.input_inset_x * 0.5 + 1.0,
+                chrome.input_inset_y * 0.5 + 2.0,
                 input_editor,
             );
+            panel.place(
+                chrome.input_inset_x * 0.5,
+                chrome.input_inset_y * 0.5,
+                Surface::fill(chrome.well.0)
+                    .radius(chrome.well_radius)
+                    .wrap(well),
+            );
 
-            // The chrome labels as `imba::layout::text`, centered in the
-            // bottom row band (the design-system row rule); the texts
-            // ignore presses, so the backdrop's close-on-click still
-            // answers underneath them.
-            let panel_bottom = inset + (size.height - inset * 2.0).max(1.0);
+            panel.place(
+                1.0,
+                list_top - inset,
+                imba::layout::Layout::layout(
+                    self.list.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(list_width, list_height)),
+                )
+                .map(PeekerCommand::Rows),
+            );
+
+            // The footer band: the hint labels centered in the row
+            // (the design-system row rule); the texts ignore presses,
+            // so the catcher's close-on-click answers underneath.
             let hint_metrics = hint_font.metrics().1;
             let hint_height = (-hint_metrics.ascent + hint_metrics.descent)
                 .ceil()
                 .max(1.0);
-            container.place_boxed(
-                inset + chrome.row_text_x,
-                panel_bottom - chrome.row_height
-                    + ((chrome.row_height - hint_height) * 0.5).max(0.0),
+            let band_size = Size::new(panel_size.width, row_height);
+            let mut band = imba::container::container(arena, band_size);
+            band.place_boxed(
+                chrome.row_text_x,
+                ((row_height - hint_height) * 0.5).max(0.0),
                 imba::layout::text(
                     ui,
                     format!(
@@ -834,6 +841,28 @@ impl View for Peeker {
                 )
                 .layout(arena, Constraints::tight(size).loosen()),
             );
+            if self.floored {
+                panel.place(
+                    0.0,
+                    panel_size.height - row_height,
+                    Hairline::new(chrome.rule.0).top().wrap(band),
+                );
+            } else {
+                panel.place(0.0, panel_size.height - row_height, band);
+            }
+
+            if self.floored {
+                container.place(
+                    inset,
+                    inset,
+                    floor.wrap(Hairline::around(chrome.rule.0).wrap(panel)),
+                );
+            } else {
+                // The GLASS face: the host's island paints the floor;
+                // only the hairline between the list and the preview
+                // remains.
+                container.place(inset, inset, Hairline::new(chrome.rule.0).right().wrap(panel));
+            }
             if !has_preview {
                 let row_ascent = -row_font.metrics().1.ascent;
                 container.place_boxed(
@@ -875,23 +904,12 @@ impl View for Peeker {
 
                 let shield = leaf::<PeekerCommand>(preview_width, preview_height).event(
                     |_arena, event, _size| match event {
-                        Event::MouseDown { .. } => EventResult::Handled,
+                        Event::MouseDown { .. } => EventResult::handled(),
                         _ => EventResult::Ignored,
                     },
                 );
                 container.place(preview_x, list_top, shield);
             }
-
-            container.place(
-                list_x,
-                list_top,
-                imba::layout::Layout::layout(
-                    self.list.display(arena, store, ui),
-                    arena,
-                    Constraints::tight(Size::new(list_width, list_height)),
-                )
-                .map(PeekerCommand::Rows),
-            );
 
             // Movement and Enter live in the controller's overlay.
             let empty = match_count == 0;
@@ -899,10 +917,10 @@ impl View for Peeker {
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
                         key: Key::Enter, ..
-                    } if empty => EventResult::Command(PeekerCommand::Close),
+                    } if empty => EventResult::command(PeekerCommand::Close),
                     Event::KeyDown {
                         key: Key::Escape, ..
-                    } => EventResult::Command(PeekerCommand::Close),
+                    } => EventResult::command(PeekerCommand::Close),
                     _ => EventResult::Ignored,
                 },
             );

@@ -69,11 +69,11 @@ impl Widget<'_, Command> for HitBox {
                 point,
                 button: MouseButton::Left,
                 ..
-            } => EventResult::Command(Command::Hit(self.name, *point)),
+            } => EventResult::command(Command::Hit(self.name, *point)),
             Event::HitTest { point, miss, .. } => {
                 use skia_safe::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
-                EventResult::Command(Command::Probe(self.name, inside))
+                EventResult::command(Command::Probe(self.name, inside))
             }
             _ => EventResult::Ignored,
         }
@@ -87,7 +87,7 @@ fn container_routes_mouse_to_topmost_child_in_local_coordinates() {
     widget.place(0.0, 0.0, crate::eager(HitBox::new("bottom", 80.0, 80.0)));
     widget.place(10.0, 12.0, crate::eager(HitBox::new("top", 40.0, 40.0)));
     let widget = widget
-        .event(|_, _, _| EventResult::Command(Command::Fallback))
+        .event(|_, _, _| EventResult::command(Command::Fallback))
         .realize(&arena, root_viewport());
 
     let event = Event::MouseDown {
@@ -112,7 +112,7 @@ fn container_falls_back_when_no_child_handles_event() {
     let mut widget = container(&arena, Size::new(100.0, 100.0));
     widget.place(10.0, 10.0, crate::eager(HitBox::new("child", 20.0, 20.0)));
     let widget = widget
-        .event(|_, _, _| EventResult::Command(Command::Fallback))
+        .event(|_, _, _| EventResult::command(Command::Fallback))
         .realize(&arena, root_viewport());
 
     let event = Event::MouseDown {
@@ -187,14 +187,9 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
 }
 
 fn result_commands(result: EventResult<Command>) -> Vec<Command> {
-    match result {
-        EventResult::Commands(commands) => commands,
-        EventResult::Command(command) => vec![command],
-        EventResult::Ignored => panic!("expected commands, got Ignored"),
-        EventResult::Handled => panic!("expected commands, got Handled"),
-        EventResult::Reveal(rect) => panic!("expected commands, got Reveal({rect:?})"),
-        EventResult::Pointer { commands, .. } => commands,
-    }
+    let commands = result.into_commands();
+    assert!(!commands.is_empty(), "expected commands");
+    commands
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -257,7 +252,7 @@ impl Widget<'_, ContentCommand> for FixedWidget {
                 point,
                 button: MouseButton::Left,
                 ..
-            } => EventResult::Command(ContentCommand::Click(*point)),
+            } => EventResult::command(ContentCommand::Click(*point)),
             _ => EventResult::Ignored,
         }
     }
@@ -287,8 +282,8 @@ fn scroll_view_clamps_wheel_commands_to_content_bounds() {
         gesture: &gesture,
     };
 
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)) {
-        EventResult::Command(ScrollCommand::SetScrollY(scroll_y)) => {
+    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)).into_command() {
+        Some(ScrollCommand::SetScrollY(scroll_y)) => {
             assert_eq!(scroll_y, 380.0);
         }
         _ => panic!("scroll should produce a clamped SetScrollY command"),
@@ -367,13 +362,13 @@ impl Widget<'_, f32> for PanWidget {
                 ..
             } => {
                 if gesture.owned_by(self.surface) {
-                    return EventResult::Command(*delta_x);
+                    return EventResult::command(*delta_x);
                 }
                 if gesture.owned_by_other(self.surface) || delta_x.abs() <= delta_y.abs() {
                     return EventResult::Ignored;
                 }
                 let _ = gesture.claims(self.surface);
-                EventResult::Command(*delta_x)
+                EventResult::command(*delta_x)
             }
             _ => EventResult::Ignored,
         }
@@ -410,20 +405,20 @@ fn an_exhausted_owner_eats_the_gesture() {
         surface: crate::event::ScrollSurfaceId::mint(),
     });
     let gesture = crate::event::ScrollGesture::default();
-    match scrolled(&view, &gesture, 0.0, 1_000.0) {
-        EventResult::Command(ScrollCommand::SetScrollY(y)) => assert_eq!(y, 380.0),
+    match scrolled(&view, &gesture, 0.0, 1_000.0).into_command() {
+        Some(ScrollCommand::SetScrollY(y)) => assert_eq!(y, 380.0),
         _ => panic!("the view claims and scrolls"),
     }
     view.set_scroll_y(380.0);
 
-    match scrolled(&view, &gesture, 0.0, 100.0) {
-        EventResult::Handled => {}
+    match scrolled(&view, &gesture, 0.0, 100.0).into_handled() {
+        Some(handled_) if handled_.commands.is_empty() => {}
         _ => panic!("an exhausted owner eats, never hands off"),
     }
 
     let fresh = crate::event::ScrollGesture::default();
-    match scrolled(&view, &fresh, 0.0, 100.0) {
-        EventResult::Handled => {}
+    match scrolled(&view, &fresh, 0.0, 100.0).into_handled() {
+        Some(handled_) if handled_.commands.is_empty() => {}
         _ => panic!("re-captured and eaten"),
     }
 }
@@ -434,19 +429,19 @@ fn a_claiming_content_owns_the_whole_gesture() {
         surface: crate::event::ScrollSurfaceId::mint(),
     });
     let gesture = crate::event::ScrollGesture::default();
-    match scrolled(&view, &gesture, 24.0, 4.0) {
-        EventResult::Command(ScrollCommand::Content(delta)) => assert_eq!(delta, 24.0),
+    match scrolled(&view, &gesture, 24.0, 4.0).into_command() {
+        Some(ScrollCommand::Content(delta)) => assert_eq!(delta, 24.0),
         _ => panic!("the x-dominant start belongs to the pan content"),
     }
 
-    match scrolled(&view, &gesture, 2.0, 60.0) {
-        EventResult::Command(ScrollCommand::Content(_)) => {}
+    match scrolled(&view, &gesture, 2.0, 60.0).into_command() {
+        Some(ScrollCommand::Content(_)) => {}
         _ => panic!("the owner keeps the gesture"),
     }
 
     let fresh = crate::event::ScrollGesture::default();
-    match scrolled(&view, &fresh, 0.0, 40.0) {
-        EventResult::Command(ScrollCommand::SetScrollY(y)) => assert_eq!(y, 40.0),
+    match scrolled(&view, &fresh, 0.0, 40.0).into_command() {
+        Some(ScrollCommand::SetScrollY(y)) => assert_eq!(y, 40.0),
         _ => panic!("a declined gesture is the view's"),
     }
 }
@@ -525,8 +520,8 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
         count: 1,
     };
 
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)) {
-        EventResult::Command(ScrollCommand::Content(ContentCommand::Click(point))) => {
+    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)).into_command() {
+        Some(ScrollCommand::Content(ContentCommand::Click(point))) => {
             assert_eq!(point, Point::new(20.0, 85.0));
         }
         _ => panic!("mouse down should be delivered to content"),
@@ -619,7 +614,7 @@ impl Widget<'_, ()> for PaintTrace<'_> {
         match event {
             Event::Paint { .. } => {
                 self.log.borrow_mut().push("inner");
-                EventResult::Handled
+                EventResult::handled()
             }
             _ => EventResult::Ignored,
         }
@@ -642,7 +637,7 @@ impl Widget<'_, Command> for ViewportTrace {
         _viewport: Rect,
     ) -> EventResult<Command> {
         match event {
-            Event::MouseDown { .. } => EventResult::Command(Command::Viewport {
+            Event::MouseDown { .. } => EventResult::command(Command::Viewport {
                 top: self.viewport.top,
                 bottom: self.viewport.bottom,
             }),
@@ -652,14 +647,9 @@ impl Widget<'_, Command> for ViewportTrace {
 }
 
 fn result_command(result: EventResult<Command>) -> Command {
-    match result {
-        EventResult::Command(command) => command,
-        EventResult::Handled => panic!("expected command, got handled"),
-        EventResult::Ignored => panic!("expected command, got ignored"),
-        EventResult::Commands(_) => panic!("expected one command, got a batch"),
-        EventResult::Reveal(_) => panic!("expected command, got a reveal"),
-        EventResult::Pointer { .. } => panic!("expected command, got a pointer answer"),
-    }
+    let mut commands = result.into_commands();
+    assert_eq!(commands.len(), 1, "expected exactly one command");
+    commands.remove(0)
 }
 
 fn assert_event_point(event: Event<'_>, expected: Point) {
@@ -718,7 +708,7 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
         {
             crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
                 leaf(10.0, 10.0).event(|_, event, _| match event {
-                    Event::MouseDown { .. } => EventResult::Command(CounterCommand::Add(2)),
+                    Event::MouseDown { .. } => EventResult::command(CounterCommand::Add(2)),
                     _ => EventResult::Ignored,
                 })
             })
@@ -746,8 +736,8 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, Rect::from_wh(10.0, 10.0)) {
-            EventResult::Command(command) => command,
+        match widget.handle_event(&arena, &event, Rect::from_wh(10.0, 10.0)).into_command() {
+            Some(command) => command,
             _ => panic!("expected a command"),
         }
     };
@@ -783,8 +773,8 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)) {
-        EventResult::Command(SplitCommand::Focus(Pane::First, Some(command))) => match *command {
+    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)).into_command() {
+        Some(SplitCommand::Focus(Pane::First, Some(command))) => match *command {
             SplitCommand::First(ContentCommand::Click(point)) => {
                 assert_eq!(point, Point::new(30.0, 40.0));
             }
@@ -799,8 +789,8 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)) {
-        EventResult::Command(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
+    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)).into_command() {
+        Some(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
             SplitCommand::Second(ContentCommand::Click(point)) => {
                 assert_eq!(
                     point,
@@ -842,8 +832,8 @@ fn split_view_divides_the_main_axis_by_ratio() {
         count: 1,
     };
     assert!(matches!(
-        widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)),
-        EventResult::Command(SplitCommand::Focus(Pane::First, Some(_)))
+        widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)).into_command(),
+        Some(SplitCommand::Focus(Pane::First, Some(_)))
     ));
 
     let event = Event::MouseDown {
@@ -852,8 +842,8 @@ fn split_view_divides_the_main_axis_by_ratio() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)) {
-        EventResult::Command(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
+    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)).into_command() {
+        Some(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
             SplitCommand::Second(ContentCommand::Click(point)) => {
                 assert_eq!(point, Point::new(10.0, 1.0));
             }
@@ -916,8 +906,8 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
             gesture: &gesture,
         };
         assert!(matches!(
-            widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)),
-            EventResult::Command(SplitCommand::Second(ScrollCommand::SetScrollY(_)))
+            widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)).into_command(),
+            Some(SplitCommand::Second(ScrollCommand::SetScrollY(_)))
         ));
     }
 
@@ -936,8 +926,8 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)) {
-            EventResult::Command(command) => command,
+        match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)).into_command() {
+            Some(command) => command,
             _ => panic!("the click should produce a command"),
         }
     };
@@ -1040,8 +1030,8 @@ impl Widget<'_, RowCommand> for RowWidget {
                 point,
                 button: MouseButton::Left,
                 ..
-            } => EventResult::Command(RowCommand::Click(*point)),
-            Event::TextInput { .. } => EventResult::Command(RowCommand::Text("typed")),
+            } => EventResult::command(RowCommand::Click(*point)),
+            Event::TextInput { .. } => EventResult::command(RowCommand::Text("typed")),
             _ => EventResult::Ignored,
         }
     }
@@ -1097,8 +1087,8 @@ fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, root_viewport()) {
-            EventResult::Command(command) => command,
+        match widget.handle_event(&arena, &event, root_viewport()).into_command() {
+            Some(command) => command,
             _ => panic!("the click should produce a command"),
         }
     };
@@ -1153,8 +1143,8 @@ fn list_routes_position_less_events_to_the_focused_row() {
     let result = widget.handle_event(&arena, &event, root_viewport());
     assert!(
         matches!(
-            result,
-            EventResult::Command(ListCommand::Child(2, RowCommand::Text("typed")))
+            result.into_command(),
+            Some(ListCommand::Child(2, RowCommand::Text("typed")))
         ),
         "text goes to the focused row, wrapped with its index"
     );
@@ -1194,7 +1184,7 @@ impl Widget<'_, Command> for WidthReporter {
     ) -> EventResult<Command> {
         match event {
             Event::Paint { .. } if (self.granted - self.stored).abs() > 1.0 => {
-                EventResult::Command(Command::Hit(self.name, Point::new(self.granted, 0.0)))
+                EventResult::command(Command::Hit(self.name, Point::new(self.granted, 0.0)))
             }
             _ => EventResult::Ignored,
         }
@@ -1243,9 +1233,8 @@ fn paint_broadcasts_and_merges_every_mismatch() {
         },
         root_viewport(),
     );
-    let EventResult::Commands(commands) = result else {
-        panic!("both mismatches must be reported");
-    };
+    let commands = result.into_commands();
+    assert!(!commands.is_empty(), "both mismatches must be reported");
     assert_eq!(commands.len(), 2, "the settled child stays silent");
 }
 
@@ -1269,18 +1258,16 @@ fn list_paint_reconciles_stale_row_heights() {
         )
         .realize(&arena, root_viewport());
         let canvas = surface.canvas();
-        match widget.handle_event(
-            &arena,
-            &Event::Paint {
-                canvas,
-                focused: true,
-            },
-            root_viewport(),
-        ) {
-            EventResult::Commands(commands) => commands,
-            EventResult::Command(command) => vec![command],
-            _ => panic!("the stale row must be reported"),
-        }
+        widget
+            .handle_event(
+                &arena,
+                &Event::Paint {
+                    canvas,
+                    focused: true,
+                },
+                root_viewport(),
+            )
+            .into_commands()
     };
     assert_eq!(commands.len(), 1, "only the stale row reports");
     for command in commands {
@@ -1295,17 +1282,20 @@ fn list_paint_reconciles_stale_row_heights() {
     )
     .realize(&arena, root_viewport());
     let canvas = surface.canvas();
-    assert!(matches!(
-        widget.handle_event(
+    let quiet = widget
+        .handle_event(
             &arena,
             &Event::Paint {
                 canvas,
-                focused: true
+                focused: true,
             },
-            root_viewport()
-        ),
-        EventResult::Ignored | EventResult::Handled
-    ));
+            root_viewport(),
+        )
+        .into_handled()
+        .is_none_or(|handled| {
+            handled.commands.is_empty() && handled.reveal.is_none() && handled.pointer.is_none()
+        });
+    assert!(quiet);
 }
 
 #[test]
@@ -1349,8 +1339,8 @@ fn list_scroll_benchmark() {
                 delta_y: delta,
                 gesture: &gesture,
             };
-            match widget.handle_event(&arena, &event, viewport) {
-                EventResult::Command(command) => Some(command),
+            match widget.handle_event(&arena, &event, viewport).into_command() {
+                Some(command) => Some(command),
                 _ => None,
             }
         };
@@ -1827,7 +1817,7 @@ mod list_sticky {
             },
             band,
         );
-        let EventResult::Command(ListCommand::Focus(4, Some(inner))) = result else {
+        let Some(ListCommand::Focus(4, Some(inner))) = result.into_command() else {
             panic!("a planted press should focus the planted row, like the real one");
         };
         let ListCommand::Child(4, RowCommand::Click(point)) = *inner else {
@@ -1932,7 +1922,7 @@ mod animated_splice {
             )
         };
 
-        if let EventResult::Command(command) = result {
+        if let Some(command) = result.into_command() {
             perform_into(&mut list, &mut store, &ui, command);
         }
         assert!(
@@ -1971,31 +1961,34 @@ mod reveal {
     use skia_safe::Rect;
 
     #[test]
-    fn merge_lets_commands_dominate_a_reveal() {
+    fn merge_carries_commands_and_reveal_together() {
+        // The NORMALIZED law: a sibling's command must not eat a
+        // reveal (it did — a canvas revealing its row lost the ask
+        // to its own animation tick, every tick).
         let reveal: EventResult<u32> =
-            EventResult::Reveal(Reveal::visible(Rect::from_xywh(0.0, 0.0, 1.0, 1.0)));
-        match reveal.merge(EventResult::Command(7)) {
-            EventResult::Commands(commands) => assert_eq!(commands, vec![7]),
-            _ => panic!("commands win the merge"),
-        }
+            EventResult::reveal(Reveal::visible(Rect::from_xywh(0.0, 0.0, 1.0, 1.0)));
+        let merged = reveal.merge(EventResult::command(7)).into_handled().unwrap();
+        assert_eq!(merged.commands, vec![7]);
+        assert!(merged.reveal.is_some(), "the reveal rides beside the commands");
+
         let reveal: EventResult<u32> =
-            EventResult::Reveal(Reveal::visible(Rect::from_xywh(1.0, 2.0, 3.0, 4.0)));
-        match reveal.merge(EventResult::Ignored) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.rect, Rect::from_xywh(1.0, 2.0, 3.0, 4.0))
-            }
-            _ => panic!("a lone reveal survives the merge"),
-        }
+            EventResult::reveal(Reveal::visible(Rect::from_xywh(1.0, 2.0, 3.0, 4.0)));
+        let merged = reveal.merge(EventResult::Ignored).into_handled().unwrap();
+        assert_eq!(
+            merged.reveal.expect("a lone reveal survives the merge").rect,
+            Rect::from_xywh(1.0, 2.0, 3.0, 4.0)
+        );
+
         let first: EventResult<u32> =
-            EventResult::Reveal(Reveal::visible(Rect::from_xywh(1.0, 0.0, 1.0, 1.0)));
+            EventResult::reveal(Reveal::visible(Rect::from_xywh(1.0, 0.0, 1.0, 1.0)));
         let second: EventResult<u32> =
-            EventResult::Reveal(Reveal::visible(Rect::from_xywh(2.0, 0.0, 1.0, 1.0)));
-        match first.merge(second) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.rect.left, 1.0, "the first reveal wins")
-            }
-            _ => panic!("one reveal survives"),
-        }
+            EventResult::reveal(Reveal::visible(Rect::from_xywh(2.0, 0.0, 1.0, 1.0)));
+        let merged = first.merge(second).into_handled().unwrap();
+        assert_eq!(
+            merged.reveal.expect("one reveal survives").rect.left,
+            1.0,
+            "the first reveal wins"
+        );
     }
 
     #[test]
@@ -2107,8 +2100,8 @@ fn the_knob_drags_the_scroll_and_releases_back_to_the_content() {
             count: 1,
         },
     );
-    let (scroll_y, grab) = match press {
-        EventResult::Command(ScrollCommand::BeginKnobDrag { scroll_y, grab }) => (scroll_y, grab),
+    let (scroll_y, grab) = match press.into_command() {
+        Some(ScrollCommand::BeginKnobDrag { scroll_y, grab }) => (scroll_y, grab),
         _ => panic!("the knob press arms the drag"),
     };
     assert_eq!((scroll_y, grab), (0.0, 8.0));
@@ -2122,8 +2115,8 @@ fn the_knob_drags_the_scroll_and_releases_back_to_the_content() {
             mods: Default::default(),
         },
     );
-    match drag {
-        EventResult::Command(ScrollCommand::SetScrollY(next)) => {
+    match drag.into_command() {
+        Some(ScrollCommand::SetScrollY(next)) => {
             assert!((next - 190.0).abs() < 0.01, "half the travel: {next}");
             knob_perform(&mut view, ScrollCommand::SetScrollY(next));
         }
@@ -2138,8 +2131,8 @@ fn the_knob_drags_the_scroll_and_releases_back_to_the_content() {
             mods: Default::default(),
         },
     );
-    match drag {
-        EventResult::Command(ScrollCommand::SetScrollY(next)) => assert_eq!(next, 380.0),
+    match drag.into_command() {
+        Some(ScrollCommand::SetScrollY(next)) => assert_eq!(next, 380.0),
         _ => panic!("the clamped drag still lands"),
     }
 
@@ -2150,8 +2143,8 @@ fn the_knob_drags_the_scroll_and_releases_back_to_the_content() {
             point: Point::new(96.0, 400.0),
         },
     );
-    match up {
-        EventResult::Command(ScrollCommand::EndKnobDrag) => {
+    match up.into_command() {
+        Some(ScrollCommand::EndKnobDrag) => {
             knob_perform(&mut view, ScrollCommand::EndKnobDrag)
         }
         _ => panic!("the release ends the drag"),
@@ -2185,8 +2178,8 @@ fn a_track_press_jumps_the_knob_under_the_pointer() {
             count: 1,
         },
     );
-    match press {
-        EventResult::Command(ScrollCommand::BeginKnobDrag { scroll_y, grab }) => {
+    match press.into_command() {
+        Some(ScrollCommand::BeginKnobDrag { scroll_y, grab }) => {
             assert_eq!(grab, 14.0);
             let expected = (66.0 - 12.0) / 68.0 * 380.0;
             assert!(
@@ -2209,8 +2202,8 @@ fn a_track_press_jumps_the_knob_under_the_pointer() {
     );
     assert!(
         matches!(
-            press,
-            EventResult::Command(ScrollCommand::Content(ContentCommand::Click(_)))
+            press.into_command(),
+            Some(ScrollCommand::Content(ContentCommand::Click(_)))
         ),
         "content presses still route to the content"
     );
@@ -2276,30 +2269,29 @@ mod viewport_preservation {
         // Three 30px rows land ABOVE the viewport.
         list.splice(0..0, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
 
-        match pulse_list(&list, &store, &ui, &Event::Settle, viewport) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.placement, Placement::TopLeftAt);
-                assert_eq!(
-                    reveal.rect.top, 135.0,
-                    "the anchored row's dy is preserved to the pixel"
-                );
-            }
-            _ => panic!("the settle pulse re-aims the moved anchor"),
-        }
+        let reveal = pulse_list(&list, &store, &ui, &Event::Settle, viewport)
+            .into_handled()
+            .and_then(|handled| handled.reveal)
+            .expect("the settle pulse re-aims the moved anchor");
+        assert_eq!(reveal.placement, Placement::TopLeftAt);
+        assert_eq!(
+            reveal.rect.top, 135.0,
+            "the anchored row's dy is preserved to the pixel"
+        );
 
         // The correction lands as a scroll — which supersedes it.
         observe_top(&mut list, &mut store, 135.0);
+        let result = pulse_list(
+            &list,
+            &store,
+            &ui,
+            &Event::Settle,
+            Rect::from_xywh(0.0, 135.0, 100.0, 60.0),
+        );
         assert!(
-            matches!(
-                pulse_list(
-                    &list,
-                    &store,
-                    &ui,
-                    &Event::Settle,
-                    Rect::from_xywh(0.0, 135.0, 100.0, 60.0)
-                ),
-                EventResult::Handled
-            ),
+            result
+                .into_handled()
+                .is_some_and(|handled| handled.reveal.is_none()),
             "a landed correction stays landed"
         );
     }
@@ -2315,10 +2307,9 @@ mod viewport_preservation {
         list.splice(10..10, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
 
         assert!(
-            matches!(
-                pulse_list(&list, &store, &ui, &Event::Settle, viewport),
-                EventResult::Handled
-            ),
+            pulse_list(&list, &store, &ui, &Event::Settle, viewport)
+                .into_handled()
+                .is_some_and(|handled| handled.reveal.is_none()),
             "content below the viewport does not move the anchor"
         );
     }
@@ -2349,11 +2340,8 @@ mod viewport_preservation {
         // retained copy before any door can read it.
         let mut batch: crate::effect::Batch<ScrollCommand<ListCommand<RowCommand>>> =
             crate::effect::Batch::new();
-        let commands = match pulse(&scroll, &store) {
-            EventResult::Command(command) => vec![command],
-            EventResult::Commands(commands) => commands,
-            _ => panic!("round one reports the top"),
-        };
+        let commands = pulse(&scroll, &store).into_commands();
+        assert!(!commands.is_empty(), "round one reports the top");
         assert!(commands.iter().any(|command| matches!(
             command,
             ScrollCommand::Content(ListCommand::ViewportTop(top, _)) if *top == 45.0
@@ -2367,8 +2355,8 @@ mod viewport_preservation {
             .splice(0..0, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
 
         // Round two: the door's correction, exact.
-        match pulse(&scroll, &store) {
-            EventResult::Command(ScrollCommand::JumpTo(target)) => {
+        match pulse(&scroll, &store).into_command() {
+            Some(ScrollCommand::JumpTo(target)) => {
                 assert_eq!(target, 135.0, "the corner lands back on the anchored row");
             }
             _ => panic!("the settle pulse becomes an exact jump"),
@@ -2390,15 +2378,11 @@ mod row_reveal {
         ListView::from_slice_at(100.0, slice)
     }
 
-    /// `merge` folds lone commands into `Commands` — accept both.
     fn revealed(result: EventResult<ListCommand<RowCommand>>) -> bool {
-        match result {
-            EventResult::Command(ListCommand::Revealed) => true,
-            EventResult::Commands(commands) => commands
-                .iter()
-                .any(|command| matches!(command, ListCommand::Revealed)),
-            _ => false,
-        }
+        result
+            .into_commands()
+            .iter()
+            .any(|command| matches!(command, ListCommand::Revealed))
     }
 
     fn clock(
@@ -2431,13 +2415,12 @@ mod row_reveal {
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::TopLeftAt);
 
-        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.placement, Placement::TopLeftAt);
-                assert_eq!(reveal.rect.top, 120.0, "key 7 starts at 6 rows of 20px");
-            }
-            _ => panic!("an armed reveal emits on the clock"),
-        }
+        let reveal = clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0))
+            .into_handled()
+            .and_then(|handled| handled.reveal)
+            .expect("an armed reveal emits on the clock");
+        assert_eq!(reveal.placement, Placement::TopLeftAt);
+        assert_eq!(reveal.rect.top, 120.0, "key 7 starts at 6 rows of 20px");
 
         // The scroll landed the jump: the next clock answers Revealed,
         // and performing it disarms the slot.
@@ -2471,10 +2454,9 @@ mod row_reveal {
         list.reveal_row(10, Placement::TopLeftAt);
 
         assert!(
-            matches!(
-                clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)),
-                EventResult::Reveal(_)
-            ),
+            clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0))
+                .into_handled()
+                .is_some_and(|handled| handled.reveal.is_some()),
             "the tail row still asks for its jump"
         );
         // The scroll could only reach the clamp — that IS placed.
@@ -2500,12 +2482,11 @@ mod row_reveal {
         // reveal resolves against the LIVE rope, not a stale rect.
         list.splice(0..0, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
 
-        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.rect.top, 210.0, "90px of landings shifted the row");
-            }
-            _ => panic!("the reveal re-aims through the splice"),
-        }
+        let reveal = clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0))
+            .into_handled()
+            .and_then(|handled| handled.reveal)
+            .expect("the reveal re-aims through the splice");
+        assert_eq!(reveal.rect.top, 210.0, "90px of landings shifted the row");
     }
 
     #[test]
@@ -2534,12 +2515,11 @@ mod row_reveal {
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::EnsureVisible);
 
-        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
-            EventResult::Reveal(reveal) => {
-                assert_eq!(reveal.placement, Placement::EnsureVisible);
-            }
-            _ => panic!("an off-screen row asks to be scrolled into view"),
-        }
+        let reveal = clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0))
+            .into_handled()
+            .and_then(|handled| handled.reveal)
+            .expect("an off-screen row asks to be scrolled into view");
+        assert_eq!(reveal.placement, Placement::EnsureVisible);
         // Fully visible already → satisfied without moving.
         assert!(
             revealed(clock(
@@ -2558,31 +2538,21 @@ mod row_reveal {
 #[test]
 fn a_pointer_answer_merges_shape_and_commands() {
     use crate::event::PointerShape;
-    let hand: EventResult<u32> = EventResult::Pointer {
-        shape: PointerShape::Pointer,
-        commands: vec![1],
-    };
-    let arrow: EventResult<u32> = EventResult::Pointer {
-        shape: PointerShape::Default,
-        commands: vec![2],
-    };
-    match arrow.merge(hand).merge(EventResult::Command(3)) {
-        EventResult::Pointer { shape, commands } => {
-            assert_eq!(shape, PointerShape::Pointer);
-            assert_eq!(commands, vec![2, 1, 3]);
-        }
-        _ => panic!("the pointer answer survives the merge"),
-    }
-    let plain: EventResult<u32> = EventResult::Commands(vec![4]);
-    let answered = plain.merge(EventResult::Pointer {
-        shape: PointerShape::Default,
-        commands: Vec::new(),
-    });
-    match answered {
-        EventResult::Pointer { shape, commands } => {
-            assert_eq!(shape, PointerShape::Default);
-            assert_eq!(commands, vec![4]);
-        }
-        _ => panic!("a hit test with no hand still answers the arrow"),
-    }
+    let hand: EventResult<u32> = EventResult::pointer(PointerShape::Pointer, vec![1]);
+    let arrow: EventResult<u32> = EventResult::pointer(PointerShape::Default, vec![2]);
+    let merged = arrow
+        .merge(hand)
+        .merge(EventResult::command(3))
+        .into_handled()
+        .expect("the pointer answer survives the merge");
+    assert_eq!(merged.pointer, Some(PointerShape::Pointer));
+    assert_eq!(merged.commands, vec![2, 1, 3]);
+
+    let plain: EventResult<u32> = EventResult::commands(vec![4]);
+    let answered = plain
+        .merge(EventResult::pointer(PointerShape::Default, Vec::new()))
+        .into_handled()
+        .expect("a hit test with no hand still answers the arrow");
+    assert_eq!(answered.pointer, Some(PointerShape::Default));
+    assert_eq!(answered.commands, vec![4]);
 }

@@ -176,7 +176,7 @@ where
         };
         let own = FocusData {
             on_key: Some(Box::new(|key, _mods| match key {
-                Key::Escape => EventResult::Command(WithOverlayCommand::Dismiss),
+                Key::Escape => EventResult::command(WithOverlayCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -225,7 +225,7 @@ where
                         let veil = leaf::<Self::Command>(host.width, host.height).event(
                             |_arena, event, _size| match event {
                                 Event::MouseDown { .. } => {
-                                    EventResult::Command(WithOverlayCommand::Dismiss)
+                                    EventResult::command(WithOverlayCommand::Dismiss)
                                 }
                                 _ => EventResult::Ignored,
                             },

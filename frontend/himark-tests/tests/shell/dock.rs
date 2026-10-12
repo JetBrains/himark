@@ -67,8 +67,8 @@ impl View for DockStub {
     ) -> imba::focus::FocusData<'w, StubCommand> {
         imba::focus::FocusData {
             on_key: Some(Box::new(|key, _mods| match key {
-                Key::Escape => EventResult::Command(StubCommand::Close),
-                Key::Enter => EventResult::Command(StubCommand::Ask),
+                Key::Escape => EventResult::command(StubCommand::Close),
+                Key::Enter => EventResult::command(StubCommand::Ask),
                 _ => EventResult::Ignored,
             })),
             ..imba::focus::FocusData::default()
@@ -102,10 +102,10 @@ impl View for DockStub {
                     match event {
                         Event::KeyDown {
                             key: Key::Escape, ..
-                        } => EventResult::Command(StubCommand::Close),
+                        } => EventResult::command(StubCommand::Close),
                         Event::KeyDown {
                             key: Key::Enter, ..
-                        } => EventResult::Command(StubCommand::Ask),
+                        } => EventResult::command(StubCommand::Ask),
                         _ => EventResult::Ignored,
                     }
                 })

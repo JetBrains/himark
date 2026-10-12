@@ -269,7 +269,7 @@ impl<Command> Child<'_, Command> {
         match event {
             Event::Paint { .. } => {
                 let Some(child_viewport) = viewport_for_child(viewport, self.rect) else {
-                    return EventResult::Handled;
+                    return EventResult::handled();
                 };
                 let canvas = match event {
                     Event::Paint { canvas, .. } => *canvas,

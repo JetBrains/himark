@@ -161,9 +161,9 @@ impl View for TreeLabel {
             let row = row.on_event(
                 move |_arena: &Arena, event: &Event<'_>, _size| match event {
                     Event::MouseDown { button, mods, .. } if secondary_press(*button, mods) => {
-                        EventResult::Command(TreeLabelCommand::Context)
+                        EventResult::command(TreeLabelCommand::Context)
                     }
-                    Event::MouseDown { .. } => EventResult::Handled,
+                    Event::MouseDown { .. } => EventResult::handled(),
                     _ => EventResult::Ignored,
                 },
             );
@@ -501,14 +501,18 @@ where
                 // a `Handled` body press still toggles.
                 if self.action_first {
                     let local = event.translated(-self.offset, 0.0);
-                    if let EventResult::Command(command) =
+                    if let imba::event::EventResult::Handled(mut handled) =
                         self.inner.handle_event(arena, &local, child_viewport)
                     {
-                        return EventResult::Command(TreeItemCommand::Inner(command))
+                        if !handled.commands.is_empty() {
+                            return EventResult::command(TreeItemCommand::Inner(
+                                handled.commands.remove(0),
+                            ))
                             .reveal_translated(self.offset, 0.0);
+                        }
                     }
                 }
-                EventResult::Command(TreeItemCommand::Toggle)
+                EventResult::command(TreeItemCommand::Toggle)
             }
             Event::MouseDown { .. }
             | Event::MouseDrag { .. }

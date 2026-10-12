@@ -605,7 +605,7 @@ impl View for CommentView {
                     Event::MouseDown {
                         button: MouseButton::Left,
                         ..
-                    } => EventResult::Command(CommentCommand::Remove),
+                    } => EventResult::command(CommentCommand::Remove),
                     _ => EventResult::Ignored,
                 });
             container.place(size.width - close - 6.0, 6.0, cross);
@@ -625,7 +625,7 @@ impl View for CommentView {
                         Event::MouseDown {
                             button: MouseButton::Left,
                             ..
-                        } => EventResult::Command(CommentCommand::Resolve),
+                        } => EventResult::command(CommentCommand::Resolve),
                         _ => EventResult::Ignored,
                     });
                 container.place(size.width - close * 2.0 - 12.0, 6.0, check);
@@ -637,7 +637,7 @@ impl View for CommentView {
                         Event::MouseDown {
                             button: MouseButton::Left,
                             ..
-                        } => EventResult::Command(CommentCommand::Send),
+                        } => EventResult::command(CommentCommand::Send),
                         _ => EventResult::Ignored,
                     });
                 container.place(size.width - close * 3.0 - 18.0, 6.0, plane);
@@ -683,7 +683,7 @@ impl<'a, Inner: Widget<'a, EditorCommand>> Widget<'a, CommentCommand> for ReadOn
         match self.0.handle_event(arena, event, viewport) {
             EventResult::Ignored => EventResult::Ignored,
 
-            _ => EventResult::Handled,
+            _ => EventResult::handled(),
         }
     }
 }
@@ -710,11 +710,14 @@ impl<'a, Inner: Widget<'a, CommentCommand>> Widget<'a, CommentCommand> for Rewra
         viewport: Rect,
     ) -> EventResult<CommentCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
-        if self.stale
-            && matches!(event, Event::Paint { .. })
-            && matches!(result, EventResult::Ignored | EventResult::Handled)
-        {
-            return EventResult::Command(CommentCommand::Rewrap(self.want));
+        let quiet = match &result {
+            EventResult::Ignored => true,
+            EventResult::Handled(handled) => {
+                handled.commands.is_empty() && handled.reveal.is_none() && handled.pointer.is_none()
+            }
+        };
+        if self.stale && matches!(event, Event::Paint { .. }) && quiet {
+            return EventResult::command(CommentCommand::Rewrap(self.want));
         }
         result
     }

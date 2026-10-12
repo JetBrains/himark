@@ -132,7 +132,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
                     crate::leaf::leaf::<EchoedPoint>(200.0, 30.0).event(|_arena, event, _size| {
                         match event {
                             Event::MouseDrag { point, .. } => {
-                                EventResult::Command(EchoedPoint(*point))
+                                EventResult::command(EchoedPoint(*point))
                             }
                             _ => EventResult::Ignored,
                         }
@@ -173,8 +173,8 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
         },
         viewport,
     );
-    match result {
-        EventResult::Command(ListCommand::Child(index, point)) => {
+    match result.into_command() {
+        Some(ListCommand::Child(index, point)) => {
             assert_eq!(index, 2, "the focused row answers");
             assert_eq!(
                 (point.0.x, point.0.y),

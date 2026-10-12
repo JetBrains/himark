@@ -13,9 +13,16 @@ final class HimarkEngine {
     /// parked reveal (an animation tick is engine-wide), so the
     /// drain routes to the owning view instead of guessing that
     /// the drainer is the owner. Rect in device pixels.
-    private var revealHandlers: [UInt64: (CGRect) -> Void] = [:]
+    /// HOW a reveal places: minimally into view, or the rect's
+    /// origin pinned to the viewport corner (a canvas row reveal).
+    enum RevealPlacement {
+        case visible
+        case topLeft
+    }
 
-    func onReveal(bridge: HimarkBridge, _ handler: @escaping (CGRect) -> Void) {
+    private var revealHandlers: [UInt64: (CGRect, RevealPlacement) -> Void] = [:]
+
+    func onReveal(bridge: HimarkBridge, _ handler: @escaping (CGRect, RevealPlacement) -> Void) {
         revealHandlers[bridge.raw] = handler
     }
 
@@ -24,15 +31,24 @@ final class HimarkEngine {
     }
 
     func drainReveal() {
-        var owner: UInt64 = 0
-        var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
-        guard himark_take_reveal(engine, &owner, &x, &y, &w, &h) else { return }
-        guard let handler = revealHandlers[owner] else {
-            print("[reveal] parked by bridge \(owner) — no handler seated")
-            return
+        // Parked reveals queue PER BRIDGE now — drain them all;
+        // one flooding caret-follow must not starve the rest.
+        while true {
+            var owner: UInt64 = 0
+            var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
+            var placement: UInt32 = 0
+            guard himark_take_reveal(engine, &owner, &x, &y, &w, &h, &placement) else { return }
+            if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+                NSLog("[reveal] drain: owner \(owner) placement \(placement) handler? \(revealHandlers[owner] != nil)")
+            }
+            guard let handler = revealHandlers[owner] else {
+                print("[reveal] parked by bridge \(owner) — no handler seated")
+                continue
+            }
+            handler(CGRect(x: CGFloat(x), y: CGFloat(y),
+                           width: CGFloat(w), height: CGFloat(h)),
+                    placement == 1 ? .topLeft : .visible)
         }
-        handler(CGRect(x: CGFloat(x), y: CGFloat(y),
-                       width: CGFloat(w), height: CGFloat(h)))
     }
 
     init() {
@@ -160,7 +176,11 @@ final class HimarkEngine {
         }
         guard place.raw != 0 else { return HimarkBridge(raw: 0) }
         defer { himark_place_release(engine, place) }
-        return himark_bridge_mint(engine, place)
+        let bridge = himark_bridge_mint(engine, place)
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+            NSLog("[reveal] mint: \(kind) -> bridge \(bridge.raw)")
+        }
+        return bridge
     }
 
     func unmount(bridge: HimarkBridge) { himark_bridge_unmount(engine, bridge) }
@@ -169,7 +189,11 @@ final class HimarkEngine {
     /// engine handed the place over, the host mints when its screen
     /// is up and releases when the screen pops.
     func mint(place: HimarkPlace) -> HimarkBridge {
-        himark_bridge_mint(engine, place)
+        let bridge = himark_bridge_mint(engine, place)
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+            NSLog("[reveal] mint(place) -> bridge \(bridge.raw)")
+        }
+        return bridge
     }
 
     func release(place: HimarkPlace) {

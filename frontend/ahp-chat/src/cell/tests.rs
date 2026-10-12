@@ -82,11 +82,8 @@ fn paint_cell(
         },
         viewport,
     );
-    let commands = match result {
-        EventResult::Command(command) => vec![command],
-        EventResult::Commands(commands) => commands,
-        _ => Vec::new(),
-    };
+    let commands = result
+    .into_commands();
     if let Ok(dir) = std::env::var("HIMARK_SHOT") {
         let image = surface.image_snapshot();
         let data = image
@@ -186,18 +183,15 @@ fn expanded_before_cards_are_born_full_size() {
             let height = imba::Thunk::size(&thunk).height;
             let viewport = Rect::from_wh(640.0, height);
             let widget = imba::Thunk::realize(thunk, &arena, viewport);
-            match imba::Widget::handle_event(
+            imba::Widget::handle_event(
                 &widget,
                 &arena,
                 &Event::AnimationClock {
                     now: AnimationClock::from_millis(tick as f64 * 16.0),
                 },
                 viewport,
-            ) {
-                EventResult::Command(command) => vec![command],
-                EventResult::Commands(commands) => commands,
-                _ => Vec::new(),
-            }
+            )
+            .into_commands()
         };
         let mut batch = imba::effect::Batch::new();
         for command in commands {

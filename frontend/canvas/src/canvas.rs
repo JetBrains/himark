@@ -1874,7 +1874,21 @@ impl Canvases {
         key: ResourceLocation,
     ) {
         if let Some(mut canvas) = Self::take(store, changes, id) {
-            canvas.reveal = Some(key);
+            match canvas.populated {
+                // ALREADY populated: arm the rows NOW. The listing
+                // often precedes the open (the changes tree shares
+                // it), so populate ran before this arm — and the
+                // sweep that would pick a parked key up only visits
+                // views a batch re-dressed; a fresh open's reveal
+                // sat waiting for the NEXT batch.
+                true => {
+                    canvas
+                        .rows
+                        .content_mut()
+                        .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
+                }
+                false => canvas.reveal = Some(key),
+            }
             Self::put(store, changes, id, canvas);
         }
     }
@@ -2670,7 +2684,7 @@ impl View for CanvasRow {
                 let own = imba::focus::FocusData {
                     on_key: Some(Box::new(|key, mods| match key {
                         imba::event::Key::Enter if mods.command => {
-                            EventResult::Command(RowCommand::Composer(ComposerCommand::Commit))
+                            EventResult::command(RowCommand::Composer(ComposerCommand::Commit))
                         }
                         _ => EventResult::Ignored,
                     })),
@@ -2888,7 +2902,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             Event::MouseDown {
                                 button: imba::event::MouseButton::Left,
                                 ..
-                            } => EventResult::Command(RowCommand::Composer(ComposerCommand::Focus)),
+                            } => EventResult::command(RowCommand::Composer(ComposerCommand::Focus)),
                             _ => EventResult::Ignored,
                         }
                     }),
@@ -3030,7 +3044,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             Event::MouseDown {
                                 button: imba::event::MouseButton::Left,
                                 ..
-                            } => EventResult::Command(RowCommand::Composer(ComposerCommand::Focus)),
+                            } => EventResult::command(RowCommand::Composer(ComposerCommand::Focus)),
                             _ => EventResult::Ignored,
                         },
                     ),
@@ -3321,7 +3335,7 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedPlacehol
     ) -> EventResult<RowCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) && !self.armed {
-            return result.merge(EventResult::Command(RowCommand::Arm(
+            return result.merge(EventResult::command(RowCommand::Arm(
                 self.inner.size().width,
             )));
         }
@@ -3361,7 +3375,7 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for RewrapOnPaint
     ) -> EventResult<RowCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if let (Event::Paint { .. }, Some(width)) = (event, self.rewrap) {
-            return result.merge(EventResult::Command(RowCommand::Rewrap(width)));
+            return result.merge(EventResult::command(RowCommand::Rewrap(width)));
         }
         result
     }
