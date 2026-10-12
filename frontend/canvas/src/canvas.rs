@@ -17,7 +17,6 @@ use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
-use imba::scroll::{ScrollCommand, ScrollView};
 use imba::thunk_ext::ThunkExt;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk, View, Widget};
 use skia_safe::{Paint, Rect, Size};
@@ -38,7 +37,11 @@ pub enum CanvasKey {
 }
 
 type CanvasRows = ListView<CanvasRow, CanvasKey>;
-type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
+/// BARE rows — the canvas owns no scroll (the descrollering law):
+/// the workbench pane wraps it in `hikit::modal::Scrolled`, the
+/// mounted road rides the host's scroller, and positioning asks
+/// travel as reveals either way.
+type RowsCommand = ListCommand<RowCommand>;
 
 #[derive(Clone)]
 pub enum CanvasCommand {
@@ -93,7 +96,7 @@ pub struct Canvas {
     /// The collection that owns this canvas's set.
     changes: imba::store::Id<Changes>,
     source: CanvasSource,
-    rows: ScrollView<CanvasRows>,
+    rows: CanvasRows,
     files: rpds::HashTrieMapSync<ResourceLocation, CanvasFile>,
 
     note: Option<String>,
@@ -194,7 +197,7 @@ impl Canvas {
         Self {
             changes,
             source,
-            rows: ScrollView::new(ListView::empty().with_sticky(sticky_style())),
+            rows: ListView::empty().with_sticky(sticky_style()),
             files: rpds::HashTrieMapSync::new_sync(),
             note: None,
             seen: None,
@@ -220,14 +223,14 @@ impl Canvas {
 
     #[doc(hidden)]
     pub fn probe_scroll_top(&self) -> f32 {
-        self.rows.scroll_y()
+        self.rows.probe_viewport_top()
     }
 
     /// (title, phase, current diff-row height), in list order;
     /// collapsed files report their parked row at height zero.
     #[doc(hidden)]
     pub fn probe_rows(&self) -> Vec<(String, RowPhase, f32)> {
-        let rows = self.rows.content();
+        let rows = (&self.rows);
         (0..rows.len())
             .filter_map(|index| {
                 let key = rows.key_at(index)?;
@@ -250,7 +253,7 @@ impl Canvas {
     }
 
     fn diff_rows(&self) -> Vec<(String, DiffRow)> {
-        let rows = self.rows.content();
+        let rows = (&self.rows);
         let mut out = Vec::new();
         for index in 0..rows.len() {
             let Some(CanvasKey::File(location)) = rows.key_at(index) else {
@@ -271,8 +274,8 @@ impl Canvas {
     }
 
     fn banner_row(&self) -> Option<BannerRow> {
-        let range = self.rows.content().row_range(&CanvasKey::Banner)?;
-        match self.rows.content().view_at(range.start)? {
+        let range = (&self.rows).row_range(&CanvasKey::Banner)?;
+        match (&self.rows).view_at(range.start)? {
             CanvasRow::Banner(banner) => Some(banner),
             _ => None,
         }
@@ -321,7 +324,7 @@ impl Canvas {
     /// orphaned Diff row a per-file probe would miss.
     #[doc(hidden)]
     pub fn probe_row_keys(&self) -> Vec<String> {
-        let rows = self.rows.content();
+        let rows = (&self.rows);
         (0..rows.len())
             .filter_map(|index| match rows.key_at(index)? {
                 CanvasKey::Banner => Some("Banner".to_owned()),
@@ -336,7 +339,6 @@ impl Canvas {
     #[doc(hidden)]
     pub fn probe_cover(&self, key: &ResourceLocation) -> Option<usize> {
         self.rows
-            .content()
             .row_range(&CanvasKey::File(key.clone()))
             .map(|range| range.len())
     }
@@ -346,9 +348,8 @@ impl Canvas {
     pub fn probe_pair(&self, key: &ResourceLocation) -> Option<documents::diffs::DiffViewId> {
         let row = self
             .rows
-            .content()
             .row_range(&CanvasKey::Diff(key.clone()))
-            .and_then(|range| self.rows.content().view_at(range.start))
+            .and_then(|range| (&self.rows).view_at(range.start))
             .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
         match row {
             CanvasRow::Diff(DiffRow {
@@ -512,14 +513,13 @@ impl Canvas {
             built_width: Some(next.built_width),
         });
         let theme = env::Themes::of(store);
-        let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone()))
+        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone()))
         else {
             return;
         };
         let start = header_range.start;
         let expanded = self
             .rows
-            .content()
             .row_range(&CanvasKey::Diff(key.clone()))
             .is_some();
         let header = CanvasRow::Header(HeaderRow {
@@ -532,14 +532,12 @@ impl Canvas {
         if expanded {
             let height = self
                 .rows
-                .content()
                 .row_range(&CanvasKey::Diff(key.clone()))
-                .and_then(|range| self.rows.content().height_at(range.start))
+                .and_then(|range| (&self.rows).height_at(range.start))
                 .unwrap_or(0.0);
             slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
             slice.cover(CanvasKey::File(key.clone()), 0..2);
             self.rows
-                .content_mut()
                 .splice_slice(start..start + 2, slice);
             // The successor is dressed: settle to its honest height.
             self.resize_key(key, store, ui, fx);
@@ -548,7 +546,6 @@ impl Canvas {
             slice.cover(CanvasKey::File(key.clone()), 0..1);
             self.stash.insert_mut(key.clone(), (diff, height));
             self.rows
-                .content_mut()
                 .splice_slice(start..start + 1, slice);
         }
         fx.settle();
@@ -590,7 +587,6 @@ impl Canvas {
         if self.populated {
             if let Some(key) = self.reveal.take() {
                 self.rows
-                    .content_mut()
                     .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
                 fx.settle();
             }
@@ -611,7 +607,7 @@ impl Canvas {
         ui: &UiCtx,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        let Some(CanvasKey::Diff(key)) = self.rows.content().key_at(index) else {
+        let Some(CanvasKey::Diff(key)) = (&self.rows).key_at(index) else {
             return;
         };
         // Re-resolve the index by key: an interleaved splice may have
@@ -630,14 +626,14 @@ impl Canvas {
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         let key = key.clone();
-        let Some(range) = self.rows.content().row_range(&CanvasKey::Diff(key)) else {
+        let Some(range) = (&self.rows).row_range(&CanvasKey::Diff(key)) else {
             return;
         };
         let index = range.start;
         let Some(CanvasRow::Diff(DiffRow {
             body: RowBody::Built { pane },
             ..
-        })) = self.rows.content().view_at(index)
+        })) = (&self.rows).view_at(index)
         else {
             return;
         };
@@ -673,8 +669,8 @@ impl Canvas {
             }
         };
         let want = body + env::Themes::of(store).ui().chat.gap;
-        if (want - self.rows.content().height_at(index).unwrap_or(0.0)).abs() > 0.5 {
-            let rows = ScrollCommand::Content(ListCommand::SetHeight(index, want));
+        if (want - (&self.rows).height_at(index).unwrap_or(0.0)).abs() > 0.5 {
+            let rows = ListCommand::SetHeight(index, want);
             fx.scope(CanvasCommand::Rows, |fx| {
                 self.rows.perform(store, ui, rows, fx)
             });
@@ -777,10 +773,9 @@ impl Canvas {
                         .insert_mut(file.new.clone(), RowPhase::Placeholder);
                     self.files.insert_mut(file.new.clone(), file);
                 }
-                self.rows.content_mut().splice_slice(0..0, slice);
+                (&mut self.rows).splice_slice(0..0, slice);
                 if let Some(key) = self.reveal.take() {
                     self.rows
-                        .content_mut()
                         .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
                 }
             }
@@ -818,7 +813,7 @@ impl Canvas {
 
         let theme = env::Themes::of(store);
         let band = header_band(&theme);
-        let mut anchor = match self.rows.content().row_range(&CanvasKey::Banner) {
+        let mut anchor = match (&self.rows).row_range(&CanvasKey::Banner) {
             Some(range) => range.end,
             None => 0,
         };
@@ -827,9 +822,9 @@ impl Canvas {
             match self.files.get(&key).cloned() {
                 Some(known) => {
                     if let Some(header) =
-                        self.rows.content().row_range(&CanvasKey::File(key.clone()))
+                        (&self.rows).row_range(&CanvasKey::File(key.clone()))
                     {
-                        anchor = match self.rows.content().row_range(&CanvasKey::Diff(key.clone()))
+                        anchor = match (&self.rows).row_range(&CanvasKey::Diff(key.clone()))
                         {
                             Some(diff) => header.end.max(diff.end),
                             None => header.end,
@@ -872,7 +867,7 @@ impl Canvas {
                         reserved_body(&theme, &file),
                     );
                     slice.cover(CanvasKey::File(key.clone()), 0..2);
-                    self.rows.content_mut().splice_slice(anchor..anchor, slice);
+                    (&mut self.rows).splice_slice(anchor..anchor, slice);
                     anchor += 2;
                     self.phases.insert_mut(key.clone(), RowPhase::Placeholder);
                     self.files.insert_mut(key, file);
@@ -887,14 +882,13 @@ impl Canvas {
 
     fn retire(&mut self, store: &mut Store, key: &ResourceLocation) {
         self.teardown_row(store, key);
-        if let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) {
-            let end = match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+        if let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) {
+            let end = match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
                 Some(diff) => header.end.max(diff.end),
                 None => header.end,
             };
             let empty: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
             self.rows
-                .content_mut()
                 .splice_slice(header.start..end, empty);
         }
         self.files.remove_mut(key);
@@ -930,9 +924,8 @@ impl Canvas {
     fn row_pane(&self, key: &ResourceLocation) -> Option<crate::diff_pane::PairPane> {
         let row = self
             .rows
-            .content()
             .row_range(&CanvasKey::Diff(key.clone()))
-            .and_then(|range| self.rows.content().view_at(range.start))
+            .and_then(|range| (&self.rows).view_at(range.start))
             .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
         match row {
             CanvasRow::Diff(DiffRow {
@@ -951,21 +944,20 @@ impl Canvas {
     /// reconciles on every host touch — the commit canvas never does,
     /// which is how this once shipped asymmetrically broken).
     fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile, band: f32) {
-        let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) else {
+        let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
             return;
         };
         let built = matches!(
             self.phases.get(key),
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
-        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+        match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(diff_range) => {
-                let Some(diff_row) = self.rows.content().view_at(diff_range.start) else {
+                let Some(diff_row) = (&self.rows).view_at(diff_range.start) else {
                     return;
                 };
                 let diff_height = self
                     .rows
-                    .content()
                     .height_at(diff_range.start)
                     .unwrap_or(0.0);
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
@@ -981,7 +973,6 @@ impl Canvas {
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff_row, diff_height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
                 self.rows
-                    .content_mut()
                     .splice_slice(header.start..header.start + 2, slice);
             }
             None => {
@@ -997,7 +988,6 @@ impl Canvas {
                 );
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
                 self.rows
-                    .content_mut()
                     .splice_slice(header.start..header.start + 1, slice);
             }
         }
@@ -1051,8 +1041,8 @@ impl Canvas {
     }
 
     fn built_width(&self, key: &ResourceLocation) -> Option<f32> {
-        let row = match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
-            Some(range) => self.rows.content().view_at(range.start),
+        let row = match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
+            Some(range) => (&self.rows).view_at(range.start),
             None => self.stash.get(key).map(|(row, _)| row.clone()),
         }?;
         match row {
@@ -1096,8 +1086,8 @@ impl Canvas {
         slice.cover(CanvasKey::File(key.clone()), 0..2);
         self.phases.insert_mut(key.clone(), RowPhase::Placeholder);
         self.files.insert_mut(key.clone(), file);
-        let at = self.rows.content().len();
-        self.rows.content_mut().splice_slice(at..at, slice);
+        let at = (&self.rows).len();
+        (&mut self.rows).splice_slice(at..at, slice);
         self.populated = true;
         let mut throwaway = imba::effect::Batch::new();
         self.land(store, ui, key, prep, &mut throwaway.effects());
@@ -1110,7 +1100,7 @@ impl Canvas {
         width: f32,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        let Some(CanvasKey::Diff(location)) = self.rows.content().key_at(index).cloned() else {
+        let Some(CanvasKey::Diff(location)) = (&self.rows).key_at(index).cloned() else {
             return;
         };
         let Some(file) = self.files.get(&location).cloned() else {
@@ -1144,7 +1134,7 @@ impl Canvas {
     /// work and the landings arrive spread out instead of clumping
     /// into one UI batch.
     fn prefetch(&mut self, index: usize, width: f32) {
-        let rows = self.rows.content();
+        let rows = (&self.rows);
         self.prefetch_queue = (index + 1..rows.len())
             .filter_map(|at| match rows.key_at(at) {
                 Some(CanvasKey::Diff(location)) => Some(location.clone()),
@@ -1309,11 +1299,10 @@ impl Canvas {
         });
         let diff_height = body_height + chrome.gap;
 
-        if let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone())) {
+        if let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone())) {
             let start = header_range.start;
             let expanded = self
                 .rows
-                .content()
                 .row_range(&CanvasKey::Diff(key.clone()))
                 .is_some();
             let header = CanvasRow::Header(HeaderRow {
@@ -1327,7 +1316,6 @@ impl Canvas {
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, diff_height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
                 self.rows
-                    .content_mut()
                     .splice_slice(start..start + 2, slice);
             } else {
                 // Collapsed before the build landed: park the built
@@ -1335,7 +1323,6 @@ impl Canvas {
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
                 self.stash.insert_mut(key.clone(), (diff, diff_height));
                 self.rows
-                    .content_mut()
                     .splice_slice(start..start + 1, slice);
             }
             // The swap is a height mutation like any other: the door
@@ -1346,7 +1333,7 @@ impl Canvas {
     }
 
     fn toggle_collapse(&mut self, key: &ResourceLocation, fx: &mut Effects<'_, CanvasCommand>) {
-        let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone()))
+        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone()))
         else {
             return;
         };
@@ -1358,15 +1345,14 @@ impl Canvas {
             self.phases.get(key),
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
-        let band = self.rows.content().height_at(start).unwrap_or(64.0);
-        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+        let band = (&self.rows).height_at(start).unwrap_or(64.0);
+        match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(diff_range) => {
-                let Some(diff) = self.rows.content().view_at(diff_range.start) else {
+                let Some(diff) = (&self.rows).view_at(diff_range.start) else {
                     return;
                 };
                 let height = self
                     .rows
-                    .content()
                     .height_at(diff_range.start)
                     .unwrap_or(0.0);
                 self.stash.insert_mut(key.clone(), (diff, height));
@@ -1382,7 +1368,6 @@ impl Canvas {
                 );
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
                 self.rows
-                    .content_mut()
                     .splice_slice(start..start + 2, slice);
             }
             None => {
@@ -1404,7 +1389,6 @@ impl Canvas {
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
                 self.rows
-                    .content_mut()
                     .splice_slice(start..start + 1, slice);
             }
         }
@@ -1462,9 +1446,8 @@ impl Canvas {
     ) -> Option<std::ops::Range<documents::text_ext::LineCol>> {
         let pane = self
             .rows
-            .content()
             .row_range(&CanvasKey::Diff(key.clone()))
-            .and_then(|range| self.rows.content().view_at(range.start))
+            .and_then(|range| (&self.rows).view_at(range.start))
             .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
         let CanvasRow::Diff(DiffRow {
             body: RowBody::Built { pane },
@@ -1501,10 +1484,10 @@ impl Canvas {
         ui: &UiCtx,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+        match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(range) => {
                 let index = range.start;
-                let rows = ScrollCommand::Content(ListCommand::Child(index, command));
+                let rows = ListCommand::Child(index, command);
                 fx.scope(CanvasCommand::Rows, |fx| {
                     self.rows.perform(store, ui, rows, fx)
                 });
@@ -1536,9 +1519,7 @@ impl Canvas {
 /// A row-level ask inside a rows command, seen from the panel — digs
 /// through the list's `Focus(_, Some(..))` press wrapping.
 fn row_ask(command: &RowsCommand) -> Option<(usize, &RowCommand)> {
-    let ScrollCommand::Content(inner) = command else {
-        return None;
-    };
+    let inner = command;
     fn dig<C>(list: &ListCommand<C>) -> Option<(usize, &C)> {
         match list {
             ListCommand::Child(index, command) => Some((*index, command)),
@@ -1618,11 +1599,11 @@ impl Canvas {
                 self.to_pending(key, command, store, ui, fx)
             }
             CanvasCommand::BannerEditor(command) => {
-                if let Some(range) = self.rows.content().row_range(&CanvasKey::Banner) {
-                    let rows = ScrollCommand::Content(ListCommand::Child(
+                if let Some(range) = (&self.rows).row_range(&CanvasKey::Banner) {
+                    let rows = ListCommand::Child(
                         range.start,
                         RowCommand::Composer(ComposerCommand::Message(command)),
-                    ));
+                    );
                     fx.scope(CanvasCommand::Rows, |fx| {
                         self.rows.perform(store, ui, rows, fx)
                     });
@@ -1632,7 +1613,7 @@ impl Canvas {
                 match row_ask(&command) {
                     Some((index, RowCommand::Arm(width))) => self.launch(store, index, *width, fx),
                     Some((index, RowCommand::Header(action))) => {
-                        let key = match self.rows.content().key_at(index) {
+                        let key = match (&self.rows).key_at(index) {
                             Some(CanvasKey::File(location)) | Some(CanvasKey::Diff(location)) => {
                                 Some(location.clone())
                             }
@@ -1884,7 +1865,6 @@ impl Canvases {
                 true => {
                     canvas
                         .rows
-                        .content_mut()
                         .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
                 }
                 false => canvas.reveal = Some(key),
@@ -2232,7 +2212,6 @@ impl DiffCanvasView {
                 let mut fx = batch.effects();
                 if let Some(range) = canvas
                     .rows
-                    .content()
                     .row_range(&CanvasKey::Diff(key.clone()))
                 {
                     canvas.launch(store, range.start, width, &mut fx);
@@ -3410,12 +3389,39 @@ impl hikit::navigation::Navigator for CanvasNavigator {
         place: &CanvasPlace,
         _fx: &mut imba::command::Fx<'_>,
     ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
-        let view = DiffCanvasView::over(store, place.changes, place.source.clone());
-        if let Some(key) = &place.reveal {
-            Canvases::set_reveal(store, view.changes, view.id(), key.clone());
-        }
-        Some(Box::new(view))
+        // BARE — the mounted road's answer: the host's scroller owns
+        // the physics (docs/mounted-parity.md).
+        Some(Box::new(resolve_canvas(store, place)))
     }
+}
+
+/// The WINDOWED road's navigator: the same resolution, wrapped in
+/// the shared top scroller — the workbench pane's half of the
+/// descrollering law, exactly like every other panel.
+pub struct ScrolledCanvasNavigator;
+
+impl hikit::navigation::Navigator for ScrolledCanvasNavigator {
+    type Place = CanvasPlace;
+
+    fn navigate(
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        place: &CanvasPlace,
+        _fx: &mut imba::command::Fx<'_>,
+    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
+        Some(Box::new(hikit::modal::Scrolled::new(resolve_canvas(
+            store, place,
+        ))))
+    }
+}
+
+fn resolve_canvas(store: &mut Store, place: &CanvasPlace) -> DiffCanvasView {
+    let view = DiffCanvasView::over(store, place.changes, place.source.clone());
+    if let Some(key) = &place.reveal {
+        Canvases::set_reveal(store, view.changes, view.id(), key.clone());
+    }
+    view
 }
 
 impl hikit::panel::PanelView for DiffCanvasView {

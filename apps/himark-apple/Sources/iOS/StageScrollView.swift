@@ -136,6 +136,11 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     /// moves. The rect arrives in content points — pad it so the
     /// caret never kisses the very edge.
     private func reveal(_ rect: CGRect, _ placement: HimarkEngine.RevealPlacement) {
+        // Corrections yield to the user's hand (the macOS host's
+        // law): the engine re-emits until satisfied or superseded.
+        if scroll.isTracking || scroll.isDragging || scroll.isDecelerating {
+            return
+        }
         switch placement {
         case .topLeft:
             let top = min(rect.minY, max(0, scroll.contentSize.height - scroll.bounds.height))

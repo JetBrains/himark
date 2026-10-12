@@ -548,24 +548,10 @@ where
                 constraints,
             )
             .map(ListKeyCommand::Inner);
-            // The CONTENT's size where the ceiling is infinite — a
-            // native scroller's loose measure must see the list's
-            // true height, or every tree riding this controller
-            // reports an unscrollable infinity. Tight constraints
-            // (the workbench panes) land on the ceiling as before.
-            let measured = imba::Thunk::size(&inner);
-            let size = Size::new(
-                if constraints.max.width.is_finite() {
-                    constraints.max.width
-                } else {
-                    measured.width
-                },
-                if constraints.max.height.is_finite() {
-                    constraints.max.height
-                } else {
-                    measured.height
-                },
-            );
+            // A KEYBOARD controller has no layout opinion: the
+            // container mirrors whatever the inner answered — the
+            // sizing law (ThunkBox) guarantees that is a real size.
+            let size = imba::Thunk::size(&inner);
             let mut root = imba::container::container(arena, size);
             root.place(0.0, 0.0, inner);
 

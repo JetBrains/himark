@@ -96,6 +96,7 @@ final class DesktopScrollHost: NSView {
             name: NSScrollView.didEndLiveScrollNotification, object: scroll)
         WheelRouter.shared.register(self) { [weak self] event in
             guard let self else { return }
+            self.lastUserScroll = Date()
             // A standing overlay (completion popup) takes the wheel
             // before the scroller's physics do.
             if self.content?.offerWheel(event) == true { return }
@@ -157,17 +158,37 @@ final class DesktopScrollHost: NSView {
             NSLog("minted bridge \(bridge.raw): flipped \(view.isFlipped) embedded \(view.scrollEmbedded)")
         }
         // DEBUG harness: HIMARK_DEBUG_CLICK="x,y,delay" clicks this
-        // bridge at content points once, for screenshot loops.
+        // bridge at content points once, for screenshot loops; a
+        // leading `v` ("vx,y,delay") makes the point VIEWPORT
+        // relative — what is on screen after a reveal, wherever the
+        // scroll sits. HIMARK_DEBUG_TEXT="delay:text" types.
         if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK"] {
             for one in spec.split(separator: ";") {
-                let parts = one.split(separator: ",").compactMap { Double($0) }
+                let viewportRelative = one.hasPrefix("v")
+                let numbers = viewportRelative ? String(one.dropFirst()) : String(one)
+                let parts = numbers.split(separator: ",").compactMap { Double($0) }
                 guard parts.count == 3 else { continue }
-                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view, weak self] in
                     guard let view else { return }
                     let s = Float(view.metalLayer.contentsScale)
-                    let (x, y) = (Float(parts[0]) * s, Float(parts[1]) * s)
+                    var (x, y) = (Float(parts[0]) * s, Float(parts[1]) * s)
+                    if viewportRelative, let self {
+                        y += Float(self.scroll.contentView.bounds.minY) * s
+                    }
                     view.send(himark_event_mouse_down(x, y, 0, 1))
                     view.send(himark_event_mouse_up(x, y))
+                }
+            }
+        }
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_TEXT"] {
+            let halves = spec.split(separator: ":", maxSplits: 1)
+            if halves.count == 2, let delay = Double(halves[0]) {
+                let text = String(halves[1])
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak view] in
+                    guard let view else { return }
+                    text.withCString {
+                        view.send(himark_event_text($0, UInt(strlen($0))))
+                    }
                 }
             }
         }
@@ -191,22 +212,31 @@ final class DesktopScrollHost: NSView {
 
     override func layout() {
         super.layout()
+        // Autoresizing from a zero-sized FOLD leaves the scroller
+        // degenerate (the rail's tree sat unscrollable until a
+        // remount) — the frame is restated, not inherited.
+        if scroll.frame != bounds {
+            scroll.frame = bounds
+        }
         guard let content else { return }
-        // Seed a provisional viewport-sized frame: the real height
-        // arrives from the view's measure, which only runs once a
-        // visible band exists to render.
+        // Seed from the LAST MEASURE when one exists; a provisional
+        // viewport-sized frame otherwise — the real height arrives
+        // from the view's measure once a visible band renders.
         var frame = content.frame
         frame.size.width = scroll.contentSize.width
-        if frame.size.height < scroll.contentSize.height {
-            frame.size.height = scroll.contentSize.height
-        }
+        frame.size.height = max(measured, scroll.contentSize.height)
         if frame != content.frame {
             content.frame = frame
             content.request()
         }
     }
 
+    /// The last content measure — layout re-applies it after a
+    /// fold/expand, when no fresh band has rendered yet.
+    private var measured: CGFloat = 0
+
     private func contentMeasured(_ size: CGSize) {
+        if size.height.isFinite { measured = size.height }
         if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
             NSLog("measured bridge \(bridge.raw): content \(Int(size.height)) clip \(Int(scroll.contentSize.height)) doc \(Int(content?.frame.height ?? -1))")
         }
@@ -252,13 +282,19 @@ final class DesktopScrollHost: NSView {
     /// there yanks the scroll out from under a reading user.
     @objc private func liveScrollBegan() {
         pinned = false
+        lastUserScroll = Date()
         content?.setSyncPresent(true)
     }
 
     @objc private func liveScrollEnded() {
         pinned = nearBottom
+        lastUserScroll = Date()
         content?.setSyncPresent(false)
     }
+
+    /// The last moment the USER drove this scroller (live drag or a
+    /// routed wheel, momentum included).
+    private var lastUserScroll = Date.distantPast
 
     private var nearBottom: Bool {
         scroll.contentView.bounds.minY + scroll.contentSize.height
@@ -269,6 +305,12 @@ final class DesktopScrollHost: NSView {
     /// moves. The rect arrives in content points — pad it so the
     /// caret never kisses the very edge.
     private func reveal(_ rect: CGRect, _ placement: HimarkEngine.RevealPlacement) {
+        // An anchor correction must not fight the user's hand: while
+        // a gesture is fresh, drop the ask — the engine re-emits
+        // until it is satisfied or superseded.
+        if Date().timeIntervalSince(lastUserScroll) < 0.3 {
+            return
+        }
         if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
             NSLog("[reveal] host scrolls bridge \(bridge.raw) to \(rect) \(placement) doc \(Int(content?.frame.height ?? -1)) clip \(Int(scroll.contentSize.height)) at \(scroll.contentView.bounds.origin.y)")
         }

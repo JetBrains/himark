@@ -647,6 +647,12 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         selection.reveal = true;
     }
 
+    /// TEST/PROBE: the retained viewport top (the last observation
+    /// the scroller reported) — perf suites assert scroll landings.
+    pub fn probe_viewport_top(&self) -> f32 {
+        self.viewport_top
+    }
+
     pub fn cancel_reveal(&mut self) {
         if let Some(selection) = &mut self.selection {
             selection.reveal = false;

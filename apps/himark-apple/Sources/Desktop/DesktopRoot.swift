@@ -618,15 +618,11 @@ struct DocumentPane: View {
 
     var body: some View {
         Group {
-            if opened.kind == UInt32(HIMARK_PLACE_CANVAS) {
-                // The canvas scrolls ITSELF — no native scroller
-                // around it.
-                PlainPlaceBridge(host: host, place: opened.place)
-                    .id(opened.id)
-            } else {
-                PlaceScrollBridge(host: host, place: opened.place, grabsFocus: opened.focus)
-                    .id(opened.id)
-            }
+            // EVERY landing rides the scrolled host — the canvas was
+            // descrollered with the rest (docs/mounted-parity.md):
+            // content views own no scroll, this scroller owns it.
+            PlaceScrollBridge(host: host, place: opened.place, grabsFocus: opened.focus)
+                .id(opened.id)
         }
         // The engine floors nothing now — the pane does.
         .background(Color(red: 0.051, green: 0.051, blue: 0.063))

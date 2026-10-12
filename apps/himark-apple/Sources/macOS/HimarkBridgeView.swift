@@ -156,7 +156,20 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         }
     }
 
+    /// Render is NEVER re-entered: applying a measure resizes the
+    /// document view, AppKit calls setFrameSize synchronously, and
+    /// an inner render would re-measure a still-growing canvas into
+    /// unbounded recursion (seen five frames deep in the wild). The
+    /// inner ask coalesces into the next tick instead.
+    private var rendering = false
+
     func render() {
+        if rendering {
+            needsRedraw = true
+            return
+        }
+        rendering = true
+        defer { rendering = false }
         guard surface != nil else { return }
         // SwiftUI's platform host can hand a NaN/infinite frame
         // mid-layout — converting that to a drawable size traps.

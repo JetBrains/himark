@@ -551,7 +551,7 @@ impl HimarkEngine {
 
         app.register_command(Arc::new(himark::diff_pane::OpenDiff));
         app.register_row_minter(canvas::diff_pane::pair_row_minter());
-        app.register_navigator(canvas::canvas::CanvasNavigator);
+        app.register_navigator(canvas::canvas::ScrolledCanvasNavigator);
         app.register_command(Arc::new(demo::tree_demo::OpenTreeDemo));
         app.register_command(Arc::new(demo::OpenMonsterDemo));
         app.register_command(Arc::new(demo::OpenWallOfTextDemo));

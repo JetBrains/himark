@@ -140,6 +140,18 @@ pub struct ThunkBox<'a, Command>(arena::ArenaBox<'a, dyn DynThunk<'a, Command> +
 
 impl<'a, Command: 'a> ThunkBox<'a, Command> {
     pub fn new<T: Thunk<'a, Command> + 'a>(arena: &'a Arena, thunk: T) -> Self {
+        // THE SIZING LAW: a laid widget KNOWS its size — content
+        // measures content (a list has its rope, a text its shape);
+        // answering the CEILING back is always a bug, and under the
+        // native scrollers' infinite ceiling it turns into "nothing
+        // scrolls" three layers away. Fail at the offender, by name.
+        let size = thunk.size();
+        assert!(
+            size.width.is_finite() && size.height.is_finite(),
+            "a laid widget sized itself to the ceiling: {} answered {:?}",
+            std::any::type_name::<T>(),
+            size,
+        );
         let slot = arena.boxed(Slot(Some(thunk)));
         let raw: *mut Slot<T> = arena::ArenaBox::into_raw(slot);
 
