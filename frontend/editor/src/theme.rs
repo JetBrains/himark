@@ -748,7 +748,7 @@ impl Default for ChatChrome {
             input_max_height: 360.0,
             input_border: Rgba(Color::from_argb(0x60, 0x56, 0x5f, 0x89)),
             input_focus_border: Rgba(Color::from_argb(0xff, 0x3f, 0x74, 0xd4)),
-            accent: Rgba(Color::from_argb(0xff, 0x3f, 0x74, 0xd4)),
+            accent: Rgba(Color::from_argb(0xff, 0x2f, 0x9e, 0x5b)),
             on_accent: Rgba(Color::from_argb(0xff, 0xf2, 0xf5, 0xfc)),
             stop_color: Rgba(Color::from_argb(0xff, 0xc9, 0x45, 0x4a)),
             ask_surface: Rgba(Color::from_argb(0xff, 0x1c, 0x26, 0x3e)),

@@ -1674,7 +1674,16 @@ impl ChatPanel {
     ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a>
     {
         let view = self.views.get(&id)?;
-        Some(view.band.display(
+        // The split band syncs its own toolbar — the whole-face
+        // probe (display_view's ChatWidget) never runs on the
+        // mounted roads, and unsynced combos sit caption-empty.
+        let toolbar_stale = (self.catalog.channel)(store, &self.session_id())
+            .map(|channel| {
+                let agents = (self.catalog.agents)(store, self.server);
+                crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel)
+            })
+            .is_some_and(|fingerprint| fingerprint != view.band.toolbar.synced);
+        let band = view.band.display(
             arena,
             store,
             ui,
@@ -1685,6 +1694,17 @@ impl ChatPanel {
                 focused: view.focus == ChatArea::Composer,
                 stack: &self.stack,
                 nominal_height: 800.0,
+            },
+        );
+        Some(imba::layout::laid(
+            move |_arena: &'a Arena, constraints: Constraints| {
+                use imba::thunk_ext::ThunkExt as _;
+                imba::layout::Layout::layout(band, arena, constraints).wrap(move |inner| {
+                    SyncToolbarOnPaint {
+                        inner,
+                        stale: toolbar_stale,
+                    }
+                })
             },
         ))
     }
@@ -2401,3 +2421,46 @@ mod panel_tests;
 
 #[cfg(test)]
 mod model_tests;
+
+/// The split band's toolbar-staleness probe: one ToolbarSync on
+/// paint while the combos lag the catalog — the whole-face
+/// ChatWidget's little sibling.
+struct SyncToolbarOnPaint<Inner> {
+    inner: Inner,
+    stale: bool,
+}
+
+impl<'a, Inner: imba::Widget<'a, ChatPanelCommand>> imba::Widget<'a, ChatPanelCommand>
+    for SyncToolbarOnPaint<Inner>
+{
+    fn size(&self) -> Size {
+        self.inner.size()
+    }
+
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, ChatPanelCommand>> {
+        self.inner.overlays()
+    }
+
+    fn handle_event(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: skia_safe::Rect,
+    ) -> EventResult<ChatPanelCommand> {
+        let result = self.inner.handle_event(arena, event, viewport);
+        if self.stale && matches!(event, Event::Paint { .. }) {
+            return result.merge(EventResult::Command(ChatPanelCommand::ToolbarSync));
+        }
+        result
+    }
+
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, ChatPanelCommand>
+    where
+        'a: 'w,
+    {
+        self.inner.layout_data(target)
+    }
+}

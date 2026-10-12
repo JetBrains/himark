@@ -187,11 +187,11 @@ pub fn selection_style(store: &Store) -> SelectionStyle {
     let ui = editor::env::Themes::of(store).ui().clone();
     SelectionStyle {
         fill: ui.tree.highlight.0,
-        accent: ui.peeker.accent.0,
-        accent_width: ui.peeker.accent_width,
+        // The islands design: a soft rounded well and NOTHING else —
+        // no accent bar (docs/himark-islands-default.png).
+        accent: skia_safe::Color::TRANSPARENT,
+        accent_width: 0.0,
         accent_inset: 0.0,
-        // The islands design: selections are soft rounded wells,
-        // not square bands (docs/himark-islands-default.png).
         radius: 7.0,
         ..SelectionStyle::default()
     }

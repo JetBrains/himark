@@ -599,7 +599,9 @@ impl ComposerBand {
                     let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
                     let pad = ui_theme.combo.pad;
                     let cell_width = send_cell_width;
-                    let accent = if stop {
+                    // Send is GO-green; steering and stopping a live
+                    // turn are red (docs/himark-islands mock).
+                    let accent = if stop || busy {
                         chrome.stop_color.0
                     } else {
                         chrome.accent.0

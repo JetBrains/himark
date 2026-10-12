@@ -519,9 +519,10 @@ struct RailIsland: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
-            if open {
-                RailContent(host: host, tool: tool)
-            }
+            RailContent(host: host, tool: tool)
+                .frame(maxHeight: open ? .infinity : 0, alignment: .top)
+                .clipped()
+                .opacity(open ? 1 : 0)
         }
         .frame(width: open ? 320 : nil)
         .frame(maxHeight: open ? .infinity : nil, alignment: .top)
@@ -605,14 +606,19 @@ struct DocumentPane: View {
     let opened: DesktopHost.Opened
 
     var body: some View {
-        if opened.kind == UInt32(HIMARK_PLACE_CANVAS) {
-            // The canvas scrolls ITSELF — no native scroller around it.
-            PlainPlaceBridge(host: host, place: opened.place)
-                .id(opened.id)
-        } else {
-            PlaceScrollBridge(host: host, place: opened.place)
-                .id(opened.id)
+        Group {
+            if opened.kind == UInt32(HIMARK_PLACE_CANVAS) {
+                // The canvas scrolls ITSELF — no native scroller
+                // around it.
+                PlainPlaceBridge(host: host, place: opened.place)
+                    .id(opened.id)
+            } else {
+                PlaceScrollBridge(host: host, place: opened.place)
+                    .id(opened.id)
+            }
         }
+        // The engine floors nothing now — the pane does.
+        .background(Color(red: 0.051, green: 0.051, blue: 0.063))
     }
 }
 

@@ -686,15 +686,10 @@ impl Himark {
         canvas: &skia_safe::Canvas,
         size: skia_safe::Size,
     ) -> bool {
-        // The workbench clears its window; a mounted view gets the
-        // same floor, or it paints onto whatever the drawable held.
-        canvas.clear(
-            ::editor::env::Themes::of(&self.store)
-                .ui()
-                .window
-                .background
-                .0,
-        );
+        // TRANSPARENT floor, like the stage road: the HOST behind
+        // the mounted view owns the background (a glass island, the
+        // document floor's color).
+        canvas.clear(skia_safe::Color::TRANSPARENT);
         let result = {
             let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
                 return false;

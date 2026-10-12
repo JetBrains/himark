@@ -335,6 +335,17 @@ final class DesktopComposerHost: NSView {
         addSubview(view)
         host.register(view)
         content = view
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK3"] {
+            let parts = spec.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view] in
+                    guard let view else { return }
+                    let s = Float(view.metalLayer.contentsScale)
+                    view.send(himark_event_mouse_down(Float(parts[0]) * s, Float(parts[1]) * s, 0, 1))
+                    view.send(himark_event_mouse_up(Float(parts[0]) * s, Float(parts[1]) * s))
+                }
+            }
+        }
         WheelRouter.shared.register(self) { [weak view] event in
             guard let view else { return }
             let p = view.convert(event.locationInWindow, from: nil)
@@ -415,10 +426,16 @@ final class PlainBridgeHost: NSView {
         guard bridge.raw != 0 else { return }
         let view = HimarkBridgeView(
             frame: bounds, engine: host.engine, device: host.device, bridge: bridge)
+        view.metalLayer.isOpaque = false
         view.autoresizingMask = [.width, .height]
         addSubview(view)
         host.register(view)
         content = view
+        // Wheels over a PLAIN pane go to the ENGINE's scroller —
+        // and must win against native hosts lying beneath.
+        WheelRouter.shared.register(self) { [weak view] event in
+            view?.scrollWheel(with: event)
+        }
         // Same debug harness as the scroll host: HIMARK_DEBUG_CLICK2
         // pokes THIS pane (the canvas) once.
         if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK2"] {
