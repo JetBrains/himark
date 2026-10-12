@@ -399,7 +399,12 @@ fn route_modal_request(
             }
             verb => verb.run(store, ui, fx),
         },
-        ModalRequest::Close | ModalRequest::SelectWidget(_) => {}
+        ModalRequest::Close => {
+            // The mounted modal's own dismissal — the native face
+            // hosting this origin folds away.
+            navigate_origin(store, ui, origin, crate::places::DismissPlace, fx)
+        }
+        ModalRequest::SelectWidget(_) => {}
     });
 }
 

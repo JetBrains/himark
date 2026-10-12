@@ -50,6 +50,8 @@ final class DesktopHost: NSObject, ObservableObject {
 
     @Published var sessions: [HimarkEngine.CatalogSession] = []
     @Published var current: Selected?
+    /// Bumped when a mounted modal asks to CLOSE — overlays fold.
+    @Published var dismissals = 0
     /// The document pane's standing content — on the desktop every
     /// navigate lands in the CENTER pane, there are no pushes.
     @Published var document: Opened?
@@ -75,10 +77,14 @@ final class DesktopHost: NSObject, ObservableObject {
         // The navigate callback: fired mid-batch on the main thread —
         // record the opened place and return; the pane mints later.
         engine.setShell(context: ctx) { ctx, _, place, kind, title, titleLen in
+            let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
+            if kind == UInt32(HIMARK_PLACE_DISMISS) {
+                DispatchQueue.main.async { host.dismissals += 1 }
+                return true
+            }
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
                 || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
-            let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
             var name = ""
             if let title, titleLen > 0 {
                 name = String(
@@ -131,7 +137,15 @@ final class DesktopHost: NSObject, ObservableObject {
         let now = engine.sessionsEpoch()
         guard now != epoch else { return }
         epoch = now
-        let rows = engine.sessions().sorted { $0.modified > $1.modified }
+        var rows = engine.sessions().sorted { $0.modified > $1.modified }
+        // Screenshot-loop hook: pin the picked session by substring.
+        if let pin = ProcessInfo.processInfo.environment["HIMARK_DEBUG_SESSION"],
+           let index = rows.firstIndex(where: {
+               $0.title.localizedCaseInsensitiveContains(pin)
+                   || $0.uri.localizedCaseInsensitiveContains(pin)
+           }) {
+            rows.swapAt(0, index)
+        }
         sessions = rows
         if current == nil, let newest = rows.first {
             select(newest)

@@ -88,6 +88,11 @@
 
 #define HIMARK_PLACE_CANVAS 6
 
+/**
+ * Not a view: the ORIGIN's hosting face asks to close.
+ */
+#define HIMARK_PLACE_DISMISS 7
+
 typedef struct HimarkEngine HimarkEngine;
 
 /**

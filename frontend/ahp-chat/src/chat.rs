@@ -216,6 +216,11 @@ pub struct ChatPanel {
     state: Link,
     title: String,
 
+    /// The running turn's start (unix millis; 0 = idle), armed on
+    /// the first busy paint — the composer's elapsed clock. Shared
+    /// across panel clones: the clock is cosmetic.
+    turn_started: std::sync::Arc<std::sync::atomic::AtomicU64>,
+
     /// THE conversation: turns by id, the turn in flight, the cursor
     /// behind the window. Every wire action folds into this and
     /// nothing else — see `model`.
@@ -249,6 +254,7 @@ pub struct ChatPanel {
 impl Clone for ChatPanel {
     fn clone(&self) -> Self {
         Self {
+            turn_started: Default::default(),
             server: self.server,
             session: self.session.clone(),
             chats: self.chats,
@@ -344,6 +350,7 @@ impl ChatPanel {
         catalog: crate::chats::Catalog,
     ) -> Self {
         Self {
+            turn_started: Default::default(),
             server,
             session: session.into(),
             chats,
@@ -1595,8 +1602,30 @@ impl ChatPanel {
         match &self.state {
             Link::Idle | Link::Subscribing => "connecting…".to_owned(),
             Link::Failed(error) => format!("failed: {error}"),
-            Link::Ready if self.conversation.is_running() => "responding…".to_owned(),
-            Link::Ready => String::new(),
+            Link::Ready if self.conversation.is_running() => {
+                // The ELAPSED turn (docs/himark-islands-default:
+                // "1m 04s") — armed lazily on the first busy paint,
+                // cleared when the turn ends.
+                use std::sync::atomic::Ordering;
+                let now = std::time::SystemTime::UNIX_EPOCH
+                    .elapsed()
+                    .map(|elapsed| elapsed.as_millis() as u64)
+                    .unwrap_or(0);
+                let started = match self.turn_started.load(Ordering::Relaxed) {
+                    0 => {
+                        self.turn_started.store(now, Ordering::Relaxed);
+                        now
+                    }
+                    held => held,
+                };
+                let seconds = now.saturating_sub(started) / 1000;
+                format!("{}m {:02}s", seconds / 60, seconds % 60)
+            }
+            Link::Ready => {
+                self.turn_started
+                    .store(0, std::sync::atomic::Ordering::Relaxed);
+                String::new()
+            }
         }
     }
 

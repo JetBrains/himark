@@ -190,6 +190,9 @@ pub fn selection_style(store: &Store) -> SelectionStyle {
         accent: ui.peeker.accent.0,
         accent_width: ui.peeker.accent_width,
         accent_inset: 0.0,
+        // The islands design: selections are soft rounded wells,
+        // not square bands (docs/himark-islands-default.png).
+        radius: 7.0,
         ..SelectionStyle::default()
     }
 }

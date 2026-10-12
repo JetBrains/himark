@@ -86,15 +86,16 @@ struct DesktopRoot: View {
                     .padding(.top, 10)
             }
         }
-        .overlay(alignment: .top) {
+        .overlay(alignment: .topLeading) {
             if goToOpen {
                 PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
                     .id("peeker-\(host.current?.uri ?? "")")
-                    .frame(width: 1_040, height: 620)
+                    .frame(width: 536)
+                    .frame(maxHeight: .infinity)
                     .background(IslandBackground(cornerRadius: 14))
                     .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.top, 56)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                    .padding(12)
+                    .transition(.opacity.combined(with: .move(edge: .leading)))
                     .onExitCommand {
                         withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
                     }
@@ -126,8 +127,17 @@ struct DesktopRoot: View {
                 })
                 .padding(12)
         }
+        .onChange(of: host.dismissals) { _ in
+            withAnimation(.easeOut(duration: 0.15)) {
+                goToOpen = false
+                paletteOpen = false
+            }
+        }
+        .onChange(of: host.document) { _ in
+            withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
+        }
         .frame(minWidth: 720, minHeight: 480)
-        .background(Color(red: 0.03, green: 0.03, blue: 0.038))
+        .background(Color(red: 0.043, green: 0.043, blue: 0.055))
         .ignoresSafeArea()
         .background {
             // The palette's and the peeker's summons.
@@ -435,7 +445,7 @@ struct ChatPaneColumn: View {
         ChatColumn(host: host)
             .id(host.current?.uri)
             .padding(.top, 60)
-            .background(Color(red: 0.045, green: 0.045, blue: 0.055))
+            .background(Color(red: 0.036, green: 0.036, blue: 0.046))
     }
 }
 
@@ -549,12 +559,12 @@ struct IslandBackground: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color(red: 0.09, green: 0.09, blue: 0.105).opacity(0.94))
+            .fill(Color(red: 0.08, green: 0.08, blue: 0.1).opacity(0.55))
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(.white.opacity(0.07)))
-            .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+                    .strokeBorder(.white.opacity(0.08)))
+            .shadow(color: .black.opacity(0.45), radius: 22, y: 8)
     }
 }
 
@@ -566,8 +576,18 @@ struct ChatColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             MintedScrollBridge(host: host, kind: .transcript, pinsToBottom: true)
+            // The composer rides in its OWN rounded well, the
+            // mock's square island — chrome in Swift, content in
+            // the engine.
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(.white.opacity(0.09)))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 6)
         }
     }
 }

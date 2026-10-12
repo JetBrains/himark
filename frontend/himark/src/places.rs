@@ -117,6 +117,13 @@ pub struct PeekerPlace(pub ahp_wire::SessionId);
 
 impl Place for PeekerPlace {}
 
+/// A mounted modal asked to CLOSE (escape, a pick completing) —
+/// the shell dismisses whatever face hosts the origin.
+#[derive(Clone, PartialEq)]
+pub struct DismissPlace;
+
+impl Place for DismissPlace {}
+
 /// A session's FILE tree.
 #[derive(Clone, PartialEq)]
 pub struct FilesPlace(pub ahp_wire::SessionId);
