@@ -59,6 +59,7 @@ class HimarkBridgeView: UIView {
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = false
+        if scrollEmbedded { metalLayer.isOpaque = false }
         metalLayer.contentsScale = UIScreen.main.scale
         layer.addSublayer(metalLayer)
 

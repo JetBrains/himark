@@ -615,16 +615,11 @@ pub unsafe extern "C" fn himark_frame_paint(
             refuse("frame", frame.raw);
             return false;
         };
-        // The slice gets the same floor the window and the mounted
-        // draws get — or it paints onto the previous frame's
-        // pixels and scrolling smears.
-        canvas.clear(
-            editor::env::Themes::of(engine.app.store())
-                .ui()
-                .window
-                .background
-                .0,
-        );
+        // TRANSPARENT floor: the stage road's content composites
+        // over whatever the HOST puts behind it — a glass island, a
+        // column color. (The clear still resets the band; only the
+        // opaque floor moved host-side.)
+        canvas.clear(skia_safe::Color::TRANSPARENT);
         // The host's canvas IS the slice: translate so content
         // coordinates land at its origin — the widget paints at
         // its layout position, the viewport names the band.

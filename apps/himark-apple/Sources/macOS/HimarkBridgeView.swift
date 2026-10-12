@@ -56,7 +56,9 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if scrollEmbedded {
             // A SUBLAYER sized to the visible band, not the root
             // layer: the content-sized view must not back its whole
-            // (possibly huge) bounds with a drawable.
+            // (possibly huge) bounds with a drawable. TRANSPARENT:
+            // the host's glass shows through the stage paint.
+            metal.isOpaque = false
             layer?.addSublayer(metal)
         } else {
             layer = metal

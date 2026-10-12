@@ -90,14 +90,14 @@ struct DesktopRoot: View {
             if goToOpen {
                 PlainMintedBridge(host: host, kind: .peeker, grabsFocus: true)
                     .id("peeker-\(host.current?.uri ?? "")")
+                    .padding(6)
                     .frame(width: 1_040)
-                    .frame(maxHeight: .infinity)
-                    .background(IslandBackground(cornerRadius: 14))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.leading, 12)
-                    .padding(.bottom, 12)
+                    .frame(maxHeight: 760)
+                    .background(IslandBackground(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.leading, 16)
                     .padding(.top, 64)
-                    .transition(.opacity.combined(with: .move(edge: .leading)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                     .onExitCommand {
                         withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
                     }
@@ -269,8 +269,8 @@ struct SessionIsland: View {
         .frame(width: open ? 536 : nil)
         .frame(maxHeight: open ? 700 : 44, alignment: .top)
         .fixedSize(horizontal: !open, vertical: false)
-        .background(IslandBackground(cornerRadius: open ? 16 : 14))
-        .clipShape(RoundedRectangle(cornerRadius: open ? 16 : 14))
+        .background(IslandBackground(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -585,6 +585,9 @@ struct ChatColumn: View {
             // the engine.
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.white.opacity(0.045)))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
