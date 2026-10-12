@@ -155,6 +155,44 @@ impl WindowedCommand for ApplyNavigation {
         };
         navigate(store, ui, window, target, &self.outcome.built, fx);
     }
+
+    /// The MOUNTED landing: no window, no panes — hand the shell
+    /// the target as a `DocumentPlace` and ride the standing open
+    /// road (`MountFrontend` resolves it against the mount's
+    /// session; the opened landing re-navigates READY). The
+    /// stay-in-the-diff refinement is the windowed road's; here
+    /// every target opens the document.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        origin: himark::bridge::ViewBridgeId,
+        fx: &mut AppFx<'_>,
+    ) -> bool {
+        if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+            eprintln!(
+                "[nav] ApplyNavigation windowless: targets {:?}",
+                self.outcome.targets.as_ref().map(|targets| targets.len())
+            );
+        }
+        let Some(target) = self
+            .outcome
+            .targets
+            .as_ref()
+            .and_then(|targets| targets.first())
+        else {
+            return true;
+        };
+        let place = himark::places::DocumentPlace {
+            location: target.location.clone(),
+            target: Some(target.range.clone()),
+            focus: true,
+        };
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(store, ui, origin, place, fx)
+        });
+        true
+    }
 }
 
 fn navigate(
@@ -398,6 +436,13 @@ fn navigation(
     payload: Option<Box<dyn std::any::Any + Send + Sync>>,
     fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
 ) {
+    if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+        eprintln!(
+            "[nav] {} asked (payload? {})",
+            id,
+            payload.is_some()
+        );
+    }
     let Some(payload) = payload else {
         let caret = document.caret_byte(editor) as usize;
         let mut view = document.text().view();

@@ -183,6 +183,25 @@ impl Performer<'_> {
                     return;
                 };
                 view.perform(command, id, store, ui, fx);
+                // The MOUNTED twin of the Content arm's drain: a
+                // deferred request the view's perform pushed rides
+                // the windowed lane with this bridge's id — the
+                // Windowed arm forks it windowless when no window
+                // entity answers. Without this, a mounted road's
+                // push waits for a window command that never comes.
+                for request in crate::commands::AppRequests::drain(store) {
+                    if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+                        eprintln!(
+                            "[nav] deferred '{}' drained at ToView, riding bridge {}",
+                            request.name(),
+                            id.raw()
+                        );
+                    }
+                    fx.follow_up(crate::shell::windowed(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        request,
+                    ));
+                }
             }
             AppCommand::FileChanged(subscription) => {
                 // The border road: the event names only a subscription;

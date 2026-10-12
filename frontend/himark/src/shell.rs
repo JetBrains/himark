@@ -269,8 +269,9 @@ fn navigate(
 }
 
 /// The windowless door: any road holding the verb lane can hand
-/// the seated shell a place.
-pub(crate) fn navigate_origin(
+/// the seated shell a place. Public: plugin commands landing on a
+/// MOUNTED origin (hicode's navigation) take it too.
+pub fn navigate_origin(
     store: &mut Store,
     ui: &UiCtx,
     origin: crate::bridge::ViewBridgeId,
@@ -601,6 +602,13 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                 // the rest drop loudly instead of panicking on the
                 // missing entity.
                 let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
+                if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+                    eprintln!(
+                        "[nav] windowless fork takes '{}' at origin {}",
+                        command.name(),
+                        origin.raw()
+                    );
+                }
                 if !command.perform_windowless(store, ui, origin, fx) {
                     eprintln!(
                         "[shell] a window-taking command landed windowless — dropped: {}",
