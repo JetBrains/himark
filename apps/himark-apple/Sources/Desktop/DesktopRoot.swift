@@ -199,6 +199,18 @@ struct WindowDresser: NSViewRepresentable {
             for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(kind)?.isHidden = true
             }
+            // Harness hook: HIMARK_DEBUG_FRAME="w,h" squeezes the
+            // window at launch (probe loop has no assistive access).
+            if let ask = ProcessInfo.processInfo.environment["HIMARK_DEBUG_FRAME"] {
+                let parts = ask.split(separator: ",").compactMap { Double($0) }
+                if parts.count == 2 {
+                    DispatchQueue.main.async {
+                        window.setFrame(
+                            NSRect(x: 0, y: 200, width: parts[0], height: parts[1]),
+                            display: true)
+                    }
+                }
+            }
         }
     }
 

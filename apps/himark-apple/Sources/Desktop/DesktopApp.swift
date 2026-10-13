@@ -21,6 +21,9 @@ struct HimarkDesktopApp: App {
                 .onAppear { host.kickoff() }
         }
         .defaultSize(width: 1_600, height: 1_000)
+        // Without this the OS still mounts its titlebar GLASS over
+        // the content top — the empty slab across squeezed windows.
+        .windowStyle(.hiddenTitleBar)
     }
 }
 
