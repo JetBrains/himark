@@ -854,7 +854,7 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
 
-        let rows = view.tree.inner().forest.rows();
+        let rows = view.tree.content().inner().forest.rows();
         assert_eq!(
             rows.iter()
                 .map(|(depth, label, _)| (*depth, label.as_str()))
@@ -870,7 +870,7 @@ mod tests {
         );
 
         let hit = LocationKey::Hit(found("b.rs", 0, "").location, 0, 2);
-        view.tree.inner_mut().list_mut().select_only(hit);
+        view.tree.content_mut().inner_mut().list_mut().select_only(hit);
         let at = view.tree.cursor_index().expect("a cursor row");
         let pick = PeekCommand::Tree(imba::scroll::ScrollCommand::Content(
             view.tree.content().activate_command(at, ActivateTrigger::Enter),
