@@ -714,6 +714,11 @@ pub struct ChatChrome {
     pub input_border: Rgba,
     pub input_focus_border: Rgba,
 
+    /// The composer CONTAINER — one rounded card holding the input
+    /// and the toolbar row (docs/himark-islands-default.png).
+    pub composer_surface: Rgba,
+    pub composer_border: Rgba,
+
     pub accent: Rgba,
     pub on_accent: Rgba,
 
@@ -748,6 +753,8 @@ impl Default for ChatChrome {
             input_max_height: 360.0,
             input_border: Rgba(Color::from_argb(0x60, 0x56, 0x5f, 0x89)),
             input_focus_border: Rgba(Color::from_argb(0xff, 0x3f, 0x74, 0xd4)),
+            composer_surface: Rgba(Color::from_argb(0xff, 0x1a, 0x1f, 0x2e)),
+            composer_border: Rgba(Color::from_argb(0x60, 0x56, 0x5f, 0x89)),
             accent: Rgba(Color::from_argb(0xff, 0x2f, 0x9e, 0x5b)),
             on_accent: Rgba(Color::from_argb(0xff, 0xf2, 0xf5, 0xfc)),
             stop_color: Rgba(Color::from_argb(0xff, 0xc9, 0x45, 0x4a)),
@@ -879,7 +886,9 @@ impl Default for TreeChrome {
             font_size: 24.0,
             indent: 26.0,
             text_x: 36.0,
-            highlight: Rgba(Color::new(0x2e50565f)),
+            // The islands selection well: NEUTRAL glass, not a blue
+            // tint (docs/himark-islands-default.png).
+            highlight: Rgba(Color::new(0x1affffff)),
             directory: Rgba(Color::from_argb(0xff, 0xde, 0xe5, 0xf2)),
             file: Rgba(Color::from_argb(0xff, 0xc9, 0xd2, 0xe4)),
         }

@@ -277,13 +277,14 @@ impl SessionToolbar {
         root: &mut Container<'a, super::chat::ChatPanelCommand>,
         store: &'a Store,
         ui: &'a UiCtx,
+        left: f32,
         y: f32,
         height: f32,
         budget: f32,
     ) -> f32 {
         let themes = editor::env::Themes::of(store);
         let theme = themes.ui();
-        let mut x = 0.0f32;
+        let mut x = left;
         let combos: [(&Combo, fn(ComboCommand) -> ToolbarCommand); 4] = [
             (&self.model, ToolbarCommand::Model),
             (&self.effort, ToolbarCommand::Effort),

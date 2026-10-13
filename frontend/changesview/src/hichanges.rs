@@ -1293,7 +1293,7 @@ pub fn folder_node(
         trail: Vec::new(),
         tint: hikit::tree_item::TreeTint::Directory,
         // Refetch is PER REPOSITORY — the chip rides its root row.
-        action: Some("REFRESH".to_owned()),
+        action: Some("refresh".to_owned()),
         children,
     }
 }

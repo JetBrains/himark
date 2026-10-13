@@ -136,8 +136,9 @@ impl View for TreeLabel {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let mut style = crate::ui::RowStyle::drawer(store, ui);
-        // Tree rows breathe more than menu rows.
-        style.air = crate::ui::space::M;
+        // The islands pitch: ~23pt rows (docs/himark-islands-default
+        // rail) — the M air read ~28pt, visibly looser than the mock.
+        style.air = crate::ui::space::S;
         let tree = editor::env::Themes::of(store).ui().tree.clone();
         let label_style = match (self.dim, self.tint) {
             (true, _) => style.trail.clone(),
@@ -173,18 +174,24 @@ impl View for TreeLabel {
                 return imba::layout::Layout::layout(row, arena, constraints);
             };
             // The chip rides ON TOP (Z order = press priority): its
-            // click never falls through to the row's Activate.
+            // click never falls through to the row's Activate. It
+            // dresses QUIET — dim small text, no caps-pill stroke:
+            // the mock rows carry no chrome on their trailing edge
+            // (docs/himark-islands-default.png).
+            let quiet = style.trail.clone();
             imba::layout::Layout::layout(
                 imba::layout::ZBox::new(arena).child(row).child_aligned(
                     imba::layout::Alignment::CenterEnd,
-                    crate::ui::button(
+                    imba::layout::Button::new(
                         arena,
-                        store,
-                        ui,
-                        crate::ui::ButtonRole::Ghost,
-                        action,
+                        crate::ui::text(&quiet, action),
                         || TreeLabelCommand::Action,
                     )
+                    .radius(crate::ui::RADIUS_S)
+                    .pad_content(imba::layout::Insets::xy(
+                        crate::ui::space::S,
+                        crate::ui::space::XS,
+                    ))
                     .pad_insets(imba::layout::Insets {
                         left: 0.0,
                         top: 0.0,

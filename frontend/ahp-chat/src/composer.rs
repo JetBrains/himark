@@ -497,6 +497,36 @@ impl ComposerBand {
                 let mut panel = imba::container::container(arena, size);
                 let status = props.status.clone();
                 let composer_empty = self.composer.is_empty();
+                let inset = chrome.pad;
+                // ONE rounded container holds the input and the
+                // toolbar row (docs/himark-islands-default.png) —
+                // placed FIRST so everything paints over it; the
+                // hairline-ruled strip is gone.
+                {
+                    let surface = chrome.composer_surface.0;
+                    let border = chrome.composer_border.0;
+                    let well = move |_arena: &Arena,
+                                     canvas: &skia_safe::Canvas,
+                                     rect: skia_safe::Rect| {
+                        let mut paint = skia_safe::Paint::default();
+                        paint.set_anti_alias(true);
+                        paint.set_color(surface);
+                        canvas.draw_round_rect(rect, 24.0, 24.0, &paint);
+                        paint.set_style(skia_safe::PaintStyle::Stroke);
+                        paint.set_stroke_width(1.0);
+                        paint.set_color(border);
+                        canvas.draw_round_rect(rect.with_inset((0.5, 0.5)), 24.0, 24.0, &paint);
+                    };
+                    panel.place(
+                        inset,
+                        stack_h,
+                        leaf::<ChatPanelCommand>(
+                            size.width - inset * 2.0,
+                            (size.height - stack_h - inset * 0.5).max(1.0),
+                        )
+                        .paint_instead(well),
+                    );
+                }
                 panel.place(
                     0.0,
                     stack_h,
@@ -533,7 +563,7 @@ impl ComposerBand {
                     let busy = props.busy;
                     let stop = busy && composer_empty;
                     let label = if stop {
-                        "Stop"
+                        "■ Stop"
                     } else if busy {
                         "Steer"
                     } else {
@@ -554,34 +584,11 @@ impl ComposerBand {
                     &mut panel,
                     store,
                     ui,
+                    inset,
                     size.height - toolbar_h + 1.0,
                     toolbar_h - 1.0,
-                    (size.width - send_cell_width - theme.ui().combo.gap).max(0.0),
+                    (size.width - send_cell_width - theme.ui().combo.gap - inset).max(0.0),
                 );
-
-                // The footer's edges: a hairline between the transcript
-                // and the composer band, and one above the toolbar row
-                // (whose placement already reserves the pixel).
-                {
-                    let rule = theme.ui().toolbar.rule.0;
-                    let hairline =
-                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                            let mut paint = skia_safe::Paint::default();
-                            paint.set_anti_alias(false);
-                            paint.set_color(rule);
-                            canvas.draw_rect(rect, &paint);
-                        };
-                    panel.place(
-                        0.0,
-                        0.0,
-                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                    );
-                    panel.place(
-                        0.0,
-                        size.height - toolbar_h,
-                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                    );
-                }
 
                 {
                     let ui_theme = theme.ui();
@@ -589,7 +596,7 @@ impl ComposerBand {
                     let sendable = !composer_empty && props.link_ready;
                     let stop = busy && composer_empty;
                     let label = if stop {
-                        "Stop"
+                        "■ Stop"
                     } else if busy {
                         "Steer"
                     } else {
@@ -655,7 +662,7 @@ impl ComposerBand {
                         .sized(cell_width, cell_h)
                         .backdrop(
                             move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                                // A rounded PILL, not a ruled cell
+                                // A full CAPSULE, not a rounded cell
                                 // (docs/himark-islands-default.png).
                                 let mut paint = skia_safe::Paint::default();
                                 paint.set_anti_alias(true);
@@ -666,11 +673,12 @@ impl ComposerBand {
                                 paint.set_color(fill);
                                 let pill = skia_safe::Rect::from_ltrb(
                                     rect.left,
-                                    rect.top + 4.0,
+                                    rect.top + 6.0,
                                     rect.right - 5.0,
-                                    rect.bottom - 4.0,
+                                    rect.bottom - 6.0,
                                 );
-                                canvas.draw_round_rect(pill, 8.0, 8.0, &paint);
+                                let radius = pill.height() * 0.5;
+                                canvas.draw_round_rect(pill, radius, radius, &paint);
                             },
                         )
                         .on_click(move || {
@@ -680,7 +688,7 @@ impl ComposerBand {
                             })
                         });
                     panel.place_boxed(
-                        size.width - cell_width,
+                        size.width - cell_width - inset,
                         size.height - toolbar_h + 1.0,
                         cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
                     );
@@ -693,7 +701,7 @@ impl ComposerBand {
                         false => status.clone(),
                     };
                     let legend_w = imba::layout::text_advance(ui, &key_font, &legend);
-                    let legend_x = size.width - cell_width - gap - legend_w;
+                    let legend_x = size.width - cell_width - inset - gap - legend_w;
                     // Squeezed out by the combo cells? The legend yields.
                     if legend_x >= toolbar_cells_right + gap {
                         panel.place_boxed(

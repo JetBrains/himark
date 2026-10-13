@@ -185,6 +185,13 @@ pub struct SelectionStyle {
 
     pub accent_inset: f32,
     pub radius: f32,
+
+    /// A 1px hairline around the well; TRANSPARENT draws none.
+    pub border: Color,
+    /// The well pulls in from the row's horizontal edges by this
+    /// much — an island row's selection floats, it does not touch
+    /// the panel walls.
+    pub inset_x: f32,
 }
 
 struct SelectionState<K> {
@@ -2273,10 +2280,29 @@ impl Backdrop {
             canvas.draw_rect(rect, &paint);
         }
         if self.covered {
+            let rect = Rect::new(
+                rect.left + style.inset_x,
+                rect.top,
+                rect.right - style.inset_x,
+                rect.bottom,
+            );
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(style.fill);
             canvas.draw_round_rect(rect, style.radius, style.radius, &paint);
+            if style.border != Color::TRANSPARENT {
+                let mut stroke = Paint::default();
+                stroke.set_anti_alias(true);
+                stroke.set_style(skia_safe::PaintStyle::Stroke);
+                stroke.set_stroke_width(1.0);
+                stroke.set_color(style.border);
+                canvas.draw_round_rect(
+                    rect.with_inset((0.5, 0.5)),
+                    style.radius,
+                    style.radius,
+                    &stroke,
+                );
+            }
             if style.accent_width > 0.0 {
                 let mut accent = Paint::default();
                 accent.set_color(style.accent);
