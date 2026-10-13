@@ -200,6 +200,12 @@ final class HimarkEngine {
         himark_place_release(engine, place)
     }
 
+    /// The EXPLICIT tree-follow: the host landed this navigation —
+    /// the session's files tree stands on the landed location.
+    func treeFollow(place: HimarkPlace) {
+        _ = himark_tree_follow(engine, place)
+    }
+
     func setShell(context: UnsafeMutableRawPointer, onNavigate: HimarkNavigateFn) {
         himark_set_shell(engine, context, onNavigate)
     }

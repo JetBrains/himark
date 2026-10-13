@@ -482,9 +482,7 @@ pub struct SessionTreeView {
             + Sync,
     >,
 
-    /// The shell's focus-follow probe, injected at mount: answers
     /// the focused location and the focus generation it stands at.
-    follow: Option<Arc<dyn Fn(&Store) -> Option<(ResourceLocation, u64)> + Send + Sync>>,
 
     followed: u64,
     request: Option<ModalRequest>,
@@ -500,7 +498,6 @@ impl Clone for SessionTreeView {
             pending_reveal: self.pending_reveal.clone(),
             folders: self.folders.clone(),
             remove_from_session: self.remove_from_session.clone(),
-            follow: self.follow.clone(),
             followed: self.followed,
 
             request: None,
@@ -536,7 +533,6 @@ impl SessionTreeView {
             pending_reveal: reveal,
             folders: folders_mirror,
             remove_from_session,
-            follow: None,
             followed: 0,
             request: None,
             edit: None,
@@ -544,14 +540,6 @@ impl SessionTreeView {
         panel.drive_reveal(fx);
         panel.persist(store);
         panel
-    }
-
-    pub fn following(
-        mut self,
-        follow: Arc<dyn Fn(&Store) -> Option<(ResourceLocation, u64)> + Send + Sync>,
-    ) -> Self {
-        self.follow = Some(follow);
-        self
     }
 
     fn drive_reveal(&mut self, fx: &mut imba::effect::Effects<'_, TreeCommand>) {
@@ -1397,12 +1385,6 @@ impl View for SessionTreeView {
                 _ => EventResult::Ignored,
             });
 
-            let followed = self.followed;
-            let follow = self
-                .follow
-                .as_ref()
-                .and_then(|probe| probe(store))
-                .filter(|(_, generation)| *generation != followed);
             // Folders join AND leave the session while the dock
             // stands open — the paint gate folds the drift in as
             // soon as the channel mirror carries it, and closes
@@ -1417,7 +1399,6 @@ impl View for SessionTreeView {
             let editing = self.edit.is_some();
             inner.wrap(move |inner| FollowShell {
                 inner,
-                follow,
                 missing_roots,
                 stale_roots,
                 editing,
@@ -1428,7 +1409,6 @@ impl View for SessionTreeView {
 
 struct FollowShell<Inner> {
     inner: Inner,
-    follow: Option<(ResourceLocation, u64)>,
     missing_roots: Vec<ResourceLocation>,
     stale_roots: Vec<ResourceLocation>,
 
@@ -1453,12 +1433,6 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
     ) -> EventResult<TreeCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) {
-            if let Some((location, generation)) = &self.follow {
-                result = result.merge(EventResult::command(TreeCommand::Follow {
-                    location: location.clone(),
-                    generation: *generation,
-                }));
-            }
             if !self.missing_roots.is_empty() || !self.stale_roots.is_empty() {
                 result = result.merge(EventResult::command(TreeCommand::SyncRoots {
                     missing: self.missing_roots.clone(),

@@ -242,6 +242,9 @@ where
                 self.glide = None;
             }
             ScrollCommand::JumpTo(target) => {
+                if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
+                    eprintln!("[scrolled] JumpTo({target}) PERFORMED");
+                }
                 self.scroll_y = target.max(0.0);
                 fx.settle();
 
@@ -434,11 +437,18 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
                 }
             }
             Event::AnimationClock { now } => {
-                let inner = self.reveal_intercepted(
-                    self.content
-                        .handle_event(arena, event, self.content_viewport())
-                        .map(ScrollCommand::Content),
-                );
+                let raw = self
+                    .content
+                    .handle_event(arena, event, self.content_viewport())
+                    .map(ScrollCommand::Content);
+                if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
+                    let reveal = matches!(
+                        &raw,
+                        EventResult::Handled(handled) if handled.reveal.is_some()
+                    );
+                    eprintln!("[scrolled] clock ran: inner reveal? {reveal}");
+                }
+                let inner = self.reveal_intercepted(raw);
 
                 match self.glide {
                     Some(glide) if (glide.target - self.scroll_y).abs() > GLIDE_EPSILON => {
@@ -623,6 +633,9 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
                 crate::event::Motion::Jump => true,
                 crate::event::Motion::Auto => distance.abs() <= self.viewport.height * 0.6,
             };
+            if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
+                eprintln!("[scrolled] intercepted reveal -> target {target} (jump {jump})");
+            }
             return carry(match jump {
                 true => EventResult::command(ScrollCommand::JumpTo(target)),
                 false => EventResult::command(ScrollCommand::GlideTo(target)),

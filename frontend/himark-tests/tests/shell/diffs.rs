@@ -2412,7 +2412,10 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -2540,7 +2543,10 @@ fn folded_squash_paint_cost_is_size_independent() {
                 built,
             )
         };
-        assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+        assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
         let size = skia_safe::Size::new(1100.0, 800.0);
         let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -2635,7 +2641,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     // The diff is dressed by the normalize lane, not at birth
     // (docs/no-diff-on-ui-thread) — the before-cards and host text land
@@ -2659,6 +2668,12 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     }
 
+    if std::env::var_os("HIMARK_SHOT").is_some() {
+        let image = surface.image_snapshot();
+        if let Some(data) = image.encode(None, skia_safe::EncodedImageFormat::PNG, None) {
+            std::fs::write("/tmp/test-focus.png", data.as_bytes()).unwrap();
+        }
+    }
     let host_focus = |app: &Himark| -> String {
         let store = app.store();
         let mut shot = None;
@@ -2683,7 +2698,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     // its inner editor text-focused — so it claimed every later
     // release and its DragEnd yanked host focus back into the card
     // on every host click. Releases belong to the DRAG OWNER only.
-    let (card_y, text_y) = (200.0, 260.0);
+    // Re-aimed 2026-10-13 against the painted frame (the canvas
+    // rides the shared Scrolled now): the card's red band and the
+    // first host line below it.
+    let (card_y, text_y) = (165.0, 280.0);
     full_click(&mut app, card_y);
     assert!(
         host_focus(&app).starts_with("Inlay"),
@@ -2812,7 +2830,10 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -3013,7 +3034,10 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let row_height = |app: &Himark| -> f32 {
         let mut shot = None;
@@ -3133,7 +3157,10 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -3266,7 +3293,10 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     // The diff is dressed by the normalize lane, not at birth
     // (docs/no-diff-on-ui-thread) — the folds appear once it lands.
@@ -3709,7 +3739,10 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -4662,7 +4695,10 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         view.land_for_tests(&mut store, &ui, file_b.new.clone(), built_b);
         view
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -4883,7 +4919,10 @@ fn completion_serves_a_canvas_diff_face() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
@@ -4972,7 +5011,13 @@ fn completion_serves_a_canvas_diff_face() {
     // list child realized per traversal, and the window never saw
     // the face's popup until the list surfaced it.
     let popped = frame(&mut surface);
-    let changed_below = (300..800)
+    if std::env::var_os("HIMARK_SHOT").is_some() {
+        let image = surface.image_snapshot();
+        if let Some(data) = image.encode(None, skia_safe::EncodedImageFormat::PNG, None) {
+            std::fs::write("/tmp/test-completion.png", data.as_bytes()).unwrap();
+        }
+    }
+    let changed_below = (250..800)
         .flat_map(|y| (0..1100).map(move |x| (y * 1100 + x) * 4))
         .filter(|&at| quiet[at..at + 3] != popped[at..at + 3])
         .count();
@@ -5069,7 +5114,10 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
             built,
         )
     };
-    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
     let documents = app.sole_documents();
     let pair = {
         let mut found = None;

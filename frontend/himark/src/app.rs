@@ -744,12 +744,42 @@ impl Himark {
                 .entity(window)
                 .is_some_and(|entity| entity.focused_location() != Some(&location));
             if changed {
+                let location_for_tree = location.clone();
                 self.window_txn(window, |store| {
                     if let Some(mut entity) = Windows::window(store, window) {
                         entity.note_focused_location(location);
                         Windows::put(store, window, entity);
                     }
                 });
+                // The EXPLICIT follow push — the same TreeCommand the
+                // native host sends through `himark_tree_follow`; the
+                // probe that read window focus per paint is gone
+                // (docs/mounted-parity.md: one API, both shells).
+                let (owner, generation) = {
+                    let store = self.window_store(window);
+                    let entity = Windows::window_ref(&store, window);
+                    (
+                        entity.and_then(|entity| entity.dock_owner()),
+                        entity.map(|entity| entity.focus_generation()).unwrap_or(0),
+                    )
+                };
+                if owner == Some("files.tree") {
+                    self.perform_batch(vec![crate::shell::content(
+                        window,
+                        ::workbench::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
+                            ::workbench::dock::DockCommand::Content(
+                                imba::dyn_view::DynCommand::new(
+                                    imba::scroll::ScrollCommand::Content(
+                                        filetree::TreeCommand::Follow {
+                                            location: location_for_tree,
+                                            generation,
+                                        },
+                                    ),
+                                ),
+                            ),
+                        )),
+                    )]);
+                }
             }
         }
     }

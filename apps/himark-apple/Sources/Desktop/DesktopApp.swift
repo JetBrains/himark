@@ -106,6 +106,9 @@ final class DesktopHost: NSObject, ObservableObject {
     private func land(_ opened: Opened) {
         if let standing = document { engine.release(place: standing.place) }
         document = opened
+        // Navigation goes THROUGH the host — the perfect spot to
+        // command the tree: the files island follows every landing.
+        engine.treeFollow(place: opened.place)
     }
 
     /// The document pane closed: drop the record and the handle.

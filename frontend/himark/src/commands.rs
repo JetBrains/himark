@@ -412,6 +412,11 @@ pub(crate) fn register_builtins(store: &mut Store) {
     // recorded chat/terminal place must be able to walk back.
     ::workbench::navigation::Navigators::register(store, ahp_chat::chats::ChatNavigator);
     ::workbench::navigation::Navigators::register(store, ::terminals::pane::TerminalNavigator);
+    // The WINDOWED canvas: wrapped in the shared top scroller — a
+    // BUILTIN, so every windowed shell (the tests' included) seats
+    // a canvas that can scroll; the bare navigator is the mounted
+    // road's (docs/mounted-parity.md).
+    ::workbench::navigation::Navigators::register(store, ::canvas::canvas::ScrolledCanvasNavigator);
     ::workbench::rows::RowMinters::register(store, ::terminals::pane::terminal_row_minter());
 
     Commands::register(

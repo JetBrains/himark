@@ -41,6 +41,59 @@ pub fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId
     store.get::<MountSessions>()?.0.get(&id.raw()).cloned()
 }
 
+/// The session's mounted FILES TREES — the explicit follow targets
+/// `himark_tree_follow` commands when the host lands a navigation.
+#[derive(Clone, Default)]
+pub(crate) struct FollowTargets {
+    trees: rpds::HashTrieMapSync<ahp_wire::SessionId, ViewBridgeId>,
+    generation: u64,
+}
+
+pub(crate) fn remember_files_tree(
+    store: &mut Store,
+    session: ahp_wire::SessionId,
+    id: ViewBridgeId,
+) {
+    let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
+    map.trees.insert_mut(session, id);
+    store.put(map);
+}
+
+/// The EXPLICIT tree-follow: the host landed a navigation and
+/// commands the session's files tree to stand on the location —
+/// the same `TreeCommand::Follow` the workbench pushes from its
+/// focus walk. One API, both shells (docs/mounted-parity.md).
+pub fn follow_session_tree(
+    app: &mut crate::himark::Himark,
+    session: &ahp_wire::SessionId,
+    location: editor::location::ResourceLocation,
+) -> bool {
+    let Some((tree, generation)) = ({
+        let store = app.store();
+        store.get::<FollowTargets>().and_then(|map| {
+            map.trees
+                .get(session)
+                .copied()
+                .map(|tree| (tree, map.generation + 1))
+        })
+    }) else {
+        return false;
+    };
+    app.setup(|store| {
+        let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
+        map.generation = generation;
+        store.put(map);
+    });
+    app.perform_batch(vec![AppCommand::ToView(
+        tree,
+        DynCommand::new(filetree::TreeCommand::Follow {
+            location,
+            generation,
+        }),
+    )]);
+    true
+}
+
 pub(crate) fn forget_session(store: &mut Store, id: ViewBridgeId) {
     let Some(mut map) = store.get::<MountSessions>().cloned() else {
         return;
@@ -641,6 +694,7 @@ fn mount_place_inner(
         let key = place.0.clone();
         return app.mount(move |store, ui, id, fx| {
             remember_session(store, id, key.clone());
+            remember_files_tree(store, key.clone(), id);
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let tree = fx.scope(
                 move |command: filetree::TreeCommand| {
@@ -650,7 +704,6 @@ fn mount_place_inner(
                     crate::hifiles::open_panel(
                         store,
                         ui,
-                        None,
                         key.clone(),
                         state.trees(),
                         None,

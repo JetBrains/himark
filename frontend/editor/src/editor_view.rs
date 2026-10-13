@@ -2209,14 +2209,15 @@ where
                 },
                 viewport,
             ),
-            // POINTER-shaped events route by position, never by
-            // focus — a wheel over an unfocused usages card must
-            // scroll the card, not the page. The gate's job is the
-            // KEYS: keystrokes must not leak into an unfocused
-            // inlay editor.
+            // POSITIONAL events route by position, never by focus —
+            // a wheel over an unfocused usages card must scroll the
+            // card, not the page. Drag and Up are NOT positional:
+            // releases belong to the DRAG OWNER (the 2026-09-18
+            // regression: a once-clicked card claimed every later
+            // release) — and a card engaged by its own MouseDown is
+            // focused by the time its drag continues. The gate's
+            // remaining job is the KEYS.
             Event::MouseDown { .. }
-            | Event::MouseDrag { .. }
-            | Event::MouseUp { .. }
             | Event::MouseMove { .. }
             | Event::Scroll { .. }
             | Event::HitTest { .. }

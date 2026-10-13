@@ -173,6 +173,10 @@ typedef struct {
 
 typedef struct {
     uint64_t raw;
+} HimarkPlace;
+
+typedef struct {
+    uint64_t raw;
 } HimarkCatalog;
 
 /**
@@ -182,10 +186,6 @@ typedef struct {
 typedef struct {
     uint64_t raw;
 } HimarkCommands;
-
-typedef struct {
-    uint64_t raw;
-} HimarkPlace;
 
 /**
  * The host's navigate answer: called on the MAIN thread, in the
@@ -430,6 +430,15 @@ bool himark_frame_offer_scroll(HimarkEngine *engine,
                                float view_y,
                                float view_width,
                                float view_height);
+
+/**
+ * The EXPLICIT tree-follow: the host landed a navigation (the
+ * navigate callback handed it this very place) and commands the
+ * session's files tree to stand on the landed location — the same
+ * `TreeCommand::Follow` the workbench pushes from its focus walk.
+ * False when the place carries no location or no tree is mounted.
+ */
+bool himark_tree_follow(HimarkEngine *engine, HimarkPlace place);
 
 /**
  * Drain the reveal a mounted road parked — a caret-follow or a

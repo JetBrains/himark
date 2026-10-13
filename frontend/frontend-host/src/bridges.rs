@@ -589,6 +589,50 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
     )
 }
 
+/// The EXPLICIT tree-follow: the host landed a navigation (the
+/// navigate callback handed it this very place) and commands the
+/// session's files tree to stand on the landed location — the same
+/// `TreeCommand::Follow` the workbench pushes from its focus walk.
+/// False when the place carries no location or no tree is mounted.
+#[no_mangle]
+pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: HimarkPlace) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some((place, Some(session))) = PLACES
+        .lock()
+        .expect("the place table")
+        .get(place.raw)
+        .cloned()
+    else {
+        return false;
+    };
+    let location = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>() {
+        ahp_session::session::state::Hosts::states(engine.app.store())
+            .into_iter()
+            .map(|state| state.documents())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .find_map(|collection| {
+                documents::OpenDocuments::location(engine.app.store(), collection, ready.document)
+            })
+    } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
+        documents::OpenDocuments::diff_view_ref(engine.app.store(), ready.documents, ready.view)
+            .map(|held| held.right.document())
+            .and_then(|right| {
+                documents::OpenDocuments::location(engine.app.store(), ready.documents, right)
+            })
+    } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
+        ready.reveal.clone()
+    } else {
+        None
+    };
+    let Some(location) = location else {
+        return false;
+    };
+    himark::mounts::follow_session_tree(&mut engine.app, &session, location)
+}
+
 /// Drain the reveal a mounted road parked — a caret-follow or a
 /// selection the view asked to be brought on screen, rect in that
 /// bridge's content coordinates. The host scrolls it into view;

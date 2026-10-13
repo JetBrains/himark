@@ -20,7 +20,6 @@ use editor::location::ResourceLocation;
 pub fn open_panel(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: Option<::workbench::window::WindowId>,
     workspace: ahp_wire::SessionId,
     trees: imba::store::Id<SessionTree>,
     reveal: Option<ResourceLocation>,
@@ -43,24 +42,11 @@ pub fn open_panel(
         reveal,
         fx,
     );
-    match window {
-        Some(window) => panel.following(follow_window(window)),
-        None => panel,
-    }
-}
-
-/// The focus-follow probe: the window's focused location and the
-/// focus generation it stands at, read per paint.
-fn follow_window(
-    window: ::workbench::window::WindowId,
-) -> Arc<dyn Fn(&Store) -> Option<(ResourceLocation, u64)> + Send + Sync> {
-    Arc::new(move |store| {
-        let entity = ::workbench::window::Windows::window_ref(store, window)?;
-        entity
-            .focused_location()
-            .cloned()
-            .map(|location| (location, entity.focus_generation()))
-    })
+    // No follower probe: BOTH shells push `TreeCommand::Follow`
+    // explicitly at their navigation spot — the workbench from its
+    // batch-tail focus walk, the native host through
+    // `himark_tree_follow` as a landing arrives.
+    panel
 }
 
 /// The remove-from-session dispatch: the ask rides the session's
@@ -132,7 +118,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
                     imba::dyn_view::DynCommand::new(imba::scroll::ScrollCommand::Content(command))
                 },
                 |fx| {
-                    open_panel(store, ui, Some(window), workspace, trees, reveal, fx)
+                    open_panel(store, ui, workspace, trees, reveal, fx)
                 },
             )
         });
