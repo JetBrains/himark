@@ -438,24 +438,11 @@ impl imba::View for ChatPane {
                             imba::layout::Layout::layout(laid, arena, constraints),
                         ),
 
-                        // No view record yet (panes mint storeless): a
-                        // blank frame whose paint asks for Boot — the
-                        // perform road builds the view and subscribes.
-                        None => imba::ThunkBox::new(
-                            arena,
-                            imba::thunk_ext::ThunkExt::event(
-                                imba::leaf::leaf::<Self::Command>(
-                                    constraints.max.width,
-                                    constraints.max.height,
-                                ),
-                                |_arena, event, _size| match event {
-                                    imba::event::Event::Paint { .. } => {
-                                        imba::event::EventResult::command(ChatPanelCommand::Boot)
-                                    }
-                                    _ => imba::event::EventResult::Ignored,
-                                },
-                            ),
-                        ),
+                        // No view record yet: THE shared boot leaf — it
+                        // guards the measure ask. This pane used to
+                        // hand-roll its own, which answered the
+                        // infinite ceiling straight back.
+                        None => PaneSeat::boot_leaf(arena, constraints),
                     };
                 widget
             },

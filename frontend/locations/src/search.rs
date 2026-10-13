@@ -421,7 +421,6 @@ impl View for SearchView {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
             let theme = editor::env::Themes::of(store);
             let ui_theme = theme.ui();
             // The CHAT COMPOSER's dress, the commit box's copy of it:
@@ -434,7 +433,6 @@ impl View for SearchView {
             let editor_h = chrome.title_size * 1.6;
             let toolbar_h = ui_theme.toolbar.height;
             let input_band = editor_h + box_pad * 2.0;
-            let mut panel = imba::container::container(arena, size);
 
             let feed = self.feed(store);
             let row = feed.and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
@@ -442,6 +440,47 @@ impl View for SearchView {
                 .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
                 .unwrap_or((0, true, false, 0));
             let running = feed.is_some() && !done;
+
+            // The status band and the results tree are laid BEFORE the
+            // panel exists: the panel is SIZED from them. A view may
+            // never size itself to the ceiling — on the mounted road
+            // (the rail's search tab) that ceiling is infinite.
+            let input_bottom = input_band + toolbar_h;
+            let status = match (feed.is_some(), done, truncated) {
+                (false, _, _) => "type to search the session".to_owned(),
+                (true, false, _) => format!("{hits} results — searching… (click stops)"),
+                (true, true, false) => match hits {
+                    0 => "no results".to_owned(),
+                    _ => format!("{hits} results in {} files", self.files),
+                },
+                (true, true, true) => format!("{hits} results (cut off)"),
+            };
+            let band = hikit::ui::ListRow::new(arena, hikit::ui::RowStyle::header(store, ui))
+                .label(status)
+                .on_event(
+                    move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                        Event::MouseDown { .. } if running => {
+                            EventResult::command(SearchCommand::Cancel)
+                        }
+                        _ => EventResult::Ignored,
+                    },
+                );
+            // The status row sizes to its own text; it just inherits
+            // the width band with the input and toolbar reserved out.
+            let band = band.layout(arena, constraints.reserve(Size::new(0.0, input_bottom)));
+            let tree_top = input_bottom + imba::Thunk::size(&band).height;
+            let tree = imba::layout::Layout::layout(
+                self.search.display(arena, store, ui),
+                arena,
+                constraints.reserve(Size::new(0.0, tree_top)),
+            )
+            .map(SearchCommand::List)
+            .focus_scope(self.focus == SearchArea::Results);
+            // The panel's width is the one the TREE answered, never the
+            // ceiling's — that ceiling can be open on either axis.
+            let laid = imba::Thunk::size(&tree);
+            let size = constraints.constrain(Size::new(laid.width, tree_top + laid.height));
+            let mut panel = imba::container::container(arena, size);
 
             // Bottom-most: a press anywhere on the input band focuses
             // the box (the editor sits on top).
@@ -576,49 +615,11 @@ impl View for SearchView {
 
             // The status band: counts while streaming and after; a
             // click while running stops the stream. Per-frame reads
-            // go through row_ref — no row clone per paint.
-            let status = match (feed.is_some(), done, truncated) {
-                (false, _, _) => "type to search the session".to_owned(),
-                (true, false, _) => format!("{hits} results — searching… (click stops)"),
-                (true, true, false) => match hits {
-                    0 => "no results".to_owned(),
-                    _ => format!("{hits} results in {} files", self.files),
-                },
-                (true, true, true) => format!("{hits} results (cut off)"),
-            };
-            let band = hikit::ui::ListRow::new(arena, hikit::ui::RowStyle::header(store, ui))
-                .label(status)
-                .on_event(
-                    move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                        Event::MouseDown { .. } if running => {
-                            EventResult::command(SearchCommand::Cancel)
-                        }
-                        _ => EventResult::Ignored,
-                    },
-                );
-            let band = band.layout(
-                arena,
-                Constraints {
-                    min: Size::new(size.width, 0.0),
-                    max: Size::new(size.width, f32::MAX),
-                },
-            );
-            let band_height = imba::Thunk::size(&band).height;
-            let input_bottom = input_band + toolbar_h;
+            // go through row_ref — no row clone per paint. (Both it
+            // and the tree were laid above, where they sized the
+            // panel.)
             panel.place_boxed(0.0, input_bottom, band);
-
-            let tree_top = input_bottom + band_height;
-            panel.place(
-                0.0,
-                tree_top,
-                imba::layout::Layout::layout(
-                    self.search.display(arena, store, ui),
-                    arena,
-                    Constraints::tight(Size::new(size.width, (size.height - tree_top).max(1.0))),
-                )
-                .map(SearchCommand::List)
-                .focus_scope(self.focus == SearchArea::Results),
-            );
+            panel.place(0.0, tree_top, tree);
             // The refresh probe: a 1px leaf whose own paint files
             // Refresh when the feed moved — the PANEL keeps painting;
             // hijacking its Paint blanked a frame per landed batch

@@ -451,18 +451,27 @@ impl View for CommentsView {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut overlay = container(arena, size);
-
             let chrome = editor::env::Themes::of(store).ui().peeker.clone();
             let chip_height = chrome.hint_size * 2.0;
             let band = chrome.margin + chip_height + PANEL_PAD;
+            // The chip's band is RESERVED and the rest handed down; the
+            // panel is that band plus whatever the rows answered. It
+            // used to take `constraints.max` for its own size, which is
+            // infinity on the mounted road (the native scroller
+            // measures with an open ceiling) — the crash.
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(size.width, size.height - band)),
+                constraints.reserve(Size::new(0.0, band)),
             )
             .map(CommentsViewCommand::Rows);
+            // Both dimensions come from what the ROWS answered — never
+            // from the ceiling. A content-sized child may still answer
+            // below the floor, so the panel constrains back into the
+            // band it owes its parent.
+            let laid = imba::Thunk::size(&rows);
+            let size = constraints.constrain(Size::new(laid.width, band + laid.height));
+            let mut overlay = container(arena, size);
             overlay.place(0.0, band, rows);
 
             let chip_font = hikit::fonts::ui_font(ui, chrome.hint_size);

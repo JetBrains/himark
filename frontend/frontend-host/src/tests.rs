@@ -8433,3 +8433,133 @@ fn published_diagnostics_squiggle_the_open_document() {
         "clearing the diagnostics markup repaints the squiggled word"
     );
 }
+
+/// THE MOUNTED SIZING CONTRACT, swept over every place a native shell
+/// can mint (docs/mounted-parity.md). A laid view owes its parent a
+/// size INSIDE the band it was handed, and the two mounted hosts hand
+/// down different bands:
+///
+/// - OPEN: a native scroller measures its content — width pinned,
+///   height infinite (`MintedScrollBridge` → `himark_bridge_layout(w,
+///   ∞)`). A view that takes `constraints.max` for its own size
+///   answers infinity here. That is a CRASH in the user's app, and it
+///   is how the comments rail tab died.
+/// - FRAMED: the host hands a fixed frame instead (`PlainMintedBridge`
+///   — the go-to sheet, the whole-chat face). These fill what they are
+///   given; they are never asked to measure themselves.
+#[test]
+fn every_mounted_place_answers_inside_the_band_it_was_handed() {
+    enum Measured {
+        Open,
+        Framed,
+    }
+    let (_host, mut engine, window, _fs) = hosted_engine();
+    // A session exists only once a folder is picked — the places are
+    // all session-scoped.
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![directory_location(&["project"])]));
+    settle_into_session(&mut engine);
+    let session = engine_session(&engine);
+
+    let open = |place| (place, Measured::Open);
+    let framed = |place| (place, Measured::Framed);
+    let places: Vec<(&str, (hikit::navigation::NavigationLocation, Measured))> = vec![
+        (
+            "transcript",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::ChatTranscriptPlace(session.clone()),
+            )),
+        ),
+        (
+            "composer",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::ChatComposerPlace(session.clone()),
+            )),
+        ),
+        (
+            "changes",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::ChangesPlace(session.clone()),
+            )),
+        ),
+        (
+            "changes-canvas",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::ChangesCanvasPlace(session.clone()),
+            )),
+        ),
+        (
+            "history",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::HistoryPlace(session.clone()),
+            )),
+        ),
+        (
+            "search",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::SearchPlace(session.clone()),
+            )),
+        ),
+        (
+            "comments",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::CommentsPlace(session.clone()),
+            )),
+        ),
+        (
+            "files",
+            open(hikit::navigation::NavigationLocation::new(
+                himark::places::FilesPlace(session.clone()),
+            )),
+        ),
+        (
+            "chat",
+            framed(hikit::navigation::NavigationLocation::new(
+                himark::places::ChatPlace(session.clone()),
+            )),
+        ),
+        (
+            "peeker",
+            framed(hikit::navigation::NavigationLocation::new(
+                himark::places::PeekerPlace(session.clone()),
+            )),
+        ),
+    ];
+
+    const WIDTH: f32 = 560.0;
+    const FRAME: f32 = 800.0;
+    let mut measured = Vec::new();
+    for (name, (place, how)) in places {
+        let Some(bridge) =
+            himark::mounts::mount_place(&mut engine.app, &place, Some(session.clone()))
+        else {
+            panic!("{name}: the place refused to mount");
+        };
+        let ask = match how {
+            Measured::Open => skia_safe::Size::new(WIDTH, f32::INFINITY),
+            Measured::Framed => skia_safe::Size::new(WIDTH, FRAME),
+        };
+        let handle = engine.app.stage_layout(bridge, ask);
+        assert_ne!(handle, 0, "{name}: the mounted stage refused to lay");
+        let size = engine
+            .app
+            .stage_layout_size(handle)
+            .unwrap_or_else(|| panic!("{name}: the laid stage has no size"));
+        assert!(
+            size.width.is_finite() && size.height.is_finite(),
+            "{name}: answered the CEILING ({size:?}) — a measured view owes \
+             its CONTENT height, never the band it was handed"
+        );
+        if let Measured::Framed = how {
+            assert!(
+                (size.height - FRAME).abs() < 0.5,
+                "{name}: a framed sheet fills its frame, answered {size:?}"
+            );
+        }
+        engine.app.stage_layout_release(handle);
+        measured.push((name, size.height));
+    }
+    eprintln!("[mounted-sizing] {measured:?}");
+}

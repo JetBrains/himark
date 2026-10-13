@@ -472,22 +472,23 @@ impl View for ChangesView {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
             // SCROLLER-FREE: the view lays its content height; the
             // scroll sits where the view is MOUNTED — the workbench
             // pane's ScrollView, a native shell's scroller.
-            let width = size.width.max(1.0);
             let band = PANEL_PAD;
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
-                Constraints {
-                    min: Size::new(width, 0.0),
-                    max: Size::new(width, f32::INFINITY),
-                },
+                constraints.reserve(Size::new(0.0, band)),
             )
             .map(ChangesViewCommand::Rows);
-            let content = Size::new(width, imba::Thunk::size(&rows).height + band);
+            // Both dimensions come from what the ROWS answered, then
+            // back into the band: content-sizing is not "ignore the
+            // constraints" — a scroller's FLOOR is its viewport, and
+            // answering a short list's height alone left the pane
+            // underfilled.
+            let laid = imba::Thunk::size(&rows);
+            let content = constraints.constrain(Size::new(laid.width, laid.height + band));
             let mut section = container(arena, content);
             section.place(0.0, band, rows);
 
