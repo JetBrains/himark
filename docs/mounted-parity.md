@@ -30,7 +30,7 @@ A behavior lives in exactly ONE place:
 | Bug | Root | Shared mechanism |
 | --- | --- | --- |
 | Canvas scrolls with imba; typing scrolls it up | `Canvas.rows: ScrollView<CanvasRows>` — grandfathered out of descrollering | DONE — bare rows, reveals out; workbench wraps in `Scrolled` |
-| Chat fights scrolling + tool-call expansion | transcript band's anchor corrections ride its own scroll assumptions | Same descrollering; corrections ride reveals, host-applied; user gesture supersedes |
+| Chat fights scrolling + tool-call expansion | tail-follow lived twice: dead engine `set_scroll_y` + per-host `pinsToBottom` twins | DONE — the list's standing FOLLOW MODE on the reveal road; only the hand releases it; host pins deleted on macOS + iOS |
 | goto-usages inlay doesn't scroll | editor FocusGate ate positional events on unfocused inlays; the peek master had no scroller | DONE — positional events route by position; master in ScrollView, keys to the controller |
 | Rail tree unscrollable until tab switch | host never re-applies measured content size after its own resize (fold → expand) | DONE — `DesktopScrollHost.layout` re-seeds from the last measure |
 | Opened editor not revealed in file tree | tree-follow lives in workbench batch-tail only | DONE — `TreeCommand::Follow` is the one API; workbench pushes from batch tail, islands host from `land()` via `himark_tree_follow` |
