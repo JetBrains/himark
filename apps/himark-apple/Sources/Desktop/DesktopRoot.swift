@@ -37,21 +37,35 @@ struct DesktopRoot: View {
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
+    /// The open chat column's width — what the chat is laid at
+    /// whether it is showing or folded.
+    private let chatWidth: CGFloat = 560
+
     var body: some View {
         ZStack {
             WindowDresser().frame(width: 0, height: 0)
 
             // ── the split: chat column beside the document floor ──
             HStack(spacing: 0) {
-                if chatOpen {
+                // The chat is ALWAYS mounted and ALWAYS laid at its
+                // open width. Folding it used to remove it from the
+                // tree, so every reopen built the transcript and
+                // composer bridges again from nothing; and a width
+                // that animates is a width the engine re-lays on
+                // every frame of the spring. The content keeps its
+                // target width throughout — only the frame around it
+                // animates, and clips. Same law as the rail
+                // (docs/mounted-parity.md).
+                HStack(spacing: 0) {
                     ChatPaneColumn(host: host)
-                        .frame(width: 560)
-                        .transition(.move(edge: .leading))
+                        .frame(width: chatWidth)
                     Rectangle()
                         .fill(.white.opacity(0.07))
                         .frame(width: 1)
-                        .ignoresSafeArea()
                 }
+                .frame(width: chatOpen ? chatWidth + 1 : 0, alignment: .leading)
+                .clipped()
+                .opacity(chatOpen ? 1 : 0)
                 Group {
                     if let opened = host.document {
                         DocumentPane(host: host, opened: opened)
