@@ -402,6 +402,18 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// embedding scroller keeps the event otherwise. Realizes the
     /// current band's frame for the one call, like a paint pass.
     func offerWheel(_ event: NSEvent) -> Bool {
+        let point = convert(event.locationInWindow, from: nil)
+        let perLine: Float = event.hasPreciseScrollingDeltas ? 1.0 : Self.lineScroll
+        return offer(
+            at: point,
+            dx: Float(-event.scrollingDeltaX) * perLine,
+            dy: Float(-event.scrollingDeltaY) * perLine,
+            phase: himarkScrollPhase(event))
+    }
+
+    /// The offer core, NSEvent-free — the debug wheel harness drives
+    /// it with crafted deltas at a content point.
+    func offer(at point: NSPoint, dx: Float, dy: Float, phase: UInt32) -> Bool {
         let raw = engine.raw
         let scale = metalLayer.contentsScale
         let visible = visibleRect.intersection(bounds)
@@ -412,15 +424,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let frame = himark_layout_realize(
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         guard frame.raw != 0 else { return false }
-        let point = convert(event.locationInWindow, from: nil)
         let s = Float(scale)
-        let perLine: Float = event.hasPreciseScrollingDeltas ? 1.0 : Self.lineScroll
         let consumed = himark_frame_offer_scroll(
             raw, frame,
             Float(point.x) * s, Float(point.y) * s,
-            Float(-event.scrollingDeltaX) * perLine * s,
-            Float(-event.scrollingDeltaY) * perLine * s,
-            himarkScrollPhase(event),
+            dx * s,
+            dy * s,
+            phase,
             0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         himark_frame_release(raw, frame)
         if consumed { request() }

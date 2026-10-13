@@ -1209,9 +1209,20 @@ impl HimarkEngine {
                 viewport,
             )
         };
+        let trace = std::env::var_os("HIMARK_TRACE_OFFER").is_some();
         let imba::event::EventResult::Handled(handled) = result else {
+            if trace {
+                eprintln!("[offer] ({x},{y}) d({delta_x},{delta_y}) -> IGNORED (host keeps it)");
+            }
             return false;
         };
+        if trace {
+            eprintln!(
+                "[offer] ({x},{y}) d({delta_x},{delta_y}) -> consumed: {} commands, reveal? {}",
+                handled.commands.len(),
+                handled.reveal.is_some()
+            );
+        }
         if let Some(reveal) = handled.reveal {
             if let Some(id) = self.app.stage_frame_origin(frame) {
                 self.app.park_reveal(id, reveal);

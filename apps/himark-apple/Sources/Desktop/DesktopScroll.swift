@@ -180,6 +180,29 @@ final class DesktopScrollHost: NSView {
                 }
             }
         }
+        // HIMARK_DEBUG_WHEEL="x,y,dy,delay;..." — synthetic wheel
+        // bursts OFFERED at viewport-relative content points: the
+        // nested-scroll road (a popup's list, an inlay's preview)
+        // without accessibility permissions.
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_WHEEL"] {
+            for one in spec.split(separator: ";") {
+                let parts = one.split(separator: ",").compactMap { Double($0) }
+                guard parts.count == 4 else { continue }
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[3]) { [weak view, weak self] in
+                    guard let view, let self else { return }
+                    let y = parts[1] + Double(self.scroll.contentView.bounds.minY)
+                    for step in 0..<4 {
+                        let consumed = view.offer(
+                            at: NSPoint(x: parts[0], y: y),
+                            dx: 0,
+                            dy: Float(parts[2]),
+                            phase: step == 0 ? UInt32(HIMARK_SCROLL_PHASE_BEGAN)
+                                : UInt32(HIMARK_SCROLL_PHASE_CHANGED))
+                        NSLog("[wheel-harness] step \(step) at (\(parts[0]),\(Int(y))) dy \(parts[2]) consumed \(consumed)")
+                    }
+                }
+            }
+        }
         if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_TEXT"] {
             let halves = spec.split(separator: ":", maxSplits: 1)
             if halves.count == 2, let delay = Double(halves[0]) {

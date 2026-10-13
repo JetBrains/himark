@@ -2209,9 +2209,19 @@ where
                 },
                 viewport,
             ),
-            Event::MouseDown { .. } | Event::AnimationClock { .. } | Event::ThemeChanged => {
-                self.inner.handle_event(arena, event, viewport)
-            }
+            // POINTER-shaped events route by position, never by
+            // focus — a wheel over an unfocused usages card must
+            // scroll the card, not the page. The gate's job is the
+            // KEYS: keystrokes must not leak into an unfocused
+            // inlay editor.
+            Event::MouseDown { .. }
+            | Event::MouseDrag { .. }
+            | Event::MouseUp { .. }
+            | Event::MouseMove { .. }
+            | Event::Scroll { .. }
+            | Event::HitTest { .. }
+            | Event::AnimationClock { .. }
+            | Event::ThemeChanged => self.inner.handle_event(arena, event, viewport),
             _ if self.focused => self.inner.handle_event(arena, event, viewport),
             _ => EventResult::Ignored,
         }

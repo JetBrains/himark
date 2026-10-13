@@ -407,6 +407,15 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
                 if !matches!(inner, EventResult::Ignored) {
                     return self.reveal_intercepted(inner);
                 }
+                if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
+                    eprintln!(
+                        "[scrollview] content h {} viewport h {} owned_by_other {} owned_by {} d({delta_x},{delta_y})",
+                        self.content.size().height,
+                        self.viewport.height,
+                        gesture.owned_by_other(self.surface),
+                        gesture.owned_by(self.surface),
+                    );
+                }
                 if gesture.owned_by_other(self.surface) {
                     return EventResult::Ignored;
                 }

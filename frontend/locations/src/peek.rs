@@ -941,6 +941,219 @@ mod tests {
         }
     }
 
+    /// THE NESTED-SCROLL LAW: a wheel over a widget inlay must reach
+    /// the inlay's own scroller through the editor's laid tree — the
+    /// usages card scrolls, the host's scroller keeps the rest.
+    #[test]
+    fn a_scroll_over_a_widget_inlay_reaches_its_scroller() {
+        let store = &imba::store::Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
+        let fonts = ::editor::test_document::test_fonts_collection();
+        let theme = editor::theme::Theme::embedded();
+        let mut batch = imba::effect::Batch::new();
+        let editor = document.add_editor(
+            600.0,
+            None,
+            ::editor::document::EditorBuild::Complete,
+            &[],
+            store,
+            ui,
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        let bare = document.content_height(editor);
+        let line = bare / 2.0;
+
+        let markup = editor::markup::MarkupId::mint();
+        document.ensure_document_markup(markup);
+        let anchor = caret_anchor(&document, 3).expect("anchors");
+        document.push_inlay(
+            markup,
+            anchor,
+            editor::markup::Inlay::new(
+                editor::markup::InlayMode::Under,
+                ScrollProbe::default(),
+            ),
+            store,
+            ui,
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+
+        let mut view = editor::editor_view::EditorView {
+            document,
+            editor,
+            reports_geometry: false,
+            location: None,
+            gutter_width: 0.0,
+            base: None,
+        };
+        let viewport = skia_safe::Rect::from_wh(600.0, 500.0);
+        let dispatch = |view: &editor::editor_view::EditorView,
+                        event: &imba::event::Event<'_>| {
+            let arena = imba::arena::Arena::default();
+            let widget = imba::Thunk::realize(
+                imba::layout::Layout::layout(
+                    imba::View::display(view, &arena, store, ui),
+                    &arena,
+                    imba::constraints::Constraints::tight(skia_safe::Size::new(600.0, 500.0)),
+                ),
+                &arena,
+                viewport,
+            );
+            imba::Widget::handle_event(&widget, &arena, event, viewport).into_commands()
+        };
+
+        let click = dispatch(
+            &view,
+            &imba::event::Event::MouseDown {
+                point: skia_safe::Point::new(100.0, line + 150.0),
+                button: imba::event::MouseButton::Left,
+                mods: Default::default(),
+                count: 1,
+            },
+        );
+        assert!(
+            !click.is_empty(),
+            "the card IS placed: a click at its rect reaches it"
+        );
+        let gesture = imba::event::ScrollGesture::default();
+        let commands = dispatch(
+            &view,
+            &imba::event::Event::Scroll {
+                point: skia_safe::Point::new(100.0, line + 150.0),
+                delta_x: 0.0,
+                delta_y: 40.0,
+                gesture: &gesture,
+            },
+        );
+        assert!(
+            !commands.is_empty(),
+            "the wheel over the card must not fall through to the host"
+        );
+
+        // EMITTED is half the law: the command must LAND in the
+        // stored inlay view, or the card never actually moves (the
+        // symptom: neither wheels nor selection-follow scroll it).
+        // Behavioral assert: slam the card to its clamp, land the
+        // command, and the NEXT wheel consumes with NOTHING to say —
+        // possible only if the first one actually moved the state.
+        let mut store2 = imba::store::Store::new();
+        let gesture = imba::event::ScrollGesture::default();
+        let slam = dispatch(
+            &view,
+            &imba::event::Event::Scroll {
+                point: skia_safe::Point::new(100.0, line + 150.0),
+                delta_x: 0.0,
+                delta_y: 5_000.0,
+                gesture: &gesture,
+            },
+        );
+        assert!(!slam.is_empty(), "the slam asks for the clamped scroll");
+        for command in slam {
+            imba::View::perform(&mut view, &mut store2, ui, command, &mut batch.effects());
+        }
+        let gesture = imba::event::ScrollGesture::default();
+        let again = dispatch(
+            &view,
+            &imba::event::Event::Scroll {
+                point: skia_safe::Point::new(100.0, line + 150.0),
+                delta_x: 0.0,
+                delta_y: 40.0,
+                gesture: &gesture,
+            },
+        );
+        assert!(
+            again.is_empty(),
+            "the slam LANDED: a wheel at the clamp consumes with nothing to say              (commands mean the state was lost: {})",
+            again.len()
+        );
+    }
+
+    /// A bounded scroller over content far taller than its box —
+    /// the usages card's shape, minus the feed.
+    #[derive(Clone)]
+    struct ScrollProbe {
+        scroll: imba::scroll::ScrollView<Tall>,
+    }
+
+    impl Default for ScrollProbe {
+        fn default() -> Self {
+            Self {
+                scroll: imba::scroll::ScrollView::new(Tall),
+            }
+        }
+    }
+
+    impl imba::View for ScrollProbe {
+        type Command = imba::scroll::ScrollCommand<u32>;
+        fn perform(
+            &mut self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            command: Self::Command,
+            fx: &mut imba::effect::Effects<'_, Self::Command>,
+        ) {
+            self.scroll.perform(store, ui, command, fx);
+        }
+        fn display<'a>(
+            &'a self,
+            _arena: &'a imba::arena::Arena,
+            store: &'a imba::store::Store,
+            ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(move |arena: &'a imba::arena::Arena, _constraints| {
+                imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        self.scroll.display(arena, store, ui),
+                        arena,
+                        imba::constraints::Constraints::tight(skia_safe::Size::new(200.0, 300.0)),
+                    ),
+                )
+            })
+        }
+    }
+
+    #[derive(Clone)]
+    struct Tall;
+
+    impl imba::View for Tall {
+        type Command = u32;
+        fn perform(
+            &mut self,
+            _store: &mut imba::store::Store,
+            _ui: &imba::ui::UiCtx,
+            _command: Self::Command,
+            _fx: &mut imba::effect::Effects<'_, Self::Command>,
+        ) {
+        }
+        fn display<'a>(
+            &'a self,
+            _arena: &'a imba::arena::Arena,
+            _store: &'a imba::store::Store,
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(move |arena: &'a imba::arena::Arena, _constraints| {
+                use imba::thunk_ext::ThunkExt as _;
+                imba::ThunkBox::new(
+                    arena,
+                    imba::leaf::leaf::<u32>(200.0, 2000.0).event(|_arena, event, _size| {
+                        match event {
+                            imba::event::Event::MouseDown { .. } => {
+                                imba::event::EventResult::command(7)
+                            }
+                            _ => imba::event::EventResult::Ignored,
+                        }
+                    }),
+                )
+            })
+        }
+    }
+
     #[derive(Clone)]
     struct ProbeCard;
 
