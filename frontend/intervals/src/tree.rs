@@ -19,17 +19,45 @@ pub(crate) enum Node<K, V> {
     Leaf(Vec<Leaf<K, V>>),
 }
 
+/// Coordinates are RELATIVE to the owning node, and SIGNED: the
+/// encoding packs the greedy flag into the low bit as `2 * offset -
+/// greedy_left`, so an interval at offset 0 that is greedy-left rests
+/// at -1. Deltas travel as i64 and the arithmetic happens there; only
+/// the resting value is narrow, which is where the bytes are — one of
+/// these per leaf, and a parse makes tens of thousands.
+///
+/// i32 caps an encoded offset at ~1.07 G (the encoding doubles), so a
+/// document of about a gigabyte. Debug builds trip before a wrap.
 #[derive(Clone, Copy, Debug)]
-struct RawInterval {
+pub(crate) struct RawInterval {
     id: i64,
-    start: i64,
-    end: i64,
+    start: i32,
+    end: i32,
+}
+
+/// Apply a signed delta to a stored coordinate.
+fn shifted(value: i32, delta: i64) -> i32 {
+    let moved = i64::from(value) + delta;
+    debug_assert!(
+        moved >= i64::from(i32::MIN) && moved <= i64::from(i32::MAX),
+        "an interval shifted out of range: {value} + {delta}",
+    );
+    moved.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+/// Narrow an encoded coordinate for storage.
+fn narrowed(value: i64) -> i32 {
+    debug_assert!(
+        value >= i64::from(i32::MIN) && value <= i64::from(i32::MAX),
+        "an encoded offset does not fit: {value}",
+    );
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 impl RawInterval {
     fn shift(&mut self, delta: i64) {
-        self.start += delta;
-        self.end += delta;
+        self.start = shifted(self.start, delta);
+        self.end = shifted(self.end, delta);
     }
 }
 
@@ -83,7 +111,7 @@ where
 }
 
 struct CollapseContext<'a, K> {
-    parents: &'a mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &'a mut dyn crate::ParentLinks,
     drop_empty: bool,
 
     dropped: &'a mut Vec<K>,
@@ -101,6 +129,13 @@ struct Frame<'a, K, V> {
     index: isize,
     delta: i64,
 }
+
+/// TEST SUPPORT: the private shapes, named for the cost probe.
+pub(crate) type ProbeLeaf<K, V> = Leaf<K, V>;
+/// TEST SUPPORT.
+pub(crate) type ProbeChild<K, V> = Child<K, V>;
+/// TEST SUPPORT.
+pub(crate) type ProbeRaw = RawInterval;
 
 pub(crate) struct InsertEntry<K, V> {
     pub(crate) id: i64,
@@ -127,19 +162,21 @@ pub(crate) fn find_by_path<'a, K, V>(
     path: &[i64],
 ) -> Option<IntervalRef<'a, K, V>> {
     let mut node = root;
-    let mut delta = 0;
+    // The running origin accumulates relative starts, in the delta
+    // domain — the stored coordinates are narrow, the arithmetic is not.
+    let mut delta: i64 = 0;
 
     for id in path {
         match node {
             Node::Internal(children) => {
                 let child = children.iter().find(|child| child.raw.id == *id)?;
-                delta += child.raw.start;
+                delta += i64::from(child.raw.start);
                 node = &child.node;
             }
             Node::Leaf(leaves) => {
                 let leaf = leaves.iter().find(|leaf| leaf.raw.id == *id)?;
-                let start = delta + leaf.raw.start;
-                let end = delta + leaf.raw.end;
+                let start = delta + i64::from(leaf.raw.start);
+                let end = delta + i64::from(leaf.raw.end);
                 return Some(IntervalRef {
                     range: decode_start(start)..decode_end(end),
                     greedy_left: start % 2 != 0,
@@ -158,7 +195,7 @@ pub(crate) fn insert<K, V>(
     root: &mut Node<K, V>,
     root_id: i64,
     entries: Vec<InsertEntry<K, V>>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     next_inner_id: &mut i64,
 ) where
     K: Clone,
@@ -206,7 +243,7 @@ pub(crate) fn collapse<K, V>(
     root_id: i64,
     offset: Offset,
     len: Offset,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     drop_empty: bool,
     dropped: &mut Vec<K>,
 ) where
@@ -229,11 +266,100 @@ pub(crate) fn collapse<K, V>(
     shrink_root(root, root_id, ctx.parents);
 }
 
+/// Drop every interval INTERSECTING `[offset, offset + len)`, by
+/// range — no ids, no parent walk, no key index. This is what a
+/// keyless lane removes with: a reparse knows the region it
+/// invalidated, and "delete what lives there" needs no identity.
+/// Coordinates do not move; only the dropped intervals go.
+pub(crate) fn remove_in_range<K, V>(
+    root: &mut Node<K, V>,
+    root_id: i64,
+    offset: Offset,
+    len: Offset,
+    parents: &mut dyn crate::ParentLinks,
+    dropped: &mut Vec<K>,
+) where
+    K: Clone,
+    V: Clone,
+{
+    if len == 0 {
+        return;
+    }
+    // The stored domain doubles the offsets (the greedy flag rides
+    // the low bit), the same way `collapse` encodes its window.
+    let offset = i64::from(offset) * 2;
+    let len = i64::from(len) * 2;
+    remove_in_range_node(root, offset, len, parents, dropped);
+    shrink_root(root, root_id, parents);
+}
+
+fn remove_in_range_node<K, V>(
+    node: &mut Node<K, V>,
+    offset: i64,
+    len: i64,
+    parents: &mut dyn crate::ParentLinks,
+    dropped: &mut Vec<K>,
+) where
+    K: Clone,
+    V: Clone,
+{
+    match node {
+        Node::Internal(children) => {
+            let mut kept = Vec::with_capacity(children.len());
+            for mut child in std::mem::take(children) {
+                let start = i64::from(child.raw.start);
+                let end = i64::from(child.raw.end);
+                // A disjoint subtree is untouched, and not descended
+                // into — this is what keeps a reparse O(invalidated)
+                // rather than O(document).
+                if end <= offset || offset + len <= start {
+                    kept.push(child);
+                } else {
+                    let emptied = {
+                        let inner = Arc::make_mut(&mut child.node);
+                        remove_in_range_node(inner, offset - start, len, parents, dropped);
+                        inner.is_empty()
+                    };
+                    if emptied {
+                        extinct_child(child, parents, None);
+                    } else {
+                        // What is left rebases onto its own first
+                        // child, and the parent restates its extent.
+                        let (delta, max_end) = {
+                            let inner = Arc::make_mut(&mut child.node);
+                            let delta = inner.normalize();
+                            (delta, inner.max_end())
+                        };
+                        child.raw.start = shifted(child.raw.start, delta);
+                        child.raw.end = narrowed(i64::from(child.raw.start) + max_end);
+                        kept.push(child);
+                    }
+                }
+            }
+            *children = kept;
+        }
+        Node::Leaf(leaves) => {
+            let mut kept = Vec::with_capacity(leaves.len());
+            for leaf in std::mem::take(leaves) {
+                let start = i64::from(leaf.raw.start);
+                let end = i64::from(leaf.raw.end);
+                if end <= offset || offset + len <= start {
+                    kept.push(leaf);
+                } else {
+                    parents.orphan(leaf.raw.id);
+                    dropped.push(leaf.key);
+                }
+            }
+            *leaves = kept;
+        }
+    }
+}
+
 pub(crate) fn remove<K, V>(
     root: &mut Node<K, V>,
     root_id: i64,
     deletion_subtree: &HashMap<i64, HashSet<i64>>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
 ) where
     K: Clone,
     V: Clone,
@@ -245,6 +371,56 @@ pub(crate) fn remove<K, V>(
 impl<K, V> Node<K, V> {
     pub(crate) fn new() -> Self {
         Self::Leaf(Vec::new())
+    }
+
+    /// TEST SUPPORT: the widest coordinate the tree actually stores,
+    /// (leaves, children). Coordinates are RELATIVE to the owning
+    /// node, so these are extents of a subtree, not of the document —
+    /// what decides how narrow the stored field may be.
+    pub(crate) fn probe_extremes(&self) -> (i64, i64) {
+        match self {
+            Self::Leaf(leaves) => (
+                leaves
+                    .iter()
+                    .map(|leaf| i64::from(leaf.raw.start.abs()).max(i64::from(leaf.raw.end.abs())))
+                    .max()
+                    .unwrap_or(0),
+                0,
+            ),
+            Self::Internal(children) => {
+                let mut widest = (0, 0);
+                for child in children {
+                    let inner = child.node.probe_extremes();
+                    widest.0 = widest.0.max(inner.0);
+                    widest.1 = widest
+                        .1
+                        .max(inner.1)
+                        .max(i64::from(child.raw.start.abs()).max(i64::from(child.raw.end.abs())));
+                }
+                widest
+            }
+        }
+    }
+
+    /// TEST SUPPORT: what the tree itself costs — (leaf nodes,
+    /// internal nodes, leaves, leaf slots, child slots). Slots are
+    /// Vec CAPACITY, so the gap against the counts is growth slack.
+    pub(crate) fn probe_shape(&self) -> (usize, usize, usize, usize, usize) {
+        match self {
+            Self::Leaf(leaves) => (1, 0, leaves.len(), leaves.capacity(), 0),
+            Self::Internal(children) => {
+                let mut totals = (0, 1, 0, 0, children.capacity());
+                for child in children {
+                    let inner = child.node.probe_shape();
+                    totals.0 += inner.0;
+                    totals.1 += inner.1;
+                    totals.2 += inner.2;
+                    totals.3 += inner.3;
+                    totals.4 += inner.4;
+                }
+                totals
+            }
+        }
     }
 
     fn len(&self) -> usize {
@@ -262,17 +438,21 @@ impl<K, V> Node<K, V> {
         match self {
             Self::Internal(children) => children
                 .iter()
-                .map(|child| child.raw.end)
+                .map(|child| i64::from(child.raw.end))
                 .max()
                 .unwrap_or(0),
-            Self::Leaf(leaves) => leaves.iter().map(|leaf| leaf.raw.end).max().unwrap_or(0),
+            Self::Leaf(leaves) => leaves
+                .iter()
+                .map(|leaf| i64::from(leaf.raw.end))
+                .max()
+                .unwrap_or(0),
         }
     }
 
     fn normalize(&mut self) -> i64 {
         let delta = match self {
-            Self::Internal(children) => children.first().map(|child| child.raw.start),
-            Self::Leaf(leaves) => leaves.first().map(|leaf| leaf.raw.start),
+            Self::Internal(children) => children.first().map(|child| i64::from(child.raw.start)),
+            Self::Leaf(leaves) => leaves.first().map(|leaf| i64::from(leaf.raw.start)),
         };
         let Some(delta) = delta else {
             return 0;
@@ -311,8 +491,8 @@ impl<K, V> Leaf<K, V> {
         Self {
             raw: RawInterval {
                 id: entry.id,
-                start,
-                end,
+                start: narrowed(start),
+                end: narrowed(end),
             },
             key,
             value,
@@ -336,8 +516,8 @@ fn build_root<K, V>(leaves: Vec<Leaf<K, V>>, next_inner_id: &mut i64) -> Node<K,
             .map(|item| Child {
                 raw: RawInterval {
                     id: item.id,
-                    start: item.start,
-                    end: item.end,
+                    start: narrowed(item.start),
+                    end: narrowed(item.end),
                 },
                 node: Arc::new(item.node),
             })
@@ -390,8 +570,8 @@ fn parent_layer<K, V>(
             children.push(Child {
                 raw: RawInterval {
                     id: item.id,
-                    start: item.start,
-                    end: item.end,
+                    start: narrowed(item.start),
+                    end: narrowed(item.end),
                 },
                 node: Arc::new(item.node),
             });
@@ -417,7 +597,7 @@ fn insert_single<K, V>(
     root: &mut Node<K, V>,
     root_id: i64,
     leaf: Leaf<K, V>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     next_inner_id: &mut i64,
 ) where
     K: Clone,
@@ -431,8 +611,8 @@ fn insert_single<K, V>(
 
     let left_id = new_inner_id(next_inner_id);
     adopt(&left, left_id, parents);
-    parents.insert_mut(left_id, root_id);
-    parents.insert_mut(right_id, root_id);
+    parents.adopt(left_id, root_id);
+    parents.adopt(right_id, root_id);
 
     let left_delta = left.normalize();
     let right_delta = right.normalize();
@@ -440,16 +620,16 @@ fn insert_single<K, V>(
         Child {
             raw: RawInterval {
                 id: left_id,
-                start: left_delta,
-                end: left_delta + left.max_end(),
+                start: narrowed(left_delta),
+                end: narrowed(left_delta + left.max_end()),
             },
             node: Arc::new(left),
         },
         Child {
             raw: RawInterval {
                 id: right_id,
-                start: right_delta,
-                end: right_delta + right.max_end(),
+                start: narrowed(right_delta),
+                end: narrowed(right_delta + right.max_end()),
             },
             node: Arc::new(right),
         },
@@ -461,21 +641,22 @@ fn insert_rec<K, V>(
     node_id: i64,
     node_delta: i64,
     mut leaf: Leaf<K, V>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     next_inner_id: &mut i64,
 ) -> Option<(i64, Node<K, V>)>
 where
     K: Clone,
     V: Clone,
 {
-    let local_start = leaf.raw.start - node_delta;
+    let local_start = i64::from(leaf.raw.start) - node_delta;
 
     match node {
         Node::Leaf(leaves) => {
-            leaf.raw.start = local_start;
-            leaf.raw.end -= node_delta;
+            leaf.raw.start = narrowed(local_start);
+            leaf.raw.end = shifted(leaf.raw.end, -node_delta);
+            let local_start = narrowed(local_start);
             let insert_index = leaves.partition_point(|leaf| leaf.raw.start <= local_start);
-            parents.insert_mut(leaf.raw.id, node_id);
+            parents.adopt(leaf.raw.id, node_id);
             leaves.insert(insert_index, leaf);
         }
         Node::Internal(children) if children.is_empty() => {
@@ -483,10 +664,11 @@ where
             return insert_rec(node, node_id, node_delta, leaf, parents, next_inner_id);
         }
         Node::Internal(children) => {
+            let local_start = narrowed(local_start);
             let insert_index = children.partition_point(|child| child.raw.start <= local_start);
             let child_index = insert_index.saturating_sub(1).min(children.len() - 1);
             let child_id = children[child_index].raw.id;
-            let child_start = children[child_index].raw.start;
+            let child_start = i64::from(children[child_index].raw.start);
             let (split, left_delta, left_max_end) = {
                 let child = Arc::make_mut(&mut children[child_index].node);
                 let split = insert_rec(
@@ -501,8 +683,8 @@ where
                 (split, left_delta, child.max_end())
             };
             let left_start = child_start + left_delta;
-            children[child_index].raw.start = left_start;
-            children[child_index].raw.end = left_start + left_max_end;
+            children[child_index].raw.start = narrowed(left_start);
+            children[child_index].raw.end = narrowed(left_start + left_max_end);
 
             if let Some((right_id, mut right)) = split {
                 let right_delta = right.normalize();
@@ -512,13 +694,13 @@ where
                     Child {
                         raw: RawInterval {
                             id: right_id,
-                            start: right_start,
-                            end: right_start + right.max_end(),
+                            start: narrowed(right_start),
+                            end: narrowed(right_start + right.max_end()),
                         },
                         node: Arc::new(right),
                     },
                 );
-                parents.insert_mut(right_id, node_id);
+                parents.adopt(right_id, node_id);
             }
         }
     }
@@ -548,11 +730,11 @@ where
     match node {
         Node::Internal(children) => {
             for child in children {
-                let start = child.raw.start;
-                let end = child.raw.end;
+                let start = i64::from(child.raw.start);
+                let end = i64::from(child.raw.end);
                 if start < offset && offset < end {
                     expand_node(Arc::make_mut(&mut child.node), offset - start, len);
-                    child.raw.end += len;
+                    child.raw.end = shifted(child.raw.end, len);
                 } else if offset <= start {
                     child.raw.shift(len);
                 }
@@ -560,10 +742,10 @@ where
         }
         Node::Leaf(leaves) => {
             for leaf in leaves {
-                let start = leaf.raw.start;
-                let end = leaf.raw.end;
+                let start = i64::from(leaf.raw.start);
+                let end = i64::from(leaf.raw.end);
                 if start < offset && offset < end {
-                    leaf.raw.end += len;
+                    leaf.raw.end = shifted(leaf.raw.end, len);
                 } else if offset <= start {
                     leaf.raw.shift(len);
                 }
@@ -588,26 +770,19 @@ fn collapse_node<K, V>(
             let old_children = std::mem::take(children);
 
             for mut child in old_children {
-                if child.raw.end <= offset {
+                let child_start = i64::from(child.raw.start);
+                let child_end = i64::from(child.raw.end);
+                if child_end <= offset {
                     result.push(child);
-                } else if offset + len <= child.raw.start {
+                } else if offset + len <= child_start {
                     child.raw.shift(-len);
                     result.push(child);
-                } else if ctx.drop_empty
-                    && offset <= child.raw.start
-                    && child.raw.end <= offset + len
-                {
+                } else if ctx.drop_empty && offset <= child_start && child_end <= offset + len {
                     extinct_child(child, ctx.parents, Some(ctx.dropped));
                 } else {
                     let is_empty = {
                         let child_node = Arc::make_mut(&mut child.node);
-                        collapse_node(
-                            child_node,
-                            d + child.raw.start,
-                            offset - child.raw.start,
-                            len,
-                            ctx,
-                        );
+                        collapse_node(child_node, d + child_start, offset - child_start, len, ctx);
                         child_node.is_empty()
                     };
                     if is_empty {
@@ -618,8 +793,8 @@ fn collapse_node<K, V>(
                             let delta = child_node.normalize();
                             (delta, child_node.max_end())
                         };
-                        child.raw.start += delta;
-                        child.raw.end = child.raw.start + max_end;
+                        child.raw.start = shifted(child.raw.start, delta);
+                        child.raw.end = narrowed(i64::from(child.raw.start) + max_end);
                         result.push(child);
                     }
                 }
@@ -632,28 +807,29 @@ fn collapse_node<K, V>(
             let old_leaves = std::mem::take(leaves);
 
             for mut leaf in old_leaves {
-                if leaf.raw.end <= offset {
+                let leaf_start = i64::from(leaf.raw.start);
+                let leaf_end = i64::from(leaf.raw.end);
+                if leaf_end <= offset {
                     result.push(leaf);
-                } else if offset + len <= leaf.raw.start {
+                } else if offset + len <= leaf_start {
                     leaf.raw.shift(-len);
                     result.push(leaf);
-                } else if ctx.drop_empty && offset <= leaf.raw.start && leaf.raw.end <= offset + len
-                {
-                    ctx.parents.remove_mut(&leaf.raw.id);
+                } else if ctx.drop_empty && offset <= leaf_start && leaf_end <= offset + len {
+                    ctx.parents.orphan(leaf.raw.id);
                     ctx.dropped.push(leaf.key);
                 } else {
-                    let new_start = if offset < leaf.raw.start {
-                        max(offset - ((d + leaf.raw.start) % 2), leaf.raw.start - len)
+                    let new_start = if offset < leaf_start {
+                        max(offset - ((d + leaf_start) % 2), leaf_start - len)
                     } else {
-                        leaf.raw.start
+                        leaf_start
                     };
-                    let new_end = max(offset + ((d + leaf.raw.end) % 2), leaf.raw.end - len);
+                    let new_end = max(offset + ((d + leaf_end) % 2), leaf_end - len);
                     if ctx.drop_empty && new_end - new_start < 2 {
-                        ctx.parents.remove_mut(&leaf.raw.id);
+                        ctx.parents.orphan(leaf.raw.id);
                         ctx.dropped.push(leaf.key);
                     } else {
-                        leaf.raw.start = new_start;
-                        leaf.raw.end = new_end;
+                        leaf.raw.start = narrowed(new_start);
+                        leaf.raw.end = narrowed(new_end);
                         result.push(leaf);
                     }
                 }
@@ -668,7 +844,7 @@ fn remove_from_subtree<K, V>(
     node: &mut Node<K, V>,
     node_id: i64,
     deletion_subtree: &HashMap<i64, HashSet<i64>>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
 ) where
     K: Clone,
     V: Clone,
@@ -682,7 +858,7 @@ fn remove_from_subtree<K, V>(
             let old_leaves = std::mem::take(leaves);
             for leaf in old_leaves {
                 if victims.contains(&leaf.raw.id) {
-                    parents.remove_mut(&leaf.raw.id);
+                    parents.orphan(leaf.raw.id);
                 } else {
                     leaves.push(leaf);
                 }
@@ -702,8 +878,8 @@ fn remove_from_subtree<K, V>(
                                 let delta = child_node.normalize();
                                 (delta, child_node.max_end())
                             };
-                            child.raw.start += delta;
-                            child.raw.end = child.raw.start + max_end;
+                            child.raw.start = shifted(child.raw.start, delta);
+                            child.raw.end = narrowed(i64::from(child.raw.start) + max_end);
                             children.push(child);
                         }
                     } else {
@@ -726,8 +902,8 @@ fn remove_from_subtree<K, V>(
                             let delta = child_node.normalize();
                             (delta, child_node.max_end())
                         };
-                        child.raw.start += delta;
-                        child.raw.end = child.raw.start + max_end;
+                        child.raw.start = shifted(child.raw.start, delta);
+                        child.raw.end = narrowed(i64::from(child.raw.start) + max_end);
                         children.push(child);
                     }
                 } else {
@@ -741,7 +917,7 @@ fn remove_from_subtree<K, V>(
 fn shrink_root<K, V>(
     root: &mut Node<K, V>,
     root_id: i64,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
 ) where
     K: Clone,
     V: Clone,
@@ -757,9 +933,9 @@ fn shrink_root<K, V>(
                     Ok(child) => child,
                     Err(child) => child.as_ref().clone(),
                 };
-                child_node.shift(child.raw.start);
+                child_node.shift(i64::from(child.raw.start));
                 adopt(&child_node, root_id, parents);
-                parents.remove_mut(&child.raw.id);
+                parents.orphan(child.raw.id);
                 *root = child_node;
             }
             _ => break,
@@ -776,33 +952,33 @@ fn new_inner_id(next_inner_id: &mut i64) -> i64 {
 fn adopt_all<K, V>(
     node: &Node<K, V>,
     parent_id: i64,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
 ) {
     match node {
         Node::Internal(children) => {
             for child in children {
-                parents.insert_mut(child.raw.id, parent_id);
+                parents.adopt(child.raw.id, parent_id);
                 adopt_all(&child.node, child.raw.id, parents);
             }
         }
         Node::Leaf(leaves) => {
             for leaf in leaves {
-                parents.insert_mut(leaf.raw.id, parent_id);
+                parents.adopt(leaf.raw.id, parent_id);
             }
         }
     }
 }
 
-fn adopt<K, V>(node: &Node<K, V>, parent_id: i64, parents: &mut rpds::HashTrieMapSync<i64, i64>) {
+fn adopt<K, V>(node: &Node<K, V>, parent_id: i64, parents: &mut dyn crate::ParentLinks) {
     match node {
         Node::Internal(children) => {
             for child in children {
-                parents.insert_mut(child.raw.id, parent_id);
+                parents.adopt(child.raw.id, parent_id);
             }
         }
         Node::Leaf(leaves) => {
             for leaf in leaves {
-                parents.insert_mut(leaf.raw.id, parent_id);
+                parents.adopt(leaf.raw.id, parent_id);
             }
         }
     }
@@ -810,18 +986,18 @@ fn adopt<K, V>(node: &Node<K, V>, parent_id: i64, parents: &mut rpds::HashTrieMa
 
 fn extinct_child<K, V>(
     child: Child<K, V>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     dropped: Option<&mut Vec<K>>,
 ) where
     K: Clone,
 {
-    parents.remove_mut(&child.raw.id);
+    parents.orphan(child.raw.id);
     extinct_node(&child.node, parents, dropped);
 }
 
 fn extinct_node<K, V>(
     node: &Node<K, V>,
-    parents: &mut rpds::HashTrieMapSync<i64, i64>,
+    parents: &mut dyn crate::ParentLinks,
     mut dropped: Option<&mut Vec<K>>,
 ) where
     K: Clone,
@@ -829,13 +1005,13 @@ fn extinct_node<K, V>(
     match node {
         Node::Internal(children) => {
             for child in children {
-                parents.remove_mut(&child.raw.id);
+                parents.orphan(child.raw.id);
                 extinct_node(&child.node, parents, dropped.as_deref_mut());
             }
         }
         Node::Leaf(leaves) => {
             for leaf in leaves {
-                parents.remove_mut(&leaf.raw.id);
+                parents.orphan(leaf.raw.id);
                 if let Some(dropped) = dropped.as_deref_mut() {
                     dropped.push(leaf.key.clone());
                 }
@@ -941,8 +1117,8 @@ impl<'a, K, V> Iterator for Query<'a, K, V> {
             match node {
                 Node::Internal(children) => {
                     let child = &children[child_index];
-                    let start = delta + child.raw.start;
-                    let end = delta + child.raw.end;
+                    let start = delta + i64::from(child.raw.start);
+                    let end = delta + i64::from(child.raw.end);
                     if start > self.query_to {
                         continue;
                     }
@@ -952,8 +1128,8 @@ impl<'a, K, V> Iterator for Query<'a, K, V> {
                 }
                 Node::Leaf(leaves) => {
                     let leaf = &leaves[child_index];
-                    let start = delta + leaf.raw.start;
-                    let end = delta + leaf.raw.end;
+                    let start = delta + i64::from(leaf.raw.start);
+                    let end = delta + i64::from(leaf.raw.end);
                     if start > self.query_to {
                         continue;
                     }

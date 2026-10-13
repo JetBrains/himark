@@ -45,8 +45,12 @@ pub enum MarkupScope {
 #[derive(Clone)]
 pub struct Markup {
     /// The BULK lane: plain styled spans — a syntax highlighter puts
-    /// tens of thousands here. Nothing structural lives in it.
-    styles: Intervals<IntervalId, Decoration>,
+    /// tens of thousands here. Nothing structural lives in it, and
+    /// nothing looks one up by key: it is written whole and deleted by
+    /// RANGE. So it carries NO key index — neither the key map nor the
+    /// parent map, which together were 186 of the 224 bytes a span
+    /// used to cost (`intervals::tests::cost`).
+    styles: Intervals<IntervalId, Decoration, intervals::Keyless<IntervalId>>,
 
     /// The STRUCTURE lane: inlays, hidden/unhide, alignment and the
     /// nested-syntax mounts — low cardinality, and the only tree the
@@ -217,7 +221,12 @@ pub(crate) enum Decoration {
     Hidden,
 
     Unhide,
-    Inlay(Inlay),
+    /// BOXED: a span stores its decoration INLINE in the tree leaf, and
+    /// an enum is as wide as its widest variant. Inlays are rare and
+    /// structural; styled spans are the bulk lane a highlighter fills
+    /// by the tens of thousands. Unboxed, every one of those spans
+    /// paid this variant's 48 bytes to carry a 2-byte `StyleId`.
+    Inlay(Box<Inlay>),
 
     Alignment(crate::theme::TextAlignment),
 
@@ -766,7 +775,7 @@ impl Markup {
 
     pub fn new() -> Self {
         Self {
-            styles: Intervals::new(),
+            styles: Intervals::keyless(),
             shape: Intervals::new(),
             next_key: 0,
             scope: MarkupScope::View,
@@ -823,13 +832,49 @@ impl Markup {
         self.merged_query(0..u32::MAX, Order::Ascending).count()
     }
 
+    /// TEST SUPPORT: the widest coordinate the styles lane stores.
+    #[doc(hidden)]
+    pub fn probe_styles_extremes(&self) -> (i64, i64) {
+        self.styles.probe_extremes()
+    }
+
+    /// TEST SUPPORT: the shape of the BULK lane — (spans, styled
+    /// spans, runs left if adjacent same-style spans were merged).
+    /// A highlighter emitting one span per token pays the full
+    /// per-span cost for runs that paint identically.
+    #[doc(hidden)]
+    pub fn probe_span_stats(&self) -> (usize, usize, usize) {
+        let mut total = 0usize;
+        let mut styled = 0usize;
+        let mut runs = 0usize;
+        let mut last: Option<(crate::theme::StyleId, u32)> = None;
+        for interval in self.styles.query(0..u32::MAX, Order::Ascending) {
+            total += 1;
+            match interval.value {
+                Decoration::Styled(id) => {
+                    styled += 1;
+                    let continues_the_run = matches!(
+                        last,
+                        Some((previous, end)) if previous == *id && end == interval.range.start
+                    );
+                    if !continues_the_run {
+                        runs += 1;
+                    }
+                    last = Some((*id, interval.range.end));
+                }
+                _ => last = None,
+            }
+        }
+        (total, styled, runs)
+    }
+
     pub(crate) fn has_inlays(&self) -> bool {
         self.has_inlays
     }
 
     /// The range a styled interval of this markup covers now.
     pub(crate) fn styled_range_of(&self, key: IntervalId) -> Option<Range<u32>> {
-        self.styles.find_by_id(&key).map(|interval| interval.range)
+        self.shape.find_by_id(&key).map(|interval| interval.range)
     }
 }
 
@@ -1393,13 +1438,29 @@ impl Markup {
         key
     }
 
+    /// A plain styled span — the BULK lane. Nobody looks it up again.
     pub fn push_styled(&mut self, range: Range<u32>, id: StyleId) {
-        let _ = self.push_styled_keyed(range, id);
-    }
-
-    pub(crate) fn push_styled_keyed(&mut self, range: Range<u32>, id: StyleId) -> IntervalId {
         let key = self.mint();
         self.styles.insert([intervals::Interval {
+            range,
+            greedy_left: false,
+            greedy_right: false,
+            key,
+            value: Decoration::Styled(id),
+        }]);
+    }
+
+    /// A styled span the CALLER will look up again by key — today
+    /// only the completion's anchor. It goes in the STRUCTURE lane,
+    /// not the bulk one: the bulk lane is a syntax highlighter's tens
+    /// of thousands of spans, and carrying a key index for all of
+    /// them to serve this one span is most of what a span costs
+    /// (`intervals::tests::cost`). Shape consumers all match on their
+    /// own `Decoration` variants, so a styled span is inert there,
+    /// and `merged_query` paints both lanes alike.
+    pub(crate) fn push_styled_keyed(&mut self, range: Range<u32>, id: StyleId) -> IntervalId {
+        let key = self.mint();
+        self.shape.insert([intervals::Interval {
             range,
             greedy_left: false,
             greedy_right: false,
@@ -1602,10 +1663,11 @@ impl Markup {
         Some((interval.range.clone(), inlay.mode))
     }
 
+    /// Keyed spans all live in the STRUCTURE lane — the bulk lane has
+    /// no index to remove through, and nothing keyed is ever put there.
     pub(crate) fn remove_keys(&mut self, keys: impl IntoIterator<Item = IntervalId>) {
         let keys: Vec<IntervalId> = keys.into_iter().collect();
         self.shape.remove(keys.iter());
-        self.styles.remove(keys.iter());
     }
 
     pub(crate) fn replace_inlay(&mut self, key: IntervalId, range: Range<u32>, inlay: Inlay) {
@@ -1619,7 +1681,7 @@ impl Markup {
             greedy_left: false,
             greedy_right: false,
             key,
-            value: Decoration::Inlay(inlay),
+            value: Decoration::Inlay(Box::new(inlay)),
         }]);
     }
 
@@ -1640,7 +1702,7 @@ impl Markup {
                 }
                 if let Decoration::Inlay(inlay) = interval.value {
                     if seen.insert(*interval.key) {
-                        victims.push((*interval.key, inlay.clone()));
+                        victims.push((*interval.key, (**inlay).clone()));
                     }
                 }
             }
@@ -1805,20 +1867,31 @@ impl Markup {
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
+        // The STRUCTURE lane goes by key: an inlay must be correlated
+        // across the reparse so a live view is adopted, not rebuilt.
+        // The BULK lane goes by RANGE — "delete what lives here" needs
+        // no identity, which is what lets it carry no key index at all
+        // (`intervals::IntervalIndex`).
         let mut stale = Vec::new();
         let mut stale_inlays: Vec<(IntervalId, Range<u32>, Inlay)> = Vec::new();
         for range in invalidated {
-            for interval in self.merged_query(range.clone(), Order::Ascending) {
+            for interval in self.shape.query(range.clone(), Order::Ascending) {
                 if intersects(&interval.range, range) {
                     stale.push(*interval.key);
                     if let Decoration::Inlay(inlay) = interval.value {
-                        stale_inlays.push((*interval.key, interval.range.clone(), inlay.clone()));
+                        stale_inlays.push((
+                            *interval.key,
+                            interval.range.clone(),
+                            (**inlay).clone(),
+                        ));
                     }
                 }
             }
         }
         self.shape.remove(stale.iter());
-        self.styles.remove(stale.iter());
+        for range in invalidated {
+            self.styles.remove_in_range(range.clone());
+        }
 
         let fresh: Vec<Interval<IntervalId, Decoration>> = replacement
             .intervals
@@ -1921,7 +1994,7 @@ impl MarkupBuilder {
             greedy_left: false,
             greedy_right: false,
             key,
-            value: Decoration::Inlay(inlay),
+            value: Decoration::Inlay(Box::new(inlay)),
         });
     }
 
@@ -1969,7 +2042,7 @@ impl MarkupBuilder {
             .iter()
             .any(|interval| matches!(interval.value, Decoration::Inlay(_)));
         let mut markup = Markup {
-            styles: Intervals::new(),
+            styles: Intervals::keyless(),
             shape: Intervals::new(),
             next_key: self.next_key,
             scope: MarkupScope::View,
@@ -2405,3 +2478,26 @@ fn affected_span(operation: &Operation) -> Option<Range<u32>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod size_probe {
+    use super::*;
+
+    /// Every styled span stores a `Decoration` INLINE in its tree leaf,
+    /// and an enum is as wide as its widest variant. A syntax
+    /// highlighter only ever writes `Styled(StyleId)`.
+    #[test]
+    fn what_a_span_carries() {
+        eprintln!(
+            "[size] Decoration {} B (StyleId {} B, Inlay {} B, SyntaxId {} B)",
+            std::mem::size_of::<Decoration>(),
+            std::mem::size_of::<crate::theme::StyleId>(),
+            std::mem::size_of::<Inlay>(),
+            std::mem::size_of::<SyntaxId>(),
+        );
+        eprintln!(
+            "[size] Interval<IntervalId, Decoration> {} B",
+            std::mem::size_of::<intervals::Interval<IntervalId, Decoration>>(),
+        );
+    }
+}

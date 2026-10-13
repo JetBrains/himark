@@ -1087,3 +1087,225 @@ fn a_collapse_drops_the_markers_it_empties() {
         "the anchor rode the edit, it was not collapsed by it"
     );
 }
+
+// ─── the per-interval COST of the bulk lane ───
+//
+// A syntax highlighter puts tens of thousands of plain spans in the
+// styles lane, and a chat transcript retains one markup per document
+// side per file edit. The question this answers is what one span
+// costs: the tree leaf is compact, but `parents` and `keys` are
+// PERSISTENT hash tries carrying one entry each per interval, and a
+// HAMT entry is nothing like a 16-byte pair.
+
+mod cost {
+    use super::*;
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static LIVE: AtomicUsize = AtomicUsize::new(0);
+
+    struct Counting;
+
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            LIVE.fetch_add(layout.size(), Ordering::Relaxed);
+            System.alloc(layout)
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
+            System.dealloc(ptr, layout)
+        }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            LIVE.fetch_add(new_size, Ordering::Relaxed);
+            LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
+            System.realloc(ptr, layout, new_size)
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: Counting = Counting;
+
+    fn held<T>(build: impl FnOnce() -> T) -> (usize, T) {
+        let before = LIVE.load(Ordering::Relaxed);
+        let kept = build();
+        (LIVE.load(Ordering::Relaxed) - before, kept)
+    }
+
+    /// WHERE the per-span cost lives: the two side maps are hash
+    /// TRIES keyed by a dense counter, which is the worst possible
+    /// shape for one — a HAMT pays path nodes and an Arc'd entry per
+    /// key to buy hashing nobody asked for.
+    #[test]
+    fn the_side_maps_dominate_a_span() {
+        const SPANS: usize = 50_000;
+        let (parents, _keep) = held(|| {
+            let mut map: rpds::HashTrieMapSync<i64, i64> = rpds::HashTrieMapSync::new_sync();
+            for id in 0..SPANS as i64 {
+                map.insert_mut(id, id / 32);
+            }
+            map
+        });
+        let (keys, _keep) = held(|| {
+            let mut map: rpds::HashTrieMapSync<u32, i64> = rpds::HashTrieMapSync::new_sync();
+            for id in 0..SPANS as u32 {
+                map.insert_mut(id, i64::from(id));
+            }
+            map
+        });
+        eprintln!(
+            "[cost] side maps per span: parents {} B + keys {} B = {} B",
+            parents / SPANS,
+            keys / SPANS,
+            (parents + keys) / SPANS,
+        );
+    }
+
+    /// What a DENSE key costs in the right container. `parents` is
+    /// keyed by the id counter, so a vector indexed by that id holds
+    /// the same mapping; the leaf can hold it outright for 8 bytes.
+    #[test]
+    fn a_dense_key_belongs_in_a_vector() {
+        const SPANS: usize = 50_000;
+        let (vector, _keep) = held(|| {
+            let mut vector: rpds::VectorSync<i64> = rpds::VectorSync::new_sync();
+            for id in 0..SPANS as i64 {
+                vector.push_back_mut(id / 32);
+            }
+            vector
+        });
+        eprintln!(
+            "[cost] dense parent link: vector {} B/span vs hash trie 93 B/span",
+            vector / SPANS,
+        );
+    }
+
+    /// Run alone (`--exact`): the counter is process-wide.
+    #[test]
+    fn a_bulk_span_costs_what_it_costs() {
+        const SPANS: usize = 50_000;
+        // A highlighter's shape: short, non-overlapping, one per token.
+        let spans: Vec<Interval<u32, u8>> = (0..SPANS as u32)
+            .map(|i| Interval {
+                range: (i * 8)..(i * 8 + 5),
+                greedy_left: false,
+                greedy_right: false,
+                key: i,
+                value: 1u8,
+            })
+            .collect();
+        let payload = std::mem::size_of::<Interval<u32, u8>>() * SPANS;
+
+        // `insert` CONSUMES the input, so the window also sees that
+        // vector freed — add its payload back on both sides or the
+        // cheaper lane reads as negative.
+        let before = LIVE.load(Ordering::Relaxed) as i64;
+        let mut tree: Intervals<u32, u8> = Intervals::new();
+        tree.insert(spans);
+        let held = (LIVE.load(Ordering::Relaxed) as i64 - before + payload as i64) as usize;
+
+        eprintln!(
+            "[cost] {SPANS} bulk spans: {} KB live, {} bytes/span \
+             (payload {} bytes/span, {:.1}x)",
+            held / 1024,
+            held / SPANS,
+            payload / SPANS,
+            held as f64 / payload as f64,
+        );
+        assert_eq!(tree.len(), SPANS, "every span landed");
+
+        // The same spans in a KEYLESS lane: no `keys`, no `parents`.
+        let keyless_spans: Vec<Interval<crate::NoKey, u8>> = (0..SPANS as u32)
+            .map(|i| Interval {
+                range: (i * 8)..(i * 8 + 5),
+                greedy_left: false,
+                greedy_right: false,
+                key: crate::NoKey,
+                value: 1u8,
+            })
+            .collect();
+        let bare_payload = std::mem::size_of::<Interval<crate::NoKey, u8>>() * SPANS;
+        let before = LIVE.load(Ordering::Relaxed) as i64;
+        let mut bare: Intervals<crate::NoKey, u8, crate::Keyless> = Intervals::keyless();
+        bare.insert(keyless_spans);
+        let bare_held =
+            (LIVE.load(Ordering::Relaxed) as i64 - before + bare_payload as i64) as usize;
+        assert_eq!(bare.len(), SPANS, "every keyless span landed");
+
+        // WHERE the keyless bytes go. The leaf is the whole story:
+        // `RawInterval` holds the id and both ends as i64 even though
+        // the public `Offset` is a u32.
+        let (leaf_nodes, inner_nodes, leaves, leaf_slots, child_slots) = bare.probe_shape();
+        let leaf_bytes = std::mem::size_of::<crate::tree::ProbeLeaf<crate::NoKey, u8>>();
+        let child_bytes = std::mem::size_of::<crate::tree::ProbeChild<crate::NoKey, u8>>();
+        eprintln!(
+            "[cost] keyless shape: {leaf_nodes} leaf nodes + {inner_nodes} inner, \
+             {leaves} leaves in {leaf_slots} slots ({:.0}% slack), \
+             leaf {leaf_bytes} B, child {child_bytes} B, RawInterval {} B",
+            (leaf_slots - leaves) as f64 / leaf_slots.max(1) as f64 * 100.0,
+            std::mem::size_of::<crate::tree::ProbeRaw>(),
+        );
+        eprintln!(
+            "[cost] keyless accounted: leaves {} KB + children {} KB = {} B/span of {} B/span",
+            leaf_slots * leaf_bytes / 1024,
+            child_slots * child_bytes / 1024,
+            (leaf_slots * leaf_bytes + child_slots * child_bytes) / SPANS,
+            bare_held / SPANS,
+        );
+        eprintln!(
+            "[cost] keyless: {} KB live, {} bytes/span — {:.0}% of keyed",
+            bare_held / 1024,
+            bare_held / SPANS,
+            bare_held as f64 / held as f64 * 100.0,
+        );
+    }
+}
+
+/// Range removal is what a KEYLESS lane deletes with, so it must
+/// match what the keyed by-key removal would have done: everything
+/// INTERSECTING the window goes, everything else stays exactly where
+/// it was (no shifting — that is `collapse`'s job, not this one).
+#[test]
+fn removing_a_range_drops_what_it_touches_and_moves_nothing() {
+    let mut intervals = Intervals::new();
+    intervals.insert([
+        interval(1, 0, 10),   // wholly before
+        interval(2, 10, 20),  // abutting the window's start — untouched
+        interval(3, 15, 25),  // straddles the start
+        interval(4, 22, 28),  // wholly inside
+        interval(5, 25, 40),  // straddles the end
+        interval(6, 30, 50),  // starts after the window
+        interval(7, 60, 70),  // wholly after
+    ]);
+    intervals.remove_in_range(20..30);
+
+    assert_eq!(keys(&intervals, 0, 100), vec![1, 2, 6, 7], "only the touched spans go");
+    assert_eq!(intervals.len(), 4, "the count follows the removal");
+    // Survivors keep their exact ranges: this is a delete, not an edit.
+    let survivor = |key: u32| intervals.find_by_id(&key).map(|found| found.range);
+    assert_eq!(survivor(1), Some(0..10));
+    assert_eq!(survivor(2), Some(10..20));
+    assert_eq!(survivor(6), Some(30..50));
+    assert_eq!(survivor(7), Some(60..70));
+}
+
+/// The same removal over a tree deep enough to have internal nodes,
+/// so the subtree pruning and re-normalisation paths actually run.
+#[test]
+fn removing_a_range_prunes_whole_subtrees() {
+    let mut intervals = Intervals::new();
+    // 400 spans, far past the 32-wide node fan-out.
+    intervals.insert((0..400u32).map(|i| interval(i, i * 10, i * 10 + 5)));
+    assert_eq!(intervals.len(), 400);
+
+    // Drop a window covering spans 100..=199.
+    intervals.remove_in_range(1000..2000);
+
+    assert_eq!(intervals.len(), 300, "exactly the window's spans went");
+    let left: Vec<u32> = keys(&intervals, 0, 100_000);
+    assert!(!left.iter().any(|key| (100..200).contains(key)), "none of the window survives");
+    assert_eq!(left.len(), 300);
+    // The survivors on both sides keep their places.
+    assert_eq!(intervals.find_by_id(&99).map(|f| f.range), Some(990..995));
+    assert_eq!(intervals.find_by_id(&200).map(|f| f.range), Some(2000..2005));
+    assert_eq!(intervals.find_by_id(&399).map(|f| f.range), Some(3990..3995));
+}

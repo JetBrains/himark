@@ -44,6 +44,9 @@ fn languages() -> SyntaxLanguages {
 }
 
 #[cfg(test)]
+mod memory_cost;
+
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]
