@@ -65,13 +65,18 @@ struct SkiaMetal {
     SkiaMetalGpu *gpu;
     id<CAMetalDrawable> drawable;
     sk_sp<SkSurface> surface;
-    bool sync;
 };
 
 extern "C" SkiaMetal *skia_metal_create(void *ca_metal_layer, void *mtl_device) {
     auto *self = new SkiaMetal();
     self->layer = (__bridge CAMetalLayer *)ca_metal_layer;
     self->gpu = shared_gpu((__bridge id<MTLDevice>)mtl_device);
+    // ALWAYS transaction-coupled. `presentDrawable:` hands the pixels
+    // to the GPU to show whenever it finishes, which is a different
+    // frame from the one where CoreAnimation commits the layer's new
+    // position — that gap IS the flicker. Presenting inside the
+    // transaction costs a main-thread wait and buys atomicity.
+    self->layer.presentsWithTransaction = YES;
     return self;
 }
 
@@ -99,25 +104,17 @@ extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height
     return self->surface ? self->surface->getCanvas() : nullptr;
 }
 
-extern "C" void skia_metal_set_sync(SkiaMetal *self, bool sync) {
-    if (!self) return;
-    self->sync = sync;
-    self->layer.presentsWithTransaction = sync ? YES : NO;
-}
-
 extern "C" void skia_metal_end(SkiaMetal *self) {
     if (!self || !self->surface) return;
     self->gpu->context->flushAndSubmit();
     self->surface.reset();
 
+    // The presentsWithTransaction sequence: schedule the work, wait
+    // for it, then present ON THIS THREAD so the drawable becomes
+    // visible as part of the CA transaction the caller is inside.
     id<MTLCommandBuffer> buffer = [self->gpu->queue commandBuffer];
-    if (self->sync) {
-        [buffer commit];
-        [buffer waitUntilScheduled];
-        [self->drawable present];
-    } else {
-        [buffer presentDrawable:self->drawable];
-        [buffer commit];
-    }
+    [buffer commit];
+    [buffer waitUntilScheduled];
+    [self->drawable present];
     self->drawable = nil;
 }

@@ -289,12 +289,10 @@ final class DesktopScrollHost: NSView {
 
     @objc private func liveScrollBegan() {
         lastUserScroll = Date()
-        content?.setSyncPresent(true)
     }
 
     @objc private func liveScrollEnded() {
         lastUserScroll = Date()
-        content?.setSyncPresent(false)
     }
 
     /// The last moment the USER drove this scroller (live drag or a

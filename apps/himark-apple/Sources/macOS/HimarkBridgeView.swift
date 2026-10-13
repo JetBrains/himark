@@ -37,6 +37,24 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     private static let idleGraceTicks = 30
 
+    // ─── the sync probe (HIMARK_TRACE_SYNC) ───
+    //
+    // Flicker is a TEMPORAL fault: the band's geometry and its pixels
+    // reaching the screen in different frames. Two things make that
+    // possible, and both are countable from in here — a present that
+    // is not coupled to a CA transaction (so the pixels land whenever
+    // the GPU finishes), and a present whose layer position disagrees
+    // with where the scroller has already moved the clip view.
+    private static let traceSync =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_SYNC"] != nil
+    private var presents = 0
+    private var driftPresents = 0
+    private var rolledBack = 0
+    private var slowRenders = 0
+    private var worstMs = 0.0
+    private var totalMs = 0.0
+    private var deferredRenders = 0
+
     init(
         frame: NSRect,
         engine: HimarkEngine,
@@ -53,6 +71,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         metal.pixelFormat = .bgra8Unorm
         metal.framebufferOnly = false
         metal.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        // A resize moves the layer before we can paint the new size.
+        // The default gravity (`resize`) SCALES the last drawable to
+        // fit — that is the stretched text during a window drag.
+        // Anchored at the top-left, an unpainted frame shows correct
+        // pixels in the right place with a gap, which the next paint
+        // fills.
+        metal.contentsGravity = .topLeft
         if scrollEmbedded {
             // A SUBLAYER sized to the visible band, not the root
             // layer: the content-sized view must not back its whole
@@ -166,6 +191,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     func render() {
         if rendering {
             needsRedraw = true
+            if Self.traceSync { deferredRenders += 1 }
             return
         }
         rendering = true
@@ -186,14 +212,32 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                   visible.width.isFinite, visible.height.isFinite,
                   visible.minY.isFinite
             else { return }
+            // GEOMETRY AND PIXELS MOVE TOGETHER OR NOT AT ALL. One
+            // transaction holds the band's new position AND the
+            // present that fills it, so CoreAnimation commits both in
+            // the same frame. Driven from the scroller's
+            // `boundsChanged`, that transaction is also AppKit's own
+            // scroll update — which is what makes the band travel
+            // with the clip view instead of chasing it.
+            let wasAt = metalLayer.frame
+            let w = Int32(visible.width * scale)
+            let h = Int32(visible.height * scale)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             metalLayer.frame = visible
-            CATransaction.commit()
-            let w = Int32(visible.width * scale)
-            let h = Int32(visible.height * scale)
             metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
-            renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            let started = Self.traceSync ? CACurrentMediaTime() : 0
+            let painted = renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
+            if !painted {
+                // No drawable, nothing painted: a moved band showing
+                // its old contents is the very artifact this exists
+                // to prevent. Put it back and ask for another pass.
+                metalLayer.frame = wasAt
+                if Self.traceSync { rolledBack += 1 }
+                request()
+            }
+            CATransaction.commit()
             // A reveal can be BORN at the paint (a canvas revealing
             // its row right after populate) — drain it this pass,
             // or the scroll waits for the next event.
@@ -203,12 +247,19 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
         let w = Int32(bounds.width * scale)
         let h = Int32(bounds.height * scale)
+        // Same rule as the band: the drawable's new SIZE and the
+        // pixels that fill it belong to one transaction, or a resize
+        // commits a layer whose contents are a frame behind.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
-
+        let started = Self.traceSync ? CACurrentMediaTime() : 0
         if engine.renderBridge(bridge: bridgeId, into: surface,
                                pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
             request()
         }
+        CATransaction.commit()
+        if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
         engine.drainReveal()
     }
 
@@ -216,10 +267,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// sized stage, realize + paint the visible band. The stages
     /// are ONE-PASS values — a paint that changed state means the
     /// engine quiesced them, and the next tick re-derives.
-    private func renderBand(_ visible: NSRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32) {
+    @discardableResult
+    private func renderBand(
+        _ visible: NSRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
+    ) -> Bool {
         let raw = engine.raw
         let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return }
+        guard layout.raw != 0 else { return false }
         var cw: Float = 0
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
@@ -230,12 +284,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let offsetY = Float(max(visible.minY, 0) * scale)
         let frame = himark_layout_realize(
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        guard frame.raw != 0 else { return }
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return }
+        guard frame.raw != 0 else { return false }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return false }
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
         surface.end()
+        if Self.traceSync { notePresent(layerY: visible.minY) }
         if changed {
             request()
         } else {
@@ -248,13 +303,35 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if ch.isFinite {
             onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
         }
+        return true
     }
 
-    /// The embedding scroller's live-scroll bracket: present
-    /// synchronously while the user drags, or the repositioned band
-    /// shows its OLD contents for a frame and the text swims.
-    func setSyncPresent(_ on: Bool) {
-        surface?.setSyncPresent(on)
+    /// How long a pass took. A spring runs at the display's cadence,
+    /// so anything past ~8 ms cannot keep up with it however well the
+    /// present is synchronised — that is a COST fault, not a timing
+    /// one, and it is the number that tells the two apart.
+    private func noteDuration(_ seconds: Double) {
+        let ms = seconds * 1000.0
+        totalMs += ms
+        worstMs = max(worstMs, ms)
+        if ms > 8.0 { slowRenders += 1 }
+    }
+
+    /// One present, weighed against what the scroller already shows.
+    private func notePresent(layerY: CGFloat) {
+        presents += 1
+        if let clip = enclosingScrollView?.contentView.bounds.origin.y,
+           abs(clip - layerY) > 0.5 {
+            driftPresents += 1
+        }
+        if presents % 60 == 0 {
+            NSLog(
+                "[sync] bridge \(bridgeId.raw): \(presents) presents, "
+                    + "\(driftPresents) drifted, \(deferredRenders) deferred, "
+                    + "\(rolledBack) rolled back, "
+                    + String(format: "avg %.1fms worst %.1fms %d over 8ms",
+                             totalMs / Double(presents), worstMs, slowRenders))
+        }
     }
 
     /// The embedding scroller moved the viewport: repaint the band
@@ -465,14 +542,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         request()
     }
 
-    override func viewWillStartLiveResize() {
-        super.viewWillStartLiveResize()
-        surface.setSyncPresent(true)
-    }
-
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        surface.setSyncPresent(false)
         render()
     }
 

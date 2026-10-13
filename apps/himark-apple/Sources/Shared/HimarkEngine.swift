@@ -386,5 +386,4 @@ final class SkiaMetalSurface {
         skia_metal_end(skia)
     }
 
-    func setSyncPresent(_ sync: Bool) { skia_metal_set_sync(skia, sync) }
 }

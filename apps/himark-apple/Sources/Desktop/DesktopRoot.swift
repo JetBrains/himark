@@ -87,21 +87,29 @@ struct DesktopRoot: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            RailIsland(
-                host: host,
-                open: railOpen,
-                tool: railTool,
-                pick: { tool in
-                    withAnimation(spring) {
-                        if railOpen && tool == railTool {
-                            railOpen = false
-                        } else {
-                            railTool = tool
-                            railOpen = true
+            // The island needs a CONCRETE height to hold its content
+            // at: a content frame that merely fills what it is
+            // offered gets re-proposed — and so re-laid — on every
+            // frame of the spring.
+            GeometryReader { room in
+                RailIsland(
+                    host: host,
+                    room: room.size.height - 24,
+                    open: railOpen,
+                    tool: railTool,
+                    pick: { tool in
+                        withAnimation(spring) {
+                            if railOpen && tool == railTool {
+                                railOpen = false
+                            } else {
+                                railTool = tool
+                                railOpen = true
+                            }
                         }
-                    }
-                })
-                .padding(12)
+                    })
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
         }
         .overlay(alignment: .topLeading) {
             if goToOpen {
@@ -503,9 +511,16 @@ enum RailTool: CaseIterable {
 
 struct RailIsland: View {
     @ObservedObject var host: DesktopHost
+    /// The height available to the island — the content is held at
+    /// this whether the rail is showing it or not.
+    let room: CGFloat
     let open: Bool
     let tool: RailTool
     let pick: (RailTool) -> Void
+
+    /// The open rail's width — the content is laid at this always.
+    private let railWidth: CGFloat = 320
+    private let stripHeight: CGFloat = 46
 
     var body: some View {
         VStack(spacing: 0) {
@@ -541,14 +556,26 @@ struct RailIsland: View {
             // proposed, and an unbounded proposal would stretch the
             // collapsed pill across the window. It stays MOUNTED
             // through the fold (the growth animates over live rows).
+            //
+            // A sidebar SLIDES; it does not re-wrap. Animating the
+            // content's own width handed it a new size on every
+            // frame of the spring, so every frame re-wrapped a tree
+            // that should simply have moved — the shake. The inner
+            // frame is constant, open or folded; only the outer one
+            // animates, and clips. The view is retained and laid at
+            // one size throughout, and the spring just moves a clip
+            // over it. Folded, the outer frame is zero in both axes,
+            // so the collapsed pill still contributes nothing.
             RailContent(host: host, tool: tool)
-                .frame(width: open ? 320 : 0)
-                .frame(maxHeight: open ? .infinity : 0, alignment: .top)
+                .frame(width: railWidth, height: max(room - stripHeight, 1))
+                .frame(
+                    width: open ? railWidth : 0,
+                    height: open ? max(room - stripHeight, 1) : 0,
+                    alignment: .topLeading)
                 .clipped()
                 .opacity(open ? 1 : 0)
         }
-        .frame(width: open ? 320 : nil)
-        .frame(maxHeight: open ? .infinity : nil, alignment: .top)
+        .frame(width: open ? railWidth : nil)
         .background(IslandBackground())
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }

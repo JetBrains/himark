@@ -38,6 +38,34 @@ A behavior lives in exactly ONE place:
 | Wrapped canvas line paints across the gutter | STALE WRAP SPLITS: the inline face (pair-managed, skipped by the plain repair lane) never joined the pair repair either — after a rewrap, rows past the sync budget kept old-width splits (one clipped row + the tail at column 0) | DONE — the pair lane captures/lands the inline editor too; law test `a_wrapped_canvas_line_stays_off_the_gutter` |
 | Tree selection / chat background / send button / composer paddings | design drift | DONE (db615a0d) — composer card + capsule Stop + islands selection well + ~23pt tree pitch + quiet refresh chip; screenshot-verified against mock crops |
 
+## Presentation: one frame, or none
+
+2026-10-13. A behavior living in one place is not enough if its
+pixels and its geometry reach the screen in different frames. The
+mounted road paints into a `CAMetalLayer` the shell is also moving,
+so the same law applies in time:
+
+- **A present is part of the transaction that moved the layer.**
+  `presentsWithTransaction` is ALWAYS on (there is no "sync during a
+  live scroll" mode to toggle); `skia_metal_end` commits, waits for
+  scheduling, and presents on the calling thread. The band's new
+  frame, its `drawableSize` and the paint that fills it are set
+  inside ONE `CATransaction`, and a pass that painted nothing rolls
+  the frame back rather than show old pixels in a new place.
+- **An unpainted frame shows truth in the wrong amount, never a lie
+  in the right one**: `contentsGravity = .topLeft`, because the
+  default (`resize`) SCALES the stale drawable — the stretched text
+  during a window drag.
+- **Chrome animations move a clip, they do not re-propose content.**
+  A SwiftUI spring on a bridge-backed view's own width re-lays the
+  engine tree every frame; hold the content at one size and animate
+  an outer frame that clips it (`RailIsland`).
+
+Probe: `HIMARK_TRACE_SYNC` counts presents, those drifting from the
+clip view's origin, deferred renders, rollbacks, and per-pass cost.
+A scroll that went 65 uncoupled presents / 61 deferred before now
+reports 0 uncoupled, 18 deferred, 0 drifted, 0 rolled back.
+
 ## Order
 
 1. Descroller `canvas` (then the chat band) — kills four bugs at the

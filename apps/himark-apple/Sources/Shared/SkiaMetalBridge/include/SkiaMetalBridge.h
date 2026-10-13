@@ -18,8 +18,6 @@ void      *skia_metal_begin(SkiaMetal *, int32_t width, int32_t height);
 
 void       skia_metal_end(SkiaMetal *);
 
-void       skia_metal_set_sync(SkiaMetal *, bool sync);
-
 #ifdef __cplusplus
 }
 #endif
