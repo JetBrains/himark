@@ -319,3 +319,110 @@ fn visible_rows_surface_their_overlays_through_the_list() {
         "the emitting visible row's anchor rides into list coordinates"
     );
 }
+
+/// The transcript's follow mode (docs/mounted-parity.md): the tail
+/// ask aims at the LIVE bottom edge, re-aims as content grows,
+/// disarms once the tail is visible — and is SUPERSEDED the moment
+/// the viewport moves up. The reveal road never fights the hand.
+#[test]
+fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
+    use crate::event::{Event, Motion, Placement};
+    use crate::store::Store;
+    use crate::ui::UiCtx;
+    let mut rows = list(&[30.0; 10]); // total 300
+    let store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+
+    // One clock tick seen from a viewport at `top` — what the list
+    // broadcasts there (and performs back into itself, as a shell's
+    // drain would).
+    let clock = |rows: &mut ListView<Stub>, top: f32| -> Option<crate::event::Reveal> {
+        let viewport = skia_safe::Rect::from_xywh(0.0, top, 100.0, 100.0);
+        let (reveal, commands) = {
+            let arena = crate::arena::Arena::default();
+            let widget = crate::layout::Layout::layout(
+                crate::View::display(&*rows, &arena, &store, &ui),
+                &arena,
+                crate::constraints::Constraints::tight(skia_safe::Size::new(
+                    100.0,
+                    rows.total_height(),
+                )),
+            )
+            .realize(&arena, viewport);
+            let result = crate::Widget::handle_event(
+                &widget,
+                &arena,
+                &Event::AnimationClock {
+                    now: crate::anim::AnimationClock::from_millis(16.0),
+                },
+                viewport,
+            );
+            match result.into_handled() {
+                None => (None, Vec::new()),
+                Some(handled) => (handled.reveal, handled.commands),
+            }
+        };
+        for command in commands {
+            let mut batch = crate::effect::Batch::new();
+            rows.perform(&mut Store::clone(&store), &ui, command, &mut batch.effects());
+        }
+        reveal
+    };
+
+    rows.reveal_tail();
+    let ask = clock(&mut rows, 0.0).expect("the armed tail asks from the top");
+    assert_eq!(ask.placement, Placement::EnsureVisible);
+    assert_eq!(ask.motion, Motion::Jump, "a fresh landing never glides");
+    assert!(
+        ask.rect.bottom > 297.0 && ask.rect.bottom <= 300.0,
+        "the ask aims at the bottom edge: {:?}",
+        ask.rect
+    );
+
+    // The scroller landed at the tail: the ask satisfies — QUIET,
+    // but the mode stands.
+    assert_eq!(clock(&mut rows, 200.0), None, "satisfied: quiet");
+    assert_eq!(clock(&mut rows, 200.0), None, "and stays quiet");
+
+    // The content grows — a stream append, or a landing storm
+    // re-heighting history. The STANDING mode re-asks at the live
+    // total on its own, with no re-arm in sight.
+    let len = rows.len();
+    rows.splice(len..len, (0..5).map(|_| (Stub, 30.0)));
+    let ask = clock(&mut rows, 200.0).expect("growth re-asks unprompted");
+    assert!(
+        ask.rect.bottom > 447.0 && ask.rect.bottom <= 450.0,
+        "the ask re-aims at the grown tail: {:?}",
+        ask.rect
+    );
+
+    // A PRESS into the rows is the hand too: expanding a tool call
+    // must not get yanked to the grown bottom.
+    let mut batch = crate::effect::Batch::new();
+    rows.perform(
+        &mut Store::clone(&store),
+        &ui,
+        ListCommand::Focus(3, None),
+        &mut batch.effects(),
+    );
+    assert_eq!(clock(&mut rows, 200.0), None, "a press releases the follow");
+
+    // The hand proper: re-armed, then a viewport that moved UP and
+    // LEFT the tail supersedes the ask — no re-emission yanks the
+    // user back down. (A clamp that stays on the bottom edge — a
+    // shrinking row — is exempt.)
+    rows.reveal_tail();
+    rows.perform(
+        &mut Store::clone(&store),
+        &ui,
+        ListCommand::ViewportTop(350.0, 100.0),
+        &mut batch.effects(),
+    );
+    rows.perform(
+        &mut Store::clone(&store),
+        &ui,
+        ListCommand::ViewportTop(150.0, 100.0),
+        &mut batch.effects(),
+    );
+    assert_eq!(clock(&mut rows, 150.0), None, "the hand outranks the follow");
+}

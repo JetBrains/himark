@@ -579,7 +579,7 @@ impl ChatPanel {
                 view.has_loader = lead_loader;
             },
         );
-        view.reveal_tail(store);
+        view.reveal_tail();
         self.views.insert_mut(id, view);
     }
 
@@ -680,7 +680,7 @@ impl ChatPanel {
                 },
             );
             if follow {
-                view.reveal_tail(store);
+                view.reveal_tail();
             }
             self.views.insert_mut(id, view);
         }
@@ -1098,7 +1098,7 @@ impl ChatPanel {
             return;
         };
         view.band.composer.clear(store, ui);
-        view.reveal_tail(store);
+        view.reveal_tail();
         self.views.insert_mut(id, view);
     }
 
@@ -1811,15 +1811,28 @@ impl ChatView {
         f32::from_bits(self.panel_width.load(Ordering::Relaxed))
     }
 
+    /// AT the tail, by the LIST's own observation — the viewport
+    /// report is fed on both roads (the imba scroller's traversal
+    /// and the native scroller's realize band), so one truth serves
+    /// every shell. The slack is TIGHT: the follow mode pins the
+    /// bottom exactly, so anything farther is the user's own
+    /// position (a pressed-open tool call, a reading pause) and a
+    /// stream batch must not re-arm over it. A view that never
+    /// painted follows: it opens at the tail.
     fn near_tail(&self) -> bool {
-        let viewport = f32::from_bits(self.rows_height.load(Ordering::Relaxed));
-        let total = self.rows.content().total_height();
-        self.rows.scroll_y() + viewport >= total - viewport * 0.5
+        let viewport = self.rows.content().probe_viewport_height();
+        if viewport <= 0.0 {
+            return true;
+        }
+        let top = self.rows.content().probe_viewport_top();
+        top + viewport >= self.rows.content().total_height() - 12.0
     }
 
-    fn reveal_tail(&mut self, store: &mut Store) {
-        let _ = store;
-        self.rows.set_scroll_y(f32::MAX);
+    /// Arm the transcript's TAIL ask — the reveal road, consumed by
+    /// whichever physics the shell runs (docs/mounted-parity.md):
+    /// the imba scroller intercepts it, a native host applies it.
+    fn reveal_tail(&mut self) {
+        self.rows.content_mut().reveal_tail();
     }
 
     fn build_cell(

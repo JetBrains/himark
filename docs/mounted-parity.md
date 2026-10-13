@@ -29,12 +29,12 @@ A behavior lives in exactly ONE place:
 
 | Bug | Root | Shared mechanism |
 | --- | --- | --- |
-| Canvas scrolls with imba; typing scrolls it up | `Canvas.rows: ScrollView<CanvasRows>` — grandfathered out of descrollering | Descroller the canvas: bare rows, reveals out; workbench wraps in `Scrolled` |
+| Canvas scrolls with imba; typing scrolls it up | `Canvas.rows: ScrollView<CanvasRows>` — grandfathered out of descrollering | DONE — bare rows, reveals out; workbench wraps in `Scrolled` |
 | Chat fights scrolling + tool-call expansion | transcript band's anchor corrections ride its own scroll assumptions | Same descrollering; corrections ride reveals, host-applied; user gesture supersedes |
-| goto-usages inlay doesn't scroll | offer road doesn't reach the inlay's inner ScrollView | One offer road; verify inner dispatch, fix routing not symptoms |
-| Rail tree unscrollable until tab switch | host never re-applies measured content size after its own resize (fold → expand) | `DesktopScrollHost.layout` re-seeds from the last measure |
-| Opened editor not revealed in file tree | tree-follow lives in workbench batch-tail only | follow runs in the engine batch tail over mounted trees too |
-| Empty glass slab at small window (screenshot) | go-to/palette sheet renders contentless at squeezed heights | reproduce at that size; sheet needs a floor on minted content |
+| goto-usages inlay doesn't scroll | editor FocusGate ate positional events on unfocused inlays; the peek master had no scroller | DONE — positional events route by position; master in ScrollView, keys to the controller |
+| Rail tree unscrollable until tab switch | host never re-applies measured content size after its own resize (fold → expand) | DONE — `DesktopScrollHost.layout` re-seeds from the last measure |
+| Opened editor not revealed in file tree | tree-follow lives in workbench batch-tail only | DONE — `TreeCommand::Follow` is the one API; workbench pushes from batch tail, islands host from `land()` via `himark_tree_follow` |
+| Empty glass slab at small window (screenshot) | macOS 26 mounts the titlebar GLASS platter over the content top under the default window style | DONE — `.windowStyle(.hiddenTitleBar)`; repro via `HIMARK_DEBUG_FRAME` |
 | Wrapped canvas line paints across the gutter | canvas editor width vs gutter inset at narrow panes | fix in the one editor band layout, not per-shell |
 | Tree selection / chat background / send button / composer paddings | design drift | measured pass against the mocks, self-verified by screenshot |
 

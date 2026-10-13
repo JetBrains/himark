@@ -17,12 +17,6 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     private let scroll = UIScrollView()
     private var content: HimarkBridgeView?
 
-    /// Keep the view pinned to the BOTTOM as content grows — chat
-    /// behavior; releases when the user scrolls away, re-arms when
-    /// they return to the bottom.
-    var pinsToBottom = false
-    private var pinned = true
-
     convenience init(host: AppHost, place: HimarkPlace) {
         self.init(host: host, bridge: host.engine.mint(place: place))
     }
@@ -95,32 +89,15 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
         if content.frame.size.height != height || scroll.contentSize.height != height {
             content.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
             scroll.contentSize = content.frame.size
-            if pinsToBottom && pinned {
-                scroll.contentOffset.y = max(
-                    0, height - scroll.bounds.height + scroll.contentInset.bottom)
-            }
+            // Tail-follow is NOT decided here: the engine arms a
+            // tail reveal when a view at the tail grows
+            // (docs/mounted-parity.md) — this host only applies
+            // reveals, same as every other shell.
         }
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         content?.renderNow()
-    }
-
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        pinned = false
-    }
-
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate: Bool) {
-        if !willDecelerate { pinned = nearBottom }
-    }
-
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        pinned = nearBottom
-    }
-
-    private var nearBottom: Bool {
-        scroll.contentOffset.y + scroll.bounds.height
-            >= scroll.contentSize.height - 40
     }
 
     @objc private func keyboardChanged(_ note: Notification) {
@@ -161,19 +138,17 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
 // ─── the split chat's two hosts ───
 
 /// A session view minted per session and scrolled NATIVELY — the
-/// transcript (pinned to the bottom as turns stream), the changes
-/// tree, the file tree.
+/// transcript (the engine's tail reveal follows the stream), the
+/// changes tree, the file tree.
 final class MintedScrollHost: UIView {
     private let host: AppHost
     private let kind: HimarkEngine.SessionViewKind
-    private let pinsToBottom: Bool
     private var mounted: AppHost.Selected?
     private var child: StageScrollHost?
 
-    init(host: AppHost, kind: HimarkEngine.SessionViewKind, pinsToBottom: Bool = false) {
+    init(host: AppHost, kind: HimarkEngine.SessionViewKind) {
         self.host = host
         self.kind = kind
-        self.pinsToBottom = pinsToBottom
         super.init(frame: .zero)
         backgroundColor = .black
         sync()
@@ -190,7 +165,6 @@ final class MintedScrollHost: UIView {
         let bridge = host.mint(kind)
         guard bridge.raw != 0 else { return }
         let view = StageScrollHost(host: host, bridge: bridge)
-        view.pinsToBottom = pinsToBottom
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.frame = bounds
         addSubview(view)
@@ -207,10 +181,9 @@ final class MintedScrollHost: UIView {
 struct ScrolledMintedBridge: UIViewRepresentable {
     @ObservedObject var host: AppHost
     let kind: HimarkEngine.SessionViewKind
-    var pinsToBottom = false
 
     func makeUIView(context: Context) -> MintedScrollHost {
-        MintedScrollHost(host: host, kind: kind, pinsToBottom: pinsToBottom)
+        MintedScrollHost(host: host, kind: kind)
     }
 
     func updateUIView(_ view: MintedScrollHost, context: Context) {

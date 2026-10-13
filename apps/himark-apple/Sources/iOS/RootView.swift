@@ -68,7 +68,7 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrolledMintedBridge(host: host, kind: .transcript, pinsToBottom: true)
+            ScrolledMintedBridge(host: host, kind: .transcript)
                 .ignoresSafeArea(edges: .top)
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)

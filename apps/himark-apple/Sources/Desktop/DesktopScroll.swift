@@ -56,8 +56,6 @@ final class DesktopScrollHost: NSView {
     private(set) var bridge = HimarkBridge(raw: 0)
     private(set) var content: HimarkBridgeView?
     let scroll = NSScrollView()
-    let pinsToBottom: Bool
-    private var pinned = true
     /// A deliberate landing moves the keyboard here on mint.
     private let grabsFocus: Bool
 
@@ -67,13 +65,11 @@ final class DesktopScrollHost: NSView {
     /// moves) — the drain fanout is exactly that retry clock.
     init(
         host: DesktopHost,
-        pinsToBottom: Bool = false,
         grabsFocus: Bool = false,
         minter: @escaping () -> HimarkBridge
     ) {
         self.host = host
         self.minter = minter
-        self.pinsToBottom = pinsToBottom
         self.grabsFocus = grabsFocus
         super.init(frame: .zero)
 
@@ -118,7 +114,7 @@ final class DesktopScrollHost: NSView {
                 self.scroll.contentView.scroll(to: NSPoint(x: 0, y: 300))
                 self.scroll.reflectScrolledClipView(self.scroll.contentView)
                 let after = self.scroll.contentView.bounds.origin.y
-                NSLog("programmatic bridge \(self.bridge.raw) pins \(self.pinsToBottom): \(before) -> \(after) doc \(Int(self.content?.frame.height ?? -1)) clip \(Int(self.scroll.contentSize.height))")
+                NSLog("programmatic bridge \(self.bridge.raw): \(before) -> \(after) doc \(Int(self.content?.frame.height ?? -1)) clip \(Int(self.scroll.contentSize.height))")
             }
         }
 
@@ -269,20 +265,11 @@ final class DesktopScrollHost: NSView {
             || content.frame.size.width != scroll.contentSize.width {
             content.frame = NSRect(
                 x: 0, y: 0, width: scroll.contentSize.width, height: height)
-            if pinsToBottom && pinned {
-                scrollToBottom()
-            }
+            // Tail-follow is NOT decided here: the engine arms a
+            // tail reveal when a view at the tail grows
+            // (docs/mounted-parity.md) — this host only applies
+            // reveals, same as the workbench scroller.
         }
-    }
-
-    private func scrollToBottom() {
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
-            NSLog("scrollToBottom bridge \(bridge.raw) pins \(pinsToBottom) pinned \(pinned)")
-        }
-        guard let content else { return }
-        let y = max(0, content.frame.height - scroll.contentSize.height)
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
-        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     private var dumpedJump = false
@@ -300,17 +287,12 @@ final class DesktopScrollHost: NSView {
         content?.renderNow()
     }
 
-    /// Pinning follows the USER's hand only — a bounds change is
-    /// just as often the stream growing the content, and deciding
-    /// there yanks the scroll out from under a reading user.
     @objc private func liveScrollBegan() {
-        pinned = false
         lastUserScroll = Date()
         content?.setSyncPresent(true)
     }
 
     @objc private func liveScrollEnded() {
-        pinned = nearBottom
         lastUserScroll = Date()
         content?.setSyncPresent(false)
     }
@@ -318,11 +300,6 @@ final class DesktopScrollHost: NSView {
     /// The last moment the USER drove this scroller (live drag or a
     /// routed wheel, momentum included).
     private var lastUserScroll = Date.distantPast
-
-    private var nearBottom: Bool {
-        scroll.contentView.bounds.minY + scroll.contentSize.height
-            >= (content?.frame.height ?? 0) - 40
-    }
 
     /// The host's half of Reveal: the view asked, the scroller
     /// moves. The rect arrives in content points — pad it so the
@@ -364,10 +341,9 @@ final class DesktopScrollHost: NSView {
 struct MintedScrollBridge: NSViewRepresentable {
     let host: DesktopHost
     let kind: HimarkEngine.SessionViewKind
-    var pinsToBottom = false
 
     func makeNSView(context: Context) -> DesktopScrollHost {
-        DesktopScrollHost(host: host, pinsToBottom: pinsToBottom) { [weak host] in
+        DesktopScrollHost(host: host) { [weak host] in
             host?.mint(kind) ?? HimarkBridge(raw: 0)
         }
     }

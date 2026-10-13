@@ -603,7 +603,7 @@ struct ChatColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MintedScrollBridge(host: host, kind: .transcript, pinsToBottom: true)
+            MintedScrollBridge(host: host, kind: .transcript)
             // The composer rides in its OWN rounded well, the
             // mock's square island — chrome in Swift, content in
             // the engine.

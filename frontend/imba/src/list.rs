@@ -346,6 +346,14 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     /// `Revealed` round trip, or when the key leaves the list.
     row_reveal: Option<(K, crate::event::Placement)>,
 
+    /// The armed TAIL ask — FOLLOW MODE: keep the list's bottom edge
+    /// visible. A STANDING mode, not a one-shot: satisfaction only
+    /// quiets the clock (growth re-asks — a landing storm that
+    /// re-heights history must not strand the follow mid-list); the
+    /// ask dies only SUPERSEDED, when the viewport moves up — the
+    /// user's hand outranks the follow.
+    tail_reveal: bool,
+
     animations: Vec<SpliceAnimation>,
 
     generation: u64,
@@ -461,6 +469,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             viewport_height: 0.0,
             settle_to: None,
             row_reveal: None,
+            tail_reveal: false,
             animations: Vec::new(),
             generation: 0,
             sticky: None,
@@ -653,11 +662,18 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         self.viewport_top
     }
 
+    /// The retained viewport band height, from the same report — 0
+    /// until the first traversal observes one.
+    pub fn probe_viewport_height(&self) -> f32 {
+        self.viewport_height
+    }
+
     pub fn cancel_reveal(&mut self) {
         if let Some(selection) = &mut self.selection {
             selection.reveal = false;
         }
         self.row_reveal = None;
+        self.tail_reveal = false;
     }
 
     /// Arm a keyed reveal WITHOUT selecting: `TopLeftAt` pins the
@@ -667,6 +683,14 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
     /// aims at the row's reserved extent and survives its swap.
     pub fn reveal_row(&mut self, key: K, placement: crate::event::Placement) {
         self.row_reveal = Some((key, placement));
+    }
+
+    /// Arm the TAIL ask: scroll so the list's bottom edge is visible
+    /// and keep aiming there as the content grows — the transcript's
+    /// follow mode. A viewport that moves UP supersedes it; reaching
+    /// the tail disarms it; the next arm is the caller's call.
+    pub fn reveal_tail(&mut self) {
+        self.tail_reveal = true;
     }
 
     pub fn clear_selection(&mut self) {
@@ -1483,7 +1507,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
             viewport_height: self.viewport_height,
             settle_to: self.settle_to,
             row_reveal: self.row_reveal.clone(),
-
+            tail_reveal: self.tail_reveal,
             animations: self.animations.clone(),
             generation: self.generation,
             sticky: self.sticky.clone(),
@@ -1574,6 +1598,12 @@ where
                 self.items = cursor.rope();
             }
             ListCommand::Focus(index, then) => {
+                // A press into the rows is the HAND too: expanding a
+                // tool call at the tail must keep the pressed row in
+                // place, not get yanked to the grown bottom. The
+                // next arm (a stream batch near the tail) resumes
+                // the follow.
+                self.tail_reveal = false;
                 self.focused = Some(index.min(self.items.len().saturating_sub(1)));
                 if let Some(command) = then {
                     self.perform(store, ui, *command, fx);
@@ -1636,6 +1666,35 @@ where
                 self.animations = animations;
             }
             ListCommand::ViewportTop(top, height) => {
+                // A viewport that moved UP supersedes the tail ask —
+                // the user scrolled away from the follow; re-emitting
+                // would fight their hand. Two upward reports are NOT
+                // the hand: the list's OWN anchor correction (a
+                // sleeping row above shrank to its real height —
+                // the report matches the pending `settle_to`), and a
+                // RESIZE (the scroller's band changed height in the
+                // same report; a hand moves the viewport, it never
+                // reshapes it).
+                let own_correction = self
+                    .settle_to
+                    .is_some_and(|target| (target - top).abs() < 1.0);
+                let resized = (height - self.viewport_height).abs() > 0.5
+                    || self.viewport_height == 0.0;
+                // A report still AT the bottom edge is no escape
+                // either — a shrinking row clamps the scroller down
+                // a few pixels; the hand leaving the follow leaves
+                // the tail.
+                let at_tail =
+                    top + height >= self.items.metrics().metric_at(ROW_PX) as f32 - 2.0;
+                if top + 0.5 < self.viewport_top && !own_correction && !resized && !at_tail {
+                    if self.tail_reveal && std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                        eprintln!(
+                            "[reveal] tail superseded: top {top} was {} height {height} settle {:?}",
+                            self.viewport_top, self.settle_to
+                        );
+                    }
+                    self.tail_reveal = false;
+                }
                 self.viewport_top = top;
                 self.viewport_height = height;
                 self.settle_to = None;
@@ -1753,14 +1812,21 @@ where
             };
             // The armed keyed reveal outranks the selection's: it is
             // explicit navigation. A key that left the list resolves
-            // to a `Revealed` round trip that disarms it.
+            // to a `Revealed` round trip that disarms it. The TAIL
+            // ask fills remaining silence: the bottom edge, resolved
+            // against the LIVE total, riding Jump so the follow (and
+            // a fresh view's first landing) never glides.
+            let total = self.items.metrics().metric_at(ROW_PX) as f32;
             let (reveal, reveal_lost) = match &self.row_reveal {
                 Some((key, placement)) => match rect_of(key) {
                     Some(rect) => {
                         if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                             eprintln!("[reveal] list realize: armed row resolves to {rect:?}");
                         }
-                        (Some((rect, *placement)), false)
+                        (
+                            Some((rect, *placement, crate::event::Motion::Auto)),
+                            false,
+                        )
                     }
                     None => {
                         if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
@@ -1774,10 +1840,23 @@ where
                         .as_ref()
                         .filter(|selection| selection.reveal)
                         .and_then(|selection| rect_of(selection.cursor.as_ref()?))
-                        .map(|rect| (rect, crate::event::Placement::EnsureVisible)),
+                        .map(|rect| {
+                            (
+                                rect,
+                                crate::event::Placement::EnsureVisible,
+                                crate::event::Motion::Auto,
+                            )
+                        }),
                     false,
                 ),
             };
+            // The follow mode's standing ask: a 2px strip above the
+            // very edge (the satisfaction check tolerates fractional
+            // scroller landings), resolved against the LIVE total on
+            // every realize.
+            let tail_ask = self.tail_reveal.then(|| {
+                Rect::from_xywh(0.0, (total - 2.0).max(0.0), width.max(1.0), 1.0)
+            });
             ListWidget {
                 items: &self.items,
                 structure: &self.structure,
@@ -1788,6 +1867,7 @@ where
                 viewport_top: self.viewport_top,
                 reveal,
                 reveal_lost,
+                tail_ask,
                 animations: &self.animations,
                 separators: self.separators,
                 sticky: self.sticky.as_ref().map(|source| source(store)),
@@ -1813,8 +1893,10 @@ struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     settle_to: Option<f32>,
     viewport_top: f32,
 
-    reveal: Option<(Rect, crate::event::Placement)>,
+    reveal: Option<(Rect, crate::event::Placement, crate::event::Motion)>,
     reveal_lost: bool,
+    /// The follow mode's live bottom-edge strip, when armed.
+    tail_ask: Option<Rect>,
     animations: &'a [SpliceAnimation],
     separators: Option<SeparatorStyle>,
     sticky: Option<StickyStyle>,
@@ -2368,7 +2450,7 @@ where
                 merged = std::mem::replace(&mut merged, EventResult::Ignored)
                     .merge(EventResult::command(ListCommand::Revealed));
             }
-            if let Some((rect, placement)) = list.reveal {
+            if let Some((rect, placement, motion)) = list.reveal {
                 if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                     eprintln!(
                         "[reveal] list clock: pending {rect:?} viewport {viewport:?} placement {placement:?}"
@@ -2378,7 +2460,11 @@ where
                     crate::event::Placement::EnsureVisible => {
                         match crate::event::reveal_satisfied(viewport, rect) {
                             true => EventResult::command(ListCommand::Revealed),
-                            false => EventResult::reveal(crate::event::Reveal::visible(rect)),
+                            false => EventResult::reveal(crate::event::Reveal {
+                                rect,
+                                placement,
+                                motion,
+                            }),
                         }
                     }
                     crate::event::Placement::TopLeftAt => {
@@ -2396,6 +2482,23 @@ where
                     }
                 };
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+            } else if let Some(strip) = list.tail_ask {
+                // FOLLOW MODE: satisfied is merely QUIET — the mode
+                // stands, so the next growth re-asks on its own. It
+                // dies only superseded (the hand) or cancelled.
+                if !crate::event::reveal_satisfied(viewport, strip) {
+                    if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                        eprintln!(
+                            "[reveal] list clock: tail ask {strip:?} viewport {viewport:?}"
+                        );
+                    }
+                    let mine = EventResult::reveal(crate::event::Reveal {
+                        rect: strip,
+                        placement: crate::event::Placement::EnsureVisible,
+                        motion: crate::event::Motion::Jump,
+                    });
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+                }
             }
         }
         merged

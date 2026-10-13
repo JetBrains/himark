@@ -88,6 +88,18 @@ impl TranscriptView {
     ) {
         self.list.splice_slice(range, slice)
     }
+
+    pub(crate) fn reveal_tail(&mut self) {
+        self.list.reveal_tail()
+    }
+
+    pub(crate) fn probe_viewport_top(&self) -> f32 {
+        self.list.probe_viewport_top()
+    }
+
+    pub(crate) fn probe_viewport_height(&self) -> f32 {
+        self.list.probe_viewport_height()
+    }
 }
 
 impl View for TranscriptView {
