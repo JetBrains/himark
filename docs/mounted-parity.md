@@ -35,7 +35,7 @@ A behavior lives in exactly ONE place:
 | Rail tree unscrollable until tab switch | host never re-applies measured content size after its own resize (fold → expand) | DONE — `DesktopScrollHost.layout` re-seeds from the last measure |
 | Opened editor not revealed in file tree | tree-follow lives in workbench batch-tail only | DONE — `TreeCommand::Follow` is the one API; workbench pushes from batch tail, islands host from `land()` via `himark_tree_follow` |
 | Empty glass slab at small window (screenshot) | macOS 26 mounts the titlebar GLASS platter over the content top under the default window style | DONE — `.windowStyle(.hiddenTitleBar)`; repro via `HIMARK_DEBUG_FRAME` |
-| Wrapped canvas line paints across the gutter | canvas editor width vs gutter inset at narrow panes | fix in the one editor band layout, not per-shell |
+| Wrapped canvas line paints across the gutter | STALE WRAP SPLITS: the inline face (pair-managed, skipped by the plain repair lane) never joined the pair repair either — after a rewrap, rows past the sync budget kept old-width splits (one clipped row + the tail at column 0) | DONE — the pair lane captures/lands the inline editor too; law test `a_wrapped_canvas_line_stays_off_the_gutter` |
 | Tree selection / chat background / send button / composer paddings | design drift | measured pass against the mocks, self-verified by screenshot |
 
 ## Order

@@ -275,6 +275,12 @@ pub enum SplitDiffCommand {
         left: crate::repair::RepairedLayout,
         right: crate::repair::RepairedLayout,
 
+        /// The INLINE face's layout, when one is worn — a third
+        /// editor on the right document. Without it the face kept
+        /// STALE wrap splits past the sync budget forever (a resized
+        /// canvas painted old-width rows clipped at the pane).
+        inline: Option<crate::repair::RepairedLayout>,
+
         align: Option<Range<u32>>,
 
         marks: Option<MarksLanding>,
@@ -495,16 +501,13 @@ impl SplitDiffView {
     }
 
     fn capture_pair_repair(&mut self) -> RepairDiffEffect {
-        let side = |view: &EditorView| {
-            let document = &view.document;
-            let state = &document.editors[&view.editor];
-            match crate::repair::RepairEffect::collect(
-                document,
-                std::iter::once((&view.editor, state)),
-            ) {
+        let capture = |document: &crate::document::Document, editor: crate::editor::EditorId| {
+            let state = &document.editors[&editor];
+            match crate::repair::RepairEffect::collect(document, std::iter::once((&editor, state)))
+            {
                 Some(effect) => PairSide::Repair(effect),
                 None => PairSide::Layout(crate::repair::RepairedLayout {
-                    editor: view.editor,
+                    editor,
                     revision: document.revision(),
                     markup_generation: document.markup_generation(),
                     width: state.layout.layout_width(),
@@ -512,6 +515,15 @@ impl SplitDiffView {
                 }),
             }
         };
+        let side = |view: &EditorView| capture(&view.document, view.editor);
+        // The INLINE face is a THIRD editor on the right document —
+        // the one the canvas actually shows. It repairs on the pair
+        // lane with its halves, or its wrap splits go stale.
+        let inline = self
+            .state
+            .inline_editor()
+            .filter(|editor| *editor != self.right.editor)
+            .map(|editor| capture(&self.right.document, editor));
 
         let widths_match = self.widths_match();
         let align = match widths_match {
@@ -558,6 +570,7 @@ impl SplitDiffView {
         RepairDiffEffect {
             left: side(&self.left),
             right: side(&self.right),
+            inline,
             diff: self.state.diff.clone(),
             align,
             marks,
@@ -571,6 +584,12 @@ impl SplitDiffView {
                 .document_layout(view.editor)
                 .is_some_and(|layout| layout.repair_pending().is_some())
         };
+        let inline_pending = self.state.inline_editor().is_some_and(|editor| {
+            self.right
+                .document
+                .document_layout(editor)
+                .is_some_and(|layout| layout.repair_pending().is_some())
+        });
         let window = self.marks_window_now();
         let marks_owed =
             self.state.marks_dirty || self.state.marks_window.as_ref() != Some(&window);
@@ -578,6 +597,7 @@ impl SplitDiffView {
         let widths_match = self.widths_match();
         if pending(&self.left)
             || pending(&self.right)
+            || inline_pending
             || (widths_match && (self.state.align_pending.is_some() || marks_owed))
         {
             let capture = self.capture_pair_repair();
@@ -1125,6 +1145,7 @@ impl View for SplitDiffView {
             SplitDiffCommand::PairRepaired {
                 left,
                 right,
+                inline,
                 align,
                 marks,
                 seq,
@@ -1142,8 +1163,16 @@ impl View for SplitDiffView {
                 match landable {
                     true => {
                         self.state.pair_seq += 1;
-                        let moved = self.left.document.apply_repair_anchored(left)
+                        let mut moved = self.left.document.apply_repair_anchored(left)
                             | self.right.document.apply_repair_anchored(right);
+                        // The inline face lands on its own check: a
+                        // stale capture re-pends and the pair_lane
+                        // below re-asks.
+                        if let Some(inline) = inline {
+                            if self.right.document.repair_landable(&inline) {
+                                moved |= self.right.document.apply_repair_anchored(inline);
+                            }
+                        }
                         if moved {
                             fx.settle();
                         }
@@ -1357,6 +1386,9 @@ enum PairSide {
 pub struct RepairDiffEffect {
     left: PairSide,
     right: PairSide,
+    /// The inline face's capture (a third editor on the right
+    /// document), when the pair wears one.
+    inline: Option<PairSide>,
     diff: Operation,
 
     align: Option<Range<u32>>,
@@ -1380,6 +1412,13 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
         };
         let mut left = resolve(effect.left);
         let mut right = resolve(effect.right);
+        let inline = effect.inline.map(|side| {
+            let mut repaired = resolve(side);
+            // The face carries no spacers — alignment is the halves'
+            // concern; only the wrap heals here.
+            let _ = repaired.layout.take_stale_for_swap();
+            repaired
+        });
 
         let mut region: Option<Range<u32>> = None;
         let mut widen = |range: Range<u32>| {
@@ -1457,6 +1496,7 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
         SplitDiffCommand::PairRepaired {
             left,
             right,
+            inline,
             align: effect.align,
             marks,
             seq: effect.seq,

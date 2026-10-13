@@ -5055,6 +5055,162 @@ fn completion_serves_a_canvas_diff_face() {
     assert!(!completion_open(&app), "the popup closed on the pick");
 }
 
+/// A long line in a NARROW canvas softwraps — and every wrapped
+/// continuation row starts where the first row's text starts, never
+/// under the gutter numbers. (It did: continuations painted from
+/// x 0 across the gutter at narrow panes.)
+#[test]
+fn a_wrapped_canvas_line_stays_off_the_gutter() {
+    let mut app = Himark::new(AppFonts::embedded());
+    let _window = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "main.rs".to_owned(),
+        old: location("main.rs.old", editor::location::ResourceType::document()),
+        new: location("main.rs", editor::location::ResourceType::document()),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    // Enough changed lines ABOVE the long one that the rewrap's
+    // bounded sync repair runs out of budget before reaching it —
+    // the pair repair lane must heal the INLINE face's tail too
+    // (it didn't: the face kept the stale wide wrap forever).
+    let mut old_body = String::new();
+    let mut new_body = String::new();
+    for n in 0..90 {
+        old_body.push_str(&format!("    pad_{n:03}_a\n"));
+        new_body.push_str(&format!("    pad_{n:03}_b\n"));
+    }
+    new_body.push_str(
+        "            let wrapped = alpha_bravo_charlie + delta_echo_foxtrot + golf_hotel_india + juliett_kilo_lima + mike_november_oscar;\n",
+    );
+    let built = prepared_pair(
+        file.old.clone(),
+        ::editor::test_document::plain_document(&old_body),
+        file.new.clone(),
+        ::editor::test_document::plain_document(&new_body),
+        // Prepared WIDER than the pane will be — the mounted road's
+        // reality: the pair is built at the width of the moment and
+        // the pane narrows later. The row-level rewrap must re-lay
+        // the face at the shown width, ALL of it.
+        1100.0,
+    );
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: location("proj", editor::location::ResourceType::directory()),
+            },
+            file.clone(),
+            built,
+        )
+    };
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
+    let size = skia_safe::Size::new(430.0, 600.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+        for _ in 0..16 {
+            let _ =
+                himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        }
+    };
+    settle(&mut app, &mut surface);
+    // Slam the panel's scroller to the clamp: the long line lives at
+    // the very tail, past the rewrap's sync budget.
+    for _ in 0..6 {
+        let _ = himark::test_driver::scroll_at(&mut app, 215.0, 300.0, 4000.0);
+        settle(&mut app, &mut surface);
+    }
+    if std::env::var_os("HIMARK_SHOT").is_some() {
+        let image = surface.image_snapshot();
+        if let Some(data) = image.encode(None, skia_safe::EncodedImageFormat::PNG, None) {
+            std::fs::write("/tmp/test-wrap.png", data.as_bytes()).unwrap();
+        }
+    }
+    let info = skia_safe::ImageInfo::new(
+        (430, 600),
+        skia_safe::ColorType::RGBA8888,
+        skia_safe::AlphaType::Unpremul,
+        None,
+    );
+    let mut pixels = vec![0u8; 430 * 600 * 4];
+    assert!(surface.read_pixels(&info, &mut pixels, 430 * 4, (0, 0)));
+    // The leftmost lit column per thin row band at the clamp. The
+    // pads are indented 4 spaces; the long line's first row 12; its
+    // wrapped CONTINUATIONS sit at column 0 — present ONLY when the
+    // tail actually re-wrapped at the pane width (stale wide splits
+    // paint the line as one clipped row), and never left of the
+    // text column (never under the gutter numbers).
+    let leftmost = |y0: usize, y1: usize| -> Option<usize> {
+        // From 20: the canvas edge stripe at x~6 is not text. The
+        // threshold wants BRIGHT code glyphs — the gutter's dim
+        // numbers stay under it, so a number is never mistaken for
+        // a stray continuation.
+        (20..430).find(|&x| {
+            (y0..y1).any(|y| {
+                let at = (y * 430 + x) * 4;
+                let (r, g, b) = (pixels[at], pixels[at + 1], pixels[at + 2]);
+                (r as u16 + g as u16 + b as u16) > 550
+            })
+        })
+    };
+    let starts: Vec<(usize, usize)> = (0..590)
+        .step_by(10)
+        .filter_map(|y| leftmost(y, y + 10).map(|x| (y, x)))
+        .collect();
+    assert!(!starts.is_empty(), "the clamp shows text");
+    // Column 0 sits at the GUTTER's edge (the theme knows it); the
+    // pads are indented 4 spaces, the long line's first row 12 —
+    // only its wrapped CONTINUATIONS touch column 0, and only when
+    // the tail actually re-wrapped at the pane width. A stale wide
+    // split paints the line as ONE indented row — no column-0 rows
+    // at all. And nothing BRIGHT ever paints left of the gutter
+    // edge: the numbers' column holds no code.
+    let gutter = editor::env::Themes::of(app.store()).ui().editor_gutter.width as usize;
+    let continuations: Vec<(usize, usize)> = starts
+        .iter()
+        .copied()
+        .filter(|(_, x)| *x <= gutter + 20)
+        .collect();
+    assert!(
+        continuations.len() >= 4,
+        "the tail re-wrapped: column-0 continuation rows paint at the clamp \
+         (gutter {gutter}, bands {starts:?})"
+    );
+    let intruder = starts.iter().copied().find(|(_, x)| *x + 8 < gutter);
+    assert_eq!(
+        intruder, None,
+        "no code glyphs under the gutter numbers (gutter {gutter})"
+    );
+}
+
 /// A wholly ADDED file (an empty base) with a feature markup landing
 /// on its right document during the first dressing — a diagnostics or
 /// semantic-token landing on a freshly opened file — must not strand
