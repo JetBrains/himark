@@ -37,6 +37,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     private static let idleGraceTicks = 30
 
+    /// THE BAND MARGIN. The tick paints in its own transaction,
+    /// after the wheel's — the strip a fast frame exposes must
+    /// already be painted, or it flashes background until the next
+    /// tick. The band extends past the viewport by a momentum
+    /// frame's travel on both ends; the painted rows ride the
+    /// document, so the margin stays correct while it is consumed.
+    private static let bandMargin: CGFloat = 128
+
     // ─── the sync probe (HIMARK_TRACE_SYNC) ───
     //
     // Flicker is a TEMPORAL fault: the band's geometry and its pixels
@@ -221,6 +229,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                   visible.width.isFinite, visible.height.isFinite,
                   visible.minY.isFinite
             else { return }
+            // The painted BAND: the viewport plus the margin, inside
+            // the document.
+            let top = max(0, visible.minY - Self.bandMargin)
+            let bottom = min(bounds.maxY, visible.maxY + Self.bandMargin)
+            let band = CGRect(
+                x: visible.minX, y: top, width: visible.width, height: bottom - top)
             // GEOMETRY AND PIXELS MOVE TOGETHER OR NOT AT ALL. One
             // transaction holds the band's new position AND the
             // present that fills it, so CoreAnimation commits both in
@@ -229,14 +243,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             // scroll update — which is what makes the band travel
             // with the clip view instead of chasing it.
             let wasAt = metalLayer.frame
-            let w = Int32(visible.width * scale)
-            let h = Int32(visible.height * scale)
+            let w = Int32(band.width * scale)
+            let h = Int32(band.height * scale)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            metalLayer.frame = visible
+            metalLayer.frame = band
             metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
             let started = Self.traceSync ? CACurrentMediaTime() : 0
-            let painted = renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            let painted = renderBand(band, scale: scale, pixelWidth: w, pixelHeight: h)
             if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
             if !painted {
                 // No drawable, nothing painted: a moved band showing
@@ -326,11 +340,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if ms > 8.0 { slowRenders += 1 }
     }
 
-    /// One present, weighed against what the scroller already shows.
+    /// One present, weighed against what the scroller already
+    /// shows: drift is a band that fails to COVER the viewport —
+    /// the margin spent faster than the tick repaints.
     private func notePresent(layerY: CGFloat) {
         presents += 1
-        if let clip = enclosingScrollView?.contentView.bounds.origin.y,
-           abs(clip - layerY) > 0.5 {
+        if let clip = enclosingScrollView?.contentView.bounds,
+           clip.minY < metalLayer.frame.minY - 0.5
+               || clip.maxY > metalLayer.frame.maxY + 0.5 {
             driftPresents += 1
         }
         if presents % 60 == 0 {
@@ -342,11 +359,6 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                              totalMs / Double(presents), worstMs, slowRenders))
         }
     }
-
-    /// The embedding scroller moved the viewport: repaint the band
-    /// NOW, in the same runloop turn — waiting for the display link
-    /// leaves one frame of the old band riding the scroll.
-    func renderNow() { render() }
 
     /// Seat this bridge's reveal handler — the engine routes the
     /// parked rect (device pixels) here; hand it on in points.

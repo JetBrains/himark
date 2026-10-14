@@ -299,7 +299,13 @@ final class DesktopScrollHost: NSView {
                 NSLog("JUMP STACK:\n\(Thread.callStackSymbols.joined(separator: "\n"))")
             }
         }
-        content?.renderNow()
+        // MARK DIRTY, never render here: this fires inside
+        // scrollToPoint, mid-event — the designated moment is the
+        // display-link tick, which drains reveals first and paints
+        // the settled position in one transaction. Rendering from
+        // here painted every scrolled frame twice (both stacks under
+        // scrollToPoint in the profile).
+        content?.request()
     }
 
     @objc private func liveScrollBegan() {
