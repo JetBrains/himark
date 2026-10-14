@@ -37,6 +37,19 @@ struct DesktopRoot: View {
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
+    /// Above this window width the open rail stops FLOATING over
+    /// the document and becomes a SPLIT — the document ends at its
+    /// edge, the card's glass goes behind-window (the modern mac
+    /// sidebar: same inset rounded panel, desktop showing through).
+    /// Below it, today's overlay. The rail itself never moves or
+    /// remounts at the crossing; only the document's right edge and
+    /// the backdrop change.
+    private static let railSplitAt: CGFloat = 1280
+    @State private var windowWidth: CGFloat = 0
+    private var railSplit: Bool {
+        railOpen && windowWidth >= Self.railSplitAt
+    }
+
     /// The open chat column's width — what the chat is laid at
     /// whether it is showing or folded.
     private let chatWidth: CGFloat = 560
@@ -73,6 +86,11 @@ struct DesktopRoot: View {
                         EmptyDocumentHint(chatOpen: false, railOpen: railOpen)
                     }
                 }
+                // SPLIT: the document ends at the rail's edge — the
+                // rail's rect is identical in both modes, so the
+                // crossing moves the document's edge and nothing
+                // else.
+                .padding(.trailing, railSplit ? RailIsland.railWidth + 24 : 0)
             }
             .ignoresSafeArea()
         }
@@ -110,6 +128,7 @@ struct DesktopRoot: View {
                     host: host,
                     room: room.size.height - 24,
                     open: railOpen,
+                    split: railSplit,
                     tool: railTool,
                     pick: { tool in
                         withAnimation(spring) {
@@ -178,6 +197,14 @@ struct DesktopRoot: View {
             withAnimation(.easeOut(duration: 0.15)) { goToOpen = false }
         }
         .frame(minWidth: 720, minHeight: 480)
+        .background {
+            // The mode input: the window's width, nothing else.
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { windowWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { width in windowWidth = width }
+            }
+        }
         .background(Color(red: 0.043, green: 0.043, blue: 0.055))
         .ignoresSafeArea()
         .background {
@@ -395,11 +422,16 @@ struct RailIsland: View {
     /// this whether the rail is showing it or not.
     let room: CGFloat
     let open: Bool
+    /// SPLIT: the document ends at this island's edge instead of
+    /// running behind it, and the glass goes behind-window. The
+    /// island's own rect is the same either way.
+    let split: Bool
     let tool: RailTool
     let pick: (RailTool) -> Void
 
     /// The open rail's width — the content is laid at this always.
-    private let railWidth: CGFloat = 320
+    static let railWidth: CGFloat = 320
+    private var railWidth: CGFloat { Self.railWidth }
     private let stripHeight: CGFloat = 46
 
     var body: some View {
@@ -456,8 +488,59 @@ struct RailIsland: View {
                 .opacity(open ? 1 : 0)
         }
         .frame(width: open ? railWidth : nil)
-        .background(IslandBackground())
+        .background {
+            // BOTH faces stay mounted and only trade opacity: the
+            // crossing must not blink, and swapping views out of
+            // the tree is a swap the eye can catch.
+            ZStack {
+                IslandBackground().opacity(split ? 0 : 1)
+                SidebarGlass(cornerRadius: 16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(.white.opacity(0.08)))
+                    .opacity(split ? 1 : 0)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+/// The SPLIT backdrop: the modern mac sidebar's glass — the same
+/// inset rounded panel, blurring what is BEHIND THE WINDOW, so with
+/// nothing of the document under it the desktop shows through.
+struct SidebarGlass: NSViewRepresentable {
+    var cornerRadius: CGFloat = 16
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
+        // The app paints its own dark theme; the effect view follows
+        // the SYSTEM appearance unless pinned — a light sidebar
+        // under white tree text is unreadable.
+        view.appearance = NSAppearance(named: .darkAqua)
+        view.maskImage = Self.mask(radius: cornerRadius)
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+
+    /// A stretchable rounded-rect mask — the vibrancy region obeys
+    /// the island's shape (a SwiftUI clip does not reach the
+    /// backdrop sampling).
+    private static func mask(radius: CGFloat) -> NSImage {
+        let side = radius * 2 + 1
+        let image = NSImage(
+            size: NSSize(width: side, height: side),
+            flipped: false
+        ) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
     }
 }
 
