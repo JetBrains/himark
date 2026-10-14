@@ -131,6 +131,9 @@ pub struct Himark {
 
     /// External place arms (plugins) — `mount_place` consults them
     /// after its own.
+    /// The palette plugin's view factory (`register_palette`).
+    pub(crate) palette: Option<crate::mounts::PaletteFactory>,
+
     pub(crate) modal_place_arms: Vec<crate::mounts::ModalPlaceArm>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
@@ -250,6 +253,7 @@ impl Himark {
             revision: 0,
             pending_file_events: Vec::new(),
             pending_reveals: Vec::new(),
+            palette: None,
             modal_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
@@ -735,10 +739,53 @@ impl Himark {
         Some((id, reveal))
     }
 
+    /// Every command the SESSION can run. A mounted road has no
+    /// focused window to walk — it has a WORKSPACE, the session,
+    /// and the views mounted into it. Himark holds those views, so
+    /// Himark does the walk: ask each view of this session what it
+    /// offers and concatenate. The global registry rides on top at
+    /// the call site, bound to the asking bridge.
+    pub fn session_commands(
+        &self,
+        session: &ahp_wire::SessionId,
+    ) -> Vec<imba::PresentableCommand<crate::app::AppCommand>> {
+        let ui = self.ui.clone();
+        let mut collected = Vec::new();
+        for id in self.mounted_ids() {
+            let mine = crate::mounts::session_of(&self.store, id).as_ref() == Some(session);
+            if let (true, Some(slot)) = (mine, self.bridges.get(&id)) {
+                // The view's own store, and only its COMMANDS out of
+                // the walk — the rest of the focus data borrows that
+                // store, which dies with this scope.
+                let offered = {
+                    let view = slot.bridge.view();
+                    let store = view.frame_store(&self.store, ui.as_ref());
+                    view.focus(&store, ui.as_ref())
+                        .map(|data| data.commands)
+                        .unwrap_or_default()
+                };
+                collected.extend(offered);
+            }
+        }
+        collected
+    }
+
+    /// The palette's VIEW, from the plugin that owns it — the
+    /// engine hands it the session's commands and gets a modal
+    /// back. Registered at boot, like a place arm; `palette` sits
+    /// above this crate and cannot be named from here.
+    pub fn register_palette(&mut self, make: crate::mounts::PaletteFactory) {
+        self.palette = Some(make);
+    }
+
     /// A plugin's place arm — consulted by `mount_place` after the
     /// built-in arms.
     pub fn register_place_arm(&mut self, arm: crate::mounts::ModalPlaceArm) {
         self.modal_place_arms.push(arm);
+    }
+
+    pub(crate) fn palette_factory(&self) -> Option<crate::mounts::PaletteFactory> {
+        self.palette.clone()
     }
 
     /// Re-seat the shell, wrapping the one seated now — the native

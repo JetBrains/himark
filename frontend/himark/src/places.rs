@@ -117,6 +117,21 @@ pub struct PeekerPlace(pub ahp_wire::SessionId);
 
 impl Place for PeekerPlace {}
 
+/// The COMMAND PALETTE — the registry walk, the query and the
+/// filtered list. The shell mounts the face and paints the glass
+/// around it; the palette itself is the engine's, once.
+#[derive(Clone, PartialEq)]
+pub struct PalettePlace(pub ahp_wire::SessionId);
+
+impl Place for PalettePlace {}
+
+/// The SESSIONS browser — hosts, their folders and their sessions,
+/// with the speed search over them. One list, both roads.
+#[derive(Clone, PartialEq)]
+pub struct SessionsPlace(pub ahp_wire::SessionId);
+
+impl Place for SessionsPlace {}
+
 /// A mounted modal asked to CLOSE (escape, a pick completing) —
 /// the shell dismisses whatever face hosts the origin.
 #[derive(Clone, PartialEq)]

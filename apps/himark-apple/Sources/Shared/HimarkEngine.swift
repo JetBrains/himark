@@ -154,6 +154,9 @@ final class HimarkEngine {
         case history, search, comments
         /// The go-to-file face: the peeker, whole.
         case peeker
+        /// The command palette and the sessions browser — engine
+        /// views, both: the shell paints the glass and nothing else.
+        case palette, sessions
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
@@ -167,6 +170,8 @@ final class HimarkEngine {
             case .search: himark_place_search(engine, host, cstr, UInt(strlen(cstr)))
             case .comments: himark_place_comments(engine, host, cstr, UInt(strlen(cstr)))
             case .peeker: himark_place_peeker(engine, host, cstr, UInt(strlen(cstr)))
+            case .palette: himark_place_palette(engine, host, cstr, UInt(strlen(cstr)))
+            case .sessions: himark_place_sessions(engine, host, cstr, UInt(strlen(cstr)))
             case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
             case .transcript:
                 himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))

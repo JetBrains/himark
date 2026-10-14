@@ -288,6 +288,18 @@ impl imba::command::DynamicOnceCommand for OpenCanvasFromChanges {
     }
 }
 
+/// The palette's view, built by the plugin that owns it from the
+/// commands the engine walked (`Himark::session_commands`).
+pub type PaletteFactory = std::sync::Arc<
+    dyn Fn(
+            &mut Store,
+            &UiCtx,
+            Vec<imba::PresentableCommand<crate::app::AppCommand>>,
+        ) -> Box<dyn hikit::modal::ModalView>
+        + Send
+        + Sync,
+>;
+
 /// An EXTERNAL place arm: a crate ABOVE this one (a plugin)
 /// answers a place with a modal view. Registered at boot
 /// (`Himark::register_place_arm`); `mount_place` consults these
@@ -785,6 +797,32 @@ fn mount_place_inner(
             Some(Rc::new(PanelMount {
                 id,
                 panel: Box::new(panel),
+            }) as Rc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::PalettePlace>() {
+        // The command walk runs BEFORE the mount, with the app in
+        // hand: the session's mounted views answer what they offer,
+        // and the global registry rides on top bound to the palette
+        // itself — a windowed command landing on a mount forks to
+        // its windowless road.
+        let make = app.palette_factory()?;
+        let session = place.0.clone();
+        let mut commands = app.session_commands(&session);
+        return app.mount(move |store, ui, id, _fx| {
+            commands.extend(crate::commands::Commands::of(store).iter().map(|command| {
+                imba::PresentableCommand::new(
+                    command.id(),
+                    command.name(),
+                    crate::shell::windowed(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        command.clone(),
+                    ),
+                )
+            }));
+            Some(Rc::new(DynModalMount {
+                id,
+                view: make(store, ui, commands),
             }) as Rc<dyn BridgeView>)
         });
     }

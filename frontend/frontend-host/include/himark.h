@@ -608,6 +608,16 @@ HimarkPlace himark_place_peeker(HimarkEngine *engine,
                                 const char *uri,
                                 uintptr_t len);
 
+HimarkPlace himark_place_palette(HimarkEngine *engine,
+                                 uint64_t host,
+                                 const char *uri,
+                                 uintptr_t len);
+
+HimarkPlace himark_place_sessions(HimarkEngine *engine,
+                                  uint64_t host,
+                                  const char *uri,
+                                  uintptr_t len);
+
 HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
 
 void himark_place_release(HimarkEngine *engine, HimarkPlace place);

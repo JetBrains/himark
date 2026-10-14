@@ -38,7 +38,7 @@ struct Entry {
 }
 
 #[derive(Clone)]
-pub(crate) enum PaletteCommand {
+pub enum PaletteCommand {
     /// The palette's OWN input editor — the query lives here.
     Input(editor::editor_view::EditorCommand),
 
@@ -63,7 +63,7 @@ impl std::fmt::Display for PaletteCommand {
 const PALETTE_SHOWN: usize = 200;
 
 #[derive(Clone)]
-pub(crate) struct PaletteView {
+pub struct PaletteView {
     /// The palette's own query input: the overlay owns its text.
     input: editor::editor_view::EditorView,
 
@@ -254,15 +254,11 @@ impl View for PaletteView {
 
             let mut container = imba::container::container(arena, size);
 
+            // The press-away catcher. The SHEET behind it is not
+            // the palette's business — whoever stands the palette
+            // up dresses it (`Dressed`), or mounts it bare over
+            // glass it already drew.
             let backdrop = leaf::<PaletteCommand>(size.width, size.height)
-                .paint_instead({
-                    let background = chrome.background.0;
-                    move |_arena, canvas, rect| {
-                        let mut surface = Paint::default();
-                        surface.set_color(background);
-                        canvas.draw_rect(rect, &surface);
-                    }
-                })
                 .event(|_arena, event, _size| match event {
                     Event::MouseDown { .. } => EventResult::command(PaletteCommand::Close),
                     _ => EventResult::Ignored,
@@ -370,8 +366,21 @@ pub fn build(
     ui: &UiCtx,
     window: workbench::window::WindowId,
 ) -> Box<dyn ModalView> {
+    use hikit::modal::Dress as _;
+    let sheet = ::editor::env::Themes::of(store).ui().peeker.background.0;
     let commands = himark::commands::palette_commands(store, ui, window);
-    Box::new(PaletteView::new(store, ui, commands))
+    Box::new(bare(store, ui, commands).dressed(hikit::ui::Surface::fill(sheet).radius(0.0)))
+}
+
+/// The palette UNDRESSED, over commands someone else walked: the
+/// mounted road's factory (`Himark::register_palette`). A host
+/// that already painted a floor mounts this one inside its glass.
+pub fn bare(
+    store: &Store,
+    ui: &UiCtx,
+    commands: Vec<PresentableCommand<AppCommand>>,
+) -> PaletteView {
+    PaletteView::new(store, ui, commands)
 }
 
 pub struct TogglePalette;

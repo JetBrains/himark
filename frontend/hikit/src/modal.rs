@@ -308,3 +308,111 @@ where
         self.scroll.content().drawer_view(store, ui)
     }
 }
+
+/// A modal DRESSED from outside: the view inside lays its content
+/// and nothing else; the surface paints beneath it. Which road the
+/// modal stands on decides the dressing — the windowed one hands it
+/// an opaque sheet, a host that already drew glass (the islands
+/// app's islands) mounts the view bare. The view itself never
+/// learns which, so it carries no flag about it.
+#[derive(Clone)]
+pub struct Dressed<V> {
+    inner: V,
+    surface: crate::ui::Surface,
+}
+
+/// `view.dressed(Surface::fill(…))` — the modifier that composes
+/// the two.
+pub trait Dress: Sized {
+    fn dressed(self, surface: crate::ui::Surface) -> Dressed<Self> {
+        Dressed {
+            inner: self,
+            surface,
+        }
+    }
+}
+
+impl<V: ModalView> Dress for V {}
+
+impl<V: View> View for Dressed<V> {
+    type Command = V::Command;
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.inner.perform(store, ui, command, fx)
+    }
+
+    fn destroy(
+        &mut self,
+        store: &mut Store,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.inner.destroy(store, fx)
+    }
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        self.inner.focus_data(store, ui)
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        let surface = self.surface;
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            surface.wrap(imba::layout::Layout::layout(
+                self.inner.display(arena, store, ui),
+                arena,
+                constraints,
+            ))
+        })
+    }
+}
+
+impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Dressed<V> {
+    fn take_request(&mut self) -> Option<ModalRequest> {
+        self.inner.take_request()
+    }
+
+    fn set_query(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        query: &str,
+        fx: &mut imba::effect::Effects<'_, DynCommand>,
+    ) {
+        self.inner.set_query(store, ui, query, fx)
+    }
+
+    fn release_widgets(
+        &mut self,
+    ) -> Vec<(
+        crate::panel::WidgetOrigin,
+        Box<dyn crate::panel::DynPanelView>,
+    )> {
+        self.inner.release_widgets()
+    }
+
+    fn focus_lost(&mut self) {
+        self.inner.focus_lost()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn clone_modal(&self) -> Box<dyn ModalView> {
+        Box::new(self.clone())
+    }
+}

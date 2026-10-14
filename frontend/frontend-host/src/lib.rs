@@ -549,6 +549,15 @@ impl HimarkEngine {
             Some(Box::new(view))
         }));
 
+        // The COMMAND PALETTE: one view, both roads. The workbench
+        // opens it as a modal over a window; a mounted host mints
+        // it as a place, and the engine walks that session's views
+        // for the commands. Bare — the host's island glass is the
+        // floor it would otherwise paint.
+        app.register_palette(Arc::new(|store, ui, commands| {
+            Box::new(palette::bare(store, ui, commands))
+        }));
+
         app.register_command(Arc::new(himark::diff_pane::OpenDiff));
         app.register_row_minter(canvas::diff_pane::pair_row_minter());
         app.register_command(Arc::new(demo::tree_demo::OpenTreeDemo));

@@ -1223,6 +1223,30 @@ pub unsafe extern "C" fn himark_place_peeker(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn himark_place_palette(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::PalettePlace(session))
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_sessions(
+    engine: *mut HimarkEngine,
+    host: u64,
+    uri: *const c_char,
+    len: usize,
+) -> HimarkPlace {
+    mint_session_place(engine, host, uri, len, |session| {
+        hikit::navigation::NavigationLocation::new(himark::places::SessionsPlace(session))
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn himark_place_files(
     engine: *mut HimarkEngine,
     host: u64,
@@ -1356,6 +1380,7 @@ impl himark::himark::Shell for CallbackShell {
                 Some((HIMARK_PLACE_CANVAS, ready.source.title(store, ready.changes)))
             } else if place.place::<himark::places::DismissPlace>().is_some() {
                 Some((HIMARK_PLACE_DISMISS, String::new()))
+
             } else {
                 None
             };

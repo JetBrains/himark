@@ -146,11 +146,25 @@ struct DesktopRoot: View {
         }
         .overlay(alignment: .top) {
             if paletteOpen {
-                CommandPalette(entries: paletteEntries) {
-                    withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
-                }
-                .padding(.top, 64)
-                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                // The palette is the ENGINE's — the registry walk,
+                // the query, the filtered list and the keys all live
+                // in `plugins/palette`, which the workbench opens as
+                // a modal and this shell mounts as a place. Swift
+                // contributes the glass and nothing else.
+                PlainMintedBridge(host: host, kind: .palette, grabsFocus: true)
+                    // Re-mint when the session arrives: a mint
+                    // before the catalog settles has no session to
+                    // name and answers bridge 0 (the peeker's id
+                    // carries the same weight).
+                    .id("palette-\(host.current?.uri ?? "")")
+                    .frame(width: 620, height: 460)
+                    .background(IslandBackground(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.top, 64)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                    .onExitCommand {
+                        withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
+                    }
             }
         }
         .onChange(of: host.dismissals) { _ in
@@ -180,28 +194,6 @@ struct DesktopRoot: View {
         }
     }
 
-    /// Native shell verbs first, the engine's registry after.
-    private var paletteEntries: [PaletteEntry] {
-        var entries: [PaletteEntry] = [
-            PaletteEntry(id: "view.toggle-chat", name: "View: Toggle Chat", shortcut: "⌘1") {
-                withAnimation(spring) { chatOpen.toggle() }
-            },
-            PaletteEntry(id: "view.toggle-rail", name: "View: Toggle Changes Rail", shortcut: "⌘2") {
-                withAnimation(spring) { railOpen.toggle() }
-            },
-            PaletteEntry(id: "session.new", name: "Session: New Session", shortcut: "⌘N") {
-                host.newSession()
-            },
-        ]
-        let native = Set(entries.map(\.id))
-        for (id, name) in host.engine.commands() where !native.contains(id) {
-            entries.append(PaletteEntry(id: id, name: name, shortcut: nil) { [weak host] in
-                guard let host else { return }
-                _ = host.engine.perform(bridge: HimarkBridge(raw: 0), command: id)
-            })
-        }
-        return entries
-    }
 }
 
 // ─── window dressing: no titlebar, no native buttons ───
