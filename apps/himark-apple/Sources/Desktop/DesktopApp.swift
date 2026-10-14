@@ -201,6 +201,14 @@ final class DesktopHost: NSObject, ObservableObject {
         dismissals += 1
     }
 
+    /// The OS appearance drives the engine's theme — theme.json or
+    /// theme-light.json, the registered theme.dark/theme.light
+    /// commands (built for exactly this).
+    func setTheme(dark: Bool) {
+        _ = engine.perform(bridge: HimarkBridge(raw: 0), command: dark ? "theme.dark" : "theme.light")
+        redrawAll()
+    }
+
     func newSession() {
         engine.newSession()
     }

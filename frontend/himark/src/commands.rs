@@ -287,6 +287,18 @@ impl WindowedCommand for ToggleTheme {
         };
         ::editor::env::Themes::set(store, next);
     }
+
+    /// Theme is store-wide — a mounted origin performs it the same.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        _origin: crate::bridge::ViewBridgeId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        self.perform(store, ui, ::workbench::window::WindowId::from_raw(0), fx);
+        true
+    }
 }
 
 /// Selects an explicit theme, unlike [ToggleTheme] — the host calls this to
@@ -323,6 +335,19 @@ impl WindowedCommand for SetTheme {
             ::editor::theme::Theme::light()
         };
         ::editor::env::Themes::set(store, theme);
+    }
+
+    /// Theme is store-wide — the native host follows the OS through
+    /// this command with no window in hand.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        _origin: crate::bridge::ViewBridgeId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        self.perform(store, ui, ::workbench::window::WindowId::from_raw(0), fx);
+        true
     }
 }
 

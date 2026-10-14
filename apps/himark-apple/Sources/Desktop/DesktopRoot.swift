@@ -34,6 +34,12 @@ struct DesktopRoot: View {
     @State private var goToOpen =
         ProcessInfo.processInfo.environment["HIMARK_UI"] == "go-to-file"
     @Namespace private var islands
+    /// The system appearance drives BOTH halves: the engine's theme
+    /// (theme.json / theme-light.json carry the content) and the
+    /// Swift glass around it, tuned to the light mocks
+    /// (docs/himark-islands-*-light.png).
+    @Environment(\.colorScheme) private var colorScheme
+    private var dark: Bool { colorScheme == .dark }
 
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
@@ -73,12 +79,26 @@ struct DesktopRoot: View {
                     ChatPaneColumn(host: host)
                         .frame(width: chatWidth)
                     Rectangle()
-                        .fill(.white.opacity(0.07))
+                        .fill(dark ? Color.white.opacity(0.07) : Color.black.opacity(0.08))
                         .frame(width: 1)
                 }
                 .frame(width: chatOpen ? chatWidth + 1 : 0, alignment: .leading)
                 .clipped()
                 .opacity(chatOpen ? 1 : 0)
+                // The chat floor's GLASS — behind the clip, not in
+                // it: a backdrop inside .clipped() rasterizes to
+                // flat paint. Sized by the folding frame, so it
+                // folds with the column.
+                .background {
+                    ZStack {
+                        DesktopGlass(material: .sidebar)
+                        (dark
+                            ? Color(red: 0.036, green: 0.036, blue: 0.046)
+                            : Color(red: 0.918, green: 0.92, blue: 0.93))
+                            .opacity(0.5)
+                    }
+                    .ignoresSafeArea()
+                }
                 Group {
                     if let opened = host.document {
                         DocumentPane(host: host, opened: opened)
@@ -89,7 +109,16 @@ struct DesktopRoot: View {
                 // SPLIT: the document ends at the rail's edge — the
                 // rail's rect is identical in both modes, so the
                 // crossing moves the document's edge and nothing
-                // else.
+                // else. The splitter marks the edge the way a real
+                // split view would.
+                .overlay(alignment: .trailing) {
+                    if railSplit {
+                        Rectangle()
+                            .fill(.primary.opacity(0.12))
+                            .frame(width: 1)
+                            .ignoresSafeArea()
+                    }
+                }
                 .padding(.trailing, railSplit ? RailIsland.railWidth + 24 : 0)
             }
             .ignoresSafeArea()
@@ -153,8 +182,8 @@ struct DesktopRoot: View {
                     .id("peeker-\(host.current?.uri ?? "")")
                     .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(IslandBackground(cornerRadius: 16))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .background(IslandBackground(cornerRadius: 16))
                     .padding([.leading, .trailing, .bottom], 16)
                     .padding(.top, 56)
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
@@ -177,14 +206,18 @@ struct DesktopRoot: View {
                     // carries the same weight).
                     .id("palette-\(host.current?.uri ?? "")")
                     .frame(width: 620, height: 460)
-                    .background(IslandBackground(cornerRadius: 16))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .background(IslandBackground(cornerRadius: 16))
                     .padding(.top, 64)
                     .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
                     .onExitCommand {
                         withAnimation(.easeOut(duration: 0.15)) { paletteOpen = false }
                     }
             }
+        }
+        .onAppear { host.setTheme(dark: dark) }
+        .onChange(of: colorScheme) { scheme in
+            host.setTheme(dark: scheme == .dark)
         }
         .onChange(of: host.dismissals) { _ in
             withAnimation(.easeOut(duration: 0.15)) {
@@ -205,7 +238,12 @@ struct DesktopRoot: View {
                     .onChange(of: geo.size.width) { width in windowWidth = width }
             }
         }
-        .background(Color(red: 0.043, green: 0.043, blue: 0.055))
+        // The light floor CONTINUES the document's white — the strip
+        // behind the split rail is the same paper, not a grey band.
+        .background(
+            dark
+                ? Color(red: 0.043, green: 0.043, blue: 0.055)
+                : Color(red: 0.995, green: 0.995, blue: 0.995))
         .ignoresSafeArea()
         .background {
             // The palette's and the peeker's summons.
@@ -241,6 +279,14 @@ struct WindowDresser: NSViewRepresentable {
             for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(kind)?.isHidden = true
             }
+            // Harness hook: HIMARK_APPEARANCE=light|dark pins the
+            // window appearance — the screenshot loop runs on a
+            // machine whose system setting it cannot change.
+            switch ProcessInfo.processInfo.environment["HIMARK_APPEARANCE"] {
+            case "light": window.appearance = NSAppearance(named: .aqua)
+            case "dark": window.appearance = NSAppearance(named: .darkAqua)
+            default: break
+            }
             // Harness hook: HIMARK_DEBUG_FRAME="w,h" squeezes the
             // window at launch (probe loop has no assistive access).
             if let ask = ProcessInfo.processInfo.environment["HIMARK_DEBUG_FRAME"] {
@@ -275,7 +321,7 @@ struct TrafficDots: View {
     private func dot(_ color: Color, verb: @escaping () -> Void) -> some View {
         Button(action: verb) {
             Circle()
-                .fill(active == .key ? color : Color.white.opacity(0.2))
+                .fill(active == .key ? color : Color.primary.opacity(0.2))
                 .frame(width: 12, height: 12)
         }
         .buttonStyle(.plain)
@@ -298,7 +344,7 @@ struct SessionIsland: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 TrafficDots()
-                Divider().frame(height: 14).overlay(.white.opacity(0.15))
+                Divider().frame(height: 14).overlay(.primary.opacity(0.15))
                 SessionButton(host: host, open: $open)
                 if open || !chatOpen {
                     Spacer(minLength: 0)
@@ -332,8 +378,8 @@ struct SessionIsland: View {
         .frame(width: open ? 536 : nil)
         .frame(maxHeight: open ? 700 : 44, alignment: .top)
         .fixedSize(horizontal: !open, vertical: false)
-        .background(IslandBackground(cornerRadius: 16))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(IslandBackground(cornerRadius: 16))
     }
 }
 
@@ -357,7 +403,7 @@ struct SessionButton: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(.white.opacity(0.06), in: Capsule())
+            .background(.primary.opacity(0.06), in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -376,7 +422,6 @@ struct ChatPaneColumn: View {
         ChatColumn(host: host)
             .id(host.current?.uri)
             .padding(.top, 60)
-            .background(Color(red: 0.036, green: 0.036, blue: 0.046))
     }
 }
 
@@ -450,7 +495,7 @@ struct RailIsland: View {
                             .frame(width: open ? nil : 38, height: 30)
                             .background(
                                 open && candidate == tool
-                                    ? AnyShapeStyle(.white.opacity(0.1))
+                                    ? AnyShapeStyle(.primary.opacity(0.1))
                                     : AnyShapeStyle(.clear),
                                 in: RoundedRectangle(cornerRadius: 8))
                             // The WHOLE button answers the press,
@@ -488,43 +533,43 @@ struct RailIsland: View {
                 .opacity(open ? 1 : 0)
         }
         .frame(width: open ? railWidth : nil)
-        .background {
-            // BOTH faces stay mounted and only trade opacity: the
-            // crossing must not blink, and swapping views out of
-            // the tree is a swap the eye can catch.
-            ZStack {
-                IslandBackground().opacity(split ? 0 : 1)
-                SidebarGlass(cornerRadius: 16)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(.white.opacity(0.08)))
-                    .opacity(split ? 1 : 0)
-            }
-        }
+        // The CONTENT clips to the card shape; the backdrop sits
+        // outside the clip and rounds itself (the glass dies inside
+        // a SwiftUI clip). Same island either way — split only
+        // changes what the glass samples: the desktop (nothing of
+        // ours behind) instead of the document it floats on.
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .background(
+            IslandBackground(cornerRadius: 16, backdrop: split ? .desktop : .content))
     }
 }
 
-/// The SPLIT backdrop: the modern mac sidebar's glass — the same
-/// inset rounded panel, blurring what is BEHIND THE WINDOW, so with
-/// nothing of the document under it the desktop shows through.
-struct SidebarGlass: NSViewRepresentable {
-    var cornerRadius: CGFloat = 16
+/// BEHIND-WINDOW glass: the desktop blurred into a panel, the
+/// modern mac sidebar's backdrop. Must never sit inside a SwiftUI
+/// clip, mask or opacity — those rasterize the layer and the
+/// backdrop sampling dies; it rounds itself via `maskImage`.
+struct DesktopGlass: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .sidebar
+    var cornerRadius: CGFloat = 0
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .sidebar
+        view.material = material
         view.blendingMode = .behindWindow
         view.state = .active
-        // The app paints its own dark theme; the effect view follows
-        // the SYSTEM appearance unless pinned — a light sidebar
-        // under white tree text is unreadable.
-        view.appearance = NSAppearance(named: .darkAqua)
-        view.maskImage = Self.mask(radius: cornerRadius)
+        if cornerRadius > 0 {
+            view.maskImage = Self.mask(radius: cornerRadius)
+        }
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        // The effect view follows the SYSTEM appearance on its own
+        // schedule — pin it to the scheme the rest of the chrome is
+        // drawn with, so the glass and the text flip together.
+        view.appearance = NSAppearance(
+            named: context.environment.colorScheme == .dark ? .darkAqua : .aqua)
+    }
 
     /// A stretchable rounded-rect mask — the vibrancy region obeys
     /// the island's shape (a SwiftUI clip does not reach the
@@ -577,23 +622,49 @@ struct RailContent: View {
 
 // ─── shared island dressings ───
 
+/// THE island look — ONE backdrop for every floating card: the
+/// rail, the composer, the pills, the sheets. Glass below, a wash
+/// of the scheme's paper over it (white in light — the wash sets
+/// the tone, the glass only bleeds what is behind), a hairline and
+/// a soft shadow. `.desktop` samples BEHIND THE WINDOW (a split
+/// sidebar, the composer over the chat floor); `.content` blurs
+/// the document the island floats on — a floating card showing the
+/// desktop through a window with content under it reads as a hole.
+/// Self-rounded: never put it inside a clip or an opacity, those
+/// rasterize the glass to flat paint.
 struct IslandBackground: View {
+    enum Backdrop { case content, desktop }
     var cornerRadius: CGFloat = 16
+    var backdrop: Backdrop = .content
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color(red: 0.08, green: 0.08, blue: 0.1).opacity(0.55))
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay(
+        let dark = scheme == .dark
+        ZStack {
+            switch backdrop {
+            case .content:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(.white.opacity(0.08)))
-            .shadow(color: .black.opacity(0.45), radius: 22, y: 8)
+                    .fill(.ultraThinMaterial)
+            case .desktop:
+                DesktopGlass(material: .sidebar, cornerRadius: cornerRadius)
+            }
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(
+                    dark
+                        ? Color(red: 0.08, green: 0.08, blue: 0.1).opacity(0.35)
+                        : Color.white.opacity(0.28))
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .strokeBorder(.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(dark ? 0.45 : 0.16), radius: 22, y: 8)
     }
 }
 
 /// Transcript over the composer — both himark-rendered.
 struct ChatColumn: View {
     let host: DesktopHost
+    @Environment(\.colorScheme) private var scheme
     @State private var composerHeight: CGFloat = 120
 
     var body: some View {
@@ -604,13 +675,10 @@ struct ChatColumn: View {
             // the engine.
             ComposerBridge(host: host, height: $composerHeight)
                 .frame(height: composerHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.white.opacity(0.045)))
+                // The composer is an ISLAND — the same card as the
+                // rail, glass and all.
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(.white.opacity(0.09)))
+                .background(IslandBackground(cornerRadius: 12, backdrop: .desktop))
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
                 .padding(.top, 6)
@@ -622,6 +690,7 @@ struct ChatColumn: View {
 struct DocumentPane: View {
     let host: DesktopHost
     let opened: DesktopHost.Opened
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Group {
@@ -631,8 +700,12 @@ struct DocumentPane: View {
             PlaceScrollBridge(host: host, place: opened.place, grabsFocus: opened.focus)
                 .id(opened.id)
         }
-        // The engine floors nothing now — the pane does.
-        .background(Color(red: 0.051, green: 0.051, blue: 0.063))
+        // The engine floors nothing now — the pane does; the color
+        // is the active theme's paper.
+        .background(
+            scheme == .dark
+                ? Color(red: 0.051, green: 0.051, blue: 0.063)
+                : Color(red: 0.995, green: 0.995, blue: 0.995))
     }
 }
 
