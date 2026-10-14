@@ -171,6 +171,7 @@ struct DesktopRoot: View {
             withAnimation(.easeOut(duration: 0.15)) {
                 goToOpen = false
                 paletteOpen = false
+                sessionsOpen = false
             }
         }
         .onChange(of: host.document) { _ in
@@ -461,7 +462,12 @@ struct RailIsland: View {
 }
 
 struct RailContent: View {
-    let host: DesktopHost
+    // OBSERVED, not just held: the bridges below are keyed on the
+    // current session, and a plain reference leaves this body
+    // skipped when the session changes (same pointer, same tool) —
+    // the keys were never re-read, so a session pick left every
+    // rail face on the old repo until a tab switch rebuilt them.
+    @ObservedObject var host: DesktopHost
     let tool: RailTool
 
     var body: some View {

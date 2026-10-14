@@ -192,7 +192,13 @@ final class DesktopHost: NSObject, ObservableObject {
         guard !selected.uri.isEmpty else { return }
         var selected = selected
         selected.title = sessions.first { $0.uri == selected.uri }?.title ?? ""
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_NAV"] != nil {
+            NSLog("[nav] show session \(selected.uri) — was \(current?.uri ?? "none")")
+        }
         current = selected
+        // A pick completes the browsing: overlays fold, the same
+        // as any mounted modal finishing.
+        dismissals += 1
     }
 
     func newSession() {
