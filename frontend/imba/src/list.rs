@@ -1685,14 +1685,13 @@ where
                 let own_correction = self
                     .settle_to
                     .is_some_and(|target| (target - top).abs() < 1.0);
-                let resized = (height - self.viewport_height).abs() > 0.5
-                    || self.viewport_height == 0.0;
+                let resized =
+                    (height - self.viewport_height).abs() > 0.5 || self.viewport_height == 0.0;
                 // A report still AT the bottom edge is no escape
                 // either — a shrinking row clamps the scroller down
                 // a few pixels; the hand leaving the follow leaves
                 // the tail.
-                let at_tail =
-                    top + height >= self.items.metrics().metric_at(ROW_PX) as f32 - 2.0;
+                let at_tail = top + height >= self.items.metrics().metric_at(ROW_PX) as f32 - 2.0;
                 if top + 0.5 < self.viewport_top && !own_correction && !resized && !at_tail {
                     if self.tail_reveal && std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                         eprintln!(
@@ -1830,10 +1829,7 @@ where
                         if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                             eprintln!("[reveal] list realize: armed row resolves to {rect:?}");
                         }
-                        (
-                            Some((rect, *placement, crate::event::Motion::Auto)),
-                            false,
-                        )
+                        (Some((rect, *placement, crate::event::Motion::Auto)), false)
                     }
                     None => {
                         if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
@@ -1861,9 +1857,9 @@ where
             // very edge (the satisfaction check tolerates fractional
             // scroller landings), resolved against the LIVE total on
             // every realize.
-            let tail_ask = self.tail_reveal.then(|| {
-                Rect::from_xywh(0.0, (total - 2.0).max(0.0), width.max(1.0), 1.0)
-            });
+            let tail_ask = self
+                .tail_reveal
+                .then(|| Rect::from_xywh(0.0, (total - 2.0).max(0.0), width.max(1.0), 1.0));
             ListWidget {
                 items: &self.items,
                 structure: &self.structure,
@@ -2514,9 +2510,7 @@ where
                 // dies only superseded (the hand) or cancelled.
                 if !crate::event::reveal_satisfied(viewport, strip) {
                     if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
-                        eprintln!(
-                            "[reveal] list clock: tail ask {strip:?} viewport {viewport:?}"
-                        );
+                        eprintln!("[reveal] list clock: tail ask {strip:?} viewport {viewport:?}");
                     }
                     let mine = EventResult::reveal(crate::event::Reveal {
                         rect: strip,

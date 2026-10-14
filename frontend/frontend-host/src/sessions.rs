@@ -33,12 +33,6 @@ impl DynamicOnceCommand for ShowSession {
             session: self.session,
         })
         .perform(store, ui, fx);
-        himark::shell::navigate_origin(
-            store,
-            ui,
-            self.origin,
-            himark::places::ChatPlace(key),
-            fx,
-        );
+        himark::shell::navigate_origin(store, ui, self.origin, himark::places::ChatPlace(key), fx);
     }
 }

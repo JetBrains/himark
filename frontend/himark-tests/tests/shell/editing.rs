@@ -601,15 +601,16 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
         let mut surface = skia_safe::surfaces::raster_n32_premul((420, 600)).expect("a surface");
         let viewport = skia_safe::Rect::from_wh(420.0, 600.0);
         let widget = imba::Thunk::realize(widget, &arena, viewport);
-        widget.handle_event(
-            &arena,
-            &Event::Paint {
-                canvas: surface.canvas(),
-                focused: true,
-            },
-            viewport,
-        )
-        .into_commands()
+        widget
+            .handle_event(
+                &arena,
+                &Event::Paint {
+                    canvas: surface.canvas(),
+                    focused: true,
+                },
+                viewport,
+            )
+            .into_commands()
     };
     let probe_reports = |commands: &[EditorCommand]| {
         commands

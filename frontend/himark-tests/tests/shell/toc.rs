@@ -587,17 +587,20 @@ fn speedsearch_arrows_step_the_matches() {
     };
     let stepped = match &result {
         imba::event::EventResult::Handled(handled) => {
-            handled.commands.first().is_some_and(|command| match command {
-                ::toc::OutlineCommand::List(command) => {
-                    use imba::list::ListOps;
-                    type Search = hikit::list_keyboard::ListKeyboardController<
-                        hikit::forest::ForestList<::toc::OutlineKey>,
-                        hikit::forest::ForestSearcher<::toc::OutlineKey>,
-                    >;
-                    Search::selected_index(command).is_some()
-                }
-                _ => false,
-            })
+            handled
+                .commands
+                .first()
+                .is_some_and(|command| match command {
+                    ::toc::OutlineCommand::List(command) => {
+                        use imba::list::ListOps;
+                        type Search = hikit::list_keyboard::ListKeyboardController<
+                            hikit::forest::ForestList<::toc::OutlineKey>,
+                            hikit::forest::ForestSearcher<::toc::OutlineKey>,
+                        >;
+                        Search::selected_index(command).is_some()
+                    }
+                    _ => false,
+                })
         }
         _ => false,
     };

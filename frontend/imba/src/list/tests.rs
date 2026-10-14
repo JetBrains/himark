@@ -364,7 +364,12 @@ fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
         };
         for command in commands {
             let mut batch = crate::effect::Batch::new();
-            rows.perform(&mut Store::clone(&store), &ui, command, &mut batch.effects());
+            rows.perform(
+                &mut Store::clone(&store),
+                &ui,
+                command,
+                &mut batch.effects(),
+            );
         }
         reveal
     };
@@ -424,5 +429,9 @@ fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
         ListCommand::ViewportTop(150.0, 100.0),
         &mut batch.effects(),
     );
-    assert_eq!(clock(&mut rows, 150.0), None, "the hand outranks the follow");
+    assert_eq!(
+        clock(&mut rows, 150.0),
+        None,
+        "the hand outranks the follow"
+    );
 }

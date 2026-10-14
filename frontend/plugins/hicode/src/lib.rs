@@ -437,11 +437,7 @@ fn navigation(
     fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
 ) {
     if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
-        eprintln!(
-            "[nav] {} asked (payload? {})",
-            id,
-            payload.is_some()
-        );
+        eprintln!("[nav] {} asked (payload? {})", id, payload.is_some());
     }
     let Some(payload) = payload else {
         let caret = document.caret_byte(editor) as usize;

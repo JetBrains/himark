@@ -347,11 +347,7 @@ impl<V: View> View for Dressed<V> {
         self.inner.perform(store, ui, command, fx)
     }
 
-    fn destroy(
-        &mut self,
-        store: &mut Store,
-        fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
+    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         self.inner.destroy(store, fx)
     }
 
@@ -486,7 +482,13 @@ impl<V: View> View for Paneled<V> {
             let floor = imba::leaf::leaf::<V::Command>(width, size.height)
                 .paint_instead(move |_arena, canvas, rect| {
                     crate::rows::paint_panel_chrome(
-                        &shaper, canvas, rect, &ui_theme, &title_font, title, "",
+                        &shaper,
+                        canvas,
+                        rect,
+                        &ui_theme,
+                        &title_font,
+                        title,
+                        "",
                     );
                 })
                 .event(|_arena, event, _size| match event {

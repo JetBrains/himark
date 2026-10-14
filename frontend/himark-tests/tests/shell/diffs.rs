@@ -2544,9 +2544,9 @@ fn folded_squash_paint_cost_is_size_independent() {
             )
         };
         assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+            app.sole_window(),
+            Box::new(hikit::modal::Scrolled::new(canvas)),
+        ));
 
         let size = skia_safe::Size::new(1100.0, 800.0);
         let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -5132,8 +5132,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..16 {
-            let _ =
-                himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5193,7 +5192,10 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     // split paints the line as ONE indented row — no column-0 rows
     // at all. And nothing BRIGHT ever paints left of the gutter
     // edge: the numbers' column holds no code.
-    let gutter = editor::env::Themes::of(app.store()).ui().editor_gutter.width as usize;
+    let gutter = editor::env::Themes::of(app.store())
+        .ui()
+        .editor_gutter
+        .width as usize;
     let continuations: Vec<(usize, usize)> = starts
         .iter()
         .copied()

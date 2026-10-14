@@ -287,10 +287,18 @@ impl<Command> Child<'_, Command> {
                 if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
                     eprintln!(
                         "[route] {} at {:?} vs child rect {:?} -> {}",
-                        if matches!(event, Event::Scroll { .. }) { "scroll" } else { "down" },
+                        if matches!(event, Event::Scroll { .. }) {
+                            "scroll"
+                        } else {
+                            "down"
+                        },
                         point,
                         self.rect,
-                        if self.rect.contains(*point) { "IN" } else { "out" },
+                        if self.rect.contains(*point) {
+                            "IN"
+                        } else {
+                            "out"
+                        },
                     );
                 }
                 if !self.rect.contains(*point) {

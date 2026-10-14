@@ -246,7 +246,10 @@ impl Hairline {
         let mut paint = Paint::default();
         paint.set_color(self.color);
         if self.top {
-            canvas.draw_rect(Rect::from_xywh(rect.left, rect.top, rect.width(), 1.0), &paint);
+            canvas.draw_rect(
+                Rect::from_xywh(rect.left, rect.top, rect.width(), 1.0),
+                &paint,
+            );
         }
         if self.bottom {
             canvas.draw_rect(
@@ -255,7 +258,10 @@ impl Hairline {
             );
         }
         if self.left {
-            canvas.draw_rect(Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()), &paint);
+            canvas.draw_rect(
+                Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                &paint,
+            );
         }
         if self.right {
             canvas.draw_rect(

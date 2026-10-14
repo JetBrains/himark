@@ -282,7 +282,10 @@ fn scroll_view_clamps_wheel_commands_to_content_bounds() {
         gesture: &gesture,
     };
 
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)).into_command() {
+    match widget
+        .handle_event(&arena, &event, Rect::from_wh(100.0, 120.0))
+        .into_command()
+    {
         Some(ScrollCommand::SetScrollY(scroll_y)) => {
             assert_eq!(scroll_y, 380.0);
         }
@@ -520,7 +523,10 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
         count: 1,
     };
 
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0)).into_command() {
+    match widget
+        .handle_event(&arena, &event, Rect::from_wh(100.0, 120.0))
+        .into_command()
+    {
         Some(ScrollCommand::Content(ContentCommand::Click(point))) => {
             assert_eq!(point, Point::new(20.0, 85.0));
         }
@@ -736,7 +742,10 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, Rect::from_wh(10.0, 10.0)).into_command() {
+        match widget
+            .handle_event(&arena, &event, Rect::from_wh(10.0, 10.0))
+            .into_command()
+        {
             Some(command) => command,
             _ => panic!("expected a command"),
         }
@@ -773,7 +782,10 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)).into_command() {
+    match widget
+        .handle_event(&arena, &event, Rect::from_wh(200.0, 100.0))
+        .into_command()
+    {
         Some(SplitCommand::Focus(Pane::First, Some(command))) => match *command {
             SplitCommand::First(ContentCommand::Click(point)) => {
                 assert_eq!(point, Point::new(30.0, 40.0));
@@ -789,7 +801,10 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 100.0)).into_command() {
+    match widget
+        .handle_event(&arena, &event, Rect::from_wh(200.0, 100.0))
+        .into_command()
+    {
         Some(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
             SplitCommand::Second(ContentCommand::Click(point)) => {
                 assert_eq!(
@@ -832,7 +847,9 @@ fn split_view_divides_the_main_axis_by_ratio() {
         count: 1,
     };
     assert!(matches!(
-        widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)).into_command(),
+        widget
+            .handle_event(&arena, &event, Rect::from_wh(100.0, 200.0))
+            .into_command(),
         Some(SplitCommand::Focus(Pane::First, Some(_)))
     ));
 
@@ -842,7 +859,10 @@ fn split_view_divides_the_main_axis_by_ratio() {
         button: MouseButton::Left,
         count: 1,
     };
-    match widget.handle_event(&arena, &event, Rect::from_wh(100.0, 200.0)).into_command() {
+    match widget
+        .handle_event(&arena, &event, Rect::from_wh(100.0, 200.0))
+        .into_command()
+    {
         Some(SplitCommand::Focus(Pane::Second, Some(command))) => match *command {
             SplitCommand::Second(ContentCommand::Click(point)) => {
                 assert_eq!(point, Point::new(10.0, 1.0));
@@ -906,7 +926,9 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
             gesture: &gesture,
         };
         assert!(matches!(
-            widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)).into_command(),
+            widget
+                .handle_event(&arena, &event, Rect::from_wh(200.0, 120.0))
+                .into_command(),
             Some(SplitCommand::Second(ScrollCommand::SetScrollY(_)))
         ));
     }
@@ -926,7 +948,10 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)).into_command() {
+        match widget
+            .handle_event(&arena, &event, Rect::from_wh(200.0, 120.0))
+            .into_command()
+        {
             Some(command) => command,
             _ => panic!("the click should produce a command"),
         }
@@ -1087,7 +1112,10 @@ fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
             button: MouseButton::Left,
             count: 1,
         };
-        match widget.handle_event(&arena, &event, root_viewport()).into_command() {
+        match widget
+            .handle_event(&arena, &event, root_viewport())
+            .into_command()
+        {
             Some(command) => command,
             _ => panic!("the click should produce a command"),
         }
@@ -1967,15 +1995,24 @@ mod reveal {
         // to its own animation tick, every tick).
         let reveal: EventResult<u32> =
             EventResult::reveal(Reveal::visible(Rect::from_xywh(0.0, 0.0, 1.0, 1.0)));
-        let merged = reveal.merge(EventResult::command(7)).into_handled().unwrap();
+        let merged = reveal
+            .merge(EventResult::command(7))
+            .into_handled()
+            .unwrap();
         assert_eq!(merged.commands, vec![7]);
-        assert!(merged.reveal.is_some(), "the reveal rides beside the commands");
+        assert!(
+            merged.reveal.is_some(),
+            "the reveal rides beside the commands"
+        );
 
         let reveal: EventResult<u32> =
             EventResult::reveal(Reveal::visible(Rect::from_xywh(1.0, 2.0, 3.0, 4.0)));
         let merged = reveal.merge(EventResult::Ignored).into_handled().unwrap();
         assert_eq!(
-            merged.reveal.expect("a lone reveal survives the merge").rect,
+            merged
+                .reveal
+                .expect("a lone reveal survives the merge")
+                .rect,
             Rect::from_xywh(1.0, 2.0, 3.0, 4.0)
         );
 
@@ -2144,9 +2181,7 @@ fn the_knob_drags_the_scroll_and_releases_back_to_the_content() {
         },
     );
     match up.into_command() {
-        Some(ScrollCommand::EndKnobDrag) => {
-            knob_perform(&mut view, ScrollCommand::EndKnobDrag)
-        }
+        Some(ScrollCommand::EndKnobDrag) => knob_perform(&mut view, ScrollCommand::EndKnobDrag),
         _ => panic!("the release ends the drag"),
     }
     let after = knob_event(

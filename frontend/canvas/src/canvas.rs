@@ -513,15 +513,11 @@ impl Canvas {
             built_width: Some(next.built_width),
         });
         let theme = env::Themes::of(store);
-        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone()))
-        else {
+        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
             return;
         };
         let start = header_range.start;
-        let expanded = self
-            .rows
-            .row_range(&CanvasKey::Diff(key.clone()))
-            .is_some();
+        let expanded = self.rows.row_range(&CanvasKey::Diff(key.clone())).is_some();
         let header = CanvasRow::Header(HeaderRow {
             file,
             collapsed: !expanded,
@@ -537,16 +533,14 @@ impl Canvas {
                 .unwrap_or(0.0);
             slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
             slice.cover(CanvasKey::File(key.clone()), 0..2);
-            self.rows
-                .splice_slice(start..start + 2, slice);
+            self.rows.splice_slice(start..start + 2, slice);
             // The successor is dressed: settle to its honest height.
             self.resize_key(key, store, ui, fx);
         } else {
             let height = self.stash.get(key).map(|(_, held)| *held).unwrap_or(0.0);
             slice.cover(CanvasKey::File(key.clone()), 0..1);
             self.stash.insert_mut(key.clone(), (diff, height));
-            self.rows
-                .splice_slice(start..start + 1, slice);
+            self.rows.splice_slice(start..start + 1, slice);
         }
         fx.settle();
     }
@@ -821,11 +815,8 @@ impl Canvas {
             let key = file.new.clone();
             match self.files.get(&key).cloned() {
                 Some(known) => {
-                    if let Some(header) =
-                        (&self.rows).row_range(&CanvasKey::File(key.clone()))
-                    {
-                        anchor = match (&self.rows).row_range(&CanvasKey::Diff(key.clone()))
-                        {
+                    if let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) {
+                        anchor = match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
                             Some(diff) => header.end.max(diff.end),
                             None => header.end,
                         };
@@ -888,8 +879,7 @@ impl Canvas {
                 None => header.end,
             };
             let empty: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-            self.rows
-                .splice_slice(header.start..end, empty);
+            self.rows.splice_slice(header.start..end, empty);
         }
         self.files.remove_mut(key);
         self.phases.remove_mut(key);
@@ -956,10 +946,7 @@ impl Canvas {
                 let Some(diff_row) = (&self.rows).view_at(diff_range.start) else {
                     return;
                 };
-                let diff_height = self
-                    .rows
-                    .height_at(diff_range.start)
-                    .unwrap_or(0.0);
+                let diff_height = self.rows.height_at(diff_range.start).unwrap_or(0.0);
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
                 slice.push_keyed_sized(
                     CanvasKey::File(key.clone()),
@@ -1301,10 +1288,7 @@ impl Canvas {
 
         if let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone())) {
             let start = header_range.start;
-            let expanded = self
-                .rows
-                .row_range(&CanvasKey::Diff(key.clone()))
-                .is_some();
+            let expanded = self.rows.row_range(&CanvasKey::Diff(key.clone())).is_some();
             let header = CanvasRow::Header(HeaderRow {
                 file,
                 collapsed: !expanded,
@@ -1315,15 +1299,13 @@ impl Canvas {
             if expanded {
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, diff_height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
-                self.rows
-                    .splice_slice(start..start + 2, slice);
+                self.rows.splice_slice(start..start + 2, slice);
             } else {
                 // Collapsed before the build landed: park the built
                 // row; expand splices it in.
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
                 self.stash.insert_mut(key.clone(), (diff, diff_height));
-                self.rows
-                    .splice_slice(start..start + 1, slice);
+                self.rows.splice_slice(start..start + 1, slice);
             }
             // The swap is a height mutation like any other: the door
             // noted the anchor, the pulse re-aims before this frame
@@ -1333,8 +1315,7 @@ impl Canvas {
     }
 
     fn toggle_collapse(&mut self, key: &ResourceLocation, fx: &mut Effects<'_, CanvasCommand>) {
-        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone()))
-        else {
+        let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
             return;
         };
         let start = header_range.start;
@@ -1351,10 +1332,7 @@ impl Canvas {
                 let Some(diff) = (&self.rows).view_at(diff_range.start) else {
                     return;
                 };
-                let height = self
-                    .rows
-                    .height_at(diff_range.start)
-                    .unwrap_or(0.0);
+                let height = self.rows.height_at(diff_range.start).unwrap_or(0.0);
                 self.stash.insert_mut(key.clone(), (diff, height));
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
                 slice.push_keyed_sized(
@@ -1367,8 +1345,7 @@ impl Canvas {
                     band,
                 );
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
-                self.rows
-                    .splice_slice(start..start + 2, slice);
+                self.rows.splice_slice(start..start + 2, slice);
             }
             None => {
                 let (diff, height) = match self.stash.get(key) {
@@ -1388,8 +1365,7 @@ impl Canvas {
                 );
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
-                self.rows
-                    .splice_slice(start..start + 1, slice);
+                self.rows.splice_slice(start..start + 1, slice);
             }
         }
         fx.settle();
@@ -2210,10 +2186,7 @@ impl DiffCanvasView {
             let mut batch = imba::effect::Batch::new();
             {
                 let mut fx = batch.effects();
-                if let Some(range) = canvas
-                    .rows
-                    .row_range(&CanvasKey::Diff(key.clone()))
-                {
+                if let Some(range) = canvas.rows.row_range(&CanvasKey::Diff(key.clone())) {
                     canvas.launch(store, range.start, width, &mut fx);
                 }
             }

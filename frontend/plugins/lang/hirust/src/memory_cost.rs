@@ -50,7 +50,10 @@ fn a_parsed_document_costs_what_it_costs() {
     // behind the fixed cost of a parse.
     for (name, source) in [
         ("hirust/lib.rs", include_str!("lib.rs") as &str),
-        ("editor/document.rs", include_str!("../../../../editor/src/document.rs")),
+        (
+            "editor/document.rs",
+            include_str!("../../../../editor/src/document.rs"),
+        ),
         ("imba/list.rs", include_str!("../../../../imba/src/list.rs")),
     ] {
         let text = text::text::Text::from_string_exact(source);

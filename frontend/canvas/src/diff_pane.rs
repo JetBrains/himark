@@ -11,10 +11,7 @@ use editor::{
     split_diff::DiffViewState, split_diff::SplitDiffCommand, unified_diff::UnifiedDiffCommand,
     unified_diff::UnifiedDiffView,
 };
-use imba::{
-    arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View,
-    Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
 
 /// The pane holds IDS (docs/entities.md): the collection its pair
 /// lives in, and the pair's key within it.

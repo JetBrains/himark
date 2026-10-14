@@ -614,12 +614,16 @@ struct SplitterHandle: NSViewRepresentable {
 /// backdrop sampling dies; it rounds itself via `maskImage`.
 struct DesktopGlass: NSViewRepresentable {
     var material: NSVisualEffectView.Material = .sidebar
+    /// `.behindWindow` samples the desktop; `.withinWindow` samples
+    /// the window content beneath — the document, metal rows and
+    /// all. One glass, two blends.
+    var blending: NSVisualEffectView.BlendingMode = .behindWindow
     var cornerRadius: CGFloat = 0
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material
-        view.blendingMode = .behindWindow
+        view.blendingMode = blending
         view.state = .active
         if cornerRadius > 0 {
             view.maskImage = Self.mask(radius: cornerRadius)
@@ -711,8 +715,13 @@ struct IslandBackground: View {
         ZStack {
             switch backdrop {
             case .content:
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.ultraThinMaterial)
+                // The SAME glass as the split sidebar, blended
+                // within the window: a floating island blurs the
+                // document it covers — ultraThinMaterial tinted so
+                // hard it read as paint.
+                DesktopGlass(
+                    material: .popover, blending: .withinWindow,
+                    cornerRadius: cornerRadius)
             case .desktop:
                 DesktopGlass(material: .sidebar, cornerRadius: cornerRadius)
             }

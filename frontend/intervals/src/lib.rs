@@ -576,9 +576,7 @@ where
     {
         let ids: Vec<i64> = keys
             .into_iter()
-            .filter_map(|key| {
-                self.index.forget(key)
-            })
+            .filter_map(|key| self.index.forget(key))
             .collect();
         self.len -= ids.len().min(self.len);
         self.remove_by_inner_ids(ids);

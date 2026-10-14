@@ -295,8 +295,7 @@ fn paint_reports_relayout_while_the_width_lags() {
             },
             viewport,
         );
-        result
-        .into_commands()
+        result.into_commands()
     };
 
     let strip = editor.chrome.control_size + 6.0;

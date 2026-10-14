@@ -491,7 +491,6 @@ impl ComposerBand {
         use imba::layout::LayoutExt as _;
         use imba::leaf::leaf;
         use imba::thunk_ext::ThunkExt as _;
-        
 
         imba::layout::laid(
             move |arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {

@@ -760,12 +760,13 @@ impl View for Peeker {
             // The click-away catcher behind everything — bare glass
             // on the mounted road, dressed with the opaque floor and
             // the sheet's offset echo on the windowed one.
-            let catcher = leaf::<PeekerCommand>(size.width, size.height).event(
-                |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(PeekerCommand::Close),
-                    _ => EventResult::Ignored,
-                },
-            );
+            let catcher =
+                leaf::<PeekerCommand>(size.width, size.height).event(|_arena, event, _size| {
+                    match event {
+                        Event::MouseDown { .. } => EventResult::command(PeekerCommand::Close),
+                        _ => EventResult::Ignored,
+                    }
+                });
             if self.floored {
                 container.place(0.0, 0.0, floor.wrap(catcher));
                 let echo = inset * 0.5;
@@ -861,7 +862,11 @@ impl View for Peeker {
                 // The GLASS face: the host's island paints the floor;
                 // only the hairline between the list and the preview
                 // remains.
-                container.place(inset, inset, Hairline::new(chrome.rule.0).right().wrap(panel));
+                container.place(
+                    inset,
+                    inset,
+                    Hairline::new(chrome.rule.0).right().wrap(panel),
+                );
             }
             if !has_preview {
                 let row_ascent = -row_font.metrics().1.ascent;

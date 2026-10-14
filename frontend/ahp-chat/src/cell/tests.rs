@@ -82,8 +82,7 @@ fn paint_cell(
         },
         viewport,
     );
-    let commands = result
-    .into_commands();
+    let commands = result.into_commands();
     if let Ok(dir) = std::env::var("HIMARK_SHOT") {
         let image = surface.image_snapshot();
         let data = image

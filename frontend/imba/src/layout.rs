@@ -1107,18 +1107,17 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
             .label(&self.font, &self.text, self.color, self.tracking);
         // Wider than the bound: reshape ELLIPSIZED at it — a label
         // never paints past its box (the later verse arrived).
-        let shaped = match shaped.width > constraints.max.width + 0.5
-            && constraints.max.width.is_finite()
-        {
-            true => self.shaper.label_clipped(
-                &self.font,
-                &self.text,
-                self.color,
-                self.tracking,
-                Some(constraints.max.width),
-            ),
-            false => shaped,
-        };
+        let shaped =
+            match shaped.width > constraints.max.width + 0.5 && constraints.max.width.is_finite() {
+                true => self.shaper.label_clipped(
+                    &self.font,
+                    &self.text,
+                    self.color,
+                    self.tracking,
+                    Some(constraints.max.width),
+                ),
+                false => shaped,
+            };
         let width = shaped
             .width
             .min(constraints.max.width)
@@ -1789,7 +1788,9 @@ mod button_tests {
             },
             viewport,
         );
-        assert!(matches!(result.into_handled(), Some(ref handled_) if handled_.commands.is_empty()));
+        assert!(
+            matches!(result.into_handled(), Some(ref handled_) if handled_.commands.is_empty())
+        );
     }
 }
 

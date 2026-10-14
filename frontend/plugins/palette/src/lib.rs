@@ -258,10 +258,12 @@ impl View for PaletteView {
             // the palette's business — whoever stands the palette
             // up dresses it (`Dressed`), or mounts it bare over
             // glass it already drew.
-            let backdrop = leaf::<PaletteCommand>(size.width, size.height)
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(PaletteCommand::Close),
-                    _ => EventResult::Ignored,
+            let backdrop =
+                leaf::<PaletteCommand>(size.width, size.height).event(|_arena, event, _size| {
+                    match event {
+                        Event::MouseDown { .. } => EventResult::command(PaletteCommand::Close),
+                        _ => EventResult::Ignored,
+                    }
                 });
             container.place(0.0, 0.0, backdrop);
 

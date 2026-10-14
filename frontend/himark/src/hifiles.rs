@@ -117,9 +117,7 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
                 |command: TreeCommand| {
                     imba::dyn_view::DynCommand::new(imba::scroll::ScrollCommand::Content(command))
                 },
-                |fx| {
-                    open_panel(store, ui, workspace, trees, reveal, fx)
-                },
+                |fx| open_panel(store, ui, workspace, trees, reveal, fx),
             )
         });
         let owner = self.id();

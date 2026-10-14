@@ -483,7 +483,6 @@ pub struct SessionTreeView {
     >,
 
     /// the focused location and the focus generation it stands at.
-
     followed: u64,
     request: Option<ModalRequest>,
 

@@ -1707,8 +1707,7 @@ mod hitbox {
             );
             let viewport = Rect::from_size(imba::Thunk::size(&widget));
             let widget = imba::Thunk::realize(widget, &arena, viewport);
-            imba::Widget::handle_event(&widget, &arena, event, viewport)
-            .into_commands()
+            imba::Widget::handle_event(&widget, &arena, event, viewport).into_commands()
         };
 
         assert!(

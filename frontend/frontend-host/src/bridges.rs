@@ -200,9 +200,13 @@ pub(crate) struct Stages {
 /// deep inside a batch, no engine struct in reach) mints the
 /// handles it hands the native callback.
 static PLACES: LazyLock<
-    Mutex<Handles<(hikit::navigation::NavigationLocation, Option<ahp_wire::SessionId>)>>,
-> =
-    LazyLock::new(Default::default);
+    Mutex<
+        Handles<(
+            hikit::navigation::NavigationLocation,
+            Option<ahp_wire::SessionId>,
+        )>,
+    >,
+> = LazyLock::new(Default::default);
 
 // ─── event factories ───
 
@@ -544,7 +548,10 @@ pub unsafe extern "C" fn himark_frame_event(
         // the host to drain (`himark_take_reveal`) into its own.
         if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
             if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
-                eprintln!("[reveal] parked (stage EVENT) bridge {} {reveal:?}", id.raw());
+                eprintln!(
+                    "[reveal] parked (stage EVENT) bridge {} {reveal:?}",
+                    id.raw()
+                );
             }
             engine.app.park_reveal(id, reveal);
         }
@@ -734,7 +741,10 @@ pub unsafe extern "C" fn himark_frame_paint(
         // NEXT event to re-surface it.
         if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
             if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
-                eprintln!("[reveal] parked (stage PAINT) bridge {} {reveal:?}", id.raw());
+                eprintln!(
+                    "[reveal] parked (stage PAINT) bridge {} {reveal:?}",
+                    id.raw()
+                );
             }
             engine.app.park_reveal(id, reveal);
         }
@@ -802,9 +812,8 @@ pub struct HimarkCommands {
     pub raw: u64,
 }
 
-static COMMAND_SNAPSHOTS: std::sync::LazyLock<
-    std::sync::Mutex<Handles<Vec<(String, String)>>>,
-> = std::sync::LazyLock::new(Default::default);
+static COMMAND_SNAPSHOTS: std::sync::LazyLock<std::sync::Mutex<Handles<Vec<(String, String)>>>> =
+    std::sync::LazyLock::new(Default::default);
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_commands_copy(engine: *mut HimarkEngine) -> HimarkCommands {
@@ -1414,13 +1423,15 @@ impl himark::himark::Shell for CallbackShell {
             } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
                 Some((HIMARK_PLACE_DIFF, ready.title.clone()))
             } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
-                Some((HIMARK_PLACE_CANVAS, ready.source.title(store, ready.changes)))
+                Some((
+                    HIMARK_PLACE_CANVAS,
+                    ready.source.title(store, ready.changes),
+                ))
             } else if place.place::<himark::places::DismissPlace>().is_some() {
                 Some((HIMARK_PLACE_DISMISS, String::new()))
             } else if place.place::<himark::places::ChatPlace>().is_some() {
                 // "Show this session" — the sessions drawer's pick.
                 Some((HIMARK_PLACE_CHAT, String::new()))
-
             } else {
                 None
             };

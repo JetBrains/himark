@@ -940,7 +940,11 @@ impl Himark {
     }
 
     pub fn park_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
-        match self.pending_reveals.iter_mut().find(|(owner, _)| *owner == id) {
+        match self
+            .pending_reveals
+            .iter_mut()
+            .find(|(owner, _)| *owner == id)
+        {
             Some(slot) => slot.1 = reveal,
             None => self.pending_reveals.push((id, reveal)),
         }

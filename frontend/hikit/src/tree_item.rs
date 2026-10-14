@@ -182,11 +182,9 @@ impl View for TreeLabel {
             imba::layout::Layout::layout(
                 imba::layout::ZBox::new(arena).child(row).child_aligned(
                     imba::layout::Alignment::CenterEnd,
-                    imba::layout::Button::new(
-                        arena,
-                        crate::ui::text(&quiet, action),
-                        || TreeLabelCommand::Action,
-                    )
+                    imba::layout::Button::new(arena, crate::ui::text(&quiet, action), || {
+                        TreeLabelCommand::Action
+                    })
                     .radius(crate::ui::RADIUS_S)
                     .pad_content(imba::layout::Insets::xy(
                         crate::ui::space::S,

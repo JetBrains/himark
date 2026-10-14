@@ -3995,8 +3995,7 @@ mod folding {
             },
             skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
-        let Some(crate::editor_view::EditorCommand::ToggleFold { range }) =
-            result.into_command()
+        let Some(crate::editor_view::EditorCommand::ToggleFold { range }) = result.into_command()
         else {
             panic!("the gutter click answers the toggle");
         };

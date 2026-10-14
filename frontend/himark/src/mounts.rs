@@ -257,15 +257,10 @@ struct OpenCanvasFromChanges {
 }
 
 impl imba::command::DynamicOnceCommand for OpenCanvasFromChanges {
-    fn perform(
-        self: Box<Self>,
-        store: &mut Store,
-        ui: &UiCtx,
-        fx: &mut imba::command::Fx<'_>,
-    ) {
+    fn perform(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
         if let changesview::hichanges::CanvasSource::Commit { folder, id } = &self.source {
-            if let Some(history) = changesview::hichanges::Changes::of(store, self.changes)
-                .map(|held| held.history())
+            if let Some(history) =
+                changesview::hichanges::Changes::of(store, self.changes).map(|held| held.history())
             {
                 changesview::hihistory::History::ask(
                     store,
@@ -712,16 +707,7 @@ fn mount_place_inner(
                 move |command: filetree::TreeCommand| {
                     AppCommand::ToView(id, DynCommand::new(command))
                 },
-                |fx| {
-                    crate::hifiles::open_panel(
-                        store,
-                        ui,
-                        key.clone(),
-                        state.trees(),
-                        None,
-                        fx,
-                    )
-                },
+                |fx| crate::hifiles::open_panel(store, ui, key.clone(), state.trees(), None, fx),
             );
             Some(Rc::new(ModalMount { id, view: tree }) as Rc<dyn BridgeView>)
         });

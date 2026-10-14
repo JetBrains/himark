@@ -914,11 +914,8 @@ fn remove_from_subtree<K, V>(
     }
 }
 
-fn shrink_root<K, V>(
-    root: &mut Node<K, V>,
-    root_id: i64,
-    parents: &mut dyn crate::ParentLinks,
-) where
+fn shrink_root<K, V>(root: &mut Node<K, V>, root_id: i64, parents: &mut dyn crate::ParentLinks)
+where
     K: Clone,
     V: Clone,
 {
@@ -949,11 +946,7 @@ fn new_inner_id(next_inner_id: &mut i64) -> i64 {
     id
 }
 
-fn adopt_all<K, V>(
-    node: &Node<K, V>,
-    parent_id: i64,
-    parents: &mut dyn crate::ParentLinks,
-) {
+fn adopt_all<K, V>(node: &Node<K, V>, parent_id: i64, parents: &mut dyn crate::ParentLinks) {
     match node {
         Node::Internal(children) => {
             for child in children {

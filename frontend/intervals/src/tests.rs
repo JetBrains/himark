@@ -1268,17 +1268,21 @@ mod cost {
 fn removing_a_range_drops_what_it_touches_and_moves_nothing() {
     let mut intervals = Intervals::new();
     intervals.insert([
-        interval(1, 0, 10),   // wholly before
-        interval(2, 10, 20),  // abutting the window's start — untouched
-        interval(3, 15, 25),  // straddles the start
-        interval(4, 22, 28),  // wholly inside
-        interval(5, 25, 40),  // straddles the end
-        interval(6, 30, 50),  // starts after the window
-        interval(7, 60, 70),  // wholly after
+        interval(1, 0, 10),  // wholly before
+        interval(2, 10, 20), // abutting the window's start — untouched
+        interval(3, 15, 25), // straddles the start
+        interval(4, 22, 28), // wholly inside
+        interval(5, 25, 40), // straddles the end
+        interval(6, 30, 50), // starts after the window
+        interval(7, 60, 70), // wholly after
     ]);
     intervals.remove_in_range(20..30);
 
-    assert_eq!(keys(&intervals, 0, 100), vec![1, 2, 6, 7], "only the touched spans go");
+    assert_eq!(
+        keys(&intervals, 0, 100),
+        vec![1, 2, 6, 7],
+        "only the touched spans go"
+    );
     assert_eq!(intervals.len(), 4, "the count follows the removal");
     // Survivors keep their exact ranges: this is a delete, not an edit.
     let survivor = |key: u32| intervals.find_by_id(&key).map(|found| found.range);
@@ -1302,10 +1306,19 @@ fn removing_a_range_prunes_whole_subtrees() {
 
     assert_eq!(intervals.len(), 300, "exactly the window's spans went");
     let left: Vec<u32> = keys(&intervals, 0, 100_000);
-    assert!(!left.iter().any(|key| (100..200).contains(key)), "none of the window survives");
+    assert!(
+        !left.iter().any(|key| (100..200).contains(key)),
+        "none of the window survives"
+    );
     assert_eq!(left.len(), 300);
     // The survivors on both sides keep their places.
     assert_eq!(intervals.find_by_id(&99).map(|f| f.range), Some(990..995));
-    assert_eq!(intervals.find_by_id(&200).map(|f| f.range), Some(2000..2005));
-    assert_eq!(intervals.find_by_id(&399).map(|f| f.range), Some(3990..3995));
+    assert_eq!(
+        intervals.find_by_id(&200).map(|f| f.range),
+        Some(2000..2005)
+    );
+    assert_eq!(
+        intervals.find_by_id(&399).map(|f| f.range),
+        Some(3990..3995)
+    );
 }

@@ -214,7 +214,11 @@ impl PeekView {
         self.tree.content_mut().inner_mut().set(&forest, store, ui);
         if let Some(cursor) = cursor {
             if self.tree.content().inner().forest.contains(&cursor) {
-                self.tree.content_mut().inner_mut().list_mut().select_only(cursor);
+                self.tree
+                    .content_mut()
+                    .inner_mut()
+                    .list_mut()
+                    .select_only(cursor);
             }
         }
         self.ensure_preview(store, ui, fx);
@@ -474,14 +478,24 @@ impl View for PeekView {
                 type Tree = ListKeyboardController<ForestList<LocationKey>>;
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
-                        return self.tree.content_mut().inner_mut().fold_cursor(*expand, store, ui);
+                        return self
+                            .tree
+                            .content_mut()
+                            .inner_mut()
+                            .fold_cursor(*expand, store, ui);
                     }
                     ListKeyCommand::Inner(inner) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.tree.content().inner().list().key_at(index).cloned() else {
+                            let Some(key) =
+                                self.tree.content().inner().list().key_at(index).cloned()
+                            else {
                                 return;
                             };
-                            self.tree.content_mut().inner_mut().list_mut().select_only(key.clone());
+                            self.tree
+                                .content_mut()
+                                .inner_mut()
+                                .list_mut()
+                                .select_only(key.clone());
                             self.tree.content_mut().inner_mut().toggle(&key, store, ui);
                             return self.ensure_preview(store, ui, fx);
                         }
@@ -489,7 +503,8 @@ impl View for PeekView {
                     _ => {}
                 }
                 if let Some((index, trigger)) = Tree::activated(&command) {
-                    let Some(key) = self.tree.content().inner().list().key_at(index).cloned() else {
+                    let Some(key) = self.tree.content().inner().list().key_at(index).cloned()
+                    else {
                         return;
                     };
                     // Both triggers behave alike here: a file row
@@ -510,12 +525,8 @@ impl View for PeekView {
                 }
                 let selected = Tree::selected_index(&command).is_some();
                 fx.scope(PeekCommand::Tree, |fx| {
-                    self.tree.perform(
-                        store,
-                        ui,
-                        imba::scroll::ScrollCommand::Content(command),
-                        fx,
-                    )
+                    self.tree
+                        .perform(store, ui, imba::scroll::ScrollCommand::Content(command), fx)
                 });
                 // Moving the selection returns the preview.
                 if selected {
@@ -870,10 +881,16 @@ mod tests {
         );
 
         let hit = LocationKey::Hit(found("b.rs", 0, "").location, 0, 2);
-        view.tree.content_mut().inner_mut().list_mut().select_only(hit);
+        view.tree
+            .content_mut()
+            .inner_mut()
+            .list_mut()
+            .select_only(hit);
         let at = view.tree.cursor_index().expect("a cursor row");
         let pick = PeekCommand::Tree(imba::scroll::ScrollCommand::Content(
-            view.tree.content().activate_command(at, ActivateTrigger::Enter),
+            view.tree
+                .content()
+                .activate_command(at, ActivateTrigger::Enter),
         ));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
@@ -994,10 +1011,7 @@ mod tests {
         document.push_inlay(
             markup,
             anchor,
-            editor::markup::Inlay::new(
-                editor::markup::InlayMode::Under,
-                ScrollProbe::default(),
-            ),
+            editor::markup::Inlay::new(editor::markup::InlayMode::Under, ScrollProbe::default()),
             store,
             ui,
             &fonts,
@@ -1014,8 +1028,7 @@ mod tests {
             base: None,
         };
         let viewport = skia_safe::Rect::from_wh(600.0, 500.0);
-        let dispatch = |view: &editor::editor_view::EditorView,
-                        event: &imba::event::Event<'_>| {
+        let dispatch = |view: &editor::editor_view::EditorView, event: &imba::event::Event<'_>| {
             let arena = imba::arena::Arena::default();
             let widget = imba::Thunk::realize(
                 imba::layout::Layout::layout(
@@ -1163,14 +1176,14 @@ mod tests {
                 use imba::thunk_ext::ThunkExt as _;
                 imba::ThunkBox::new(
                     arena,
-                    imba::leaf::leaf::<u32>(200.0, 2000.0).event(|_arena, event, _size| {
-                        match event {
+                    imba::leaf::leaf::<u32>(200.0, 2000.0).event(
+                        |_arena, event, _size| match event {
                             imba::event::Event::MouseDown { .. } => {
                                 imba::event::EventResult::command(7)
                             }
                             _ => imba::event::EventResult::Ignored,
-                        }
-                    }),
+                        },
+                    ),
                 )
             })
         }

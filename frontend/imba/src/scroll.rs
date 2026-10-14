@@ -602,12 +602,11 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
             }) => (reveal, commands),
             result => return result,
         };
-        let carry = move |outcome: EventResult<ScrollCommand<ContentCommand>>| match carried
-            .is_empty()
-        {
-            true => outcome,
-            false => EventResult::commands(carried).merge(outcome),
-        };
+        let carry =
+            move |outcome: EventResult<ScrollCommand<ContentCommand>>| match carried.is_empty() {
+                true => outcome,
+                false => EventResult::commands(carried).merge(outcome),
+            };
         let rect = reveal.rect;
         let max_scroll = (self.content.size().height - self.viewport.height).max(0.0);
 
