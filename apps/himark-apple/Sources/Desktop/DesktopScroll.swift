@@ -299,13 +299,11 @@ final class DesktopScrollHost: NSView {
                 NSLog("JUMP STACK:\n\(Thread.callStackSymbols.joined(separator: "\n"))")
             }
         }
-        // MARK DIRTY, never render here: this fires inside
-        // scrollToPoint, mid-event — the designated moment is the
-        // display-link tick, which drains reveals first and paints
-        // the settled position in one transaction. Rendering from
-        // here painted every scrolled frame twice (both stacks under
-        // scrollToPoint in the profile).
-        content?.request()
+        // MARK SCROLLED, never render here: this fires inside
+        // scrollToPoint, mid-event — the tick decides, and a scroll
+        // that stays inside the painted band costs NO paint at all
+        // (the layer rides the document; the margin is consumed).
+        content?.scrolledTick()
     }
 
     @objc private func liveScrollBegan() {

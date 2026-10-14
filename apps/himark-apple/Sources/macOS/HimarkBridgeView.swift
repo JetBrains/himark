@@ -32,6 +32,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     private var caLink: CADisplayLink?
     private var linkRunning = false
     private var needsRedraw = true
+    /// The viewport moved but nothing else did. A scrolled frame
+    /// whose band still covers the viewport needs NO paint: the
+    /// layer rides document coordinates, so the right pixels are
+    /// already on screen — the margin is consumed, not repainted.
+    private var scrolled = false
 
     private var idleTicks = 0
 
@@ -43,7 +48,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// tick. The band extends past the viewport by a momentum
     /// frame's travel on both ends; the painted rows ride the
     /// document, so the margin stays correct while it is consumed.
-    private static let bandMargin: CGFloat = 128
+    private static let bandMargin: CGFloat = 192
+
+    /// Repaint BEFORE the margin runs out: within this much of a
+    /// band edge the next band is painted while the current one
+    /// still covers — waiting for coverage to fail put the strip on
+    /// screen first and the repaint (worst 17.5ms, two frames) kept
+    /// it there.
+    private static let bandGuard: CGFloat = 64
 
     // ─── the sync probe (HIMARK_TRACE_SYNC) ───
     //
@@ -62,6 +74,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     private var worstMs = 0.0
     private var totalMs = 0.0
     private var deferredRenders = 0
+    /// WHY ticks rendered — the skip only pays if scrolled frames
+    /// are not all dirty for other reasons.
+    private var renderedDirty = 0
+    private var renderedAnimating = 0
+    private var renderedMargin = 0
+    private var skippedScrolls = 0
 
     init(
         frame: NSRect,
@@ -178,8 +196,22 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
         engine.drainReveal()
         if needsRedraw || animating {
+            if Self.traceSync {
+                if needsRedraw { renderedDirty += 1 } else { renderedAnimating += 1 }
+            }
             needsRedraw = false
+            scrolled = false
             render()
+            idleTicks = 0
+        } else if scrolled {
+            scrolled = false
+            // Paint when the margin runs LOW — not out.
+            if bandNeedsRepaint() {
+                if Self.traceSync { renderedMargin += 1 }
+                render()
+            } else {
+                if Self.traceSync { skippedScrolls += 1 }
+            }
             idleTicks = 0
         } else {
             idleTicks += 1
@@ -355,8 +387,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                 "[sync] bridge \(bridgeId.raw): \(presents) presents, "
                     + "\(driftPresents) drifted, \(deferredRenders) deferred, "
                     + "\(rolledBack) rolled back, "
-                    + String(format: "avg %.1fms worst %.1fms %d over 8ms",
-                             totalMs / Double(presents), worstMs, slowRenders))
+                    + String(format: "avg %.1fms worst %.1fms %d over 8ms | ",
+                             totalMs / Double(presents), worstMs, slowRenders)
+                    + "why: \(renderedDirty) dirty \(renderedAnimating) anim "
+                    + "\(renderedMargin) margin \(skippedScrolls) skipped")
         }
     }
 
@@ -370,6 +404,34 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                             width: pixels.width / s, height: pixels.height / s),
                      placement)
         }
+    }
+
+    /// The embedding scroller moved: keep the clock alive; the tick
+    /// decides whether the band needs repainting at all.
+    func scrolledTick() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.scrolledTick() }
+            return
+        }
+        scrolled = true
+        resumeDisplayLink()
+    }
+
+    /// Whether the band's remaining runway on the travelled side
+    /// has fallen under the guard. Clamped document edges need no
+    /// runway beyond themselves.
+    private func bandNeedsRepaint() -> Bool {
+        guard scrollEmbedded else { return true }
+        let visible = visibleRect.intersection(bounds)
+        guard visible.width > 0.5, visible.height > 0.5 else { return false }
+        let band = metalLayer.frame
+        guard band.width > 0.5 else { return true }
+        let topRoom = visible.minY - band.minY
+        let bottomRoom = band.maxY - visible.maxY
+        let needTop = visible.minY > 0.5
+        let needBottom = visible.maxY < bounds.height - 0.5
+        return (needTop && topRoom < Self.bandGuard)
+            || (needBottom && bottomRoom < Self.bandGuard)
     }
 
     func request() {
