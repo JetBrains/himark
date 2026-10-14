@@ -204,6 +204,15 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         metalLayer.contentsScale = scale
 
         if scrollEmbedded {
+            // POSITION FIRST, PIXELS SECOND — the band law's twin.
+            // A parked reveal (the chat's standing tail ask) moves
+            // the scroller NOW, so the band realized below is the
+            // one that will rest on screen. Painting before the
+            // move realized a band at the stale position each time
+            // the content grew — on a chat boot that walk woke
+            // every sleeping row it crossed, loading their edits
+            // and crawling the viewport visibly down the transcript.
+            engine.drainReveal()
             // visibleRect is NOT clamped to bounds outside a clip
             // view — a bare embedded view (the composer) reports
             // the whole WINDOW in its coordinates.
