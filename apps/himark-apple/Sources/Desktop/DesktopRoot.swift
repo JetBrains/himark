@@ -57,8 +57,9 @@ struct DesktopRoot: View {
     }
 
     /// The open chat column's width — what the chat is laid at
-    /// whether it is showing or folded.
-    private let chatWidth: CGFloat = 560
+    /// whether it is showing or folded. The splitter drags it.
+    @State private var chatWidth: CGFloat = 560
+    @State private var chatDragBase: CGFloat?
 
     var body: some View {
         ZStack {
@@ -85,6 +86,22 @@ struct DesktopRoot: View {
                 .frame(width: chatOpen ? chatWidth + 1 : 0, alignment: .leading)
                 .clipped()
                 .opacity(chatOpen ? 1 : 0)
+                // The SPLITTER'S HAND: the line is one pixel, the
+                // grab zone is not — a strip straddling the boundary
+                // drags the column's width.
+                .overlay(alignment: .trailing) {
+                    if chatOpen {
+                        SplitterHandle(
+                            drag: { delta in
+                                let base = chatDragBase ?? chatWidth
+                                chatDragBase = base
+                                chatWidth = min(max(base + delta, 360), 840)
+                            },
+                            ended: { chatDragBase = nil })
+                            .frame(width: 10)
+                            .offset(x: 5)
+                    }
+                }
                 // The chat floor's GLASS — behind the clip, not in
                 // it: a backdrop inside .clipped() rasterizes to
                 // flat paint. Sized by the folding frame, so it
@@ -257,6 +274,11 @@ struct DesktopRoot: View {
             }
             .keyboardShortcut("p", modifiers: .command)
             .hidden()
+            // The mock's semaphore island carries no fold button —
+            // the chat folds from the keyboard.
+            Button("") { withAnimation(spring) { chatOpen.toggle() } }
+                .keyboardShortcut("1", modifiers: .command)
+                .hidden()
         }
     }
 
@@ -341,27 +363,22 @@ struct SessionIsland: View {
     private var spring: Animation { .spring(response: 0.35, dampingFraction: 0.85) }
 
     var body: some View {
+        // Closed: dots, a rule, the session face, nothing else —
+        // the mock's pill, at the ONE island radius every card
+        // shares; open, it grows into the sessions card.
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 TrafficDots()
-                Divider().frame(height: 14).overlay(.primary.opacity(0.15))
+                Rectangle()
+                    .fill(.primary.opacity(0.12))
+                    .frame(width: 1, height: 12)
                 SessionButton(host: host, open: $open)
-                if open || !chatOpen {
+                if open {
                     Spacer(minLength: 0)
                 }
-                if !open {
-                    Button {
-                        withAnimation(spring) { chatOpen.toggle() }
-                    } label: {
-                        Image(systemName: chatOpen
-                            ? "rectangle.lefthalf.inset.filled.arrow.left"
-                            : "rectangle.lefthalf.inset.filled")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 16)
+            .padding(.trailing, 18)
             .frame(height: 44)
 
             if open {
@@ -378,8 +395,8 @@ struct SessionIsland: View {
         .frame(width: open ? 536 : nil)
         .frame(maxHeight: open ? 700 : 44, alignment: .top)
         .fixedSize(horizontal: !open, vertical: false)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .background(IslandBackground(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: IslandBackground.radius))
+        .background(IslandBackground())
     }
 }
 
@@ -392,7 +409,9 @@ struct SessionButton: View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { open.toggle() }
         } label: {
-            HStack(spacing: 6) {
+            // Flat in the capsule — the mock draws no pill within
+            // the pill.
+            HStack(spacing: 7) {
                 Image(systemName: "shippingbox")
                     .foregroundStyle(.secondary)
                 Text(host.current.map { title($0.title) } ?? "New Session")
@@ -400,10 +419,10 @@ struct SessionButton: View {
                 Image(systemName: open ? "chevron.up" : "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
+                    .padding(.leading, 3)
             }
-            .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(.primary.opacity(0.06), in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -544,6 +563,52 @@ struct RailIsland: View {
     }
 }
 
+/// A splitter's GRAB STRIP, in AppKit: the window is movable by
+/// its background and a SwiftUI hit area still counts as
+/// background — dragging the splitter dragged the whole window. An
+/// NSView refuses that claim (`mouseDownCanMoveWindow`), carries
+/// the resize cursor, and hands the drag delta back.
+struct SplitterHandle: NSViewRepresentable {
+    let drag: (CGFloat) -> Void
+    let ended: () -> Void
+
+    final class Handle: NSView {
+        var drag: ((CGFloat) -> Void)?
+        var ended: (() -> Void)?
+        private var startX: CGFloat = 0
+
+        override var mouseDownCanMoveWindow: Bool { false }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeLeftRight)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            startX = NSEvent.mouseLocation.x
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            drag?(NSEvent.mouseLocation.x - startX)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            ended?()
+        }
+    }
+
+    func makeNSView(context: Context) -> Handle {
+        let view = Handle()
+        view.drag = drag
+        view.ended = ended
+        return view
+    }
+
+    func updateNSView(_ view: Handle, context: Context) {
+        view.drag = drag
+        view.ended = ended
+    }
+}
+
 /// BEHIND-WINDOW glass: the desktop blurred into a panel, the
 /// modern mac sidebar's backdrop. Must never sit inside a SwiftUI
 /// clip, mask or opacity — those rasterize the layer and the
@@ -633,8 +698,12 @@ struct RailContent: View {
 /// Self-rounded: never put it inside a clip or an opacity, those
 /// rasterize the glass to flat paint.
 struct IslandBackground: View {
+    /// THE island radius — every island wears this one; islands
+    /// with different corners stop reading as the same family.
+    static let radius: CGFloat = 16
+
     enum Backdrop { case content, desktop }
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = IslandBackground.radius
     var backdrop: Backdrop = .content
     @Environment(\.colorScheme) private var scheme
 
@@ -677,8 +746,8 @@ struct ChatColumn: View {
                 .frame(height: composerHeight)
                 // The composer is an ISLAND — the same card as the
                 // rail, glass and all.
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .background(IslandBackground(cornerRadius: 12, backdrop: .desktop))
+                .clipShape(RoundedRectangle(cornerRadius: IslandBackground.radius))
+                .background(IslandBackground(backdrop: .desktop))
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
                 .padding(.top, 6)
@@ -733,7 +802,7 @@ struct DocumentPill: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .background(IslandBackground(cornerRadius: 18))
+        .background(IslandBackground())
     }
 }
 
