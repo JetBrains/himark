@@ -75,7 +75,7 @@
       "squiggle": "#a0a1a7"
     },
     "inlay_hint": {
-      "color": "#8a93a8"
+      "color": "#7a8194"
     },
     "header1": {
       "bold": true,
@@ -230,7 +230,7 @@
       "fold_background": "#ffffff",
       "fold_rule": "#2e1c2126",
       "fold_text": "#c24a5258",
-      "fold_button": "#d63d464d"
+      "fold_button": "#d6454549"
     },
     "window": {
       "background": "#ffffff",
@@ -253,18 +253,18 @@
       "rule": "#ffdadde4",
       "pressed_fill": "#fff0f2f7",
       "title_size": 24.0,
-      "title_color": "#886e747d",
+      "title_color": "#d85f6672",
       "button_size": 76.0,
       "button_gap": 10.0,
       "button_inset": 18.0,
       "button_radius": 9.0,
-      "glyph_color": "#886e747d"
+      "glyph_color": "#d85f6672"
     },
     "panel": {
       "header_height": 54.0,
       "header_fill": "#ffffff",
       "header_rule": "#ffdadde4",
-      "title_color": "#c87a7264",
+      "title_color": "#d8645a50",
       "title_size": 22.0,
       "title_x": 24.0,
       "title_baseline": 36.0
@@ -314,7 +314,7 @@
       "well": "#fff0f2f7",
       "well_radius": 10.0,
       "text": "#23262d",
-      "dim_text": "#a86b7280",
+      "dim_text": "#d05f6672",
       "rule": "#ffc9cdd8",
       "rule_inset": 14.0,
       "highlight": "#2e3574f0",
@@ -322,7 +322,7 @@
       "accent": "#3574f0",
       "accent_width": 3.0,
       "accent_inset": 6.0,
-      "dir_text": "#a06b7280",
+      "dir_text": "#c85f6672",
       "row_height": 44.0,
       "input_height": 56.0,
       "margin": 24.0,
@@ -448,7 +448,7 @@
       "width": 112.0,
       "number_size": 22.0,
       "fold_size": 22.0,
-      "number_color": "#5c6f675e",
+      "number_color": "#b86a645c",
       "pad": 18.0,
       "stripe_width": 6.0,
       "stripe_inset": 6.0,
@@ -475,10 +475,10 @@
       "thought_surface": "#00000000",
       "tool_surface": "#00000000",
       "error_surface": "#30d44a4a",
-      "notice_color": "#a06e747d",
+      "notice_color": "#d05f6672",
       "text_color": "#ff16181d",
       "title_size": 22.0,
-      "loader_color": "#a06e747d",
+      "loader_color": "#d05f6672",
       "loader_height": 56.0,
       "added_color": "#ff2e7d3a",
       "removed_color": "#ffb03434",
@@ -487,7 +487,7 @@
       "input_max_height": 360.0,
       "input_border": "#607a8194",
       "input_focus_border": "#ff2f66c4",
-      "accent": "#ff2f66c4",
+      "accent": "#ff2bb14f",
       "on_accent": "#fffdfefe",
       "stop_color": "#ffc03a40",
       "ask_surface": "#ffffff",
