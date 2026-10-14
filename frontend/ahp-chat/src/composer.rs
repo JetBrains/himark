@@ -445,6 +445,12 @@ pub(crate) struct BandProps<'a> {
     /// window's where there is one, a nominal where the host asks
     /// loose.
     pub(crate) nominal_height: f32,
+    /// The WELL behind the input and the toolbar row, or nothing.
+    /// Whoever stands the band up decides: the workbench hands the
+    /// rounded card, a mounted host that already drew one (the
+    /// islands app's SwiftUI card) hands nothing — two of them on
+    /// the same edge is two borders.
+    pub(crate) well: Option<hikit::ui::Surface>,
 }
 
 impl ComposerBand {
@@ -502,29 +508,14 @@ impl ComposerBand {
                 // toolbar row (docs/himark-islands-default.png) —
                 // placed FIRST so everything paints over it; the
                 // hairline-ruled strip is gone.
-                {
-                    let surface = chrome.composer_surface.0;
-                    let border = chrome.composer_border.0;
-                    let well = move |_arena: &Arena,
-                                     canvas: &skia_safe::Canvas,
-                                     rect: skia_safe::Rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_anti_alias(true);
-                        paint.set_color(surface);
-                        canvas.draw_round_rect(rect, 24.0, 24.0, &paint);
-                        paint.set_style(skia_safe::PaintStyle::Stroke);
-                        paint.set_stroke_width(1.0);
-                        paint.set_color(border);
-                        canvas.draw_round_rect(rect.with_inset((0.5, 0.5)), 24.0, 24.0, &paint);
-                    };
+                if let Some(well) = props.well {
                     panel.place(
                         inset,
                         stack_h,
-                        leaf::<ChatPanelCommand>(
+                        well.wrap(leaf::<ChatPanelCommand>(
                             size.width - inset * 2.0,
                             (size.height - stack_h - inset * 0.5).max(1.0),
-                        )
-                        .paint_instead(well),
+                        )),
                     );
                 }
                 panel.place(

@@ -1694,6 +1694,8 @@ impl ChatPanel {
                 focused: view.focus == ChatArea::Composer,
                 stack: &self.stack,
                 nominal_height: 800.0,
+                // The mounted band's host owns the card.
+                well: None,
             },
         );
         Some(imba::layout::laid(
@@ -1758,6 +1760,14 @@ impl ChatPanel {
                     focused: view.focus == ChatArea::Composer,
                     stack: &self.stack,
                     nominal_height: size.height,
+                    // The workbench face brings its own card.
+                    well: Some(
+                        hikit::ui::Surface::bordered(
+                            chrome.composer_surface.0,
+                            chrome.composer_border.0,
+                        )
+                        .radius(24.0),
+                    ),
                 };
                 panel.place(
                     0.0,
