@@ -1273,6 +1273,43 @@ pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: 
     }
 }
 
+/// WHICH SESSION a place names. A shell that claims a place has to
+/// re-point its views at that session — the sessions drawer picking
+/// a row is the case — and the handle is the only thing it holds.
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_session_host(
+    engine: *mut HimarkEngine,
+    place: HimarkPlace,
+) -> u64 {
+    let Some(_engine) = engine.as_mut() else {
+        return 0;
+    };
+    PLACES
+        .lock()
+        .expect("the place table")
+        .get(place.raw)
+        .and_then(|(_, session)| session.as_ref().map(|session| session.host.raw()))
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_place_session_uri(
+    engine: *mut HimarkEngine,
+    place: HimarkPlace,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    let Some(_engine) = engine.as_mut() else {
+        return 0;
+    };
+    let uri = PLACES
+        .lock()
+        .expect("the place table")
+        .get(place.raw)
+        .and_then(|(_, session)| session.as_ref().map(|session| session.session.to_string()));
+    copy_optional_utf8(uri, out, cap)
+}
+
 /// Mint the view a place names, mounted as a bridge. The place
 /// handle stays usable (mint again, or release when done); 0
 /// refuses a place no view answers — typically a session the
@@ -1380,6 +1417,9 @@ impl himark::himark::Shell for CallbackShell {
                 Some((HIMARK_PLACE_CANVAS, ready.source.title(store, ready.changes)))
             } else if place.place::<himark::places::DismissPlace>().is_some() {
                 Some((HIMARK_PLACE_DISMISS, String::new()))
+            } else if place.place::<himark::places::ChatPlace>().is_some() {
+                // "Show this session" — the sessions drawer's pick.
+                Some((HIMARK_PLACE_CHAT, String::new()))
 
             } else {
                 None
@@ -1387,8 +1427,13 @@ impl himark::himark::Shell for CallbackShell {
             if let Some((kind, title)) = classified {
                 // The ORIGIN's session rides the handle: the READY
                 // places carry none of their own, and the mount must
-                // answer `session_of` for the opens made FROM it.
-                let session = himark::mounts::session_of(store, origin);
+                // answer `session_of` for the opens made FROM it. A
+                // place that NAMES a session (the drawer's pick)
+                // carries its own — that is the whole message.
+                let session = place
+                    .place::<himark::places::ChatPlace>()
+                    .map(|chat| chat.0.clone())
+                    .or_else(|| himark::mounts::session_of(store, origin));
                 let handle = HimarkPlace {
                     raw: PLACES
                         .lock()

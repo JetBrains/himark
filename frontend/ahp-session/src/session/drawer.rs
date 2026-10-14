@@ -88,6 +88,17 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
     }
 }
 
+impl AgentsPanel {
+    /// What the add-host well takes off the rows' height.
+    fn adding_height(&self, store: &Store, ui: &UiCtx) -> f32 {
+        let _ = (store, ui);
+        match &self.adding {
+            Some(input) => input.content_height() + 2.0 * hikit::ui::space::S,
+            None => 0.0,
+        }
+    }
+}
+
 /// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
 #[doc(hidden)]
@@ -664,45 +675,27 @@ impl View for AgentsPanel {
             let mut overlay = container(arena, size);
 
             let theme = ::editor::env::Themes::of(store);
-            let ui_theme = theme.ui().clone();
-            let header = ui_theme.panel.header_height;
-            let inset = hikit::rows::panel_inset(&ui_theme);
-            let title_font = hikit::fonts::ui_font(ui, ui_theme.panel.title_size);
-            let mut panel = container(arena, Size::new(PANEL_WIDTH, size.height));
-            let shaper = imba::layout::TextShaper::of(ui);
-            let backdrop = leaf::<AgentsCommand>(PANEL_WIDTH, size.height)
-                .paint_instead(move |_arena, canvas, rect| {
-                    hikit::rows::paint_panel_chrome(
-                        &shaper,
-                        canvas,
-                        rect,
-                        &ui_theme,
-                        &title_font,
-                        "Sessions",
-                        "",
-                    );
-                })
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::handled(),
-                    _ => EventResult::Ignored,
-                })
-                .hit_opaque();
-            panel.place(0.0, 0.0, backdrop);
+            // The panel's FLOOR, its header and its width belong to
+            // the window slot that stands this view up
+            // (`hikit::modal::Paneled`) — a mounted host draws its
+            // own island. The drawer lays rows into what it is
+            // given, and that is all it knows.
+            let mut panel = container(arena, size);
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
-                    PANEL_WIDTH - inset * 2.0 - 2.0,
-                    (size.height - inset * 2.0 - header - PANEL_PAD).max(1.0),
+                    size.width,
+                    (size.height - self.adding_height(store, ui)).max(1.0),
                 )),
             )
             .map(AgentsCommand::Rows);
-            panel.place(inset + 1.0, inset + header + PANEL_PAD, rows);
+            panel.place(0.0, 0.0, rows);
             if let Some(input) = &self.adding {
                 let search = theme.ui().search.clone();
                 let well_height = input.content_height() + 2.0 * hikit::ui::space::S;
-                let well_width = (PANEL_WIDTH - inset * 2.0).max(1.0);
-                let well_y = size.height - inset - well_height;
+                let well_width = size.width.max(1.0);
+                let well_y = size.height - well_height;
                 let input_fill = search.input_fill;
                 let empty = input.document.text().byte_count() == 0;
                 let peeker = theme.ui().peeker.clone();
@@ -729,10 +722,10 @@ impl View for AgentsPanel {
                         }
                     },
                 );
-                panel.place(inset, well_y, well);
+                panel.place(0.0, well_y, well);
                 let inner_height = (well_height - search.input_pad_y * 2.0).max(1.0);
                 panel.place(
-                    inset + search.input_pad_x,
+                    search.input_pad_x,
                     well_y + search.input_pad_y,
                     imba::layout::Layout::layout(
                         input.display(arena, store, ui),

@@ -416,3 +416,135 @@ impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Dressed<
         Box::new(self.clone())
     }
 }
+
+/// A modal standing in a window's SIDE SLOT: the drawer's panel —
+/// its floor, its header and its width. The slot hands the whole
+/// window's constraints and the panel takes the left band of it;
+/// the view inside lays content into what is left and knows none
+/// of this. A mounted host that draws its own island mounts the
+/// same view undressed.
+#[derive(Clone)]
+pub struct Paneled<V> {
+    inner: V,
+    title: &'static str,
+}
+
+/// `view.paneled("Sessions")` — the modifier that composes them.
+pub trait Panel: Sized {
+    fn paneled(self, title: &'static str) -> Paneled<Self> {
+        Paneled { inner: self, title }
+    }
+}
+
+impl<V: ModalView> Panel for V {}
+
+impl<V: View> View for Paneled<V> {
+    type Command = V::Command;
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.inner.perform(store, ui, command, fx)
+    }
+
+    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
+        self.inner.destroy(store, fx)
+    }
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        self.inner.focus_data(store, ui)
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        let title = self.title;
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            let size = constraints.max;
+            let width = crate::rows::DRAWER_WIDTH;
+            let theme = ::editor::env::Themes::of(store);
+            let ui_theme = theme.ui().clone();
+            let header = ui_theme.panel.header_height;
+            let inset = crate::rows::panel_inset(&ui_theme);
+            let pad = 6.0;
+            let title_font = crate::fonts::ui_font(ui, ui_theme.panel.title_size);
+            let shaper = imba::layout::TextShaper::of(ui);
+
+            let mut panel = imba::container::container(arena, size);
+            use imba::thunk_ext::ThunkExt as _;
+            let floor = imba::leaf::leaf::<V::Command>(width, size.height)
+                .paint_instead(move |_arena, canvas, rect| {
+                    crate::rows::paint_panel_chrome(
+                        &shaper, canvas, rect, &ui_theme, &title_font, title, "",
+                    );
+                })
+                .event(|_arena, event, _size| match event {
+                    imba::event::Event::MouseDown { .. } => imba::event::EventResult::handled(),
+                    _ => imba::event::EventResult::Ignored,
+                })
+                .hit_opaque();
+            panel.place(0.0, 0.0, floor);
+            panel.place(
+                inset + 1.0,
+                inset + header + pad,
+                imba::layout::Layout::layout(
+                    self.inner.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(skia_safe::Size::new(
+                        width - inset * 2.0 - 2.0,
+                        (size.height - inset * 2.0 - header - pad).max(1.0),
+                    )),
+                ),
+            );
+            panel
+        })
+    }
+}
+
+impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Paneled<V> {
+    fn take_request(&mut self) -> Option<ModalRequest> {
+        self.inner.take_request()
+    }
+
+    fn set_query(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        query: &str,
+        fx: &mut imba::effect::Effects<'_, DynCommand>,
+    ) {
+        self.inner.set_query(store, ui, query, fx)
+    }
+
+    fn release_widgets(
+        &mut self,
+    ) -> Vec<(
+        crate::panel::WidgetOrigin,
+        Box<dyn crate::panel::DynPanelView>,
+    )> {
+        self.inner.release_widgets()
+    }
+
+    fn focus_lost(&mut self) {
+        self.inner.focus_lost()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn clone_modal(&self) -> Box<dyn ModalView> {
+        Box::new(self.clone())
+    }
+}

@@ -623,6 +623,18 @@ HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *
 void himark_place_release(HimarkEngine *engine, HimarkPlace place);
 
 /**
+ * WHICH SESSION a place names. A shell that claims a place has to
+ * re-point its views at that session — the sessions drawer picking
+ * a row is the case — and the handle is the only thing it holds.
+ */
+uint64_t himark_place_session_host(HimarkEngine *engine, HimarkPlace place);
+
+uintptr_t himark_place_session_uri(HimarkEngine *engine,
+                                   HimarkPlace place,
+                                   char *out,
+                                   uintptr_t cap);
+
+/**
  * Mint the view a place names, mounted as a bridge. The place
  * handle stays usable (mint again, or release when done); 0
  * refuses a place no view answers — typically a session the

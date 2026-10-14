@@ -291,7 +291,14 @@ struct SessionIsland: View {
             .frame(height: 44)
 
             if open {
-                SessionList(host: host, open: $open)
+                // The sessions browser is the ENGINE's drawer — the
+                // same hosts/folders/sessions tree, with the same
+                // speed search, the workbench stands in a side slot.
+                // The island paints the glass; none of the list is
+                // written twice.
+                PlainMintedBridge(host: host, kind: .sessions, grabsFocus: true)
+                    .id("sessions-\(host.current?.uri ?? "")")
+                    .frame(height: 656)
             }
         }
         .frame(width: open ? 536 : nil)
@@ -299,60 +306,6 @@ struct SessionIsland: View {
         .fixedSize(horizontal: !open, vertical: false)
         .background(IslandBackground(cornerRadius: 16))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-enum SessionDates {
-    static let plain = ISO8601DateFormatter()
-    static let fractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    static func parse(_ stamp: String) -> Date? {
-        fractional.date(from: stamp) ?? plain.date(from: stamp)
-    }
-}
-
-struct SessionRow: View {
-    let row: HimarkEngine.CatalogSession
-    let current: Bool
-    let pick: () -> Void
-
-    var body: some View {
-        Button(action: pick) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.title.isEmpty ? "Untitled" : row.title)
-                        .font(.system(size: 13, weight: current ? .semibold : .regular))
-                        .lineLimit(1)
-                    Text(meta)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer()
-                if current {
-                    Circle().fill(.yellow).frame(width: 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                current ? AnyShapeStyle(.white.opacity(0.07)) : AnyShapeStyle(.clear),
-                in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var meta: String {
-        guard let date = SessionDates.parse(row.modified) else {
-            return row.provider
-        }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: .now)
     }
 }
 
@@ -383,86 +336,6 @@ struct SessionButton: View {
 
     private func title(_ title: String) -> String {
         title.isEmpty ? "New Session" : String(title.prefix(34))
-    }
-}
-
-/// The sessions face (himark-islands-sessions-open): new-session
-/// row, then the catalog grouped by day.
-struct SessionList: View {
-    @ObservedObject var host: DesktopHost
-    @Binding var open: Bool
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                Button {
-                    host.newSession()
-                    close()
-                } label: {
-                    HStack {
-                        Label("New session", systemImage: "plus")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text("⌘N").foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut("n", modifiers: .command)
-
-                ForEach(groups, id: \.title) { group in
-                    Text(group.title.uppercased())
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
-                    ForEach(group.rows, id: \.uri) { row in
-                        SessionRow(
-                            row: row,
-                            current: row.uri == host.current?.uri
-                        ) {
-                            host.select(row)
-                            close()
-                        }
-                    }
-                }
-            }
-            .padding(10)
-        }
-    }
-
-    private func close() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { open = false }
-    }
-
-    private struct Group {
-        let title: String
-        let rows: [HimarkEngine.CatalogSession]
-    }
-
-    private var groups: [Group] {
-        let calendar = Calendar.current
-        var today: [HimarkEngine.CatalogSession] = []
-        var yesterday: [HimarkEngine.CatalogSession] = []
-        var earlier: [HimarkEngine.CatalogSession] = []
-        for row in host.sessions {
-            let date = SessionDates.parse(row.modified)
-            if let date, calendar.isDateInToday(date) {
-                today.append(row)
-            } else if let date, calendar.isDateInYesterday(date) {
-                yesterday.append(row)
-            } else {
-                earlier.append(row)
-            }
-        }
-        return [
-            Group(title: "Today", rows: today),
-            Group(title: "Yesterday", rows: yesterday),
-            Group(title: "Earlier", rows: earlier),
-        ].filter { !$0.rows.isEmpty }
     }
 }
 

@@ -201,6 +201,16 @@ final class HimarkEngine {
         return bridge
     }
 
+    /// WHICH SESSION a claimed place names — the shell re-points
+    /// its views at it.
+    func placeSessionHost(_ place: HimarkPlace) -> UInt64 {
+        himark_place_session_host(engine, place)
+    }
+
+    func placeSessionUri(_ place: HimarkPlace) -> String {
+        sizedString { himark_place_session_uri(engine, place, $0, $1) } ?? ""
+    }
+
     func release(place: HimarkPlace) {
         himark_place_release(engine, place)
     }

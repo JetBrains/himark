@@ -71,6 +71,27 @@ impl crate::commands::WindowedCommand for AddHost {
         }
         ToggleAgentsView.perform(store, ui, window, fx);
     }
+
+    /// The MOUNTED landing: the flow is the whole verb — there is
+    /// no side slot to roll away afterwards.
+    fn perform_windowless(
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _origin: crate::bridge::ViewBridgeId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) -> bool {
+        match crate::higent::flows::AgentFlows::add_host_flow(store) {
+            Some(flow) => {
+                flow(store, &self.url);
+                true
+            }
+            None => {
+                eprintln!("[higent] no add-host capability installed — url dropped");
+                false
+            }
+        }
+    }
 }
 
 pub struct ToggleAgentsView;
@@ -107,7 +128,8 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
         fx.follow_up(crate::app::AppCommand::Verb(imba::command::Verb::Dynamic(
             std::sync::Arc::new(ahp_session::session::driver::RetryHosts),
         )));
-        let panel = AgentsPanel::open(store, ui, drawer_asks(window));
+        use hikit::modal::Panel as _;
+        let panel = AgentsPanel::open(store, ui, drawer_asks(window)).paneled("Sessions");
         fx.scope(
             move |command| crate::shell::content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),

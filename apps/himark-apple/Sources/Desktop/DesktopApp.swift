@@ -88,6 +88,18 @@ final class DesktopHost: NSObject, ObservableObject {
                 DispatchQueue.main.async { host.dismissals += 1 }
                 return true
             }
+            if kind == UInt32(HIMARK_PLACE_CHAT) {
+                // "Show this session" — the sessions drawer picked a
+                // row and the engine entered it. Which session the
+                // place names rides the handle.
+                let selected = DesktopHost.Selected(
+                    host: host.engine.placeSessionHost(place),
+                    uri: host.engine.placeSessionUri(place),
+                    title: "")
+                host.engine.release(place: place)
+                DispatchQueue.main.async { host.showSession(selected) }
+                return true
+            }
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
                 || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
@@ -171,6 +183,16 @@ final class DesktopHost: NSObject, ObservableObject {
             return
         }
         current = Selected(host: row.host, uri: row.uri, title: row.title)
+    }
+
+    /// The engine named a session to show (the drawer's pick): the
+    /// catalog carries its title, and every view keyed on the
+    /// current session re-mints.
+    func showSession(_ selected: Selected) {
+        guard !selected.uri.isEmpty else { return }
+        var selected = selected
+        selected.title = sessions.first { $0.uri == selected.uri }?.title ?? ""
+        current = selected
     }
 
     func newSession() {
