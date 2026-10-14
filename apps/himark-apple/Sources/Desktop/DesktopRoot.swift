@@ -440,7 +440,6 @@ struct ChatPaneColumn: View {
     var body: some View {
         ChatColumn(host: host)
             .id(host.current?.uri)
-            .padding(.top, 60)
     }
 }
 
@@ -737,8 +736,14 @@ struct ChatColumn: View {
     @State private var composerHeight: CGFloat = 120
 
     var body: some View {
-        VStack(spacing: 0) {
-            MintedScrollBridge(host: host, kind: .transcript)
+        // The transcript spans the WHOLE column; the islands ride
+        // over it and the native insets reserve their resting room
+        // — scrolled rows stay visible to the top and the bottom
+        // edges instead of clipping at the composer.
+        ZStack(alignment: .bottom) {
+            MintedScrollBridge(
+                host: host, kind: .transcript,
+                topInset: 60, bottomInset: composerHeight + 18)
             // The composer rides in its OWN rounded well, the
             // mock's square island — chrome in Swift, content in
             // the engine.
@@ -746,11 +751,13 @@ struct ChatColumn: View {
                 .frame(height: composerHeight)
                 // The composer is an ISLAND — the same card as the
                 // rail, glass and all.
+                // Rows scroll BENEATH this island — it blurs them,
+                // the toolbar way; the desktop stays the chat
+                // floor's own glass.
                 .clipShape(RoundedRectangle(cornerRadius: IslandBackground.radius))
-                .background(IslandBackground(backdrop: .desktop))
+                .background(IslandBackground(backdrop: .content))
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
-                .padding(.top, 6)
         }
     }
 }

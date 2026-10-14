@@ -55,7 +55,7 @@ final class DesktopScrollHost: NSView {
     private let minter: () -> HimarkBridge
     private(set) var bridge = HimarkBridge(raw: 0)
     private(set) var content: HimarkBridgeView?
-    let scroll = NSScrollView()
+    let scroll = FullTrackScrollView()
     /// A deliberate landing moves the keyboard here on mint.
     private let grabsFocus: Bool
 
@@ -250,6 +250,21 @@ final class DesktopScrollHost: NSView {
         }
     }
 
+    /// RESERVED EDGES: the scroller spans the whole column and the
+    /// floating islands (the semaphore, the composer) ride over it;
+    /// the insets keep resting content clear of them while scrolled
+    /// rows stay visible underneath — the native inset road, no
+    /// clipping.
+    func setInsets(top: CGFloat, bottom: CGFloat) {
+        guard scroll.contentInsets.top != top || scroll.contentInsets.bottom != bottom
+        else { return }
+        // Content insets only — the scroller TRACK runs the whole
+        // column, as every overlay scroller does; shrinking it by
+        // the same insets parked the knob mid-air.
+        scroll.contentInsets = NSEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        content?.request()
+    }
+
     /// The last content measure — layout re-applies it after a
     /// fold/expand, when no fresh band has rendered yet.
     private var measured: CGFloat = 0
@@ -335,10 +350,27 @@ final class DesktopScrollHost: NSView {
     }
 }
 
+/// An NSScrollView whose vertical scroller spans the FULL height:
+/// stock tiling tucks the scroller inside the content insets, so
+/// with island insets the knob's track began at the top reserve
+/// and ended where the composer begins.
+final class FullTrackScrollView: NSScrollView {
+    override func tile() {
+        super.tile()
+        guard let scroller = verticalScroller else { return }
+        var frame = scroller.frame
+        frame.origin.y = 0
+        frame.size.height = bounds.height
+        scroller.frame = frame
+    }
+}
+
 /// A scrolled, session-minted bridge as a SwiftUI pane.
 struct MintedScrollBridge: NSViewRepresentable {
     let host: DesktopHost
     let kind: HimarkEngine.SessionViewKind
+    var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
 
     func makeNSView(context: Context) -> DesktopScrollHost {
         DesktopScrollHost(host: host) { [weak host] in
@@ -346,7 +378,9 @@ struct MintedScrollBridge: NSViewRepresentable {
         }
     }
 
-    func updateNSView(_ view: DesktopScrollHost, context: Context) {}
+    func updateNSView(_ view: DesktopScrollHost, context: Context) {
+        view.setInsets(top: topInset, bottom: bottomInset)
+    }
 
     static func dismantleNSView(_ view: DesktopScrollHost, coordinator: ()) {
         view.teardown()
