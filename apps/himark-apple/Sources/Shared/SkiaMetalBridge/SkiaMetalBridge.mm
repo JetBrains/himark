@@ -137,6 +137,9 @@ extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height
 /// scheduling and presents.
 extern "C" void skia_metal_end(SkiaMetal *self) {
     if (!self || !self->surface) return;
+    // Transaction-coupled present needs the property ON — and it
+    // may be OFF from a preceding async frame.
+    self->layer.presentsWithTransaction = YES;
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
     if (recording) {
@@ -165,6 +168,13 @@ extern "C" void skia_metal_end(SkiaMetal *self) {
 /// own schedule.
 extern "C" void skia_metal_end_async(SkiaMetal *self) {
     if (!self || !self->surface) return;
+    // With presentsWithTransaction ON, CoreAnimation couples EVERY
+    // present to a CA commit — a present issued on the submit
+    // thread then waits for a transaction that never comes, and
+    // the frame simply never reaches glass (typed text invisible
+    // until a resize forced the sync road). The async road runs
+    // with the property OFF: the scheduled present is its own law.
+    self->layer.presentsWithTransaction = NO;
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
     id<CAMetalDrawable> drawable = self->drawable;
