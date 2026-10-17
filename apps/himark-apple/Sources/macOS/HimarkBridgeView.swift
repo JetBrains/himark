@@ -320,6 +320,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             renderOverlaySlice(origin, scale: scale)
             return
         }
+        if Self.traceOverlay, overlayOrigin == nil, bridgeId.raw > 0, popovers.isEmpty,
+           superview == nil || window?.className.contains("Popover") == true {
+            NSLog("[overlay] PLAIN road on popover view bridge \(bridgeId.raw) bounds \(bounds.size)")
+        }
 
         let w = Int32(bounds.width * scale)
         let h = Int32(bounds.height * scale)
@@ -352,9 +356,16 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let h = Int32(bounds.height * scale)
         guard w > 0, h > 0 else { return }
         let raw = engine.raw
+        // The popover layer never MOVES, but it RESIZES — from the
+        // seed to the content slice, and with the menu's filter.
+        // A resize is geometry: its pixels must land in the same
+        // commit (the flicker law), or the commit shows the grown
+        // layer empty and the async present has nothing to join.
+        let size = CGSize(width: CGFloat(w), height: CGFloat(h))
+        let resized = metalLayer.drawableSize != size
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+        metalLayer.drawableSize = size
         let layout = himark_bridge_layout(
             raw, bridgeId, Float(bounds.width * scale), Float(bounds.height * scale))
         if layout.raw != 0 {
@@ -367,8 +378,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                     let changed = himark_frame_paint(
                         raw, frame, canvas, ox, oy,
                         Float(bounds.width * scale), Float(bounds.height * scale))
-                    // The popover layer never moves — async always.
-                    surface.end(coupled: false)
+                    surface.end(coupled: resized)
+                    if Self.traceOverlay {
+                        NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) resized \(resized) changed \(changed)")
+                    }
                     if changed {
                         request()
                     } else {
@@ -601,8 +614,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             var cy: Float = 0
             var cw: Float = 0
             var ch: Float = 0
-            guard himark_overlay_content_rect(engine.raw, entry.bridge, &cx, &cy, &cw, &ch)
-            else { continue }
+            let haveRect = himark_overlay_content_rect(engine.raw, entry.bridge, &cx, &cy, &cw, &ch)
+            if Self.traceOverlay {
+                NSLog("[overlay] geometry #\(index) bridge \(entry.bridge.raw): rect \(haveRect ? "(\(cx),\(cy) \(cw)x\(ch))" : "NONE")")
+            }
+            guard haveRect else { continue }
             let rect = CGRect(
                 x: CGFloat(cx) / s, y: CGFloat(cy) / s,
                 width: CGFloat(cw) / s, height: CGFloat(ch) / s)

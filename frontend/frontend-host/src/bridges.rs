@@ -728,6 +728,14 @@ pub unsafe extern "C" fn himark_frame_paint(
             viewport,
         );
         canvas.restore();
+        // HIMARK_PAINT_SPLASH: an unmissable magenta square in the
+        // slice's corner — splits "painted transparent" from
+        // "present never composited" when a surface shows empty.
+        if std::env::var_os("HIMARK_PAINT_SPLASH").is_some() {
+            let mut paint = skia_safe::Paint::default();
+            paint.set_color(skia_safe::Color::MAGENTA);
+            canvas.draw_rect(Rect::from_xywh(4.0, 4.0, 40.0, 40.0), &paint);
+        }
         result
     };
     let EventResult::Handled(handled) = result else {
