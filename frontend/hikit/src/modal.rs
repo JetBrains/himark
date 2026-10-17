@@ -405,7 +405,10 @@ impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Dressed<
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
-        self
+        // The DRESSING is chrome, not identity: whoever downcasts a
+        // modal (tests, panel roads) is asking about the view
+        // inside, and the sheet must not hide it.
+        self.inner.as_any()
     }
 
     fn clone_modal(&self) -> Box<dyn ModalView> {
@@ -543,7 +546,10 @@ impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Paneled<
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
-        self
+        // The DRESSING is chrome, not identity: whoever downcasts a
+        // modal (tests, panel roads) is asking about the view
+        // inside, and the sheet must not hide it.
+        self.inner.as_any()
     }
 
     fn clone_modal(&self) -> Box<dyn ModalView> {
