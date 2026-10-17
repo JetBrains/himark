@@ -132,6 +132,7 @@ fn hard_break_detection_matches_skia() {
             &[],
             &[],
             None,
+            &mut Vec::new(),
         );
         paragraph.layout(220.0);
         let mut rows = paragraph.line_number();
@@ -157,5 +158,63 @@ fn hard_break_detection_matches_skia() {
     assert!(
         compared >= 12,
         "the battery must reach non-final rows to prove anything: {compared} compared"
+    );
+}
+
+#[test]
+fn blob_runs_paint_exactly_like_the_paragraph() {
+    let fonts = font_collection();
+    let theme = crate::theme::Theme::embedded();
+    // Mixed scripts and an emoji: several fonts, several runs.
+    let source = "fn main() выход 🚀 done";
+    let text = text::text::Text::from_string_exact(source);
+    let markup = crate::markup::Markup::new();
+    let marks = BlockStyle::default();
+    let mut line = ShapedLine::new(
+        &mut text.view(),
+        OverlaidMarkup::plain(&markup),
+        0..source.len() as u32,
+        &marks,
+        &[],
+        &[],
+        &fonts,
+        &theme,
+        crate::markup::InlayMeasure {
+            width: 700.0,
+            store: &imba::store::Store::new(),
+            ui: crate::test_document::test_ui(),
+        },
+        0.0,
+        true,
+    );
+    assert!(
+        line.blob_runs.is_some(),
+        "an undecorated line bakes blob runs"
+    );
+
+    let shoot = |line: &ShapedLine| -> Vec<u8> {
+        let mut surface = skia_safe::surfaces::raster_n32_premul((700, 60)).expect("surface");
+        let canvas = surface.canvas();
+        canvas.clear(skia_safe::Color::WHITE);
+        line.paint(canvas, 4.0);
+        let image = surface.image_snapshot();
+        let pixmap = image.peek_pixels().expect("raster pixels");
+        pixmap.bytes().expect("pixel bytes").to_vec()
+    };
+
+    let blobs = shoot(&line);
+    line.drop_blobs_for_test();
+    let paragraph = shoot(&line);
+
+    assert!(
+        blobs.iter().any(|byte| *byte != 0xff),
+        "the line painted something"
+    );
+    let differing = blobs.iter().zip(&paragraph).filter(|(a, b)| a != b).count();
+    assert_eq!(
+        differing,
+        0,
+        "the blob road and Paragraph::paint disagree on {differing} of {} bytes",
+        blobs.len()
     );
 }

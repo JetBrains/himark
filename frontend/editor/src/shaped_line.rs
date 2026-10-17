@@ -303,6 +303,9 @@ pub(crate) struct ShapedLine {
     /// there (per-line style maps and all) was a measurable slice of
     /// the diff-scrolling frame. Empty when there are no bands.
     band_line_ranges: Vec<Range<usize>>,
+    /// The laid-out runs baked as blobs — `None` when a decoration
+    /// or placeholder needs `Paragraph::paint`.
+    blob_runs: Option<Vec<BlobRun>>,
 }
 
 impl ShapedLine {
@@ -368,7 +371,7 @@ impl ShapedLine {
         } else {
             display.as_str()
         };
-        let mut paragraph = line_paragraph_with_placeholders(
+        let (mut paragraph, spans) = line_paragraph_with_placeholders(
             &resolved,
             shape_text,
             fonts.clone(),
@@ -377,6 +380,7 @@ impl ShapedLine {
             display.placeholders(),
         );
         paragraph.layout(RENDER_LINE_WIDTH);
+        let blob_runs = build_blob_runs(&mut paragraph, &spans);
         let placeholder_rects = match display.placeholders().is_empty() {
             true => Vec::new(),
             false => placeholder_rects(&paragraph, display.placeholders()),
@@ -431,6 +435,7 @@ impl ShapedLine {
             line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
             band_line_ranges,
+            blob_runs,
         }
     }
 
@@ -447,7 +452,7 @@ impl ShapedLine {
         let alignment = resolved.alignment.take().unwrap_or_default();
         let segments = [(text.to_owned(), 0)];
         let display = DisplayText::build_segments(false, &segments, &[], true, text.len());
-        let mut paragraph = line_paragraph_with_placeholders(
+        let (mut paragraph, spans) = line_paragraph_with_placeholders(
             &resolved,
             display.as_str(),
             fonts.clone(),
@@ -456,6 +461,7 @@ impl ShapedLine {
             &[],
         );
         paragraph.layout(RENDER_LINE_WIDTH);
+        let blob_runs = build_blob_runs(&mut paragraph, &spans);
         let (x, extent_left, extent_right) =
             horizontal_geometry(document_x, &resolved, alignment, &paragraph, layout_width);
 
@@ -476,6 +482,7 @@ impl ShapedLine {
             line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
             band_line_ranges: Vec::new(),
+            blob_runs,
         }
     }
 
@@ -552,7 +559,27 @@ impl ShapedLine {
                 }
             }
         }
-        self.paragraph.paint(canvas, (self.x, top));
+        match &self.blob_runs {
+            // The baked runs: stable blob identity keeps skia's
+            // text sub-run cache warm — the atlas quads for this
+            // line are recorded once, not every frame.
+            Some(runs) => {
+                let mut paint = skia_safe::Paint::default();
+                paint.set_anti_alias(true);
+                for run in runs {
+                    paint.set_color(run.color);
+                    canvas.draw_text_blob(&run.blob, (self.x, top), &paint);
+                }
+            }
+            None => self.paragraph.paint(canvas, (self.x, top)),
+        }
+    }
+
+    /// TEST SUPPORT: force the `Paragraph::paint` road so a test
+    /// can compare it pixel-for-pixel against the blob road.
+    #[doc(hidden)]
+    pub(crate) fn drop_blobs_for_test(&mut self) {
+        self.blob_runs = None;
     }
 
     pub(crate) fn layout_height(&self, theme: &crate::theme::Theme) -> f32 {
@@ -909,6 +936,77 @@ pub(crate) fn rows_share_metrics(
         })
 }
 
+/// One glyph run of a laid-out line, baked as an immutable
+/// `SkTextBlob`. `Paragraph::paint` re-walks runs and emits
+/// ephemeral glyph lists every frame — which also defeats skia's
+/// text sub-run cache, keyed on BLOB identity. A stable blob per
+/// run turns the per-frame paint into a draw of memoized atlas
+/// quads (the Graphite road's text fast path).
+pub(crate) struct BlobRun {
+    blob: skia_safe::TextBlob,
+    color: skia_safe::Color,
+}
+
+/// The color geography of the text handed to the builder: one
+/// entry per pushed style run, in display-text utf8 offsets.
+/// `plain` means blob-representable — no underline, squiggle or
+/// strikethrough (those paint through `Paragraph::paint`).
+pub(crate) struct StyleSpan {
+    utf8_start: usize,
+    color: skia_safe::Color,
+    plain: bool,
+}
+
+/// Bake the laid-out paragraph's runs into blobs. `None` when any
+/// span needs decoration painting — the caller falls back.
+fn build_blob_runs(paragraph: &mut Paragraph, spans: &[StyleSpan]) -> Option<Vec<BlobRun>> {
+    if spans.iter().any(|span| !span.plain) {
+        return None;
+    }
+    let color_at = |utf8: usize| -> skia_safe::Color {
+        match spans.binary_search_by(|span| span.utf8_start.cmp(&utf8)) {
+            Ok(index) => spans[index].color,
+            Err(0) => spans.first().map(|span| span.color).unwrap_or_default(),
+            Err(index) => spans[index - 1].color,
+        }
+    };
+    let mut runs: Vec<BlobRun> = Vec::new();
+    let mut sound = true;
+    paragraph.visit(|_line, info| {
+        let Some(info) = info else { return };
+        let count = info.count();
+        if count == 0 {
+            return;
+        }
+        let glyphs = info.glyphs();
+        let positions = info.positions();
+        if glyphs.len() < count || positions.len() < count {
+            sound = false;
+            return;
+        }
+        let origin = info.origin();
+        let mut builder = skia_safe::TextBlobBuilder::new();
+        {
+            let (out_glyphs, out_points) = builder.alloc_run_pos(info.font(), count, None);
+            out_glyphs.copy_from_slice(&glyphs[..count]);
+            for (slot, position) in out_points.iter_mut().zip(&positions[..count]) {
+                *slot = skia_safe::Point::new(position.x + origin.x, position.y + origin.y);
+            }
+        }
+        let Some(blob) = builder.make() else {
+            sound = false;
+            return;
+        };
+        let color = info
+            .utf8_starts()
+            .first()
+            .map(|start| color_at(*start as usize))
+            .unwrap_or_else(|| color_at(0));
+        runs.push(BlobRun { blob, color });
+    });
+    sound.then_some(runs)
+}
+
 #[cfg(test)]
 pub(crate) fn line_paragraph(
     marks: &BlockStyle,
@@ -917,7 +1015,7 @@ pub(crate) fn line_paragraph(
     theme: &crate::theme::Theme,
     decorations: &[TextDecorationInterval],
 ) -> Paragraph {
-    line_paragraph_with_placeholders(&marks.resolved(theme), text, fonts, theme, decorations, &[])
+    line_paragraph_with_placeholders(&marks.resolved(theme), text, fonts, theme, decorations, &[]).0
 }
 
 fn line_paragraph_with_placeholders(
@@ -927,8 +1025,9 @@ fn line_paragraph_with_placeholders(
     theme: &crate::theme::Theme,
     decorations: &[TextDecorationInterval],
     placeholders: &[ParagraphPlaceholder],
-) -> Paragraph {
-    paragraph_with_max_lines(
+) -> (Paragraph, Vec<StyleSpan>) {
+    let mut spans = Vec::new();
+    let paragraph = paragraph_with_max_lines(
         resolved,
         text,
         fonts,
@@ -936,7 +1035,9 @@ fn line_paragraph_with_placeholders(
         decorations,
         placeholders,
         Some(1),
-    )
+        &mut spans,
+    );
+    (paragraph, spans)
 }
 
 pub(crate) fn paragraph(
@@ -955,6 +1056,7 @@ pub(crate) fn paragraph(
         decorations,
         placeholders,
         None,
+        &mut Vec::new(),
     )
 }
 
@@ -967,6 +1069,7 @@ fn paragraph_with_max_lines(
     decorations: &[TextDecorationInterval],
     placeholders: &[ParagraphPlaceholder],
     max_lines: Option<usize>,
+    spans: &mut Vec<StyleSpan>,
 ) -> Paragraph {
     let text_style = text_style(resolved);
     let mut paragraph_style = ParagraphStyle::new();
@@ -989,10 +1092,12 @@ fn paragraph_with_max_lines(
         decorations,
         placeholders,
         theme,
+        spans,
     );
     builder.build()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_text_runs(
     builder: &mut ParagraphBuilder,
     text: &str,
@@ -1000,8 +1105,14 @@ fn add_text_runs(
     decorations: &[TextDecorationInterval],
     placeholders: &[ParagraphPlaceholder],
     theme: &crate::theme::Theme,
+    spans: &mut Vec<StyleSpan>,
 ) {
     if decorations.is_empty() && placeholders.is_empty() {
+        spans.push(StyleSpan {
+            utf8_start: 0,
+            color: base_style.color(),
+            plain: true,
+        });
         builder.add_text(text);
         return;
     }
@@ -1018,7 +1129,22 @@ fn add_text_runs(
             continue;
         }
 
-        add_text_slice(builder, text, base_style, decorations, theme, offset..start);
+        add_text_slice(
+            builder,
+            text,
+            base_style,
+            decorations,
+            theme,
+            offset..start,
+            spans,
+        );
+        // A placeholder occupies glyphs the visitor cannot speak
+        // for — the line paints through `Paragraph::paint`.
+        spans.push(StyleSpan {
+            utf8_start: start,
+            color: base_style.color(),
+            plain: false,
+        });
         builder.add_placeholder(&PlaceholderStyle::new(
             placeholder.width,
             placeholder.height,
@@ -1040,9 +1166,11 @@ fn add_text_runs(
         decorations,
         theme,
         offset..text.len(),
+        spans,
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_text_slice(
     builder: &mut ParagraphBuilder,
     text: &str,
@@ -1050,12 +1178,18 @@ fn add_text_slice(
     decorations: &[TextDecorationInterval],
     theme: &crate::theme::Theme,
     range: Range<usize>,
+    spans: &mut Vec<StyleSpan>,
 ) {
     if range.start >= range.end {
         return;
     }
 
     if decorations.is_empty() {
+        spans.push(StyleSpan {
+            utf8_start: range.start,
+            color: base_style.color(),
+            plain: true,
+        });
         builder.add_text(&text[range]);
         return;
     }
@@ -1092,6 +1226,11 @@ fn add_text_slice(
         }
         active.retain(|decoration| (decoration.range.end as usize) > start);
         if active.is_empty() {
+            spans.push(StyleSpan {
+                utf8_start: start,
+                color: base_style.color(),
+                plain: true,
+            });
             builder.push_style(base_style);
         } else {
             let mut run_style = base_style.clone();
@@ -1099,6 +1238,11 @@ fn add_text_slice(
             for decoration in &active {
                 apply_attributes(&mut run_style, theme.attributes(decoration.id));
             }
+            spans.push(StyleSpan {
+                utf8_start: start,
+                color: run_style.color(),
+                plain: run_style.decoration_type().is_empty(),
+            });
             builder.push_style(&run_style);
         }
         builder.add_text(&text[start..end]);
