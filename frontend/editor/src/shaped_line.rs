@@ -577,7 +577,17 @@ impl ShapedLine {
         }
         #[cfg(feature = "parley-text")]
         if let Some(parley) = &self.parley {
-            parley.paint(canvas, (self.x, top));
+            // BASELINES AGREE, boxes need not: skparagraph's height
+            // override scales ascent/descent, parley half-leads —
+            // the same glyphs land a few px apart inside the line
+            // box. Geometry (caret, tight bands) answers from the
+            // sk metrics, so the paint anchors to the SK baseline
+            // and the pixels meet the rects exactly.
+            let delta = match (self.first_baseline, parley.first_baseline()) {
+                (Some(sk), Some(own)) => sk - own,
+                _ => 0.0,
+            };
+            parley.paint(canvas, (self.x, top + delta));
             return;
         }
         match &self.blob_runs {
