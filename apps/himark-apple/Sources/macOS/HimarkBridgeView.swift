@@ -156,15 +156,18 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     // ─── the frame loop ───
 
     private func startDisplayLink() {
-        let link = displayLink(target: self, selector: #selector(caTick))
+        let link = displayLink(target: self, selector: #selector(caTick(_:)))
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         caLink = link
         resumeDisplayLink()
     }
 
-    @objc private func caTick() {
-        tick()
+    @objc private func caTick(_ link: CADisplayLink) {
+        // The driver's own estimate of when THIS frame reaches
+        // glass — animations advance to where they will be SEEN,
+        // not to where the tick happened to run.
+        tick(nowMs: link.targetTimestamp * 1000.0)
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -197,8 +200,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         caLink?.isPaused = true
     }
 
-    private func tick() {
-        let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
+    private func tick(nowMs: Double = CACurrentMediaTime() * 1000.0) {
+        let animating = engine.tick(nowMs: nowMs)
         engine.drainReveal()
         reconcileOverlays()
         if needsRedraw || animating {
@@ -283,12 +286,19 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             let wasAt = metalLayer.frame
             let w = Int32(band.width * scale)
             let h = Int32(band.height * scale)
+            // The band MOVED or RESIZED: its new position and its
+            // pixels must land in one commit (the flicker law) —
+            // transaction-coupled present. A still band repainting
+            // in place rides the async submit road.
+            let coupled = wasAt != band
+                || metalLayer.drawableSize != CGSize(width: CGFloat(w), height: CGFloat(h))
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             metalLayer.frame = band
             metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
             let started = Self.traceSync ? CACurrentMediaTime() : 0
-            let painted = renderBand(band, scale: scale, pixelWidth: w, pixelHeight: h)
+            let painted = renderBand(
+                band, scale: scale, pixelWidth: w, pixelHeight: h, coupled: coupled)
             if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
             if !painted {
                 // No drawable, nothing painted: a moved band showing
@@ -315,13 +325,18 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let h = Int32(bounds.height * scale)
         // Same rule as the band: the drawable's new SIZE and the
         // pixels that fill it belong to one transaction, or a resize
-        // commits a layer whose contents are a frame behind.
+        // commits a layer whose contents are a frame behind. A
+        // STEADY size has nothing to commit with — the frame rides
+        // the async submit road and this thread skips the GPU wait.
+        let size = CGSize(width: CGFloat(w), height: CGFloat(h))
+        let resized = metalLayer.drawableSize != size
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+        metalLayer.drawableSize = size
         let started = Self.traceSync ? CACurrentMediaTime() : 0
         if engine.renderBridge(bridge: bridgeId, into: surface,
-                               pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
+                               pixelWidth: w, pixelHeight: h, scale: Float(scale),
+                               coupled: resized) {
             request()
         }
         CATransaction.commit()
@@ -352,7 +367,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                     let changed = himark_frame_paint(
                         raw, frame, canvas, ox, oy,
                         Float(bounds.width * scale), Float(bounds.height * scale))
-                    surface.end()
+                    // The popover layer never moves — async always.
+                    surface.end(coupled: false)
                     if changed {
                         request()
                     } else {
@@ -373,7 +389,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// engine quiesced them, and the next tick re-derives.
     @discardableResult
     private func renderBand(
-        _ visible: NSRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
+        _ visible: NSRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32,
+        coupled: Bool = true
     ) -> Bool {
         let raw = engine.raw
         let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
@@ -393,7 +410,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
-        surface.end()
+        surface.end(coupled: coupled)
         if Self.traceSync { notePresent(layerY: visible.minY) }
         if changed {
             request()

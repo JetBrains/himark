@@ -38,6 +38,12 @@ struct SkiaMetalGpu {
     id<MTLCommandQueue> queue;
     std::unique_ptr<skgpu::graphite::Context> context;
     std::unique_ptr<skgpu::graphite::Recorder> recorder;
+    /// The Context's home: Graphite demands external sync for the
+    /// Context, and a SERIAL queue is exactly that. Recording stays
+    /// on the UI thread (the Recorder's affinity); playback, submit
+    /// and the still-geometry presents live here — the UI thread
+    /// never waits on the GPU for a frame whose layer didn't move.
+    dispatch_queue_t submit;
 };
 
 /// One screen of retina text and its atlases, shared across views.
@@ -53,6 +59,7 @@ static SkiaMetalGpu *shared_gpu(id<MTLDevice> device) {
     auto *gpu = new SkiaMetalGpu();
     gpu->device = device;
     gpu->queue = [device newCommandQueue];
+    gpu->submit = dispatch_queue_create("himark.graphite.submit", DISPATCH_QUEUE_SERIAL);
 
     skgpu::graphite::MtlBackendContext backend;
     backend.fDevice.retain((__bridge CFTypeRef)device);
@@ -123,27 +130,56 @@ extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height
     return self->surface ? self->surface->getCanvas() : nullptr;
 }
 
+/// MOVED-GEOMETRY frames: the layer's position changed in this CA
+/// transaction, so pixels must land in the same commit (the flicker
+/// law). Playback runs on the Context's queue — synchronously, the
+/// caller still inside the transaction — then this thread waits for
+/// scheduling and presents.
 extern "C" void skia_metal_end(SkiaMetal *self) {
     if (!self || !self->surface) return;
-    // The draws recorded against this surface become one Recording;
-    // inserting and submitting plays it onto the drawable's texture.
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
     if (recording) {
-        skgpu::graphite::InsertRecordingInfo info;
-        info.fRecording = recording.get();
-        self->gpu->context->insertRecording(info);
-        self->gpu->context->submit();
+        skgpu::graphite::Recording *played = recording.release();
+        SkiaMetalGpu *gpu = self->gpu;
+        dispatch_sync(gpu->submit, ^{
+            skgpu::graphite::InsertRecordingInfo info;
+            info.fRecording = played;
+            gpu->context->insertRecording(info);
+            gpu->context->submit();
+            delete played;
+        });
     }
 
-    // The presentsWithTransaction sequence: the submit above rides
-    // the shared queue; an empty buffer behind it schedules AFTER
-    // the paint, so waiting on it then presenting ON THIS THREAD
-    // makes the drawable visible as part of the CA transaction the
-    // caller is inside.
     id<MTLCommandBuffer> buffer = [self->gpu->queue commandBuffer];
     [buffer commit];
     [buffer waitUntilScheduled];
     [self->drawable present];
     self->drawable = nil;
+}
+
+/// STILL-GEOMETRY frames (most of them): nothing of the layer moved,
+/// so there is nothing to commit atomically with — the recording and
+/// the drawable cross to the submit queue and the UI thread returns
+/// without touching the GPU. The present rides the command buffer's
+/// own schedule.
+extern "C" void skia_metal_end_async(SkiaMetal *self) {
+    if (!self || !self->surface) return;
+    self->surface.reset();
+    std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
+    id<CAMetalDrawable> drawable = self->drawable;
+    self->drawable = nil;
+    if (!recording) return;
+    skgpu::graphite::Recording *played = recording.release();
+    SkiaMetalGpu *gpu = self->gpu;
+    dispatch_async(gpu->submit, ^{
+        skgpu::graphite::InsertRecordingInfo info;
+        info.fRecording = played;
+        gpu->context->insertRecording(info);
+        gpu->context->submit();
+        delete played;
+        id<MTLCommandBuffer> buffer = [gpu->queue commandBuffer];
+        [buffer presentDrawable:drawable];
+        [buffer commit];
+    });
 }

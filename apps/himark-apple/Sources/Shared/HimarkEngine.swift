@@ -266,10 +266,11 @@ final class HimarkEngine {
 
     @discardableResult
     func renderBridge(bridge: HimarkBridge, into surface: SkiaMetalSurface,
-                      pixelWidth w: Int32, pixelHeight h: Int32, scale: Float) -> Bool {
+                      pixelWidth w: Int32, pixelHeight h: Int32, scale: Float,
+                      coupled: Bool = true) -> Bool {
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return false }
         let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
-        surface.end()
+        surface.end(coupled: coupled)
         return reconciling
     }
 
@@ -423,8 +424,18 @@ final class SkiaMetalSurface {
         skia_metal_begin(skia, w, h)
     }
 
-    func end() {
-        skia_metal_end(skia)
+    /// `coupled` = this frame's layer GEOMETRY changed in the open
+    /// CA transaction: pixels must commit with it, so playback runs
+    /// synchronously and the present waits on this thread (the
+    /// flicker law). Still geometry rides the async road — the
+    /// recording and drawable cross to the submit queue, and this
+    /// thread never touches the GPU.
+    func end(coupled: Bool = true) {
+        if coupled {
+            skia_metal_end(skia)
+        } else {
+            skia_metal_end_async(skia)
+        }
     }
 
 }
