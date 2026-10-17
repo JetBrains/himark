@@ -43,7 +43,7 @@ struct ParleyCtx {
     layouts: LayoutContext<Brush>,
     /// fontique blob id + ttc index → skia typeface, so the blob
     /// road rasterizes with the same bytes parley shaped with.
-    typefaces: HashMap<(u64, u32), skia_safe::Typeface>,
+    typefaces: HashMap<(u64, u32), Option<skia_safe::Typeface>>,
 }
 
 thread_local! {
@@ -66,17 +66,19 @@ impl ParleyCtx {
         }
     }
 
-    fn typeface(&mut self, font: &parley::FontData) -> skia_safe::Typeface {
+    fn typeface(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
         let key = (font.data.id(), font.index);
         self.typefaces
             .entry(key)
             .or_insert_with(|| {
-                skia_safe::FontMgr::new()
-                    .new_from_data(
-                        skia_safe::Data::new_copy(font.data.as_ref()),
-                        Some(font.index),
-                    )
-                    .expect("the bytes parley shaped with parse as a typeface")
+                // A system face skia's manager refuses to re-parse
+                // (seen: CoreText-vended CJK collections) is a WATCH
+                // item, not a crash — the run reports unrasterizable
+                // and the fallback corpus shows it.
+                skia_safe::FontMgr::new().new_from_data(
+                    skia_safe::Data::new_copy(font.data.as_ref()),
+                    Some(font.index),
+                )
             })
             .clone()
     }
@@ -176,7 +178,9 @@ impl ParleyLine {
                     if glyphs.is_empty() {
                         continue;
                     }
-                    let typeface = ctx.typeface(run.run().font());
+                    let Some(typeface) = ctx.typeface(run.run().font()) else {
+                        continue;
+                    };
                     let font = skia_safe::Font::new(typeface, run.run().font_size());
                     let mut builder = skia_safe::TextBlobBuilder::new();
                     {
@@ -194,6 +198,43 @@ impl ParleyLine {
                 }
             }
             out
+        })
+    }
+
+    /// TEST SUPPORT for the fallback watch: the families that
+    /// served this line, plus notdef counts.
+    #[doc(hidden)]
+    pub fn coverage_for_test(&self) -> (Vec<String>, usize, usize) {
+        CTX.with(|cell| {
+            let ctx = &mut *cell.borrow_mut();
+            let mut families = Vec::new();
+            let mut notdefs = 0usize;
+            let mut total = 0usize;
+            for line in self.layout.lines() {
+                for item in line.items() {
+                    let PositionedLayoutItem::GlyphRun(run) = item else {
+                        continue;
+                    };
+                    let family = match ctx.typeface(run.run().font()) {
+                        Some(typeface) => typeface.family_name().to_string(),
+                        None => format!(
+                            "UNRASTERIZABLE({} bytes, index {})",
+                            run.run().font().data.as_ref().len(),
+                            run.run().font().index
+                        ),
+                    };
+                    if !families.contains(&family) {
+                        families.push(family);
+                    }
+                    for glyph in run.positioned_glyphs() {
+                        total += 1;
+                        if glyph.id == 0 {
+                            notdefs += 1;
+                        }
+                    }
+                }
+            }
+            (families, notdefs, total)
         })
     }
 

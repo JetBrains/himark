@@ -94,3 +94,48 @@ fn parley_shapes_paints_and_answers_geometry() {
         "the two roads disagree on more than a quarter of the canvas"
     );
 }
+
+/// THE WATCH: fallback quality over the glyphs our users actually
+/// type. Pixel parity is not the goal — tofu is the failure.
+/// Hard classes (CJK, emoji) fail the test; known-risk classes
+/// (U+276F prompt arrows, Nerd Font private-use glyphs — fontique
+/// falls back per SCRIPT, not per character) report loudly and
+/// keep watching.
+#[cfg(target_os = "macos")]
+#[test]
+fn fallback_corpus_keeps_its_eyes_open() {
+    let corpus: &[(&str, &str, bool)] = &[
+        ("ascii", "fn main() -> done", true),
+        ("cyrillic", "простой текст", true),
+        ("cjk-zh", "中文排版测试", true),
+        ("cjk-ja", "日本語の組版", true),
+        ("korean", "한국어 조판", true),
+        ("arabic", "نص عربي", true),
+        ("emoji", "👍 🚀 😀", true),
+        ("emoji-zwj", "👨‍👩‍👧‍👦", true),
+        ("emoji-tone", "👍🏽", true),
+        ("prompt-arrow", "❯ ❮", false),
+        ("powerline", "\u{e0b0}\u{e0b2}", false),
+        ("math", "∑ ∀x ∈ ℝ", false),
+        ("box-drawing", "┌─┬─┐│└┘", false),
+    ];
+
+    let mut failures = Vec::new();
+    for (name, text, must) in corpus {
+        let line = ParleyLine::shape(text, "Menlo", 24.0, &[(0, skia_safe::Color::BLACK)]);
+        let (families, notdefs, total) = line.coverage_for_test();
+        let verdict = if notdefs == 0 { "ok" } else { "TOFU" };
+        eprintln!(
+            "[fallback] {name:<13} {verdict:<4} {notdefs}/{total} notdef; fonts: {}",
+            families.join(", ")
+        );
+        if notdefs > 0 && *must {
+            failures.push(format!("{name}: {notdefs}/{total} notdef in {text:?}"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "hard fallback classes carry tofu:\n{}",
+        failures.join("\n")
+    );
+}
