@@ -141,6 +141,8 @@ final class DesktopScrollHost: NSView {
         view.seatRevealHandler { [weak self] rect, placement in self?.reveal(rect, placement) }
         scroll.documentView = view
         host.register(view)
+        view.adoptIntoRedraws = { [weak host] in host?.register($0) }
+        view.orphanFromRedraws = { [weak host] in host?.unregister($0) }
         if grabsFocus {
             // The window may still be seating the pane this turn —
             // claim the keyboard once it is in the hierarchy.
@@ -446,6 +448,8 @@ final class DesktopComposerHost: NSView {
         }
         addSubview(view)
         host.register(view)
+        view.adoptIntoRedraws = { [weak host] in host?.register($0) }
+        view.orphanFromRedraws = { [weak host] in host?.unregister($0) }
         content = view
         if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK3"] {
             let parts = spec.split(separator: ",").compactMap { Double($0) }
@@ -542,6 +546,8 @@ final class PlainBridgeHost: NSView {
         view.autoresizingMask = [.width, .height]
         addSubview(view)
         host.register(view)
+        view.adoptIntoRedraws = { [weak host] in host?.register($0) }
+        view.orphanFromRedraws = { [weak host] in host?.unregister($0) }
         content = view
         // Wheels over a PLAIN pane go to the ENGINE's scroller —
         // and must win against native hosts lying beneath.
@@ -551,12 +557,14 @@ final class PlainBridgeHost: NSView {
         // Same debug harness as the scroll host: HIMARK_DEBUG_CLICK2
         // pokes THIS pane (the canvas) once.
         if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_CLICK2"] {
-            let parts = spec.split(separator: ",").compactMap { Double($0) }
-            if parts.count == 3 {
+            for one in spec.split(separator: ";") {
+                let parts = one.split(separator: ",").compactMap { Double($0) }
+                guard parts.count == 3 else { continue }
                 DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak view] in
                     guard let view else { return }
                     let s = Float(view.metalLayer.contentsScale)
                     let (x, y) = (Float(parts[0]) * s, Float(parts[1]) * s)
+                    NSLog("[click2] pane \(view.bounds.size) poke (\(parts[0]),\(parts[1]))")
                     view.send(himark_event_mouse_down(x, y, 0, 1))
                     view.send(himark_event_mouse_up(x, y))
                 }

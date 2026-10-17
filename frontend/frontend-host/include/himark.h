@@ -635,6 +635,40 @@ uintptr_t himark_place_session_uri(HimarkEngine *engine,
                                    uintptr_t cap);
 
 /**
+ * A bridge's exported WINDOW overlays — the anchors that become
+ * the shell's popovers. The epoch moves only when the set
+ * changes: poll it per frame, reconcile on change.
+ */
+uintptr_t himark_bridge_overlays(HimarkEngine *engine, HimarkBridge bridge, uint64_t *out_epoch);
+
+bool himark_bridge_overlay_anchor(HimarkEngine *engine,
+                                  HimarkBridge bridge,
+                                  uintptr_t index,
+                                  float *out_x,
+                                  float *out_y,
+                                  float *out_width,
+                                  float *out_height);
+
+/**
+ * A POPOVER bridge's content slice, in the PARENT'S coordinates
+ * — the rect the popover shows. Stashed by the bridge's last
+ * layout: lay it (`himark_bridge_layout`) before reading. False
+ * while the overlay stands empty.
+ */
+bool himark_overlay_content_rect(HimarkEngine *engine,
+                                 HimarkBridge bridge,
+                                 float *out_x,
+                                 float *out_y,
+                                 float *out_width,
+                                 float *out_height);
+
+/**
+ * Mount the POPOVER's bridge for overlay #index of `bridge`.
+ * Unmount it like any bridge when the popover closes.
+ */
+HimarkBridge himark_overlay_mint(HimarkEngine *engine, HimarkBridge bridge, uintptr_t index);
+
+/**
  * Mint the view a place names, mounted as a bridge. The place
  * handle stays usable (mint again, or release when done); 0
  * refuses a place no view answers — typically a session the

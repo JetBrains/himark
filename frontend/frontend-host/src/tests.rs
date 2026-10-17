@@ -8603,9 +8603,8 @@ fn a_late_files_tree_stands_on_the_followed_file() {
     settle(&mut engine);
 
     // The tree mounts LATE and must replay the standing follow.
-    let place = hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(
-        session.clone(),
-    ));
+    let place =
+        hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(session.clone()));
     let tree = himark::mounts::mount_place(&mut engine.app, &place, Some(session))
         .expect("the files tree mounts");
     // Reveals park on the mounted PAINT road — drive it the way
@@ -8614,23 +8613,26 @@ fn a_late_files_tree_stands_on_the_followed_file() {
     // already visible is rightly quiet — the ask must have reason.
     let mut surface = skia_safe::surfaces::raster_n32_premul((320, 40)).expect("surface");
     let mut now = 0.0;
-    settle_until(&mut engine, "the standing follow parks the reveal", |engine| {
-        let _ = engine.app.draw_mounted(
-            tree,
-            surface.canvas(),
-            skia_safe::Size::new(320.0, 40.0),
-        );
-        // The reveal rides the CLOCK road, and the MOUNTED clock is
-        // the engine tick — the shell's display link, not the
-        // workbench animate (which walks windows only).
-        now += 16.0;
-        let _ = engine.animation_tick(now);
-        match engine.app.take_reveal() {
-            Some((id, _reveal)) => {
-                assert_eq!(id, tree, "the reveal belongs to the late tree");
-                true
+    settle_until(
+        &mut engine,
+        "the standing follow parks the reveal",
+        |engine| {
+            let _ =
+                engine
+                    .app
+                    .draw_mounted(tree, surface.canvas(), skia_safe::Size::new(320.0, 40.0));
+            // The reveal rides the CLOCK road, and the MOUNTED clock is
+            // the engine tick — the shell's display link, not the
+            // workbench animate (which walks windows only).
+            now += 16.0;
+            let _ = engine.animation_tick(now);
+            match engine.app.take_reveal() {
+                Some((id, _reveal)) => {
+                    assert_eq!(id, tree, "the reveal belongs to the late tree");
+                    true
+                }
+                None => false,
             }
-            None => false,
-        }
-    });
+        },
+    );
 }

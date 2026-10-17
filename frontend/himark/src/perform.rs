@@ -169,6 +169,24 @@ impl Performer<'_> {
                 fx.scope(AppCommand::Verb, |fx| verb.run(store, ui, fx));
             }
             AppCommand::ToView(id, command) => {
+                // A POPOVER's view pins this parent to lay against:
+                // quiesce each child's frames (they borrow the
+                // parent) and drop the pin, or the parent can never
+                // be taken mutably while a popover stands.
+                let children: Vec<_> = self
+                    .bridges
+                    .iter()
+                    .filter(|(_, slot)| slot.overlay_parent == Some(id))
+                    .map(|(child, _)| *child)
+                    .collect();
+                for child in children {
+                    if let Some(slot) = self.bridges.get_mut(&child) {
+                        crate::bridge::quiesce(child, slot, self.stage_layouts, self.stage_frames);
+                        if let Some(view) = slot.bridge.view_mut() {
+                            view.overlay_release_parent();
+                        }
+                    }
+                }
                 let Some(slot) = self.bridges.get_mut(&id) else {
                     eprintln!(
                         "[app] a view command addressed an unmounted bridge — dropped: {command}"
@@ -178,7 +196,9 @@ impl Performer<'_> {
                 crate::bridge::quiesce(id, slot, self.stage_layouts, self.stage_frames);
                 let Some(view) = slot.bridge.view_mut() else {
                     eprintln!(
-                        "[app] a view is still borrowed by foreign stages — dropped: {command}"
+                        "[app] a view is still borrowed by foreign stages — dropped: {command} (bridge {}, refs {})",
+                        id.raw(),
+                        slot.bridge.view_refs()
                     );
                     return;
                 };

@@ -211,6 +211,32 @@ final class HimarkEngine {
         sizedString { himark_place_session_uri(engine, place, $0, $1) } ?? ""
     }
 
+    /// A bridge's exported WINDOW overlays: the popover presence
+    /// the shell reconciles against. Epoch moves on change only.
+    func overlays(bridge: HimarkBridge) -> (epoch: UInt64, anchors: [CGRect]) {
+        var epoch: UInt64 = 0
+        let count = Int(himark_bridge_overlays(engine, bridge, &epoch))
+        var anchors: [CGRect] = []
+        anchors.reserveCapacity(count)
+        for index in 0..<count {
+            var x: Float = 0
+            var y: Float = 0
+            var w: Float = 0
+            var h: Float = 0
+            if himark_bridge_overlay_anchor(engine, bridge, UInt(index), &x, &y, &w, &h) {
+                anchors.append(CGRect(
+                    x: CGFloat(x), y: CGFloat(y),
+                    width: CGFloat(w), height: CGFloat(h)))
+            }
+        }
+        return (epoch, anchors)
+    }
+
+    /// Mount the POPOVER's bridge for overlay #index of `bridge`.
+    func mintOverlay(bridge: HimarkBridge, index: Int) -> HimarkBridge {
+        himark_overlay_mint(engine, bridge, UInt(index))
+    }
+
     func release(place: HimarkPlace) {
         himark_place_release(engine, place)
     }

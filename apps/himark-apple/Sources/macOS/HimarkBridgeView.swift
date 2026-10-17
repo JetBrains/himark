@@ -16,6 +16,9 @@ import QuartzCore
 class HimarkBridgeView: NSView, NSTextInputClient {
     let engine: HimarkEngine
     let bridgeId: HimarkBridge
+    /// Kept for the popovers this view spawns — each popover hosts
+    /// a full bridge view of its own (recursion is normal).
+    private let device: MTLDevice
 
     /// Embedded as a SCROLL VIEW's content: the view spans the whole
     /// content, its coordinates ARE content coordinates (flipped),
@@ -90,6 +93,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     ) {
         self.engine = engine
         self.bridgeId = bridge
+        self.device = device
         self.scrollEmbedded = scrollEmbedded
         super.init(frame: frame)
         wantsLayer = true
@@ -169,6 +173,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             caLink.invalidate()
             self.caLink = nil
             linkRunning = false
+            closeAllPopovers()
         }
     }
 
@@ -195,6 +200,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     private func tick() {
         let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
         engine.drainReveal()
+        reconcileOverlays()
         if needsRedraw || animating {
             if Self.traceSync {
                 if needsRedraw { renderedDirty += 1 } else { renderedAnimating += 1 }
@@ -300,6 +306,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             return
         }
 
+        if let origin = overlayOrigin {
+            renderOverlaySlice(origin, scale: scale)
+            return
+        }
+
         let w = Int32(bounds.width * scale)
         let h = Int32(bounds.height * scale)
         // Same rule as the band: the drawable's new SIZE and the
@@ -315,6 +326,44 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         }
         CATransaction.commit()
         if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
+        engine.drainReveal()
+    }
+
+    /// The POPOVER road: the overlay frame shares the parent's
+    /// coordinates; this paints exactly the content slice at
+    /// `origin`, sized to this view.
+    private func renderOverlaySlice(_ origin: CGPoint, scale: CGFloat) {
+        let w = Int32(bounds.width * scale)
+        let h = Int32(bounds.height * scale)
+        guard w > 0, h > 0 else { return }
+        let raw = engine.raw
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+        let layout = himark_bridge_layout(
+            raw, bridgeId, Float(bounds.width * scale), Float(bounds.height * scale))
+        if layout.raw != 0 {
+            let ox = Float(origin.x * scale)
+            let oy = Float(origin.y * scale)
+            let frame = himark_layout_realize(
+                raw, layout, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
+            if frame.raw != 0 {
+                if let canvas = surface.begin(pixelWidth: w, pixelHeight: h) {
+                    let changed = himark_frame_paint(
+                        raw, frame, canvas, ox, oy,
+                        Float(bounds.width * scale), Float(bounds.height * scale))
+                    surface.end()
+                    if changed {
+                        request()
+                    } else {
+                        himark_frame_release(raw, frame)
+                    }
+                } else {
+                    himark_frame_release(raw, frame)
+                }
+            }
+        }
+        CATransaction.commit()
         engine.drainReveal()
     }
 
@@ -434,6 +483,183 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             || (needBottom && bottomRoom < Self.bandGuard)
     }
 
+    // ─── overlay promotion: popovers, reconciled per frame ───
+    //
+    // The engine emits overlays immediate-mode; the shell retains
+    // popovers. Per tick: one epoch read — on change, diff the
+    // emitted set against the open popovers by index. New opens,
+    // absent closes, moved repositions. Each popover's content is
+    // ANOTHER bridge (the engine re-derives the overlay alone), so
+    // a popover's own overlays become nested popovers for free.
+    private var overlayEpoch: UInt64 = 0
+    private var popovers: [Int: (popover: NSPopover, bridge: HimarkBridge, anchor: CGRect)] = [:]
+
+    /// The host's redraw fan-out, handed down at minting so popover
+    /// content views (and THEIR popovers) hear store dirt too — an
+    /// unadopted view paints once and then freezes.
+    var adoptIntoRedraws: ((HimarkBridgeView) -> Void)?
+    var orphanFromRedraws: ((HimarkBridgeView) -> Void)?
+
+    /// Set on a POPOVER's content view: the content slice's origin
+    /// in the PARENT'S coordinates (points). The overlay frame
+    /// shares the parent's coordinate space — events offset by
+    /// this on the way in, the paint realizes this viewport.
+    var overlayOrigin: CGPoint?
+
+    private static let traceOverlay =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_OVERLAY"] != nil
+
+    private func reconcileOverlays() {
+        let (epoch, pixelAnchors) = engine.overlays(bridge: bridgeId)
+        if popovers.isEmpty && epoch == overlayEpoch { return }
+        if Self.traceOverlay, epoch != overlayEpoch {
+            let rects = pixelAnchors.map {
+                "(\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height)))"
+            }.joined(separator: " ")
+            NSLog("[overlay] bridge \(bridgeId.raw): epoch \(epoch) (seen \(overlayEpoch)) anchors [\(rects)] popovers \(popovers.count)")
+        }
+        let s = metalLayer.contentsScale
+        let anchors = pixelAnchors.map {
+            CGRect(x: $0.minX / s, y: $0.minY / s, width: $0.width / s, height: $0.height / s)
+        }
+        // PRESENCE moves with the epoch: absent closes, new opens.
+        if epoch != overlayEpoch {
+            overlayEpoch = epoch
+            for (index, entry) in popovers where index >= anchors.count {
+                if Self.traceOverlay {
+                    NSLog("[overlay] close #\(index) (absent)")
+                }
+                entry.popover.close()
+                releaseOverlay(entry)
+                popovers[index] = nil
+            }
+            for (index, anchor) in anchors.enumerated() where popovers[index] == nil {
+                let minted = engine.mintOverlay(bridge: bridgeId, index: index)
+                if Self.traceOverlay {
+                    NSLog("[overlay] open #\(index) anchor \(anchor) -> bridge \(minted.raw)")
+                }
+                guard minted.raw != 0 else { continue }
+                let content = HimarkBridgeView(
+                    frame: NSRect(origin: .zero, size: CGSize(width: 40, height: 20)),
+                    engine: engine, device: device, bridge: minted)
+                // The popover chrome shows through whatever the
+                // content leaves unpainted — an opaque layer would
+                // show it black.
+                content.metalLayer.isOpaque = false
+                content.adoptIntoRedraws = adoptIntoRedraws
+                content.orphanFromRedraws = orphanFromRedraws
+                adoptIntoRedraws?(content)
+                let controller = NSViewController()
+                controller.view = content
+                let popover = NSPopover()
+                // The shell NEVER closes this on its own: presence
+                // is the ENGINE'S — outside clicks forward to the
+                // scrim, the widget closes, the epoch moves, and
+                // THEN reconcile closes the popover.
+                popover.behavior = .applicationDefined
+                popover.animates = false
+                popover.contentViewController = controller
+                popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+                popovers[index] = (popover, minted, anchor)
+            }
+        }
+        // GEOMETRY is reconciled EVERY pass while anything is open:
+        // the anchor moves with the parent's layout, the size with
+        // the overlay's own content (a completion list filters
+        // without touching its anchor). Measure is a one-pass
+        // stage; popovers are few and short-lived.
+        for (index, entry) in popovers {
+            guard index < anchors.count else { continue }
+            let anchor = anchors[index]
+            // Refresh the slice: lay (stashes the content rect),
+            // release, read. The rect is the popover's size; its
+            // origin is the content view's offset into the shared
+            // coordinate space.
+            let layout = himark_bridge_layout(
+                engine.raw, entry.bridge, Float(bounds.width * s), Float(bounds.height * s))
+            if layout.raw != 0 {
+                himark_layout_release(engine.raw, layout)
+            }
+            var cx: Float = 0
+            var cy: Float = 0
+            var cw: Float = 0
+            var ch: Float = 0
+            guard himark_overlay_content_rect(engine.raw, entry.bridge, &cx, &cy, &cw, &ch)
+            else { continue }
+            let rect = CGRect(
+                x: CGFloat(cx) / s, y: CGFloat(cy) / s,
+                width: CGFloat(cw) / s, height: CGFloat(ch) / s)
+            if let content = entry.popover.contentViewController?.view as? HimarkBridgeView {
+                content.overlayOrigin = rect.origin
+            }
+            if entry.anchor != anchor {
+                entry.popover.positioningRect = anchor
+                popovers[index]?.anchor = anchor
+            }
+            if entry.popover.contentSize != rect.size {
+                entry.popover.contentSize = rect.size
+            }
+        }
+        reconcileOutsideClickWatch()
+    }
+
+    // ─── the outside-click watch ───
+    //
+    // The scrim covers only THIS pane; shell-app's covers the whole
+    // window. While popovers stand, a local monitor plays the rest
+    // of the window: any mouse-down outside the popovers and this
+    // pane sends Escape into the pane's focus chain — the combo or
+    // completion closes itself, the epoch moves, reconcile closes
+    // the popovers — and the click continues to whatever it hit.
+    private var outsideClickMonitor: Any?
+
+    private func reconcileOutsideClickWatch() {
+        if popovers.isEmpty {
+            if let monitor = outsideClickMonitor {
+                NSEvent.removeMonitor(monitor)
+                outsideClickMonitor = nil
+            }
+            return
+        }
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) {
+            [weak self] event in
+            guard let self, !self.popovers.isEmpty else { return event }
+            for (_, entry) in self.popovers {
+                if entry.popover.contentViewController?.view.window === event.window {
+                    return event
+                }
+            }
+            if event.window === self.window {
+                let p = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(p) { return event }
+            }
+            if Self.traceOverlay {
+                NSLog("[overlay] outside click -> escape to bridge \(self.bridgeId.raw)")
+            }
+            _ = self.sendKey(UInt32(HIMARK_KEY_ESCAPE))
+            return event
+        }
+    }
+
+    private func closeAllPopovers() {
+        for (_, entry) in popovers {
+            entry.popover.close()
+            releaseOverlay(entry)
+        }
+        popovers.removeAll()
+        reconcileOutsideClickWatch()
+    }
+
+    /// Unmount a closed popover's bridge and orphan its view from
+    /// the redraw fan-out.
+    private func releaseOverlay(_ entry: (popover: NSPopover, bridge: HimarkBridge, anchor: CGRect)) {
+        if let content = entry.popover.contentViewController?.view as? HimarkBridgeView {
+            orphanFromRedraws?(content)
+        }
+        engine.unmount(bridge: entry.bridge)
+    }
+
     func request() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.request() }
@@ -447,8 +673,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let p = convert(event.locationInWindow, from: nil)
         let s = metalLayer.contentsScale
         let y = isFlipped ? p.y : (bounds.height - p.y)
-        return (Float(p.x * s), Float(y * s))
+        let o = overlayOrigin ?? .zero
+        return (Float((p.x + o.x) * s), Float((y + o.y) * s))
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -457,6 +686,30 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     @discardableResult
     func routeMouseDown(_ event: NSEvent) -> Bool {
         let (x, y) = devicePoint(event)
+        // While popovers stand, the ENGINE'S SCRIM owns this pane's
+        // clicks — shell-app's composited road, forwarded. The
+        // overlay frame shares this pane's coordinates, so the
+        // point travels untranslated; the scrim turns it into the
+        // dismissal the widget wired, the epoch moves, reconcile
+        // closes the popover.
+        if !popovers.isEmpty {
+            var consumed = false
+            for (_, entry) in popovers {
+                let down = himark_event_mouse_down(x, y, himarkMods(event), 1)
+                consumed = engine.bridgeEvent(bridge: entry.bridge, event: down).changed || consumed
+                himark_event_release(down)
+                let up = himark_event_mouse_up(x, y)
+                _ = engine.bridgeEvent(bridge: entry.bridge, event: up)
+                himark_event_release(up)
+            }
+            engine.drainReveal()
+            request()
+            // A SCRIM took it: the click was the dismissal, spent.
+            // Nothing took it (a completion popup carries no scrim
+            // — the widget closes on its own interactions): the
+            // click is the PANE'S, fall through.
+            if consumed { return true }
+        }
         let handled = send(himark_event_mouse_down(
             x, y, himarkMods(event), UInt32(clamping: event.clickCount)))
         window?.makeFirstResponder(self)

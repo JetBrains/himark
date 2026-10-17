@@ -1319,6 +1319,124 @@ pub unsafe extern "C" fn himark_place_session_uri(
     copy_optional_utf8(uri, out, cap)
 }
 
+/// A bridge's exported WINDOW overlays — the anchors that become
+/// the shell's popovers. The epoch moves only when the set
+/// changes: poll it per frame, reconcile on change.
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_overlays(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    out_epoch: *mut u64,
+) -> usize {
+    let Some(engine) = engine.as_mut() else {
+        return 0;
+    };
+    let Some((epoch, anchors)) = engine
+        .app
+        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    else {
+        return 0;
+    };
+    if !out_epoch.is_null() {
+        *out_epoch = epoch;
+    }
+    anchors.len()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_overlay_anchor(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    index: usize,
+    out_x: *mut f32,
+    out_y: *mut f32,
+    out_width: *mut f32,
+    out_height: *mut f32,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some((_, anchors)) = engine
+        .app
+        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    else {
+        return false;
+    };
+    let Some(anchor) = anchors.get(index) else {
+        return false;
+    };
+    if !out_x.is_null() {
+        *out_x = anchor.left;
+    }
+    if !out_y.is_null() {
+        *out_y = anchor.top;
+    }
+    if !out_width.is_null() {
+        *out_width = anchor.width();
+    }
+    if !out_height.is_null() {
+        *out_height = anchor.height();
+    }
+    true
+}
+
+/// A POPOVER bridge's content slice, in the PARENT'S coordinates
+/// — the rect the popover shows. Stashed by the bridge's last
+/// layout: lay it (`himark_bridge_layout`) before reading. False
+/// while the overlay stands empty.
+#[no_mangle]
+pub unsafe extern "C" fn himark_overlay_content_rect(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    out_x: *mut f32,
+    out_y: *mut f32,
+    out_width: *mut f32,
+    out_height: *mut f32,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some(rect) = engine
+        .app
+        .overlay_content(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    else {
+        return false;
+    };
+    if !out_x.is_null() {
+        *out_x = rect.left;
+    }
+    if !out_y.is_null() {
+        *out_y = rect.top;
+    }
+    if !out_width.is_null() {
+        *out_width = rect.width();
+    }
+    if !out_height.is_null() {
+        *out_height = rect.height();
+    }
+    true
+}
+
+/// Mount the POPOVER's bridge for overlay #index of `bridge`.
+/// Unmount it like any bridge when the popover closes.
+#[no_mangle]
+pub unsafe extern "C" fn himark_overlay_mint(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    index: usize,
+) -> HimarkBridge {
+    let Some(engine) = engine.as_mut() else {
+        return HimarkBridge { raw: 0 };
+    };
+    match engine
+        .app
+        .mint_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
+    {
+        Some(id) => HimarkBridge { raw: id.raw() },
+        None => HimarkBridge { raw: 0 },
+    }
+}
+
 /// Mint the view a place names, mounted as a bridge. The place
 /// handle stays usable (mint again, or release when done); 0
 /// refuses a place no view answers — typically a session the

@@ -165,8 +165,10 @@ impl BridgeView for PanelMount {
             0.0,
             0.0,
             content
-                .map(move |command| AppCommand::ToView(id, command))
-                .overlay_host(imba::overlay::WINDOW),
+                // No window impersonation: WINDOW overlays BUBBLE
+                // to the frame root, the bridge records them, the
+                // shell promotes them to popovers.
+                .map(move |command| AppCommand::ToView(id, command)),
         );
         ThunkBox::new(arena, container)
     }
@@ -236,8 +238,10 @@ where
             0.0,
             0.0,
             content
-                .map(move |command| AppCommand::ToView(id, DynCommand::new(command)))
-                .overlay_host(imba::overlay::WINDOW),
+                // No window impersonation: WINDOW overlays BUBBLE
+                // to the frame root, the bridge records them, the
+                // shell promotes them to popovers.
+                .map(move |command| AppCommand::ToView(id, DynCommand::new(command))),
         );
         ThunkBox::new(arena, container)
     }
@@ -331,6 +335,134 @@ pub type ModalPlaceArm = std::sync::Arc<
         + Sync,
 >;
 
+/// The POPOVER's bridge: re-derives the parent's frame in its own
+/// arena and stands overlay #index's content alone. The parent's
+/// pixels are a byproduct, discarded; the content's commands were
+/// mapped into the parent's `ToView` space by the parent's own
+/// display, so events from the popover land exactly where the
+/// composited overlay's would have. Its OWN bubbled overlays
+/// export like any bridge's — recursive popovers are normal.
+pub(crate) struct OverlayMount {
+    /// The strong pin the standing frame's borrows ride on. No
+    /// Weak lives here — `Rc::get_mut` refuses a view with ANY
+    /// weak holder, so even an unpinned Weak would block every
+    /// perform on the parent. The ENGINE refills the pin (both
+    /// layout roads) right before laying this view; the ToView
+    /// release road empties it AFTER the frames quiesce — then
+    /// the parent performs exclusively.
+    pub(crate) pinned: std::cell::OnceCell<Rc<dyn BridgeView>>,
+    pub(crate) index: usize,
+    /// The union of the overlay's NON-host-covering pieces, in the
+    /// parent's coordinates — the slice the shell's popover shows.
+    /// Stashed at layout; read through the content-rect door.
+    pub(crate) content: std::cell::Cell<Option<skia_safe::Rect>>,
+}
+
+impl OverlayMount {
+    fn parent_ref(&self) -> Option<&Rc<dyn BridgeView>> {
+        self.pinned.get()
+    }
+}
+
+impl BridgeView for OverlayMount {
+    fn frame_store(&self, store: &Store, ui: &UiCtx) -> Store {
+        match self.parent_ref() {
+            Some(parent) => parent.frame_store(store, ui),
+            None => store.clone(),
+        }
+    }
+
+    /// Keystrokes landing on the popover walk the PARENT'S chain —
+    /// the combo's Escape and the menu's search live there, and
+    /// the chain is a state walk, identical from either window.
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        self.parent_ref()?.focus(store, ui)
+    }
+
+    fn overlay_pin_parent(&self, parent: Rc<dyn BridgeView>) {
+        let _ = self.pinned.set(parent);
+    }
+
+    fn overlay_release_parent(&mut self) {
+        self.pinned.take();
+    }
+
+    fn layout<'a>(
+        &'a self,
+        arena: &'a imba::arena::Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, AppCommand> {
+        use imba::Thunk as _;
+        let Some(parent) = self.parent_ref() else {
+            // The parent unmounted under the popover — stand
+            // empty; the shell closes on the next epoch.
+            self.content.set(None);
+            return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
+        };
+        let inner = parent.layout(arena, store, ui, constraints);
+        let host_size = inner.size();
+        let mut stacked = {
+            let mut base = imba::container::Container::new(arena, host_size);
+            base.place(0.0, 0.0, inner);
+            base.realize_into(skia_safe::Rect::from_size(host_size))
+        };
+        let picked = imba::Widget::overlays(&mut stacked)
+            .into_iter()
+            .filter(|overlay| overlay.host == imba::overlay::WINDOW)
+            .nth(self.index);
+        let Some(overlay) = picked else {
+            // The overlay left between frames — the shell's next
+            // reconciliation closes this popover; stand empty.
+            self.content.set(None);
+            return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
+        };
+        let placed = overlay.content.layout(arena, host_size, overlay.anchor);
+        // EVERY piece stays, at its TRUE position — including the
+        // host-covering DISMISS SCRIM. This frame shares the
+        // parent's coordinate space: the parent forwards outside
+        // clicks here untranslated, the scrim turns them into the
+        // dismissal the widget wired — shell-app's composited
+        // road, verbatim. The shell's popover shows only the
+        // CONTENT slice: the union of the non-host-covering
+        // pieces, stashed here for the content-rect door.
+        let mut content: Option<skia_safe::Rect> = None;
+        for (point, thunk) in &placed {
+            let size = thunk.size();
+            let host_covering =
+                size.width >= host_size.width - 0.5 && size.height >= host_size.height - 0.5;
+            if !host_covering {
+                let rect = skia_safe::Rect::from_xywh(point.x, point.y, size.width, size.height);
+                content = Some(match content {
+                    Some(mut acc) => {
+                        acc.join(rect);
+                        acc
+                    }
+                    None => rect,
+                });
+            }
+        }
+        self.content.set(content);
+        if content.is_none() {
+            return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
+        }
+        let mut full = imba::container::container(arena, host_size);
+        for (point, thunk) in placed {
+            full.place(point.x, point.y, thunk);
+        }
+        imba::ThunkBox::new(arena, full)
+    }
+
+    fn overlay_content_rect(&self) -> Option<skia_safe::Rect> {
+        self.content.get()
+    }
+}
+
 /// The dyn twin of `ModalMount`, for externally-answered places.
 pub(crate) struct DynModalMount {
     id: ViewBridgeId,
@@ -370,8 +502,10 @@ impl BridgeView for DynModalMount {
             0.0,
             0.0,
             content
-                .map(move |command| AppCommand::ToView(id, command))
-                .overlay_host(imba::overlay::WINDOW),
+                // No window impersonation: WINDOW overlays BUBBLE
+                // to the frame root, the bridge records them, the
+                // shell promotes them to popovers.
+                .map(move |command| AppCommand::ToView(id, command)),
         );
         ThunkBox::new(arena, container)
     }
@@ -915,8 +1049,10 @@ impl BridgeView for EditorMount {
             0.0,
             0.0,
             content
-                .map(move |command| AppCommand::ToView(id, DynCommand::new(command)))
-                .overlay_host(imba::overlay::WINDOW),
+                // No window impersonation: WINDOW overlays BUBBLE
+                // to the frame root, the bridge records them, the
+                // shell promotes them to popovers.
+                .map(move |command| AppCommand::ToView(id, DynCommand::new(command))),
         );
         ThunkBox::new(arena, container)
     }

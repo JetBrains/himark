@@ -159,6 +159,23 @@ pub(crate) trait BridgeView {
         let _ = (origin, store, ui, fx);
         eprintln!("[bridge] a view command reached a view with no perform — dropped: {command}");
     }
+
+    /// A POPOVER view's content slice, in the parent's coordinates
+    /// — the rect the shell's popover shows. `None` everywhere but
+    /// `OverlayMount`.
+    fn overlay_content_rect(&self) -> Option<skia_safe::Rect> {
+        None
+    }
+
+    /// Hand a POPOVER view the strong pin on its parent it lays
+    /// against — the engine refills it before each layout. A
+    /// no-op everywhere but `OverlayMount`.
+    fn overlay_pin_parent(&self, _parent: std::rc::Rc<dyn BridgeView>) {}
+
+    /// Drop a POPOVER view's strong pin on its parent — called
+    /// (after its frames quiesce) before the parent is taken
+    /// mutably. A no-op everywhere but `OverlayMount`.
+    fn overlay_release_parent(&mut self) {}
 }
 
 /// One mounted view: the state carrier, retained. Everything else
@@ -177,6 +194,12 @@ impl ViewBridge {
         self.view.as_ref()
     }
 
+    /// The retained view by handle — the popover mint holds the
+    /// parent alive through it.
+    pub(crate) fn view_rc(&self) -> Rc<dyn BridgeView> {
+        Rc::clone(&self.view)
+    }
+
     /// The retained view, mutably — available only while NOTHING
     /// borrows it: no standing frame, no stage out with a host.
     /// The `ToView` road quiesces first, so `None` here is a
@@ -184,6 +207,12 @@ impl ViewBridge {
     /// loudly rather than mutate under it).
     pub(crate) fn view_mut(&mut self) -> Option<&mut (dyn BridgeView + 'static)> {
         Rc::get_mut(&mut self.view)
+    }
+
+    /// Strong holders of the view right now — the borrow guard's
+    /// diagnostic twin.
+    pub(crate) fn view_refs(&self) -> usize {
+        Rc::strong_count(&self.view)
     }
 
     /// display → layout: cut the view's frame snapshot, read the
@@ -295,6 +324,20 @@ pub struct Frame {
 impl Frame {
     pub fn handle(&self, event: &Event<'_>, viewport: Rect) -> EventResult<AppCommand> {
         self.tree.handle_event(&self.arena, event, viewport)
+    }
+
+    /// Drain the WINDOW overlays that bubbled to this frame's root
+    /// uncaught — on the mounted road nobody plays the window, and
+    /// handling them is the BRIDGE's job: their anchors become the
+    /// shell's popovers, their contents are re-derived by the
+    /// popover's own bridge. Draining consumes; once per frame.
+    pub(crate) fn window_overlays(&mut self) -> Vec<Rect> {
+        self.tree
+            .overlays()
+            .into_iter()
+            .filter(|overlay| overlay.host == imba::overlay::WINDOW)
+            .map(|overlay| overlay.anchor)
+            .collect()
     }
 
     pub(crate) fn layout_data(

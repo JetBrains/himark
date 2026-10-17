@@ -24,6 +24,20 @@ use crate::stats::Stats;
 pub(crate) struct Mounted {
     pub(crate) bridge: crate::bridge::ViewBridge,
 
+    /// The WINDOW overlays this bridge's last frame bubbled —
+    /// anchors in content coordinates, an epoch that moves when the
+    /// set changes. The shell reconciles native popovers against
+    /// this; the bridge composites none of them.
+    pub(crate) overlay_anchors: Vec<skia_safe::Rect>,
+    pub(crate) overlay_epoch: u64,
+
+    /// Set on a POPOVER's slot: the bridge whose overlay this view
+    /// stands. The popover window is content-sized, but the
+    /// re-derivation inside must run at the PARENT'S size — both
+    /// layout roads substitute the parent slot's standing size for
+    /// the shell's constraints.
+    pub(crate) overlay_parent: Option<ViewBridgeId>,
+
     /// The last realized widget tree, derived at `revision` ×
     /// `size` — the standing frame events replay against between
     /// store batches.
@@ -45,6 +59,9 @@ impl Mounted {
     pub(crate) fn new(view: std::rc::Rc<dyn crate::bridge::BridgeView>) -> Mounted {
         Mounted {
             bridge: crate::bridge::ViewBridge::new(view),
+            overlay_anchors: Vec::new(),
+            overlay_epoch: 0,
+            overlay_parent: None,
             frame: None,
             revision: 0,
             size: skia_safe::Size::new(-1.0, -1.0),
@@ -620,7 +637,15 @@ impl Himark {
         size: Option<skia_safe::Size>,
     ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
         let revision = self.revision;
+        // A popover slot's layout runs at the PARENT'S standing
+        // size, against a freshly pinned parent; its own `size`
+        // stays the content-shaped cache key.
+        let host_size = self.overlay_host_size(id);
+        let pin = self.overlay_parent_pin(id);
         let slot = self.bridges.get_mut(&id)?;
+        if let Some(parent) = pin {
+            slot.bridge.view().overlay_pin_parent(parent);
+        }
         let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
         let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
         if !fresh {
@@ -631,7 +656,7 @@ impl Himark {
             let layout = slot.bridge.layout(
                 &self.store,
                 &self.ui,
-                imba::constraints::Constraints::tight(size),
+                imba::constraints::Constraints::tight(host_size.unwrap_or(size)),
                 arena,
             );
             // A stage client's shadow realizes the band the HOST
@@ -639,7 +664,13 @@ impl Himark {
             let viewport = slot
                 .stage_viewport
                 .unwrap_or_else(|| skia_safe::Rect::from_size(size));
-            slot.frame = Some(layout.realize(viewport));
+            let mut frame = layout.realize(viewport);
+            let anchors = frame.window_overlays();
+            if anchors != slot.overlay_anchors {
+                slot.overlay_anchors = anchors;
+                slot.overlay_epoch += 1;
+            }
+            slot.frame = Some(frame);
             slot.revision = revision;
             slot.size = size;
         }
@@ -725,6 +756,57 @@ impl Himark {
             true => parked,
             false => self.perform_batch(handled.commands) || parked,
         }
+    }
+
+    /// A bridge's exported overlay PRESENCE: the epoch and anchors
+    /// the shell reconciles its popovers against.
+    pub fn bridge_overlays(&self, id: ViewBridgeId) -> Option<(u64, Vec<skia_safe::Rect>)> {
+        let slot = self.bridges.get(&id)?;
+        Some((slot.overlay_epoch, slot.overlay_anchors.clone()))
+    }
+
+    /// Mount the POPOVER's bridge: a view that re-derives the
+    /// parent's frame and stands overlay #index's content alone.
+    /// Recursive popovers are normal — this bridge exports its own
+    /// bubbled overlays like any other.
+    pub fn mint_overlay(&mut self, parent: ViewBridgeId, index: usize) -> Option<ViewBridgeId> {
+        self.bridges.get(&parent)?;
+        let id = self.mount(move |_store, _ui, _id, _fx| {
+            Some(std::rc::Rc::new(crate::mounts::OverlayMount {
+                pinned: std::cell::OnceCell::new(),
+                index,
+                content: std::cell::Cell::new(None),
+            }) as std::rc::Rc<dyn crate::bridge::BridgeView>)
+        })?;
+        if let Some(slot) = self.bridges.get_mut(&id) {
+            slot.overlay_parent = Some(parent);
+        }
+        Some(id)
+    }
+
+    /// A POPOVER slot's content slice, in the parent's coordinates
+    /// — stashed by the last layout. The shell sizes the popover
+    /// to it and paints exactly this viewport.
+    pub fn overlay_content(&self, id: ViewBridgeId) -> Option<skia_safe::Rect> {
+        self.bridges.get(&id)?.bridge.view().overlay_content_rect()
+    }
+
+    /// The parent view a popover slot pins before laying out.
+    fn overlay_parent_pin(
+        &self,
+        id: ViewBridgeId,
+    ) -> Option<std::rc::Rc<dyn crate::bridge::BridgeView>> {
+        let parent = self.bridges.get(&id)?.overlay_parent?;
+        Some(self.bridges.get(&parent)?.bridge.view_rc())
+    }
+
+    /// A popover slot lays out at its PARENT'S standing size — the
+    /// popover window is content-sized, and tight constraints at
+    /// that size would collapse the re-derivation inside.
+    fn overlay_host_size(&self, id: ViewBridgeId) -> Option<skia_safe::Size> {
+        let parent = self.bridges.get(&id)?.overlay_parent?;
+        let size = self.bridges.get(&parent)?.size;
+        (size.width > 0.0).then_some(size)
     }
 
     /// Drain the parked reveal — the host scrolls it into view.
@@ -880,9 +962,17 @@ impl Himark {
     // ── the stage doors (the C surface delegates here) ──
 
     pub fn stage_layout(&mut self, id: ViewBridgeId, size: skia_safe::Size) -> u64 {
+        // A popover slot ignores the shell's (content-sized) ask
+        // and lays out at the parent's standing size, against a
+        // freshly pinned parent.
+        let size = self.overlay_host_size(id).unwrap_or(size);
+        let pin = self.overlay_parent_pin(id);
         let Some(slot) = self.bridges.get_mut(&id) else {
             return 0;
         };
+        if let Some(parent) = pin {
+            slot.bridge.view().overlay_pin_parent(parent);
+        }
         let arena = slot.spare_arena.take().unwrap_or_default();
         // An INFINITE height is the native scroller asking to
         // measure: width pinned, height the content's own — the
