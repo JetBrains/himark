@@ -162,7 +162,7 @@ fn box_backgrounds_hug_their_content() {
     let ui = crate::test_document::test_ui();
     let width = 800.0;
 
-    let json = include_str!("../assets/theme.json").replace("#401f2937", "#ff2fc142");
+    let json = include_str!("../assets/theme.json").replace("#4025252a", "#ff2fc142");
     let theme = crate::theme::Theme::from_json(&json).expect("test theme parses");
     let source = "```\nshort\nlonger code line\n```\nplain filler text that runs much much much longer than any code line above\n";
     let mut document = crate::test_document::fenced_code_document(source);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod assist;
-pub mod band_cache;
 pub(crate) mod before_inlay;
 pub mod caret;
 pub(crate) mod caret_ops;

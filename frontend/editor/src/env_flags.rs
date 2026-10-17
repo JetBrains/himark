@@ -11,7 +11,6 @@ macro_rules! flag {
 }
 
 flag!(paint_probe, "HIMARK_PAINT_PROBE");
-flag!(no_bands, "HIMARK_NO_BANDS");
 flag!(trace_diff, "HIMARK_TRACE_DIFF");
 flag!(landing_probe, "HIMARK_LANDING_PROBE");
 flag!(trace_repair, "HIMARK_TRACE_REPAIR");

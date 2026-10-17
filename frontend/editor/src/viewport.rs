@@ -646,33 +646,17 @@ impl EditorViewport {
             }
         }
 
-        // The text layer rides the band cache: washes + glyphs baked
-        // into content-anchored rasters, composited over the live
-        // underlay just painted. A rule row draws its rule INSTEAD
-        // of text, so it never reaches the pass. A canvas the cache
-        // cannot serve paints the lines directly — the same calls
-        // `bake` makes.
-        let text_lines: Vec<&ViewportLine> = self
-            .lines
-            .iter()
-            .filter(|line| line.shaped.is_some())
-            .filter(|line| {
-                !(line.marks.resolved(theme).rule.is_some() && !line.inlays.has_instead())
-            })
-            .collect();
-        let banded = crate::band_cache::composite(
-            &crate::band_cache::BandPass {
-                token: self.token,
-                editor: self.editor,
-                lines: &text_lines,
-            },
-            canvas,
-        );
-        if !banded {
-            for line in &text_lines {
-                if let Some(shaped) = &line.shaped {
-                    shaped.paint_in_slot(canvas, line.top, line.text_top, line.top + line.height);
-                }
+        // The text layer paints straight out of the glyph atlas —
+        // the band raster cache that once baked it burned down with
+        // Graphite (a bake was a render pass, a snapshot a copy; it
+        // measured slower than the atlas). A rule row draws its
+        // rule INSTEAD of text, so it never reaches the pass.
+        for line in self.lines.iter().filter(|line| {
+            line.shaped.is_some()
+                && !(line.marks.resolved(theme).rule.is_some() && !line.inlays.has_instead())
+        }) {
+            if let Some(shaped) = &line.shaped {
+                shaped.paint_in_slot(canvas, line.top, line.text_top, line.top + line.height);
             }
         }
 

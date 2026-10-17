@@ -18,11 +18,6 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 tokenize = { path = "../tokenize" }
 
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-# ganesh for the band cache's context identity — one shell, many
-# GPU contexts; a snapshot drawn cross-context comes out black.
-skia-safe = { version = "0.153.3", features = ["ganesh", "textlayout"] }
-
 [features]
 test-support = []
 
