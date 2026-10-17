@@ -374,7 +374,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             let frame = himark_layout_realize(
                 raw, layout, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
             if frame.raw != 0 {
-                if let canvas = surface.begin(pixelWidth: w, pixelHeight: h) {
+                if let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: resized) {
                     let changed = himark_frame_paint(
                         raw, frame, canvas, ox, oy,
                         Float(bounds.width * scale), Float(bounds.height * scale))
@@ -419,7 +419,8 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let frame = himark_layout_realize(
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         guard frame.raw != 0 else { return false }
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return false }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
+        else { return false }
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))

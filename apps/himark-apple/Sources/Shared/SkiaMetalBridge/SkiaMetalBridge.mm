@@ -116,8 +116,15 @@ extern "C" void skia_metal_destroy(SkiaMetal *self) {
     delete self;
 }
 
-extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height) {
+extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height, bool coupled) {
     if (!self || !self->gpu->recorder) return nullptr;
+    // THE LATCH LIVES HERE: a drawable adopts the layer's
+    // presentsWithTransaction at VEND time, not at present time.
+    // Deciding the road at end() handed out transaction-coupled
+    // drawables to the async road — presented on the submit
+    // thread, they waited for a commit that never comes (a
+    // popover empty until its first re-dirty).
+    self->layer.presentsWithTransaction = coupled ? YES : NO;
     self->drawable = [self->layer nextDrawable];
     if (!self->drawable) return nullptr;
 
@@ -137,9 +144,6 @@ extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height
 /// scheduling and presents.
 extern "C" void skia_metal_end(SkiaMetal *self) {
     if (!self || !self->surface) return;
-    // Transaction-coupled present needs the property ON — and it
-    // may be OFF from a preceding async frame.
-    self->layer.presentsWithTransaction = YES;
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
     if (recording) {
@@ -168,13 +172,6 @@ extern "C" void skia_metal_end(SkiaMetal *self) {
 /// own schedule.
 extern "C" void skia_metal_end_async(SkiaMetal *self) {
     if (!self || !self->surface) return;
-    // With presentsWithTransaction ON, CoreAnimation couples EVERY
-    // present to a CA commit — a present issued on the submit
-    // thread then waits for a transaction that never comes, and
-    // the frame simply never reaches glass (typed text invisible
-    // until a resize forced the sync road). The async road runs
-    // with the property OFF: the scheduled present is its own law.
-    self->layer.presentsWithTransaction = NO;
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
     id<CAMetalDrawable> drawable = self->drawable;

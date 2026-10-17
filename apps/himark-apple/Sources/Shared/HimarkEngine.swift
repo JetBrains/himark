@@ -268,7 +268,8 @@ final class HimarkEngine {
     func renderBridge(bridge: HimarkBridge, into surface: SkiaMetalSurface,
                       pixelWidth w: Int32, pixelHeight h: Int32, scale: Float,
                       coupled: Bool = true) -> Bool {
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return false }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
+        else { return false }
         let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
         surface.end(coupled: coupled)
         return reconciling
@@ -420,8 +421,11 @@ final class SkiaMetalSurface {
         skia_metal_destroy(skia)
     }
 
-    func begin(pixelWidth w: Int32, pixelHeight h: Int32) -> UnsafeMutableRawPointer? {
-        skia_metal_begin(skia, w, h)
+    /// `coupled` must be decided BEFORE the drawable is vended —
+    /// it latches the layer's presentsWithTransaction for this
+    /// frame's drawable. Pass the same value to `end`.
+    func begin(pixelWidth w: Int32, pixelHeight h: Int32, coupled: Bool = true) -> UnsafeMutableRawPointer? {
+        skia_metal_begin(skia, w, h, coupled)
     }
 
     /// `coupled` = this frame's layer GEOMETRY changed in the open
