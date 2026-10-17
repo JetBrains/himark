@@ -270,3 +270,38 @@ fn the_editor_family_chain_lands_monospace() {
         wide.width()
     );
 }
+
+/// Which face actually serves BOLD through the editor chain — the
+/// "not bold enough" diagnosis.
+#[cfg(target_os = "macos")]
+#[test]
+fn bold_runs_resolve_a_bold_cut() {
+    let text = "normal BOLDBOLD normal";
+    let from = text.find("BOLD").unwrap();
+    let to = from + "BOLDBOLD".len();
+    let line = ParleyLine::shape_with_families(
+        text,
+        &["SF Mono", "Menlo", "monospace"],
+        24.0,
+        None,
+        &[
+            SpanStyle::plain(skia_safe::Color::BLACK),
+            SpanStyle {
+                bold: true,
+                ..SpanStyle::plain(skia_safe::Color::BLACK)
+            }
+            .at(from),
+            SpanStyle::plain(skia_safe::Color::BLACK).at(to),
+        ],
+    );
+    let report = line.face_report_for_test();
+    for (postscript, embolden, weight) in &report {
+        eprintln!("[parley-bold] run face {postscript:?} embolden {embolden} weight {weight:?}");
+    }
+    assert!(
+        report.iter().any(|(name, embolden, _)| {
+            name.as_deref().map_or(false, |n| n.contains("Bold")) || *embolden
+        }),
+        "no run resolved a bold cut nor synthesized one: {report:?}"
+    );
+}

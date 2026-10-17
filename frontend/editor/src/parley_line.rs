@@ -347,6 +347,34 @@ impl ParleyLine {
         })
     }
 
+    /// TEST SUPPORT for the bold diagnosis: per run, the serving
+    /// face's postscript name, the embolden flag, and the fontique
+    /// weight attribute.
+    #[doc(hidden)]
+    pub fn face_report_for_test(&self) -> Vec<(Option<String>, bool, String)> {
+        CTX.with(|cell| {
+            let ctx = &mut *cell.borrow_mut();
+            let mut out = Vec::new();
+            for line in self.layout.lines() {
+                for item in line.items() {
+                    let PositionedLayoutItem::GlyphRun(run) = item else {
+                        continue;
+                    };
+                    let skia = ctx
+                        .typeface(run.run().font())
+                        .and_then(|typeface| typeface.post_script_name())
+                        .unwrap_or_else(|| "NONE".into());
+                    out.push((
+                        postscript_name_of(run.run().font()),
+                        run.run().synthesis().embolden(),
+                        format!("skia={skia}"),
+                    ));
+                }
+            }
+            out
+        })
+    }
+
     /// TEST SUPPORT for the fallback watch: the families that
     /// served this line, plus notdef counts.
     #[doc(hidden)]
@@ -450,6 +478,13 @@ fn generic_of(name: &str) -> Option<parley::fontique::GenericFamily> {
         "sans-serif" => GenericFamily::SansSerif,
         "serif" => GenericFamily::Serif,
         "system-ui" => GenericFamily::SystemUi,
+        // Apple's HIDDEN families: CoreText never enumerates them,
+        // but the CSS system generics resolve to exactly these
+        // faces — skia special-cases the names, fontique needs the
+        // translation. (The A/B's catch: prose silently fell to
+        // Helvetica Neue, whose Bold reads lighter than SF Pro's.)
+        "SF Pro Text" | "SF Pro Display" | "SF Pro" | "-apple-system" => GenericFamily::SystemUi,
+        "SF Mono" => GenericFamily::UiMonospace,
         _ => return None,
     })
 }
