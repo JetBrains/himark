@@ -30,6 +30,27 @@ const _: () = {
     assert_send_sync::<parley::Layout<Brush>>();
 };
 
+/// One style run over the text — the parley twin of the blob
+/// road's `StyleSpan`, in utf8 offsets.
+#[derive(Clone, Copy)]
+pub struct SpanStyle {
+    pub start: usize,
+    pub color: skia_safe::Color,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+impl SpanStyle {
+    pub fn plain(color: skia_safe::Color) -> Self {
+        Self {
+            start: 0,
+            color,
+            bold: false,
+            italic: false,
+        }
+    }
+}
+
 /// One shaped line (or paragraph) as a Send value.
 pub struct ParleyLine {
     layout: parley::Layout<Brush>,
@@ -111,12 +132,7 @@ impl ParleyLine {
     /// Shape one styled text: uniform family + size, colored spans
     /// (utf8 offset → color runs, matching the blob road's span
     /// model).
-    pub fn shape(
-        text: &str,
-        family: &str,
-        size: f32,
-        spans: &[(usize, skia_safe::Color)],
-    ) -> ParleyLine {
+    pub fn shape(text: &str, family: &str, size: f32, spans: &[SpanStyle]) -> ParleyLine {
         CTX.with(|cell| {
             let ctx = &mut *cell.borrow_mut();
             let mut builder = ctx.layouts.ranged_builder(&mut ctx.fonts, text, 1.0, true);
@@ -124,13 +140,30 @@ impl ParleyLine {
                 parley::FontFamily::named(family),
             ));
             builder.push_default(parley::StyleProperty::FontSize(size));
-            for (index, (start, color)) in spans.iter().enumerate() {
+            for (index, span) in spans.iter().enumerate() {
                 let end = spans
                     .get(index + 1)
-                    .map(|(next, _)| *next)
+                    .map(|next| next.start)
                     .unwrap_or(text.len());
-                if *start < end {
-                    builder.push(parley::StyleProperty::Brush(brush_of(*color)), *start..end);
+                if span.start >= end {
+                    continue;
+                }
+                let range = span.start..end;
+                builder.push(
+                    parley::StyleProperty::Brush(brush_of(span.color)),
+                    range.clone(),
+                );
+                if span.bold {
+                    builder.push(
+                        parley::StyleProperty::FontWeight(parley::FontWeight::BOLD),
+                        range.clone(),
+                    );
+                }
+                if span.italic {
+                    builder.push(
+                        parley::StyleProperty::FontStyle(parley::FontStyle::Italic),
+                        range,
+                    );
                 }
             }
             let mut layout = builder.build(text);
