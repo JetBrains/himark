@@ -56,7 +56,7 @@ pub(crate) struct Mounted {
 }
 
 impl Mounted {
-    pub(crate) fn new(view: std::rc::Rc<dyn crate::bridge::BridgeView>) -> Mounted {
+    pub(crate) fn new(view: std::sync::Arc<dyn crate::bridge::BridgeView>) -> Mounted {
         Mounted {
             bridge: crate::bridge::ViewBridge::new(view),
             overlay_anchors: Vec::new(),
@@ -805,11 +805,12 @@ impl Himark {
     pub fn mint_overlay(&mut self, parent: ViewBridgeId, index: usize) -> Option<ViewBridgeId> {
         self.bridges.get(&parent)?;
         let id = self.mount(move |_store, _ui, _id, _fx| {
-            Some(std::rc::Rc::new(crate::mounts::OverlayMount {
-                pinned: std::cell::OnceCell::new(),
+            Some(std::sync::Arc::new(crate::mounts::OverlayMount {
+                pinned: std::sync::OnceLock::new(),
                 index,
-                content: std::cell::Cell::new(None),
-            }) as std::rc::Rc<dyn crate::bridge::BridgeView>)
+                content: std::sync::Mutex::new(None),
+            })
+                as std::sync::Arc<dyn crate::bridge::BridgeView>)
         })?;
         if let Some(slot) = self.bridges.get_mut(&id) {
             slot.overlay_parent = Some(parent);
@@ -828,7 +829,7 @@ impl Himark {
     fn overlay_parent_pin(
         &self,
         id: ViewBridgeId,
-    ) -> Option<std::rc::Rc<dyn crate::bridge::BridgeView>> {
+    ) -> Option<std::sync::Arc<dyn crate::bridge::BridgeView>> {
         let parent = self.bridges.get(&id)?.overlay_parent?;
         Some(self.bridges.get(&parent)?.bridge.view_rc())
     }
@@ -956,7 +957,7 @@ impl Himark {
             &UiCtx,
             ViewBridgeId,
             &mut crate::perform::AppFx<'_>,
-        ) -> Option<std::rc::Rc<dyn crate::bridge::BridgeView>>,
+        ) -> Option<std::sync::Arc<dyn crate::bridge::BridgeView>>,
     ) -> Option<ViewBridgeId> {
         let id = ViewBridgeId::from_raw(self.next_mount);
         self.next_mount += 1;

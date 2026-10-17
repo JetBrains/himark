@@ -19,6 +19,7 @@
 //! business.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use imba::{
     arena::Arena,
@@ -111,7 +112,7 @@ impl ViewBridgeId {
 /// DynView`'s layout half with the app's concrete command type; it
 /// collapses into `DynView` itself once commands erase too
 /// (docs/himark-core.md, commands section).
-pub(crate) trait BridgeView {
+pub(crate) trait BridgeView: Send + Sync {
     /// The snapshot a frame realizes against. A view that stamps
     /// frame-scoped environment does it here — the workbench
     /// stamps its window's focused seat (`FrameFocus`), so editors
@@ -170,7 +171,7 @@ pub(crate) trait BridgeView {
     /// Hand a POPOVER view the strong pin on its parent it lays
     /// against — the engine refills it before each layout. A
     /// no-op everywhere but `OverlayMount`.
-    fn overlay_pin_parent(&self, _parent: std::rc::Rc<dyn BridgeView>) {}
+    fn overlay_pin_parent(&self, _parent: std::sync::Arc<dyn BridgeView>) {}
 
     /// Drop a POPOVER view's strong pin on its parent — called
     /// (after its frames quiesce) before the parent is taken
@@ -181,11 +182,11 @@ pub(crate) trait BridgeView {
 /// One mounted view: the state carrier, retained. Everything else
 /// is a stage derived from it.
 pub struct ViewBridge {
-    view: Rc<dyn BridgeView>,
+    view: Arc<dyn BridgeView>,
 }
 
 impl ViewBridge {
-    pub(crate) fn new(view: Rc<dyn BridgeView>) -> ViewBridge {
+    pub(crate) fn new(view: Arc<dyn BridgeView>) -> ViewBridge {
         ViewBridge { view }
     }
 
@@ -196,8 +197,8 @@ impl ViewBridge {
 
     /// The retained view by handle — the popover mint holds the
     /// parent alive through it.
-    pub(crate) fn view_rc(&self) -> Rc<dyn BridgeView> {
-        Rc::clone(&self.view)
+    pub(crate) fn view_rc(&self) -> Arc<dyn BridgeView> {
+        Arc::clone(&self.view)
     }
 
     /// The retained view, mutably — available only while NOTHING
@@ -206,13 +207,13 @@ impl ViewBridge {
     /// foreign stage still alive (the caller drops the command
     /// loudly rather than mutate under it).
     pub(crate) fn view_mut(&mut self) -> Option<&mut (dyn BridgeView + 'static)> {
-        Rc::get_mut(&mut self.view)
+        Arc::get_mut(&mut self.view)
     }
 
     /// Strong holders of the view right now — the borrow guard's
     /// diagnostic twin.
     pub(crate) fn view_refs(&self) -> usize {
-        Rc::strong_count(&self.view)
+        Arc::strong_count(&self.view)
     }
 
     /// display → layout: cut the view's frame snapshot, read the
@@ -228,7 +229,7 @@ impl ViewBridge {
     ) -> BridgeLayout {
         let store = Box::new(self.view.frame_store(store, ui.as_ref()));
         let ui = Rc::clone(ui);
-        let view = Rc::clone(&self.view);
+        let view = Arc::clone(&self.view);
         // SAFETY: the erased-to-'static borrows below point into
         // the box and Rc contents moved into the stage right after
         // — heap addresses stable, owners live in the same struct,
@@ -238,7 +239,7 @@ impl ViewBridge {
             let arena_ref: &'static Arena = unsafe { &*(arena.as_ref() as *const Arena) };
             let store_ref: &'static Store = unsafe { &*(store.as_ref() as *const Store) };
             let ui_ref: &'static UiCtx = unsafe { &*(Rc::as_ptr(&ui)) };
-            let view_ref: &'static dyn BridgeView = unsafe { &*Rc::as_ptr(&view) };
+            let view_ref: &'static dyn BridgeView = unsafe { &*Arc::as_ptr(&view) };
             view_ref.layout(arena_ref, store_ref, ui_ref, constraints)
         };
         BridgeLayout {
@@ -271,7 +272,7 @@ pub struct BridgeLayout {
     arena: Box<Arena>,
     store: Box<Store>,
     ui: Rc<UiCtx>,
-    view: Rc<dyn BridgeView>,
+    view: Arc<dyn BridgeView>,
 }
 
 impl BridgeLayout {
@@ -318,7 +319,7 @@ pub struct Frame {
     store: Box<Store>,
     ui: Rc<UiCtx>,
     #[allow(dead_code)] // the tree may borrow the view; kept alive here
-    view: Rc<dyn BridgeView>,
+    view: Arc<dyn BridgeView>,
 }
 
 impl Frame {

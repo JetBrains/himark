@@ -264,7 +264,7 @@ impl Himark {
         let id = crate::bridge::ViewBridgeId::from_raw(window.raw());
         let revision = self.revision;
         let slot = self.bridges.entry(id).or_insert_with(|| {
-            crate::himark::Mounted::new(std::rc::Rc::new(WorkbenchView { window }))
+            crate::himark::Mounted::new(std::sync::Arc::new(WorkbenchView { window }))
         });
         let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
         if !fresh {

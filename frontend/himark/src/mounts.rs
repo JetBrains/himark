@@ -10,7 +10,6 @@
 //! become PLACES handed to the seated shell, stamped with this
 //! bridge as the origin.
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use imba::arena::Arena;
@@ -350,16 +349,16 @@ pub(crate) struct OverlayMount {
     /// layout roads) right before laying this view; the ToView
     /// release road empties it AFTER the frames quiesce — then
     /// the parent performs exclusively.
-    pub(crate) pinned: std::cell::OnceCell<Rc<dyn BridgeView>>,
+    pub(crate) pinned: std::sync::OnceLock<Arc<dyn BridgeView>>,
     pub(crate) index: usize,
     /// The union of the overlay's NON-host-covering pieces, in the
     /// parent's coordinates — the slice the shell's popover shows.
     /// Stashed at layout; read through the content-rect door.
-    pub(crate) content: std::cell::Cell<Option<skia_safe::Rect>>,
+    pub(crate) content: std::sync::Mutex<Option<skia_safe::Rect>>,
 }
 
 impl OverlayMount {
-    fn parent_ref(&self) -> Option<&Rc<dyn BridgeView>> {
+    fn parent_ref(&self) -> Option<&Arc<dyn BridgeView>> {
         self.pinned.get()
     }
 }
@@ -383,7 +382,7 @@ impl BridgeView for OverlayMount {
         self.parent_ref()?.focus(store, ui)
     }
 
-    fn overlay_pin_parent(&self, parent: Rc<dyn BridgeView>) {
+    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>) {
         let _ = self.pinned.set(parent);
     }
 
@@ -402,7 +401,7 @@ impl BridgeView for OverlayMount {
         let Some(parent) = self.parent_ref() else {
             // The parent unmounted under the popover — stand
             // empty; the shell closes on the next epoch.
-            self.content.set(None);
+            *self.content.lock().unwrap() = None;
             return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
         };
         let inner = parent.layout(arena, store, ui, constraints);
@@ -419,7 +418,7 @@ impl BridgeView for OverlayMount {
         let Some(overlay) = picked else {
             // The overlay left between frames — the shell's next
             // reconciliation closes this popover; stand empty.
-            self.content.set(None);
+            *self.content.lock().unwrap() = None;
             return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
         };
         let placed = overlay.content.layout(arena, host_size, overlay.anchor);
@@ -447,7 +446,7 @@ impl BridgeView for OverlayMount {
                 });
             }
         }
-        self.content.set(content);
+        *self.content.lock().unwrap() = content;
         if content.is_none() {
             return imba::ThunkBox::new(arena, imba::leaf::leaf::<AppCommand>(1.0, 1.0));
         }
@@ -459,7 +458,7 @@ impl BridgeView for OverlayMount {
     }
 
     fn overlay_content_rect(&self) -> Option<skia_safe::Rect> {
-        self.content.get()
+        *self.content.lock().unwrap()
     }
 }
 
@@ -661,7 +660,7 @@ fn mount_place_inner(
                 chat,
                 None,
             );
-            Some(Rc::new(PanelMount { id, panel }) as Rc<dyn BridgeView>)
+            Some(Arc::new(PanelMount { id, panel }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::ChatTranscriptPlace>() {
@@ -679,13 +678,13 @@ fn mount_place_inner(
                 chat.clone(),
                 None,
             );
-            Some(Rc::new(PanelMount {
+            Some(Arc::new(PanelMount {
                 id,
                 panel: Box::new(ahp_chat::transcript::TranscriptPane::new(
                     state.chats(),
                     chat,
                 )),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::ChatComposerPlace>() {
@@ -703,10 +702,10 @@ fn mount_place_inner(
                 chat.clone(),
                 None,
             );
-            Some(Rc::new(PanelMount {
+            Some(Arc::new(PanelMount {
                 id,
                 panel: Box::new(ahp_chat::composer::ComposerPane::new(state.chats(), chat)),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::ChangesPlace>() {
@@ -737,10 +736,10 @@ fn mount_place_inner(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Rc::new(ModalMount {
+            Some(Arc::new(ModalMount {
                 id,
                 view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::ChangesCanvasPlace>() {
@@ -770,10 +769,10 @@ fn mount_place_inner(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Rc::new(ModalMount {
+            Some(Arc::new(ModalMount {
                 id,
                 view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::HistoryPlace>() {
@@ -799,10 +798,10 @@ fn mount_place_inner(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Rc::new(ModalMount {
+            Some(Arc::new(ModalMount {
                 id,
                 view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::SearchPlace>() {
@@ -814,7 +813,7 @@ fn mount_place_inner(
             let folders = ahp_session::session::folders::session_folders(store, &key);
             ::locations::LocationLists::adopt_folders(store, lists, &folders);
             let view = ::locations::search::SearchView::open(store, ui, lists);
-            Some(Rc::new(ModalMount { id, view }) as Rc<dyn BridgeView>)
+            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::CommentsPlace>() {
@@ -831,7 +830,7 @@ fn mount_place_inner(
                 }
             });
             let view = ::comments::panel::CommentsView::open(store, ui, comments);
-            Some(Rc::new(ModalMount { id, view }) as Rc<dyn BridgeView>)
+            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<::canvas::diff_canvas::CanvasPlace>() {
@@ -848,7 +847,7 @@ fn mount_place_inner(
                     fx,
                 )
             })?;
-            Some(Rc::new(PanelMount { id, panel }) as Rc<dyn BridgeView>)
+            Some(Arc::new(PanelMount { id, panel }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::FilesPlace>() {
@@ -879,7 +878,7 @@ fn mount_place_inner(
                 },
                 |fx| crate::hifiles::open_panel(store, ui, key.clone(), state.trees(), None, fx),
             );
-            Some(Rc::new(ModalMount { id, view: tree }) as Rc<dyn BridgeView>)
+            Some(Arc::new(ModalMount { id, view: tree }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
@@ -923,7 +922,7 @@ fn mount_place_inner(
             // (docs/ui/imba-ffi.md, touch section).
             let view = ::documents::entity_view::EditorIdView::new(collection, document, editor)
                 .with_gutter();
-            Some(Rc::new(EditorMount { id, view }) as Rc<dyn BridgeView>)
+            Some(Arc::new(EditorMount { id, view }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::DiffViewPlace>() {
@@ -950,10 +949,10 @@ fn mount_place_inner(
                     )
                 },
             );
-            Some(Rc::new(PanelMount {
+            Some(Arc::new(PanelMount {
                 id,
                 panel: Box::new(panel),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::PalettePlace>() {
@@ -976,10 +975,10 @@ fn mount_place_inner(
                     ),
                 )
             }));
-            Some(Rc::new(DynModalMount {
+            Some(Arc::new(DynModalMount {
                 id,
                 view: make(store, ui, commands),
-            }) as Rc<dyn BridgeView>)
+            }) as Arc<dyn BridgeView>)
         });
     }
     // The EXTERNAL arms — plugins registered above this crate.
@@ -988,7 +987,7 @@ fn mount_place_inner(
         let place = place.clone();
         let minted = app.mount(move |store, ui, id, fx| {
             let view = arm(store, ui, id, fx, &place)?;
-            Some(Rc::new(DynModalMount { id, view }) as Rc<dyn BridgeView>)
+            Some(Arc::new(DynModalMount { id, view }) as Arc<dyn BridgeView>)
         });
         if minted.is_some() {
             return minted;
