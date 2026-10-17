@@ -465,6 +465,12 @@ impl HimarkEngine {
         let mut engine = Self::with_fonts(app_fonts());
 
         engine.compose_new_windows = true;
+        // The Apple shells paint through GRAPHITE, where a band
+        // bake is a render pass and its snapshot a texture copy —
+        // measured a net loss over atlas glyphs painted straight.
+        // Raster backends (tests, web, winit softbuffer) keep it.
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        ::editor::band_cache::RETIRED.store(true, std::sync::atomic::Ordering::Relaxed);
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         {
             let _ = host_discovery::autostart();

@@ -103,11 +103,11 @@ imba = { path = "../imba" }
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-# NO "graphite": nothing engine-side uses it (himark-winit's
-# renderer opts in itself), and ganesh+graphite is a combo
-# rust-skia publishes no prebuilt for — CI would fall back to a
-# full Skia source build on every run.
-skia-safe = { version = "0.153.3", features = ["metal", "ganesh", "textlayout"] }
+# GRAPHITE, no ganesh: the Apple shells render through
+# SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
+# exists for graphite+textlayout — CI builds Skia from source
+# until our own binary cache lands.
+skia-safe = { version = "0.153.3", features = ["metal", "graphite", "textlayout"] }
 
 [dev-dependencies]
 agent-host = { path = "../../backend/agent-host" }

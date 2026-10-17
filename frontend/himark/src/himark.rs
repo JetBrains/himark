@@ -636,6 +636,27 @@ impl Himark {
         id: ViewBridgeId,
         size: Option<skia_safe::Size>,
     ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+        self.mounted_frame_inner(id, size, false)
+    }
+
+    /// The STANDING frame as it stands — rebuilt only when there is
+    /// none at all. The clock and the wheel advance STATE, not
+    /// geometry; letting them ride a one-frame-stale tree spares a
+    /// full layout+realize walk per tick (the stage road rebuilds
+    /// for the paint anyway — that walk is the one that matters).
+    pub(crate) fn mounted_frame_standing(
+        &mut self,
+        id: ViewBridgeId,
+    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+        self.mounted_frame_inner(id, None, true)
+    }
+
+    fn mounted_frame_inner(
+        &mut self,
+        id: ViewBridgeId,
+        size: Option<skia_safe::Size>,
+        standing: bool,
+    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
         let revision = self.revision;
         // A popover slot's layout runs at the PARENT'S standing
         // size, against a freshly pinned parent; its own `size`
@@ -647,7 +668,8 @@ impl Himark {
             slot.bridge.view().overlay_pin_parent(parent);
         }
         let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
-        let fresh = slot.frame.is_some() && slot.revision == revision && slot.size == size;
+        let fresh =
+            slot.frame.is_some() && (standing || (slot.revision == revision && slot.size == size));
         if !fresh {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());
@@ -689,7 +711,18 @@ impl Himark {
         // views read it: reveal_satisfied must see what's actually
         // on screen or a caret-follow settles without ever asking.
         let band = self.bridges.get(&id).and_then(|slot| slot.stage_viewport);
-        let Some((frame, size)) = self.mounted_frame(id, None) else {
+        // Clock ticks and wheel deltas advance widget STATE; they
+        // ride the standing frame as-is. Pointer and key events
+        // hit-test geometry — those get the fresh rebuild.
+        let stale_ok = matches!(
+            event,
+            imba::event::Event::AnimationClock { .. } | imba::event::Event::Scroll { .. }
+        );
+        let frame_and_size = match stale_ok {
+            true => self.mounted_frame_standing(id),
+            false => self.mounted_frame(id, None),
+        };
+        let Some((frame, size)) = frame_and_size else {
             if trace {
                 eprintln!("[mount] {id:?}: event against no frame");
             }
@@ -1008,12 +1041,20 @@ impl Himark {
         let Some((id, stage)) = self.stage_layouts.take(handle) else {
             return 0;
         };
+        let mut frame = stage.realize(viewport);
         if let Some(slot) = self.bridges.get_mut(&id) {
             if id.is_mounted() {
                 slot.stage_viewport = Some(viewport);
+                // The paint road is the per-frame rebuild now — the
+                // bubbled overlay anchors must move with it, or a
+                // popover's presence lags the standing frame.
+                let anchors = frame.window_overlays();
+                if anchors != slot.overlay_anchors {
+                    slot.overlay_anchors = anchors;
+                    slot.overlay_epoch += 1;
+                }
             }
         }
-        let frame = stage.realize(viewport);
         self.stage_frames.mint((id, frame))
     }
 

@@ -104,8 +104,16 @@ fn phases_close(a: (f32, f32), b: (f32, f32)) -> bool {
 /// cache. Returns false when banding cannot serve this canvas (a
 /// transformed matrix, no clip, the kill flag) — the caller paints
 /// the lines directly.
+/// The band cache earns its keep on backends where an image
+/// snapshot is a copy-on-write ref (Ganesh, raster). On GRAPHITE
+/// every bake is its own render pass and every snapshot a real
+/// texture copy — measured a net CPU loss over painting the
+/// glyphs straight out of the atlas. The shell that renders
+/// through Graphite retires the cache here.
+pub static RETIRED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub(crate) fn composite(pass: &BandPass<'_>, canvas: &Canvas) -> bool {
-    if crate::env_flags::no_bands() {
+    if crate::env_flags::no_bands() || RETIRED.load(std::sync::atomic::Ordering::Relaxed) {
         return false;
     }
     let matrix = canvas.local_to_device_as_3x3();
