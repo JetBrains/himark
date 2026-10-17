@@ -71,14 +71,37 @@ impl ParleyCtx {
         self.typefaces
             .entry(key)
             .or_insert_with(|| {
-                // A system face skia's manager refuses to re-parse
-                // (seen: CoreText-vended CJK collections) is a WATCH
-                // item, not a crash — the run reports unrasterizable
-                // and the fallback corpus shows it.
-                skia_safe::FontMgr::new().new_from_data(
-                    skia_safe::Data::new_copy(font.data.as_ref()),
-                    Some(font.index),
-                )
+                // THE NAME BRIDGE first: read the face's family
+                // name out of the bytes and ask the PLATFORM
+                // manager for its native handle — no 55MB
+                // collection re-parse, and CoreText hands back the
+                // same face it vended to fontique. Byte parsing
+                // stays as the road for registered/custom fonts
+                // the platform does not know.
+                // THE NAME BRIDGE: shaping used the blob's glyph
+                // ids, so the rasterizing face must be the SAME
+                // CUT — a family can hold cuts with different
+                // glyph spaces (seen: Heiti SC Light vs Regular).
+                // Walk the platform family's style set and take
+                // the cut whose glyph count fingerprints equal;
+                // the byte road stays for faces the platform
+                // does not know.
+                let manager = skia_safe::FontMgr::new();
+                let fingerprint = glyph_count_of(font);
+                family_name_of(font)
+                    .and_then(|family| {
+                        let count = fingerprint?;
+                        let mut cuts = manager.match_family(&family);
+                        (0..cuts.count())
+                            .filter_map(|index| cuts.new_typeface(index))
+                            .find(|cut| cut.count_glyphs() as u32 == count)
+                    })
+                    .or_else(|| {
+                        manager.new_from_data(
+                            skia_safe::Data::new_copy(font.data.as_ref()),
+                            Some(font.index),
+                        )
+                    })
             })
             .clone()
     }
@@ -248,6 +271,33 @@ impl ParleyLine {
             canvas.draw_text_blob(&blob, origin, &paint);
         }
     }
+}
+
+/// The face's preferred family name, read from the name table —
+/// typographic family first (the unstyled name CoreText matches),
+/// plain family as the fallback.
+fn family_name_of(font: &parley::FontData) -> Option<String> {
+    use skrifa::MetadataProvider;
+    let collection = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
+    for id in [
+        skrifa::string::StringId::TYPOGRAPHIC_FAMILY_NAME,
+        skrifa::string::StringId::FAMILY_NAME,
+    ] {
+        let mut strings = collection.localized_strings(id);
+        if let Some(name) = strings.english_or_first() {
+            let text: String = name.chars().collect();
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn glyph_count_of(font: &parley::FontData) -> Option<u32> {
+    use skrifa::raw::TableProvider;
+    let face = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
+    Some(face.maxp().ok()?.num_glyphs() as u32)
 }
 
 fn brush_of(color: skia_safe::Color) -> Brush {

@@ -21,9 +21,13 @@ tokenize = { path = "../tokenize" }
 # "system" needs yeslogic-fontconfig-sys 6 — the winit shell's CSD
 # moved off crossfont (which pinned v5) to make room.
 parley = { version = "0.12", optional = true, default-features = false, features = ["std", "system", "complex-scripts"] }
+# The NAME BRIDGE: a fallback face arrives as bytes+index; reading
+# its family name lets skia's platform FontMgr answer with a NATIVE
+# handle instead of re-parsing a 55MB collection blob.
+skrifa = { version = "0.44", optional = true, default-features = false, features = ["std"] }
 
 [features]
-parley-text = ["dep:parley"]
+parley-text = ["dep:parley", "dep:skrifa"]
 test-support = []
 
 [dev-dependencies]
