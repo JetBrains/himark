@@ -87,6 +87,21 @@ static SkiaMetalGpu *shared_gpu(id<MTLDevice> device) {
     return gpu;
 }
 
+static bool trace_present(void) {
+    static bool on = getenv("HIMARK_TRACE_PRESENT") != nullptr;
+    return on;
+}
+
+static void watch_present(id<CAMetalDrawable> drawable, const char *road) {
+    if (!trace_present()) return;
+    [drawable addPresentedHandler:^(id<MTLDrawable> presented) {
+        // presentedTime 0 = the system DROPPED this present — the
+        // pixels never reached glass.
+        NSLog(@"[present] %s drawable %lu t=%f", road,
+              (unsigned long)presented.drawableID, presented.presentedTime);
+    }];
+}
+
 struct SkiaMetal {
     CAMetalLayer *layer;
     /// Borrowed: the context outlives every view that draws with it.
@@ -161,6 +176,7 @@ extern "C" void skia_metal_end(SkiaMetal *self) {
     id<MTLCommandBuffer> buffer = [self->gpu->queue commandBuffer];
     [buffer commit];
     [buffer waitUntilScheduled];
+    watch_present(self->drawable, "coupled");
     [self->drawable present];
     self->drawable = nil;
 }
@@ -185,6 +201,7 @@ extern "C" void skia_metal_end_async(SkiaMetal *self) {
         gpu->context->insertRecording(info);
         gpu->context->submit();
         delete played;
+        watch_present(drawable, "async");
         id<MTLCommandBuffer> buffer = [gpu->queue commandBuffer];
         [buffer presentDrawable:drawable];
         [buffer commit];

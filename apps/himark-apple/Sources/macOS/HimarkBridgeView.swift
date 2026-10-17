@@ -204,6 +204,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let animating = engine.tick(nowMs: nowMs)
         engine.drainReveal()
         reconcileOverlays()
+        if warmupTicks > 0 {
+            warmupTicks -= 1
+            needsRedraw = true
+        }
         if needsRedraw || animating {
             if Self.traceSync {
                 if needsRedraw { renderedDirty += 1 } else { renderedAnimating += 1 }
@@ -537,6 +541,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// this on the way in, the paint realizes this viewport.
     var overlayOrigin: CGPoint?
 
+    /// A popover's first presents can be DROPPED while its window
+    /// is still appearing; without new dirt, nothing retries and
+    /// the popover stands empty. A short warmup repaints across
+    /// the appearance so one present lands once the window is
+    /// really there.
+    var warmupTicks = 0
+
     private static let traceOverlay =
         ProcessInfo.processInfo.environment["HIMARK_TRACE_OVERLAY"] != nil
 
@@ -591,6 +602,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                 popover.animates = false
                 popover.contentViewController = controller
                 popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
+                content.warmupTicks = 15
                 popovers[index] = (popover, minted, anchor)
             }
         }
