@@ -133,11 +133,43 @@ impl ParleyLine {
     /// (utf8 offset → color runs, matching the blob road's span
     /// model).
     pub fn shape(text: &str, family: &str, size: f32, spans: &[SpanStyle]) -> ParleyLine {
+        Self::shape_with_families(text, &[family], size, spans)
+    }
+
+    /// Shape against a FAMILY CHAIN with skia's semantics: the
+    /// first name the collection actually resolves wins; CSS
+    /// generics ("monospace") resolve through fontique's generic
+    /// map; an unresolvable chain falls to the embedded face —
+    /// never to a silent proportional default. (The A/B's first
+    /// catch: "SF Mono" is unenumerable on some systems; taking
+    /// only the first name put code in a proportional face and
+    /// dragged the caret and the band rects with it.)
+    pub fn shape_with_families(
+        text: &str,
+        families: &[&str],
+        size: f32,
+        spans: &[SpanStyle],
+    ) -> ParleyLine {
         CTX.with(|cell| {
             let ctx = &mut *cell.borrow_mut();
+            let family = {
+                let collection = &mut ctx.fonts.collection;
+                families
+                    .iter()
+                    .find_map(|name| {
+                        if let Some(generic) = generic_of(name) {
+                            let id = collection.generic_families(generic).next()?;
+                            return collection.family_name(id).map(str::to_string);
+                        }
+                        collection
+                            .family_by_name(name)
+                            .map(|info| info.name().to_string())
+                    })
+                    .unwrap_or_else(|| crate::embedded_fonts::FAMILY.to_string())
+            };
             let mut builder = ctx.layouts.ranged_builder(&mut ctx.fonts, text, 1.0, true);
             builder.push_default(parley::StyleProperty::FontFamily(
-                parley::FontFamily::named(family),
+                parley::FontFamily::named(&family),
             ));
             builder.push_default(parley::StyleProperty::FontSize(size));
             for (index, span) in spans.iter().enumerate() {
@@ -331,6 +363,17 @@ fn glyph_count_of(font: &parley::FontData) -> Option<u32> {
     use skrifa::raw::TableProvider;
     let face = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
     Some(face.maxp().ok()?.num_glyphs() as u32)
+}
+
+fn generic_of(name: &str) -> Option<parley::fontique::GenericFamily> {
+    use parley::fontique::GenericFamily;
+    Some(match name {
+        "monospace" => GenericFamily::Monospace,
+        "sans-serif" => GenericFamily::SansSerif,
+        "serif" => GenericFamily::Serif,
+        "system-ui" => GenericFamily::SystemUi,
+        _ => return None,
+    })
 }
 
 fn brush_of(color: skia_safe::Color) -> Brush {

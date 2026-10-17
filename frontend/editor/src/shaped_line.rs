@@ -1374,11 +1374,8 @@ fn build_parley(
     if spans.iter().any(|span| !span.plain) {
         return None;
     }
-    let family = resolved
-        .font_families
-        .as_ref()
-        .and_then(|families| families.first().cloned())
-        .unwrap_or_else(|| crate::embedded_fonts::FAMILY.to_string());
+    let families = resolved.font_families.clone().unwrap_or_default();
+    let names: Vec<&str> = families.iter().map(String::as_str).collect();
     let size = resolved.font_size?;
     let spans: Vec<crate::parley_line::SpanStyle> = spans
         .iter()
@@ -1389,8 +1386,8 @@ fn build_parley(
             italic: span.italic,
         })
         .collect();
-    Some(crate::parley_line::ParleyLine::shape(
-        text, &family, size, &spans,
+    Some(crate::parley_line::ParleyLine::shape_with_families(
+        text, &names, size, &spans,
     ))
 }
 

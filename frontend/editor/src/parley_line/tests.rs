@@ -235,3 +235,42 @@ fn styled_spans_reach_the_blobs() {
         "the colored span kept its ink"
     );
 }
+
+/// The editor chain must land on a MONOSPACE face even when its
+/// first names are unenumerable (the A/B's catch: "SF Mono" is
+/// hidden on some systems; falling to a proportional default
+/// dragged caret and band rects with it).
+#[cfg(target_os = "macos")]
+#[test]
+fn the_editor_family_chain_lands_monospace() {
+    let families = [
+        "SF Mono",
+        "Menlo",
+        "JetBrains Mono",
+        "Consolas",
+        "monospace",
+    ];
+    let narrow = ParleyLine::shape_with_families(
+        "iiiiiiiiii",
+        &families,
+        24.0,
+        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+    );
+    let wide = ParleyLine::shape_with_families(
+        "mmmmmmmmmm",
+        &families,
+        24.0,
+        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+    );
+    eprintln!(
+        "[parley-family] i-run {:.1} vs m-run {:.1}",
+        narrow.width(),
+        wide.width()
+    );
+    assert!(
+        (narrow.width() - wide.width()).abs() < 0.5,
+        "the chain resolved to a proportional face: i {} vs m {}",
+        narrow.width(),
+        wide.width()
+    );
+}
