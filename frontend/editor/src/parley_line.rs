@@ -32,21 +32,37 @@ const _: () = {
 
 /// One style run over the text — the parley twin of the blob
 /// road's `StyleSpan`, in utf8 offsets.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SpanStyle {
     pub start: usize,
     pub color: skia_safe::Color,
     pub bold: bool,
     pub italic: bool,
+    /// `None` inherits the line's base size.
+    pub size: Option<f32>,
+    /// A family-chain OVERRIDE for this span (inline code switching
+    /// to mono mid-line); `None` inherits.
+    pub families: Option<Vec<String>>,
+    /// Line-height multiple override (font-size relative, the
+    /// skparagraph `height` semantics); `None` inherits.
+    pub line_height: Option<f32>,
 }
 
 impl SpanStyle {
+    pub fn at(mut self, start: usize) -> Self {
+        self.start = start;
+        self
+    }
+
     pub fn plain(color: skia_safe::Color) -> Self {
         Self {
             start: 0,
             color,
             bold: false,
             italic: false,
+            size: None,
+            families: None,
+            line_height: None,
         }
     }
 }
@@ -133,7 +149,7 @@ impl ParleyLine {
     /// (utf8 offset → color runs, matching the blob road's span
     /// model).
     pub fn shape(text: &str, family: &str, size: f32, spans: &[SpanStyle]) -> ParleyLine {
-        Self::shape_with_families(text, &[family], size, spans)
+        Self::shape_with_families(text, &[family], size, None, spans)
     }
 
     /// Shape against a FAMILY CHAIN with skia's semantics: the
@@ -148,30 +164,31 @@ impl ParleyLine {
         text: &str,
         families: &[&str],
         size: f32,
+        line_height: Option<f32>,
         spans: &[SpanStyle],
     ) -> ParleyLine {
         CTX.with(|cell| {
             let ctx = &mut *cell.borrow_mut();
-            let family = {
-                let collection = &mut ctx.fonts.collection;
-                families
-                    .iter()
-                    .find_map(|name| {
-                        if let Some(generic) = generic_of(name) {
-                            let id = collection.generic_families(generic).next()?;
-                            return collection.family_name(id).map(str::to_string);
-                        }
-                        collection
-                            .family_by_name(name)
-                            .map(|info| info.name().to_string())
-                    })
-                    .unwrap_or_else(|| crate::embedded_fonts::FAMILY.to_string())
-            };
+            let family = resolve_family(&mut ctx.fonts.collection, families)
+                .unwrap_or_else(|| crate::embedded_fonts::FAMILY.to_string());
+            let span_families: Vec<Option<String>> = spans
+                .iter()
+                .map(|span| {
+                    let names: Vec<&str> =
+                        span.families.as_ref()?.iter().map(String::as_str).collect();
+                    resolve_family(&mut ctx.fonts.collection, &names)
+                })
+                .collect();
             let mut builder = ctx.layouts.ranged_builder(&mut ctx.fonts, text, 1.0, true);
             builder.push_default(parley::StyleProperty::FontFamily(
                 parley::FontFamily::named(&family),
             ));
             builder.push_default(parley::StyleProperty::FontSize(size));
+            if let Some(height) = line_height {
+                builder.push_default(parley::StyleProperty::LineHeight(
+                    parley::LineHeight::FontSizeRelative(height),
+                ));
+            }
             for (index, span) in spans.iter().enumerate() {
                 let end = spans
                     .get(index + 1)
@@ -185,6 +202,23 @@ impl ParleyLine {
                     parley::StyleProperty::Brush(brush_of(span.color)),
                     range.clone(),
                 );
+                if let Some(size) = span.size {
+                    builder.push(parley::StyleProperty::FontSize(size), range.clone());
+                }
+                if let Some(family) = &span_families[index] {
+                    builder.push(
+                        parley::StyleProperty::FontFamily(parley::FontFamily::named(family)),
+                        range.clone(),
+                    );
+                }
+                if let Some(height) = span.line_height {
+                    builder.push(
+                        parley::StyleProperty::LineHeight(parley::LineHeight::FontSizeRelative(
+                            height,
+                        )),
+                        range.clone(),
+                    );
+                }
                 if span.bold {
                     builder.push(
                         parley::StyleProperty::FontWeight(parley::FontWeight::BOLD),
@@ -363,6 +397,18 @@ fn glyph_count_of(font: &parley::FontData) -> Option<u32> {
     use skrifa::raw::TableProvider;
     let face = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
     Some(face.maxp().ok()?.num_glyphs() as u32)
+}
+
+fn resolve_family(collection: &mut parley::fontique::Collection, names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        if let Some(generic) = generic_of(name) {
+            let id = collection.generic_families(generic).next()?;
+            return collection.family_name(id).map(str::to_string);
+        }
+        collection
+            .family_by_name(name)
+            .map(|info| info.name().to_string())
+    })
 }
 
 fn generic_of(name: &str) -> Option<parley::fontique::GenericFamily> {

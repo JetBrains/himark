@@ -984,6 +984,9 @@ pub(crate) struct StyleSpan {
     plain: bool,
     bold: bool,
     italic: bool,
+    size: f32,
+    families: Option<Vec<String>>,
+    line_height: Option<f32>,
 }
 
 /// Bake the laid-out paragraph's runs into blobs. `None` when any
@@ -1143,6 +1146,9 @@ fn add_text_runs(
             plain: true,
             bold: false,
             italic: false,
+            size: base_style.font_size(),
+            families: None,
+            line_height: None,
         });
         builder.add_text(text);
         return;
@@ -1177,6 +1183,9 @@ fn add_text_runs(
             plain: false,
             bold: false,
             italic: false,
+            size: base_style.font_size(),
+            families: None,
+            line_height: None,
         });
         builder.add_placeholder(&PlaceholderStyle::new(
             placeholder.width,
@@ -1224,6 +1233,9 @@ fn add_text_slice(
             plain: true,
             bold: false,
             italic: false,
+            size: base_style.font_size(),
+            families: None,
+            line_height: None,
         });
         builder.add_text(&text[range]);
         return;
@@ -1267,6 +1279,9 @@ fn add_text_slice(
                 plain: true,
                 bold: false,
                 italic: false,
+                size: base_style.font_size(),
+                families: None,
+                line_height: None,
             });
             builder.push_style(base_style);
         } else {
@@ -1276,12 +1291,31 @@ fn add_text_slice(
                 apply_attributes(&mut run_style, theme.attributes(decoration.id));
             }
             let style = run_style.font_style();
+            // The run's OVERRIDES travel with the span: inline code
+            // changes family and size mid-line; flattening them to
+            // the base painted every size equal and pulled markup,
+            // band heights and the caret with it.
+            let families: Vec<String> = run_style
+                .font_families()
+                .iter()
+                .map(|family| family.to_string())
+                .collect();
+            let base_families: Vec<String> = base_style
+                .font_families()
+                .iter()
+                .map(|family| family.to_string())
+                .collect();
             spans.push(StyleSpan {
                 utf8_start: start,
                 color: run_style.color(),
                 plain: run_style.decoration_type().is_empty(),
                 bold: style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD,
                 italic: style.slant() != skia_safe::font_style::Slant::Upright,
+                size: run_style.font_size(),
+                families: (families != base_families).then_some(families),
+                line_height: (run_style.height_override()
+                    && (run_style.height() - base_style.height()).abs() > 1e-3)
+                    .then(|| run_style.height()),
             });
             builder.push_style(&run_style);
         }
@@ -1384,10 +1418,17 @@ fn build_parley(
             color: span.color,
             bold: span.bold,
             italic: span.italic,
+            size: Some(span.size),
+            families: span.families.clone(),
+            line_height: span.line_height,
         })
         .collect();
     Some(crate::parley_line::ParleyLine::shape_with_families(
-        text, &names, size, &spans,
+        text,
+        &names,
+        size,
+        resolved.line_height,
+        &spans,
     ))
 }
 

@@ -209,17 +209,11 @@ fn styled_spans_reach_the_blobs() {
         &[
             SpanStyle::plain(skia_safe::Color::BLACK),
             SpanStyle {
-                start: bold_from,
-                color: skia_safe::Color::BLACK,
                 bold: true,
-                italic: false,
-            },
-            SpanStyle {
-                start: color_from,
-                color: skia_safe::Color::RED,
-                bold: false,
-                italic: false,
-            },
+                ..SpanStyle::plain(skia_safe::Color::BLACK)
+            }
+            .at(bold_from),
+            SpanStyle::plain(skia_safe::Color::RED).at(color_from),
         ],
     );
     let blobs = line.blobs();
@@ -254,12 +248,14 @@ fn the_editor_family_chain_lands_monospace() {
         "iiiiiiiiii",
         &families,
         24.0,
+        None,
         &[SpanStyle::plain(skia_safe::Color::BLACK)],
     );
     let wide = ParleyLine::shape_with_families(
         "mmmmmmmmmm",
         &families,
         24.0,
+        None,
         &[SpanStyle::plain(skia_safe::Color::BLACK)],
     );
     eprintln!(
