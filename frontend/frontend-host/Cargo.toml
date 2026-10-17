@@ -103,6 +103,9 @@ imba = { path = "../imba" }
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# The parley road rides along on apple — HIMARK_PARLEY=1 flips
+# plain-line paint + caret queries to it, live A/B in one binary.
+editor = { path = "../editor", features = ["parley-text"] }
 # GRAPHITE, no ganesh: the Apple shells render through
 # SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
 # exists for graphite+textlayout — CI builds Skia from source

@@ -11,6 +11,7 @@ macro_rules! flag {
 }
 
 flag!(paint_probe, "HIMARK_PAINT_PROBE");
+flag!(parley, "HIMARK_PARLEY");
 flag!(trace_diff, "HIMARK_TRACE_DIFF");
 flag!(landing_probe, "HIMARK_LANDING_PROBE");
 flag!(trace_repair, "HIMARK_TRACE_REPAIR");

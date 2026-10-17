@@ -306,6 +306,11 @@ pub(crate) struct ShapedLine {
     /// The laid-out runs baked as blobs — `None` when a decoration
     /// or placeholder needs `Paragraph::paint`.
     blob_runs: Option<Vec<BlobRun>>,
+    /// The PARLEY twin, built alongside under `HIMARK_PARLEY` for
+    /// plain lines — paint and caret queries A/B against the
+    /// SkParagraph road live, in one binary.
+    #[cfg(feature = "parley-text")]
+    parley: Option<crate::parley_line::ParleyLine>,
 }
 
 impl ShapedLine {
@@ -381,6 +386,13 @@ impl ShapedLine {
         );
         paragraph.layout(RENDER_LINE_WIDTH);
         let blob_runs = build_blob_runs(&mut paragraph, &spans);
+        #[cfg(feature = "parley-text")]
+        let parley = build_parley(
+            &resolved,
+            shape_text,
+            &spans,
+            display.placeholders().is_empty(),
+        );
         let placeholder_rects = match display.placeholders().is_empty() {
             true => Vec::new(),
             false => placeholder_rects(&paragraph, display.placeholders()),
@@ -436,6 +448,8 @@ impl ShapedLine {
             first_baseline,
             band_line_ranges,
             blob_runs,
+            #[cfg(feature = "parley-text")]
+            parley,
         }
     }
 
@@ -483,6 +497,8 @@ impl ShapedLine {
             first_baseline,
             band_line_ranges: Vec::new(),
             blob_runs,
+            #[cfg(feature = "parley-text")]
+            parley: None,
         }
     }
 
@@ -558,6 +574,11 @@ impl ShapedLine {
                     }
                 }
             }
+        }
+        #[cfg(feature = "parley-text")]
+        if let Some(parley) = &self.parley {
+            parley.paint(canvas, (self.x, top));
+            return;
         }
         match &self.blob_runs {
             // The baked runs: stable blob identity keeps skia's
@@ -961,6 +982,8 @@ pub(crate) struct StyleSpan {
     utf8_start: usize,
     color: skia_safe::Color,
     plain: bool,
+    bold: bool,
+    italic: bool,
 }
 
 /// Bake the laid-out paragraph's runs into blobs. `None` when any
@@ -1118,6 +1141,8 @@ fn add_text_runs(
             utf8_start: 0,
             color: base_style.color(),
             plain: true,
+            bold: false,
+            italic: false,
         });
         builder.add_text(text);
         return;
@@ -1150,6 +1175,8 @@ fn add_text_runs(
             utf8_start: start,
             color: base_style.color(),
             plain: false,
+            bold: false,
+            italic: false,
         });
         builder.add_placeholder(&PlaceholderStyle::new(
             placeholder.width,
@@ -1195,6 +1222,8 @@ fn add_text_slice(
             utf8_start: range.start,
             color: base_style.color(),
             plain: true,
+            bold: false,
+            italic: false,
         });
         builder.add_text(&text[range]);
         return;
@@ -1236,6 +1265,8 @@ fn add_text_slice(
                 utf8_start: start,
                 color: base_style.color(),
                 plain: true,
+                bold: false,
+                italic: false,
             });
             builder.push_style(base_style);
         } else {
@@ -1244,10 +1275,13 @@ fn add_text_slice(
             for decoration in &active {
                 apply_attributes(&mut run_style, theme.attributes(decoration.id));
             }
+            let style = run_style.font_style();
             spans.push(StyleSpan {
                 utf8_start: start,
                 color: run_style.color(),
                 plain: run_style.decoration_type().is_empty(),
+                bold: style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD,
+                italic: style.slant() != skia_safe::font_style::Slant::Upright,
             });
             builder.push_style(&run_style);
         }
@@ -1323,6 +1357,41 @@ fn text_style(resolved: &crate::theme::TextAttributes) -> TextStyle {
 
 pub(crate) fn block_gap(resolved: &crate::theme::TextAttributes) -> f32 {
     resolved.block_gap.unwrap_or(0.0)
+}
+
+/// Build the parley twin for a PLAIN line when `HIMARK_PARLEY`
+/// asks — same display text, same spans, same resolved base.
+#[cfg(feature = "parley-text")]
+fn build_parley(
+    resolved: &crate::theme::TextAttributes,
+    text: &str,
+    spans: &[StyleSpan],
+    no_placeholders: bool,
+) -> Option<crate::parley_line::ParleyLine> {
+    if !crate::env_flags::parley() || !no_placeholders {
+        return None;
+    }
+    if spans.iter().any(|span| !span.plain) {
+        return None;
+    }
+    let family = resolved
+        .font_families
+        .as_ref()
+        .and_then(|families| families.first().cloned())
+        .unwrap_or_else(|| crate::embedded_fonts::FAMILY.to_string());
+    let size = resolved.font_size?;
+    let spans: Vec<crate::parley_line::SpanStyle> = spans
+        .iter()
+        .map(|span| crate::parley_line::SpanStyle {
+            start: span.utf8_start,
+            color: span.color,
+            bold: span.bold,
+            italic: span.italic,
+        })
+        .collect();
+    Some(crate::parley_line::ParleyLine::shape(
+        text, &family, size, &spans,
+    ))
 }
 
 #[cfg(test)]
