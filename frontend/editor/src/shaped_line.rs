@@ -621,6 +621,12 @@ impl ShapedLine {
         }
     }
 
+    /// TEST SUPPORT for the parley parity meter.
+    #[doc(hidden)]
+    pub fn extent_for_test(&self) -> (f32, f32) {
+        (self.extent_left, self.extent_right)
+    }
+
     pub(crate) fn first_baseline(&self) -> Option<f32> {
         self.first_baseline
     }

@@ -25,6 +25,8 @@ pub mod hover;
 pub mod linecol;
 pub mod location;
 pub mod markup;
+#[cfg(feature = "parley-text")]
+pub mod parley_line;
 pub mod popup;
 pub mod repair;
 pub mod reparse;

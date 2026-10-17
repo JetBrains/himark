@@ -9,6 +9,13 @@ use skia_safe::{FontMgr, Typeface};
 #[cfg(not(target_os = "emscripten"))]
 static NOTO_SANS: &[u8] = include_bytes!("../assets/NotoSans-Regular.ttf");
 
+/// The raw face bytes — the parley road registers the same bytes
+/// skia rasterizes with.
+#[cfg(not(target_os = "emscripten"))]
+pub fn bytes() -> &'static [u8] {
+    NOTO_SANS
+}
+
 static TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
 #[cfg(not(target_os = "emscripten"))]

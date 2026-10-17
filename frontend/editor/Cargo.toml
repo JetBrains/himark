@@ -18,7 +18,13 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 tokenize = { path = "../tokenize" }
 
+# NO "system" yet: fontique's fontconfig backend collides with the
+# workspace's links=fontconfig; the parley road starts on REGISTERED
+# fonts (deterministic parity), platform enumeration comes per-target.
+parley = { version = "0.12", optional = true, default-features = false, features = ["std"] }
+
 [features]
+parley-text = ["dep:parley"]
 test-support = []
 
 [dev-dependencies]
