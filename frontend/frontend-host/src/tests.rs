@@ -8563,3 +8563,74 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
     }
     eprintln!("[mounted-sizing] {measured:?}");
 }
+
+/// The STANDING follow: a navigation landed while no files tree was
+/// mounted (rail closed, another tab showing) must not be lost —
+/// the tree that mounts later stands on the followed file and parks
+/// the reveal the shell scrolls to. Fire-and-forget dropped these.
+#[test]
+fn a_late_files_tree_stands_on_the_followed_file() {
+    let (_host, mut engine, window, fs) = hosted_engine();
+    fs.write(&["project", "README.md"], "# readme");
+    fs.write(&["project", "src", "lib.rs"], "fn main() {}");
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_into_session(&mut engine);
+    let session = engine_session(&engine);
+
+    // The followed location is built the way the ENGINE builds it:
+    // from the session's own folder, so the path shape matches the
+    // tree's roots (fs.doc's raw path differs by canonicalization).
+    let folder = ahp_session::session::folders::session_folders(engine.app.store(), &session)
+        .into_iter()
+        .next()
+        .expect("the picked folder");
+    let mut path = folder.path().to_vec();
+    path.extend(["src".to_owned(), "lib.rs".to_owned()]);
+    let followed = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        folder.authority().clone(),
+        path,
+    );
+
+    // The follow arrives FIRST, with no tree anywhere.
+    assert!(
+        himark::mounts::follow_session_tree(&mut engine.app, &session, followed),
+        "a follow with no live tree parks as standing — not dropped"
+    );
+    settle(&mut engine);
+
+    // The tree mounts LATE and must replay the standing follow.
+    let place = hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(
+        session.clone(),
+    ));
+    let tree = himark::mounts::mount_place(&mut engine.app, &place, Some(session))
+        .expect("the files tree mounts");
+    // Reveals park on the mounted PAINT road — drive it the way
+    // the shell does.
+    // A viewport SHORTER than the row's position: a reveal that is
+    // already visible is rightly quiet — the ask must have reason.
+    let mut surface = skia_safe::surfaces::raster_n32_premul((320, 40)).expect("surface");
+    let mut now = 0.0;
+    settle_until(&mut engine, "the standing follow parks the reveal", |engine| {
+        let _ = engine.app.draw_mounted(
+            tree,
+            surface.canvas(),
+            skia_safe::Size::new(320.0, 40.0),
+        );
+        // The reveal rides the CLOCK road, and the MOUNTED clock is
+        // the engine tick — the shell's display link, not the
+        // workbench animate (which walks windows only).
+        now += 16.0;
+        let _ = engine.animation_tick(now);
+        match engine.app.take_reveal() {
+            Some((id, _reveal)) => {
+                assert_eq!(id, tree, "the reveal belongs to the late tree");
+                true
+            }
+            None => false,
+        }
+    });
+}

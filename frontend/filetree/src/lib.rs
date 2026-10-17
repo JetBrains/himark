@@ -133,6 +133,12 @@ impl LocationTree {
 
     fn select_and_reveal(&mut self, location: &ResourceLocation) {
         self.list.inner_mut().select_only(location.clone());
+        // The ask that gives the name its second half: the armed
+        // keyed reveal rides the result chain to whichever scroller
+        // mounts the tree — selection alone moved nothing.
+        self.list
+            .inner_mut()
+            .reveal_row(location.clone(), imba::event::Placement::EnsureVisible);
     }
 
     fn descend_toward(&mut self, target: &ResourceLocation) -> Descend {
@@ -160,6 +166,13 @@ impl LocationTree {
             return Descend::Fetch(ancestor);
         }
 
+        // An EMPTY tree is no verdict: a follow can arrive in the
+        // very batch that mounts the tree, before the roots are
+        // ensured — wait; the first listing re-drives. Dead is for
+        // a POPULATED tree that genuinely cannot reach the target.
+        if self.len() == 0 {
+            return Descend::Wait;
+        }
         Descend::Dead
     }
 
@@ -545,7 +558,19 @@ impl SessionTreeView {
         let Some(target) = self.pending_reveal.clone() else {
             return;
         };
-        match self.tree.descend_toward(&target) {
+        let verdict = self.tree.descend_toward(&target);
+        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+            eprintln!(
+                "[follow] drive: {}",
+                match &verdict {
+                    Descend::Reached(_) => "reached",
+                    Descend::Fetch(_) => "fetch",
+                    Descend::Wait => "wait",
+                    Descend::Dead => "DEAD",
+                }
+            );
+        }
+        match verdict {
             Descend::Reached(location) => {
                 self.pending_reveal = None;
                 self.tree.select_and_reveal(&location);

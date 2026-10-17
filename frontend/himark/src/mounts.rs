@@ -42,21 +42,34 @@ pub fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId
 }
 
 /// The session's mounted FILES TREES — the explicit follow targets
-/// `himark_tree_follow` commands when the host lands a navigation.
+/// `himark_tree_follow` commands when the host lands a navigation —
+/// and the STANDING follow: the active editor's location, kept so a
+/// tree that mounts LATER (the rail was closed, another tab showed)
+/// stands on it at birth. Fire-and-forget lost every follow that
+/// arrived while no tree was live.
 #[derive(Clone, Default)]
 pub(crate) struct FollowTargets {
     trees: rpds::HashTrieMapSync<ahp_wire::SessionId, ViewBridgeId>,
+    standing: rpds::HashTrieMapSync<ahp_wire::SessionId, editor::location::ResourceLocation>,
     generation: u64,
 }
 
+/// Register the mounted tree and answer the standing follow it
+/// should replay (with a fresh generation), if the session has one.
 pub(crate) fn remember_files_tree(
     store: &mut Store,
     session: ahp_wire::SessionId,
     id: ViewBridgeId,
-) {
+) -> Option<(editor::location::ResourceLocation, u64)> {
     let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
-    map.trees.insert_mut(session, id);
+    map.trees.insert_mut(session.clone(), id);
+    let standing = map.standing.get(&session).cloned();
+    if standing.is_some() {
+        map.generation += 1;
+    }
+    let generation = map.generation;
     store.put(map);
+    standing.map(|location| (location, generation))
 }
 
 /// The EXPLICIT tree-follow: the host landed a navigation and
@@ -68,22 +81,29 @@ pub fn follow_session_tree(
     session: &ahp_wire::SessionId,
     location: editor::location::ResourceLocation,
 ) -> bool {
-    let Some((tree, generation)) = ({
-        let store = app.store();
-        store.get::<FollowTargets>().and_then(|map| {
-            map.trees
-                .get(session)
-                .copied()
-                .map(|tree| (tree, map.generation + 1))
-        })
-    }) else {
-        return false;
+    // The follow STANDS regardless of who is mounted: a tree that
+    // arrives later replays it from `remember_files_tree`.
+    let tree = app
+        .store()
+        .get::<FollowTargets>()
+        .and_then(|map| map.trees.get(session).copied());
+    let generation = {
+        let session = session.clone();
+        let location_kept = location.clone();
+        let mut generation = 0;
+        app.setup(|store| {
+            let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
+            map.standing.insert_mut(session, location_kept);
+            map.generation += 1;
+            generation = map.generation;
+            store.put(map);
+        });
+        generation
     };
-    app.setup(|store| {
-        let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
-        map.generation = generation;
-        store.put(map);
-    });
+    let Some(tree) = tree else {
+        // Parked as standing — applied at the next tree mount.
+        return true;
+    };
     app.perform_batch(vec![AppCommand::ToView(
         tree,
         DynCommand::new(filetree::TreeCommand::Follow {
@@ -701,7 +721,23 @@ fn mount_place_inner(
         let key = place.0.clone();
         return app.mount(move |store, ui, id, fx| {
             remember_session(store, id, key.clone());
-            remember_files_tree(store, key.clone(), id);
+            // A tree born while a follow STANDS replays it — the
+            // active editor is revealed however late the tree shows.
+            if let Some((location, generation)) = remember_files_tree(store, key.clone(), id) {
+                if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+                    eprintln!(
+                        "[follow] tree {} mounts with standing follow {location:?} gen {generation}",
+                        id.raw()
+                    );
+                }
+                fx.follow_up(AppCommand::ToView(
+                    id,
+                    DynCommand::new(filetree::TreeCommand::Follow {
+                        location,
+                        generation,
+                    }),
+                ));
+            }
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let tree = fx.scope(
                 move |command: filetree::TreeCommand| {
