@@ -125,13 +125,27 @@ impl ParleyCtx {
                 // does not know.
                 let manager = skia_safe::FontMgr::new();
                 let fingerprint = glyph_count_of(font);
+                let postscript = postscript_name_of(font);
                 family_name_of(font)
                     .and_then(|family| {
                         let count = fingerprint?;
                         let mut cuts = manager.match_family(&family);
-                        (0..cuts.count())
+                        let cuts: Vec<skia_safe::Typeface> = (0..cuts.count())
                             .filter_map(|index| cuts.new_typeface(index))
-                            .find(|cut| cut.count_glyphs() as u32 == count)
+                            .collect();
+                        // The POSTSCRIPT NAME names the exact cut;
+                        // glyph count alone cannot tell Regular
+                        // from Bold (same charset — bold runs were
+                        // rasterizing regular). Count stays as the
+                        // id-space guard behind the name.
+                        cuts.iter()
+                            .find(|cut| {
+                                postscript.is_some()
+                                    && cut.post_script_name() == postscript
+                                    && cut.count_glyphs() as u32 == count
+                            })
+                            .or_else(|| cuts.iter().find(|cut| cut.count_glyphs() as u32 == count))
+                            .cloned()
                     })
                     .or_else(|| {
                         manager.new_from_data(
@@ -303,7 +317,17 @@ impl ParleyLine {
                     let Some(typeface) = ctx.typeface(run.run().font()) else {
                         continue;
                     };
-                    let font = skia_safe::Font::new(typeface, run.run().font_size());
+                    let mut font = skia_safe::Font::new(typeface, run.run().font_size());
+                    // Faux cuts, matched to the skparagraph road:
+                    // when the family has no real Bold/Italic,
+                    // fontique says so and skia synthesizes.
+                    let synthesis = run.run().synthesis();
+                    if synthesis.embolden() {
+                        font.set_embolden(true);
+                    }
+                    if let Some(degrees) = synthesis.skew() {
+                        font.set_skew_x(-degrees.to_radians().tan());
+                    }
                     let mut builder = skia_safe::TextBlobBuilder::new();
                     {
                         let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
@@ -391,6 +415,14 @@ fn family_name_of(font: &parley::FontData) -> Option<String> {
         }
     }
     None
+}
+
+fn postscript_name_of(font: &parley::FontData) -> Option<String> {
+    use skrifa::MetadataProvider;
+    let face = skrifa::FontRef::from_index(font.data.as_ref(), font.index).ok()?;
+    let mut strings = face.localized_strings(skrifa::string::StringId::POSTSCRIPT_NAME);
+    let name: String = strings.english_or_first()?.chars().collect();
+    (!name.is_empty()).then_some(name)
 }
 
 fn glyph_count_of(font: &parley::FontData) -> Option<u32> {
