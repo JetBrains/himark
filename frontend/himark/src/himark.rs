@@ -204,6 +204,12 @@ impl AppFonts {
         Self::platform()
     }
 
+    /// A world the edge built and seeded itself — the web's road,
+    /// where the face arrives over the wire before the app exists.
+    pub fn over(world: ::editor::parley_line::FontWorld) -> Self {
+        Self { world }
+    }
+
     pub fn world(&self) -> ::editor::parley_line::FontWorld {
         self.world.clone()
     }

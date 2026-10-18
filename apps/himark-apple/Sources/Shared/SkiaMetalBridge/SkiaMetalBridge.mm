@@ -183,12 +183,20 @@ static bool trace_present(void) {
 
 static void watch_present(id<CAMetalDrawable> drawable, const char *road) {
     if (!trace_present()) return;
+#if TARGET_OS_SIMULATOR
+    // The simulator's Metal declares no presented-handler at all —
+    // not merely unavailable, absent from its `MTLDrawable.h`. The
+    // probe is a device-and-desktop instrument.
+    (void)drawable;
+    (void)road;
+#else
     [drawable addPresentedHandler:^(id<MTLDrawable> presented) {
         // presentedTime 0 = the system DROPPED this present — the
         // pixels never reached glass.
         NSLog(@"[present] %s drawable %lu t=%f", road,
               (unsigned long)presented.drawableID, presented.presentedTime);
     }];
+#endif
 }
 
 struct SkiaMetal {

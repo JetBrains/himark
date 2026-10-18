@@ -42,10 +42,13 @@ pub const FAMILY: &str = "Noto Sans";
 #[cfg(target_os = "emscripten")]
 pub const FAMILY: &str = "JetBrains Mono";
 
+/// The web's face arrives over the wire. It is handed BACK to the
+/// caller, who puts it in the font world the app boots with — the
+/// shaper reads no registry of its own. Skia keeps a typeface for
+/// the chrome it rasterizes directly.
 #[cfg(target_os = "emscripten")]
-pub fn install_bytes(bytes: Vec<u8>) {
+pub fn install_bytes(bytes: Vec<u8>) -> &'static [u8] {
     let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-    imba::shape::register_font(bytes);
     let typeface = FontMgr::new()
         .new_from_data(skia_safe::Data::new_copy(bytes), None)
         .expect("the web font parses");
@@ -53,6 +56,7 @@ pub fn install_bytes(bytes: Vec<u8>) {
         TYPEFACE.set(typeface).is_ok(),
         "the web typeface was installed more than once"
     );
+    bytes
 }
 
 pub fn typeface() -> Typeface {

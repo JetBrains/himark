@@ -264,9 +264,13 @@ mod app {
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
         // The SAME bytes serve both halves: the shaper registers
         // them for layout, skia keeps a typeface for chrome.
-        editor::embedded_fonts::install_bytes(bytes.to_vec());
+        let face = editor::embedded_fonts::install_bytes(bytes.to_vec());
+        // The font world the app shapes with, carrying the face that
+        // just landed.
+        let world = editor::parley_line::world();
+        world.register(face);
 
-        let app = Box::into_raw(Box::new(WebApp::new(context))).cast::<c_void>();
+        let app = Box::into_raw(Box::new(WebApp::new(context, world))).cast::<c_void>();
         unsafe {
             install_callbacks(app);
             emscripten_request_animation_frame(Some(animation_frame), app);
@@ -302,8 +306,8 @@ mod app {
     }
 
     impl WebApp {
-        fn new(context: DirectContext) -> Self {
-            let mut state = Himark::new(app_fonts());
+        fn new(context: DirectContext, world: editor::parley_line::FontWorld) -> Self {
+            let mut state = Himark::new(AppFonts::over(world));
             state.register_syntax_languages(web_languages());
 
             himarkdown::register_handlers(&mut state);
