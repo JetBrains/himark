@@ -327,7 +327,23 @@ impl ParleyLine {
     /// The caret boundary nearest a point — the editor's click
     /// mapping (`getGlyphPositionAtCoordinate`'s twin), answered by
     /// the SAME layout the glyphs were painted from.
+    ///
+    /// The y is CLAMPED into the FIRST line's band: a ShapedLine is
+    /// one visual row, but a trailing newline mints an empty second
+    /// line in the layout. Vertical caret motion probes a row at its
+    /// outermost half-pixel in SK row space, and parley's line box
+    /// can be a hair shorter (half-leading vs height-override
+    /// scaling); skparagraph answers an outside y with the nearest
+    /// CONTENT, parley's `from_point` answers the empty line with
+    /// TEXT END — arrow-up snapped the caret to the line end.
     pub fn byte_at_point(&self, x: f32, y: f32) -> usize {
+        let y = match self.layout.get(0).map(|line| *line.metrics()) {
+            Some(metrics) => y.clamp(
+                metrics.block_min_coord,
+                (metrics.block_max_coord - 0.01).max(metrics.block_min_coord),
+            ),
+            None => y,
+        };
         parley::Cursor::from_point(&self.layout, x, y).index()
     }
 
