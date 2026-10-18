@@ -954,7 +954,10 @@ impl Document {
         root.markup.carry_live_views_in(self.markup(), &invalidated);
         self.syntax = Some(root);
         self.parsed_revision = revision;
-        self.note_markup_change(None);
+        // A reparse lands with the ranges it invalidated — the same
+        // ranges the repair walks. Noting it unbounded made every
+        // keystroke's parse retire every shaped line in the frame.
+        self.note_markup_change(Some(&invalidated));
         Some(invalidated)
     }
 
@@ -1154,7 +1157,6 @@ impl Document {
         if inlays.is_empty() {
             return Vec::new();
         }
-        self.note_markup_change(None);
         let mut keys = Vec::with_capacity(inlays.len());
         let mut spans = Vec::with_capacity(inlays.len());
         for (range, inlay) in inlays {
@@ -1167,6 +1169,11 @@ impl Document {
             );
         }
         EditLog::coalesce(&mut spans);
+        // The spans the repair walks are the spans the shaped lines
+        // were damaged in: noting the change as UNBOUNDED retires
+        // every standing line in the frame, and a plugin's inlay on
+        // one row re-shapes the whole viewport.
+        self.note_markup_change(Some(&spans));
         self.repair_editors_many(&spans, store, ui, theme, fx);
         keys
     }
@@ -1190,7 +1197,7 @@ impl Document {
             return;
         };
         self.with_markup_mut(key.layer, |markup| markup.remove_keys([key.key]));
-        self.note_markup_change(None);
+        self.note_markup_change(Some(&[crate::markup::inlay_repair_span(mode, &range)]));
         for editor in self.editors.keys().copied().collect::<Vec<_>>() {
             let Some(state) = self.editors.get_mut(&editor) else {
                 continue;
@@ -1225,8 +1232,8 @@ impl Document {
         let (performed, edit) = self.with_markup_mut(key.layer, |markup| {
             markup.perform_inlay(store, ui, key.key, command, fx)
         });
-        if performed.is_some() {
-            self.note_markup_change(None);
+        if let Some((range, mode)) = &performed {
+            self.note_markup_change(Some(&[crate::markup::inlay_repair_span(*mode, range)]));
         }
         (performed, edit)
     }
@@ -2647,7 +2654,18 @@ impl Document {
     }
 
     pub fn swap_inlay(&mut self, key: InlayKey, range: Range<u32>, inlay: Inlay) {
-        self.note_markup_change(None);
+        let mut span = crate::markup::inlay_repair_span(inlay.mode(), &range);
+        if let MarkupLayer::Markup(markup_id) = key.layer {
+            if let Some((old, mode)) = self
+                .markups
+                .get(&markup_id)
+                .and_then(|markup| markup.inlay_interval(key.key))
+            {
+                let old = crate::markup::inlay_repair_span(mode, &old);
+                span = span.start.min(old.start)..span.end.max(old.end);
+            }
+        }
+        self.note_markup_change(Some(&[span]));
         self.with_markup_mut(key.layer, |markup| {
             markup.replace_inlay(key.key, range, inlay);
         });

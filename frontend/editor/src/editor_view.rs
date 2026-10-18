@@ -684,7 +684,12 @@ impl EditorView {
             let mut above_y = line_top;
             let mut under_y = content_top + content_height;
             let line_start_x = line.x;
-            let mut positioner = None;
+            // The frame ALREADY shaped this line for the paint, and
+            // byte→x is the same question whoever asks it: the
+            // positioner is that line. Only rows the viewport left
+            // unshaped (rules, full-line instead-inlays) shape one of
+            // their own.
+            let mut positioner = line.shaped.clone();
 
             for interval in &hits {
                 if !inlay_anchors_line(interval.inlay.mode, &interval.range, &line_range) {
@@ -808,15 +813,27 @@ fn positioner_line(
     let markup_generation = document.markup_generation();
     let width = document.editor(editor_id).layout.layout_width();
     let key = (editor_id, line_range.start);
-    if let Some(entry) = cache.entries.borrow().get(&key) {
-        if entry.revision == revision
-            && entry.markup_generation == markup_generation
-            && entry.line_end == line_range.end
-            && entry.width == width
-            && *entry.theme == *theme.name()
-        {
-            return entry.shaped.clone();
-        }
+    let standing = {
+        let entries = cache.entries.borrow();
+        entries.get(&key).is_some_and(|entry| {
+            entry.revision == revision
+                && entry.line_end == line_range.end
+                && entry.width == width
+                && *entry.theme == *theme.name()
+                // Markup lands all over a document — diagnostics on
+                // another line, a hover elsewhere — and a bare
+                // generation bump retires every standing line. Ask
+                // the range the paint cache asks: did markup change
+                // HERE?
+                && (entry.markup_generation == markup_generation
+                    || !document.markup_changed_in(entry.markup_generation, line_range.clone()))
+        })
+    };
+    if standing {
+        let mut entries = cache.entries.borrow_mut();
+        let entry = entries.get_mut(&key).expect("standing");
+        entry.markup_generation = markup_generation;
+        return entry.shaped.clone();
     }
     let shaped = std::rc::Rc::new(document.shape_line(
         editor_id,
@@ -1510,7 +1527,14 @@ impl EditorView {
         };
         let mut overlays = Vec::new();
         let completion = document.completion(editor);
-        if let Some(anchor) = completion.anchor_start(document).and_then(rect_at) {
+        // An empty popup is still a popover: it is mounted, placed,
+        // promoted and presented for nothing. Wait for rows.
+        let anchor = completion
+            .has_rows()
+            .then(|| completion.anchor_start(document))
+            .flatten()
+            .and_then(rect_at);
+        if let Some(anchor) = anchor {
             let view: &'a crate::completion::CompletionPopupView = arena.alloc(completion.view());
             overlays.push(imba::overlay::Overlay {
                 host: imba::overlay::WINDOW,

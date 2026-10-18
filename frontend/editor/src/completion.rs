@@ -398,8 +398,21 @@ impl Default for Completer {
 }
 
 impl Completer {
+    /// The session is LIVE: an anchor stands in the text and the
+    /// popup owns the walk keys. True from the trigger onward, rows
+    /// or no rows — Escape must still close what typing opened.
     pub fn open(&self) -> bool {
         self.cover.is_some()
+    }
+
+    /// The popup has something to SHOW. A live session with no rows
+    /// yet — the usual state for the first keystrokes, while the
+    /// server is still thinking — paints an empty one-row box, and
+    /// on the apple shells that box is a native popover: minting
+    /// one per keystroke is what makes typing jerk. No rows, no
+    /// overlay.
+    pub fn has_rows(&self) -> bool {
+        self.source.row_count() > 0
     }
 
     pub fn selected(&self) -> usize {

@@ -5750,3 +5750,215 @@ fn editor_resize_bench() {
         );
     }
 }
+
+/// THE POPUP SHOWS ONLY WHAT IT HAS. A completion session opens on
+/// the keystroke and its rows arrive later — from a server, or from
+/// a query too short to search. Between those two moments the popup
+/// has nothing to paint, and on the apple shells painting it means
+/// minting a native popover: typing jerked once per keystroke for a
+/// box with no rows in it. `open` still arms the walk keys; only
+/// `has_rows` earns the overlay.
+#[test]
+fn a_completion_popup_waits_for_rows() {
+    use crate::location::{Authority, ResourceLocation, ResourceType};
+    let ui = crate::test_document::test_ui();
+    let theme = test_theme();
+    let file = |name: &str| {
+        ResourceLocation::new(
+            ResourceType::new("file"),
+            Authority::new("local"),
+            vec![name.to_owned()],
+        )
+    };
+
+    // A context with nothing behind it: the session opens, and the
+    // popup has nothing to show.
+    let mut store = imba::store::Store::new();
+    crate::env::Themes::set(&mut store, theme.clone());
+    let (mut document, editor) = ime_doc("");
+    document.set_mentions(
+        editor,
+        Some(crate::completion::MentionContext {
+            folders: std::sync::Arc::new(Vec::new()),
+            recents: Vec::new(),
+        }),
+    );
+    let mut batch = imba::effect::Batch::new();
+    document.insert(editor, "@", &store, ui, &theme, &mut batch.effects());
+    document.completion_sync(
+        editor,
+        None,
+        Some("@"),
+        false,
+        &mut store,
+        ui,
+        &mut batch.effects(),
+    );
+    assert!(
+        document.completion(editor).open(),
+        "the @ opened the session — Escape must still close it"
+    );
+    assert!(
+        !document.completion(editor).has_rows(),
+        "an empty source must not earn a popover"
+    );
+
+    // The same keystroke with recents behind it has rows at once.
+    let mut store = imba::store::Store::new();
+    crate::env::Themes::set(&mut store, theme.clone());
+    let (mut document, editor) = ime_doc("");
+    document.set_mentions(
+        editor,
+        Some(crate::completion::MentionContext {
+            folders: std::sync::Arc::new(vec![file("notes")]),
+            recents: vec![file("notes.md"), file("plan.md")],
+        }),
+    );
+    let mut batch = imba::effect::Batch::new();
+    document.insert(editor, "@", &store, ui, &theme, &mut batch.effects());
+    document.completion_sync(
+        editor,
+        None,
+        Some("@"),
+        false,
+        &mut store,
+        ui,
+        &mut batch.effects(),
+    );
+    assert!(document.completion(editor).open());
+    assert!(
+        document.completion(editor).has_rows(),
+        "recents fill the popup on the very first keystroke: {:?}",
+        document.completion(editor).row_labels()
+    );
+}
+
+/// THE POSITIONER IS THE PAINTED LINE. Anchored inlays need one
+/// answer from the row they sit on — where is this byte? — and the
+/// frame already shaped that row for the paint. Shaping a second
+/// line to ask it made every realize walk (the layout stage, the IME
+/// fold, the animation tick, an open popover's ticks) re-shape every
+/// visible inlay row; with a popover standing, typing and caret
+/// moves crawled. The walk reuses the viewport's line, and the
+/// fallback line (rules, full-line inlays) survives markup that
+/// landed on OTHER rows, the way the paint cache does.
+#[test]
+fn inlay_placement_reuses_the_painted_line() {
+    let store = &imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    let theme = crate::theme::Theme::embedded();
+    let source = "alpha line\nbeta line\ngamma line\ndelta line\nepsilon line\nzeta line\n";
+    let mut document = crate::test_document::plain_document(source);
+    let markup = crate::markup::MarkupId::mint();
+    document.ensure_document_markup(markup);
+    // An anchored inlay on the second line: this is the row whose
+    // byte→x the placement walk asks for.
+    document.push_inlay(
+        markup,
+        13..14,
+        crate::markup::Inlay::new(
+            crate::markup::InlayMode::Left,
+            FixedInlay {
+                width: 20.0,
+                height: 10.0,
+            },
+        ),
+        store,
+        ui,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let editor = document.add_editor(
+        240.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let mut view = crate::editor_view::EditorView {
+        document,
+        editor,
+        reports_geometry: false,
+        location: None,
+        gutter_width: 0.0,
+        base: None,
+    };
+    let walk = |view: &crate::editor_view::EditorView| {
+        let arena = imba::arena::Arena::default();
+        let laid = imba::layout::Layout::layout(
+            imba::View::display(view, &arena, store, ui),
+            &arena,
+            imba::constraints::Constraints::tight(skia_safe::Size::new(240.0, 400.0)),
+        );
+        let widget = imba::Thunk::realize(laid, &arena, skia_safe::Rect::from_wh(240.0, 400.0));
+        std::hint::black_box(&widget);
+    };
+    let shapes = || crate::parley_line::shaper(ui).shapes_so_far();
+
+    // The same rows, without the inlay: the cost of a walk is the
+    // rows it paints. Placing an anchored inlay must not add a line.
+    let mut bare = crate::test_document::plain_document(source);
+    let bare_editor = bare.add_editor(
+        240.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let bare = crate::editor_view::EditorView {
+        document: bare,
+        editor: bare_editor,
+        reports_geometry: false,
+        location: None,
+        gutter_width: 0.0,
+        base: None,
+    };
+    let before_bare = shapes();
+    walk(&bare);
+    let rows = shapes() - before_bare;
+    assert!(rows >= 6, "every row shaped once: {rows}");
+
+    let before = shapes();
+    walk(&view);
+    let with_inlay = shapes() - before;
+    assert_eq!(
+        with_inlay, rows,
+        "the anchored inlay reads the painted line, it does not shape one"
+    );
+
+    let warm = shapes();
+    walk(&view);
+    assert_eq!(shapes(), warm, "a repeated walk shapes nothing");
+
+    // Markup landing on ANOTHER row — a diagnostic, a hover, a
+    // plugin's decoration — bumps the generation. Only the row it
+    // touched re-shapes; the inlay row keeps its line.
+    view.document.push_inlay(
+        markup,
+        45..46,
+        crate::markup::Inlay::new(
+            crate::markup::InlayMode::Above,
+            FixedInlay {
+                width: 20.0,
+                height: 10.0,
+            },
+        ),
+        store,
+        ui,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let before = shapes();
+    walk(&view);
+    assert!(
+        shapes() - before <= 1,
+        "only the touched row re-shapes: {} lines",
+        shapes() - before
+    );
+}
