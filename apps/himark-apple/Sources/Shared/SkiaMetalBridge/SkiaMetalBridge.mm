@@ -5,11 +5,15 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <unordered_map>
+
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
 #include "include/gpu/graphite/BackendTexture.h"
 #include "include/gpu/graphite/Context.h"
+#include "include/gpu/graphite/Image.h"
+#include "include/gpu/graphite/ImageProvider.h"
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/GraphiteTypes.h"
 #include "include/gpu/graphite/Recorder.h"
@@ -49,6 +53,68 @@ struct SkiaMetalGpu {
 /// One screen of retina text and its atlases, shared across views.
 static constexpr size_t kGpuBudgetBytes = 128 << 20;
 
+static bool trace_images(void);
+
+/// THE IMAGE DOOR. Graphite draws nothing at all for a CPU-backed
+/// image — its default provider "doesn't perform any conversion"
+/// (Skia's own words in Recorder.cpp), so a raster image is silently
+/// DROPPED from the frame. Every picture the engine paints arrives
+/// that way: mermaid diagrams rasterized by resvg, markdown images
+/// decoded by skia itself. They all went blank the day these shells
+/// moved to Graphite; nothing in the engine was wrong.
+///
+/// It CACHES because `findOrCreate` runs per draw, per frame: a
+/// 798x1246 diagram re-uploaded every tick costs more than the frame
+/// it serves. The key is the image's unique id — a re-rasterized SVG
+/// mints a new one, so a stale texture falls out with its key — and
+/// past the budget the whole map drops, the visible few re-uploading
+/// on the next frame (the law the engine's own caches keep).
+///
+/// THREAD AFFINITY: one Recorder, driven from the render thread
+/// alone; the map needs no lock for the same reason the Recorder
+/// needs none.
+class UploadingImageProvider final : public skgpu::graphite::ImageProvider {
+public:
+    static sk_sp<UploadingImageProvider> Make() {
+        return sk_sp<UploadingImageProvider>(new UploadingImageProvider);
+    }
+
+    sk_sp<SkImage> findOrCreate(skgpu::graphite::Recorder *recorder,
+                                const SkImage *image,
+                                SkImage::RequiredProperties properties) override {
+        const uint32_t id = image->uniqueID();
+        auto found = fUploaded.find(id);
+        if (found != fUploaded.end() && found->second.properties == properties) {
+            return found->second.image;
+        }
+        sk_sp<SkImage> uploaded = SkImages::TextureFromImage(recorder, image, properties);
+        if (trace_images()) {
+            NSLog(@"[image] upload %dx%d -> %s (cached %zu)", image->width(), image->height(),
+                  uploaded ? "ok" : "FAILED", fUploaded.size());
+        }
+        if (!uploaded) {
+            return nullptr;
+        }
+        // A screen's worth of pictures; past it the map drops whole
+        // rather than growing for the life of the process.
+        if (fUploaded.size() >= 64) {
+            fUploaded.clear();
+        }
+        fUploaded.insert_or_assign(id, Entry{uploaded, properties});
+        return uploaded;
+    }
+
+private:
+    struct Entry {
+        sk_sp<SkImage> image;
+        SkImage::RequiredProperties properties;
+    };
+
+    UploadingImageProvider() {}
+
+    std::unordered_map<uint32_t, Entry> fUploaded;
+};
+
 static SkiaMetalGpu *shared_gpu(id<MTLDevice> device) {
     static SkiaMetalGpu *shared = nullptr;
     if (shared != nullptr && shared->device == device) {
@@ -79,12 +145,21 @@ static SkiaMetalGpu *shared_gpu(id<MTLDevice> device) {
         // telling Graphite so lets the text atlas carry state from
         // frame to frame instead of proving it each time.
         recorder.fRequireOrderedRecordings = true;
+        // Without this, every CPU-backed image draws as nothing.
+        recorder.fImageProvider = UploadingImageProvider::Make();
         gpu->recorder = gpu->context->makeRecorder(recorder);
     }
     if (shared == nullptr) {
         shared = gpu;
     }
     return gpu;
+}
+
+/// `HIMARK_TRACE_IMAGES=1` reports every upload through the door —
+/// the probe for a picture that silently refuses to appear.
+static bool trace_images(void) {
+    static bool on = getenv("HIMARK_TRACE_IMAGES") != nullptr;
+    return on;
 }
 
 static bool trace_present(void) {

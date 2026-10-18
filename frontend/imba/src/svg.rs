@@ -247,3 +247,42 @@ mod tests {
         assert_eq!(SvgView::intrinsic_size(r#"<svg width="100%">"#), None);
     }
 }
+
+#[cfg(test)]
+mod raster_tests {
+    use super::*;
+
+    /// The SVG road paints INK, not just a background. A silently
+    /// empty raster is this road's failure mode — resvg renders
+    /// nothing for a tree it cannot resolve, and the diagram turns
+    /// into a blank card without a single error.
+    #[test]
+    fn an_svg_rasterizes_its_ink() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20">
+            <rect x="0" y="0" width="40" height="20" fill="#ffffff"/>
+            <circle cx="10" cy="10" r="6" fill="#9370db"/>
+            <path d="M20 10 L36 10" stroke="#333333" stroke-width="2"/>
+        </svg>"##;
+        let intrinsic = SvgView::intrinsic_size(svg).expect("the viewBox gives the size");
+        assert_eq!(intrinsic, Size::new(40.0, 20.0));
+
+        let view = SvgView::new(svg, intrinsic);
+        let image = view.rasterize(2.0).expect("the svg rasterizes");
+        assert_eq!((image.width(), image.height()), (80, 40));
+
+        let pixmap = image.peek_pixels().expect("raster pixels");
+        let bytes = pixmap.bytes().expect("pixel bytes");
+        let mut purple = 0usize;
+        let mut stroke = 0usize;
+        for px in bytes.chunks(4) {
+            if px[0] > 0x80 && px[0] < 0xb0 && px[1] > 0x60 && px[1] < 0x90 && px[2] > 0xc0 {
+                purple += 1;
+            }
+            if px[0] < 0x50 && px[1] < 0x50 && px[2] < 0x50 && px[3] > 0x80 {
+                stroke += 1;
+            }
+        }
+        assert!(purple > 100, "the filled circle inks: {purple} px");
+        assert!(stroke > 20, "the stroked path inks: {stroke} px");
+    }
+}

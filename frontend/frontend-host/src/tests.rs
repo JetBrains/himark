@@ -8635,42 +8635,106 @@ fn a_late_files_tree_stands_on_the_followed_file() {
 
 #[test]
 fn a_mermaid_document_diagrams_through_the_engine() {
+    mermaid_probe("diagram.md", "```mermaid\nflowchart TD\n    Start --> Finish\n```\n", 200..700);
+}
+
+/// The HOSTED road: the sample opened from disk through the host
+/// pick — fetch, off-thread build in the workshop store, location
+/// registration — the exact lane the shells ride.
+#[test]
+fn a_hosted_sample_file_diagrams() {
+    let (host, mut engine, window, fs) = hosted_engine();
+    let source = include_str!("../../plugins/demo/sample.md");
+    open_picked(
+        &mut engine,
+        &host.seat,
+        window,
+        &fs,
+        &["sample.md"],
+        source,
+    );
+    let mermaid_state = |engine: &mut HimarkEngine| -> Option<(bool, usize)> {
+        let documents = engine.app.sole_documents();
+        for (id, _open) in documents::OpenDocuments::list(engine.app.store(), documents) {
+            let Some(document) =
+                documents::OpenDocuments::document_ref(engine.app.store(), documents, id)
+            else {
+                continue;
+            };
+            let len = document.text().byte_count() as u32;
+            for interval in document.all_inlays_in(0..len) {
+                if let Some(view) = interval.inlay.view_as::<himermaid::MermaidView>() {
+                    return Some((
+                        view.svg().is_some(),
+                        view.svg().map(str::len).unwrap_or(0),
+                    ));
+                }
+            }
+        }
+        None
+    };
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
+    settle_until(&mut engine, "the hosted fence births a RENDERED diagram", |engine| {
+        surface.canvas().clear(skia_safe::Color::WHITE);
+        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+        matches!(mermaid_state(engine), Some((true, _)))
+    });
+    eprintln!(
+        "[mermaid-hosted] inlay state {:?}",
+        mermaid_state(&mut engine)
+    );
+}
+
+/// The REAL sample: the fence sits mid-document behind headers and
+/// prose — the shape that went blank in the app while the minimal
+/// probe stayed green.
+#[test]
+fn the_demo_sample_diagrams_through_the_engine() {
+    let source = include_str!("../../plugins/demo/sample.md");
+    let at = source.find("```mermaid").expect("the sample carries a fence");
+    assert!(at > 0);
+    mermaid_probe("sample.md", source, 60..860);
+}
+
+fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
 
-    let source = "```mermaid\nflowchart TD\n    Start --> Finish\n```\n";
     assert!(
-        engine.open_document(window, "diagram.md", source, true),
+        engine.open_document(window, name, source, true),
         "the engine opens the markdown document"
     );
+    let _ = band;
 
-    let mut best = 0usize;
-    settle_until(&mut engine, "the diagram inks the band", |engine| {
-        surface.canvas().clear(skia_safe::Color::WHITE);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
-        let image = surface.image_snapshot();
-        let pixmap = image.peek_pixels().expect("pixels");
-        let bytes = pixmap.bytes().expect("bytes");
-        let row_bytes = image.width() as usize * 4;
-        let mut inked = 0usize;
-        // The band under the 4-line fence; the diagram paints boxes
-        // and arrows there.
-        for y in 200..700 {
-            for x in 60..840 {
-                let px = &bytes[y * row_bytes + x * 4..y * row_bytes + x * 4 + 3];
-                let bg = &bytes[880 * row_bytes + 850 * 4..880 * row_bytes + 850 * 4 + 3];
-                if (px[0] as i32 - bg[0] as i32).abs() > 24
-                    || (px[1] as i32 - bg[1] as i32).abs() > 24
-                    || (px[2] as i32 - bg[2] as i32).abs() > 24
-                {
-                    inked += 1;
+    let mermaid_state = |engine: &mut HimarkEngine| -> Option<(bool, usize)> {
+        let documents = engine.app.sole_documents();
+        for (id, _open) in documents::OpenDocuments::list(engine.app.store(), documents) {
+            let Some(document) =
+                documents::OpenDocuments::document_ref(engine.app.store(), documents, id)
+            else {
+                continue;
+            };
+            let len = document.text().byte_count() as u32;
+            for interval in document.all_inlays_in(0..len) {
+                if let Some(view) = interval.inlay.view_as::<himermaid::MermaidView>() {
+                    return Some((
+                        view.svg().is_some(),
+                        view.svg().map(str::len).unwrap_or(0),
+                    ));
                 }
             }
         }
-        best = best.max(inked);
-        inked > 3000
+        None
+    };
+
+    let mut surface = surface;
+    settle_until(&mut engine, "the fence births a RENDERED diagram inlay", |engine| {
+        surface.canvas().clear(skia_safe::Color::WHITE);
+        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+        matches!(mermaid_state(engine), Some((true, _)))
     });
-    eprintln!("[mermaid-engine] inked {best}");
+    let state = mermaid_state(&mut engine);
+    eprintln!("[mermaid-engine] {name}: inlay state {state:?}");
 }

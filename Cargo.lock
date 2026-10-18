@@ -1304,14 +1304,12 @@ dependencies = [
  "intervals",
  "myersdiff",
  "operation",
- "parley",
  "regex",
  "rope",
  "rpds",
  "serde",
  "serde_json",
  "skia-safe",
- "skrifa",
  "sumtree",
  "text",
  "tokenize",
@@ -3071,10 +3069,12 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "intervals",
+ "parley",
  "resvg",
  "rope",
  "rpds",
  "skia-safe",
+ "skrifa",
 ]
 
 [[package]]
