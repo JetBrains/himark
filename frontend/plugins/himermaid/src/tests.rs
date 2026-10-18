@@ -222,3 +222,61 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
     let (_, _, is_diagram, _) = diagram_inlay(&document).expect("inlay");
     assert!(is_diagram, "fixed source renders again");
 }
+
+#[test]
+fn the_diagram_paints_real_pixels() {
+    let store = &imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let source = "```mermaid\nflowchart TD\n    Start --> Finish\n```\n";
+    let registry = languages();
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
+        "markdown",
+        &registry,
+        store,
+        ui,
+        &theme(),
+    );
+    settle(&mut document, &registry);
+    let mut quiet = imba::effect::Batch::new();
+    let editor = document.add_editor(
+        600.0,
+        None,
+        editor::document::EditorBuild::Bounded,
+        &[],
+        store,
+        ui,
+        &theme(),
+        &mut quiet.effects(),
+    );
+    let height = document.content_height(editor);
+    eprintln!("[mermaid-pixels] content height {height}");
+    let mut surface = skia_safe::surfaces::raster_n32_premul((600, 800)).expect("surface");
+    let canvas = surface.canvas();
+    canvas.clear(skia_safe::Color::WHITE);
+    document.paint(
+        editor,
+        canvas,
+        skia_safe::Rect::from_xywh(0.0, 0.0, 600.0, 800.0),
+        false,
+        store,
+        ui,
+        &theme(),
+    );
+    let image = surface.image_snapshot();
+    let pixmap = image.peek_pixels().expect("pixels");
+    let bytes = pixmap.bytes().expect("bytes");
+    let inked = bytes
+        .chunks(4)
+        .filter(|px| px[0] != 0xff || px[1] != 0xff || px[2] != 0xff)
+        .count();
+    eprintln!("[mermaid-pixels] inked {inked} of {}", bytes.len() / 4);
+    assert!(
+        height > 80.0,
+        "the fence plus diagram take real height: {height}"
+    );
+    assert!(
+        inked > 2000,
+        "the diagram inks a real area, got {inked} pixels"
+    );
+}

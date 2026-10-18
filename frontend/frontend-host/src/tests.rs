@@ -8632,3 +8632,45 @@ fn a_late_files_tree_stands_on_the_followed_file() {
         },
     );
 }
+
+#[test]
+fn a_mermaid_document_diagrams_through_the_engine() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let window = engine.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+
+    let source = "```mermaid\nflowchart TD\n    Start --> Finish\n```\n";
+    assert!(
+        engine.open_document(window, "diagram.md", source, true),
+        "the engine opens the markdown document"
+    );
+
+    let mut best = 0usize;
+    settle_until(&mut engine, "the diagram inks the band", |engine| {
+        surface.canvas().clear(skia_safe::Color::WHITE);
+        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+        let image = surface.image_snapshot();
+        let pixmap = image.peek_pixels().expect("pixels");
+        let bytes = pixmap.bytes().expect("bytes");
+        let row_bytes = image.width() as usize * 4;
+        let mut inked = 0usize;
+        // The band under the 4-line fence; the diagram paints boxes
+        // and arrows there.
+        for y in 200..700 {
+            for x in 60..840 {
+                let px = &bytes[y * row_bytes + x * 4..y * row_bytes + x * 4 + 3];
+                let bg = &bytes[880 * row_bytes + 850 * 4..880 * row_bytes + 850 * 4 + 3];
+                if (px[0] as i32 - bg[0] as i32).abs() > 24
+                    || (px[1] as i32 - bg[1] as i32).abs() > 24
+                    || (px[2] as i32 - bg[2] as i32).abs() > 24
+                {
+                    inked += 1;
+                }
+            }
+        }
+        best = best.max(inked);
+        inked > 3000
+    });
+    eprintln!("[mermaid-engine] inked {best}");
+}
