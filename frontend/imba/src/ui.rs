@@ -10,7 +10,6 @@ use std::cell::RefCell;
 /// `TextShaper`'s labels) reads THIS slot instead of minting a
 /// collection of its own, or a fresh `FontMgr` answers fallback with
 /// fonts the platform may not have.
-pub struct UiFonts(pub skia_safe::textlayout::FontCollection);
 
 pub struct UiCtx {
     slots: RefCell<Vec<(TypeId, Box<dyn Any>)>>,

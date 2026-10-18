@@ -219,7 +219,7 @@ impl Himark {
         store.put(::editor::env::Themes(theme.clone()));
 
         let ui = std::rc::Rc::new(UiCtx::dont_use_too_slow());
-        ui.set(imba::ui::UiFonts((fonts.source())()));
+        ui.set(::editor::env::UiFonts((fonts.source())()));
         ui.set(theme.ui().scrollbar.style());
 
         let overlay_font = hikit::fonts::ui_text_font(&ui, theme.ui().stats.font_size);

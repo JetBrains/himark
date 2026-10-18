@@ -177,7 +177,7 @@ impl View for TerminalView {
             let cell = cell_metrics(&font);
             let fallbacks = ui.env(|| FallbackFaces {
                 manager: ui
-                    .get::<imba::ui::UiFonts>()
+                    .get::<::editor::env::UiFonts>()
                     .and_then(|fonts| fonts.0.fallback_manager())
                     .unwrap_or_else(skia_safe::FontMgr::new),
                 by_char: Default::default(),

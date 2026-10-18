@@ -272,7 +272,38 @@ impl ParleyCtx {
                 }
             }
         }
+        self.seed_symbol_fallbacks();
         self.synced = generation;
+    }
+
+    /// Fontique's fallback is keyed by SCRIPT SAMPLE text, so the
+    /// keycap and technical symbols (⌘ ⌃ ⌥ ⇧ ⌫ ⎋ — script Common,
+    /// inheriting the surrounding run's script) never reach the
+    /// faces that carry them. Appending the symbol faces to the
+    /// common scripts' fallback lists lets per-cluster coverage
+    /// matching find them.
+    fn seed_symbol_fallbacks(&mut self) {
+        #[cfg(target_vendor = "apple")]
+        {
+            let ids: Vec<parley::fontique::FamilyId> = ["Apple Symbols", "Menlo"]
+                .iter()
+                .filter_map(|name| {
+                    self.fonts
+                        .collection
+                        .family_by_name(name)
+                        .map(|info| info.id())
+                })
+                .collect();
+            if ids.is_empty() {
+                return;
+            }
+            for script in [*b"Latn", *b"Zyyy", *b"Cyrl", *b"Grek"] {
+                self.fonts.collection.append_fallbacks(
+                    parley::fontique::Script::from_bytes(script),
+                    ids.iter().copied(),
+                );
+            }
+        }
     }
 
     fn position(

@@ -1,9 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::ui::UiFonts;
-
 use imba::store::Store;
+
+/// The UI-thread font collection slot — TRANSITIONAL: dies with the
+/// skparagraph plumbing once every widget shapes through
+/// `imba::shape`.
+pub struct UiFonts(pub skia_safe::textlayout::FontCollection);
 
 #[derive(Clone)]
 pub struct Fonts(pub crate::FontSource);

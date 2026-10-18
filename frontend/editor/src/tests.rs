@@ -1833,7 +1833,7 @@ fn popup_overlays_carry_projected_inlays() {
     };
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(imba::ui::UiFonts(test_fonts()));
+    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
     // the projections from its shared viewport build.
@@ -3446,7 +3446,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     view.gutter_width = chrome_width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(imba::ui::UiFonts(test_fonts()));
+    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3544,7 +3544,7 @@ fn gutter_numbers_share_the_text_baseline() {
     view.gutter_width = chrome.width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(imba::ui::UiFonts(test_fonts()));
+    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3971,7 +3971,7 @@ mod folding {
         let editor = view.editor;
         let store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        ui.set(imba::ui::UiFonts(test_fonts()));
+        ui.set(crate::env::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
             min: skia_safe::Size::default(),
@@ -4900,7 +4900,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
 
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(imba::ui::UiFonts(test_fonts()));
+    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),

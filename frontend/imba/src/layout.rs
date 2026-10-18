@@ -848,11 +848,11 @@ impl Text {
 /// UI faces rarely cover (the chrome typeface resolves to Helvetica
 /// on macOS, which maps almost none of ⌘ ⌃ ⌥ ⇧ ⌫ ⎋).
 struct ShapedLabel {
-    paragraph: skia_safe::textlayout::Paragraph,
+    line: crate::shape::ParleyLine,
     /// The unwrapped single-line advance — what `measure_str` answered
     /// when `Text` drew its glyphs itself.
     width: f32,
-    /// First-line alphabetic baseline, from the paragraph's top.
+    /// First-line alphabetic baseline, from the layout's top.
     baseline: f32,
 }
 
@@ -864,7 +864,6 @@ struct ShapedLabel {
 /// `&str` — a flat (style, String) key would clone the label text on
 /// every lookup.
 pub struct TextShaper {
-    fonts: skia_safe::textlayout::FontCollection,
     labels: std::cell::RefCell<
         std::collections::HashMap<StyleKey, std::collections::HashMap<String, LabelEntry>>,
     >,
@@ -898,20 +897,7 @@ const LABEL_CAPACITY: usize = 1024;
 impl TextShaper {
     pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Self> {
         ui.env(|| {
-            // The ctx's configured collection when the edge seeded one
-            // (`UiFonts` carries the embedded faces on web, where a
-            // fresh `FontMgr` knows no font at all); a system-manager
-            // collection only as the bare-ctx fallback.
-            let fonts = match ui.get::<crate::ui::UiFonts>() {
-                Some(fonts) => fonts.0.clone(),
-                None => {
-                    let mut fonts = skia_safe::textlayout::FontCollection::new();
-                    fonts.set_default_font_manager(skia_safe::FontMgr::new(), None);
-                    fonts
-                }
-            };
             std::rc::Rc::new(TextShaper {
-                fonts,
                 labels: Default::default(),
                 clock: Default::default(),
             })
@@ -926,12 +912,14 @@ impl TextShaper {
         text: &str,
         color: skia_safe::Color,
         tracking: f32,
-    ) -> skia_safe::textlayout::Paragraph {
+    ) -> crate::shape::ParleyLine {
         self.shape_clipped(font, text, color, tracking, None)
     }
 
-    /// Shape with an optional clip width: the paragraph ellipsizes
-    /// ("…") at the width instead of painting past its box.
+    /// Shape with an optional clip width: the label ellipsizes
+    /// ("…") at the width instead of painting past its box. The
+    /// base face's FAMILY leads the chain, system-ui backs it for
+    /// fallback (the chrome face maps almost none of ⌘ ⌃ ⌥ ⇧ ⌫ ⎋).
     fn shape_clipped(
         &self,
         font: &skia_safe::Font,
@@ -939,54 +927,21 @@ impl TextShaper {
         color: skia_safe::Color,
         tracking: f32,
         clip: Option<f32>,
-    ) -> skia_safe::textlayout::Paragraph {
-        let mut typeface = font.typeface();
-        // Synthetic bold (`Font::set_embolden`) has no paragraph
-        // counterpart — resolve the family's real bold face instead;
-        // a family without one keeps the base face.
-        if font.is_embolden() {
-            let base = typeface.font_style();
-            let bold = skia_safe::FontStyle::new(
-                skia_safe::font_style::Weight::BOLD,
-                base.width(),
-                base.slant(),
-            );
-            if let Some(face) = self
-                .fonts
-                .clone()
-                .find_typefaces(&[typeface.family_name()], bold)
-                .into_iter()
-                .next()
-            {
-                typeface = face;
-            }
-        }
-        let mut style = skia_safe::textlayout::TextStyle::new();
-        style.set_typeface(typeface.clone());
-        // The families steer FALLBACK matching (weight/slant for the
-        // borrowed faces); the base glyphs come from the typeface.
-        style.set_font_families(&[typeface.family_name()]);
-        style.set_font_style(typeface.font_style());
-        style.set_font_size(font.size());
-        style.set_color(color);
-        if tracking != 0.0 {
-            style.set_letter_spacing(tracking);
-        }
-        let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
-        paragraph_style.set_text_style(&style);
-        if clip.is_some() {
-            paragraph_style.set_ellipsis("…");
-            paragraph_style.set_max_lines(1);
-        }
-        let mut builder =
-            skia_safe::textlayout::ParagraphBuilder::new(&paragraph_style, self.fonts.clone());
-        builder.push_style(&style);
-        builder.add_text(text);
-        let mut paragraph = builder.build();
-        // Labels are single-line; the width only exists to not wrap —
-        // or, clipped, to ellipsize.
-        paragraph.layout(clip.unwrap_or(f32::MAX));
-        paragraph
+    ) -> crate::shape::ParleyLine {
+        let typeface = font.typeface();
+        let family = typeface.family_name();
+        let style = typeface.font_style();
+        let bold = font.is_embolden()
+            || style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD;
+        crate::shape::ParleyLine::ellipsized(
+            text,
+            &[family.as_str(), "system-ui"],
+            font.size(),
+            tracking,
+            color,
+            bold,
+            clip,
+        )
     }
 
     fn label(
@@ -1027,15 +982,15 @@ impl TextShaper {
             return std::rc::Rc::clone(&entry.label);
         }
         let clip = clip.map(|width| width.round().max(1.0));
-        let paragraph = self.shape_clipped(font, text, color, tracking, clip);
+        let line = self.shape_clipped(font, text, color, tracking, clip);
         let label = std::rc::Rc::new(ShapedLabel {
             width: match clip {
                 // The ellipsized line's true extent, not the ask.
-                Some(_) => paragraph.longest_line().ceil(),
-                None => paragraph.max_intrinsic_width(),
+                Some(_) => line.width().ceil(),
+                None => line.width(),
             },
-            baseline: paragraph.alphabetic_baseline(),
-            paragraph,
+            baseline: line.first_baseline().unwrap_or(0.0),
+            line,
         });
         let mut labels = self.labels.borrow_mut();
         if labels.values().map(|texts| texts.len()).sum::<usize>() >= LABEL_CAPACITY {
@@ -1081,9 +1036,7 @@ impl TextShaper {
         baseline: f32,
     ) -> f32 {
         let label = self.label(font, text, color, tracking);
-        label
-            .paragraph
-            .paint(canvas, (x, baseline - label.baseline));
+        label.line.paint(canvas, (x, baseline - label.baseline));
         label.width
     }
 }
@@ -1128,7 +1081,7 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
                 // box's base-font baseline — pixel parity with the
                 // draw_str chrome.
                 shaped
-                    .paragraph
+                    .line
                     .paint(canvas, (rect.left, rect.top + ascent - shaped.baseline));
             },
         );
@@ -1147,25 +1100,26 @@ mod tests {
     use super::*;
     use crate::leaf::leaf;
 
+    fn chrome_font() -> skia_safe::Font {
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        skia_safe::Font::from_typeface(face, 13.0)
+    }
+
     /// The platform UI face misses most keycap symbols (Helvetica has
-    /// no ⌘) — the paragraph pipeline must resolve every one through
+    /// no ⌘) — the shaping pipeline must resolve every one through
     /// system fallback, or labels paint notdef boxes.
     #[test]
     #[cfg(target_os = "macos")]
     fn key_symbols_resolve_to_real_glyphs() {
         let ui = crate::ui::UiCtx::dont_use_too_slow();
         let shaper = TextShaper::of(&ui);
-        let face = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
-            .expect("default typeface");
-        let font = skia_safe::Font::from_typeface(face, 13.0);
+        let font = chrome_font();
         let symbols = "⌘⌃⌥⇧⏎⌫⎋";
-        let mut paragraph = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
-        assert_eq!(
-            paragraph.unresolved_glyphs(),
-            Some(0),
-            "notdef in {symbols}"
-        );
+        let line = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
+        let (_, notdefs, total) = line.coverage_for_test();
+        assert_eq!(notdefs, 0, "notdef in {symbols} ({total} glyphs)");
         assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
     }
 
@@ -1177,71 +1131,52 @@ mod tests {
     fn fullwidth_plus_resolves_through_fallback() {
         let ui = crate::ui::UiCtx::dont_use_too_slow();
         let shaper = TextShaper::of(&ui);
-        let face = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
-            .expect("default typeface");
-        let font = skia_safe::Font::from_typeface(face, 13.0);
-        let symbols = "＋";
-        let mut paragraph = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
-        assert_eq!(
-            paragraph.unresolved_glyphs(),
-            Some(0),
-            "notdef in {symbols}"
-        );
+        let line = shaper.shape(&chrome_font(), "＋", skia_safe::Color::BLACK, 0.0);
+        let (_, notdefs, _) = line.coverage_for_test();
+        assert_eq!(notdefs, 0, "notdef in ＋");
     }
 
-    /// `Font::set_embolden` has no paragraph counterpart, so shaping
-    /// resolves the family's real bold face — and the label cache
-    /// must keep bold and regular apart (same typeface id otherwise).
+    /// `Font::set_embolden` shapes as BOLD weight — fontique either
+    /// resolves a real bold cut or marks synthesis; either way the
+    /// label cache keeps bold and regular apart.
     #[test]
     #[cfg(target_os = "macos")]
     fn embolden_resolves_the_bold_face() {
         let ui = crate::ui::UiCtx::dont_use_too_slow();
         let shaper = TextShaper::of(&ui);
-        let face = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
-            .expect("default typeface");
-        let mut bold = skia_safe::Font::from_typeface(face, 13.0);
+        let mut bold = chrome_font();
         bold.set_embolden(true);
-        let paragraph = shaper.shape(&bold, "bold label", skia_safe::Color::BLACK, 0.0);
-        let weights: Vec<i32> = paragraph
-            .get_fonts()
-            .iter()
-            .map(|info| *info.font.typeface().font_style().weight())
-            .collect();
-        assert!(!weights.is_empty(), "the label resolves at least one run");
+        let line = shaper.shape(&bold, "bold label", skia_safe::Color::BLACK, 0.0);
+        let report = line.face_report_for_test();
+        assert!(!report.is_empty(), "the label resolves at least one run");
         assert!(
-            weights
-                .iter()
-                .all(|weight| *weight >= *skia_safe::font_style::Weight::BOLD),
-            "runs must resolve bold faces, got weights {weights:?}"
+            report.iter().all(|(name, embolden, _)| {
+                *embolden || name.as_deref().is_some_and(|name| name.contains("Bold"))
+            }),
+            "runs must resolve bold: {report:?}"
         );
     }
 
+    /// Registered font bytes serve labels by family name — the web
+    /// road, where no system enumeration exists.
     #[test]
-    fn text_shaper_uses_seeded_ui_fonts() {
-        let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let family = "text-shaper-seeded-ui-fonts-test-family";
-        let face = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
-            .expect("default typeface");
-        let mut provider = skia_safe::textlayout::TypefaceFontProvider::new();
-        provider.register_typeface(face, Some(family));
-        let mut fonts = skia_safe::textlayout::FontCollection::new();
-        fonts.set_default_font_manager(skia_safe::FontMgr::from(provider), Some(family));
-        ui.set(crate::ui::UiFonts(fonts));
-
-        let shaper = TextShaper::of(&ui);
-        let face = shaper
-            .fonts
-            .clone()
-            .find_typefaces(&[family], skia_safe::FontStyle::normal())
-            .into_iter()
-            .next()
-            .expect("seeded family resolves");
-        let font = skia_safe::Font::from_typeface(face, 13.0);
-        let mut paragraph = shaper.shape(&font, "seeded ui fonts", skia_safe::Color::BLACK, 0.0);
-        assert_eq!(paragraph.unresolved_glyphs(), Some(0));
+    fn registered_fonts_serve_labels() {
+        crate::shape::register_font(include_bytes!(
+            "../../editor/assets/NotoSans-Regular.ttf"
+        ));
+        let line = crate::shape::ParleyLine::shape(
+            "seeded fonts",
+            "Noto Sans",
+            13.0,
+            &[crate::shape::SpanStyle::plain(skia_safe::Color::BLACK)],
+        );
+        let (families, notdefs, total) = line.coverage_for_test();
+        assert_eq!(notdefs, 0, "registered face covers latin");
+        assert!(total > 0);
+        assert!(
+            families.iter().any(|family| family.contains("Noto")),
+            "label served by the registered family, got {families:?}"
+        );
     }
 
     fn sized(width: f32, height: f32) -> impl for<'a> Layout<'a, ()> + LayoutValue {
