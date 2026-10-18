@@ -313,7 +313,7 @@ pub(crate) struct ShapedLine {
     /// The laid-out runs baked as blobs — `None` when a decoration
     /// or placeholder needs `Paragraph::paint`.
     blob_runs: Option<Vec<BlobRun>>,
-    /// The PARLEY twin, built alongside under `HIMARK_PARLEY` for
+    /// The PARLEY twin, ON BY DEFAULT (`HIMARK_NO_PARLEY` opts out) for
     /// plain lines — paint and caret queries A/B against the
     /// SkParagraph road live, in one binary.
     #[cfg(feature = "parley-text")]
@@ -1444,8 +1444,9 @@ pub(crate) fn block_gap(resolved: &crate::theme::TextAttributes) -> f32 {
     resolved.block_gap.unwrap_or(0.0)
 }
 
-/// Build the parley twin for a PLAIN line when `HIMARK_PARLEY`
-/// asks — same display text, same spans, same resolved base.
+/// Build the parley twin for a PLAIN line — the DEFAULT road
+/// (`HIMARK_NO_PARLEY` falls back to skparagraph-only); same
+/// display text, same spans, same resolved base.
 #[cfg(feature = "parley-text")]
 fn build_parley(
     resolved: &crate::theme::TextAttributes,
@@ -1453,7 +1454,7 @@ fn build_parley(
     spans: &[StyleSpan],
     no_placeholders: bool,
 ) -> Option<crate::parley_line::ParleyLine> {
-    if !crate::env_flags::parley() || !no_placeholders {
+    if crate::env_flags::no_parley() || !no_placeholders {
         return None;
     }
     if spans.iter().any(|span| !span.plain) {

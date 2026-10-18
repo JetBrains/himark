@@ -169,7 +169,7 @@ fn caret_geometry_tracks_the_skparagraph_road() {
         &[SpanStyle::plain(color)],
     );
     // The reference must stay RAW skparagraph: a ShapedLine under
-    // HIMARK_PARLEY answers geometry from its own twin, and the
+    // the parley default answers geometry from its own twin, and the
     // comparison would measure parley against parley on different
     // family chains.
     let mut paragraph = crate::shaped_line::line_paragraph(
