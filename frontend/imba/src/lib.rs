@@ -5,6 +5,7 @@ use layout::{Layout, LayoutValue};
 use store::Store;
 use ui::UiCtx;
 
+pub mod shape;
 pub mod anim;
 pub mod arena;
 mod r#box;

@@ -8,6 +8,7 @@ use super::*;
 /// prints — the number that prices the migration.
 #[test]
 fn parley_shapes_paints_and_answers_geometry() {
+    crate::parley_line::ensure_fonts();
     let text = "fn main() { простой текст } -> done";
     let theme = crate::theme::Theme::embedded();
     let base = theme.base();
@@ -109,6 +110,7 @@ fn parley_shapes_paints_and_answers_geometry() {
 #[cfg(target_os = "macos")]
 #[test]
 fn fallback_corpus_keeps_its_eyes_open() {
+    crate::parley_line::ensure_fonts();
     let corpus: &[(&str, &str, bool)] = &[
         ("ascii", "fn main() -> done", true),
         ("cyrillic", "простой текст", true),
@@ -156,6 +158,7 @@ fn fallback_corpus_keeps_its_eyes_open() {
 /// the font size, not pixel hunting.
 #[test]
 fn caret_geometry_tracks_the_skparagraph_road() {
+    crate::parley_line::ensure_fonts();
     let text = "fn main() { return 42; } // готово";
     let theme = crate::theme::Theme::embedded();
     let base = theme.base();
@@ -204,6 +207,7 @@ fn caret_geometry_tracks_the_skparagraph_road() {
 /// Styled spans carry their colors and weights into the blobs.
 #[test]
 fn styled_spans_reach_the_blobs() {
+    crate::parley_line::ensure_fonts();
     let text = "plain BOLD colored";
     let bold_from = text.find("BOLD").unwrap();
     let color_from = text.find("colored").unwrap();
@@ -242,6 +246,7 @@ fn styled_spans_reach_the_blobs() {
 #[cfg(target_os = "macos")]
 #[test]
 fn the_editor_family_chain_lands_monospace() {
+    crate::parley_line::ensure_fonts();
     let families = [
         "SF Mono",
         "Menlo",
@@ -281,6 +286,7 @@ fn the_editor_family_chain_lands_monospace() {
 #[cfg(target_os = "macos")]
 #[test]
 fn bold_runs_resolve_a_bold_cut() {
+    crate::parley_line::ensure_fonts();
     let text = "normal BOLDBOLD normal";
     let from = text.find("BOLD").unwrap();
     let to = from + "BOLDBOLD".len();
@@ -319,7 +325,7 @@ fn bold_runs_resolve_a_bold_cut() {
 #[cfg(target_os = "macos")]
 #[test]
 fn variable_fonts_rasterize_the_shaped_instance() {
-    use parley::PositionedLayoutItem;
+    crate::parley_line::ensure_fonts();
     let text = "weights wander when instances differ 0123456789";
     // The bundled code font must answer its own name — regular AND
     // a real Bold cut, not an emboldened fake.
@@ -347,11 +353,11 @@ fn variable_fonts_rasterize_the_shaped_instance() {
             "bundled code font did not serve bold={bold}: {report:?}"
         );
     }
-    // system-ui is NOT in this list on purpose: SF's advances
-    // cannot agree across engines (CoreText applies the trak table
-    // per point size, harfrust does not) — which is why carets and
-    // clicks route through the SAME layout that painted, instead of
-    // demanding parity.
+    // system-ui is NOT asserted on purpose: SF's advances cannot
+    // agree across engines (CoreText applies the trak table per
+    // point size, harfrust does not) — which is why carets and
+    // clicks route through the SAME layout that painted, instead
+    // of demanding parity.
     for (families, bold) in [
         (vec!["JetBrains Mono", "Menlo", "monospace"], false),
         (vec!["JetBrains Mono", "Menlo", "monospace"], true),
@@ -359,7 +365,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
     ] {
         let line = ParleyLine::shape_with_families(
             text,
-            &families.iter().map(|s| *s).collect::<Vec<_>>(),
+            &families,
             16.0,
             None,
             &[SpanStyle {
@@ -367,40 +373,15 @@ fn variable_fonts_rasterize_the_shaped_instance() {
                 ..SpanStyle::plain(skia_safe::Color::BLACK)
             }],
         );
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            for parley_line in line.layout.lines() {
-                for item in parley_line.items() {
-                    let PositionedLayoutItem::GlyphRun(run) = item else {
-                        continue;
-                    };
-                    let synthesis = run.run().synthesis();
-                    let vars = synthesis.variation_settings();
-                    let typeface = ctx
-                        .typeface(run.run().font(), vars)
-                        .expect("bridged typeface");
-                    let font = skia_safe::Font::new(typeface.clone(), run.run().font_size());
-                    let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
-                    let ids: Vec<u16> = glyphs.iter().map(|g| g.id as u16).collect();
-                    let mut widths = vec![0.0f32; ids.len()];
-                    font.get_widths(&ids, &mut widths);
-                    let parley_advance: f32 = glyphs.iter().map(|g| g.advance).sum();
-                    let skia_advance: f32 = widths.iter().sum();
-                    eprintln!(
-                        "[parley-vf] {:?} bold={bold} face {:?} vars {:?} parley {parley_advance:.2} skia {skia_advance:.2}",
-                        families,
-                        typeface.post_script_name(),
-                        vars
-                    );
-                    assert!(
-                        (parley_advance - skia_advance).abs() < 0.5,
-                        "advance drift {:?} bold={bold}: parley {parley_advance} vs skia {skia_advance} (face {:?}, vars {vars:?})",
-                        families,
-                        typeface.post_script_name()
-                    );
-                }
-            }
-        });
+        for (face, vars, ours, theirs) in line.bridge_advances_for_test() {
+            eprintln!(
+                "[parley-vf] {families:?} bold={bold} face {face:?} vars {vars:?} parley {ours:.2} skia {theirs:.2}"
+            );
+            assert!(
+                (ours - theirs).abs() < 0.5,
+                "advance drift {families:?} bold={bold}: parley {ours} vs skia {theirs} (face {face:?}, vars {vars:?})"
+            );
+        }
     }
 }
 
@@ -409,6 +390,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
 /// byte_at_point).
 #[test]
 fn caret_x_round_trips_through_hit_testing() {
+    crate::parley_line::ensure_fonts();
     let text = "a long first line";
     let line = ParleyLine::shape_with_families(
         text,
@@ -435,6 +417,7 @@ fn caret_x_round_trips_through_hit_testing() {
 #[cfg(target_os = "macos")]
 #[test]
 fn typeface_bridge_caches_hold_across_shapes() {
+    crate::parley_line::ensure_fonts();
     let shape = |text: &str| {
         for (families, bold) in [
             (vec!["JetBrains Mono", "monospace"], false),
@@ -456,24 +439,19 @@ fn typeface_bridge_caches_hold_across_shapes() {
         }
     };
     shape("the first pass fills every cache");
-    let (bases, typefaces, axes) = CTX.with(|cell| {
-        let ctx = cell.borrow();
-        (ctx.bases.len(), ctx.typefaces.len(), ctx.axes.len())
-    });
+    let first = ParleyLine::bridge_cache_sizes_for_test();
     for round in 0..20 {
         shape(&format!("round {round} re-shapes the same styles"));
     }
-    let (bases2, typefaces2, axes2) = CTX.with(|cell| {
-        let ctx = cell.borrow();
-        (ctx.bases.len(), ctx.typefaces.len(), ctx.axes.len())
-    });
+    let second = ParleyLine::bridge_cache_sizes_for_test();
     assert_eq!(
-        (bases, typefaces, axes),
-        (bases2, typefaces2, axes2),
+        first, second,
         "the same styles missed the bridge caches on re-shape"
     );
     assert!(
-        bases <= 8 && typefaces <= 12,
-        "first pass already minted too many faces: bases {bases}, instanced {typefaces}"
+        first.0 <= 8 && first.1 <= 12,
+        "first pass already minted too many faces: bases {}, instanced {}",
+        first.0,
+        first.1
     );
 }

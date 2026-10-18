@@ -10,4 +10,6 @@ intervals = { path = "../intervals" }
 bumpalo = { version = "3.16.0", features = ["collections", "boxed"] }
 rpds = "1"
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
+parley = { version = "0.12", default-features = false, features = ["std", "system", "complex-scripts"] }
+skrifa = "0.44"
 resvg = "0.48"

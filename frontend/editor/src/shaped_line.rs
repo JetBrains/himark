@@ -1491,6 +1491,7 @@ fn build_parley(
     if crate::env_flags::no_parley() || !no_placeholders {
         return None;
     }
+    crate::parley_line::ensure_fonts();
     if spans.iter().any(|span| !span.plain) {
         return None;
     }
