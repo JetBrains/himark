@@ -674,8 +674,8 @@ impl Himark {
         let host_size = self.overlay_host_size(id);
         let pin = self.overlay_parent_pin(id);
         let slot = self.bridges.get_mut(&id)?;
-        if let Some(parent) = pin {
-            slot.bridge.view().overlay_pin_parent(parent);
+        if let Some((parent, band)) = pin {
+            slot.bridge.view().overlay_pin_parent(parent, band);
         }
         let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
         let fresh =
@@ -817,6 +817,7 @@ impl Himark {
         let id = self.mount(move |_store, _ui, _id, _fx| {
             Some(std::sync::Arc::new(crate::mounts::OverlayMount {
                 pinned: std::sync::OnceLock::new(),
+                band: std::sync::Mutex::new(None),
                 index,
                 content: std::sync::Mutex::new(None),
             })
@@ -835,13 +836,19 @@ impl Himark {
         self.bridges.get(&id)?.bridge.view().overlay_content_rect()
     }
 
-    /// The parent view a popover slot pins before laying out.
+    /// The parent view a popover slot pins before laying out, with
+    /// the parent's standing band — the slice the re-derivation
+    /// realizes, never the whole content.
     fn overlay_parent_pin(
         &self,
         id: ViewBridgeId,
-    ) -> Option<std::sync::Arc<dyn crate::bridge::BridgeView>> {
+    ) -> Option<(
+        std::sync::Arc<dyn crate::bridge::BridgeView>,
+        Option<skia_safe::Rect>,
+    )> {
         let parent = self.bridges.get(&id)?.overlay_parent?;
-        Some(self.bridges.get(&parent)?.bridge.view_rc())
+        let slot = self.bridges.get(&parent)?;
+        Some((slot.bridge.view_rc(), slot.stage_viewport))
     }
 
     /// A popover slot lays out at its PARENT'S standing size — the
@@ -1014,8 +1021,8 @@ impl Himark {
         let Some(slot) = self.bridges.get_mut(&id) else {
             return 0;
         };
-        if let Some(parent) = pin {
-            slot.bridge.view().overlay_pin_parent(parent);
+        if let Some((parent, band)) = pin {
+            slot.bridge.view().overlay_pin_parent(parent, band);
         }
         let arena = slot.spare_arena.take().unwrap_or_default();
         // An INFINITE height is the native scroller asking to

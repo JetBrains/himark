@@ -350,6 +350,12 @@ pub(crate) struct OverlayMount {
     /// release road empties it AFTER the frames quiesce — then
     /// the parent performs exclusively.
     pub(crate) pinned: std::sync::OnceLock<Arc<dyn BridgeView>>,
+    /// The parent's standing BAND — the viewport its own stage
+    /// road last realized. The re-derivation realizes exactly
+    /// that slice: realizing the parent's whole content rect made
+    /// every popover layout, IME ask and clock tick walk a 10k-line
+    /// document end to end (popup-causes-freezes.trace).
+    pub(crate) band: std::sync::Mutex<Option<skia_safe::Rect>>,
     pub(crate) index: usize,
     /// The union of the overlay's NON-host-covering pieces, in the
     /// parent's coordinates — the slice the shell's popover shows.
@@ -382,8 +388,9 @@ impl BridgeView for OverlayMount {
         self.parent_ref()?.focus(store, ui)
     }
 
-    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>) {
+    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>, band: Option<skia_safe::Rect>) {
         let _ = self.pinned.set(parent);
+        *self.band.lock().unwrap() = band;
     }
 
     fn overlay_release_parent(&mut self) {
@@ -406,10 +413,15 @@ impl BridgeView for OverlayMount {
         };
         let inner = parent.layout(arena, store, ui, constraints);
         let host_size = inner.size();
+        let band = self
+            .band
+            .lock()
+            .unwrap()
+            .unwrap_or_else(|| skia_safe::Rect::from_size(host_size));
         let mut stacked = {
             let mut base = imba::container::Container::new(arena, host_size);
             base.place(0.0, 0.0, inner);
-            base.realize_into(skia_safe::Rect::from_size(host_size))
+            base.realize_into(band)
         };
         let picked = imba::Widget::overlays(&mut stacked)
             .into_iter()

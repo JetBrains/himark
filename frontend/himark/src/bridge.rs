@@ -169,9 +169,15 @@ pub(crate) trait BridgeView: Send + Sync {
     }
 
     /// Hand a POPOVER view the strong pin on its parent it lays
-    /// against — the engine refills it before each layout. A
-    /// no-op everywhere but `OverlayMount`.
-    fn overlay_pin_parent(&self, _parent: std::sync::Arc<dyn BridgeView>) {}
+    /// against, and the parent's standing band — the engine
+    /// refills both before each layout. A no-op everywhere but
+    /// `OverlayMount`.
+    fn overlay_pin_parent(
+        &self,
+        _parent: std::sync::Arc<dyn BridgeView>,
+        _band: Option<skia_safe::Rect>,
+    ) {
+    }
 
     /// Drop a POPOVER view's strong pin on its parent — called
     /// (after its frames quiesce) before the parent is taken
