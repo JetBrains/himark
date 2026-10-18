@@ -337,6 +337,15 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         // STEADY size has nothing to commit with — the frame rides
         // the async submit road and this thread skips the GPU wait.
         let size = CGSize(width: CGFloat(w), height: CGFloat(h))
+        // A LIVE RESIZE PRESENTS ON THIS THREAD. The async road
+        // (a0c6635e) lets a still frame hand its drawable to the
+        // submit queue and return — but during a drag the next
+        // frame opens its CA transaction and asks the layer for a
+        // drawable while that present is still pending, and nothing
+        // can release it until we commit the transaction we are
+        // standing in. CoreAnimation breaks the knot with its
+        // one-second timeout, over and over: 240 resize steps took
+        // 51.9s on the async road and 4.6s coupled.
         let resized = metalLayer.drawableSize != size
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -382,7 +391,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                     let changed = himark_frame_paint(
                         raw, frame, canvas, ox, oy,
                         Float(bounds.width * scale), Float(bounds.height * scale))
-                    surface.end(coupled: resized)
+                    surface.end()
                     if Self.traceOverlay {
                         NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) resized \(resized) changed \(changed)")
                     }
@@ -428,7 +437,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
-        surface.end(coupled: coupled)
+        surface.end()
         if Self.traceSync { notePresent(layerY: visible.minY) }
         if changed {
             request()
@@ -913,6 +922,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        // A LIVE RESIZE MARKS; THE TICK PAINTS — the same law the
+        // scroll path keeps. AppKit calls this many times per
+        // display interval, and since the async road stopped
+        // waiting for its own present (a0c6635e), each inline paint
+        // asks the layer for a drawable the previous paint has not
+        // released: `nextDrawable` then blocks a whole vsync, two
+        // or three times per step, and the drag crawls.
         render()
     }
 

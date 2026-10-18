@@ -140,6 +140,20 @@ struct DesktopRoot: View {
             }
             .ignoresSafeArea()
         }
+        .overlay(alignment: .top) {
+            // The window's HAND. Background-movability is off (its
+            // per-frame structural-region walk cost 20% of the main
+            // thread during a scroll), and full-size content covers
+            // the synthesized titlebar — so this strip is the drag
+            // surface. Pure SwiftUI on purpose: AppKit-hosted
+            // content (the transcript, the islands' bridges) keeps
+            // winning its own hits, so exactly the clicks that used
+            // to fall through to "window background" drag the window.
+            WindowDragStrip()
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .ignoresSafeArea()
+        }
         .overlay(alignment: .topLeading) {
             // THE island: semaphore + session selector, always
             // afloat — it GROWS into the session list.
@@ -297,7 +311,13 @@ struct WindowDresser: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.styleMask.insert(.fullSizeContentView)
-            window.isMovableByWindowBackground = true
+            // Background-movability is OFF for a measured reason:
+            // with it on, AppKit re-walks the whole hierarchy for
+            // draggable/opaque regions on EVERY display cycle a view
+            // moved — 20% of the main thread during a transcript
+            // scroll (weird-shit.trace). The hidden titlebar still
+            // synthesizes its top-strip drag natively.
+            window.isMovableByWindowBackground = false
             for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(kind)?.isHidden = true
             }
@@ -326,6 +346,25 @@ struct WindowDresser: NSViewRepresentable {
 
     func makeNSView(context: Context) -> Dressing { Dressing() }
     func updateNSView(_ view: Dressing, context: Context) {}
+}
+
+/// The strip's gesture, availability-gated: WindowDragGesture is
+/// macOS 15+; older systems keep double-click zoom only.
+struct WindowDragStrip: View {
+    var body: some View {
+        if #available(macOS 15.0, *) {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    NSApp.keyWindow?.zoom(nil)
+                })
+        } else {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { NSApp.keyWindow?.zoom(nil) }
+        }
+    }
 }
 
 /// The three dots, drawn by the island that hosts them.
@@ -578,8 +617,22 @@ struct SplitterHandle: NSViewRepresentable {
 
         override var mouseDownCanMoveWindow: Bool { false }
 
-        override func resetCursorRects() {
-            addCursorRect(bounds, cursor: .resizeLeftRight)
+        // A TRACKING AREA, not a cursor rect: cursor rects are the
+        // legacy road that the window invalidates wholesale on every
+        // scroll frame; an .inVisibleRect area never needs a rebuild.
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            for area in trackingAreas { removeTrackingArea(area) }
+            addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+                owner: self,
+                userInfo: nil
+            ))
+        }
+
+        override func cursorUpdate(with event: NSEvent) {
+            NSCursor.resizeLeftRight.set()
         }
 
         override func mouseDown(with event: NSEvent) {

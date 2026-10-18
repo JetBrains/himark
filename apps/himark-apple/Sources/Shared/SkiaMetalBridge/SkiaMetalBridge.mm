@@ -5,6 +5,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <atomic>
 #include <unordered_map>
 
 #include "include/core/SkCanvas.h"
@@ -155,6 +156,19 @@ static SkiaMetalGpu *shared_gpu(id<MTLDevice> device) {
     return gpu;
 }
 
+/// `HIMARK_TRACE_FRAME=1` times the three waits a frame can sit in:
+/// vending a drawable, handing the recording to the Context, and
+/// the present itself. A resize that hangs off-CPU is waiting in
+/// exactly one of them.
+static bool trace_frame(void) {
+    static bool on = getenv("HIMARK_TRACE_FRAME") != nullptr;
+    return on;
+}
+
+static double now_ms(void) {
+    return CACurrentMediaTime() * 1000.0;
+}
+
 /// `HIMARK_TRACE_IMAGES=1` reports every upload through the door —
 /// the probe for a picture that silently refuses to appear.
 static bool trace_images(void) {
@@ -214,8 +228,25 @@ extern "C" void *skia_metal_begin(SkiaMetal *self, int32_t width, int32_t height
     // drawables to the async road — presented on the submit
     // thread, they waited for a commit that never comes (a
     // popover empty until its first re-dirty).
-    self->layer.presentsWithTransaction = coupled ? YES : NO;
+    // ALWAYS transaction-coupled, and latched here because a
+    // drawable adopts the mode at VEND time. Flipping it per frame
+    // (the async road, a0c6635e) leaves `nextDrawable` waiting out
+    // CoreAnimation's one-second timeout whenever a present from
+    // the other mode is still pending — a drag spent 51.9s on 240
+    // steps that way, and 4.6s this way.
+    (void)coupled;
+    self->layer.presentsWithTransaction = YES;
+    const double asked = trace_frame() ? now_ms() : 0;
+    static std::atomic<int> vended{0};
+    vended.fetch_add(1);
     self->drawable = [self->layer nextDrawable];
+    if (trace_frame()) {
+        const double waited = now_ms() - asked;
+        if (waited > 4.0) {
+            NSLog(@"[frame] nextDrawable WAITED %.1fms (%dx%d vended=%d)%@", waited, width,
+                  height, vended.load(), self->drawable ? @"" : @" -> NIL");
+        }
+    }
     if (!self->drawable) return nullptr;
 
     // Skia retains the MTLTexture inside the wrap; the drawable
@@ -236,6 +267,7 @@ extern "C" void skia_metal_end(SkiaMetal *self) {
     if (!self || !self->surface) return;
     self->surface.reset();
     std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
+    const double handed = trace_frame() ? now_ms() : 0;
     if (recording) {
         skgpu::graphite::Recording *played = recording.release();
         SkiaMetalGpu *gpu = self->gpu;
@@ -248,37 +280,20 @@ extern "C" void skia_metal_end(SkiaMetal *self) {
         });
     }
 
+    const double played_ms = trace_frame() ? now_ms() - handed : 0;
+    const double presenting = trace_frame() ? now_ms() : 0;
     id<MTLCommandBuffer> buffer = [self->gpu->queue commandBuffer];
     [buffer commit];
     [buffer waitUntilScheduled];
     watch_present(self->drawable, "coupled");
     [self->drawable present];
     self->drawable = nil;
+    if (trace_frame()) {
+        const double present_ms = now_ms() - presenting;
+        if (played_ms + present_ms > 4.0) {
+            NSLog(@"[frame] present: submit-queue %.1fms present %.1fms", played_ms,
+                  present_ms);
+        }
+    }
 }
 
-/// STILL-GEOMETRY frames (most of them): nothing of the layer moved,
-/// so there is nothing to commit atomically with — the recording and
-/// the drawable cross to the submit queue and the UI thread returns
-/// without touching the GPU. The present rides the command buffer's
-/// own schedule.
-extern "C" void skia_metal_end_async(SkiaMetal *self) {
-    if (!self || !self->surface) return;
-    self->surface.reset();
-    std::unique_ptr<skgpu::graphite::Recording> recording = self->gpu->recorder->snap();
-    id<CAMetalDrawable> drawable = self->drawable;
-    self->drawable = nil;
-    if (!recording) return;
-    skgpu::graphite::Recording *played = recording.release();
-    SkiaMetalGpu *gpu = self->gpu;
-    dispatch_async(gpu->submit, ^{
-        skgpu::graphite::InsertRecordingInfo info;
-        info.fRecording = played;
-        gpu->context->insertRecording(info);
-        gpu->context->submit();
-        delete played;
-        watch_present(drawable, "async");
-        id<MTLCommandBuffer> buffer = [gpu->queue commandBuffer];
-        [buffer presentDrawable:drawable];
-        [buffer commit];
-    });
-}

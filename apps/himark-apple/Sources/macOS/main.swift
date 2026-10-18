@@ -87,7 +87,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         layoutTrafficLights(window)
         windows.append(window)
         applySystemTheme()
+        driveDebugResize(window)
         return window
+    }
+
+    /// `HIMARK_DEBUG_RESIZE=1` drags the window's edge for us: a
+    /// live resize is the one interaction a probe cannot synthesize
+    /// without accessibility trust, and it is the one that hangs.
+    /// Each step is a real `setFrame` inside its own run-loop turn,
+    /// which is exactly what a drag delivers.
+    private func driveDebugResize(_ window: NSWindow) {
+        guard ProcessInfo.processInfo.environment["HIMARK_DEBUG_RESIZE"] != nil else { return }
+        let origin = window.frame
+        var step = 0
+        let started = CACurrentMediaTime()
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { timer in
+            if step >= 240 {
+                timer.invalidate()
+                NSLog("[resize-probe] %d steps in %.2fs", step, CACurrentMediaTime() - started)
+                return
+            }
+            let wave = CGFloat(sin(Double(step) / 18.0))
+            var frame = origin
+            frame.size.width = origin.size.width + wave * 180.0
+            frame.size.height = origin.size.height + wave * 90.0
+            let turn = CACurrentMediaTime()
+            window.setFrame(frame, display: true)
+            let spent = (CACurrentMediaTime() - turn) * 1000.0
+            if spent > 16.0 {
+                NSLog("[resize-probe] step %d took %.1fms", step, spent)
+            }
+            step += 1
+        }
     }
 
     @objc func newWindow(_ sender: Any?) {

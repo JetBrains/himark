@@ -271,7 +271,7 @@ final class HimarkEngine {
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
         else { return false }
         let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
-        surface.end(coupled: coupled)
+        surface.end()
         return reconciling
     }
 
@@ -428,18 +428,17 @@ final class SkiaMetalSurface {
         skia_metal_begin(skia, w, h, coupled)
     }
 
-    /// `coupled` = this frame's layer GEOMETRY changed in the open
-    /// CA transaction: pixels must commit with it, so playback runs
-    /// synchronously and the present waits on this thread (the
-    /// flicker law). Still geometry rides the async road — the
-    /// recording and drawable cross to the submit queue, and this
-    /// thread never touches the GPU.
-    func end(coupled: Bool = true) {
-        if coupled {
-            skia_metal_end(skia)
-        } else {
-            skia_metal_end_async(skia)
-        }
+    /// ONE PRESENT DISCIPLINE: inside the transaction, on this
+    /// thread. The async road (a0c6635e) let a still frame hand its
+    /// drawable to the submit queue and return, which read well on
+    /// a scroll and was ruinous on a drag: the layer's
+    /// `presentsWithTransaction` is a MODE, and flipping it per
+    /// frame while a present is still pending leaves
+    /// `nextDrawable` waiting out CoreAnimation's one-second
+    /// timeout, over and over. Measured over 240 resize steps:
+    /// 51.9s mixing the roads, 4.6s coupled throughout.
+    func end() {
+        skia_metal_end(skia)
     }
 
 }
