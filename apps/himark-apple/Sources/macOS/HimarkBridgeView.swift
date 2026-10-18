@@ -120,11 +120,18 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         }
 
         surface = SkiaMetalSurface(layer: metal, device: device)
+        // The engine clock's fan-out: a tick that moved ANY state
+        // owes every view a frame, not just the view whose link
+        // happened to fire first.
+        engine.frameClock.adopt(self) { [weak self] in self?.request() }
         startDisplayLink()
     }
 
     required init?(coder: NSCoder) { fatalError() }
-    deinit { caLink?.invalidate() }
+    deinit {
+        engine.frameClock.orphan(self)
+        caLink?.invalidate()
+    }
 
     private let metal = CAMetalLayer()
     var metalLayer: CAMetalLayer { metal }
@@ -160,6 +167,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         caLink = link
+        // A fresh link is born paused. A request that arrived while
+        // the view stood windowless left `linkRunning` set with no
+        // link behind it — resume's guard would then keep this new
+        // link paused forever, a frozen view.
+        linkRunning = false
         resumeDisplayLink()
     }
 
@@ -201,7 +213,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     }
 
     private func tick(nowMs: Double = CACurrentMediaTime() * 1000.0) {
-        let animating = engine.tick(nowMs: nowMs)
+        // ONE engine tick per display frame, whoever's link fires
+        // first — the clock caches the verdict for same-frame
+        // followers and requests every other view when it moved.
+        let animating = engine.frameClock.tick(nowMs: nowMs, from: self)
         engine.drainReveal()
         reconcileOverlays()
         if warmupTicks > 0 {
@@ -347,10 +362,17 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         CATransaction.setDisableActions(true)
         metalLayer.drawableSize = size
         let started = Self.traceSync ? CACurrentMediaTime() : 0
-        if engine.renderBridge(bridge: bridgeId, into: surface,
-                               pixelWidth: w, pixelHeight: h, scale: Float(scale),
-                               coupled: resized) {
+        switch engine.renderBridge(bridge: bridgeId, into: surface,
+                                   pixelWidth: w, pixelHeight: h, scale: Float(scale),
+                                   coupled: resized) {
+        case .reconciling, .starved:
+            // Starved: no drawable, nothing painted — the band road's
+            // rollback law, minus the rollback (the layer never
+            // moved). Dropping it here left stale pixels standing
+            // until the next event.
             request()
+        case .painted:
+            break
         }
         CATransaction.commit()
         if Self.traceSync { noteDuration(CACurrentMediaTime() - started) }
@@ -393,11 +415,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                     }
                     if changed {
                         request()
-                    } else {
-                        himark_frame_release(raw, frame)
                     }
-                } else {
                     himark_frame_release(raw, frame)
+                } else {
+                    // Starved — nothing painted, retry owed.
+                    himark_frame_release(raw, frame)
+                    request()
                 }
             }
         }
@@ -429,7 +452,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         guard frame.raw != 0 else { return false }
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
-        else { return false }
+        else {
+            himark_frame_release(raw, frame)
+            return false
+        }
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
@@ -437,9 +463,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         if Self.traceSync { notePresent(layerY: visible.minY) }
         if changed {
             request()
-        } else {
-            himark_frame_release(raw, frame)
         }
+        // Released on EVERY road: the changed road kept the handle —
+        // and the frame's whole arena with it — until unmount.
+        himark_frame_release(raw, frame)
         // The measure lands AFTER the pass: applying it resizes the
         // document view, which re-enters render synchronously — an
         // outstanding layout would die refused and the band would

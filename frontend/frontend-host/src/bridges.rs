@@ -767,15 +767,17 @@ pub unsafe extern "C" fn himark_frame_paint(
 }
 
 /// Release the frame; its arena goes home warm to the bridge it
-/// was derived from.
+/// was derived from. A handle already gone is NOT a refusal: a
+/// paint's own batch quiesces the bridge's stages whenever a view
+/// command lands (`ToView` needs the view un-borrowed), reaping the
+/// very frame the host still holds — the host releases
+/// unconditionally and the engine takes it if it still stands.
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: HimarkFrame) {
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if !engine.app.stage_frame_release(frame.raw) {
-        refuse("frame", frame.raw);
-    }
+    let _ = engine.app.stage_frame_release(frame.raw);
 }
 
 // ─── the session surface: query + control (docs/ui/himark-ffi.md) ───

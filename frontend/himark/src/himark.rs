@@ -681,8 +681,18 @@ impl Himark {
             slot.bridge.view().overlay_pin_parent(parent, band);
         }
         let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
-        let fresh =
-            slot.frame.is_some() && (standing || (slot.revision == revision && slot.size == size));
+        // STANDING tolerates a stale SIZE, never a stale REVISION. A
+        // stage-hosted bridge paints through the stage road, which
+        // never touches this slot's frame — reusing it across
+        // revisions left the clock ticking a BOOT-ERA tree: an empty
+        // transcript list whose tail ask (0..1, zero viewport) could
+        // never satisfy, re-parking a reveal every tick — the eternal
+        // "animating" that kept every view awake at 60fps. Keyed on
+        // the revision, an idle engine stands (no batches, no
+        // rebuilds) and each batch buys ONE rebuild at the next tick.
+        let fresh = slot.frame.is_some()
+            && slot.revision == revision
+            && (standing || slot.size == size);
         if !fresh {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());

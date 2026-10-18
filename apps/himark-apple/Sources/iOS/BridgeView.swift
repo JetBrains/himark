@@ -200,9 +200,16 @@ class HimarkBridgeView: UIView {
 
         if scrollEmbedded {
             renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
-        } else if engine.renderBridge(bridge: bridgeId, into: surface,
-                                      pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
-            needsRedraw = true
+        } else {
+            switch engine.renderBridge(bridge: bridgeId, into: surface,
+                                       pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
+            case .reconciling, .starved:
+                // Starved: no drawable, nothing painted — retry owed,
+                // or the view shows stale pixels until the next event.
+                needsRedraw = true
+            case .painted:
+                break
+            }
         }
     }
 
@@ -222,16 +229,21 @@ class HimarkBridgeView: UIView {
         let frame = himark_layout_realize(
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         guard frame.raw != 0 else { return }
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else { return }
+        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else {
+            himark_frame_release(raw, frame)
+            needsRedraw = true
+            return
+        }
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
         surface.end()
         if changed {
             needsRedraw = true
-        } else {
-            himark_frame_release(raw, frame)
         }
+        // Released on EVERY road: the changed road kept the handle —
+        // and the frame's whole arena with it — until unmount.
+        himark_frame_release(raw, frame)
         // The measure lands AFTER the pass: applying it resizes the
         // scroller's content, which re-enters render synchronously —
         // an outstanding layout would die refused and the band would

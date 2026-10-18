@@ -4,10 +4,61 @@
 import QuartzCore
 import Metal
 
+/// The engine's ONE animation clock. Every view used to drive
+/// `himark_animation_tick` from its own display link — N engine-wide
+/// ticks per frame, and the verdict ("something moved this frame")
+/// answered only the view that happened to ask first, so a transition
+/// that changed ANOTHER view's content never scheduled that view's
+/// frame (the stuck brace highlight). The clock advances the engine
+/// once per display frame: the first caller runs the tick, same-frame
+/// followers read the frame's cached verdict, and a moving frame is
+/// fanned out to EVERY adopted view — the engine's answer is global,
+/// so the frame it owes is global too.
+final class EngineFrameClock {
+    private let advance: (Double) -> Bool
+    private var tickedMs = -Double.infinity
+    private var verdict = false
+    private var fanout: [ObjectIdentifier: () -> Void] = [:]
+
+    init(advance: @escaping (Double) -> Bool) {
+        self.advance = advance
+    }
+
+    func adopt(_ owner: AnyObject, request: @escaping () -> Void) {
+        fanout[ObjectIdentifier(owner)] = request
+    }
+
+    func orphan(_ owner: AnyObject) {
+        fanout.removeValue(forKey: ObjectIdentifier(owner))
+    }
+
+    func tick(nowMs: Double, from owner: AnyObject) -> Bool {
+        guard nowMs > tickedMs else { return verdict }
+        tickedMs = nowMs
+        verdict = advance(nowMs)
+        if verdict {
+            // The caller acts on the returned verdict itself; the
+            // rest hear it as a request, which also resumes a
+            // paused link.
+            let caller = ObjectIdentifier(owner)
+            for (id, request) in fanout where id != caller {
+                request()
+            }
+        }
+        return verdict
+    }
+}
+
 final class HimarkEngine {
     private let engine: OpaquePointer
 
     var raw: OpaquePointer { engine }
+
+    /// Minted lazily so `self` is whole; main-thread only, like
+    /// every tick road.
+    private(set) lazy var frameClock = EngineFrameClock { [unowned self] nowMs in
+        self.tick(nowMs: nowMs)
+    }
 
     /// Reveal handlers by bridge — ANY road may drain the engine's
     /// parked reveal (an animation tick is engine-wide), so the
@@ -264,15 +315,27 @@ final class HimarkEngine {
         himark_bridge_event(engine, bridge, event)
     }
 
-    @discardableResult
+    /// One bridge paint's outcome — the shell's retry contract.
+    enum RenderPass {
+        /// Painted, and the draw changed state: another pass is owed.
+        case reconciling
+        /// Painted, quiet.
+        case painted
+        /// No drawable this frame: NOTHING painted. The pass must be
+        /// retried, or the view shows stale pixels until the next
+        /// event happens to request a frame — conflating this with
+        /// "painted, quiet" was the stuck-highlight bug.
+        case starved
+    }
+
     func renderBridge(bridge: HimarkBridge, into surface: SkiaMetalSurface,
                       pixelWidth w: Int32, pixelHeight h: Int32, scale: Float,
-                      coupled: Bool = true) -> Bool {
+                      coupled: Bool = true) -> RenderPass {
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
-        else { return false }
+        else { return .starved }
         let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
         surface.end()
-        return reconciling
+        return reconciling ? .reconciling : .painted
     }
 
     @discardableResult func tick(nowMs: Double) -> Bool { himark_animation_tick(engine, nowMs) }
