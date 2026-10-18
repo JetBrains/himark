@@ -183,25 +183,21 @@ pub struct SessionRow {
     pub modified_at: String,
 }
 
-pub struct AppFonts {
-    source: ::editor::FontSource,
-}
+/// The TOKEN that fonts are ready: shaping serves itself through
+/// `imba::shape`'s registry, so "which fonts" is no longer a value
+/// the engine carries — constructing this registers the embedded
+/// faces and nothing else.
+pub struct AppFonts;
 
 impl AppFonts {
-    pub fn new(source: ::editor::FontSource) -> Self {
-        Self { source }
-    }
-
     pub fn platform() -> Self {
-        Self::new(hikit::fonts::source())
+        ::editor::parley_line::ensure_fonts();
+        Self
     }
 
     pub fn embedded() -> Self {
-        Self::new(::editor::embedded_fonts::source())
-    }
-
-    pub fn source(&self) -> ::editor::FontSource {
-        self.source.clone()
+        ::editor::parley_line::ensure_fonts();
+        Self
     }
 }
 
@@ -211,15 +207,14 @@ impl Himark {
     /// over this (`crate::app`'s `Himark::new` is the workbench
     /// shell's boot).
     pub fn bare(fonts: AppFonts, shell: Arc<dyn Shell>) -> Self {
+        let _ = fonts;
         let total_started = crate::startup_profile::start();
         let mut store = Store::new();
 
         let theme = ::editor::theme::Theme::embedded();
-        store.put(::editor::env::Fonts(fonts.source()));
         store.put(::editor::env::Themes(theme.clone()));
 
         let ui = std::rc::Rc::new(UiCtx::dont_use_too_slow());
-        ui.set(::editor::env::UiFonts((fonts.source())()));
         ui.set(theme.ui().scrollbar.style());
 
         let overlay_font = hikit::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
@@ -247,7 +242,6 @@ impl Himark {
         });
 
         let workshop = Arc::new(::editor::env::Workshop::new(
-            ::editor::env::Fonts::of(&store),
             ::editor::env::Themes::of(&store),
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());

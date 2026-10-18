@@ -515,7 +515,6 @@ pub fn rewrap_pair(
         OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     }
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     let left_editor = view.split.left.editor;
     let right_editor = view.split.right.editor;
@@ -530,7 +529,7 @@ pub fn rewrap_pair(
             view.split
                 .left
                 .document
-                .resize(left_editor, width, 0, store, ui, &fonts, &theme, fx)
+                .resize(left_editor, width, 0, store, ui, &theme, fx)
         },
     );
     fx.scope(
@@ -543,7 +542,7 @@ pub fn rewrap_pair(
             view.split
                 .right
                 .document
-                .resize(right_editor, width, 0, store, ui, &fonts, &theme, fx)
+                .resize(right_editor, width, 0, store, ui, &theme, fx)
         },
     );
     if let Some(inline) = inline {
@@ -555,7 +554,7 @@ pub fn rewrap_pair(
                 view.split
                     .right
                     .document
-                    .resize(inline, width, 0, store, ui, &fonts, &theme, fx)
+                    .resize(inline, width, 0, store, ui, &theme, fx)
             },
         );
     }
@@ -649,7 +648,6 @@ pub fn build_diff_view(
     half_width: f32,
     embedded: bool,
 ) -> Option<DiffViewId> {
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
 
     let diff = OpenDocuments::track_diff(store, documents, left, right, false)?;
@@ -669,7 +667,6 @@ pub fn build_diff_view(
             &[marks],
             store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );

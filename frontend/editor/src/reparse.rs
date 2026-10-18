@@ -72,7 +72,6 @@ pub trait SyntaxLanguage: Send + Sync {
         changed: &[Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<Range<u32>>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     );
 
@@ -194,7 +193,6 @@ impl SyntaxLanguages {
         edited: &[Range<u32>],
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(Syntax, Vec<Range<u32>>, Vec<SyntaxSite>)> {
         let language = self.ensure(name)?;
@@ -226,14 +224,13 @@ impl SyntaxLanguages {
                 &changed,
                 &mut replacement,
                 &mut invalidated,
-                fonts,
                 theme,
             );
         }
 
         let (fold_pushes, outline_pushes) = replacement.take_channels();
         let mut markup = old.map(|old| old.markup.clone()).unwrap_or_default();
-        markup.splice(&invalidated, replacement, store, ui, fonts, theme);
+        markup.splice(&invalidated, replacement, store, ui, theme);
         let mut folds = old
             .map(|old| old.folds.clone())
             .unwrap_or_else(intervals::Intervals::new);
@@ -358,10 +355,9 @@ impl imba::effect::EffectHandler<ReparseEffect> for ReparseHandler {
 
 impl ReparseHandler {
     pub fn reparse(&self, work: ReparseWork) -> ReparseOutcome {
-        let fonts = self.0.fonts();
         let theme = self.0.theme();
         self.0
-            .with_ctx(|store, ui| work.run(store, ui, &fonts, &theme))
+            .with_ctx(|store, ui| work.run(store, ui, &theme))
     }
 }
 
@@ -370,7 +366,6 @@ impl ReparseWork {
         self,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ReparseOutcome {
         let work = self;
@@ -384,7 +379,6 @@ impl ReparseWork {
                 &work.edited,
                 store,
                 ui,
-                fonts,
                 theme,
             ) else {
                 return ReparseOutcome {
@@ -455,7 +449,6 @@ impl ReparseWork {
                     &edited,
                     store,
                     ui,
-                    fonts,
                     theme,
                 ) {
                     invalidated.extend(child_invalidated.into_iter().map(|range| {

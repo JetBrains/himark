@@ -239,9 +239,8 @@ where
         searcher: S,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: editor::FontSource,
     ) -> Self {
-        let mut input = EditorView::input(PILL_INPUT_WIDTH, store, ui, fonts);
+        let mut input = EditorView::input(PILL_INPUT_WIDTH, store, ui);
         input.focus_text();
         Self {
             inner,
@@ -297,7 +296,6 @@ where
             PILL_INPUT_WIDTH,
             store,
             ui,
-            editor::embedded_fonts::source(),
         );
         lane.input.focus_text();
         lane.launched = None;

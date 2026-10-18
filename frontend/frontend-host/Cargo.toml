@@ -100,18 +100,14 @@ hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
 himermaid = { path = "../plugins/himermaid" }
 imba = { path = "../imba" }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-# The parley road is the DEFAULT on apple: plain-line paint and
-# caret queries answer from it (HIMARK_NO_PARLEY=1 opts back to
-# skparagraph for A/B).
-editor = { path = "../editor", features = ["parley-text"] }
 # GRAPHITE, no ganesh: the Apple shells render through
 # SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
 # exists for graphite+textlayout — CI builds Skia from source
 # until our own binary cache lands.
-skia-safe = { version = "0.153.3", features = ["metal", "graphite", "textlayout"] }
+skia-safe = { version = "0.153.3", features = ["metal", "graphite"] }
 
 [dev-dependencies]
 agent-host = { path = "../../backend/agent-host" }

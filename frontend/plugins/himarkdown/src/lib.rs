@@ -24,12 +24,11 @@ pub fn document_from_markdown(
     source: &str,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> Document {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
-    document_from_tree_text(text, tree, store, ui, fonts, theme)
+    document_from_tree_text(text, tree, store, ui, theme)
 }
 
 pub fn markdown_languages(
@@ -96,7 +95,6 @@ impl editor::enrich::Enricher for TableEnricher {
                                         source.clone(),
                                         store,
                                         ui,
-                                        cx.fonts,
                                         cx.theme,
                                     )
                                 }),
@@ -121,13 +119,12 @@ pub fn markdown_document(
     source: &str,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> (Document, Vec<MarkdownBlock>) {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
     let blocks = markdown_blocks(&text, &tree);
-    let document = document_from_tree_text(text, tree, store, ui, fonts, theme);
+    let document = document_from_tree_text(text, tree, store, ui, theme);
     (document, blocks)
 }
 
@@ -136,10 +133,9 @@ fn document_from_tree_text(
     tree: Tree,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> Document {
-    let markup = markup_from_tree(&text, &tree, fonts, theme);
+    let markup = markup_from_tree(&text, &tree, theme);
     let sites = MarkdownLanguage.sites_impl(&text, &tree);
 
     let mut syntax =
@@ -158,7 +154,7 @@ fn document_from_tree_text(
     }
     let mut document = Document::new(text, Markup::new()).with_syntax(syntax, &sites);
 
-    document.enrich_now(&builder_enrichers(), store, ui, fonts, theme);
+    document.enrich_now(&builder_enrichers(), store, ui, theme);
     document
 }
 
@@ -219,11 +215,10 @@ impl SyntaxLanguage for MarkdownLanguage {
         changed: &[std::ops::Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         let tree = TsTree::of(tree).expect("markdown parses tree-sitter trees");
-        self.markup_impl(text, tree, changed, replacement, invalidated, fonts, theme);
+        self.markup_impl(text, tree, changed, replacement, invalidated, theme);
 
         let mut sections: Vec<(std::ops::Range<u32>, std::ops::Range<u32>)> = Vec::new();
         for change in changed {
@@ -318,7 +313,6 @@ impl MarkdownLanguage {
         changed: &[std::ops::Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         visit_markdown_blocks_where(
@@ -331,7 +325,7 @@ impl MarkdownLanguage {
             },
             |block| {
                 invalidated.push(block.range.clone());
-                push_markup_for_block(replacement, &block, fonts, theme);
+                push_markup_for_block(replacement, &block, theme);
             },
         );
     }
@@ -349,21 +343,19 @@ pub(crate) fn parse_markdown(text: &Text) -> Tree {
 pub(crate) fn markup_from_tree(
     text: &Text,
     tree: &Tree,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> Markup {
-    markup_builder_from_tree(text, tree, fonts, theme).finish()
+    markup_builder_from_tree(text, tree, theme).finish()
 }
 
 pub(crate) fn markup_builder_from_tree(
     text: &Text,
     tree: &Tree,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> MarkupBuilder {
     let mut markup = Markup::builder();
     visit_markdown_blocks(text, tree, |block| {
-        push_markup_for_block(&mut markup, &block, fonts, theme);
+        push_markup_for_block(&mut markup, &block, theme);
     });
     markup
 }
@@ -470,8 +462,6 @@ fn visit_markdown_blocks_where(
 fn push_markup_for_block(
     markup: &mut MarkupBuilder,
     block: &MarkdownBlock,
-
-    _fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) {
     if block.table.is_some() {
@@ -982,7 +972,6 @@ trait RunReparse {
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
         let workshop = std::sync::Arc::new(editor::env::Workshop::new(
-            editor::embedded_fonts::source(),
             editor::theme::Theme::embedded(),
         ));
         editor::reparse::ReparseHandler(workshop).reparse(self)

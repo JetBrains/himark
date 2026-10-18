@@ -188,7 +188,6 @@ impl AgentsPanel {
                 SessionSearcher,
                 store,
                 ui,
-                ::editor::env::Fonts::of(store),
             )
             .with_folds(),
             asks,
@@ -482,7 +481,7 @@ impl AgentsPanel {
             }
             AgentKey::Note(_) => {}
             AgentKey::AddHost => {
-                let mut input = EditorView::input(600.0, store, ui, hikit::fonts::source());
+                let mut input = EditorView::input(600.0, store, ui);
                 input.focus_text();
                 self.adding = Some(input);
             }

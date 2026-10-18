@@ -12,10 +12,7 @@ use imba::{
     Widget,
 };
 use operation::{op::Op, operation::Operation};
-use skia_safe::{
-    textlayout::{FontCollection, ParagraphBuilder, ParagraphStyle, TextDirection, TextStyle},
-    Canvas, Paint, Rect, Size,
-};
+use skia_safe::{Canvas, Paint, Rect, Size};
 
 use crate::inline_decorations;
 
@@ -275,7 +272,6 @@ fn cell_view(
     width: f32,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> EditorView {
     let mut markup = Markup::builder();
@@ -289,39 +285,40 @@ fn cell_view(
         }
     }
     let document = Document::new(text::text::Text::from_string_exact(text), markup.finish());
-    let mut view = EditorView::of_document(document, width.max(1.0), store, ui, fonts, theme);
+    let mut view = EditorView::of_document(document, width.max(1.0), store, ui, theme);
     view.blur();
     view
 }
 
 fn cell_intrinsics(
     text: &str,
-    fonts: &FontCollection,
     theme: &editor::theme::Theme,
 ) -> ColumnIntrinsics {
     if text.is_empty() {
         return ColumnIntrinsics { min: 0.0, max: 0.0 };
     }
 
+    ::editor::parley_line::ensure_fonts();
     let base = theme.base();
-    let mut text_style = TextStyle::new();
-    if let Some(families) = &base.font_families {
-        text_style.set_font_families(families);
-    }
-    if let Some(size) = base.font_size {
-        text_style.set_font_size(size);
-    }
-    let mut paragraph_style = ParagraphStyle::new();
-    paragraph_style.set_text_direction(TextDirection::LTR);
-    paragraph_style.set_text_style(&text_style);
-    let mut builder = ParagraphBuilder::new(&paragraph_style, fonts);
-    builder.push_style(&text_style);
-    builder.add_text(text);
-    let mut paragraph = builder.build();
-    paragraph.layout(f32::MAX);
+    let families: Vec<&str> = base
+        .font_families
+        .as_ref()
+        .map(|families| families.iter().map(|family| family.as_str()).collect())
+        .unwrap_or_default();
+    let size = base.font_size.unwrap_or(14.0);
+    let span = [imba::shape::SpanStyle::plain(skia_safe::Color::BLACK)];
+    // Unwrapped advance = max intrinsic; wrapped at nothing = the
+    // widest unbreakable word = min intrinsic.
+    let mut widest = imba::shape::ShapeSpec::new(text, &families, size);
+    widest.spans = &span;
+    let max = imba::shape::ParleyLine::shape_spec(&widest).width();
+    let mut narrow = imba::shape::ShapeSpec::new(text, &families, size);
+    narrow.spans = &span;
+    narrow.max_width = Some(1.0);
+    let min = imba::shape::ParleyLine::shape_spec(&narrow).width();
     ColumnIntrinsics {
-        min: paragraph.min_intrinsic_width().ceil(),
-        max: paragraph.max_intrinsic_width().ceil(),
+        min: min.ceil(),
+        max: max.ceil(),
     }
 }
 
@@ -431,7 +428,6 @@ impl TableEditor {
         source: TableSource,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) -> Self {
         let columns = source.alignments.len();
@@ -442,7 +438,6 @@ impl TableEditor {
                 .iter()
                 .map(|row| row.iter().map(|cell| cell.content.as_str())),
             columns,
-            &fonts,
             theme,
             &chrome,
         );
@@ -459,7 +454,6 @@ impl TableEditor {
                         widths[col] - chrome.cell_pad_x * 2.0,
                         store,
                         ui,
-                        fonts,
                         theme,
                     ),
                     content: cell.content,
@@ -494,15 +488,13 @@ impl TableEditor {
     fn intrinsics_from<'c>(
         rows: impl Iterator<Item = impl Iterator<Item = &'c str>>,
         columns: usize,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         chrome: &TableChrome,
     ) -> Vec<ColumnIntrinsics> {
-        let collection = fonts.clone();
         let mut intrinsics = vec![ColumnIntrinsics { min: 0.0, max: 0.0 }; columns];
         for row in rows {
             for (col, content) in row.enumerate().take(columns) {
-                let cell = cell_intrinsics(content, &collection, theme);
+                let cell = cell_intrinsics(content, theme);
                 intrinsics[col].min = intrinsics[col].min.max(cell.min);
                 intrinsics[col].max = intrinsics[col].max.max(cell.max);
             }
@@ -530,7 +522,6 @@ impl TableEditor {
         available: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         self.available.store(available.to_bits(), Ordering::Relaxed);
@@ -550,7 +541,6 @@ impl TableEditor {
                     (lay[col] - self.chrome.cell_pad_x * 2.0).max(1.0),
                     store,
                     ui,
-                    fonts,
                     theme,
                 );
                 if focused {
@@ -726,7 +716,6 @@ impl TableEditor {
         &mut self,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         self.version = fresh_version();
@@ -739,7 +728,7 @@ impl TableEditor {
         let Some(parsed) = parse_table(&source) else {
             return;
         };
-        let mut fresh = Self::new(parsed, store, ui, fonts, theme);
+        let mut fresh = Self::new(parsed, store, ui, theme);
         fresh.range = self.range.clone();
         fresh.pending_edit = self.pending_edit.take();
 
@@ -749,7 +738,7 @@ impl TableEditor {
             Ordering::Relaxed,
         );
         let available = self.available();
-        fresh.relay_all(available, store, ui, fonts, theme);
+        fresh.relay_all(available, store, ui, theme);
         *self = fresh;
     }
 
@@ -770,7 +759,6 @@ impl TableEditor {
         at: usize,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         let at = at.clamp(1, self.rows.len());
@@ -801,7 +789,7 @@ impl TableEditor {
                 span: pos..pos,
             });
         }
-        self.rebuild_from_lines(store, ui, fonts, theme);
+        self.rebuild_from_lines(store, ui, theme);
     }
 
     fn remove_row(
@@ -809,7 +797,6 @@ impl TableEditor {
         at: usize,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         if at == 0 || at >= self.rows.len() || self.rows.len() < 2 {
@@ -829,7 +816,7 @@ impl TableEditor {
             ));
         }
         self.lines.remove(line_index);
-        self.rebuild_from_lines(store, ui, fonts, theme);
+        self.rebuild_from_lines(store, ui, theme);
     }
 
     fn insert_column(
@@ -837,7 +824,6 @@ impl TableEditor {
         at: usize,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         let cols = self.alignments_source.len();
@@ -860,7 +846,7 @@ impl TableEditor {
             delimiter.text.clone(),
             Self::delimiter_line(&alignments),
         ));
-        self.apply_structural(edits, store, ui, fonts, theme);
+        self.apply_structural(edits, store, ui, theme);
     }
 
     fn remove_column(
@@ -868,7 +854,6 @@ impl TableEditor {
         at: usize,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         let cols = self.alignments_source.len();
@@ -898,7 +883,7 @@ impl TableEditor {
             delimiter.text.clone(),
             Self::delimiter_line(&alignments),
         ));
-        self.apply_structural(edits, store, ui, fonts, theme);
+        self.apply_structural(edits, store, ui, theme);
     }
 
     fn apply_structural(
@@ -906,7 +891,6 @@ impl TableEditor {
         mut edits: Vec<(u32, String, String)>,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         edits.sort_by_key(|(pos, _, _)| *pos);
@@ -937,7 +921,7 @@ impl TableEditor {
                 }
             }
         }
-        self.rebuild_from_lines(store, ui, fonts, theme);
+        self.rebuild_from_lines(store, ui, theme);
     }
 
     fn patch_lines(&mut self, at: u32, delete: usize, insert: &str) {
@@ -972,7 +956,6 @@ impl TableEditor {
         _col: usize,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
         let columns = self.widths.len();
@@ -981,11 +964,10 @@ impl TableEditor {
                 .iter()
                 .map(|row| row.iter().map(|cell| cell.content.as_str())),
             columns,
-            fonts,
             theme,
             &self.chrome,
         );
-        self.relay_all(self.available(), store, ui, fonts, theme);
+        self.relay_all(self.available(), store, ui, theme);
     }
 
     fn launch_relayout(&mut self, width: f32, fx: &mut imba::effect::Effects<'_, TableCommand>) {
@@ -1094,9 +1076,8 @@ impl TableEditor {
             let cell = &mut self.rows[row][col];
             let mut discarded = imba::effect::Batch::new();
             imba::View::perform(&mut cell.view, store, ui, command, &mut discarded.effects());
-            let fonts = ::editor::env::ui_collection(store, ui);
             let theme = ::editor::env::Themes::of(store);
-            self.relayout_after_edit(row, col, store, ui, &fonts, &theme);
+            self.relayout_after_edit(row, col, store, ui, &theme);
         }
     }
 
@@ -1158,10 +1139,9 @@ pub(crate) struct TableRelayoutHandler(pub std::sync::Arc<editor::env::Workshop>
 impl imba::effect::EffectHandler<TableRelayoutEffect> for TableRelayoutHandler {
     async fn handle(&self, effect: TableRelayoutEffect) -> TableCommand {
         let mut table = effect.table;
-        let fonts = self.0.fonts();
         let theme = self.0.theme();
         self.0
-            .with_ctx(|store, ui| table.relay_all(effect.width, store, ui, &fonts, &theme));
+            .with_ctx(|store, ui| table.relay_all(effect.width, store, ui, &theme));
         TableCommand::Relaid(Box::new(table))
     }
 }
@@ -1187,7 +1167,6 @@ impl editor::markup::InlayEditing for TableEditor {
         previous: &Self,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) -> bool {
         if let Some((row, col)) = previous.focused {
@@ -1202,7 +1181,7 @@ impl editor::markup::InlayEditing for TableEditor {
             Ordering::Relaxed,
         );
 
-        self.relay_all(previous.available(), store, ui, fonts, theme);
+        self.relay_all(previous.available(), store, ui, theme);
         self.lines == previous.lines
     }
 }
@@ -1282,16 +1261,15 @@ impl View for TableEditor {
             TableCommand::Relayout { width } => self.launch_relayout(width, fx),
             TableCommand::Relaid(relaid) => self.land_relaid(*relaid),
             structural => {
-                let fonts = ::editor::env::ui_collection(store, ui);
                 let theme = ::editor::env::Themes::of(store);
                 match structural {
-                    TableCommand::InsertRow(at) => self.insert_row(at, store, ui, &fonts, &theme),
-                    TableCommand::RemoveRow(at) => self.remove_row(at, store, ui, &fonts, &theme),
+                    TableCommand::InsertRow(at) => self.insert_row(at, store, ui, &theme),
+                    TableCommand::RemoveRow(at) => self.remove_row(at, store, ui, &theme),
                     TableCommand::InsertColumn(at) => {
-                        self.insert_column(at, store, ui, &fonts, &theme)
+                        self.insert_column(at, store, ui, &theme)
                     }
                     TableCommand::RemoveColumn(at) => {
-                        self.remove_column(at, store, ui, &fonts, &theme)
+                        self.remove_column(at, store, ui, &theme)
                     }
                     TableCommand::Cell { .. }
                     | TableCommand::Relayout { .. }
@@ -1445,9 +1423,8 @@ impl editor::dynamic::DynamicEditorCommand for InsertTable {
             INSERT_TABLE_TEMPLATE,
             "\n".repeat(2 - newlines_after),
         );
-        let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        document.insert(editor, &snippet, store, ui, &fonts, &theme, fx);
+        document.insert(editor, &snippet, store, ui, &theme, fx);
     }
 }
 
@@ -1586,19 +1563,17 @@ mod hitbox {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         use editor::markup::InlayEditing;
-        let fonts = ::editor::test_document::test_fonts_collection().clone();
         let theme = editor::theme::Theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),
             store,
             ui,
-            &fonts,
             &theme,
         );
         editor.set_range(0..source.len() as u32);
-        editor.relay_all(600.0, store, ui, &fonts, &theme);
-        editor.insert_row(2, store, ui, &fonts, &theme);
+        editor.relay_all(600.0, store, ui, &theme);
+        editor.insert_row(2, store, ui, &theme);
 
         let arena = Arena::default();
         let store = Store::new();
@@ -1662,19 +1637,16 @@ mod hitbox {
         let ui = ::editor::test_document::test_ui();
         use editor::markup::InlayEditing;
         use imba::event::{Event, EventResult, MouseButton};
-
-        let fonts = ::editor::test_document::test_fonts_collection().clone();
         let theme = editor::theme::Theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),
             store,
             ui,
-            &fonts,
             &theme,
         );
         editor.set_range(0..source.len() as u32);
-        editor.relay_all(600.0, store, ui, &fonts, &theme);
+        editor.relay_all(600.0, store, ui, &theme);
 
         let arena = Arena::default();
         let store = Store::new();

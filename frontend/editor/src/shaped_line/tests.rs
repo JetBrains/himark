@@ -181,7 +181,6 @@ fn paint_is_deterministic_and_inked() {
 /// skparagraph band road drifted off parley ink on proportional
 /// faces; this pins band x to caret x through the whole display
 /// mapping.)
-#[cfg(feature = "parley-text")]
 #[test]
 fn selection_edges_sit_on_the_caret() {
     let theme = crate::theme::Theme::embedded();

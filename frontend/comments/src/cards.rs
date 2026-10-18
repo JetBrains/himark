@@ -70,7 +70,6 @@ fn remove_card(
     let Some(mut doc) = documents::OpenDocuments::document(store, documents, document) else {
         return;
     };
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     fx.scope(
         move |command| {
@@ -79,7 +78,7 @@ fn remove_card(
                 documents::DocumentsCommand::Editor(document, command),
             )
         },
-        |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
+        |fx| doc.remove_inlay(key, store, ui, &theme, fx),
     );
     documents::OpenDocuments::put_document(store, documents, document, doc);
 }
@@ -192,7 +191,6 @@ fn materialize(
     let Some(mut doc) = documents::OpenDocuments::document(store, documents, document) else {
         return;
     };
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let range = match &record.range {
@@ -212,7 +210,6 @@ fn materialize(
         crate::view::FALLBACK_WIDTH,
         store,
         ui,
-        &fonts,
         &theme,
         id.clone(),
         record.own_entry().map(|entry| entry.text.clone()),
@@ -236,7 +233,6 @@ fn materialize(
                 editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone()),
                 store,
                 ui,
-                &fonts,
                 &theme,
                 fx,
             );
@@ -286,7 +282,6 @@ fn refresh_card(
         return;
     }
     let live_text = view.map(|view| view.text_rope());
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     let rebuilt = CommentView::materialized(
         comments,
@@ -294,7 +289,6 @@ fn refresh_card(
         crate::view::FALLBACK_WIDTH,
         store,
         ui,
-        &fonts,
         &theme,
         id.clone(),
         live_text.or(record.own_entry().map(|entry| entry.text.clone())),

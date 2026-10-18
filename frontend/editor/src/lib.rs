@@ -25,7 +25,6 @@ pub mod hover;
 pub mod linecol;
 pub mod location;
 pub mod markup;
-#[cfg(feature = "parley-text")]
 pub mod parley_line;
 pub mod popup;
 pub mod repair;
@@ -44,14 +43,11 @@ pub mod viewport;
 pub(crate) mod viewport_cache;
 pub(crate) mod width_tree;
 
-pub type FontSource =
-    std::sync::Arc<dyn Fn() -> skia_safe::textlayout::FontCollection + Send + Sync>;
 
 #[doc(hidden)]
 pub mod test_document;
 
 #[cfg(test)]
-pub(crate) mod metrics_probe;
 
 #[cfg(test)]
 mod tests;

@@ -7,13 +7,11 @@ use super::*;
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
     let mut document = document_from_markdown(
         "# Title\n\nsome **bold** words\n",
         store,
         ui,
-        &fonts,
         &theme,
     );
     let editor = document.add_editor(
@@ -23,7 +21,6 @@ fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -47,7 +44,7 @@ fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     );
 
     document.set_caret(editor, 15);
-    document.refresh_unhide(editor, store, ui, &fonts, &theme);
+    document.refresh_unhide(editor, store, ui, &theme);
     assert!(hidden_at(&document, 0..8) >= 1, "the # re-hides off-caret");
     assert_eq!(hidden_at(&document, 9..29), 0, "caret line shows its **");
 }

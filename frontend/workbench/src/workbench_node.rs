@@ -251,7 +251,6 @@ impl Panel {
                 else {
                     return false;
                 };
-                let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
                 let (documents, target) = (view.documents(), view.document());
                 fx.scope(
@@ -267,7 +266,6 @@ impl Panel {
                             place.caret,
                             store,
                             ui,
-                            &fonts,
                             &theme,
                             fx,
                         )

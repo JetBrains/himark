@@ -10,10 +10,6 @@ use crate::editor::EditorId;
 use crate::editor_view::EditorCommand;
 use crate::test_document::plain_document;
 
-fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    crate::test_document::test_fonts_collection().clone()
-}
-
 struct Pane {
     store: Store,
     ui: imba::ui::UiCtx,
@@ -33,7 +29,6 @@ impl Pane {
             &[],
             store,
             ui,
-            &test_fonts(),
             &crate::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -188,7 +183,6 @@ fn a_shared_edit_carries_the_undo_history_across_itself() {
         &foreign,
         store,
         ui,
-        &test_fonts(),
         &crate::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );

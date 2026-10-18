@@ -34,7 +34,6 @@ pub trait AppExt {
         build: impl FnOnce(
                 &imba::store::Store,
                 &imba::ui::UiCtx,
-                &skia_safe::textlayout::FontCollection,
                 &::editor::theme::Theme,
             ) -> Document
             + Send
@@ -134,7 +133,6 @@ impl AppExt for Himark {
         build: impl FnOnce(
                 &imba::store::Store,
                 &imba::ui::UiCtx,
-                &skia_safe::textlayout::FontCollection,
                 &::editor::theme::Theme,
             ) -> Document
             + Send

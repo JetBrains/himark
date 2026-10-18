@@ -127,7 +127,6 @@ impl editor::markup::InlayEditing for CheckboxView {
         previous: &Self,
         _store: &imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &Theme,
     ) -> bool {
         self.checked == previous.checked

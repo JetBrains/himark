@@ -4,7 +4,6 @@
 use std::str;
 
 use operation::{op::Op, operation::Operation};
-use skia_safe::{textlayout::FontCollection, Point};
 
 macro_rules! fx {
     () => {
@@ -27,9 +26,6 @@ fn test_theme() -> crate::theme::Theme {
     crate::theme::Theme::embedded()
 }
 
-fn test_fonts() -> FontCollection {
-    crate::test_document::test_fonts_collection().clone()
-}
 
 #[test]
 fn document_layout_wraps_more_at_narrow_width() {
@@ -75,7 +71,6 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -172,7 +167,6 @@ fn box_backgrounds_hug_their_content() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -197,7 +191,6 @@ fn box_backgrounds_hug_their_content() {
         false,
         store,
         ui,
-        &test_fonts(),
         &theme,
     );
     let image = surface.image_snapshot();
@@ -233,7 +226,6 @@ fn the_width_mirror_tracks_the_widest_line_through_edits() {
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         None,
     );
@@ -254,13 +246,12 @@ fn the_width_mirror_tracks_the_widest_line_through_edits() {
         Op::Retain(text_string(&document).len() as u32),
     ]);
     layout.edit(&insert);
-    document.edit(&insert, store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&insert, store, ui, &test_theme(), fx!());
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         0,
     );
@@ -276,13 +267,12 @@ fn the_width_mirror_tracks_the_widest_line_through_edits() {
         Op::Retain((text_string(&document).len() - long.len()) as u32),
     ]);
     layout.edit(&delete);
-    document.edit(&delete, store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&delete, store, ui, &test_theme(), fx!());
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         0,
     );
@@ -298,7 +288,6 @@ fn the_width_mirror_tracks_the_widest_line_through_edits() {
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         None,
     );
@@ -322,13 +311,12 @@ fn repaired_layout_matches_fresh_layout_after_plain_insert() {
     );
 
     let repair_start = layout.edit(&operation);
-    document.edit(&operation, store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&operation, store, ui, &test_theme(), fx!());
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         repair_start,
     );
@@ -361,13 +349,12 @@ fn code_block_with_emoji_keeps_layout_ranges_on_utf8_boundaries_after_edit() {
     );
 
     let repair_start = layout.edit(&operation);
-    document.edit(&operation, store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&operation, store, ui, &test_theme(), fx!());
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         repair_start,
     );
@@ -429,7 +416,6 @@ fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
             "a😀".len() as u32,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .expect("caret rect");
@@ -442,7 +428,6 @@ fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
             10.0,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .expect("caret hit");
@@ -463,7 +448,6 @@ fn caret_hit_testing_moves_inside_visible_whitespace() {
             "a  ".len() as u32,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .expect("caret rect");
@@ -476,7 +460,6 @@ fn caret_hit_testing_moves_inside_visible_whitespace() {
             10.0,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .expect("caret hit");
@@ -490,7 +473,6 @@ fn layout_of(document: &Document, width: f32) -> DocumentLayout {
         document.text(),
         crate::markup::OverlaidMarkup::new(document.markup(), &extras),
         width,
-        &test_fonts(),
         &test_theme(),
         None,
     )
@@ -499,7 +481,7 @@ fn layout_of(document: &Document, width: f32) -> DocumentLayout {
 fn view_of(document: Document, width: f32) -> EditorView {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    EditorView::of_document(document, width, store, ui, &test_fonts(), &test_theme())
+    EditorView::of_document(document, width, store, ui, &test_theme())
 }
 
 fn text_string(document: &Document) -> String {
@@ -552,9 +534,6 @@ fn assert_layout_ranges_are_utf8(document: &Document, layout: &DocumentLayout) {
     assert_eq!(byte_start as usize, document.text().byte_count());
 }
 
-fn font_collection() -> FontCollection {
-    crate::test_document::test_fonts_collection().clone()
-}
 
 #[test]
 fn misaligned_boundary_detector_fires() {
@@ -582,7 +561,6 @@ fn ime_doc(source: &str) -> (Document, crate::editor::EditorId) {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -610,7 +588,6 @@ fn shaped_lines_are_retained_across_builds() {
             None,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
     };
@@ -626,7 +603,7 @@ fn shaped_lines_are_retained_across_builds() {
     }
 
     document.set_caret(editor, 0);
-    document.insert(editor, "x", store, ui, &test_fonts(), &test_theme(), fx!());
+    document.insert(editor, "x", store, ui, &test_theme(), fx!());
     let third = build(&document);
     assert!(
         !Rc::ptr_eq(
@@ -668,7 +645,6 @@ fn repairs_preserve_the_trailing_empty_line() {
             document.text(),
             markup,
             600.0,
-            &test_fonts(),
             &test_theme(),
             start,
         );
@@ -687,7 +663,6 @@ fn repairs_preserve_the_trailing_empty_line() {
             document.text(),
             markup,
             600.0,
-            &test_fonts(),
             &test_theme(),
             resume,
             1.0,
@@ -731,7 +706,6 @@ fn backspacing_a_document_to_nothing_settles_clean() {
                     &value,
                     markup,
                     600.0,
-                    &test_fonts(),
                     &test_theme(),
                     pending,
                     crate::document_layout::SYNC_LAYOUT_HEIGHT,
@@ -753,7 +727,6 @@ fn backspacing_a_document_to_nothing_settles_clean() {
                 &empty,
                 markup,
                 600.0,
-                &test_fonts(),
                 &test_theme(),
                 pending,
                 crate::document_layout::SYNC_LAYOUT_HEIGHT,
@@ -783,7 +756,6 @@ fn deleting_everything_leaves_no_unhealable_damage() {
                 document.text(),
                 markup,
                 600.0,
-                &test_fonts(),
                 &test_theme(),
                 anchor,
                 crate::document_layout::SYNC_LAYOUT_HEIGHT,
@@ -829,7 +801,7 @@ fn trailing_newline_gets_its_own_last_line() {
     );
 
     let (x, y, _, height) = document
-        .caret_content_rect(editor, 4, store, ui, &test_fonts(), &test_theme())
+        .caret_content_rect(editor, 4, store, ui, &test_theme())
         .expect("the EOF caret has a rect");
     assert_eq!(x, 0.0, "the EOF caret sits at the line start");
     let empty_row_top = heights[0].1 + heights[1].1;
@@ -840,7 +812,7 @@ fn trailing_newline_gets_its_own_last_line() {
     );
     assert!(height > 0.0);
     let (_, populated_y, _, populated_height) = populated
-        .caret_content_rect(populated_editor, 5, store, ui, &test_fonts(), &test_theme())
+        .caret_content_rect(populated_editor, 5, store, ui, &test_theme())
         .expect("the populated EOF caret has a rect");
     let populated_row_top = populated_heights
         .iter()
@@ -864,14 +836,13 @@ fn trailing_newline_gets_its_own_last_line() {
             0.0,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .expect("the empty row is clickable");
     assert_eq!(clicked, 4);
 
     document.set_caret(editor, 2);
-    document.move_carets_vertically(editor, true, false, store, ui, &test_fonts(), &test_theme());
+    document.move_carets_vertically(editor, true, false, store, ui, &test_theme());
     assert_eq!(
         document.caret_byte(editor),
         4,
@@ -893,7 +864,6 @@ fn composing_then_committing_marked_text() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -908,7 +878,6 @@ fn composing_then_committing_marked_text() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -920,7 +889,6 @@ fn composing_then_committing_marked_text() {
         "\u{611F}",
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -941,7 +909,6 @@ fn unmark_keeps_the_text_and_ends_composition() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -963,7 +930,6 @@ fn a_marked_range_shifts_when_a_sibling_editor_edits() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -974,7 +940,6 @@ fn a_marked_range_shifts_when_a_sibling_editor_edits() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -987,7 +952,6 @@ fn a_marked_range_shifts_when_a_sibling_editor_edits() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -1000,7 +964,6 @@ fn a_marked_range_shifts_when_a_sibling_editor_edits() {
         inserted,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -1029,10 +992,10 @@ fn caret_rect_tracks_the_composing_caret() {
     let (mut document, editor) = ime_doc("hello");
 
     let (x0, y0, _, h0) = document
-        .caret_content_rect(editor, 0, store, ui, &test_fonts(), &test_theme())
+        .caret_content_rect(editor, 0, store, ui, &test_theme())
         .expect("rect at 0");
     let (x3, _, _, _) = document
-        .caret_content_rect(editor, 3, store, ui, &test_fonts(), &test_theme())
+        .caret_content_rect(editor, 3, store, ui, &test_theme())
         .expect("rect at 3");
     assert!(x0 < x3, "caret advances rightward: {x0} < {x3}");
     assert!(y0 >= 0.0 && h0 > 0.0, "a real line rect");
@@ -1044,13 +1007,12 @@ fn caret_rect_tracks_the_composing_caret() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
     let caret = document.caret_byte(editor);
     assert!(document
-        .caret_content_rect(editor, caret, store, ui, &test_fonts(), &test_theme())
+        .caret_content_rect(editor, caret, store, ui, &test_theme())
         .is_some());
 }
 
@@ -1060,9 +1022,8 @@ fn the_caret_sizes_to_the_run_not_the_line_box() {
     let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("hello world");
     let theme = test_theme();
-    let fonts = test_fonts();
     let (_, top, _, height) = document
-        .caret_content_rect(editor, 3, store, ui, &fonts, &theme)
+        .caret_content_rect(editor, 3, store, ui, &theme)
         .expect("mid-word caret");
 
     let element_height = document.content_height(editor);
@@ -1079,7 +1040,6 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("");
-    let fonts = test_fonts();
     let theme = test_theme();
     assert_eq!(
         document.content_height(editor),
@@ -1088,7 +1048,7 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
     );
 
     let (_, top, width, height) = document
-        .caret_content_rect(editor, 0, store, ui, &fonts, &theme)
+        .caret_content_rect(editor, 0, store, ui, &theme)
         .expect("the empty document still has caret geometry");
     assert!(top >= 0.0 && width > 0.0 && height > 0.0);
 
@@ -1102,7 +1062,6 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
         true,
         store,
         ui,
-        &fonts,
         &theme,
     );
 
@@ -1118,7 +1077,7 @@ fn typing_into_an_empty_document_shows_the_text() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("");
-    document.insert(editor, "a", store, ui, &test_fonts(), &test_theme(), fx!());
+    document.insert(editor, "a", store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "a", "the byte is inserted");
     assert!(
         document.content_height(editor) > 0.0,
@@ -1141,7 +1100,6 @@ fn a_bounded_editor_lays_out_exactly_its_fragment() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut batch.effects(),
     );
@@ -1155,7 +1113,6 @@ fn a_bounded_editor_lays_out_exactly_its_fragment() {
         400.0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert!(
@@ -1200,7 +1157,6 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -1211,13 +1167,12 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
 
     document.set_caret(bounded, 7);
-    let _ = document.insert(bounded, "X", store, ui, &test_fonts(), &test_theme(), fx!());
+    let _ = document.insert(bounded, "X", store, ui, &test_theme(), fx!());
     let end = document.text().byte_count() as u32;
     assert_eq!(
         document.text().view().substring(0..end),
@@ -1231,7 +1186,7 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
 
     let before = document.content_height(bounded);
     document.set_caret(whole, 0);
-    let _ = document.insert(whole, "> ", store, ui, &test_fonts(), &test_theme(), fx!());
+    let _ = document.insert(whole, "> ", store, ui, &test_theme(), fx!());
     assert_eq!(
         document.fragment_range(key),
         Some(8..23),
@@ -1245,7 +1200,6 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         "\n",
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -1254,7 +1208,6 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         400.0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert!(
@@ -1296,7 +1249,6 @@ fn a_bounded_editor_paints_only_its_fragment() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -1315,7 +1267,6 @@ fn a_bounded_editor_paints_only_its_fragment() {
         true,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
 
@@ -1337,7 +1288,7 @@ fn a_bounded_editor_paints_only_its_fragment() {
 }
 
 mod injected_syntax {
-    use super::{test_fonts, test_theme};
+    use super::{test_theme};
     use crate::markup::Markup;
     use crate::markup::Syntax;
     use crate::test_document::plain_document;
@@ -1403,7 +1354,6 @@ mod injected_syntax {
             &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 0, "AA"),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -1417,7 +1367,6 @@ mod injected_syntax {
             &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 13, "yy"),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -1431,7 +1380,6 @@ mod injected_syntax {
             &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 10, "zz"),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -1458,7 +1406,6 @@ mod injected_syntax {
             &Operation::delete_in(crate::text_cursor::byte_count(document.text()), 5, "x l"),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -1482,7 +1429,6 @@ mod injected_syntax {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -1498,7 +1444,6 @@ mod injected_syntax {
             true,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         );
         let image = surface.image_snapshot();
@@ -1595,7 +1540,6 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
     let ui = crate::test_document::test_ui();
     let line = "0000 :: lorem ipsum dolor sit amet consectetur adipiscing elit :: 00\n";
     let source = line.repeat(50_000);
-    let fonts = test_fonts();
     let mut document = Document::new(
         text::text::Text::from_string_exact(&source),
         crate::markup::Markup::new(),
@@ -1607,7 +1551,6 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
         &[],
         store,
         ui,
-        &fonts,
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1624,7 +1567,6 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
             ),
             store,
             ui,
-            &fonts,
             &test_theme(),
             fx!(),
         );
@@ -1668,7 +1610,6 @@ fn styled_runs_translate_across_hidden_syntax() {
 fn paired_layouts_align_retained_boundaries() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = test_fonts();
     let theme = crate::theme::Theme::embedded();
     let shared_head = "shared first line\nshared second line\n";
     let shared_tail = "shared tail one\nshared tail two\nshared tail three\n";
@@ -1685,7 +1626,6 @@ fn paired_layouts_align_retained_boundaries() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1697,7 +1637,6 @@ fn paired_layouts_align_retained_boundaries() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1788,7 +1727,6 @@ fn popup_overlays_carry_projected_inlays() {
     // editor chain) must emit host-targeting inlays too, or a
     // deleted-code card expanded from the gutter stripes never
     // renders.
-    let fonts = test_fonts();
     let theme = crate::theme::Theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\n";
     let mut document = crate::test_document::plain_document(source);
@@ -1807,7 +1745,6 @@ fn popup_overlays_carry_projected_inlays() {
         .over(crate::markup::INLAY_HOST),
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1818,7 +1755,6 @@ fn popup_overlays_carry_projected_inlays() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1832,7 +1768,6 @@ fn popup_overlays_carry_projected_inlays() {
     };
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
     // the projections from its shared viewport build.
@@ -1859,7 +1794,6 @@ fn popup_overlays_carry_projected_inlays() {
 fn paired_layouts_absorb_one_sided_inlays() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = test_fonts();
     let theme = crate::theme::Theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\n";
     let mut left = crate::test_document::plain_document(source);
@@ -1878,7 +1812,6 @@ fn paired_layouts_absorb_one_sided_inlays() {
         ),
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1889,7 +1822,6 @@ fn paired_layouts_absorb_one_sided_inlays() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1901,7 +1833,6 @@ fn paired_layouts_absorb_one_sided_inlays() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1965,7 +1896,6 @@ impl imba::View for FixedInlay {
 fn alignment_markers_place_the_covered_lines() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = font_collection();
     let theme = test_theme();
     let source = "right\ncente\nplain\n";
     let text = text::text::Text::from_string_exact(source);
@@ -2017,7 +1947,6 @@ fn alignment_markers_place_the_covered_lines() {
 fn line_spanning_background_markers_paint_to_the_line_end() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n\n";
     let text = text::text::Text::from_string_exact(source);
@@ -2079,7 +2008,6 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
 fn a_through_end_wash_fills_the_block_gap_below() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n";
     let text = text::text::Text::from_string_exact(source);
@@ -2154,7 +2082,6 @@ fn a_through_end_wash_fills_the_block_gap_below() {
 fn tight_background_markers_hug_their_glyphs() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = font_collection();
     let theme = test_theme();
     let source = "BIG word here\n";
     let text = text::text::Text::from_string_exact(source);
@@ -2281,7 +2208,6 @@ fn inline_marker_styles_are_tight_and_line_washes_are_not() {
 fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = font_collection();
     let theme = test_theme();
     let mut document = crate::test_document::plain_document("alpha\nbeta\ngamma\ndelta\ntail\n");
 
@@ -2299,7 +2225,6 @@ fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
         ),
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2310,7 +2235,6 @@ fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2332,7 +2256,6 @@ fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
             false,
             store,
             ui,
-            &fonts,
             &test_theme(),
         );
         let image = surface.image_snapshot();
@@ -2426,7 +2349,6 @@ fn markup_only_languages_ride_an_opaque_parse() {
             changed: &[std::ops::Range<u32>],
             replacement: &mut crate::markup::MarkupBuilder,
             invalidated: &mut Vec<std::ops::Range<u32>>,
-            _fonts: &skia_safe::textlayout::FontCollection,
             _theme: &crate::theme::Theme,
         ) {
             self.calls.lock().expect("calls").push(changed.to_vec());
@@ -2442,7 +2364,6 @@ fn markup_only_languages_ride_an_opaque_parse() {
     });
     let mut languages = crate::reparse::SyntaxLanguages::new();
     languages.register(&["stub"], recording.clone());
-    let fonts = font_collection();
     let theme = test_theme();
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
@@ -2450,7 +2371,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     let len = text.byte_count() as u32;
 
     let (syntax, invalidated, sites) = languages
-        .parse_syntax("stub", &text, 0..len, None, &[], store, ui, &fonts, &theme)
+        .parse_syntax("stub", &text, 0..len, None, &[], store, ui, &theme)
         .expect("a markup-only language parses");
     assert!(syntax.tree.is_some(), "the opaque parse value is stored");
     assert!(sites.is_empty(), "no children by default");
@@ -2466,7 +2387,6 @@ fn markup_only_languages_ride_an_opaque_parse() {
             &edited,
             store,
             ui,
-            &fonts,
             &theme,
         )
         .expect("re-parses");
@@ -2494,7 +2414,6 @@ fn markup_only_languages_ride_an_opaque_parse() {
             _changed: &[std::ops::Range<u32>],
             _replacement: &mut crate::markup::MarkupBuilder,
             _invalidated: &mut Vec<std::ops::Range<u32>>,
-            _fonts: &skia_safe::textlayout::FontCollection,
             _theme: &crate::theme::Theme,
         ) {
         }
@@ -2511,7 +2430,6 @@ fn markup_only_languages_ride_an_opaque_parse() {
                 &[],
                 store,
                 ui,
-                &fonts,
                 &theme
             )
             .is_none(),
@@ -2539,7 +2457,6 @@ fn layout_survives_chars_straddling_the_chunk_grid() {
             document.text(),
             crate::markup::OverlaidMarkup::plain(document.markup()),
             300.0,
-            &test_fonts(),
             &test_theme(),
             pending,
             60_000.0,
@@ -2617,7 +2534,6 @@ fn a_repair_relaunch_cancels_the_in_flight_lane() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut open.effects(),
     );
@@ -2631,7 +2547,6 @@ fn a_repair_relaunch_cancels_the_in_flight_lane() {
         0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut resize.effects()
     ));
@@ -2649,7 +2564,6 @@ fn a_repair_relaunch_cancels_the_in_flight_lane() {
         0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut again.effects()
     ));
@@ -2674,7 +2588,7 @@ fn multicaret_insert_is_one_bulk_operation() {
         MultiCaret::normalized(vec![Caret::at(0), Caret::at(3), Caret::at(6)], 0),
     );
     let revision_before = document.revision();
-    document.insert(editor, "x", store, ui, &test_fonts(), &test_theme(), fx!());
+    document.insert(editor, "x", store, ui, &test_theme(), fx!());
 
     assert_eq!(text_of(&document), "xaa xbb xcc");
     assert_eq!(
@@ -2700,7 +2614,7 @@ fn multicaret_insert_replaces_selections() {
         editor,
         MultiCaret::normalized(vec![Caret::selecting(0, 3), Caret::selecting(4, 7)], 0),
     );
-    document.insert(editor, "X", store, ui, &test_fonts(), &test_theme(), fx!());
+    document.insert(editor, "X", store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "X X three");
     assert!(!document.carets(editor).has_selection());
 }
@@ -2719,7 +2633,6 @@ fn multicaret_backspace_deletes_at_every_caret() {
         Motion::Left,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -2747,7 +2660,6 @@ fn multicaret_delete_forward_eats_selections_first() {
         Motion::Right,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -2769,7 +2681,6 @@ fn word_delete_spans_the_word_motion() {
         Motion::WordLeft,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -2783,7 +2694,6 @@ fn word_delete_spans_the_word_motion() {
         Motion::WordRight,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -2802,7 +2712,6 @@ fn word_delete_spans_the_word_motion() {
         Motion::WordLeft,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -2821,7 +2730,6 @@ fn other_editors_carets_transform_through_a_bulk_edit() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2830,7 +2738,7 @@ fn other_editors_carets_transform_through_a_bulk_edit() {
         editor,
         MultiCaret::normalized(vec![Caret::at(0), Caret::at(3)], 0),
     );
-    document.insert(editor, "xx", store, ui, &test_fonts(), &test_theme(), fx!());
+    document.insert(editor, "xx", store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "xxaa xxbb cc");
     assert_eq!(document.caret_byte(other), 10, "rides both insertions");
 }
@@ -2847,7 +2755,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 5, "end of alpha");
@@ -2857,7 +2764,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 10, "end of beta");
@@ -2867,7 +2773,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(
@@ -2881,7 +2786,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     document.move_carets(
@@ -2890,7 +2794,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 22, "second line end");
@@ -2900,7 +2803,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 11, "second line start");
@@ -2910,7 +2812,6 @@ fn word_and_line_motions() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(
@@ -2932,7 +2833,6 @@ fn selecting_motion_grows_from_the_anchor() {
         true,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let primary = document.carets(editor).primary();
@@ -2943,7 +2843,6 @@ fn selecting_motion_grows_from_the_anchor() {
         true,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.carets(editor).primary().selection(), 3..6);
@@ -2954,7 +2853,6 @@ fn selecting_motion_grows_from_the_anchor() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let collapsed = document.carets(editor).primary();
@@ -2975,7 +2873,6 @@ fn vertical_motion_keeps_the_goal_column() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let on_short = document.caret_byte(editor);
@@ -2989,7 +2886,6 @@ fn vertical_motion_keeps_the_goal_column() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let on_third = document.caret_byte(editor);
@@ -3003,7 +2899,6 @@ fn vertical_motion_keeps_the_goal_column() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     document.move_carets(
@@ -3012,7 +2907,6 @@ fn vertical_motion_keeps_the_goal_column() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(
@@ -3034,7 +2928,6 @@ fn vertical_motion_off_the_edges_goes_to_document_ends() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 0);
@@ -3045,7 +2938,6 @@ fn vertical_motion_off_the_edges_goes_to_document_ends() {
         false,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert_eq!(document.caret_byte(editor), 10);
@@ -3057,8 +2949,8 @@ fn add_caret_below_stacks_carets() {
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("aaa\nbbb\nccc");
     document.set_caret(editor, 1);
-    document.add_caret_vertically(editor, false, store, ui, &test_fonts(), &test_theme());
-    document.add_caret_vertically(editor, false, store, ui, &test_fonts(), &test_theme());
+    document.add_caret_vertically(editor, false, store, ui, &test_theme());
+    document.add_caret_vertically(editor, false, store, ui, &test_theme());
     let offsets: Vec<u32> = document
         .carets(editor)
         .carets()
@@ -3163,7 +3055,6 @@ fn typing_after_select_all_occurrences_rewrites_every_match() {
         "bird",
         &store,
         &ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -3187,7 +3078,7 @@ fn click_past_a_line_end_stays_on_that_line() {
     let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("ab\nlonger second line");
     let byte = document
-        .byte_at_point(editor, 500.0, 5.0, store, ui, &test_fonts(), &test_theme())
+        .byte_at_point(editor, 500.0, 5.0, store, ui, &test_theme())
         .expect("hit");
     assert_eq!(
         byte, 2,
@@ -3205,7 +3096,6 @@ fn text_focus_offers_caret_commands_to_the_palette() {
         600.0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let store = &imba::store::Store::new();
@@ -3251,7 +3141,6 @@ fn short_lines_straddling_the_chunk_grid_do_not_split() {
             document.text(),
             crate::markup::OverlaidMarkup::plain(document.markup()),
             100_000.0,
-            &test_fonts(),
             &test_theme(),
             pending,
             60_000.0,
@@ -3291,7 +3180,6 @@ fn monster_lines_still_tile_on_the_grid() {
             document.text(),
             crate::markup::OverlaidMarkup::plain(document.markup()),
             300.0,
-            &test_fonts(),
             &test_theme(),
             pending,
             60_000.0,
@@ -3326,7 +3214,6 @@ fn viewport_numbers_first_soft_rows_only() {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3342,7 +3229,6 @@ fn viewport_numbers_first_soft_rows_only() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
 
@@ -3397,7 +3283,6 @@ fn viewport_build_is_band_scoped() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -3411,7 +3296,6 @@ fn viewport_build_is_band_scoped() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert!(
@@ -3435,13 +3319,11 @@ fn gutter_paints_numbers_beside_shifted_text() {
         400.0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     view.gutter_width = chrome_width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3533,13 +3415,11 @@ fn gutter_numbers_share_the_text_baseline() {
         400.0,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     view.gutter_width = chrome.width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3587,7 +3467,7 @@ fn gutter_numbers_share_the_text_baseline() {
 }
 
 mod folding {
-    use super::{test_fonts, test_theme};
+    use super::{test_theme};
     use crate::document::Document;
     use crate::markup::{Markup, Syntax};
     use crate::viewport::EditorViewport;
@@ -3652,7 +3532,6 @@ mod folding {
             None,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
     }
@@ -3669,7 +3548,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3697,7 +3575,6 @@ mod folding {
             interior(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3754,7 +3631,6 @@ mod folding {
             interior(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3781,7 +3657,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3790,7 +3665,6 @@ mod folding {
             interior(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3803,7 +3677,6 @@ mod folding {
             ),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3835,7 +3708,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3846,7 +3718,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3857,7 +3728,6 @@ mod folding {
             interior(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3892,11 +3762,10 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
-        document.toggle_fold(editor, 1..9, store, ui, &test_fonts(), &test_theme(), fx!());
+        document.toggle_fold(editor, 1..9, store, ui, &test_theme(), fx!());
         assert!(document.fold_matching(editor, &(1..9)).is_none());
     }
 
@@ -3912,7 +3781,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3922,7 +3790,6 @@ mod folding {
             interior(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -3959,14 +3826,12 @@ mod folding {
             400.0,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         );
         view.gutter_width = chrome_width;
         let editor = view.editor;
         let store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        ui.set(crate::env::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
             min: skia_safe::Size::default(),
@@ -4005,7 +3870,6 @@ mod folding {
             range,
             &store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4028,7 +3892,6 @@ mod folding {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4038,7 +3901,6 @@ mod folding {
             start..end,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4096,7 +3958,6 @@ mod gutter_stripes {
             stripes,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
     }
@@ -4115,7 +3976,6 @@ mod gutter_stripes {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4158,7 +4018,6 @@ mod gutter_stripes {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4172,7 +4031,6 @@ mod gutter_stripes {
             &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 0, "zero\n"),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4199,7 +4057,6 @@ mod gutter_stripes {
             document.revision(),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4230,7 +4087,6 @@ mod gutter_stripes {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4251,7 +4107,6 @@ mod gutter_stripes {
             Some(id),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         );
         assert!(gutterless.lines.iter().all(|line| line.diff.is_none()));
@@ -4281,7 +4136,6 @@ mod before_inlay {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4411,7 +4265,6 @@ mod before_inlay {
             ),
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4436,7 +4289,6 @@ mod before_inlay {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4490,7 +4342,6 @@ mod before_inlay_presentation {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4634,7 +4485,6 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
             &[],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -4649,7 +4499,6 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
             &[0..6],
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
             fx!(),
         );
@@ -4665,7 +4514,6 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
                 &[0..6],
                 store,
                 ui,
-                &test_fonts(),
                 &test_theme(),
                 fx!(),
             );
@@ -4679,7 +4527,6 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
             false,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         );
         let image = surface.image_snapshot();
@@ -4701,7 +4548,6 @@ fn editor_scroll_bench() {
     use std::time::{Duration, Instant};
     let body = "alpha beta gamma delta epsilon zeta eta theta\n".repeat(4_000);
     let (mut document, editor) = ime_doc(&body);
-    let fonts = test_fonts();
     let theme = test_theme();
 
     {
@@ -4732,7 +4578,6 @@ fn editor_scroll_bench() {
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -4749,7 +4594,6 @@ fn editor_scroll_bench() {
             None,
             store,
             ui,
-            &fonts,
             &theme,
         );
         std::hint::black_box(&viewport);
@@ -4843,7 +4687,6 @@ fn line_marks_sweep_matches_the_per_line_query() {
 fn sticky_lines_pin_the_enclosing_scopes() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = test_fonts();
     let theme = test_theme();
     let source: String = (0..200).map(|i| format!("line number {i}\n")).collect();
     let line_start = |line: usize| -> u32 {
@@ -4879,7 +4722,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     )
     .with_syntax(syntax, &[]);
     let mut view =
-        crate::editor_view::EditorView::complete(document, 400.0, store, ui, &fonts, &theme);
+        crate::editor_view::EditorView::complete(document, 400.0, store, ui, &theme);
 
     view.gutter_width = 100.0;
     let editor = view.editor;
@@ -4895,7 +4738,6 @@ fn sticky_lines_pin_the_enclosing_scopes() {
 
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -5023,7 +4865,6 @@ fn lazy_languages_load_on_first_parse_only() {
             _changed: &[std::ops::Range<u32>],
             _replacement: &mut crate::markup::MarkupBuilder,
             _invalidated: &mut Vec<std::ops::Range<u32>>,
-            _fonts: &skia_safe::textlayout::FontCollection,
             _theme: &crate::theme::Theme,
         ) {
         }
@@ -5079,7 +4920,6 @@ fn selection_rects_cover_the_range_row_by_row() {
     let ui = crate::test_document::test_ui();
     let source: String = (0..400).map(|i| format!("line number {i}\n")).collect();
     let (document, editor) = ime_doc(&source);
-    let fonts = test_fonts();
     let theme = test_theme();
     let line_start = |line: usize| -> u32 {
         source
@@ -5090,16 +4930,16 @@ fn selection_rects_cover_the_range_row_by_row() {
     };
 
     assert!(document
-        .selection_content_rects(editor, 5..5, store, ui, &fonts, &theme)
+        .selection_content_rects(editor, 5..5, store, ui, &theme)
         .is_empty());
 
-    let one = document.selection_content_rects(editor, 2..6, store, ui, &fonts, &theme);
+    let one = document.selection_content_rects(editor, 2..6, store, ui, &theme);
     assert_eq!(one.len(), 1, "a single-line selection is one rect");
     let (x, y, width, height) = one[0];
     assert!(x >= 0.0 && y >= 0.0);
     assert!(width > 0.0 && height > 0.0);
     let caret = document
-        .caret_content_rect(editor, 2, store, ui, &fonts, &theme)
+        .caret_content_rect(editor, 2, store, ui, &theme)
         .expect("the caret at the range start");
     assert!(
         (y - (caret.1 - (height - caret.3).max(0.0))).abs() < height,
@@ -5111,7 +4951,6 @@ fn selection_rects_cover_the_range_row_by_row() {
         line_start(2)..line_start(5),
         store,
         ui,
-        &fonts,
         &theme,
     );
     assert_eq!(many.len(), 3, "one rect per covered row, got {many:?}");
@@ -5124,7 +4963,7 @@ fn selection_rects_cover_the_range_row_by_row() {
         );
     }
 
-    let all = document.selection_content_rects(editor, 0..u32::MAX, store, ui, &fonts, &theme);
+    let all = document.selection_content_rects(editor, 0..u32::MAX, store, ui, &theme);
     assert!(
         all.len() <= 256,
         "the cap holds: {} rects for 400 lines",
@@ -5137,7 +4976,6 @@ fn selection_rects_cover_the_range_row_by_row() {
 fn the_first_baseline_is_cached_at_shape_time() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = test_fonts();
     let theme = test_theme();
     for source in [
         "plain line\n",
@@ -5227,7 +5065,6 @@ fn a_markup_change_reshapes_only_the_lines_it_touches() {
             None,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
     };
@@ -5244,7 +5081,6 @@ fn a_markup_change_reshapes_only_the_lines_it_touches() {
         &[line30.clone()],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -5285,7 +5121,6 @@ fn a_small_scroll_keeps_the_overlapping_shaped_lines() {
             None,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
     };
@@ -5324,7 +5159,6 @@ fn translucent_washes_never_double_at_block_seams() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5343,7 +5177,6 @@ fn translucent_washes_never_double_at_block_seams() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5358,7 +5191,6 @@ fn translucent_washes_never_double_at_block_seams() {
         false,
         store,
         ui,
-        &test_fonts(),
         &theme,
     );
     let image = surface.image_snapshot();
@@ -5403,7 +5235,6 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &theme,
         quiet,
     );
@@ -5415,7 +5246,6 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
         &[hunks, extras],
         store,
         ui,
-        &test_fonts(),
         &theme,
         quiet,
     );
@@ -5437,7 +5267,6 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
             false,
             store,
             ui,
-            &test_fonts(),
             &theme,
         );
         let image = surface.image_snapshot();
@@ -5483,7 +5312,6 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -5521,7 +5349,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
         Op::Insert("intruder A\nintruder B\n".to_owned()),
         Op::Retain(document.text().to_string().len() as u32),
     ]);
-    document.edit(&insert, &store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&insert, &store, ui, &test_theme(), fx!());
     let after = document.height_before(editor, line4 + "intruder A\nintruder B\n".len() as u32);
     assert!(after > before, "the insert grew the prefix");
 
@@ -5546,7 +5374,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
         Op::Retain(text_len),
         Op::Insert("\ntrailing noise".to_owned()),
     ]);
-    document.edit(&tail, &store, ui, &test_fonts(), &test_theme(), fx!());
+    document.edit(&tail, &store, ui, &test_theme(), fx!());
     assert_eq!(
         document.settle_target(editor),
         None,
@@ -5569,7 +5397,6 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -5612,7 +5439,6 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
 
     // Drive the repair lane to completion, the way the engine would.
     let workshop = std::sync::Arc::new(crate::env::Workshop::new(
-        std::sync::Arc::new(test_fonts),
         crate::theme::Theme::embedded(),
     ));
     let mut rounds = 0;
@@ -5674,7 +5500,6 @@ fn a_hovered_link_styles_the_viewport() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         fx!(),
     );
@@ -5697,7 +5522,6 @@ fn a_hovered_link_styles_the_viewport() {
         None,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert!(
@@ -5731,7 +5555,6 @@ fn a_diagnostic_span_paints_its_squiggle() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = test_theme();
-    let fonts = test_fonts();
     let mut document = crate::test_document::plain_document("fn main() {}\n");
     let editor = document.add_editor(
         400.0,
@@ -5740,7 +5563,6 @@ fn a_diagnostic_span_paints_its_squiggle() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5758,7 +5580,6 @@ fn a_diagnostic_span_paints_its_squiggle() {
         &changed,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5773,7 +5594,6 @@ fn a_diagnostic_span_paints_its_squiggle() {
         false,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let image = surface.image_snapshot();
@@ -5805,7 +5625,6 @@ fn a_one_character_diagnostic_still_paints() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = test_theme();
-    let fonts = test_fonts();
     let mut document = crate::test_document::plain_document("fn main() {}\n");
     let editor = document.add_editor(
         400.0,
@@ -5814,7 +5633,6 @@ fn a_one_character_diagnostic_still_paints() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5832,7 +5650,6 @@ fn a_one_character_diagnostic_still_paints() {
         &changed,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5847,7 +5664,6 @@ fn a_one_character_diagnostic_still_paints() {
         false,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let image = surface.image_snapshot();

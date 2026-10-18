@@ -175,9 +175,8 @@ impl Hover {
         if word.end > len {
             return;
         }
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
-        self.card = Some(HoverView::build(store, &info.markdown, ui, &fonts, &theme));
+        self.card = Some(HoverView::build(store, &info.markdown, ui, &theme));
     }
 
     pub(crate) fn retract(&mut self, fx: &mut Effects<'_, EditorCommand>) {
@@ -244,13 +243,12 @@ impl HoverView {
         store: &Store,
         markdown: &str,
         ui: &UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
         let text = text::text::Text::from_string_exact(markdown);
         let document = match crate::env::Parsers::of(store) {
             Some(parsers) => {
-                Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
+                Document::from_language(text, "markdown", &parsers, store, ui, theme)
             }
             None => Document::new(text, crate::markup::Markup::new()).with_syntax(
                 crate::markup::Syntax::new("markdown", None, crate::markup::Markup::new()),
@@ -259,7 +257,7 @@ impl HoverView {
         };
         Self {
             view: crate::editor_view::EditorView::complete(
-                document, CARD_WIDTH, store, ui, fonts, theme,
+                document, CARD_WIDTH, store, ui, theme,
             ),
         }
     }
@@ -337,9 +335,8 @@ impl Document {
         let mut hover = std::mem::take(&mut self.editor_mut(editor).hover);
         match (point, location) {
             (Some(point), Some(location)) if !location.is_synthetic() => {
-                let fonts = crate::env::ui_collection(store, ui);
                 let theme = crate::env::Themes::of(store);
-                let byte = self.byte_at_point(editor, point.x, point.y, store, ui, &fonts, &theme);
+                let byte = self.byte_at_point(editor, point.x, point.y, store, ui, &theme);
                 hover.sync(self, byte, location, fx);
             }
             _ => {

@@ -243,7 +243,6 @@ macro_rules! fx {
 fn the_edit_door_keeps_live_diffs_valid() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let base = "one\ntwo\nthree\n";
     let mut target = crate::test_document::plain_document("one\nTWO\nthree\n");
@@ -261,7 +260,7 @@ fn the_edit_door_keeps_live_diffs_valid() {
         ]),
     ];
     for edit in edits {
-        target.edit(&edit, store, ui, &fonts, &theme, fx!());
+        target.edit(&edit, store, ui, &theme, fx!());
         let live = target.diff(id).expect("the entry rides the document");
         assert_eq!(
             apply(live.operation(), base),
@@ -280,7 +279,6 @@ fn the_edit_door_keeps_live_diffs_valid() {
 fn apply_base_edits_brings_the_old_side_current_idempotently() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let mut base = crate::test_document::plain_document("one\ntwo\nthree\n");
     let mut target = crate::test_document::plain_document("one\nTWO\nthree\n");
@@ -291,7 +289,6 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
         &Operation::insert_in(14, 4, "1.5\n"),
         store,
         ui,
-        &fonts,
         &theme,
         fx!(),
     );
@@ -299,7 +296,6 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
         &Operation::insert_in(14, 0, "zero\n"),
         store,
         ui,
-        &fonts,
         &theme,
         fx!(),
     );
@@ -307,7 +303,6 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
         &Operation::delete_in(18, 0, "one\n"),
         store,
         ui,
-        &fonts,
         &theme,
         fx!(),
     );
@@ -363,13 +358,12 @@ fn remove_diff_takes_its_markup_with_it() {
     let ui = crate::test_document::test_ui();
     let base = crate::test_document::plain_document("a\n");
     let mut target = crate::test_document::plain_document("b\n");
-    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let operation = diff(base.text(), target.text());
     let id = target.add_diff(operation, 0);
     let markup = target.diff(id).expect("tracked").markup();
     assert!(target.feature_markup(markup).is_some());
-    target.remove_diff(id, &[], store, ui, &fonts, &theme, fx!());
+    target.remove_diff(id, &[], store, ui, &theme, fx!());
     assert!(target.diff(id).is_none());
     assert!(
         target.feature_markup(markup).is_none(),

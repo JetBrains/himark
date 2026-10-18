@@ -8,24 +8,12 @@ use text::text::Text;
 use crate::theme::StyleId;
 use crate::{document::Document, markup::Markup};
 
-pub fn test_fonts() -> crate::FontSource {
-    std::sync::Arc::new(|| test_fonts_collection().clone())
-}
-
 /// TEST SUPPORT: the embedded `FontCollection`, kept per test thread —
 /// building one loads every typeface from bytes, and per-call builds
 /// dominated suite time. The clone is a refcount bump sharing the
 /// loaded faces. Not `Sync`, so the `'static` borrow stays on its
 /// thread; the `FontSource` above simply builds once per thread that
 /// calls it. Tests only.
-pub fn test_fonts_collection() -> &'static skia_safe::textlayout::FontCollection {
-    thread_local! {
-        static FONTS: &'static skia_safe::textlayout::FontCollection =
-            Box::leak(Box::new(crate::embedded_fonts::collection()));
-    }
-    FONTS.with(|fonts| *fonts)
-}
-
 /// TEST SUPPORT: a KEPT `UiCtx`, one per test thread — its env slots
 /// (the `ui_font` typeface cache above all) warm once per thread
 /// instead of once per call, which is what a fresh
@@ -43,7 +31,6 @@ pub fn test_ui() -> &'static imba::ui::UiCtx {
 
 pub fn test_workshop(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::Workshop> {
     std::sync::Arc::new(crate::env::Workshop::new(
-        crate::embedded_fonts::source(),
         theme,
     ))
 }

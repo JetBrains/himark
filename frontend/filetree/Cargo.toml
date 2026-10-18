@@ -11,7 +11,7 @@ text = { path = "../text" }
 hikit = { path = "../hikit" }
 imba = { path = "../imba" }
 rpds = "1"
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 
 [features]
 test-support = ["hikit/test-support"]

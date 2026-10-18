@@ -695,7 +695,6 @@ impl SplitDiffView {
         else {
             return;
         };
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
 
         if matches!(command, fold::FoldCommand::Remove) {
@@ -708,13 +707,13 @@ impl SplitDiffView {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
-                    .remove_inlay(left_key, store, ui, &fonts, &theme, fx)
+                    .remove_inlay(left_key, store, ui, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
                 right
                     .document
-                    .remove_inlay(right_key, store, ui, &fonts, &theme, fx)
+                    .remove_inlay(right_key, store, ui, &theme, fx)
             });
             self.settle_after(Some(left_range), None);
             return self.pair_lane(fx);
@@ -813,7 +812,6 @@ impl SplitDiffView {
                     spacer,
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     fx,
                 )
@@ -826,7 +824,6 @@ impl SplitDiffView {
                     strip,
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     fx,
                 )
@@ -835,13 +832,13 @@ impl SplitDiffView {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
-                    .remove_inlay(left_key, store, ui, &fonts, &theme, fx)
+                    .remove_inlay(left_key, store, ui, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
                 right
                     .document
-                    .remove_inlay(right_key, store, ui, &fonts, &theme, fx)
+                    .remove_inlay(right_key, store, ui, &theme, fx)
             });
         }
 
@@ -1082,7 +1079,6 @@ impl View for SplitDiffView {
         command: SplitDiffCommand,
         fx: &mut SplitDiffEffects<'_>,
     ) {
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
         match command {
             SplitDiffCommand::Left(command) => {
@@ -1118,7 +1114,6 @@ impl View for SplitDiffView {
                         byte,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     );
@@ -1199,7 +1194,6 @@ impl View for SplitDiffView {
                                     &marks.left_changed,
                                     store,
                                     ui,
-                                    &fonts,
                                     &theme,
                                     fx,
                                 )
@@ -1213,7 +1207,6 @@ impl View for SplitDiffView {
                                     &marks.right_changed,
                                     store,
                                     ui,
-                                    &fonts,
                                     &theme,
                                     fx,
                                 )

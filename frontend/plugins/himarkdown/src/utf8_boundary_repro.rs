@@ -14,10 +14,6 @@ fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     *DOCS.get_or_init(imba::store::Id::mint)
 }
 
-fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
-}
-
 fn test_theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
 }
@@ -28,7 +24,6 @@ fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
 
 fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
-        editor::embedded_fonts::source(),
         test_theme(),
     ))
 }
@@ -38,12 +33,11 @@ fn the_search_design_doc_lays_out_completely() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
-    let document = document_from_markdown(source, store, ui, &fonts, &theme);
+    let document = document_from_markdown(source, store, ui, &theme);
     let width = theme.ui().window.first_pane_width;
     let view =
-        editor::editor_view::EditorView::complete(document, width, store, ui, &fonts, &theme);
+        editor::editor_view::EditorView::complete(document, width, store, ui, &theme);
     assert!(
         view.find_misaligned_boundary().is_none(),
         "the layout tiles the text on char boundaries"
@@ -63,7 +57,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
 
     let source = include_str!("../fixtures/utf8-repro.md");
     let mut store = Store::new();
-    let mut document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let mut document = document_from_markdown(source, &store, ui, &test_theme());
     let narrow_editor = document.add_editor(
         320.0,
         None,
@@ -71,7 +65,6 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -82,7 +75,6 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -96,7 +88,6 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
     );
     let narrow = EditorIdView::new(test_docs(), document_id, narrow_editor);
     let wide = EditorIdView::new(test_docs(), document_id, wide_editor);
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
 
     let texts = [
         "—",
@@ -170,7 +161,6 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         outcome,
                         &store,
                         ui,
-                        &test_fonts(),
                         &test_theme(),
                         &mut local.effects(),
                     );
@@ -219,9 +209,8 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
-    let mut document = document_from_markdown(source, store, ui, &fonts, &theme);
+    let mut document = document_from_markdown(source, store, ui, &theme);
     let width = theme.ui().window.first_pane_width;
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
@@ -231,13 +220,11 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut batch.effects(),
     );
 
     let cx = std::sync::Arc::new(editor::env::Workshop::new(
-        editor::embedded_fonts::source(),
         theme.clone(),
     ));
     let mut view = editor::editor_view::EditorView {

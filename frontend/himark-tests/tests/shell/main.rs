@@ -63,7 +63,6 @@ impl TestPane {
             &[],
             &store,
             ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -102,7 +101,6 @@ impl TestPane {
             anchor,
             &self.store,
             ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
@@ -184,7 +182,6 @@ impl TestPane {
             inlay,
             &self.store,
             ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );

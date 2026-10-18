@@ -217,7 +217,6 @@ where
                 OptionSearcher::default(),
                 store,
                 ui,
-                editor::embedded_fonts::source(),
             ),
         }
     }
@@ -669,9 +668,6 @@ mod tests {
 
     fn test_ui() -> UiCtx {
         let ui = UiCtx::dont_use_too_slow();
-        ui.set(::editor::env::UiFonts(
-            ::editor::test_document::test_fonts_collection().clone(),
-        ));
         ui
     }
 

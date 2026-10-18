@@ -133,7 +133,7 @@ impl WindowedCommand for NewScratch {
             location.name().to_owned(),
             true,
             Some(location),
-            Box::new(|_, _, _, _| crate::app::markdown_scratch()),
+            Box::new(|_, _, _| crate::app::markdown_scratch()),
         ));
     }
 }

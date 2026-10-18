@@ -18,7 +18,7 @@ himark = { path = "../../himark" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 text = { path = "../../text" }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 
 [dev-dependencies]
 himark = { path = "../../himark", features = ["test-support"] }

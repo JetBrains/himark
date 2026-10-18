@@ -81,4 +81,4 @@ hikit = { path = "../../frontend/hikit" }
 text = { path = "../../frontend/text" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
-skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl", "textlayout"] }
+skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl"] }

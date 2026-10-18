@@ -89,7 +89,7 @@ impl PaletteView {
             })
             .collect();
         let mut input =
-            editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+            editor::editor_view::EditorView::input(600.0, store, ui);
         input.focus_text();
         let mut palette = Self {
             input,

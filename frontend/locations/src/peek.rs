@@ -280,7 +280,6 @@ impl PeekView {
         let Some(markup) = self.preview_markup else {
             return;
         };
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let view = preview.content_mut();
         let (hit, target) = {
@@ -300,17 +299,17 @@ impl PeekView {
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
             view.document
-                .replace_markup(markup, tints, &changed, store, ui, &fonts, &theme, fx)
+                .replace_markup(markup, tints, &changed, store, ui, &theme, fx)
         });
         view.set_caret(hit);
         let editor = view.editor;
         fx.scope(scoped, |fx| {
             view.document
-                .reveal_at_instant(editor, hit, store, ui, &fonts, &theme, fx)
+                .reveal_at_instant(editor, hit, store, ui, &theme, fx)
         });
         let reveal = view
             .document
-            .caret_content_rect(editor, hit, store, ui, &fonts, &theme)
+            .caret_content_rect(editor, hit, store, ui, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0));
         if let Some(reveal) = reveal {
             preview.set_scroll_y(reveal);
@@ -340,7 +339,6 @@ impl PeekView {
         if self.preview_for.as_ref() != Some(&found.location) {
             return; // the cursor moved on while the build ran
         }
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let mut document = built.document;
 
@@ -361,7 +359,6 @@ impl PeekView {
                 &[target.clone()],
                 store,
                 ui,
-                &fonts,
                 &theme,
                 fx,
             )
@@ -376,17 +373,16 @@ impl PeekView {
                 &[],
                 store,
                 ui,
-                &fonts,
                 &theme,
                 fx,
             )
         });
         document.show_markup(editor, markup);
         fx.scope(scoped, |fx| {
-            document.reveal_at_instant(editor, hit, store, ui, &fonts, &theme, fx)
+            document.reveal_at_instant(editor, hit, store, ui, &theme, fx)
         });
         let reveal = document
-            .caret_content_rect(editor, hit, store, ui, &fonts, &theme)
+            .caret_content_rect(editor, hit, store, ui, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0))
             .unwrap_or(0.0);
         let mut view = EditorView {
@@ -750,7 +746,6 @@ impl imba::command::DynamicCommand for RemovePeek {
         else {
             return;
         };
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let document = self.document;
         fx.scope(
@@ -760,7 +755,7 @@ impl imba::command::DynamicCommand for RemovePeek {
                     documents::DocumentsCommand::Editor(document, command),
                 )
             },
-            |fx| doc.remove_inlay(self.key, store, ui, &fonts, &theme, fx),
+            |fx| doc.remove_inlay(self.key, store, ui, &theme, fx),
         );
         documents::OpenDocuments::put_document(store, documents, self.document, doc);
     }
@@ -937,7 +932,6 @@ mod tests {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
-        let fonts = ::editor::test_document::test_fonts_collection();
         let theme = editor::theme::Theme::embedded();
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(
@@ -947,7 +941,6 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -967,7 +960,6 @@ mod tests {
                 editor::markup::Inlay::new(editor::markup::InlayMode::Under, ProbeCard),
                 store,
                 ui,
-                &fonts,
                 &theme,
                 &mut batch.effects(),
             );
@@ -976,7 +968,7 @@ mod tests {
                 with_card > bare,
                 "the anchored card reserves height: {with_card} vs {bare}"
             );
-            document.remove_inlay(key, store, ui, &fonts, &theme, &mut batch.effects());
+            document.remove_inlay(key, store, ui, &theme, &mut batch.effects());
         }
     }
 
@@ -988,7 +980,6 @@ mod tests {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
-        let fonts = ::editor::test_document::test_fonts_collection();
         let theme = editor::theme::Theme::embedded();
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(
@@ -998,7 +989,6 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -1014,7 +1004,6 @@ mod tests {
             editor::markup::Inlay::new(editor::markup::InlayMode::Under, ScrollProbe::default()),
             store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -1294,8 +1283,6 @@ impl documents::dynamic::DocumentCommand for GoToReference {
         };
         let feed = FeedId::mint();
         crate::open_feed(store, lists, feed, "References".to_owned(), String::new());
-
-        let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
         let width = match document.layout_width(editor) {
             width if width > 1.0 => width,
@@ -1315,7 +1302,6 @@ impl documents::dynamic::DocumentCommand for GoToReference {
             editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone()),
             store,
             ui,
-            &fonts,
             &theme,
             fx,
         );

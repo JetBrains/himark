@@ -90,14 +90,12 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
             &left,
             app.store(),
             &app.ui_ctx(),
-            &markdown_fonts,
             &theme
         ),
         "left.md".to_owned(),
@@ -109,7 +107,6 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
             &right,
             app.store(),
             &app.ui_ctx(),
-            &markdown_fonts,
             &theme
         ),
         "right.md".to_owned(),
@@ -190,7 +187,6 @@ fn probe_pair(left: String, right: String) {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     eprintln!("[probe] sides: {} / {} bytes", left.len(), right.len());
 
     let started = Instant::now();
@@ -200,7 +196,6 @@ fn probe_pair(left: String, right: String) {
             &left,
             app.store(),
             &app.ui_ctx(),
-            &markdown_fonts,
             &theme
         ),
         "left.md".to_owned(),
@@ -212,7 +207,6 @@ fn probe_pair(left: String, right: String) {
             &right,
             app.store(),
             &app.ui_ctx(),
-            &markdown_fonts,
             &theme
         ),
         "right.md".to_owned(),
@@ -473,27 +467,24 @@ fn scroll_soak_for_profiling() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let (left, right) = monster_pair(1409);
     let ui = &app.ui_ctx();
     let (mut ldoc, lblocks) =
-        himarkdown::markdown_document(&left, app.store(), ui, &markdown_fonts, &theme);
+        himarkdown::markdown_document(&left, app.store(), ui, &theme);
     demo::inlay::add_badges(
         &mut ldoc,
         &lblocks,
         app.store(),
         ui,
-        &markdown_fonts,
         &theme,
     );
     let (mut rdoc, rblocks) =
-        himarkdown::markdown_document(&right, app.store(), ui, &markdown_fonts, &theme);
+        himarkdown::markdown_document(&right, app.store(), ui, &theme);
     demo::inlay::add_badges(
         &mut rdoc,
         &rblocks,
         app.store(),
         ui,
-        &markdown_fonts,
         &theme,
     );
     assert!(app.add_document(app.sole_window(), ldoc, "left.md".to_owned(), false));
@@ -563,7 +554,6 @@ fn canvas_landing_breakdown_probe() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     eprintln!("[landing] sides: {} / {} bytes", left.len(), right.len());
 
     let documents = himark::workspace::session_state(app.store(), app.sole_window())
@@ -582,14 +572,12 @@ fn canvas_landing_breakdown_probe() {
         &left,
         app.store(),
         &app.ui_ctx(),
-        &markdown_fonts,
         &theme,
     );
     let new_doc = himarkdown::document_from_markdown(
         &right,
         app.store(),
         &app.ui_ctx(),
-        &markdown_fonts,
         &theme,
     );
     eprintln!(
@@ -601,7 +589,6 @@ fn canvas_landing_breakdown_probe() {
     // of build_diff_view.
     {
         let mut scratch = old_doc.clone();
-        let fonts_collection = editor::env::Fonts::of(app.store())();
         let env_theme = editor::env::Themes::of(app.store());
         let ui = app.ui_handle();
         let mut store = app.store_mut();
@@ -613,7 +600,6 @@ fn canvas_landing_breakdown_probe() {
             &[],
             &mut store,
             &ui,
-            &fonts_collection,
             &env_theme,
             &mut imba::effect::Batch::new().effects(),
         );

@@ -19,7 +19,6 @@ impl Document {
         text: &str,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -32,7 +31,7 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, text, store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, text, store, ui, theme, fx)
     }
 
     pub(crate) fn delete_selections(
@@ -40,7 +39,6 @@ impl Document {
         editor: EditorId,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -50,7 +48,7 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "", store, ui, theme, fx)
     }
 
     pub(crate) fn delete_at_carets(
@@ -59,7 +57,6 @@ impl Document {
         motion: Motion,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -98,7 +95,7 @@ impl Document {
                 target.min(offset)..target.max(offset)
             })
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "", store, ui, theme, fx)
     }
 
     pub(crate) fn replace_at_carets(
@@ -109,7 +106,6 @@ impl Document {
         insert: &str,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -117,7 +113,7 @@ impl Document {
         if operation.iter().all(|op| matches!(op, Op::Retain(_))) {
             return;
         }
-        self.edit(&operation, store, ui, fonts, theme, fx);
+        self.edit(&operation, store, ui, theme, fx);
         self.set_carets(editor, after);
     }
 
@@ -128,7 +124,6 @@ impl Document {
         select: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         if matches!(motion, Motion::Up | Motion::Down) {
@@ -138,7 +133,6 @@ impl Document {
                 select,
                 store,
                 ui,
-                fonts,
                 theme,
             );
         }
@@ -179,7 +173,6 @@ impl Document {
         select: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let window = self.window(editor);
@@ -195,7 +188,6 @@ impl Document {
                 down,
                 store,
                 ui,
-                fonts,
                 theme,
             ) {
                 Some(hit) => hit,
@@ -219,7 +211,6 @@ impl Document {
         above: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let carets = self.carets(editor).clamped(&self.window(editor));
@@ -238,7 +229,6 @@ impl Document {
             !above,
             store,
             ui,
-            fonts,
             theme,
         ) else {
             return;
@@ -332,10 +322,9 @@ impl Document {
         kind: ClickKind,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, fonts, theme)
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme)
         else {
             return;
         };
@@ -393,7 +382,6 @@ impl Document {
         point: skia_safe::Point,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let Some(origin) = self
@@ -403,7 +391,7 @@ impl Document {
         else {
             return;
         };
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, fonts, theme)
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme)
         else {
             return;
         };

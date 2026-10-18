@@ -553,8 +553,6 @@ fn apply(
     let markup = diagnostics_markup();
     document.ensure_document_markup(markup);
     let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
-
-    let fonts = editor::env::ui_collection(store, ui);
     let theme = editor::env::Themes::of(store);
     let documents_id = row.documents;
     fx.scope(
@@ -565,7 +563,7 @@ fn apply(
             )
         },
         |fx| {
-            document.replace_markup(markup, replacement, &changed, store, ui, &fonts, &theme, fx);
+            document.replace_markup(markup, replacement, &changed, store, ui, &theme, fx);
         },
     );
     OpenDocuments::put_document(store, row.documents, document_id, document);

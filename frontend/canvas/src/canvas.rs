@@ -2522,7 +2522,6 @@ fn composer_band(
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
 fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_view::EditorView {
-    let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
     let document = editor::document::Document::new(
         text::text::Text::from_string_exact(""),
@@ -2533,8 +2532,8 @@ fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_vie
         &[],
     );
     let mut view =
-        editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
-    view.set_placeholder("Commit message", &fonts, &theme);
+        editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &theme);
+    view.set_placeholder("Commit message", &theme);
     view
 }
 
@@ -2549,7 +2548,6 @@ fn commit_banner_box(
     message: &str,
     fx: &mut Effects<'_, CanvasCommand>,
 ) -> editor::editor_view::EditorView {
-    let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
     let mut document = editor::document::Document::new(
         text::text::Text::from_string_exact(message),
@@ -2567,7 +2565,6 @@ fn commit_banner_box(
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             fx,
         );
@@ -2722,7 +2719,6 @@ impl View for CanvasRow {
                     // The paint probe saw the box wrapped at the
                     // wrong width (the chat composer's Rewrap ride).
                     RowCommand::Rewrap(width) => {
-                        let fonts = env::Fonts::of(store)();
                         let theme = env::Themes::of(store);
                         let editor = message.editor;
                         fx.scope(
@@ -2730,7 +2726,7 @@ impl View for CanvasRow {
                             |fx| {
                                 message
                                     .document
-                                    .resize(editor, width, 0, store, ui, &fonts, &theme, fx)
+                                    .resize(editor, width, 0, store, ui, &theme, fx)
                             },
                         );
                     }

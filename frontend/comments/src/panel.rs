@@ -259,7 +259,6 @@ impl CommentsView {
                 ForestSearcher::default(),
                 store,
                 ui,
-                editor::env::Fonts::of(store),
             )
             .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),

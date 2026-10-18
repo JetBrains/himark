@@ -77,14 +77,12 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
             "# Shared\n\nleft body line\n\ntail\n",
             app.store(),
             ui,
-            &markdown_fonts,
             &theme
         ),
         "left.md".to_owned(),
@@ -96,7 +94,6 @@ fn the_diff_panel_opens_edits_and_dismantles() {
             "# Shared\n\nright body line — changed\n\ntail\nappended\n",
             app.store(),
             ui,
-            &markdown_fonts,
             &theme
         ),
         "right.md".to_owned(),
@@ -185,7 +182,6 @@ fn the_optimizer_landing_cancels_matching_edits() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
@@ -193,7 +189,6 @@ fn the_optimizer_landing_cancels_matching_edits() {
                 "# Shared\n\nbody line\n\ntail\n",
                 app.store(),
                 ui,
-                &markdown_fonts,
                 &theme
             ),
             name.to_owned(),
@@ -281,12 +276,11 @@ fn identical_documents_settle_spacer_free() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary\nprose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that\nshould soft-wrap cleanly.\n\n## Inline Texture\n\n1. First ordered item\n2. Second ordered item with `inline_code()` and **bold** content.\n3. Third ordered item with a link: [tree-sitter markdown](https://example.com).\n\n- [x] Parse a tree-sitter tree\n- [ ] Build document elements\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all.\n";
     for name in ["one.md", "two.md"] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &theme),
             name.to_owned(),
             false,
         ));
@@ -357,12 +351,11 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
-        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
+            himarkdown::markdown_document(body, &store, ui, &theme);
+        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_owned(), false,));
     }
 
@@ -437,7 +430,6 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     // A LONG identical middle: the first dressing folds it, and the
     // out-of-pane edit lands inside the folded run — a stale carry
     // would keep the (grown) strip covering the edit.
@@ -450,7 +442,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         let body = format!("{body}{tail}");
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(&body, &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(&body, &store, ui, &theme),
             name.to_owned(),
             false,
         ));
@@ -504,7 +496,6 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     // touches the diff pane.
     let inserted = "an inserted line from the OTHER editor\n";
     {
-        let fonts = editor::env::Fonts::of(&app.store())();
         let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
@@ -518,7 +509,6 @@ fn an_edit_from_another_editor_realigns_the_pair() {
             &operation::operation::Operation::insert_in(len, at, inserted),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -560,12 +550,11 @@ fn typed_insertions_paint_washes() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Wash Probe\n\nA plain paragraph that wraps at the half width without any code in it.\n\nAnother plain paragraph to give the pane some body to align against.\n";
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &theme),
             name.to_owned(),
             false,
         ));
@@ -666,7 +655,6 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let left_body = "# Torture \u{1F680}\n\nThis paragraph wraps a couple of times at the half width so heights are not trivial.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n> A quote long enough to wrap once at the pane width, with **bold** and `code`.\n\n### Code Fence: Rust\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, long enough to wrap at the half width as well.\n";
     let right_body = left_body
         .replace(
@@ -676,8 +664,8 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         .replace("- [ ] Paint real inline spans\n", "");
     for (name, body) in [("left.md", left_body), ("right.md", right_body.as_str())] {
         let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
-        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
+            himarkdown::markdown_document(body, &store, ui, &theme);
+        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -745,7 +733,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &light)
+                .fresh_layout_heights(entity.editor(), &store, ui, &light)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -776,7 +764,6 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let sample = include_str!("../../../plugins/demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
@@ -785,8 +772,8 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         ("right.md", right_body.as_str()),
     ] {
         let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
-        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
+            himarkdown::markdown_document(body, &store, ui, &theme);
+        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false));
     }
 
@@ -944,7 +931,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &theme)
+                .fresh_layout_heights(entity.editor(), &store, ui, &theme)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -1005,7 +992,6 @@ fn washes_follow_the_scroll_into_deep_documents() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     let block = "## Section\n\nA steady paragraph with enough words to wrap once at the half width, followed by another sentence for body.\n\n- item one\n- item two\n\n";
     let left_body: String = (0..500)
@@ -1026,7 +1012,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     for (name, body) in [("left.md", &left_body), ("right.md", &right_body)] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &theme),
             name.to_string(),
             false,
         ));
@@ -1120,7 +1106,6 @@ fn scrolling_after_a_theme_toggle_converges() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let block = "## Section\n\n| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, and long lines that should soft-wrap cleanly.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n";
     let left_body: String = (0..24)
         .map(|index| {
@@ -1139,8 +1124,8 @@ fn scrolling_after_a_theme_toggle_converges() {
     );
     for (name, body) in [("left.md", &left_body), ("right.md", &right_body)] {
         let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
-        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
+            himarkdown::markdown_document(body, &store, ui, &theme);
+        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -1250,7 +1235,7 @@ fn scrolling_after_a_theme_toggle_converges() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &light)
+                .fresh_layout_heights(entity.editor(), &store, ui, &light)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -1269,7 +1254,6 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let theme = editor::theme::Theme::embedded();
-    let fonts = ::editor::test_document::test_fonts_collection();
 
     let body: String = (0..80)
         .map(|index| {
@@ -1278,7 +1262,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
             )
         })
         .collect();
-    let (mut document, _) = himarkdown::markdown_document(&body, &store, &ui, &fonts, &theme);
+    let (mut document, _) = himarkdown::markdown_document(&body, &store, &ui, &theme);
     let editor = document.add_editor(
         360.0,
         None,
@@ -1286,7 +1270,6 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &[],
         &store,
         &ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1357,7 +1340,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         .map(|(byte, height)| (byte, height as i64))
         .collect();
     let fresh: Vec<(u32, i64)> = document
-        .fresh_layout_heights(editor, &store, &ui, &fonts, &theme)
+        .fresh_layout_heights(editor, &store, &ui, &theme)
         .into_iter()
         .map(|(byte, height)| (byte, height as i64))
         .collect();
@@ -1384,12 +1367,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
-        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
+            himarkdown::markdown_document(body, &store, ui, &theme);
+        demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -1638,7 +1620,6 @@ fn an_edited_markdown_pair_settles_aligned() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let left_body = "# Himark Render Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that should soft-wrap cleanly without making the renderer work harder than necessary.\n\n## Inline Texture\n\nThe quick brown fox edits markdown at 120 Hz while the cursor passes through Unicode: caf\u{e9}, r\u{e9}sum\u{e9}, na\u{ef}ve, and emoji clusters like \u{1F469}\u{200D}\u{1F4BB}.\n\n- [x] Parse a tree-sitter tree\n- [x] Build document elements\n- [ ] Paint real inline spans\n- [ ] Keep scrolling boringly fast\n\n> A quote should look like a quote eventually. It exercises punctuation, wrapping, and multiple inline styles with **bold claims** and `tiny identifiers`.\n\n### Code Fence: Rust\n\n```rust\nfn render_frame(viewport_y: f32) -> f32 {\n    viewport_y + 1.0\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all, so soft wrapping differences show up.\n";
 
     let right_body = left_body
@@ -1657,13 +1638,13 @@ fn an_edited_markdown_pair_settles_aligned() {
         + "\n## Appended Section\n\nA whole section that only exists on the right side of the pair.\n";
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&left_body, &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&left_body, &store, ui, &theme),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&right_body, &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&right_body, &store, ui, &theme),
         "right.md".to_owned(),
         false,
     ));
@@ -1714,9 +1695,8 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
     let theme = editor::theme::Theme::embedded();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let mut open = |body: &str, extra_editor: bool| {
-        let mut document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
+        let mut document = himarkdown::document_from_markdown(body, &store, ui, &theme);
         let pane = extra_editor.then(|| {
             document.add_editor(
                 600.0,
@@ -1725,7 +1705,6 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
                 &[],
                 &store,
                 ui,
-                &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             )
@@ -1737,7 +1716,6 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             &[],
             &store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1884,13 +1862,12 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
     let theme = editor::theme::Theme::embedded();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let mut middle = String::new();
     for line in 0..300u32 {
         middle.push_str(&format!("line {line}: the quiet unchanged middle\n"));
     }
     let mut register = |body: &str, name: &str| {
-        let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
+        let document = himarkdown::document_from_markdown(body, &store, ui, &theme);
         documents::OpenDocuments::register(
             &mut store,
             test_docs(),
@@ -1939,9 +1916,8 @@ fn a_shared_pair_reuses_the_standing_entry() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
     let theme = editor::theme::Theme::embedded();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let mut register = |body: &str, name: &str| {
-        let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
+        let document = himarkdown::document_from_markdown(body, &store, ui, &theme);
         documents::OpenDocuments::register(
             &mut store,
             test_docs(),
@@ -1996,7 +1972,6 @@ fn a_settled_diff_pane_goes_quiet() {
         std::sync::Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     for (name, body) in [
         ("left.md", "# Shared\n\nleft body line\n\ntail\n"),
         (
@@ -2006,7 +1981,7 @@ fn a_settled_diff_pane_goes_quiet() {
     ] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &theme),
             name.to_owned(),
             false,
         ));
@@ -2059,7 +2034,6 @@ fn the_unified_view_switches_between_split_and_inline() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     let unchanged: String = (0..30).map(|n| format!("same line {n}\n")).collect();
     assert!(app.add_document(
@@ -2068,7 +2042,6 @@ fn the_unified_view_switches_between_split_and_inline() {
             &format!("old head\n\n{unchanged}\nold tail\n"),
             app.store(),
             ui,
-            &markdown_fonts,
             &theme
         ),
         "left.md".to_owned(),
@@ -2080,7 +2053,6 @@ fn the_unified_view_switches_between_split_and_inline() {
             &format!("new head\n\n{unchanged}\nnew tail\n"),
             app.store(),
             ui,
-            &markdown_fonts,
             &theme
         ),
         "right.md".to_owned(),
@@ -2243,7 +2215,6 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // 6000 lines, a one-line change every 150 — forty hunks.
     let mut old_body = String::new();
@@ -2259,13 +2230,13 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     }
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&old_body, &store, ui, &theme),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&new_body, &store, ui, &theme),
         "right.md".to_owned(),
         false,
     ));
@@ -2339,7 +2310,6 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // 8000 lines, a one-line change every 100 — eighty hunks.
     let mut old_body = String::new();
@@ -2379,7 +2349,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         text::text::Text::from_string_exact(new_body.clone()),
         dense(&new_body),
     );
-    let _ = (&markdown_fonts, &theme);
+    let _ = &theme;
 
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
@@ -2605,9 +2575,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 
     himarkdown::register_handlers(&mut app);
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
-    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -2796,9 +2765,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     himarkdown::register_handlers(&mut app);
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
-    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -2978,7 +2946,6 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // A changed head over a long identical middle: undressed, the body
     // is ~90 lines tall; dressed, the middle folds away. Reserved,
@@ -2993,14 +2960,12 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         &format!("old head\n{body}"),
         &store,
         ui,
-        &markdown_fonts,
         &theme,
     );
     let new = himarkdown::document_from_markdown(
         &format!("new head\n{body}"),
         &store,
         ui,
-        &markdown_fonts,
         &theme,
     );
     let location = |name: &str, kind| {
@@ -3101,7 +3066,6 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // A long identical middle so the first dressing folds it small.
     let mut body = String::from("head\n");
@@ -3115,14 +3079,12 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         &format!("old head\n{body}"),
         &store,
         ui,
-        &markdown_fonts,
         &theme,
     );
     let new = himarkdown::document_from_markdown(
         &format!("new head\n{body}"),
         &store,
         ui,
-        &markdown_fonts,
         &theme,
     );
     let location = |name: &str, kind| {
@@ -3201,7 +3163,6 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let target = documents::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
         .expect("the row's registered target");
     {
-        let fonts = editor::env::Fonts::of(&app.store())();
         let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
@@ -3215,7 +3176,6 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             &operation::operation::Operation::insert_in(len, at, "CHANGED an inserted line\n"),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -3259,9 +3219,8 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
 
     himarkdown::register_handlers(&mut app);
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
-    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -3643,7 +3602,6 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // Type an "X" after "hello" into the registered target document.
     {
-        let fonts = editor::env::Fonts::of(&app.store())();
         let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
@@ -3655,7 +3613,6 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             &operation::operation::Operation::insert_in(len, 5, "X"),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -3696,7 +3653,6 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
         Arc::new(|| {}),
     );
     let theme = editor::theme::Theme::embedded();
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
     for n in 0..30 {
@@ -3705,8 +3661,8 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     }
     old_body.push_str("old tail\n");
     new_body.push_str("new tail\n");
-    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -3790,7 +3746,6 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let right_id = documents::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
         .expect("the registered target");
     {
-        let fonts = editor::env::Fonts::of(&app.store())();
         let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
@@ -3804,7 +3759,6 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             &operation::operation::Operation::insert_in(len, at, "typed from the split editor\n"),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut batch.effects(),
         );
@@ -5325,7 +5279,6 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
             }
             let replacement = builder.finish();
             let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
-            let fonts = editor::env::ui_collection(store, ui);
             let theme = editor::env::Themes::of(store);
             fx.scope(
                 move |command| {
@@ -5341,7 +5294,6 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
                         &changed,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     )

@@ -141,7 +141,7 @@ impl FindBar {
     }
 
     fn new(store: &Store, ui: &UiCtx) -> Self {
-        let mut input = EditorView::input(600.0, store, ui, crate::env::Fonts::of(store));
+        let mut input = EditorView::input(600.0, store, ui);
         input.focus_text();
         Self {
             input,
@@ -161,9 +161,8 @@ impl FindBar {
         let mut markup = crate::markup::Markup::new();
         markup.push_styled_covering(0..query.len() as u32, crate::theme::StyleId::Input);
         let document = Document::new(text::text::Text::from_string_exact(query), markup);
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
-        let mut input = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
+        let mut input = EditorView::of_document(document, 600.0, store, ui, &theme);
         input.focus_text();
         self.input = input;
         self.refocus();
@@ -260,7 +259,6 @@ impl FindBar {
         if landed.serial != self.serial || self.query() != landed.query {
             return;
         }
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
         let matches = landed.matches.clone();
 
@@ -280,7 +278,7 @@ impl FindBar {
                 markup
             }
         };
-        document.replace_markup(markup, tints, &changed, store, ui, &fonts, &theme, fx);
+        document.replace_markup(markup, tints, &changed, store, ui, &theme, fx);
         self.scanned = Some((landed.revision, landed.query.clone()));
 
         self.current = self.current.min(matches.len().saturating_sub(1));
@@ -310,9 +308,8 @@ impl FindBar {
             self.stepped = true;
         }
         let found = self.matches[self.current].clone();
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
-        document.reveal_selecting(editor, found, store, ui, &fonts, &theme, fx);
+        document.reveal_selecting(editor, found, store, ui, &theme, fx);
     }
 
     fn uninstall(
@@ -325,9 +322,8 @@ impl FindBar {
         let Some(markup) = self.installed.take() else {
             return;
         };
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
-        document.remove_markup(markup, &self.matches, store, ui, &fonts, &theme, fx);
+        document.remove_markup(markup, &self.matches, store, ui, &theme, fx);
     }
 
     pub(crate) fn layout<'a>(

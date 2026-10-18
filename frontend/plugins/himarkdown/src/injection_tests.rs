@@ -3,10 +3,6 @@
 
 use super::*;
 
-fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
-}
-
 fn test_theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
 }
@@ -40,7 +36,6 @@ impl SyntaxLanguage for Toy {
         _changed: &[std::ops::Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &editor::theme::Theme,
     ) {
         let len = range.end - range.start;
@@ -72,7 +67,7 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
     let mut languages = editor::reparse::SyntaxLanguages::new();
     languages.register(&["toy"], Arc::new(Toy));
     let toy_languages = std::sync::Arc::new(markdown_languages(languages));
-    let mut document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
+    let mut document = document_from_markdown(source, store, ui, &test_theme());
     let _editor = document.add_editor(
         400.0,
         None,
@@ -80,7 +75,6 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -96,7 +90,6 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         outcome,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -111,7 +104,6 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         &operation::operation::Operation::insert_in(len, content_start + 3, "zz"),
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -122,7 +114,6 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         outcome,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -140,7 +131,6 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         recheck,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut recheck_batch.effects(),
     );

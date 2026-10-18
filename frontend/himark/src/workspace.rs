@@ -186,9 +186,8 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
                     documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
 
                 if place.caret > 0 {
-                    let fonts = ::editor::env::Fonts::of(store)();
                     let theme = ::editor::env::Themes::of(store);
-                    document.reveal_at_instant(editor, place.caret, store, ui, &fonts, &theme, fx);
+                    document.reveal_at_instant(editor, place.caret, store, ui, &theme, fx);
                 }
                 editor
             },

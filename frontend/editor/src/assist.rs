@@ -46,7 +46,6 @@ impl Document {
         editor: EditorId,
         kind: AssistKind,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> bool {
@@ -120,7 +119,7 @@ impl Document {
         builder.push_retain(text_cursor::byte_count(&self.text).saturating_sub(cursor));
         let operation = builder.finish();
         if !operation.iter().all(|op| matches!(op, Op::Retain(_))) {
-            self.edit(&operation, store, ui, fonts, theme, fx);
+            self.edit(&operation, store, ui, theme, fx);
         }
         self.set_carets(
             editor,

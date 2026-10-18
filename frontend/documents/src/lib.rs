@@ -1111,9 +1111,8 @@ impl OpenDocuments {
             return;
         }
         let text_before = document.text().clone();
-        let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        document.edit(operation, store, ui, &fonts, &theme, fx);
+        document.edit(operation, store, ui, &theme, fx);
         if let Some(parsers) = ::editor::env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
@@ -1153,9 +1152,8 @@ impl OpenDocuments {
             return false;
         }
         let text_before = document.text().clone();
-        let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        document.edit_shared(identity, operation, store, ui, &fonts, &theme, fx);
+        document.edit_shared(identity, operation, store, ui, &theme, fx);
         if let Some(parsers) = ::editor::env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
@@ -1224,9 +1222,8 @@ impl OpenDocuments {
             .all(|op| matches!(op, operation::op::Op::Retain(_)));
         if moves {
             let text_before = document.text().clone();
-            let fonts = ::editor::env::Fonts::of(store)();
             let theme = ::editor::env::Themes::of(store);
-            document.edit(operation, store, ui, &fonts, &theme, fx);
+            document.edit(operation, store, ui, &theme, fx);
             if let Some(parsers) = ::editor::env::Parsers::of(store) {
                 document.launch_reparse(parsers, fx);
             }

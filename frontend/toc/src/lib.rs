@@ -181,7 +181,6 @@ impl TocView {
                 ForestSearcher::default(),
                 store,
                 ui,
-                editor::env::Fonts::of(store),
             )
             .with_folds(),
             targets,
@@ -495,7 +494,6 @@ impl OutlineView {
                 ForestSearcher::default(),
                 store,
                 ui,
-                editor::env::Fonts::of(store),
             )
             .with_folds(),
             request: None,

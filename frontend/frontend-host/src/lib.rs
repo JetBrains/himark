@@ -1605,8 +1605,8 @@ impl HimarkEngine {
             name,
             primary,
             None,
-            move |store, ui, fonts, theme| {
-                document_for(&document_name, &source, store, ui, fonts, theme)
+            move |store, ui, theme| {
+                document_for(&document_name, &source, store, ui, theme)
             },
         );
         true
@@ -2137,10 +2137,9 @@ fn document_for(
     source: &str,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
-    ahp_chat::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
+    ahp_chat::open::document_for(&syntax_languages(), name, source, store, ui, theme)
 }
 
 #[no_mangle]

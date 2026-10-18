@@ -23,7 +23,6 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }),
         Arc::new(|| {}),
     );
-    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let theme = editor::theme::Theme::embedded();
     for (name, source) in [
         (
@@ -45,7 +44,6 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
                 source,
                 app.store(),
                 &app.ui_ctx(),
-                &markdown_fonts,
                 &theme,
             ),
             name.to_owned(),

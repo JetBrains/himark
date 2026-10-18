@@ -839,7 +839,6 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             let markup = ahp_lsp::enrich::inlay_hints_markup();
             let replacement = editor::markup::Markup::new();
             let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
-            let fonts = editor::env::ui_collection(store, ui);
             let theme = editor::env::Themes::of(store);
             fx.scope(
                 move |command| {
@@ -855,7 +854,6 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
                         &changed,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     )

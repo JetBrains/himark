@@ -8,9 +8,8 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let source = include_str!("../../../himarkdown/fixtures/utf8-repro.md");
-    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
-    let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &theme);
+    let mut document = himarkdown::document_from_markdown(source, store, ui, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
 
     let outcome = editor::reparse::ReparseWork::capture(&document, parsers.clone())
@@ -20,7 +19,6 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -31,7 +29,6 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
             outcome,
             store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -42,7 +39,6 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
         theme.ui().window.first_pane_width,
         store,
         ui,
-        &fonts,
         &theme,
     );
     assert!(view.find_misaligned_boundary().is_none());

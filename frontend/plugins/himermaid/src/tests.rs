@@ -6,10 +6,6 @@ use helpers::*;
 pub(crate) mod helpers {
     use super::super::*;
 
-    pub(crate) fn fonts() -> skia_safe::textlayout::FontCollection {
-        ::editor::test_document::test_fonts_collection().clone()
-    }
-
     pub(crate) fn theme() -> editor::theme::Theme {
         editor::theme::Theme::embedded()
     }
@@ -39,12 +35,11 @@ pub(crate) mod helpers {
             outcome,
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
         if let Some(invalidated) = invalidated {
-            document.enrich_sync(&enrichers(), &invalidated, store, ui, &fonts(), &theme());
+            document.enrich_sync(&enrichers(), &invalidated, store, ui, &theme());
         }
     }
 
@@ -92,7 +87,6 @@ fn a_mermaid_fence_carries_the_diagram_under_it() {
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
     settle(&mut document, &registry);
@@ -133,7 +127,6 @@ fn typing_in_the_fence_rerenders_the_diagram() {
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
     settle(&mut document, &registry);
@@ -145,7 +138,6 @@ fn typing_in_the_fence_rerenders_the_diagram() {
         &operation::operation::Operation::insert_in(len, at, "\n    Middle --> Finish"),
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -176,11 +168,10 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
         &languages(),
         store,
         ui,
-        &fonts(),
         &theme(),
     );
 
-    document.enrich_now(&enrichers(), store, ui, &fonts(), &theme());
+    document.enrich_now(&enrichers(), store, ui, &theme());
     let (_, mode, is_diagram, _) =
         diagram_inlay(&document).expect("the whole file renders a diagram");
     assert_eq!(mode, InlayMode::Under);
@@ -207,7 +198,6 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
     settle(&mut document, &registry);
@@ -225,7 +215,6 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
         ]),
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );

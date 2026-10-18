@@ -13,4 +13,4 @@ ahp-ws = "0.9"
 serde_json = "1"
 tracing = "0.1"
 tokio = { version = "1", features = ["net", "io-util", "sync"] }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"

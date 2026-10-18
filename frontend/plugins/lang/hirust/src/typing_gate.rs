@@ -13,7 +13,6 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     ))
     .expect("document.rs");
     assert!(source.len() > 50_000, "the gate wants a BIG file");
-    let fonts = editor::embedded_fonts::source()();
     let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
@@ -22,7 +21,6 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         &registry,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, registry.clone())
@@ -32,7 +30,6 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -50,7 +47,6 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut batch.effects(),
     );
@@ -64,7 +60,6 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     };
     let mut store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
-    ui.set(::editor::env::UiFonts(fonts.clone()));
     let drain =
         |view: &mut editor::editor_view::EditorView,
          store: &mut imba::store::Store,

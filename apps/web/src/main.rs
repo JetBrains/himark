@@ -31,7 +31,7 @@ mod app {
     };
 
     const CANVAS: *const c_char = b"#canvas\0".as_ptr().cast();
-    const FONT_URL: *const c_char = b"JetBrainsMono-Regular.woff2\0".as_ptr().cast();
+    const FONT_URL: *const c_char = b"JetBrainsMono-Regular.ttf\0".as_ptr().cast();
     const EVENT_TARGET_WINDOW: *const c_char = 2 as *const c_char;
     const CALLBACK_THREAD_CALLING: usize = 2;
     const DOM_DELTA_LINE: u32 = 1;
@@ -262,10 +262,9 @@ mod app {
             "the web font response was empty"
         );
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
-        let typeface = FontMgr::new()
-            .new_from_data(skia_safe::Data::new_copy(bytes), None)
-            .expect("failed to load JetBrains Mono WOFF2");
-        editor::embedded_fonts::install(typeface);
+        // The SAME bytes serve both halves: the shaper registers
+        // them for layout, skia keeps a typeface for chrome.
+        editor::embedded_fonts::install_bytes(bytes.to_vec());
 
         let app = Box::into_raw(Box::new(WebApp::new(context))).cast::<c_void>();
         unsafe {
@@ -278,7 +277,7 @@ mod app {
         unsafe {
             drop(Box::from_raw(user_data.cast::<DirectContext>()));
         }
-        panic!("failed to fetch JetBrains Mono WOFF2");
+        panic!("failed to fetch JetBrains Mono");
     }
 
     struct WebApp {
@@ -617,7 +616,7 @@ mod app {
     }
 
     fn app_fonts() -> AppFonts {
-        AppFonts::new(hikit::fonts::source())
+        AppFonts::platform()
     }
 
     unsafe fn install_callbacks(app: *mut c_void) {
@@ -727,8 +726,8 @@ mod app {
                         name.clone(),
                         true,
                         None,
-                        move |store, ui, fonts, theme| {
-                            web_document(&name, &source, store, ui, fonts, theme)
+                        move |store, ui, theme| {
+                            web_document(&name, &source, store, ui, theme)
                         },
                     );
                 }
@@ -832,7 +831,6 @@ mod app {
         source: &str,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) -> editor::document::Document {
         let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
@@ -845,12 +843,11 @@ mod app {
                     &languages,
                     store,
                     ui,
-                    fonts,
                     theme,
                 );
             }
         }
-        himarkdown::document_from_markdown(source, store, ui, fonts, theme)
+        himarkdown::document_from_markdown(source, store, ui, theme)
     }
 
     extern "C" fn wheel(

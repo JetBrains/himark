@@ -87,7 +87,6 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
 fn a_query_keystroke_cancels_the_in_flight_find() {
     use imba::effect::{Batch, Message};
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
     let home = ahp_wire::SessionId::local_default(&store);
     let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();
@@ -138,7 +137,6 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
 fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     use imba::effect::Batch;
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
     let home = ahp_wire::SessionId::local_default(&store);
     let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();

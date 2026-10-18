@@ -8,7 +8,6 @@ fn functions_emit_foldables() {
     let store = &imba::store::Store::new();
     let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = "fn one() {\n    1;\n}\n\nfn tiny() { 2 }\n";
-    let fonts = editor::embedded_fonts::source()();
     let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
@@ -17,7 +16,6 @@ fn functions_emit_foldables() {
         &registry,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, registry)
@@ -27,7 +25,6 @@ fn functions_emit_foldables() {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );

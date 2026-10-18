@@ -35,7 +35,7 @@ operation = { path = "../operation" }
 recents = { path = "../recents" }
 rpds = "1"
 serde_json = "1"
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 terminals = { path = "../terminals" }
 toc = { path = "../toc" }
 text = { path = "../text" }

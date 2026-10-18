@@ -2468,7 +2468,6 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         720.0,
         store,
         &ui,
-        ::editor::test_document::test_fonts_collection(),
         &editor::env::Themes::of(store),
     )
     .content_height();
@@ -2663,7 +2662,6 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
             720.0,
             store,
             &ui,
-            ::editor::test_document::test_fonts_collection(),
             &editor::env::Themes::of(store),
         )
         .content_height()
@@ -8397,7 +8395,6 @@ fn published_diagnostics_squiggle_the_open_document() {
             let markup = ahp_lsp::diagnostics::diagnostics_markup();
             let replacement = editor::markup::Markup::new();
             let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
-            let fonts = editor::env::ui_collection(store, ui);
             let theme = editor::env::Themes::of(store);
             fx.scope(
                 move |command| {
@@ -8413,7 +8410,6 @@ fn published_diagnostics_squiggle_the_open_document() {
                         &changed,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     );

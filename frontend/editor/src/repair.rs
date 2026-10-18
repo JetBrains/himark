@@ -89,7 +89,6 @@ impl EffectHandler<RepairEffect> for RepairHandler {
 
 impl RepairHandler {
     pub(crate) fn repairs(&self, effect: RepairEffect) -> Vec<RepairedLayout> {
-        let fonts = self.0.fonts();
         let theme = self.0.theme();
         let revision = effect.document.revision();
         let markup_generation = effect.document.markup_generation();
@@ -114,7 +113,6 @@ impl RepairHandler {
                             document.text(),
                             crate::markup::OverlaidMarkup::new(document.markup(), &extras),
                             measure,
-                            &fonts,
                             &theme,
                             pending,
                             WORKER_REPAIR_BUDGET,

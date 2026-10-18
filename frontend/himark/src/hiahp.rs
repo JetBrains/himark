@@ -243,7 +243,6 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                         &text,
                         store,
                         ui,
-                        &self.workshop.fonts(),
                         &self.workshop.theme(),
                     )
                 });

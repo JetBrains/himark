@@ -189,14 +189,12 @@ impl Himark {
             width,
             self.store(),
             ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::env::Themes::of(self.store()),
         );
         fresh.reveal_caret(
             document.caret_byte(entity.editor()),
             self.store(),
             ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::env::Themes::of(self.store()),
         );
         let text = document.text().byte_string(0, document.text().byte_count());
@@ -244,14 +242,12 @@ impl Himark {
                     return;
                 }
                 let width = document.layout_width(entity.editor());
-                let fonts = ::editor::test_document::test_fonts_collection();
                 let theme = ::editor::theme::Theme::embedded();
                 let mut reference = editor::editor_view::EditorView::complete(
                     document.clone(),
                     width,
                     store,
                     ui,
-                    &fonts,
                     &theme,
                 );
 
@@ -259,7 +255,6 @@ impl Himark {
                     document.caret_byte(entity.editor()),
                     store,
                     ui,
-                    &fonts,
                     &theme,
                 );
                 let actual = document.content_height(entity.editor());
@@ -554,7 +549,6 @@ pub fn handle_effect<R: 'static>(
 
 pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::env::Workshop> {
     std::sync::Arc::new(::editor::env::Workshop::new(
-        ::editor::embedded_fonts::source(),
         theme,
     ))
 }

@@ -6,10 +6,6 @@ use super::*;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 
-fn fonts() -> skia_safe::textlayout::FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
-}
-
 fn theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
 }
@@ -98,7 +94,7 @@ impl Fetches {
 fn md(source: &str) -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    crate::document_from_markdown(source, store, ui, &fonts(), &theme())
+    crate::document_from_markdown(source, store, ui, &theme())
 }
 
 fn input(document: &editor::document::Document, source: &str, previous: Markup) -> EnrichInput {
@@ -130,11 +126,9 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = fonts();
     let theme = theme();
     let fresh = {
         let cx = EnrichCx {
-            fonts: &fonts,
             theme: &theme,
             caller,
             languages: None,
@@ -144,7 +138,7 @@ fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     };
     let mut entry = over.previous.clone();
     if !fresh.changed.is_empty() {
-        entry.splice(&fresh.changed, fresh.replacement, store, ui, &fonts, &theme);
+        entry.splice(&fresh.changed, fresh.replacement, store, ui, &theme);
     }
     entry
 }

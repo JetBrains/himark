@@ -168,7 +168,6 @@ impl editor::markup::InlayEditing for EmbedView {
         previous: &Self,
         _store: &imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &editor::theme::Theme,
     ) -> bool {
         *self = *previous;
@@ -206,10 +205,9 @@ impl Enricher for FenceEmbedEnricher {
         ui: &imba::ui::UiCtx,
         replacement: &mut Markup,
         changed: &[Range<u32>],
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
     ) {
-        install(store, ui, replacement, changed, fonts, theme);
+        install(store, ui, replacement, changed, theme);
     }
 }
 
@@ -249,7 +247,6 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
                 cx.languages.as_deref(),
                 store,
                 ui,
-                cx.fonts,
                 cx.theme,
             )
         });
@@ -264,7 +261,6 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
                     document.text(),
                     editor::markup::OverlaidMarkup::new(document.markup(), &globals),
                     measure,
-                    cx.fonts,
                     cx.theme,
                     window.clone(),
                 )
@@ -303,7 +299,6 @@ fn install(
     ui: &imba::ui::UiCtx,
     replacement: &mut Markup,
     changed: &[Range<u32>],
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) {
     let pending: Vec<(editor::markup::InlayKey, Range<u32>, EmbedPending)> = changed
@@ -350,7 +345,6 @@ fn install(
                                 languages.as_deref(),
                                 store,
                                 ui,
-                                fonts,
                                 theme,
                             );
                             let revision = document.revision();
@@ -397,7 +391,6 @@ fn install(
             &[],
             store,
             ui,
-            fonts,
             theme,
             &mut batch.effects(),
         );
@@ -532,13 +525,12 @@ fn build_document(
     languages: Option<&SyntaxLanguages>,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> Document {
     let text = Text::from_string_exact(content);
     if let Some(languages) = languages {
         if languages.knows(language) {
-            return Document::from_language(text, language, languages, store, ui, fonts, theme);
+            return Document::from_language(text, language, languages, store, ui, theme);
         }
     }
 

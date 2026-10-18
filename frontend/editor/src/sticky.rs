@@ -88,7 +88,6 @@ impl StickyViewport {
         origin_x: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Rc<StickyViewport> {
         let width_bits = document
@@ -135,7 +134,6 @@ impl StickyViewport {
                 origin_x,
                 store,
                 ui,
-                fonts,
                 theme,
                 previous
                     .as_ref()
@@ -168,7 +166,6 @@ impl StickyViewport {
         origin_x: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         previous: Option<(&StickyViewport, Option<u64>)>,
     ) -> Self {
@@ -187,7 +184,7 @@ impl StickyViewport {
             }
             let number = view.line_at(line_start as usize).0 as u32 + 1;
             let shaped = Rc::new(
-                document.shape_line(editor, line, origin_x, false, store, ui, fonts, theme),
+                document.shape_line(editor, line, origin_x, false, store, ui, theme),
             );
             (number, shaped)
         };
@@ -214,7 +211,6 @@ pub(crate) fn sticky_overlays<'a>(
     editor: EditorId,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::theme::Theme,
     arena: &'a Arena,
     viewport: Rect,
@@ -226,7 +222,7 @@ pub(crate) fn sticky_overlays<'a>(
         return Vec::new();
     }
     let sticky = StickyViewport::shared(
-        document, editor, viewport, origin_x, store, ui, fonts, theme,
+        document, editor, viewport, origin_x, store, ui, theme,
     );
     if sticky.rows.is_empty() {
         return Vec::new();

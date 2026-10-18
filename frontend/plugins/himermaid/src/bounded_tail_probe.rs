@@ -23,7 +23,6 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
 
@@ -36,7 +35,6 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &[],
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut batch.effects(),
     );
@@ -85,7 +83,6 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         900.0,
         &imba::store::Store::new(),
         ::editor::test_document::test_ui(),
-        &fonts(),
         &theme(),
     )
     .element_heights();

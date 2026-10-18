@@ -112,7 +112,6 @@ pub(crate) fn build_file_edit(
     differ: &std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> BuiltFileEdit {
     let before_text = text::text::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
@@ -124,11 +123,10 @@ pub(crate) fn build_file_edit(
         parsers,
         store,
         ui,
-        fonts,
         theme,
     );
     let mut after =
-        crate::cell::side_document(after_text, &extension, parsers, store, ui, fonts, theme);
+        crate::cell::side_document(after_text, &extension, parsers, store, ui, theme);
 
     let operation = differ.diff(&before_text, after.text(), None);
     let prepared = ::editor::split_diff::prepare_marks(&operation, before.text());
@@ -147,7 +145,6 @@ pub(crate) fn build_file_edit(
         &[],
         store,
         ui,
-        fonts,
         theme,
         quiet,
     );

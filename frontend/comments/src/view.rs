@@ -63,7 +63,6 @@ impl documents::dynamic::DocumentCommand for AddComment {
             return;
         }
         let comments = self.comments;
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let width = match document.layout_width(editor) {
             width if width > 1.0 => width,
@@ -88,7 +87,6 @@ impl documents::dynamic::DocumentCommand for AddComment {
             width,
             store,
             ui,
-            &fonts,
             &theme,
             annotation.clone(),
         );
@@ -100,7 +98,6 @@ impl documents::dynamic::DocumentCommand for AddComment {
             Inlay::new(InlayMode::Under, view.clone()),
             store,
             ui,
-            &fonts,
             &theme,
             fx,
         );
@@ -150,7 +147,6 @@ impl imba::command::DynamicCommand for RemoveComment {
         else {
             return;
         };
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let document = self.document;
         fx.scope(
@@ -160,7 +156,7 @@ impl imba::command::DynamicCommand for RemoveComment {
                     documents::DocumentsCommand::Editor(document, command),
                 )
             },
-            |fx| doc.remove_inlay(self.key, store, ui, &fonts, &theme, fx),
+            |fx| doc.remove_inlay(self.key, store, ui, &theme, fx),
         );
         documents::OpenDocuments::put_document(store, documents, self.document, doc);
     }
@@ -248,7 +244,6 @@ impl CommentView {
         width: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         annotation: Option<AnnotationId>,
     ) -> Self {
@@ -258,7 +253,6 @@ impl CommentView {
             (width - chrome.pad * 2.0).max(120.0),
             store,
             ui,
-            fonts,
             theme,
         );
         editor.focus_text();
@@ -282,7 +276,6 @@ impl CommentView {
         width: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         annotation: AnnotationId,
         own_text: Option<text::text::Text>,
@@ -298,7 +291,6 @@ impl CommentView {
             inner,
             store,
             ui,
-            fonts,
             theme,
         );
         let foreign = foreign_texts
@@ -309,7 +301,6 @@ impl CommentView {
                     inner,
                     store,
                     ui,
-                    fonts,
                     theme,
                 )
             })
@@ -502,7 +493,6 @@ impl View for CommentView {
                 }
             }
             CommentCommand::Rewrap(width) => {
-                let fonts = editor::env::ui_collection(store, ui);
                 let theme = editor::env::Themes::of(store);
                 fx.scope(CommentCommand::Editor, |fx| {
                     self.editor.document.resize(
@@ -511,7 +501,6 @@ impl View for CommentView {
                         0,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     )

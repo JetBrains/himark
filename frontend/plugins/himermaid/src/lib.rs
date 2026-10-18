@@ -133,7 +133,6 @@ impl SyntaxLanguage for MermaidLanguage {
         _changed: &[Range<u32>],
         _replacement: &mut editor::markup::MarkupBuilder,
         _invalidated: &mut Vec<Range<u32>>,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &editor::theme::Theme,
     ) {
     }

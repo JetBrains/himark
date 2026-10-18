@@ -3,11 +3,7 @@
 
 use super::*;
 use crate::document::Document;
-use crate::test_document::{plain_document, test_fonts};
-
-fn fonts() -> skia_safe::textlayout::FontCollection {
-    test_fonts()()
-}
+use crate::test_document::{plain_document};
 
 fn theme() -> Theme {
     Theme::embedded()
@@ -31,7 +27,6 @@ fn pane(document: &mut Document) -> crate::editor::EditorId {
         &[],
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -70,7 +65,6 @@ fn retint(
         &[],
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -166,7 +160,6 @@ fn the_lane_relaunches_only_when_the_fingerprint_moves() {
         "typed",
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -272,7 +265,6 @@ fn removing_the_last_diff_owes_one_clearing_relaunch() {
         &[],
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -363,7 +355,6 @@ fn a_diff_carries_its_change_map_from_birth() {
         document.revision(),
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );

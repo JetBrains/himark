@@ -1534,7 +1534,6 @@ impl Window {
         else {
             return;
         };
-        let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
         let new_editor = fx.scope(
             move |command| {
@@ -1551,7 +1550,6 @@ impl Window {
                     &[],
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     fx,
                 )

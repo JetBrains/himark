@@ -25,7 +25,6 @@ fn the_parse_never_renders_a_diagram() {
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
 
@@ -38,7 +37,6 @@ fn the_parse_never_renders_a_diagram() {
             outcome,
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         )
@@ -49,7 +47,7 @@ fn the_parse_never_renders_a_diagram() {
         "the parse pipeline billed a render — the enrichment migration's whole point"
     );
 
-    document.enrich_sync(&enrichers(), &invalidated, store, ui, &fonts(), &theme());
+    document.enrich_sync(&enrichers(), &invalidated, store, ui, &theme());
     assert_eq!(marked_renders("ParseGateQx"), 1, "the pass rendered it");
 }
 
@@ -68,7 +66,6 @@ middle paragraph between the fences with plain words.\n\n\
         &registry,
         store,
         ui,
-        &fonts(),
         &theme(),
     );
     settle(&mut document, &registry);
@@ -89,7 +86,6 @@ middle paragraph between the fences with plain words.\n\n\
         &operation::operation::Operation::insert_in(len, at, "X"),
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -107,7 +103,6 @@ middle paragraph between the fences with plain words.\n\n\
         &operation::operation::Operation::insert_in(len, at, "y"),
         store,
         ui,
-        &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );

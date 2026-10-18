@@ -72,7 +72,6 @@ pub fn ready(enrichment: Enrichment) -> EnrichFuture<'static> {
 }
 
 pub struct EnrichCx<'a> {
-    pub fonts: &'a skia_safe::textlayout::FontCollection,
     pub theme: &'a crate::theme::Theme,
     pub caller: imba::effect::EffectCaller,
 
@@ -127,10 +126,9 @@ pub trait Enricher: Send + Sync {
         replacement: &mut Markup,
         changed: &[Range<u32>],
         live: &Markup,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
-        let _ = (fonts, theme);
+        let _ = (theme);
         replacement.carry_live_views_in(live, changed);
     }
 
@@ -140,7 +138,6 @@ pub trait Enricher: Send + Sync {
         _ui: &imba::ui::UiCtx,
         _replacement: &mut Markup,
         _changed: &[Range<u32>],
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &crate::theme::Theme,
     ) {
     }
@@ -251,11 +248,9 @@ impl imba::effect::EffectHandler<EnrichEffect> for EnrichHandler {
 
 impl EnrichHandler {
     pub async fn run(&self, work: EnrichWork) -> EnrichOutcome {
-        let fonts = self.workshop.fonts();
         let theme = self.workshop.theme();
         run_work(
             work,
-            &fonts,
             &theme,
             MeasureCtx::Kept(self.workshop.clone()),
             self.caller.clone(),
@@ -266,13 +261,11 @@ impl EnrichHandler {
 
 pub(crate) async fn run_work(
     work: EnrichWork,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::theme::Theme,
     measure: MeasureCtx<'_>,
     caller: imba::effect::EffectCaller,
 ) -> EnrichOutcome {
     let cx = EnrichCx {
-        fonts,
         theme,
         caller,
         languages: work.languages.clone(),
@@ -282,7 +275,7 @@ pub(crate) async fn run_work(
     let mut replacement = work.input.previous.clone();
     if !fresh.changed.is_empty() {
         cx.measure.with_ctx(|store, ui| {
-            replacement.splice(&fresh.changed, fresh.replacement, store, ui, fonts, theme)
+            replacement.splice(&fresh.changed, fresh.replacement, store, ui, theme)
         });
     }
     EnrichOutcome {
@@ -304,17 +297,12 @@ mod tests {
     use crate::markup::InlayMode;
     use imba::effect::EffectHandler;
 
-    fn fonts() -> skia_safe::textlayout::FontCollection {
-        crate::test_document::test_fonts_collection().clone()
-    }
-
     fn theme() -> crate::theme::Theme {
         crate::theme::Theme::embedded()
     }
 
     fn workshop() -> Arc<crate::env::Workshop> {
         Arc::new(crate::env::Workshop::new(
-            crate::embedded_fonts::source(),
             theme(),
         ))
     }
@@ -456,7 +444,6 @@ mod tests {
                 outcome,
                 &mut store,
                 ui,
-                &fonts(),
                 &theme(),
                 &mut batch.effects(),
             );
@@ -536,7 +523,6 @@ mod tests {
             &operation::operation::Operation::insert_in(len, 0, "XXXX"),
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -566,7 +552,6 @@ mod tests {
                 outcome,
                 &mut store,
                 ui,
-                &fonts(),
                 &theme(),
                 &mut batch.effects(),
             );
@@ -629,7 +614,6 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -673,7 +657,6 @@ mod tests {
             400.0,
             store,
             ui,
-            &fonts(),
             &theme(),
         )
         .element_heights();
@@ -702,7 +685,6 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -745,7 +727,6 @@ mod tests {
             400.0,
             store,
             ui,
-            &fonts(),
             &theme(),
         )
         .element_heights();
@@ -824,7 +805,6 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         )

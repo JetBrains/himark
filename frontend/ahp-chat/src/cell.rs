@@ -183,7 +183,6 @@ pub(crate) fn side_document(
     parsers: &std::sync::Arc<editor::reparse::SyntaxLanguages>,
     store: &Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
     let language = if !extension.is_empty() && parsers.knows(extension) {
@@ -196,7 +195,7 @@ pub(crate) fn side_document(
     if !parsers.knows(language) {
         return markdown_document(text);
     }
-    editor::document::Document::from_language(text, language, parsers, store, ui, fonts, theme)
+    editor::document::Document::from_language(text, language, parsers, store, ui, theme)
 }
 
 pub(crate) fn document_text(document: &editor::document::Document) -> String {
@@ -289,7 +288,6 @@ impl Cell {
         fx: &mut Effects<'_, EditorCommand>,
     ) -> (Self, f32) {
         note_mount();
-        let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let editor_width = Self::editor_width(kind, &chrome, content_width);
@@ -301,7 +299,6 @@ impl Cell {
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             fx,
         );
@@ -398,7 +395,6 @@ impl Cell {
         }
         let (markdown, width, grown) = (std::mem::take(markdown), *width, *grown);
         note_mount();
-        let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
         let mut document = built.document;
         let editor = fx.scope(CellCommand::Editor, |fx| {
@@ -409,7 +405,6 @@ impl Cell {
                 &[],
                 store,
                 ui,
-                &fonts,
                 &theme,
                 fx,
             )
@@ -449,7 +444,6 @@ impl Cell {
         let CellBody::PendingDiff { header, width } = self.body.clone() else {
             return;
         };
-        let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
         match result {
             Err(error) => {
@@ -484,7 +478,6 @@ impl Cell {
                     &[left_marks],
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     quiet,
                 );
@@ -497,7 +490,6 @@ impl Cell {
                     &[hunks],
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     quiet,
                 );
@@ -509,7 +501,6 @@ impl Cell {
                     &[],
                     store,
                     ui,
-                    &fonts,
                     &theme,
                     quiet,
                 );
@@ -690,12 +681,11 @@ impl View for Cell {
                 // A patch, not a picture: the minimal exact edit
                 // (docs/editor/structural-diff.md, decision 3).
                 let operation = myersdiff::diff(editor.document.text(), &text);
-                let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
                     editor
                         .document
-                        .edit(&operation, store, ui, &fonts, &theme, fx);
+                        .edit(&operation, store, ui, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }
@@ -713,7 +703,6 @@ impl View for Cell {
                     *held = width;
                     return;
                 }
-                let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 if let CellBody::Diff { view, .. } = &mut self.body {
                     // All three faces resize together: the halves stay
@@ -735,7 +724,6 @@ impl View for Cell {
                                 0,
                                 store,
                                 ui,
-                                &fonts,
                                 &theme,
                                 fx,
                             )
@@ -754,7 +742,6 @@ impl View for Cell {
                                 0,
                                 store,
                                 ui,
-                                &fonts,
                                 &theme,
                                 fx,
                             )
@@ -771,7 +758,7 @@ impl View for Cell {
                                 view.split
                                     .right
                                     .document
-                                    .resize(inline, width, 0, store, ui, &fonts, &theme, fx)
+                                    .resize(inline, width, 0, store, ui, &theme, fx)
                             },
                         );
                     }
@@ -794,7 +781,7 @@ impl View for Cell {
                 fx.scope(CellCommand::Editor, |fx| {
                     editor
                         .document
-                        .resize(id, width, 0, store, ui, &fonts, &theme, fx);
+                        .resize(id, width, 0, store, ui, &theme, fx);
                 });
             }
             CellCommand::Append(chunk) => {
@@ -815,12 +802,11 @@ impl View for Cell {
                 };
                 let end = editor.document.text().byte_count().min(u32::MAX as usize) as u32;
                 let operation = operation::operation::Operation::insert_at(end, chunk);
-                let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
                     editor
                         .document
-                        .edit(&operation, store, ui, &fonts, &theme, fx);
+                        .edit(&operation, store, ui, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }

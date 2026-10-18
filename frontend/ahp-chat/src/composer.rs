@@ -84,10 +84,9 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    let fonts = hikit::fonts::source()();
     let theme = editor::theme::Theme::embedded();
-    let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
-    view.set_placeholder("Message the agent", &fonts, &theme);
+    let mut view = EditorView::of_document(document, 600.0, store, ui, &theme);
+    view.set_placeholder("Message the agent", &theme);
     ScrollView::new(view)
 }
 
@@ -177,7 +176,6 @@ impl Composer {
             }
             ComposerCommand::Tick(now) => self.band.advance(now),
             ComposerCommand::Rewrap(width) => {
-                let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 let editor = self.input.content().editor;
                 fx.scope(ComposerCommand::Editor, |fx| {
@@ -185,7 +183,7 @@ impl Composer {
                         self.input
                             .content_mut()
                             .document
-                            .resize(editor, width, 0, store, ui, &fonts, &theme, fx);
+                            .resize(editor, width, 0, store, ui, &theme, fx);
                     })
                 });
             }

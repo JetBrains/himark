@@ -429,7 +429,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // The diff CHANGES: the first line gains its own hunk.
     {
-        let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let documents = app.sole_documents();
         let mut store = app.store_mut();
@@ -440,7 +439,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &::operation::operation::Operation::insert_in(len, 0, "zero\n"),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -458,7 +456,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     // The COMMIT road: the base catches up with the target — the diff
     // empties and the track must clear.
     {
-        let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let target_text =
             documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
@@ -480,7 +477,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &catch_up,
             &store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -498,7 +494,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     // location — adopt unTRACKS the old diff and retracks against the
     // fresh base. First give the track marks again...
     {
-        let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
         let mut document =
@@ -508,7 +503,6 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &::operation::operation::Operation::insert_in(len, 0, "gone\n"),
             &store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );

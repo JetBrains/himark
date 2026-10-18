@@ -52,7 +52,6 @@ fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
         &[],
         store,
         ui,
-        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -103,7 +102,6 @@ fn landed(
         &[],
         store,
         ui,
-        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -214,7 +212,6 @@ fn typing_mid_run_discards_the_write() {
         &operation::operation::Operation::insert_in(len, 0, "typed "),
         &store,
         ui,
-        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -543,7 +540,6 @@ fn shows_file_now_or_ride_their_store() {
             &[],
             store,
             &ui,
-            ::editor::test_document::test_fonts_collection(),
             &::editor::env::Themes::of(store),
             &mut imba::effect::Batch::new().effects(),
         );

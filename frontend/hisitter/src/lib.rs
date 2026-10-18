@@ -176,7 +176,6 @@ impl SyntaxLanguage for TreeSitterLanguage {
         changed: &[Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<Range<u32>>,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &editor::theme::Theme,
     ) {
         let tree = TsTree::of(tree).expect("a tree-sitter language parses tree-sitter trees");

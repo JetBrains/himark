@@ -26,7 +26,6 @@ fn languages() -> editor::reparse::SyntaxLanguages {
 fn parsed() -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
@@ -35,7 +34,6 @@ fn parsed() -> editor::document::Document {
         &registry,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, registry)
@@ -45,7 +43,6 @@ fn parsed() -> editor::document::Document {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -140,9 +137,8 @@ fn python_blocks_highlight_in_markdown() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let source = "title\n\n```python\ndef greet():\n    return \"hi\"\n```\n";
-    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
-    let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &theme);
+    let mut document = himarkdown::document_from_markdown(source, store, ui, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
     let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("document has a parse")
@@ -151,7 +147,6 @@ fn python_blocks_highlight_in_markdown() {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );

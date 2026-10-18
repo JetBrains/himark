@@ -90,7 +90,6 @@ impl LocationTree {
                 LocationSearcher,
                 store,
                 ui,
-                editor::env::Fonts::of(store),
             )
             .with_folds(),
             pending: rpds::HashTrieSetSync::new_sync(),
@@ -767,7 +766,7 @@ impl SessionTreeView {
         let at = range.start + 1;
         self.tree.list.inner_mut().splice_slice(at..at, slice);
         let mut input =
-            ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+            ::editor::editor_view::EditorView::input(600.0, store, ui);
         input.focus_text();
         self.edit = Some(RowEdit {
             target: EditTarget::Create {
@@ -957,13 +956,11 @@ fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view:
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
-    let fonts = hikit::fonts::source();
     let mut input = ::editor::editor_view::EditorView::of_document(
         document,
         600.0,
         store,
         ui,
-        &fonts(),
         &editor::theme::Theme::embedded(),
     );
     input.set_caret(text.len() as u32);

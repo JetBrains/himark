@@ -176,10 +176,7 @@ impl View for TerminalView {
             let font = grid_font(ui, &chrome);
             let cell = cell_metrics(&font);
             let fallbacks = ui.env(|| FallbackFaces {
-                manager: ui
-                    .get::<::editor::env::UiFonts>()
-                    .and_then(|fonts| fonts.0.fallback_manager())
-                    .unwrap_or_else(skia_safe::FontMgr::new),
+                manager: skia_safe::FontMgr::new(),
                 by_char: Default::default(),
             });
             imba::ThunkBox::new(

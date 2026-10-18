@@ -143,7 +143,6 @@ impl UnifiedDiffView {
         ui: &UiCtx,
         fx: &mut UnifiedDiffEffects<'_>,
     ) -> EditorId {
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
         let width = self
             .split
@@ -166,11 +165,10 @@ impl UnifiedDiffView {
                 &shown,
                 store,
                 ui,
-                &fonts,
                 &theme,
                 fx,
             );
-            right.expand_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx);
+            right.expand_before_inlays(editor, &base, diff, store, ui, &theme, fx);
             editor
         })
     }
@@ -231,13 +229,12 @@ impl UnifiedDiffView {
             let Some(editor) = self.inline_editor else {
                 return;
             };
-            let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
             let diff = self.split.state.diff_id();
             let base = self.split.left.document.clone();
             let right = &mut self.split.right.document;
             fx.scope(UnifiedDiffCommand::Inline, |fx| {
-                right.refresh_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx)
+                right.refresh_before_inlays(editor, &base, diff, store, ui, &theme, fx)
             });
         }
         self.split.state.note_inline_built();
@@ -355,7 +352,6 @@ impl imba::View for UnifiedDiffView {
                     let Some(mut view) = self.inline_face(store) else {
                         return;
                     };
-                    let fonts = crate::env::ui_collection(store, ui);
                     let theme = crate::env::Themes::of(store);
                     fx.scope(UnifiedDiffCommand::Inline, |fx| {
                         view.set_caret(byte);
@@ -365,7 +361,6 @@ impl imba::View for UnifiedDiffView {
                             byte,
                             store,
                             ui,
-                            &fonts,
                             &theme,
                             fx,
                         );

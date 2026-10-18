@@ -3,22 +3,7 @@
 
 use imba::store::Store;
 
-/// The UI-thread font collection slot — TRANSITIONAL: dies with the
-/// skparagraph plumbing once every widget shapes through
-/// `imba::shape`.
-pub struct UiFonts(pub skia_safe::textlayout::FontCollection);
 
-#[derive(Clone)]
-pub struct Fonts(pub crate::FontSource);
-
-impl Fonts {
-    pub fn of(store: &Store) -> crate::FontSource {
-        store
-            .get::<Fonts>()
-            .map(|fonts| fonts.0.clone())
-            .unwrap_or_else(crate::embedded_fonts::source)
-    }
-}
 
 #[derive(Clone)]
 pub struct Parsers(pub std::sync::Arc<crate::reparse::SyntaxLanguages>);
@@ -56,55 +41,23 @@ impl Enrichers {
     }
 }
 
-pub fn ui_collection(
-    store: &imba::store::Store,
-    ui: &imba::ui::UiCtx,
-) -> skia_safe::textlayout::FontCollection {
-    match ui.get::<UiFonts>() {
-        Some(fonts) => fonts.0.clone(),
-        None => Fonts::of(store)(),
-    }
-}
-
 pub fn ui_typeface(
-    ui: &imba::ui::UiCtx,
+    _ui: &imba::ui::UiCtx,
     families: &[impl AsRef<str>],
     style: skia_safe::FontStyle,
 ) -> Option<skia_safe::Typeface> {
-    if let Some(fonts) = ui.get::<UiFonts>() {
-        let mut collection = fonts.0.clone();
-
-        if !families.is_empty() {
-            if let Some(face) = collection
-                .find_typefaces(families, style)
-                .into_iter()
-                .next()
-            {
-                return Some(face);
-            }
-        }
-
-        if let Some(face) = collection
-            .fallback_manager()
-            .and_then(|manager| manager.legacy_make_typeface(None, style))
-        {
-            return Some(face);
-        }
-
-        if let Some(face) = collection
-            .find_typefaces(&[crate::embedded_fonts::FAMILY], style)
-            .into_iter()
-            .next()
-        {
+    let manager = skia_safe::FontMgr::new();
+    for family in families {
+        if let Some(face) = manager.match_family_style(family.as_ref(), style) {
             return Some(face);
         }
     }
-    skia_safe::FontMgr::new().legacy_make_typeface(None, style)
+    manager
+        .legacy_make_typeface(None, style)
+        .or_else(|| Some(crate::embedded_fonts::typeface()))
 }
 
 pub struct Workshop {
-    source: crate::FontSource,
-    fonts: std::sync::Mutex<Option<skia_safe::textlayout::FontCollection>>,
     theme: std::sync::Mutex<crate::theme::Theme>,
     /// The effect handler's OWN measure ctx — a store seeded with
     /// the current theme plus a warm `UiCtx`, kept for the
@@ -121,12 +74,10 @@ unsafe impl Send for Workshop {}
 unsafe impl Sync for Workshop {}
 
 impl Workshop {
-    pub fn new(source: crate::FontSource, theme: crate::theme::Theme) -> Self {
+    pub fn new(theme: crate::theme::Theme) -> Self {
         let mut seeded = imba::store::Store::new();
         Themes::set(&mut seeded, theme.clone());
         Self {
-            source,
-            fonts: std::sync::Mutex::new(None),
             theme: std::sync::Mutex::new(theme),
             measure: std::sync::Mutex::new((seeded, imba::ui::UiCtx::dont_use_too_slow())),
             enrichers: std::sync::Mutex::new(None),
@@ -161,11 +112,6 @@ impl Workshop {
     pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx) -> R) -> R {
         let kept = self.measure.lock().expect("workshop measure");
         f(&kept.0, &kept.1)
-    }
-
-    pub fn fonts(&self) -> skia_safe::textlayout::FontCollection {
-        let mut slot = self.fonts.lock().expect("workshop fonts");
-        slot.get_or_insert_with(|| (self.source)()).clone()
     }
 
     pub fn theme(&self) -> crate::theme::Theme {

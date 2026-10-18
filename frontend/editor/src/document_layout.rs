@@ -8,7 +8,6 @@ use rope::{
     cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,
     rope::Rope,
 };
-use skia_safe::textlayout::{FontCollection, LineMetrics, Paragraph};
 use text::{text::Text, text_view::TextView};
 use tokenize::{rewrite, Safepoint};
 
@@ -146,13 +145,12 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         measure: crate::markup::InlayMeasure<'_>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         window: Option<Range<u32>>,
     ) -> Self {
         let mut layout = Self::new();
         layout.window = window;
-        layout.repair_layout_bounded(text, markup, measure, fonts, theme, 0, SYNC_LAYOUT_HEIGHT);
+        layout.repair_layout_bounded(text, markup, measure, theme, 0, SYNC_LAYOUT_HEIGHT);
 
         let byte_count = text.view().byte_count().min(u32::MAX as usize) as u32;
         let covered = layout.byte_size();
@@ -189,7 +187,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         window: Option<Range<u32>>,
     ) -> Self {
@@ -202,7 +199,7 @@ impl DocumentLayout {
                 store: &seeded,
                 ui: &ui,
             };
-            Self::build(text, markup, measure, fonts, theme, window)
+            Self::build(text, markup, measure, theme, window)
         }
     }
 
@@ -211,7 +208,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         window: Option<Range<u32>>,
     ) -> Self {
@@ -224,7 +220,7 @@ impl DocumentLayout {
                 store: &seeded,
                 ui: &ui,
             };
-            Self::build_complete(text, markup, measure, fonts, theme, window)
+            Self::build_complete(text, markup, measure, theme, window)
         }
     }
 
@@ -234,7 +230,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         byte_start: u32,
         height_budget: f32,
@@ -252,7 +247,6 @@ impl DocumentLayout {
                 text,
                 markup,
                 measure,
-                fonts,
                 theme,
                 byte_start,
                 height_budget,
@@ -266,7 +260,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         width: f32,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         byte_start: u32,
     ) {
@@ -279,7 +272,7 @@ impl DocumentLayout {
                 store: &seeded,
                 ui: &ui,
             };
-            self.repair_layout(text, markup, measure, fonts, theme, byte_start)
+            self.repair_layout(text, markup, measure, theme, byte_start)
         }
     }
 
@@ -287,13 +280,12 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         measure: crate::markup::InlayMeasure<'_>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         window: Option<Range<u32>>,
     ) -> Self {
-        let mut layout = Self::build(text, markup, measure, fonts, theme, window);
+        let mut layout = Self::build(text, markup, measure, theme, window);
         if let Some(pending) = layout.repair_pending() {
-            layout.repair_layout(text, markup, measure, fonts, theme, pending);
+            layout.repair_layout(text, markup, measure, theme, pending);
         }
         layout
     }
@@ -410,14 +402,13 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         measure: crate::markup::InlayMeasure<'_>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         byte_start: u32,
     ) {
         let started = crate::startup_profile::start();
-        self.repair_region(text, markup, measure, fonts, theme, byte_start, f32::MAX);
+        self.repair_region(text, markup, measure, theme, byte_start, f32::MAX);
         while let Some(pending) = self.repair_pending() {
-            self.repair_region(text, markup, measure, fonts, theme, pending, f32::MAX);
+            self.repair_region(text, markup, measure, theme, pending, f32::MAX);
             debug_assert!(
                 self.repair_pending().is_none_or(|next| next > pending),
                 "layout repair must make progress: pending {pending} -> {:?} (byte_size {})",
@@ -434,7 +425,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         measure: crate::markup::InlayMeasure<'_>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         byte_start: u32,
         height_budget: f32,
@@ -443,7 +433,6 @@ impl DocumentLayout {
             text,
             markup,
             measure,
-            fonts,
             theme,
             byte_start,
             height_budget,
@@ -503,7 +492,6 @@ impl DocumentLayout {
         text: &Text,
         markup: crate::markup::OverlaidMarkup<'_, '_>,
         measure: crate::markup::InlayMeasure<'_>,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         byte_start: u32,
         height_budget: f32,
@@ -546,7 +534,6 @@ impl DocumentLayout {
                 window,
                 text_count,
                 measure,
-                fonts,
                 theme,
             )
             .peekable(),
@@ -1052,7 +1039,6 @@ impl<'a> WindowedItems<'a> {
         window: std::ops::Range<u32>,
         text_end: u32,
         measure: crate::markup::InlayMeasure<'a>,
-        fonts: &'a FontCollection,
         theme: &'a crate::theme::Theme,
     ) -> Self {
         let inner_start = start_byte.max(window.start).min(window.end);
@@ -1066,7 +1052,6 @@ impl<'a> WindowedItems<'a> {
                 window.end,
                 trailing_line,
                 measure,
-                fonts,
                 theme,
             ),
             at: start_byte,
@@ -1118,7 +1103,6 @@ struct LayoutItems<'a> {
 
     trailing_line: bool,
     measure: crate::markup::InlayMeasure<'a>,
-    fonts: &'a FontCollection,
     theme: &'a crate::theme::Theme,
 }
 
@@ -1190,7 +1174,6 @@ impl<'a> LayoutItems<'a> {
         end_byte: u32,
         trailing_line: bool,
         measure: crate::markup::InlayMeasure<'a>,
-        fonts: &'a FontCollection,
         theme: &'a crate::theme::Theme,
     ) -> Self {
         let view = text.view();
@@ -1208,7 +1191,6 @@ impl<'a> LayoutItems<'a> {
             },
             trailing_line,
             measure,
-            fonts,
             theme,
         }
     }
@@ -1339,7 +1321,6 @@ impl Iterator for LayoutItems<'_> {
                 &hidden,
                 &mut items,
                 self.measure,
-                self.fonts,
                 self.theme,
                 self.markup,
             );
@@ -1378,7 +1359,6 @@ fn append_paragraph(
     hidden: &[Range<u32>],
     items: &mut Vec<LayoutElement>,
     measure: crate::markup::InlayMeasure<'_>,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::theme::Theme,
     markup: crate::markup::OverlaidMarkup<'_, '_>,
 ) {
@@ -1394,7 +1374,6 @@ fn append_paragraph(
         unit_end,
         final_unit,
         measure,
-        fonts.clone(),
         theme,
         markup,
         inline,
@@ -1412,7 +1391,6 @@ fn visual_lines<'a>(
     unit_end: u32,
     final_unit: bool,
     measure: crate::markup::InlayMeasure<'a>,
-    fonts: FontCollection,
     theme: &'a crate::theme::Theme,
     markup: crate::markup::OverlaidMarkup<'a, 'a>,
     inline: &[TextDecorationInterval],

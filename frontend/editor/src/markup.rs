@@ -497,7 +497,6 @@ pub(crate) trait InlayView: Send + Sync {
         previous: &dyn std::any::Any,
         store: &Store,
         ui: &UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     );
 
@@ -519,7 +518,6 @@ pub trait InlayEditing {
         previous: &Self,
         store: &Store,
         ui: &UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> bool;
 
@@ -578,7 +576,6 @@ where
         _previous: &dyn std::any::Any,
         _store: &Store,
         _ui: &UiCtx,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &crate::theme::Theme,
     ) {
     }
@@ -658,12 +655,11 @@ where
         previous: &dyn std::any::Any,
         store: &Store,
         ui: &UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         if let Some(previous) = previous.downcast_ref::<V>() {
             self.carry_live =
-                InlayEditing::adopt_from(&mut self.view, previous, store, ui, fonts, theme);
+                InlayEditing::adopt_from(&mut self.view, previous, store, ui, theme);
         }
     }
 
@@ -1864,7 +1860,6 @@ impl Markup {
         replacement: MarkupBuilder,
         store: &imba::store::Store,
         ui: &UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         // The STRUCTURE lane goes by key: an inlay must be correlated
@@ -1906,7 +1901,7 @@ impl Markup {
                     });
                     if let Some((key, _, prior)) = previous {
                         let mut view = inlay.view.clone_view();
-                        view.adopt_from(prior.view.as_any(), store, ui, fonts, theme);
+                        view.adopt_from(prior.view.as_any(), store, ui, theme);
                         inlay.view = Arc::from(view);
                         interval.key = *key;
                         return interval;

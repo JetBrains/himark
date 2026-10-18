@@ -120,8 +120,6 @@ impl imba::command::DynamicCommand for WashDocument {
         }
         ranges.sort_by_key(|range| range.start);
         ranges.dedup();
-
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let markup = editor::markup::MarkupId::mint();
         document.ensure_document_markup(markup);
@@ -137,7 +135,7 @@ impl imba::command::DynamicCommand for WashDocument {
                     documents::DocumentsCommand::Editor(entity, command),
                 )
             },
-            |fx| document.replace_markup(markup, tints, &ranges, store, ui, &fonts, &theme, fx),
+            |fx| document.replace_markup(markup, tints, &ranges, store, ui, &theme, fx),
         );
         documents::OpenDocuments::put_document(store, documents, self.document, document);
 
@@ -162,7 +160,6 @@ fn remove_washes(
     row: &LocationsFeedRow,
     fx: &mut imba::command::Fx<'_>,
 ) {
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     for (id, (markup, pushed)) in row.washes.iter() {
         let Some(mut document) = documents::OpenDocuments::document(store, documents, *id) else {
@@ -178,7 +175,7 @@ fn remove_washes(
                     documents::DocumentsCommand::Editor(entity, command),
                 )
             },
-            |fx| document.remove_markup(*markup, &changed, store, ui, &fonts, &theme, fx),
+            |fx| document.remove_markup(*markup, &changed, store, ui, &theme, fx),
         );
         documents::OpenDocuments::put_document(store, documents, *id, document);
     }

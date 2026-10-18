@@ -640,20 +640,20 @@ impl ParleyLine {
         cursor.geometry(&self.layout, 1.0).x0 as f32
     }
 
-    /// The caret's full geometry: (x, top, height) — x from the
-    /// strong caret, vertical hugging the CONTENT (the anchor run's
-    /// ascent/descent at the row's baseline), the way an editor
-    /// caret stands on its glyphs rather than filling the leaded
-    /// line box.
+    /// The caret's full geometry: (x, top, height) — the strong
+    /// caret rect, spanning the row's LINE BOX (the old road's
+    /// height-override semantics scaled tight rects to the line
+    /// box, and the approved caret height is that one; "the caret
+    /// is slightly short" has been filed before).
     pub fn caret_geometry(&self, byte: usize) -> (f32, f32, f32) {
         let cursor =
             parley::Cursor::from_byte_index(&self.layout, byte, parley::Affinity::Downstream);
         let rect = cursor.geometry(&self.layout, 1.0);
-        let x = rect.x0 as f32;
-        match self.content_vertical(byte) {
-            Some((top, bottom)) => (x, top, bottom - top),
-            None => (x, rect.y0 as f32, (rect.y1 - rect.y0) as f32),
-        }
+        (
+            rect.x0 as f32,
+            rect.y0 as f32,
+            (rect.y1 - rect.y0) as f32,
+        )
     }
 
     /// The content band at a byte: row baseline minus the anchor
@@ -716,12 +716,18 @@ impl ParleyLine {
         self.hit(x, y, false)
     }
 
-    fn hit(&self, x: f32, y: f32, clamp_first_row: bool) -> usize {
-        let y = match (clamp_first_row, self.layout.get(0).map(|line| *line.metrics())) {
-            (true, Some(metrics)) => y.clamp(
-                metrics.block_min_coord,
-                (metrics.block_max_coord - 0.01).max(metrics.block_min_coord),
-            ),
+    fn hit(&self, x: f32, y: f32, clamp_content: bool) -> usize {
+        let y = match (clamp_content, self.layout.get(0).map(|line| *line.metrics())) {
+            (true, Some(first)) => {
+                // Into the CONTENT rows: below the last text-bearing
+                // row lies only the phantom row a trailing newline
+                // mints, and a hit there answers TEXT END.
+                let bottom = self.content_height();
+                y.clamp(
+                    first.block_min_coord,
+                    (bottom - 0.01).max(first.block_min_coord),
+                )
+            }
             _ => y,
         };
         parley::Cursor::from_point(&self.layout, x, y).index()

@@ -184,7 +184,6 @@ impl EditorViewport {
         stripes: Option<crate::diff::DiffId>,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
         let state = document.editor(editor);

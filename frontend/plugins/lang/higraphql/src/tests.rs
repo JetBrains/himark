@@ -26,7 +26,6 @@ fn languages() -> editor::reparse::SyntaxLanguages {
 fn parsed() -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
@@ -35,7 +34,6 @@ fn parsed() -> editor::document::Document {
         &registry,
         store,
         ui,
-        &fonts,
         &theme,
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, registry)
@@ -45,7 +43,6 @@ fn parsed() -> editor::document::Document {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );

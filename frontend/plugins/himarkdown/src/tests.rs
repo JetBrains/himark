@@ -7,10 +7,9 @@ use super::*;
 fn headers_align_right_center_left_by_level() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = test_fonts();
     let theme = test_theme();
     let source = "# One\n\n## Two\n\n### Three\n";
-    let (document, _) = markdown_document(source, store, ui, &fonts, &theme);
+    let (document, _) = markdown_document(source, store, ui, &theme);
     let resolved = |line: &str| {
         let start = source.find(line).expect("line") as u32;
         let range = start..start + line.len() as u32;
@@ -29,10 +28,6 @@ fn headers_align_right_center_left_by_level() {
         h1.font_size,
         h3.font_size
     );
-}
-
-fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
 }
 
 fn test_theme() -> editor::theme::Theme {
@@ -58,7 +53,6 @@ fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
 
 fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
-        editor::embedded_fonts::source(),
         test_theme(),
     ))
 }
@@ -69,7 +63,6 @@ fn seed_complete(
     mut document: Document,
     width: f32,
 ) -> (documents::DocumentId, EditorIdView, EditorId) {
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
 
     store.put(::editor::env::Enrichers(std::sync::Arc::new(
         markdown_enrichers(editor::enrich::Enrichers::new()),
@@ -81,7 +74,6 @@ fn seed_complete(
         &[],
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -117,7 +109,6 @@ fn resize_entity(
         anchor,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut batch.effects(),
     );
@@ -155,7 +146,6 @@ fn apply_outcome(store: &mut Store, document_id: documents::DocumentId, outcome:
         outcome,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut batch.effects(),
     );
@@ -190,7 +180,7 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     let ui = ::editor::test_document::test_ui();
     let sample = include_str!("../../demo/sample.md");
     let source = sample.repeat(120);
-    let document = document_from_markdown(&source, store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(&source, store, ui, &test_theme());
 
     let mut store = Store::new();
     let (document_id, entity_id, editor) = seed_complete(&mut store, &ui, document, 900.0);
@@ -250,7 +240,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
     let ui = ::editor::test_document::test_ui();
     let sample = include_str!("../../demo/sample.md");
     let source = sample.repeat(120);
-    let document = document_from_markdown(&source, store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(&source, store, ui, &test_theme());
 
     let mut store = Store::new();
     let (document_id, entity_id, editor) = seed_complete(&mut store, &ui, document, 900.0);
@@ -301,7 +291,7 @@ fn resize_repair_timing_probe() {
     let source = sample.repeat(1409);
 
     let started = std::time::Instant::now();
-    let document = document_from_markdown(&source, store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(&source, store, ui, &test_theme());
     eprintln!("document_from_markdown: {:?}", started.elapsed());
 
     let mut store = Store::new();
@@ -359,7 +349,6 @@ fn content_only_edits_rebuild_inline_markup() {
         "some **bold** words\n",
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
@@ -492,7 +481,7 @@ fn a_focused_table_cell_presents_structural_commands() {
     use imba::View;
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, entity, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -560,7 +549,7 @@ fn nested_task_items_each_get_their_checkbox() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = "* [ ] Licensing #P0\n\t* [ ] product code\n\t* [x] license delivery\n* [ ] Performance\n\t* [ ] diagnostics latency\n\t    * [x] deep nesting\n";
-    let document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, store, ui, &test_theme());
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     assert_eq!(
@@ -569,7 +558,7 @@ fn nested_task_items_each_get_their_checkbox() {
         "one checkbox inlay per task item, nested included"
     );
 
-    let (_, blocks) = markdown_document(source, store, ui, &test_fonts(), &test_theme());
+    let (_, blocks) = markdown_document(source, store, ui, &test_theme());
     let items: Vec<_> = blocks
         .iter()
         .filter(|block| block.marks.list_item)
@@ -589,7 +578,7 @@ fn inlay_commands_route_by_layer() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
-    let mut document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
+    let mut document = document_from_markdown(source, store, ui, &test_theme());
     let byte_count = document.text().byte_count() as u32;
     let test_markup = editor::markup::MarkupId::mint();
     document.ensure_document_markup(test_markup);
@@ -602,12 +591,10 @@ fn inlay_commands_route_by_layer() {
                 100.0,
                 store,
                 ui,
-                editor::embedded_fonts::source(),
             ),
         ),
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -629,7 +616,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\nafter\n";
     let block_len = source.find("\n\n").expect("blank line") as u32 + 1;
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let inlay_range = |store: &Store| {
@@ -707,7 +694,6 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
         outcome,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -725,7 +711,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n## Tail Heading\n\n| x | y |\n|---|---|\n| 3 | 4 |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -760,7 +746,6 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
         outcome,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -799,7 +784,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
     let ui = ::editor::test_document::test_ui();
     let source = "| Unicode | emoji and combining marks |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -892,7 +877,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
     let ui = ::editor::test_document::test_ui();
     let source = "| head | combining |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -978,7 +963,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
     let ui = ::editor::test_document::test_ui();
     let source = "| head | фывафыва прол джлол |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -1036,7 +1021,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| left | right |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -1146,7 +1131,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
 
     let mut store = Store::new();
     let document =
-        document_from_markdown("alpha\n\nbeta", &store, ui, &test_fonts(), &test_theme());
+        document_from_markdown("alpha\n\nbeta", &store, ui, &test_theme());
     let (document_id, _, editor) = seed_complete(&mut store, &ui, document, 700.0);
     {
         let mut document =
@@ -1173,7 +1158,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
     );
 
     let mut store = Store::new();
-    let document = document_from_markdown("gamma\n\n", &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown("gamma\n\n", &store, ui, &test_theme());
     let (document_id, view, editor) = seed_complete(&mut store, &ui, document, 700.0);
     {
         let mut document =
@@ -1253,7 +1238,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1342,7 +1327,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1402,7 +1387,7 @@ fn breaking_the_delimiter_dissolves_the_widget() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     assert_eq!(
         documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -1427,7 +1412,6 @@ fn breaking_the_delimiter_dissolves_the_widget() {
             ]),
             &store,
             ui,
-            &test_fonts(),
             &test_theme(),
             &mut batch.effects(),
         );
@@ -1458,7 +1442,7 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
 
     let source = "| a | b |\n|---|---|\n| left | right |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1483,7 +1467,6 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
             ]),
             &store,
             ui,
-            &test_fonts(),
             &test_theme(),
             &mut batch.effects(),
         );
@@ -1521,7 +1504,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1615,7 +1598,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
     let ui = ::editor::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
-    let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, &store, ui, &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     let key = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1694,11 +1677,10 @@ fn a_table_replaces_all_of_its_source_lines() {
 
     let height = |source: &str| {
         editor::editor_view::EditorView::complete(
-            document_from_markdown(source, store, ui, &test_fonts(), &test_theme()),
+            document_from_markdown(source, store, ui, &test_theme()),
             700.0,
             store,
             ui,
-            &test_fonts(),
             &test_theme(),
         )
         .content_height()
@@ -1719,7 +1701,7 @@ fn a_markdown_table_becomes_an_instead_inlay() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = "before\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter\n";
-    let document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(source, store, ui, &test_theme());
     let byte_count = document.text().byte_count() as u32;
 
     let table_start = source.find('|').expect("table") as u32;
@@ -1737,7 +1719,6 @@ fn a_markdown_table_becomes_an_instead_inlay() {
         "a | b | c\njust prose\n",
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let count = plain.all_inlays_in(0..64).len();
@@ -1752,7 +1733,6 @@ fn late_reparse_outcomes_rebase_over_typing() {
         "plain words here\n",
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
@@ -1806,7 +1786,6 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let mut document = editor::document::Document::new(text.clone(), editor::markup::Markup::new());
 
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let document_id = documents::OpenDocuments::register(
         &mut store,
         test_docs(),
@@ -1838,7 +1817,6 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         600.0,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     assert!(
@@ -1890,7 +1868,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     );
 
     let tree = parse_markdown(&text);
-    let markup = markup_builder_from_tree(&text, &tree, &test_fonts(), &test_theme()).finish();
+    let markup = markup_builder_from_tree(&text, &tree, &test_theme()).finish();
     let sites = MarkdownLanguage.sites_impl(&text, &tree);
     let mut document = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
@@ -1901,7 +1879,6 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         &sites,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut parse_batch.effects(),
     );
@@ -1925,7 +1902,6 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         600.0,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let cx = test_cx();
@@ -1962,7 +1938,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
     let ui = ::editor::test_document::test_ui();
     let source = format!("# heading\n\n{}\n", "words ".repeat(40_000));
     let mut store = Store::new();
-    let document = document_from_markdown(&source, &store, ui, &test_fonts(), &test_theme());
+    let document = document_from_markdown(&source, &store, ui, &test_theme());
     let (_, editor, _) = seed_complete(&mut store, &ui, document.clone(), 200.0);
 
     let mut view = editor;
@@ -1978,7 +1954,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
                 .expect("document");
         document.set_caret(entity.editor(), boundary);
 
-        document.refresh_unhide(entity.editor(), &store, ui, &test_fonts(), &test_theme());
+        document.refresh_unhide(entity.editor(), &store, ui, &test_theme());
         documents::OpenDocuments::put_document(
             &mut store,
             entity.documents(),
@@ -2066,7 +2042,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
     let source = "# Título 🚀 émphasis\n\npáragraph with **böld** and 😀 emoji\n\n```\ncodé blöck 🧬\n```\n\n> quöte with 🎯 target\n\n## Anöther séction 🌍\n\nfinal wörds 🏁\n"
         .repeat(8);
     let mut store = Store::new();
-    let mut document = document_from_markdown(&source, &store, ui, &test_fonts(), &test_theme());
+    let mut document = document_from_markdown(&source, &store, ui, &test_theme());
     let narrow_editor = document.add_editor(
         160.0,
         None,
@@ -2074,7 +2050,6 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2085,7 +2060,6 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2165,7 +2139,6 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         outcome,
                         &store,
                         ui,
-                        &test_fonts(),
                         &test_theme(),
                         &mut local.effects(),
                     );
@@ -2213,7 +2186,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let document =
-        document_from_markdown("hello\n\nworld", &store, ui, &test_fonts(), &test_theme());
+        document_from_markdown("hello\n\nworld", &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
 
     let mut view = editor;
@@ -2280,7 +2253,6 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
         idle,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut idle_batch.effects(),
     );
@@ -2294,7 +2266,6 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
 fn enter_and_tab_assist_through_the_command_path() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     store.put(::editor::env::Themes(test_theme()));
     store.put(::editor::env::Parsers(test_languages()));
     let languages = test_languages();
@@ -2304,7 +2275,6 @@ fn enter_and_tab_assist_through_the_command_path() {
         &languages,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let editor = document.add_editor(
@@ -2314,7 +2284,6 @@ fn enter_and_tab_assist_through_the_command_path() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2337,7 +2306,6 @@ fn enter_and_tab_assist_through_the_command_path() {
             outcome,
             &imba::store::Store::new(),
             ::editor::test_document::test_ui(),
-            &test_fonts(),
             &test_theme(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -2372,7 +2340,6 @@ fn enter_and_tab_assist_through_the_command_path() {
 fn multi_caret_enter_continues_every_item() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     store.put(::editor::env::Themes(test_theme()));
     store.put(::editor::env::Parsers(test_languages()));
     let languages = test_languages();
@@ -2382,7 +2349,6 @@ fn multi_caret_enter_continues_every_item() {
         &languages,
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let editor = document.add_editor(
@@ -2392,7 +2358,6 @@ fn multi_caret_enter_continues_every_item() {
         &[],
         &store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2428,7 +2393,6 @@ fn sections_emit_outline_items_at_parse() {
         &languages,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, languages)
@@ -2438,7 +2402,6 @@ fn sections_emit_outline_items_at_parse() {
         outcome,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -2474,7 +2437,7 @@ fn document_from_markdown_populates_the_full_outline() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let titles = |src: &str| -> Vec<String> {
-        let document = document_from_markdown(src, store, ui, &test_fonts(), &test_theme());
+        let document = document_from_markdown(src, store, ui, &test_theme());
         document
             .outline_items()
             .into_iter()
@@ -2497,7 +2460,6 @@ fn document_from_markdown_populates_the_full_outline() {
         "# One\n\n## Two\n\n### Three\n",
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
     );
     let outcome = editor::reparse::ReparseWork::capture(&document, languages)
@@ -2507,7 +2469,6 @@ fn document_from_markdown_populates_the_full_outline() {
         outcome,
         store,
         ui,
-        &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );

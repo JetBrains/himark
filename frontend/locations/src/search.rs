@@ -127,7 +127,6 @@ impl SearchView {
                 ForestSearcher::default(),
                 store,
                 ui,
-                editor::env::Fonts::of(store),
             )
             .with_folds(),
             focus: SearchArea::Input,
@@ -740,13 +739,11 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) ->
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
-    let fonts = hikit::fonts::source();
     let mut input = EditorView::of_document(
         document,
         600.0,
         store,
         ui,
-        &fonts(),
         &editor::theme::Theme::embedded(),
     );
     input.set_caret(text.len() as u32);

@@ -18,7 +18,7 @@ ahp-chat = { path = "../../ahp-chat" }
 himark = { path = "../../himark" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 text = { path = "../../text" }
 
 [dev-dependencies]

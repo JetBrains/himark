@@ -16,7 +16,6 @@ fn theme() -> editor::theme::Theme {
 fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
     let mut document =
         editor::document::Document::new(Text::from_string_exact(""), editor::markup::Markup::new())
@@ -35,7 +34,6 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -45,7 +43,6 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         &operation::operation::Operation::insert_in(len, 0, "# hi"),
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -58,7 +55,6 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         outcome,
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -82,9 +78,8 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
 fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let source = "intro\n\n```rust\nfn main() { let x = 1; }\nfn other() {}\n```\n\noutro\n";
-    let mut document = document_from_markdown(source, store, ui, &fonts, &theme());
+    let mut document = document_from_markdown(source, store, ui, &theme());
     let editor = document.add_editor(
         700.0,
         None,
@@ -92,7 +87,6 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         &[],
         store,
         ui,
-        &fonts,
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -124,7 +118,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         .expect("parse")
         .run_reparse();
     let mut batch = imba::effect::Batch::new();
-    document.apply_reparse_outcome(outcome, store, ui, &fonts, &theme(), &mut batch.effects());
+    document.apply_reparse_outcome(outcome, store, ui, &theme(), &mut batch.effects());
 
     let cx = test_cx_for_probe();
     for effect in himark::test_support::surviving_launches(batch) {
@@ -142,7 +136,6 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         700.0,
         store,
         ui,
-        &fonts,
         &theme(),
     );
     let fresh = fresh_view.element_heights();
@@ -151,7 +144,6 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
 
 fn test_cx_for_probe() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
-        editor::embedded_fonts::source(),
         editor::theme::Theme::embedded(),
     ))
 }
@@ -179,7 +171,6 @@ impl editor::reparse::SyntaxLanguage for RustLike {
         _changed: &[std::ops::Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
-        _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &editor::theme::Theme,
     ) {
         let len = range.end - range.start;

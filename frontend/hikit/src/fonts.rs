@@ -4,43 +4,6 @@
 #[cfg(not(target_os = "emscripten"))]
 use std::sync::Arc;
 
-use editor::FontSource;
-#[cfg(not(target_os = "emscripten"))]
-use skia_safe::{textlayout::FontCollection, FontMgr};
-
-pub fn source() -> FontSource {
-    #[cfg(not(target_os = "emscripten"))]
-    {
-        Arc::new(|| {
-            thread_local! {
-                static COLLECTION: FontCollection = {
-                    let mut collection = FontCollection::new();
-                    // The bundled code font answers BEFORE the
-                    // platform: deterministic bytes on every OS, and
-                    // the family named by the theme always exists.
-                    let manager = FontMgr::new();
-                    let mut bundled = skia_safe::textlayout::TypefaceFontProvider::new();
-                    for cut in editor::embedded_fonts::code_font_cuts() {
-                        if let Some(typeface) =
-                            manager.new_from_data(skia_safe::Data::new_copy(cut), None)
-                        {
-                            bundled.register_typeface(typeface, None);
-                        }
-                    }
-                    collection.set_asset_font_manager(Some(bundled.into()));
-                    collection.set_default_font_manager(manager, None);
-                    collection
-                };
-            }
-            COLLECTION.with(Clone::clone)
-        })
-    }
-    #[cfg(target_os = "emscripten")]
-    {
-        editor::embedded_fonts::source()
-    }
-}
-
 pub(crate) struct ChromeTypeface(pub skia_safe::Typeface);
 
 pub(crate) struct ChromeTextTypeface(pub skia_safe::Typeface);

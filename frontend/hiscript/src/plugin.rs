@@ -470,9 +470,8 @@ fn land(
                     continue;
                 }
                 let text_before = document.text().clone();
-                let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
-                document.edit(&operation, store, ui, &fonts, &theme, fx);
+                document.edit(&operation, store, ui, &theme, fx);
                 if let Some(parsers) = ::editor::env::Parsers::of(store) {
                     document.launch_reparse(parsers, fx);
                 }

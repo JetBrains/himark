@@ -14,10 +14,6 @@ fn test_docs(store: &mut Store) -> imba::store::Id<documents::OpenDocuments> {
     .documents()
 }
 
-fn fonts() -> skia_safe::textlayout::FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
-}
-
 fn theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
 }
@@ -83,9 +79,8 @@ fn fetch_caller(path: Vec<String>, content: &'static str) -> imba::effect::Effec
 fn host(source: &str) -> (Store, Document) {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     store.put(::editor::env::Parsers(languages()));
-    let document = crate::document_from_markdown(source, &store, ui, &fonts(), &theme());
+    let document = crate::document_from_markdown(source, &store, ui, &theme());
     (store, document)
 }
 
@@ -117,11 +112,9 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 
 fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     let ui = ::editor::test_document::test_ui();
-    let fonts = fonts();
     let theme = theme();
     let fresh = {
         let cx = EnrichCx {
-            fonts: &fonts,
             theme: &theme,
             caller,
             languages: ::editor::env::Parsers::of(store),
@@ -131,8 +124,8 @@ fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller
     };
     let mut entry = over.previous.clone();
     if !fresh.changed.is_empty() {
-        entry.splice(&fresh.changed, fresh.replacement, store, ui, &fonts, &theme);
-        FenceEmbedEnricher.install(store, ui, &mut entry, &fresh.changed, &fonts, &theme);
+        entry.splice(&fresh.changed, fresh.replacement, store, ui, &theme);
+        FenceEmbedEnricher.install(store, ui, &mut entry, &fresh.changed, &theme);
     }
     entry
 }
@@ -219,7 +212,6 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
         720.0,
         &store,
         ui,
-        &fonts(),
         &theme(),
     )
     .content_height();
@@ -262,7 +254,6 @@ fn an_open_target_dedups_to_the_same_document() {
         "fn main() {}\n",
         &store,
         ::editor::test_document::test_ui(),
-        &fonts(),
         &theme(),
     );
     let opened = documents::OpenDocuments::register(
@@ -391,11 +382,10 @@ fn a_line_fragment_windows_the_embed() {
     assert_eq!(shown, "line two\nline three", "the window's lines only");
 
     let whole = editor::editor_view::EditorView::complete(
-        crate::document_from_markdown("x", &store, ui, &fonts(), &theme()),
+        crate::document_from_markdown("x", &store, ui, &theme()),
         720.0,
         &store,
         ui,
-        &fonts(),
         &theme(),
     );
     let one_line = whole.content_height().max(1.0);

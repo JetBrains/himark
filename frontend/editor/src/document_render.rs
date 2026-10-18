@@ -20,7 +20,6 @@ impl crate::document::Document {
         focused: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let viewport = EditorViewport::build(
@@ -32,10 +31,9 @@ impl crate::document::Document {
             None,
             store,
             ui,
-            fonts,
             theme,
         );
-        self.paint_with(editor, &viewport, canvas, focused, store, ui, fonts, theme);
+        self.paint_with(editor, &viewport, canvas, focused, store, ui, theme);
     }
 
     pub(crate) fn paint_with(
@@ -46,23 +44,21 @@ impl crate::document::Document {
         focused: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         viewport.paint(canvas, theme);
-        if let Some(placeholder) = self.placeholder_line(editor, fonts, theme) {
+        if let Some(placeholder) = self.placeholder_line(editor, theme) {
             placeholder.paint(canvas, 0.0);
         }
         let text_focused = focused && self.focus(editor) == crate::editor_view::EditorFocus::Text;
         if text_focused {
-            self.paint_carets(editor, canvas, store, ui, fonts, theme);
+            self.paint_carets(editor, canvas, store, ui, theme);
         }
     }
 
     pub(crate) fn placeholder_line(
         &self,
         editor: crate::editor::EditorId,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<ShapedLine> {
         if self.text().byte_count() != 0 {
@@ -85,7 +81,6 @@ impl crate::document::Document {
         canvas: &Canvas,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let state = self.editor(editor);
@@ -100,7 +95,7 @@ impl crate::document::Document {
         let mut shaped_line: Option<(u32, ShapedLine)> = None;
 
         if let Some((caret_x, caret_top, caret_height)) =
-            self.empty_caret_geometry(editor, store, ui, fonts, theme)
+            self.empty_caret_geometry(editor, store, ui, theme)
         {
             canvas.draw_rect(
                 Rect::from_xywh(
@@ -150,7 +145,6 @@ impl crate::document::Document {
                         true,
                         store,
                         ui,
-                        fonts,
                         theme,
                     ),
                 ));
@@ -179,14 +173,13 @@ impl crate::document::Document {
         editor: crate::editor::EditorId,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32)> {
         if self.text().byte_count() != 0 || !self.editor(editor).layout.is_empty() {
             return None;
         }
         Some(
-            self.shape_line(editor, 0..0, 0.0, true, store, ui, fonts, theme)
+            self.shape_line(editor, 0..0, 0.0, true, store, ui, theme)
                 .caret_geometry(0),
         )
     }
@@ -199,7 +192,6 @@ impl crate::document::Document {
         down: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(u32, f32)> {
         let layout = &self.editor(editor).layout;
@@ -214,7 +206,6 @@ impl crate::document::Document {
                 true,
                 store,
                 ui,
-                fonts,
                 theme,
             )
             .x_at_byte(offset)
@@ -239,7 +230,7 @@ impl crate::document::Document {
             return None;
         }
         let target =
-            self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, fonts, theme)?;
+            self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, theme)?;
         Some((target, x))
     }
 
@@ -249,11 +240,10 @@ impl crate::document::Document {
         byte: u32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32, f32)> {
         let layout = &self.editor(editor).layout;
-        if let Some((x, top, height)) = self.empty_caret_geometry(editor, store, ui, fonts, theme) {
+        if let Some((x, top, height)) = self.empty_caret_geometry(editor, store, ui, theme) {
             return Some((x, top, 2.0, height.max(18.0)));
         }
         let (cursor, document_y, byte_start) = layout.cursor_at_caret(byte)?;
@@ -288,7 +278,6 @@ impl crate::document::Document {
             true,
             store,
             ui,
-            fonts,
             theme,
         );
 
@@ -302,7 +291,6 @@ impl crate::document::Document {
         range: Range<u32>,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<(f32, f32, f32, f32)> {
         let mut rects = Vec::new();
@@ -357,7 +345,7 @@ impl crate::document::Document {
                     let clamped = line.start.max(start)..line.end.min(end);
                     if clamped.start < clamped.end {
                         let shaped =
-                            self.shape_line(editor, line, 0.0, true, store, ui, fonts, theme);
+                            self.shape_line(editor, line, 0.0, true, store, ui, theme);
                         for rect in shaped.rects_for_range(clamped) {
                             rects.push((
                                 rect.left,
@@ -388,7 +376,6 @@ impl crate::document::Document {
         scroll_y: f32,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<u32> {
         let layout = &self.editor(editor).layout;
@@ -468,7 +455,6 @@ impl crate::document::Document {
         map_utf16: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ShapedLine {
         let mut inline = Vec::new();
@@ -502,7 +488,6 @@ mod tests {
     fn placeholder_line_exists_only_while_document_is_empty() {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        let fonts = crate::test_document::test_fonts_collection().clone();
         let theme = crate::theme::Theme::embedded();
         let mut document = crate::document::Document::new(
             text::text::Text::from_string_exact(""),
@@ -515,26 +500,24 @@ mod tests {
             &[],
             store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        document.set_placeholder(editor, "Message the agent", &fonts, &theme);
+        document.set_placeholder(editor, "Message the agent", &theme);
 
         let placeholder_height = document.content_height(editor);
         assert!(placeholder_height > 0.0, "the placeholder reserves its row");
 
-        assert!(document.placeholder_line(editor, &fonts, &theme).is_some());
+        assert!(document.placeholder_line(editor, &theme).is_some());
         document.insert(
             editor,
             "M",
             store,
             ui,
-            &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        assert!(document.placeholder_line(editor, &fonts, &theme).is_none());
+        assert!(document.placeholder_line(editor, &theme).is_none());
         assert_eq!(
             document.content_height(editor),
             placeholder_height,

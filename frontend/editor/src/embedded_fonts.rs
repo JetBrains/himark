@@ -3,7 +3,6 @@
 
 use std::sync::OnceLock;
 
-use skia_safe::textlayout::{FontCollection, TypefaceFontProvider};
 use skia_safe::{FontMgr, Typeface};
 
 #[cfg(not(target_os = "emscripten"))]
@@ -44,7 +43,12 @@ pub const FAMILY: &str = "Noto Sans";
 pub const FAMILY: &str = "JetBrains Mono";
 
 #[cfg(target_os = "emscripten")]
-pub fn install(typeface: Typeface) {
+pub fn install_bytes(bytes: Vec<u8>) {
+    let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+    imba::shape::register_font(bytes);
+    let typeface = FontMgr::new()
+        .new_from_data(skia_safe::Data::new_copy(bytes), None)
+        .expect("the web font parses");
     assert!(
         TYPEFACE.set(typeface).is_ok(),
         "the web typeface was installed more than once"
@@ -69,21 +73,4 @@ pub fn typeface() -> Typeface {
             .expect("the web font must load before the application starts")
             .clone()
     }
-}
-
-pub fn collection() -> FontCollection {
-    let mut provider = TypefaceFontProvider::new();
-    provider.register_typeface(typeface(), Some(FAMILY));
-    let mut collection = FontCollection::new();
-    collection.set_default_font_manager(FontMgr::from(provider), Some(FAMILY));
-    collection
-}
-
-pub fn source() -> crate::FontSource {
-    std::sync::Arc::new(|| {
-        thread_local! {
-            static COLLECTION: FontCollection = collection();
-        }
-        COLLECTION.with(Clone::clone)
-    })
 }

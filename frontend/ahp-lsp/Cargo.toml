@@ -13,5 +13,5 @@ himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 imba = { path = "../imba" }
 rpds = "1"
 serde_json = "1"
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 text = { path = "../text" }

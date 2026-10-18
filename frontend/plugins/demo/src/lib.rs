@@ -12,20 +12,18 @@ const SAMPLE_REPETITIONS: usize = 1_409;
 pub fn monster_document(
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> Document {
     let (mut document, blocks) =
-        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), store, ui, fonts, theme);
+        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), store, ui, theme);
 
-    inlay::add_badges(&mut document, &blocks, store, ui, fonts, theme);
+    inlay::add_badges(&mut document, &blocks, store, ui, theme);
     document
 }
 
 pub fn wall_of_text_document(
     _store: &imba::store::Store,
     _ui: &imba::ui::UiCtx,
-    _fonts: &skia_safe::textlayout::FontCollection,
     _theme: &editor::theme::Theme,
 ) -> Document {
     wall_of_text(1_000_000)

@@ -467,7 +467,6 @@ impl OpenDocuments {
         id: DiffId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let mut released: Option<DiffRecord> = None;
         store.update_entity(documents, |docs| {
@@ -494,7 +493,6 @@ impl OpenDocuments {
                 &[],
                 store,
                 ui,
-                &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             );
@@ -506,7 +504,6 @@ impl OpenDocuments {
                 &[],
                 store,
                 ui,
-                &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             );
@@ -783,13 +780,12 @@ pub(crate) fn land_diff_markup(
     else {
         return;
     };
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     let Some(mut document) = OpenDocuments::document(store, documents, record.target) else {
         return;
     };
     document.install_diff_markup(
-        id, markup, changed, derived_at, store, ui, &fonts, &theme, fx,
+        id, markup, changed, derived_at, store, ui, &theme, fx,
     );
     OpenDocuments::put_document(store, documents, record.target, document);
 }

@@ -68,7 +68,6 @@ pub(crate) type DocumentBuild = Box<
     dyn FnOnce(
             &imba::store::Store,
             &UiCtx,
-            &skia_safe::textlayout::FontCollection,
             &::editor::theme::Theme,
         ) -> Document
         + Send
@@ -809,11 +808,10 @@ pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::env::Workshop>
 
 impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
     async fn handle(&self, effect: OpenEffect) -> AppCommand {
-        let fonts = self.0.fonts();
         let theme = self.0.theme();
         let document = self
             .0
-            .with_ctx(|store, ui| (effect.build)(store, ui, &fonts, &theme));
+            .with_ctx(|store, ui| (effect.build)(store, ui, &theme));
         crate::shell::opened(
             effect.window,
             OpenedDocument {

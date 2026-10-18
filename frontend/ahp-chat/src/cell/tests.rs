@@ -36,7 +36,6 @@ fn resolved(before: &str, after: &str) -> Cell {
         &(std::sync::Arc::new(myersdiff::Myers) as std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
         &store,
         &ui,
-        &env::ui_collection(&store, &ui),
         &env::Themes::of(&store),
     );
     let mut batch = imba::effect::Batch::new();

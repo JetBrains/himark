@@ -185,7 +185,7 @@ impl Peeker {
             .collect();
         let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
         let mut input =
-            editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
+            editor::editor_view::EditorView::input(600.0, store, ui);
         input.focus_text();
 
         let mut peeker = Self {

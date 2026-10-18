@@ -3,10 +3,6 @@
 
 use super::*;
 
-fn fonts() -> skia_safe::textlayout::FontCollection {
-    crate::test_document::test_fonts_collection().clone()
-}
-
 fn run_effect(
     effect: imba::effect::AnyEffect<SplitDiffCommand>,
     workshop: &std::sync::Arc<crate::env::Workshop>,
@@ -43,7 +39,6 @@ fn run_effect(
 
 fn test_workshop() -> std::sync::Arc<crate::env::Workshop> {
     std::sync::Arc::new(crate::env::Workshop::new(
-        std::sync::Arc::new(fonts),
         crate::theme::Theme::embedded(),
     ))
 }
@@ -129,7 +124,6 @@ fn pair(left: &str, right: &str, width: f32) -> SplitDiffView {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
-    let f = fonts();
     let mut left_document = crate::test_document::plain_document(left);
     let left_editor = left_document.add_editor(
         width,
@@ -138,7 +132,6 @@ fn pair(left: &str, right: &str, width: f32) -> SplitDiffView {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -150,7 +143,6 @@ fn pair(left: &str, right: &str, width: f32) -> SplitDiffView {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -874,7 +866,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
-    let f = fonts();
     let mut a = crate::test_document::plain_document("alpha\nbeta\ngamma\n");
     let editor_a = a.add_editor(
         360.0,
@@ -883,7 +874,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -895,7 +885,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -906,7 +895,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -918,7 +906,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1000,7 +987,6 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1024,7 +1010,6 @@ fn the_plain_repair_lane_skips_pair_managed_halves() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
-    let f = fonts();
     let mut wall = String::new();
     for line in 0..4000u32 {
         wall.push_str(&format!("line {line}: lorem ipsum dolor sit amet\n"));
@@ -1039,7 +1024,6 @@ fn the_plain_repair_lane_skips_pair_managed_halves() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut discarded.effects(),
     );
@@ -1050,7 +1034,6 @@ fn the_plain_repair_lane_skips_pair_managed_halves() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut discarded.effects(),
     );
@@ -1064,7 +1047,6 @@ fn the_plain_repair_lane_skips_pair_managed_halves() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut batch.effects(),
     );
@@ -1319,7 +1301,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
-    let f = fonts();
     let mut left_source = String::new();
     for line in 0..300u32 {
         left_source.push_str(&format!("line {line}: the quiet unchanged middle\n"));
@@ -1348,7 +1329,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut throwaway.effects(),
     );
@@ -1358,7 +1338,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut throwaway.effects(),
     );
@@ -1370,7 +1349,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         &[left_marks],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1381,7 +1359,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         &[hunks, right_marks],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1456,7 +1433,6 @@ fn a_width_mismatched_pane_idles_instead_of_livelocking() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
-    let f = fonts();
     let mut left_document = crate::test_document::plain_document("alpha\nbeta\n");
     let left_editor = left_document.add_editor(
         400.0,
@@ -1465,7 +1441,6 @@ fn a_width_mismatched_pane_idles_instead_of_livelocking() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1477,7 +1452,6 @@ fn a_width_mismatched_pane_idles_instead_of_livelocking() {
         &[],
         store,
         ui,
-        &f,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );

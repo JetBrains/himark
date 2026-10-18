@@ -12,7 +12,6 @@ pub fn document_for(
     source: &str,
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
@@ -29,11 +28,10 @@ pub fn document_for(
         languages,
         store,
         ui,
-        fonts,
         theme,
     );
     if let Some(enrichers) = ::editor::env::Enrichers::of(store) {
-        document.enrich_now(&enrichers, store, ui, fonts, theme);
+        document.enrich_now(&enrichers, store, ui, theme);
     }
     document
 }
@@ -62,7 +60,6 @@ impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandl
             })
             .await
             .ok_or_else(|| "the build was cancelled".to_owned())??;
-        let fonts = self.workshop.fonts();
         let theme = self.workshop.theme();
         Ok(self.workshop.with_ctx(|store, ui| {
             crate::file_edit::build_file_edit(
@@ -72,7 +69,6 @@ impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandl
                 &self.diff_policy,
                 store,
                 ui,
-                &fonts,
                 &theme,
             )
         }))
@@ -119,7 +115,6 @@ impl DiffOpenShop {
                         text.as_deref().unwrap_or(""),
                         store,
                         ui,
-                        &self.workshop.fonts(),
                         &self.workshop.theme(),
                     )
                 });
@@ -172,7 +167,6 @@ pub struct BuildDocumentHandler(
 
 impl EffectHandler<documents::BuildDocumentEffect> for BuildDocumentHandler {
     async fn handle(&self, effect: documents::BuildDocumentEffect) -> documents::BuiltDocument {
-        let fonts = self.0.fonts();
         let theme = self.0.theme();
         let document = self.0.with_ctx(|store, ui| {
             document_for(
@@ -181,7 +175,6 @@ impl EffectHandler<documents::BuildDocumentEffect> for BuildDocumentHandler {
                 &effect.text,
                 store,
                 ui,
-                &fonts,
                 &theme,
             )
         });

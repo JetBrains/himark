@@ -27,7 +27,6 @@ impl Document {
         animate: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -104,7 +103,7 @@ impl Document {
                 .unwrap_or_default();
             if !standing.is_empty() {
                 for key in standing {
-                    self.remove_inlay(key, store, ui, fonts, theme, fx);
+                    self.remove_inlay(key, store, ui, theme, fx);
                 }
                 return;
             }
@@ -114,11 +113,11 @@ impl Document {
             return;
         };
         let Some(inlay) =
-            self.built_before_card(editor, base, base_span, animate, store, ui, fonts, theme)
+            self.built_before_card(editor, base, base_span, animate, store, ui, theme)
         else {
             return;
         };
-        self.push_inlay(markup_id, anchor, inlay, store, ui, fonts, theme, fx);
+        self.push_inlay(markup_id, anchor, inlay, store, ui, theme, fx);
     }
 
     /// Build ONE before-card (the base side's deleted lines, framed as
@@ -134,7 +133,6 @@ impl Document {
         animate: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<Inlay> {
         if base_span.start >= base_span.end {
@@ -158,7 +156,6 @@ impl Document {
             &[],
             store,
             ui,
-            fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -171,7 +168,6 @@ impl Document {
             &[wash_id],
             store,
             ui,
-            fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -202,7 +198,6 @@ impl Document {
         diff: crate::diff::DiffId,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -266,12 +261,12 @@ impl Document {
             })
             .filter_map(|(anchor, base_span)| {
                 let inlay = self
-                    .built_before_card(editor, base, base_span, false, store, ui, fonts, theme)?;
+                    .built_before_card(editor, base, base_span, false, store, ui, theme)?;
                 Some((anchor, inlay))
             })
             .collect();
         let count = cards.len();
-        self.push_inlays(markup_id, cards, store, ui, fonts, theme, fx);
+        self.push_inlays(markup_id, cards, store, ui, theme, fx);
         if let Some(started) = started {
             eprintln!(
                 "[cards] expand {count} before-cards: {:?}",
@@ -294,7 +289,6 @@ impl Document {
         diff: crate::diff::DiffId,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -313,10 +307,10 @@ impl Document {
                 })
                 .unwrap_or_default();
             for key in standing {
-                self.remove_inlay(key, store, ui, fonts, theme, fx);
+                self.remove_inlay(key, store, ui, theme, fx);
             }
         }
-        self.expand_before_inlays(editor, base, diff, store, ui, fonts, theme, fx);
+        self.expand_before_inlays(editor, base, diff, store, ui, theme, fx);
     }
 
     fn before_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {
@@ -539,7 +533,6 @@ impl imba::View for BeforeInlay {
                 });
             }
             BeforeCommand::Rewrap(width) => {
-                let fonts = crate::env::ui_collection(store, ui);
                 let theme = crate::env::Themes::of(store);
                 fx.scope(BeforeCommand::Editor, |fx| {
                     self.view.document.resize(
@@ -548,7 +541,6 @@ impl imba::View for BeforeInlay {
                         0,
                         store,
                         ui,
-                        &fonts,
                         &theme,
                         fx,
                     )

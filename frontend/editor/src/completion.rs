@@ -651,7 +651,6 @@ impl Completer {
     ) {
         let markup = document.add_markup();
         document.show_markup(editor, markup);
-        let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
         let mut tints = crate::markup::Markup::new();
         let key = tints.push_styled_keyed(cover..cover + 1, crate::theme::StyleId::Match);
@@ -661,7 +660,6 @@ impl Completer {
             &[cover..cover + 1],
             store,
             ui,
-            &fonts,
             &theme,
             fx,
         );
@@ -822,9 +820,8 @@ impl Completer {
             fx.cancel(token);
         }
         if let Some((markup, _)) = self.cover.take() {
-            let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
-            document.remove_markup(markup, &[], store, ui, &fonts, &theme, fx);
+            document.remove_markup(markup, &[], store, ui, &theme, fx);
         }
         *self = Self::default();
     }
@@ -935,9 +932,8 @@ fn write_replace(
     builder.push_insert(inserted.to_owned());
     builder.push_retain(total - range.end);
     let operation = builder.finish();
-    let fonts = crate::env::ui_collection(store, ui);
     let theme = crate::env::Themes::of(store);
-    document.edit(&operation, store, ui, &fonts, &theme, fx);
+    document.edit(&operation, store, ui, &theme, fx);
     document.set_caret(editor, range.start + inserted.len() as u32);
 }
 

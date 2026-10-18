@@ -35,7 +35,6 @@ pub fn add_badges(
     blocks: &[MarkdownBlock],
     store: &imba::store::Store,
     ui: &imba::ui::UiCtx,
-    fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) {
     let mut demo_inlays = DemoInlays::default();
@@ -54,7 +53,6 @@ pub fn add_badges(
             block.display.as_deref(),
             store,
             ui,
-            fonts,
             theme,
             fx,
         );
@@ -86,7 +84,6 @@ impl DemoInlays {
         display: Option<&str>,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut editor::editor::EditorEffects<'_>,
     ) {
@@ -111,7 +108,6 @@ impl DemoInlays {
                     ),
                     store,
                     ui,
-                    fonts,
                     theme,
                     fx,
                 );
@@ -142,7 +138,6 @@ impl DemoInlays {
                     ),
                     store,
                     ui,
-                    fonts,
                     theme,
                     fx,
                 );
@@ -167,7 +162,6 @@ impl DemoInlays {
                     ),
                     store,
                     ui,
-                    fonts,
                     theme,
                     fx,
                 );
@@ -193,7 +187,6 @@ impl DemoInlays {
                     ),
                     store,
                     ui,
-                    fonts,
                     theme,
                     fx,
                 );
@@ -214,7 +207,6 @@ impl DemoInlays {
                     ),
                     store,
                     ui,
-                    fonts,
                     theme,
                     fx,
                 );
@@ -238,7 +230,6 @@ impl DemoInlays {
                 ),
                 store,
                 ui,
-                fonts,
                 theme,
                 fx,
             );

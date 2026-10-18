@@ -16,7 +16,6 @@ pub fn mount_editor(
     target: Option<std::ops::Range<crate::text_ext::LineCol>>,
     fx: &mut EditorEffects<'_>,
 ) -> EditorId {
-    let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
     let editor = document.add_editor(
         width,
@@ -25,13 +24,12 @@ pub fn mount_editor(
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         fx,
     );
     if let Some(target) = target {
         let byte = crate::text_ext::offset_at(&mut document.text().view(), target.start) as u32;
-        document.reveal_at_instant(editor, byte, store, ui, &fonts, &theme, fx);
+        document.reveal_at_instant(editor, byte, store, ui, &theme, fx);
     }
 
     if let Some(parsers) = editor::env::Parsers::of(store) {
@@ -71,12 +69,11 @@ pub fn deliver(
         // row mid-succession) must still land — dropping it leaves the
         // edited text uncolored under the diff wash until the next edit.
         let location = OpenDocuments::location(store, documents, document_id);
-        let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
             return;
         };
-        document.land_reparse(outcome, location, store, ui, &fonts, &theme, fx);
+        document.land_reparse(outcome, location, store, ui, &theme, fx);
         OpenDocuments::put_document(store, documents, document_id, document);
         return;
     }

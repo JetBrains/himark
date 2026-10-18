@@ -12,9 +12,6 @@ use text::text::Text;
 use super::{BraceMatchPass, OccurrencePass};
 use crate::TsTree;
 
-fn fonts() -> skia_safe::textlayout::FontCollection {
-    editor::test_document::test_fonts_collection().clone()
-}
 
 fn theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
@@ -63,12 +60,10 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 }
 
 fn landed(pass: &dyn Enricher, input: &EnrichInput) -> Vec<Range<u32>> {
-    let fonts = fonts();
     let theme = theme();
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let cx = EnrichCx {
-        fonts: &fonts,
         theme: &theme,
         caller: imba::effect::EffectCaller::disconnected(),
         languages: None,
@@ -82,7 +77,6 @@ fn landed(pass: &dyn Enricher, input: &EnrichInput) -> Vec<Range<u32>> {
             enrichment.replacement,
             store,
             ui,
-            &fonts,
             &theme,
         );
     }

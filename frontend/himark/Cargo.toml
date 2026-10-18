@@ -38,7 +38,7 @@ myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }
 operation = { path = "../operation" }
 rebase = { path = "../rebase" }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+skia-safe = "0.153.3"
 text = { path = "../text" }
 
 [features]

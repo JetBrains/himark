@@ -8,11 +8,11 @@ use std::{
 
 use editor::markup::InlayMode;
 use himark::app_ext::AppExt;
-use skia_safe::{surfaces, textlayout::FontCollection};
 
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
+use skia_safe::surfaces;
 
 struct TestHost {
     arriving: std::sync::mpsc::Receiver<AppCommand>,
@@ -140,13 +140,12 @@ fn markdown_demo_inlays_do_not_replace_headers() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let (mut document, blocks) =
-        himarkdown::markdown_document(source, store, ui, &font_collection(), &test_theme());
+        himarkdown::markdown_document(source, store, ui, &test_theme());
     crate::inlay::add_badges(
         &mut document,
         &blocks,
         store,
         ui,
-        &font_collection(),
         &test_theme(),
     );
     let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -224,7 +223,6 @@ fn dump_rust_split_screenshot() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
 }
 "#;
-    let fonts = ::editor::env::Fonts::of(app.store())();
     let theme = ::editor::env::Themes::of(app.store());
     let languages = {
         let mut languages = editor::reparse::SyntaxLanguages::new();
@@ -237,7 +235,6 @@ fn dump_rust_split_screenshot() {
         &languages,
         store,
         ui,
-        &fonts,
         &theme,
     );
     app.add_document(app.sole_window(), document, "build.rs".to_owned(), true);
@@ -864,9 +861,6 @@ fn test_theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
 }
 
-fn font_collection() -> FontCollection {
-    ::editor::test_document::test_fonts_collection().clone()
-}
 
 fn app_fonts() -> AppFonts {
     AppFonts::embedded()
@@ -976,8 +970,7 @@ fn scroll_frame_breakdown() {
 fn typing_everywhere_in_the_monster_survives_reparse() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = ::editor::test_document::test_fonts_collection();
-    let mut document = crate::monster_document(store, ui, &fonts, &test_theme());
+    let mut document = crate::monster_document(store, ui, &test_theme());
     let _editor = document.add_editor(
         700.0,
         None,
@@ -985,7 +978,6 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         &[],
         store,
         ui,
-        &fonts,
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1001,7 +993,6 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         outcome,
         store,
         ui,
-        &fonts,
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1026,7 +1017,6 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
                 &operation::operation::Operation::insert_in(len, at as u32, "x"),
                 store,
                 ui,
-                &fonts,
                 &test_theme(),
                 &mut imba::effect::Batch::new().effects(),
             );
@@ -1037,7 +1027,6 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
                 outcome,
                 store,
                 ui,
-                &fonts,
                 &test_theme(),
                 &mut imba::effect::Batch::new().effects(),
             );
@@ -1069,7 +1058,7 @@ fn the_wall_of_text_opens_and_types() {
             editor::location::Authority::new("demo"),
             vec!["wall of text".to_owned()],
         )),
-        |_store, _ui, _fonts, _theme| crate::wall_of_text(20_000),
+        |_store, _ui, _theme| crate::wall_of_text(20_000),
     );
     while !registered(&app, "wall of text") {
         let command = host
@@ -1105,11 +1094,10 @@ fn the_wall_of_text_opens_and_types() {
 fn resize_repair_matches_fresh_layout() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = editor::theme::Theme::embedded();
     let (mut document, blocks) =
-        himarkdown::markdown_document(&crate::SAMPLE.repeat(2), store, ui, &fonts, &theme);
-    crate::inlay::add_badges(&mut document, &blocks, store, ui, &fonts, &theme);
+        himarkdown::markdown_document(&crate::SAMPLE.repeat(2), store, ui, &theme);
+    crate::inlay::add_badges(&mut document, &blocks, store, ui, &theme);
     let editor = document.add_editor(
         900.0,
         None,
@@ -1117,7 +1105,6 @@ fn resize_repair_matches_fresh_layout() {
         &[],
         store,
         ui,
-        &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1128,7 +1115,6 @@ fn resize_repair_matches_fresh_layout() {
         0,
         store,
         ui,
-        &fonts,
         &theme,
         &mut batch.effects(),
     );
@@ -1149,7 +1135,6 @@ fn resize_repair_matches_fresh_layout() {
         1128.0,
         store,
         ui,
-        &fonts,
         &theme,
     )
     .element_heights();
@@ -1215,8 +1200,6 @@ fn where_do_heights_diverge() {
 
 #[test]
 fn tree_demo_panel_toggles_through_clicks() {
-    let fonts = ::editor::test_document::test_fonts_collection();
-    let _ = fonts;
     let (mut app, _arriving) = boot();
 
     himark::app_ext::AppExt::register_command(
@@ -1329,7 +1312,6 @@ fn rust_document_settles_and_stops_reconciling() {
     let _guard = heavy();
     let (mut app, host) = attach_bare_host();
     let source = include_str!("../../../editor/src/document.rs");
-    let fonts = ::editor::env::Fonts::of(app.store())();
     let theme = ::editor::env::Themes::of(app.store());
     let languages = {
         let mut languages = editor::reparse::SyntaxLanguages::new();
@@ -1342,7 +1324,6 @@ fn rust_document_settles_and_stops_reconciling() {
         &languages,
         store,
         ui,
-        &fonts,
         &theme,
     );
     app.add_document(app.sole_window(), document, "document.rs".to_owned(), true);
@@ -1397,7 +1378,6 @@ fn rust_document_settles_and_stops_reconciling() {
             &languages,
             store,
             ui,
-            &fonts,
             &theme,
         );
         app.perform_batch(vec![himark::app::opened(
