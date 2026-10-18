@@ -796,8 +796,9 @@ impl ShapedLine {
     }
 
     fn band_rects(&self, range: Range<usize>, height: RectHeightStyle) -> Vec<Rect> {
-        self.paragraph
-            .get_rects_for_range(range, height, RectWidthStyle::Tight)
+        let sk: Vec<Rect> = self
+            .paragraph
+            .get_rects_for_range(range.clone(), height, RectWidthStyle::Tight)
             .into_iter()
             .map(|text_box| {
                 let rect = text_box.rect;
@@ -808,7 +809,40 @@ impl ShapedLine {
                     rect.bottom,
                 )
             })
-            .collect()
+            .collect();
+        // Where the twin painted the glyphs, the twin places the
+        // bands: on faces whose advances lawfully differ between the
+        // engines (SF tracks per point size) a skparagraph selection
+        // sits visibly off the parley ink. Horizontal from parley,
+        // vertical stays skparagraph — the same split as the caret,
+        // anchored like the paint.
+        #[cfg(feature = "parley-text")]
+        if let Some(parley) = &self.parley {
+            let display_byte = |utf16: usize| {
+                self.display
+                    .display_byte_at_raw(self.display.raw_byte_at_utf16(utf16) as u32)
+            };
+            let (start, end) = (display_byte(range.start), display_byte(range.end));
+            if start >= end {
+                return sk;
+            }
+            let (top, bottom) = match sk.first() {
+                Some(first) => (first.top, first.bottom),
+                None => return sk,
+            };
+            let bands: Vec<Rect> = parley
+                .rects(start..end)
+                .into_iter()
+                .filter(|rect| rect.width() > 0.01)
+                .map(|rect| {
+                    Rect::from_ltrb(self.x + rect.left, top, self.x + rect.right, bottom)
+                })
+                .collect();
+            if !bands.is_empty() {
+                return bands;
+            }
+        }
+        sk
     }
 
     pub(crate) fn byte_at_point(&self, x: f32, y: f32) -> u32 {

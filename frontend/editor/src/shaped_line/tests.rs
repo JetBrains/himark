@@ -218,3 +218,36 @@ fn blob_runs_paint_exactly_like_the_paragraph() {
         blobs.len()
     );
 }
+
+/// The selection law: a band's edges sit exactly where the caret
+/// sits — one geometry source for ink, caret and selection. (The
+/// skparagraph band road drifted off parley ink on proportional
+/// faces; this pins band x to caret x through the whole display
+/// mapping.)
+#[cfg(feature = "parley-text")]
+#[test]
+fn selection_edges_sit_on_the_caret() {
+    let fonts = font_collection();
+    let theme = crate::theme::Theme::embedded();
+    let source = "The quick brown fox jumps over the lazy dog";
+    let shaped = ShapedLine::placeholder(
+        source,
+        theme.ui().peeker.dim_text.0,
+        &fonts,
+        &theme,
+        900.0,
+        0.0,
+    );
+    for (from, to) in [(0usize, 9usize), (4, 15), (10, source.len()), (0, source.len())] {
+        let rects = shaped.rects_for_range(from as u32..to as u32);
+        assert!(!rects.is_empty(), "no band for {from}..{to}");
+        let left = rects.iter().map(|r| r.left).fold(f32::MAX, f32::min);
+        let right = rects.iter().map(|r| r.right).fold(f32::MIN, f32::max);
+        let caret_from = shaped.x_at_byte(from as u32);
+        let caret_to = shaped.x_at_byte(to as u32);
+        assert!(
+            (left - caret_from).abs() < 0.26 && (right - caret_to).abs() < 0.26,
+            "band {from}..{to} spans {left}..{right} but carets sit at {caret_from}..{caret_to}"
+        );
+    }
+}
