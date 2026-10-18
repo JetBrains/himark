@@ -70,7 +70,18 @@ impl SpanStyle {
 /// One shaped line (or paragraph) as a Send value.
 pub struct ParleyLine {
     layout: parley::Layout<Brush>,
+    /// Built ONCE at shape time: stable blob identity is what
+    /// keeps Graphite's atlas sub-run cache warm — rebuilding
+    /// per paint minted new blob ids every frame and re-recorded
+    /// the same quads (felt as "JetBrains Mono is slow"; its calt
+    /// shaping just made the per-paint rebuild visible).
+    blobs: Vec<(skia_safe::TextBlob, skia_safe::Color)>,
 }
+
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<ParleyLine>();
+};
 
 /// Per-thread shaping machinery: the font database, the layout
 /// scratch space, and the fontique→skia typeface bridge. Mint once
@@ -78,9 +89,11 @@ pub struct ParleyLine {
 struct ParleyCtx {
     fonts: FontContext,
     layouts: LayoutContext<Brush>,
-    /// fontique blob id + ttc index → skia typeface, so the blob
-    /// road rasterizes with the same bytes parley shaped with.
-    typefaces: HashMap<(u64, u32), Option<skia_safe::Typeface>>,
+    /// fontique blob id + ttc index + variation coords → skia
+    /// typeface, so the blob road rasterizes the same INSTANCE
+    /// parley shaped with (a variable font's default differs from
+    /// its named instances — advances drift, carets follow).
+    typefaces: HashMap<(u64, u32, Vec<(u32, i32)>), Option<skia_safe::Typeface>>,
 }
 
 thread_local! {
@@ -96,6 +109,11 @@ impl ParleyCtx {
         // is settled per-target.
         let blob = parley::fontique::Blob::new(std::sync::Arc::new(crate::embedded_fonts::bytes()));
         fonts.collection.register_fonts(blob, None);
+        #[cfg(not(target_os = "emscripten"))]
+        for cut in crate::embedded_fonts::code_font_cuts() {
+            let blob = parley::fontique::Blob::new(std::sync::Arc::new(*cut));
+            fonts.collection.register_fonts(blob, None);
+        }
         Self {
             fonts,
             layouts: LayoutContext::new(),
@@ -103,8 +121,17 @@ impl ParleyCtx {
         }
     }
 
-    fn typeface(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
-        let key = (font.data.id(), font.index);
+    fn typeface(
+        &mut self,
+        font: &parley::FontData,
+        variations: &[(skrifa::Tag, f32)],
+    ) -> Option<skia_safe::Typeface> {
+        let position = design_position(font, variations);
+        let coords: Vec<(u32, i32)> = position
+            .iter()
+            .map(|(tag, value)| (*tag, value.to_bits() as i32))
+            .collect();
+        let key = (font.data.id(), font.index, coords);
         self.typefaces
             .entry(key)
             .or_insert_with(|| {
@@ -152,6 +179,28 @@ impl ParleyCtx {
                             skia_safe::Data::new_copy(font.data.as_ref()),
                             Some(font.index),
                         )
+                    })
+                    .and_then(|typeface| {
+                        if position.is_empty() {
+                            return Some(typeface);
+                        }
+                        let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> =
+                            position
+                                .iter()
+                                .map(|(tag, value)| {
+                                    skia_safe::font_arguments::variation_position::Coordinate {
+                                        axis: skia_safe::FourByteTag::from(*tag),
+                                        value: *value,
+                                    }
+                                })
+                                .collect();
+                        let arguments = skia_safe::FontArguments::new()
+                            .set_variation_design_position(
+                                skia_safe::font_arguments::VariationPosition {
+                                    coordinates: &coordinates,
+                                },
+                            );
+                        typeface.clone_with_arguments(&arguments)
                     })
             })
             .clone()
@@ -249,7 +298,8 @@ impl ParleyLine {
             let mut layout = builder.build(text);
             layout.break_all_lines(None);
             layout.align(Alignment::Start, AlignmentOptions::default());
-            ParleyLine { layout }
+            let blobs = build_blobs(ctx, &layout);
+            ParleyLine { layout, blobs }
         })
     }
 
@@ -272,6 +322,13 @@ impl ParleyLine {
         let cursor =
             parley::Cursor::from_byte_index(&self.layout, byte, parley::Affinity::Downstream);
         cursor.geometry(&self.layout, 1.0).x0 as f32
+    }
+
+    /// The caret boundary nearest a point — the editor's click
+    /// mapping (`getGlyphPositionAtCoordinate`'s twin), answered by
+    /// the SAME layout the glyphs were painted from.
+    pub fn byte_at_point(&self, x: f32, y: f32) -> usize {
+        parley::Cursor::from_point(&self.layout, x, y).index()
     }
 
     /// Selection rects for a byte range — `getRectsForRange`
@@ -299,52 +356,11 @@ impl ParleyLine {
             .collect()
     }
 
-    /// The runs as blobs for the atlas road — the same shape the
-    /// blob work feeds `draw_text_blob` today.
-    pub fn blobs(&self) -> Vec<(skia_safe::TextBlob, skia_safe::Color)> {
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            let mut out = Vec::new();
-            for line in self.layout.lines() {
-                for item in line.items() {
-                    let PositionedLayoutItem::GlyphRun(run) = item else {
-                        continue;
-                    };
-                    let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
-                    if glyphs.is_empty() {
-                        continue;
-                    }
-                    let Some(typeface) = ctx.typeface(run.run().font()) else {
-                        continue;
-                    };
-                    let mut font = skia_safe::Font::new(typeface, run.run().font_size());
-                    // Faux cuts, matched to the skparagraph road:
-                    // when the family has no real Bold/Italic,
-                    // fontique says so and skia synthesizes.
-                    let synthesis = run.run().synthesis();
-                    if synthesis.embolden() {
-                        font.set_embolden(true);
-                    }
-                    if let Some(degrees) = synthesis.skew() {
-                        font.set_skew_x(-degrees.to_radians().tan());
-                    }
-                    let mut builder = skia_safe::TextBlobBuilder::new();
-                    {
-                        let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
-                        for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
-                            *slot = glyph.id as u16;
-                        }
-                        for (slot, glyph) in points.iter_mut().zip(&glyphs) {
-                            *slot = skia_safe::Point::new(glyph.x, glyph.y);
-                        }
-                    }
-                    let Some(blob) = builder.make() else { continue };
-                    let [r, g, b, a] = run.style().brush;
-                    out.push((blob, skia_safe::Color::from_argb(a, r, g, b)));
-                }
-            }
-            out
-        })
+    /// The runs as blobs for the atlas road — built once at shape
+    /// time, so every paint hands Graphite the SAME blob objects
+    /// and the atlas sub-run cache keys hold across frames.
+    pub fn blobs(&self) -> &[(skia_safe::TextBlob, skia_safe::Color)] {
+        &self.blobs
     }
 
     /// TEST SUPPORT for the bold diagnosis: per run, the serving
@@ -361,7 +377,7 @@ impl ParleyLine {
                         continue;
                     };
                     let skia = ctx
-                        .typeface(run.run().font())
+                        .typeface(run.run().font(), run.run().synthesis().variation_settings())
                         .and_then(|typeface| typeface.post_script_name())
                         .unwrap_or_else(|| "NONE".into());
                     out.push((
@@ -389,7 +405,9 @@ impl ParleyLine {
                     let PositionedLayoutItem::GlyphRun(run) = item else {
                         continue;
                     };
-                    let family = match ctx.typeface(run.run().font()) {
+                    let family = match ctx
+                        .typeface(run.run().font(), run.run().synthesis().variation_settings())
+                    {
                         Some(typeface) => typeface.family_name().to_string(),
                         None => format!(
                             "UNRASTERIZABLE({} bytes, index {})",
@@ -417,11 +435,94 @@ impl ParleyLine {
     pub fn paint(&self, canvas: &skia_safe::Canvas, origin: (f32, f32)) {
         let mut paint = skia_safe::Paint::default();
         paint.set_anti_alias(true);
-        for (blob, color) in self.blobs() {
-            paint.set_color(color);
-            canvas.draw_text_blob(&blob, origin, &paint);
+        for (blob, color) in &self.blobs {
+            paint.set_color(*color);
+            canvas.draw_text_blob(blob, origin, &paint);
         }
     }
+}
+
+/// The FULL design position parley shaped at: every fvar axis at
+/// its default, overlaid with fontique's synthesis coordinates.
+/// Pinning every axis frees the name bridge from caring which cut
+/// it matched — CoreText enumerates .SFNS as INSTANCED cuts (opsz
+/// and GRAD baked in), and matching one of those then setting only
+/// wght kept the stray axes: system-ui bold measured 52px long
+/// over a 48-char line. Empty result = not a variable font, serve
+/// the bare typeface.
+fn design_position(font: &parley::FontData, variations: &[(skrifa::Tag, f32)]) -> Vec<(u32, f32)> {
+    use skrifa::MetadataProvider;
+    let tag_of = |tag: &skrifa::Tag| u32::from_be_bytes(tag.to_be_bytes());
+    let mut coords: Vec<(u32, f32)> = skrifa::FontRef::from_index(font.data.as_ref(), font.index)
+        .map(|face| {
+            face.axes()
+                .iter()
+                .map(|axis| (tag_of(&axis.tag()), axis.default_value()))
+                .collect()
+        })
+        .unwrap_or_default();
+    for (tag, value) in variations {
+        let tag = tag_of(tag);
+        match coords.iter_mut().find(|(candidate, _)| *candidate == tag) {
+            Some(slot) => slot.1 = *value,
+            None => coords.push((tag, *value)),
+        }
+    }
+    coords
+}
+
+/// Runs → SkTextBlobs, once per shape. The run's SYNTHESIS travels
+/// whole: faux bold/skew as font flags, and — the JetBrains Mono
+/// lesson — VARIATION coordinates into the typeface itself, so skia
+/// rasterizes the instance fontique shaped. (A variable font's
+/// default instance has different advances than its named cuts;
+/// shaping one and rasterizing the other walked the caret off the
+/// glyphs as the line grew.)
+fn build_blobs(
+    ctx: &mut ParleyCtx,
+    layout: &parley::Layout<Brush>,
+) -> Vec<(skia_safe::TextBlob, skia_safe::Color)> {
+    let mut out = Vec::new();
+    for line in layout.lines() {
+        for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(run) = item else {
+                continue;
+            };
+            let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
+            if glyphs.is_empty() {
+                continue;
+            }
+            let synthesis = run.run().synthesis();
+            let Some(typeface) = ctx.typeface(run.run().font(), synthesis.variation_settings())
+            else {
+                continue;
+            };
+            let mut font = skia_safe::Font::new(typeface, run.run().font_size());
+            // Faux cuts, matched to the skparagraph road: when the
+            // family has no real Bold/Italic, fontique says so and
+            // skia synthesizes.
+            if synthesis.embolden() {
+                font.set_embolden(true);
+            }
+            if let Some(degrees) = synthesis.skew() {
+                font.set_skew_x(-degrees.to_radians().tan());
+            }
+            let mut builder = skia_safe::TextBlobBuilder::new();
+            {
+                let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
+                for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
+                    *slot = glyph.id as u16;
+                }
+                for (slot, glyph) in points.iter_mut().zip(&glyphs) {
+                    *slot = skia_safe::Point::new(glyph.x, glyph.y);
+                }
+            }
+            let Some(blob) = builder.make() else { continue };
+            let [r, g, b, a] = run.style().brush;
+            out.push((blob, skia_safe::Color::from_argb(a, r, g, b)));
+        }
+    }
+    out
 }
 
 /// The face's preferred family name, read from the name table —

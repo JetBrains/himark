@@ -16,6 +16,25 @@ pub fn bytes() -> &'static [u8] {
     NOTO_SANS
 }
 
+/// The CODE FONT ships in the binary: "JetBrains Mono" is nobody's
+/// system font — naming it in the theme while trusting the platform
+/// to have it handed skparagraph a missing family to re-walk on
+/// every shape and let the two text roads disagree on the fallback.
+/// Both roads register these same bytes, so the family always
+/// resolves, identically, everywhere.
+#[cfg(not(target_os = "emscripten"))]
+static JETBRAINS_MONO: [&[u8]; 4] = [
+    include_bytes!("../assets/JetBrainsMono-Regular.ttf"),
+    include_bytes!("../assets/JetBrainsMono-Bold.ttf"),
+    include_bytes!("../assets/JetBrainsMono-Italic.ttf"),
+    include_bytes!("../assets/JetBrainsMono-BoldItalic.ttf"),
+];
+
+#[cfg(not(target_os = "emscripten"))]
+pub fn code_font_cuts() -> &'static [&'static [u8]] {
+    &JETBRAINS_MONO
+}
+
 static TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
 #[cfg(not(target_os = "emscripten"))]

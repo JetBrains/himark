@@ -221,6 +221,13 @@ impl DisplayText {
             .saturating_sub(1)
     }
 
+    pub(crate) fn raw_byte_at_display_byte(&self, display_byte: usize) -> usize {
+        self.raw_end_by_byte
+            .get(display_byte.min(self.raw_end_by_byte.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or(0) as usize
+    }
+
     pub(crate) fn raw_byte_at_utf16(&self, utf16: usize) -> usize {
         let raw_end_by_utf16 = self
             .raw_end_by_utf16
@@ -622,10 +629,26 @@ impl ShapedLine {
         text_height + block_gap(theme.base())
     }
 
+    /// Caret x for a LOCAL raw byte. When the parley twin painted
+    /// the glyphs, it answers — the caret must agree with the paint,
+    /// and on faces where the engines' advances differ (SF applies
+    /// tracking per point size, harfrust doesn't) the skparagraph
+    /// answer walks off the painted line (the composer's drifting
+    /// caret).
+    fn caret_x_local(&self, local: u32, display_utf16: usize) -> f32 {
+        #[cfg(feature = "parley-text")]
+        if let Some(parley) = &self.parley {
+            return parley.caret_x(self.display.display_byte_at_raw(local));
+        }
+        #[cfg(not(feature = "parley-text"))]
+        let _ = local;
+        caret_x_for_display_position(&self.paragraph, display_utf16)
+    }
+
     pub(crate) fn caret_geometry(&self, byte: u32) -> (f32, f32, f32) {
         let local = byte.saturating_sub(self.byte_start).min(self.byte_size);
         let display = self.display.display_utf16_at_raw(local);
-        let x = self.x + caret_x_for_display_position(&self.paragraph, display);
+        let x = self.x + self.caret_x_local(local, display);
 
         let tight = |range: Range<usize>| {
             self.paragraph
@@ -672,7 +695,7 @@ impl ShapedLine {
     pub(crate) fn x_at_byte(&self, byte: u32) -> f32 {
         let local = byte.saturating_sub(self.byte_start).min(self.byte_size);
         let display = self.display.display_utf16_at_raw(local);
-        self.x + caret_x_for_display_position(&self.paragraph, display)
+        self.x + self.caret_x_local(local, display)
     }
 
     pub(crate) fn rects_for_range(&self, range: Range<u32>) -> Vec<Rect> {
@@ -783,6 +806,14 @@ impl ShapedLine {
 
     pub(crate) fn byte_at_point(&self, x: f32, y: f32) -> u32 {
         let paragraph_x = (x - self.x).max(0.0);
+        #[cfg(feature = "parley-text")]
+        if let Some(parley) = &self.parley {
+            let display_byte = parley.byte_at_point(paragraph_x, y);
+            let local = self.display.raw_byte_at_display_byte(display_byte);
+            return self
+                .byte_start
+                .saturating_add(local.min(self.byte_size as usize) as u32);
+        }
         let position = self
             .paragraph
             .get_glyph_position_at_coordinate(Point::new(paragraph_x, y));

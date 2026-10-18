@@ -305,3 +305,96 @@ fn bold_runs_resolve_a_bold_cut() {
         "no run resolved a bold cut nor synthesized one: {report:?}"
     );
 }
+
+/// The variable-font law: skia must rasterize the INSTANCE fontique
+/// shaped. We measure every run's glyphs with the bridged skia
+/// typeface and demand the advances agree with parley's — on a
+/// variable font (JetBrains Mono), handing skia the bare default
+/// instance fails this by a growing margin along the line.
+#[cfg(target_os = "macos")]
+#[test]
+fn variable_fonts_rasterize_the_shaped_instance() {
+    use parley::PositionedLayoutItem;
+    let text = "weights wander when instances differ 0123456789";
+    // The bundled code font must answer its own name — regular AND
+    // a real Bold cut, not an emboldened fake.
+    for bold in [false, true] {
+        let line = ParleyLine::shape_with_families(
+            text,
+            &["JetBrains Mono"],
+            16.0,
+            None,
+            &[SpanStyle {
+                bold,
+                ..SpanStyle::plain(skia_safe::Color::BLACK)
+            }],
+        );
+        let report = line.face_report_for_test();
+        let want = if bold {
+            "JetBrainsMono-Bold"
+        } else {
+            "JetBrainsMono-Regular"
+        };
+        assert!(
+            report
+                .iter()
+                .all(|(name, _, _)| name.as_deref() == Some(want)),
+            "bundled code font did not serve bold={bold}: {report:?}"
+        );
+    }
+    // system-ui is NOT in this list on purpose: SF's advances
+    // cannot agree across engines (CoreText applies the trak table
+    // per point size, harfrust does not) — which is why carets and
+    // clicks route through the SAME layout that painted, instead of
+    // demanding parity.
+    for (families, bold) in [
+        (vec!["JetBrains Mono", "Menlo", "monospace"], false),
+        (vec!["JetBrains Mono", "Menlo", "monospace"], true),
+        (vec!["SF Mono", "Menlo", "monospace"], true),
+    ] {
+        let line = ParleyLine::shape_with_families(
+            text,
+            &families.iter().map(|s| *s).collect::<Vec<_>>(),
+            16.0,
+            None,
+            &[SpanStyle {
+                bold,
+                ..SpanStyle::plain(skia_safe::Color::BLACK)
+            }],
+        );
+        CTX.with(|cell| {
+            let ctx = &mut *cell.borrow_mut();
+            for parley_line in line.layout.lines() {
+                for item in parley_line.items() {
+                    let PositionedLayoutItem::GlyphRun(run) = item else {
+                        continue;
+                    };
+                    let synthesis = run.run().synthesis();
+                    let vars = synthesis.variation_settings();
+                    let typeface = ctx
+                        .typeface(run.run().font(), vars)
+                        .expect("bridged typeface");
+                    let font = skia_safe::Font::new(typeface.clone(), run.run().font_size());
+                    let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
+                    let ids: Vec<u16> = glyphs.iter().map(|g| g.id as u16).collect();
+                    let mut widths = vec![0.0f32; ids.len()];
+                    font.get_widths(&ids, &mut widths);
+                    let parley_advance: f32 = glyphs.iter().map(|g| g.advance).sum();
+                    let skia_advance: f32 = widths.iter().sum();
+                    eprintln!(
+                        "[parley-vf] {:?} bold={bold} face {:?} vars {:?} parley {parley_advance:.2} skia {skia_advance:.2}",
+                        families,
+                        typeface.post_script_name(),
+                        vars
+                    );
+                    assert!(
+                        (parley_advance - skia_advance).abs() < 0.5,
+                        "advance drift {:?} bold={bold}: parley {parley_advance} vs skia {skia_advance} (face {:?}, vars {vars:?})",
+                        families,
+                        typeface.post_script_name()
+                    );
+                }
+            }
+        });
+    }
+}
