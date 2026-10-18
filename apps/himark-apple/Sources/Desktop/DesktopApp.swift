@@ -71,6 +71,15 @@ final class DesktopHost: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        // Overlay layers claim their wheels through the desktop's
+        // router, ahead of the scroll hosts beneath them.
+        HimarkBridgeView.claimWheels = { view, deliver in
+            WheelRouter.shared.register(view, deliver: deliver)
+        }
+        HimarkBridgeView.releaseWheels = { view in WheelRouter.shared.unregister(view) }
+        HimarkBridgeView.overlayHost = { window in
+            window.contentView.flatMap(OverlayCanvasView.find)
+        }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         engine.setWake(context: ctx) { ctx in
             let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()

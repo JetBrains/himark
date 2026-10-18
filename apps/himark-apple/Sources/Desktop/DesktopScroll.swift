@@ -470,6 +470,24 @@ final class DesktopComposerHost: NSView {
             view.send(himark_event_scroll(
                 Float(p.x) * s, Float(p.y) * s, 0, dy * s, UInt32(HIMARK_SCROLL_PHASE_NONE)))
         }
+        // HIMARK_DEBUG_TEXT3="delay:text" types into the COMPOSER —
+        // the scroll host's harness, for the pane with no scroller:
+        // an `@` here opens the mention popup, the overlay road's
+        // screenshot loop.
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_TEXT3"] {
+            for one in spec.split(separator: ";") {
+                let halves = one.split(separator: ":", maxSplits: 1)
+                guard halves.count == 2, let delay = Double(halves[0]) else { continue }
+                let text = String(halves[1])
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak view] in
+                    guard let view else { return }
+                    view.window?.makeFirstResponder(view)
+                    text.withCString {
+                        view.send(himark_event_text($0, UInt(strlen($0))))
+                    }
+                }
+            }
+        }
         return true
     }
 
@@ -636,4 +654,40 @@ struct PlainPlaceBridge: NSViewRepresentable {
     static func dismantleNSView(_ view: PlainBridgeHost, coordinator: ()) {
         view.teardown()
     }
+}
+
+/// The OVERLAY CANVAS: a window-spanning platform view SwiftUI lays
+/// LAST, so it composites above every island and pill. The bridge
+/// views hang their overlay layers (completion popups, hover cards,
+/// combo menus) in here — a subview added straight to SwiftUI's
+/// hosting view sits beneath its own render layers and never shows.
+/// Empty space passes every click through.
+final class OverlayCanvasView: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
+    }
+
+    /// The canvas standing in a window, found from its content view.
+    static func find(in view: NSView) -> OverlayCanvasView? {
+        if let canvas = view as? OverlayCanvasView { return canvas }
+        for child in view.subviews {
+            if let canvas = find(in: child) { return canvas }
+        }
+        return nil
+    }
+}
+
+struct OverlayCanvas: NSViewRepresentable {
+    func makeNSView(context: Context) -> OverlayCanvasView { OverlayCanvasView(frame: .zero) }
+    func updateNSView(_ view: OverlayCanvasView, context: Context) {}
 }

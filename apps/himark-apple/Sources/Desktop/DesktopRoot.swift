@@ -246,6 +246,12 @@ struct DesktopRoot: View {
                     }
             }
         }
+        // LAST: the overlay canvas rides over everything — the
+        // bridge views' popups and menus stand in it.
+        .overlay {
+            OverlayCanvas()
+                .ignoresSafeArea()
+        }
         .onAppear { host.setTheme(dark: dark) }
         .onChange(of: colorScheme) { scheme in
             host.setTheme(dark: scheme == .dark)
