@@ -14,7 +14,7 @@ use tokenize::{rewrite, Safepoint};
 
 use crate::{
     markup::{BlockStyle, TextDecorationInterval},
-    shaped_line::{block_gap, paragraph, DisplayText},
+    shaped_line::{block_gap, display_byte_of, DisplayText, Excision},
 };
 
 const DOCUMENT_RANK: usize = 3;
@@ -1480,19 +1480,15 @@ fn visual_lines<'a>(
     let inline = text.map_decorations(inline);
     let rows_share_metrics =
         crate::shaped_line::rows_share_metrics(&inline, text.placeholders(), theme);
-    let mut paragraph = paragraph(
-        &resolved,
-        text.as_str(),
-        fonts,
-        theme,
-        &inline,
-        text.placeholders(),
-    );
+    let inputs = crate::shaped_line::shape_inputs(&resolved, &text, &inline, theme);
+    let line = inputs.shape(Some(
+        (width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0),
+    ));
 
-    paragraph.layout((width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0));
-
-    item.width = paragraph.longest_line() + resolved.inset.unwrap_or(0.0) * 2.0;
-    let mut line_count = paragraph.line_number();
+    item.width = line.width() + resolved.inset.unwrap_or(0.0) * 2.0;
+    let rows = line.rows();
+    let excisions = inputs.excisions;
+    let mut line_count = rows.len();
 
     let trailing_empty_line = line_count > 1 && text.as_str().ends_with('\n') && final_unit;
     if line_count > 1 && text.as_str().ends_with('\n') && !trailing_empty_line {
@@ -1507,7 +1503,8 @@ fn visual_lines<'a>(
     VisualLines::Split(LineSplit {
         item,
         text,
-        paragraph,
+        rows,
+        excisions,
         end_gap,
         gap_before_trailing_empty: trailing_empty_line,
         line_index: 0,
@@ -1551,7 +1548,8 @@ impl Iterator for VisualLines<'_> {
 struct LineSplit<'a> {
     item: LayoutElement,
     text: DisplayText,
-    paragraph: Paragraph,
+    rows: Vec<imba::shape::ShapedRow>,
+    excisions: Vec<Excision>,
 
     end_gap: f32,
 
@@ -1575,7 +1573,8 @@ impl LineSplit<'_> {
         if let Some(height) = self.shared_text_height {
             return Some(height);
         }
-        let height = line_height_from_metrics(&self.paragraph.get_line_metrics_at(line_index)?);
+        let row = self.rows.get(line_index)?;
+        let height = (row.bottom - row.top).ceil().max(1.0);
         if self.rows_share_metrics {
             self.shared_text_height = Some(height);
         }
@@ -1593,9 +1592,12 @@ impl Iterator for LineSplit<'_> {
 
         let line_index = self.line_index;
         let is_last = line_index + 1 == self.line_count;
-        let text_end = self
-            .text
-            .line_text_end(&self.paragraph, line_index, is_last);
+        let row_end = self
+            .rows
+            .get(line_index)
+            .map(|row| display_byte_of(&self.excisions, row.text_range.end))
+            .unwrap_or_else(|| self.text.as_str().len());
+        let text_end = self.text.line_text_end_at(row_end, is_last);
         let byte_start = self.byte_start;
         let byte_end = self.text.line_byte_end(text_end, self.byte_start, is_last);
         let byte_size = byte_end.saturating_sub(self.byte_start);
@@ -1623,10 +1625,6 @@ impl Iterator for LineSplit<'_> {
         );
         Some(item)
     }
-}
-
-fn line_height_from_metrics(metrics: &LineMetrics<'_>) -> f32 {
-    (metrics.ascent.abs() + metrics.descent).ceil().max(1.0) as f32
 }
 
 #[cfg(test)]

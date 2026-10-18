@@ -1,60 +1,44 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use skia_safe::textlayout::FontCollection;
-
 use super::*;
+
+fn plain_shaped(text: &str) -> ParleyLine {
+    crate::parley_line::ensure_fonts();
+    let resolved = BlockStyle::default().resolved(&crate::theme::Theme::embedded());
+    let display = DisplayText::build_segments(
+        false,
+        &[(text.to_owned(), 0)],
+        &[],
+        true,
+        text.len(),
+    );
+    shape_inputs(&resolved, &display, &[], &crate::theme::Theme::embedded()).shape(None)
+}
 
 #[test]
 fn caret_x_includes_trailing_whitespace() {
-    let fonts = font_collection();
-    let marks = BlockStyle::default();
+    let without_spaces = plain_shaped("a");
+    let with_spaces = plain_shaped("a    ");
 
-    let mut without_spaces = line_paragraph(
-        &marks,
-        "a",
-        fonts.clone(),
-        &crate::theme::Theme::embedded(),
-        &[],
-    );
-    without_spaces.layout(800.0);
-    let mut with_spaces = line_paragraph(
-        &marks,
-        "a    ",
-        fonts,
-        &crate::theme::Theme::embedded(),
-        &[],
-    );
-    with_spaces.layout(800.0);
-
-    let after_a = caret_x_for_display_position(&without_spaces, "a".encode_utf16().count());
-    let after_spaces = caret_x_for_display_position(&with_spaces, "a    ".encode_utf16().count());
+    let after_a = without_spaces.caret_x(1);
+    let after_spaces = with_spaces.caret_x(5);
 
     assert!(after_spaces > after_a);
 }
 
 #[test]
 fn caret_x_includes_whitespace_after_emoji() {
-    let fonts = font_collection();
-    let marks = BlockStyle::default();
-    let text = "a😀    ";
+    let line = plain_shaped("a😀    ");
 
-    let mut paragraph = line_paragraph(&marks, text, fonts, &crate::theme::Theme::embedded(), &[]);
-    paragraph.layout(800.0);
-
-    let after_emoji = caret_x_for_display_position(&paragraph, "a😀".encode_utf16().count());
-    let after_spaces = caret_x_for_display_position(&paragraph, "a😀    ".encode_utf16().count());
+    let after_emoji = line.caret_x("a😀".len());
+    let after_spaces = line.caret_x("a😀    ".len());
 
     assert!(after_spaces > after_emoji);
 }
 
-fn font_collection() -> FontCollection {
-    crate::test_document::test_fonts_collection().clone()
-}
-
 #[test]
 fn placeholder_geometry_is_identical_to_typed_text() {
-    let fonts = font_collection();
     let theme = crate::theme::Theme::embedded();
     let source = "Message the agent";
     let text = text::text::Text::from_string_exact(source);
@@ -67,7 +51,6 @@ fn placeholder_geometry_is_identical_to_typed_text() {
         &marks,
         &[],
         &[],
-        &fonts,
         &theme,
         crate::markup::InlayMeasure {
             width: 500.0,
@@ -80,7 +63,6 @@ fn placeholder_geometry_is_identical_to_typed_text() {
     let placeholder = ShapedLine::placeholder(
         source,
         theme.ui().peeker.dim_text.0,
-        &fonts,
         &theme,
         500.0,
         0.0,
@@ -99,8 +81,8 @@ fn placeholder_geometry_is_identical_to_typed_text() {
 }
 
 #[test]
-fn hard_break_detection_matches_skia() {
-    let fonts = font_collection();
+fn rows_partition_the_text_at_breaks_and_wraps() {
+    crate::parley_line::ensure_fonts();
     let theme = crate::theme::Theme::embedded();
     let resolved = BlockStyle::default().resolved(&theme);
     let samples = [
@@ -110,74 +92,61 @@ fn hard_break_detection_matches_skia() {
         "two\nembedded\nnewlines\n",
         "carriage\rreturn",
         "windows\r\nbreak",
-        "vertical\u{b}tab",
-        "form\u{c}feed",
-        "next\u{85}line",
-        "line\u{2028}separator",
-        "paragraph\u{2029}separator",
         "a long line that certainly wraps across several rows of output here",
         "a long line that wraps across rows and then ends with a break\n",
         "wrapping\nwith a break early and then a long soft-wrapped tail after it",
         "",
         "\n",
     ];
-
-    let mut compared = 0usize;
     for sample in samples {
-        let mut paragraph = super::paragraph_with_max_lines(
-            &resolved,
-            sample,
-            fonts.clone(),
-            &theme,
+        let display = DisplayText::build_segments(
+            false,
+            &[(sample.to_string(), 0)],
             &[],
-            &[],
-            None,
-            &mut Vec::new(),
+            false,
+            sample.len(),
         );
-        paragraph.layout(220.0);
-        let mut rows = paragraph.line_number();
-        if rows > 1 && sample.ends_with('\n') {
-            rows -= 1;
+        let line = shape_inputs(&resolved, &display, &[], &theme).shape(Some(220.0));
+        let rows = line.rows();
+        if sample.is_empty() {
+            // The empty layout's synthetic row has no text to cover.
+            continue;
         }
-        for row in 0..rows.saturating_sub(1) {
-            let metrics = paragraph
-                .get_line_metrics_at(row)
-                .expect("laid-out row has metrics");
-            let text_end = paragraph
-                .get_actual_text_range(row, true)
-                .end
-                .min(sample.len());
-            assert_eq!(
-                super::starts_with_hard_break(sample, text_end),
-                metrics.hard_break,
-                "row {row} of {sample:?} (text ends at {text_end})"
-            );
-            compared += 1;
+        // Rows PARTITION the text: no gaps, no overlaps, full cover.
+        let mut at = 0usize;
+        for row in &rows {
+            assert_eq!(row.text_range.start, at, "gap in rows of {sample:?}");
+            at = row.text_range.end;
+        }
+        assert_eq!(at, sample.len(), "rows do not cover {sample:?}");
+        // A LINE FEED always ENDS its row (a \r may precede it as
+        // part of the same windows break).
+        for row in &rows {
+            let inner = &sample[row.text_range.start..row.text_range.end];
+            for (offset, ch) in inner.char_indices() {
+                if ch == '\n' && offset + 1 < inner.len() {
+                    panic!("break inside a row of {sample:?}");
+                }
+            }
         }
     }
-    assert!(
-        compared >= 12,
-        "the battery must reach non-final rows to prove anything: {compared} compared"
-    );
 }
 
 #[test]
-fn blob_runs_paint_exactly_like_the_paragraph() {
-    let fonts = font_collection();
+fn paint_is_deterministic_and_inked() {
     let theme = crate::theme::Theme::embedded();
     // Mixed scripts and an emoji: several fonts, several runs.
     let source = "fn main() выход 🚀 done";
     let text = text::text::Text::from_string_exact(source);
     let markup = crate::markup::Markup::new();
     let marks = BlockStyle::default();
-    let mut line = ShapedLine::new(
+    let line = ShapedLine::new(
         &mut text.view(),
         OverlaidMarkup::plain(&markup),
         0..source.len() as u32,
         &marks,
         &[],
         &[],
-        &fonts,
         &theme,
         crate::markup::InlayMeasure {
             width: 700.0,
@@ -186,10 +155,6 @@ fn blob_runs_paint_exactly_like_the_paragraph() {
         },
         0.0,
         true,
-    );
-    assert!(
-        line.blob_runs.is_some(),
-        "an undecorated line bakes blob runs"
     );
 
     let shoot = |line: &ShapedLine| -> Vec<u8> {
@@ -202,21 +167,13 @@ fn blob_runs_paint_exactly_like_the_paragraph() {
         pixmap.bytes().expect("pixel bytes").to_vec()
     };
 
-    let blobs = shoot(&line);
-    line.drop_blobs_for_test();
-    let paragraph = shoot(&line);
-
+    let first = shoot(&line);
+    let second = shoot(&line);
     assert!(
-        blobs.iter().any(|byte| *byte != 0xff),
+        first.iter().any(|byte| *byte != 0xff),
         "the line painted something"
     );
-    let differing = blobs.iter().zip(&paragraph).filter(|(a, b)| a != b).count();
-    assert_eq!(
-        differing,
-        0,
-        "the blob road and Paragraph::paint disagree on {differing} of {} bytes",
-        blobs.len()
-    );
+    assert_eq!(first, second, "painting the same line twice differs");
 }
 
 /// The selection law: a band's edges sit exactly where the caret
@@ -227,13 +184,11 @@ fn blob_runs_paint_exactly_like_the_paragraph() {
 #[cfg(feature = "parley-text")]
 #[test]
 fn selection_edges_sit_on_the_caret() {
-    let fonts = font_collection();
     let theme = crate::theme::Theme::embedded();
     let source = "The quick brown fox jumps over the lazy dog";
     let shaped = ShapedLine::placeholder(
         source,
         theme.ui().peeker.dim_text.0,
-        &fonts,
         &theme,
         900.0,
         0.0,

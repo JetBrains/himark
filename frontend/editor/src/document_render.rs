@@ -73,7 +73,6 @@ impl crate::document::Document {
         Some(ShapedLine::placeholder(
             text,
             theme.ui().peeker.dim_text.0,
-            fonts,
             theme,
             state.layout.layout_width(),
             0.0,
@@ -437,7 +436,6 @@ impl crate::document::Document {
             &marks,
             &inline,
             &hidden,
-            fonts,
             theme,
             crate::markup::InlayMeasure {
                 width: layout.layout_width(),
@@ -486,7 +484,6 @@ impl crate::document::Document {
             &marks,
             &inline,
             &hidden,
-            fonts,
             theme,
             crate::markup::InlayMeasure {
                 width: self.editor(editor).layout.layout_width(),

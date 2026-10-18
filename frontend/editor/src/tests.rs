@@ -17,7 +17,6 @@ use crate::{
     document_layout::DocumentLayout,
     editor_view::EditorView,
     markup::BlockStyle,
-    shaped_line::line_paragraph,
     test_document::{
         fenced_code_document, header_marks, hidden_document, list_document, marked_document,
         plain_document,
@@ -1988,8 +1987,7 @@ fn alignment_markers_place_the_covered_lines() {
             &marks,
             &inline,
             &hidden,
-            &fonts,
-            &theme,
+                        &theme,
             crate::markup::InlayMeasure {
                 width: width,
                 store,
@@ -2038,8 +2036,7 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
             &marks,
             &inline,
             &hidden,
-            &fonts,
-            &theme,
+                        &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -2102,8 +2099,7 @@ fn a_through_end_wash_fills_the_block_gap_below() {
             &marks,
             &inline,
             &hidden,
-            &fonts,
-            &theme,
+                        &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -2181,8 +2177,7 @@ fn tight_background_markers_hug_their_glyphs() {
             &marks,
             &inline,
             &hidden,
-            &fonts,
-            &theme,
+                        &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -5163,8 +5158,7 @@ fn the_first_baseline_is_cached_at_shape_time() {
             &marks,
             &inline,
             &hidden,
-            &fonts,
-            &theme,
+                        &theme,
             crate::markup::InlayMeasure {
                 width: 200.0,
                 store,

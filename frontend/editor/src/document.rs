@@ -2236,7 +2236,6 @@ impl Document {
         let height = crate::shaped_line::ShapedLine::placeholder(
             &text,
             theme.ui().peeker.dim_text.0,
-            fonts,
             theme,
             width,
             0.0,

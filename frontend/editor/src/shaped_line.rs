@@ -3,21 +3,14 @@
 
 use std::{ops::Range, str};
 
-use skia_safe::{
-    textlayout::{
-        FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, PlaceholderAlignment,
-        PlaceholderStyle, RectHeightStyle, RectWidthStyle, TextBaseline, TextDecoration,
-        TextDecorationStyle, TextDirection, TextStyle,
-    },
-    Canvas, FontStyle, Point, Rect,
-};
+use skia_safe::{Canvas, Rect};
+
+use imba::shape::{BoxAlign, DecorationSpec, InlineBoxSpec, ParleyLine, ShapeSpec, SpanStyle};
 use text::text_view::TextView;
 
 use crate::markup::{
     BlockStyle, InlayMode, InlayPlaceholder, InsteadKind, OverlaidMarkup, TextDecorationInterval,
 };
-
-const RENDER_LINE_WIDTH: f32 = 1_000_000.0;
 
 pub(crate) struct DisplayText {
     text: String,
@@ -239,27 +232,18 @@ impl DisplayText {
             .unwrap_or(0) as usize
     }
 
-    pub(crate) fn line_text_end(
-        &self,
-        paragraph: &Paragraph,
-        line_index: usize,
-        is_last: bool,
-    ) -> usize {
+    /// A visual row's end in display bytes. The shaper's row ranges
+    /// partition the text (the explicit break rides its row), so
+    /// unlike skia's "actual text range" no hard-break re-adding is
+    /// needed — only the char-boundary walk.
+    pub(crate) fn line_text_end_at(&self, row_end: usize, is_last: bool) -> usize {
         if is_last {
             return self.text.len();
         }
-
-        let mut text_end = paragraph
-            .get_actual_text_range(line_index, true)
-            .end
-            .min(self.text.len());
-        if starts_with_hard_break(&self.text, text_end) {
-            text_end = text_end.saturating_add(next_char_len(&self.text, text_end));
-        }
+        let mut text_end = row_end.min(self.text.len());
         while text_end < self.text.len() && !self.text.is_char_boundary(text_end) {
             text_end += 1;
         }
-
         text_end
     }
 
@@ -278,6 +262,7 @@ impl DisplayText {
 }
 
 struct Band {
+    /// DISPLAY-BYTE range into the shape text.
     range: Range<usize>,
     color: skia_safe::Color,
     extent: crate::theme::BackgroundExtent,
@@ -287,12 +272,262 @@ struct Band {
     through_end: bool,
 }
 
+/// A placeholder EXCISION: the display-byte range the inline box
+/// replaced, and where it sits in the shape text.
+#[derive(Clone, Copy)]
+pub(crate) struct Excision {
+    display_start: usize,
+    display_end: usize,
+    shape_start: usize,
+}
+
+pub(crate) fn shape_byte_of(excisions: &[Excision], display_byte: usize) -> usize {
+    let mut removed = 0usize;
+    for excision in excisions {
+        if display_byte >= excision.display_end {
+            removed += excision.display_end - excision.display_start;
+        } else if display_byte > excision.display_start {
+            removed += display_byte - excision.display_start;
+        } else {
+            break;
+        }
+    }
+    display_byte - removed
+}
+
+pub(crate) fn display_byte_of(excisions: &[Excision], shape_byte: usize) -> usize {
+    let mut added = 0usize;
+    for excision in excisions {
+        if shape_byte >= excision.shape_start {
+            added += excision.display_end - excision.display_start;
+        } else {
+            break;
+        }
+    }
+    shape_byte + added
+}
+
+/// Everything a shape call needs, computed from the display text,
+/// the resolved block style and the inline decorations — shared by
+/// the single-row road here and the wrapping road in
+/// `document_layout`.
+pub(crate) struct ShapeInputs {
+    pub(crate) text: String,
+    pub(crate) families: Vec<String>,
+    pub(crate) size: f32,
+    pub(crate) line_height: Option<f32>,
+    pub(crate) spans: Vec<SpanStyle>,
+    pub(crate) ink: Vec<DecorationSpec>,
+    pub(crate) boxes: Vec<InlineBoxSpec>,
+    pub(crate) excisions: Vec<Excision>,
+}
+
+impl ShapeInputs {
+    pub(crate) fn shape(&self, max_width: Option<f32>) -> ParleyLine {
+        crate::parley_line::ensure_fonts();
+        let families: Vec<&str> = self.families.iter().map(String::as_str).collect();
+        let mut spec = ShapeSpec::new(&self.text, &families, self.size);
+        spec.line_height = self.line_height;
+        spec.max_width = max_width;
+        spec.spans = &self.spans;
+        spec.boxes = &self.boxes;
+        spec.decorations = &self.ink;
+        ParleyLine::shape_spec(&spec)
+    }
+}
+
+/// One run's resolved attributes over the base — the style algebra
+/// that used to live in skia `TextStyle` pushes.
+#[derive(Clone)]
+struct RunStyle {
+    color: skia_safe::Color,
+    bold: bool,
+    italic: bool,
+    size: f32,
+    families: Option<Vec<String>>,
+    line_height: Option<f32>,
+    underline: bool,
+    strikethrough: bool,
+    squiggle: Option<skia_safe::Color>,
+}
+
+pub(crate) fn shape_inputs(
+    resolved: &crate::theme::TextAttributes,
+    display: &DisplayText,
+    decorations: &[TextDecorationInterval],
+    theme: &crate::theme::Theme,
+) -> ShapeInputs {
+    let text = display.as_str();
+    let base_size = resolved.font_size.unwrap_or(14.0);
+    let base_color = resolved.color.unwrap_or(skia_safe::Color::BLACK);
+    let base_families: Vec<String> = resolved
+        .font_families
+        .as_ref()
+        .map(|families| families.to_vec())
+        .unwrap_or_default();
+    let base_height = resolved.line_height;
+
+    // ─── spans + ink over the DISPLAY text ───
+    let mut spans: Vec<SpanStyle> = Vec::new();
+    let mut ink: Vec<DecorationSpec> = Vec::new();
+    if decorations.is_empty() {
+        spans.push(SpanStyle::plain(base_color));
+    } else {
+        let mut cuts: Vec<usize> = Vec::with_capacity(decorations.len() * 2 + 2);
+        cuts.push(0);
+        for decoration in decorations {
+            for edge in [
+                decoration.range.start as usize,
+                decoration.range.end as usize,
+            ] {
+                if edge < text.len() && !text.is_char_boundary(edge) {
+                    continue;
+                }
+                cuts.push(edge.min(text.len()));
+            }
+        }
+        cuts.push(text.len());
+        cuts.sort_unstable();
+        cuts.dedup();
+
+        for window in cuts.windows(2) {
+            let (start, end) = (window[0], window[1]);
+            if start >= end {
+                continue;
+            }
+            let mut run = RunStyle {
+                color: base_color,
+                bold: false,
+                italic: false,
+                size: base_size,
+                families: None,
+                line_height: None,
+                underline: false,
+                strikethrough: false,
+                squiggle: None,
+            };
+            for decoration in decorations {
+                let range = decoration.range.start as usize..decoration.range.end as usize;
+                if range.start <= start && range.end >= end {
+                    let attributes = theme.attributes(decoration.id);
+                    if attributes.bold {
+                        run.bold = true;
+                    }
+                    if attributes.italic {
+                        run.italic = true;
+                    }
+                    if let Some(color) = attributes.color {
+                        run.color = color;
+                    }
+                    if let Some(size) = attributes.font_size {
+                        run.size = size;
+                    }
+                    if let Some(families) = &attributes.font_families {
+                        run.families = Some(families.to_vec());
+                    }
+                    if let Some(height) = attributes.line_height {
+                        run.line_height = Some(height);
+                    }
+                    if attributes.underline {
+                        run.underline = true;
+                    }
+                    if attributes.strikethrough {
+                        run.strikethrough = true;
+                    }
+                    if let Some(color) = attributes.squiggle {
+                        run.squiggle = Some(color);
+                    }
+                }
+            }
+            spans.push(SpanStyle {
+                start,
+                color: run.color,
+                bold: run.bold,
+                italic: run.italic,
+                size: ((run.size - base_size).abs() > f32::EPSILON).then_some(run.size),
+                families: run
+                    .families
+                    .clone()
+                    .filter(|families| *families != base_families),
+                line_height: run.line_height.filter(|height| {
+                    base_height.map_or(true, |base| (height - base).abs() > 1e-3)
+                }),
+            });
+            if run.underline || run.strikethrough || run.squiggle.is_some() {
+                ink.push(DecorationSpec {
+                    range: start..end,
+                    underline: run.underline || run.squiggle.is_some(),
+                    strikethrough: run.strikethrough,
+                    squiggle: run.squiggle,
+                    color: run.color,
+                });
+            }
+        }
+    }
+
+    // ─── placeholders become excisions + inline boxes ───
+    let mut excisions: Vec<Excision> = Vec::new();
+    let mut boxes: Vec<InlineBoxSpec> = Vec::new();
+    let mut shape_text = String::new();
+    let mut at = 0usize;
+    for placeholder in display.placeholders() {
+        let start = placeholder.range.start.min(text.len());
+        let end = placeholder.range.end.min(text.len());
+        if start < at || end < start || !text.is_char_boundary(start) || !text.is_char_boundary(end)
+        {
+            continue;
+        }
+        shape_text.push_str(&text[at..start]);
+        let shape_start = shape_text.len();
+        excisions.push(Excision {
+            display_start: start,
+            display_end: end,
+            shape_start,
+        });
+        boxes.push(InlineBoxSpec {
+            index: shape_start,
+            width: placeholder.width,
+            height: placeholder.height,
+            align: match placeholder.align {
+                crate::markup::InlayAlignment::Top => BoxAlign::Top,
+                crate::markup::InlayAlignment::Middle => BoxAlign::Middle,
+                crate::markup::InlayAlignment::Bottom => BoxAlign::Bottom,
+            },
+        });
+        at = end;
+    }
+    shape_text.push_str(&text[at..]);
+
+    // remap spans and ink into shape bytes
+    for span in &mut spans {
+        span.start = shape_byte_of(&excisions, span.start);
+    }
+    spans.dedup_by(|b, a| a.start == b.start);
+    for decoration in &mut ink {
+        decoration.range =
+            shape_byte_of(&excisions, decoration.range.start)..shape_byte_of(&excisions, decoration.range.end);
+    }
+    ink.retain(|decoration| decoration.range.start < decoration.range.end);
+
+    ShapeInputs {
+        text: shape_text,
+        families: base_families,
+        size: base_size,
+        line_height: base_height,
+        spans,
+        ink,
+        boxes,
+        excisions,
+    }
+}
+
 pub(crate) struct ShapedLine {
     byte_start: u32,
     byte_size: u32,
     x: f32,
     display: DisplayText,
-    paragraph: Paragraph,
+    excisions: Vec<Excision>,
+    line: ParleyLine,
     placeholder_rects: Vec<InlinePlaceholderRect>,
 
     backgrounds: Vec<Band>,
@@ -300,24 +535,12 @@ pub(crate) struct ShapedLine {
     extent_left: f32,
     extent_right: f32,
 
-    line_height_shrink: f32,
-
     first_baseline: Option<f32>,
 
-    /// The visual lines' display-UTF-16 ranges, snapshotted at shape
-    /// time for lines that carry bands — `extended_bands` runs on
-    /// EVERY paint, and querying skia's full line-metrics vector
-    /// there (per-line style maps and all) was a measurable slice of
-    /// the diff-scrolling frame. Empty when there are no bands.
-    band_line_ranges: Vec<Range<usize>>,
-    /// The laid-out runs baked as blobs — `None` when a decoration
-    /// or placeholder needs `Paragraph::paint`.
-    blob_runs: Option<Vec<BlobRun>>,
-    /// The PARLEY twin, ON BY DEFAULT (`HIMARK_NO_PARLEY` opts out) for
-    /// plain lines — paint and caret queries A/B against the
-    /// SkParagraph road live, in one binary.
-    #[cfg(feature = "parley-text")]
-    parley: Option<crate::parley_line::ParleyLine>,
+    /// The visual rows (shape-byte ranges + verticals), snapshotted
+    /// at shape time for lines that carry bands. Empty when there
+    /// are no bands.
+    band_line_ranges: Vec<imba::shape::ShapedRow>,
 }
 
 impl ShapedLine {
@@ -329,7 +552,6 @@ impl ShapedLine {
         marks: &BlockStyle,
         inline: &[TextDecorationInterval],
         hidden: &[Range<u32>],
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         measure: crate::markup::InlayMeasure<'_>,
         document_x: f32,
@@ -378,39 +600,36 @@ impl ShapedLine {
 
         let inline = display.map_decorations(inline);
 
-        let shape_text = if display.as_str().is_empty() && display.placeholders().is_empty() {
-            "\u{200b}"
-        } else {
-            display.as_str()
-        };
-        let (mut paragraph, spans) = line_paragraph_with_placeholders(
-            &resolved,
-            shape_text,
-            fonts.clone(),
-            theme,
-            &inline,
-            display.placeholders(),
-        );
-        paragraph.layout(RENDER_LINE_WIDTH);
-        let blob_runs = build_blob_runs(&mut paragraph, &spans);
-        #[cfg(feature = "parley-text")]
-        let parley = build_parley(
-            &resolved,
-            shape_text,
-            &spans,
-            display.placeholders().is_empty(),
-        );
-        let placeholder_rects = match display.placeholders().is_empty() {
-            true => Vec::new(),
-            false => placeholder_rects(&paragraph, display.placeholders()),
-        };
+        let mut inputs = shape_inputs(&resolved, &display, &inline, theme);
+        if inputs.text.is_empty() && inputs.boxes.is_empty() {
+            // An empty line still answers heights and carets — the
+            // zero-width space gives the shaper one real cluster.
+            inputs.text = "\u{200b}".to_string();
+        }
+        let line = inputs.shape(None);
+
+        let placeholder_rects = display
+            .placeholders()
+            .iter()
+            .zip(line.boxes())
+            .map(|(placeholder, (_, rect))| InlinePlaceholderRect {
+                byte: placeholder.byte,
+                rect,
+            })
+            .collect();
 
         let backgrounds: Vec<Band> = band_styled
             .iter()
             .filter_map(|decoration| {
                 let background = theme.attributes(decoration.id).background?;
-                let start = display.display_utf16_at_raw(decoration.range.start);
-                let end = display.display_utf16_at_raw(decoration.range.end);
+                let start = shape_byte_of(
+                    &inputs.excisions,
+                    display.display_byte_at_raw(decoration.range.start),
+                );
+                let end = shape_byte_of(
+                    &inputs.excisions,
+                    display.display_byte_at_raw(decoration.range.end),
+                );
 
                 let through_end = decoration.range.end >= byte_size;
                 let stands = start < end
@@ -426,19 +645,14 @@ impl ShapedLine {
             .collect();
 
         let (x, extent_left, extent_right) =
-            horizontal_geometry(document_x, &resolved, alignment, &paragraph, layout_width);
+            horizontal_geometry(document_x, &resolved, alignment, line.width(), layout_width);
 
-        let first_baseline = paragraph
-            .get_line_metrics_at(0)
-            .map(|metrics| metrics.baseline as f32);
+        let first_baseline = line.first_baseline();
 
         let band_line_ranges = if backgrounds.is_empty() {
             Vec::new()
         } else {
-            (0..paragraph.line_number())
-                .filter_map(|row| paragraph.get_line_metrics_at(row))
-                .map(|metrics| metrics.start_index..metrics.end_index)
-                .collect()
+            line.rows()
         };
 
         Self {
@@ -446,24 +660,20 @@ impl ShapedLine {
             byte_size,
             x,
             display,
-            paragraph,
+            excisions: inputs.excisions,
+            line,
             placeholder_rects,
             backgrounds,
             extent_left,
             extent_right,
-            line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
             band_line_ranges,
-            blob_runs,
-            #[cfg(feature = "parley-text")]
-            parley,
         }
     }
 
     pub(crate) fn placeholder(
         text: &str,
         color: skia_safe::Color,
-        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         layout_width: f32,
         document_x: f32,
@@ -473,61 +683,41 @@ impl ShapedLine {
         let alignment = resolved.alignment.take().unwrap_or_default();
         let segments = [(text.to_owned(), 0)];
         let display = DisplayText::build_segments(false, &segments, &[], true, text.len());
-        let (mut paragraph, spans) = line_paragraph_with_placeholders(
-            &resolved,
-            display.as_str(),
-            fonts.clone(),
-            theme,
-            &[],
-            &[],
-        );
-        paragraph.layout(RENDER_LINE_WIDTH);
-        let blob_runs = build_blob_runs(&mut paragraph, &spans);
+        let inputs = shape_inputs(&resolved, &display, &[], theme);
+        let line = inputs.shape(None);
         let (x, extent_left, extent_right) =
-            horizontal_geometry(document_x, &resolved, alignment, &paragraph, layout_width);
+            horizontal_geometry(document_x, &resolved, alignment, line.width(), layout_width);
 
-        let first_baseline = paragraph
-            .get_line_metrics_at(0)
-            .map(|metrics| metrics.baseline as f32);
-
-        // The hint line is measured against its typed twin (the
-        // composer swaps between them as text appears) — it must
-        // ride the same geometry road, or the caret JUMPS the first
-        // keystroke.
-        #[cfg(feature = "parley-text")]
-        let parley = build_parley(&resolved, display.as_str(), &spans, true);
+        let first_baseline = line.first_baseline();
 
         Self {
             byte_start: 0,
             byte_size: text.len().min(u32::MAX as usize) as u32,
             x,
             display,
-            paragraph,
+            excisions: inputs.excisions,
+            line,
             placeholder_rects: Vec::new(),
             backgrounds: Vec::new(),
             extent_left,
             extent_right,
-            line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
             band_line_ranges: Vec::new(),
-            blob_runs,
-            #[cfg(feature = "parley-text")]
-            parley,
         }
     }
 
     pub(crate) fn paint(&self, canvas: &Canvas, top: f32) {
-        self.paint_in_slot(canvas, top, top, top + self.paragraph.height());
+        self.paint_in_slot(canvas, top, top, top + self.line.content_height());
     }
 
     pub(crate) fn paint_in_slot(&self, canvas: &Canvas, slot_top: f32, top: f32, slot_bottom: f32) {
         if !self.backgrounds.is_empty() {
             let mut paint = skia_safe::Paint::default();
-            let display_end = self.display.as_str().encode_utf16().count();
+            let display_end = self.line_text_len();
 
-            let gap_below = (slot_bottom - top - self.paragraph.height()).max(0.0);
-            // The paragraph's own rects can stand TALLER than the
-            // layout slot (shrunk line heights, mixed metrics); a
+            let gap_below = (slot_bottom - top - self.line.content_height()).max(0.0);
+            // The line's own rects can stand TALLER than the layout
+            // slot (shrunk line heights, mixed metrics); a
             // translucent band bleeding into the next row doubles up
             // with its neighbor's — the horizontal-stripes artifact.
             // Bands never leave the slot. (They do not stretch up to
@@ -544,12 +734,12 @@ impl ShapedLine {
                 )
             };
             // Whole-line bands take their VERTICAL edges from the
-            // layout slot, not from paragraph metrics: skia's line
-            // boxes sit a sub-pixel inside the slot, and at
-            // fractional scroll offsets those slivers surface as
-            // row-seam stripes that come and go with the scroll
-            // position. Snapping makes adjacent rows share exact
-            // edges, which rasterize seamlessly at any offset.
+            // layout slot, not from line metrics: the line boxes sit
+            // a sub-pixel inside the slot, and at fractional scroll
+            // offsets those slivers surface as row-seam stripes that
+            // come and go with the scroll position. Snapping makes
+            // adjacent rows share exact edges, which rasterize
+            // seamlessly at any offset.
             let seamless = |rect: Rect| {
                 let local_top = rect.top;
                 let mut out = clamped(rect);
@@ -565,11 +755,7 @@ impl ShapedLine {
                 paint.set_color(band.color);
                 match band.extent {
                     crate::theme::BackgroundExtent::Glyphs => {
-                        let style = match band.height {
-                            crate::theme::BackgroundHeight::Tight => RectHeightStyle::Tight,
-                            crate::theme::BackgroundHeight::Line => RectHeightStyle::Max,
-                        };
-                        for rect in self.band_rects(band.range.clone(), style) {
+                        for rect in self.band_rects(band.range.clone(), band.height) {
                             let rect = clamped(rect);
                             if rect.bottom > rect.top {
                                 canvas.draw_rect(rect, &paint);
@@ -589,97 +775,37 @@ impl ShapedLine {
                 }
             }
         }
-        #[cfg(feature = "parley-text")]
-        if let Some(parley) = &self.parley {
-            // BASELINES AGREE, boxes need not: skparagraph's height
-            // override scales ascent/descent, parley half-leads —
-            // the same glyphs land a few px apart inside the line
-            // box. Geometry (caret, tight bands) answers from the
-            // sk metrics, so the paint anchors to the SK baseline
-            // and the pixels meet the rects exactly.
-            let delta = match (self.first_baseline, parley.first_baseline()) {
-                (Some(sk), Some(own)) => sk - own,
-                _ => 0.0,
-            };
-            parley.paint(canvas, (self.x, top + delta));
-            return;
-        }
-        match &self.blob_runs {
-            // The baked runs: stable blob identity keeps skia's
-            // text sub-run cache warm — the atlas quads for this
-            // line are recorded once, not every frame.
-            Some(runs) => {
-                let mut paint = skia_safe::Paint::default();
-                paint.set_anti_alias(true);
-                for run in runs {
-                    paint.set_color(run.color);
-                    canvas.draw_text_blob(&run.blob, (self.x, top), &paint);
-                }
-            }
-            None => self.paragraph.paint(canvas, (self.x, top)),
-        }
+        self.line.paint(canvas, (self.x, top));
     }
 
-    /// TEST SUPPORT: force the `Paragraph::paint` road so a test
-    /// can compare it pixel-for-pixel against the blob road.
-    #[doc(hidden)]
-    pub(crate) fn drop_blobs_for_test(&mut self) {
-        self.blob_runs = None;
+    fn line_text_len(&self) -> usize {
+        self.display.as_str().len()
+            - self
+                .excisions
+                .iter()
+                .map(|excision| excision.display_end - excision.display_start)
+                .sum::<usize>()
     }
 
     pub(crate) fn layout_height(&self, theme: &crate::theme::Theme) -> f32 {
         let text_height = self
-            .paragraph
-            .get_line_metrics_at(0)
-            .map(|metrics| (metrics.ascent.abs() + metrics.descent).ceil().max(1.0) as f32)
+            .line
+            .rows()
+            .first()
+            .map(|row| (row.bottom - row.top).ceil().max(1.0))
             .unwrap_or(0.0);
         text_height + block_gap(theme.base())
     }
 
-    /// Caret x for a LOCAL raw byte. When the parley twin painted
-    /// the glyphs, it answers — the caret must agree with the paint,
-    /// and on faces where the engines' advances differ (SF applies
-    /// tracking per point size, harfrust doesn't) the skparagraph
-    /// answer walks off the painted line (the composer's drifting
-    /// caret).
-    fn caret_x_local(&self, local: u32, display_utf16: usize) -> f32 {
-        #[cfg(feature = "parley-text")]
-        if let Some(parley) = &self.parley {
-            return parley.caret_x(self.display.display_byte_at_raw(local));
-        }
-        #[cfg(not(feature = "parley-text"))]
-        let _ = local;
-        caret_x_for_display_position(&self.paragraph, display_utf16)
+    fn shape_byte_at_raw(&self, local: u32) -> usize {
+        shape_byte_of(&self.excisions, self.display.display_byte_at_raw(local))
     }
 
     pub(crate) fn caret_geometry(&self, byte: u32) -> (f32, f32, f32) {
         let local = byte.saturating_sub(self.byte_start).min(self.byte_size);
-        let display = self.display.display_utf16_at_raw(local);
-        let x = self.x + self.caret_x_local(local, display);
-
-        let tight = |range: Range<usize>| {
-            self.paragraph
-                .get_rects_for_range(range, RectHeightStyle::Tight, RectWidthStyle::Tight)
-                .into_iter()
-                .next()
-                .map(|text_box| text_box.rect)
-        };
-        let anchor = display
-            .checked_sub(1)
-            .and_then(|before| tight(before..display))
-            .or_else(|| tight(display..display + 1));
-        if let Some(rect) = anchor {
-            return (x, rect.top, rect.bottom - rect.top);
-        }
-
-        match self.paragraph.get_line_metrics_at(0) {
-            Some(metrics) => {
-                let ascent = metrics.ascent as f32 / self.line_height_shrink;
-                let descent = metrics.descent as f32 / self.line_height_shrink;
-                (x, metrics.baseline as f32 - ascent, ascent + descent)
-            }
-            None => (x, 0.0, 0.0),
-        }
+        let shape_byte = self.shape_byte_at_raw(local);
+        let (x, top, height) = self.line.caret_geometry(shape_byte);
+        (self.x + x, top, height)
     }
 
     /// TEST SUPPORT for the parley parity meter.
@@ -694,25 +820,22 @@ impl ShapedLine {
 
     #[cfg(test)]
     pub(crate) fn queried_first_baseline(&self) -> Option<f32> {
-        self.paragraph
-            .get_line_metrics_at(0)
-            .map(|metrics| metrics.baseline as f32)
+        self.line.first_baseline()
     }
 
     pub(crate) fn x_at_byte(&self, byte: u32) -> f32 {
         let local = byte.saturating_sub(self.byte_start).min(self.byte_size);
-        let display = self.display.display_utf16_at_raw(local);
-        self.x + self.caret_x_local(local, display)
+        self.x + self.line.caret_x(self.shape_byte_at_raw(local))
     }
 
     pub(crate) fn rects_for_range(&self, range: Range<u32>) -> Vec<Rect> {
-        let start = self.display.display_utf16_at_raw(
+        let start = self.shape_byte_at_raw(
             range
                 .start
                 .saturating_sub(self.byte_start)
                 .min(self.byte_size),
         );
-        let end = self.display.display_utf16_at_raw(
+        let end = self.shape_byte_at_raw(
             range
                 .end
                 .saturating_sub(self.byte_start)
@@ -721,7 +844,7 @@ impl ShapedLine {
         if start >= end {
             return Vec::new();
         }
-        self.line_bands(start..end)
+        self.band_rects(start..end, crate::theme::BackgroundHeight::Line)
     }
 
     fn extended_bands(
@@ -738,20 +861,28 @@ impl ShapedLine {
                     self.extent_left,
                     0.0,
                     self.extent_right,
-                    self.paragraph.height() + gap_below,
+                    self.line.content_height() + gap_below,
                 ));
             }
             return;
         }
-        for line in &self.band_line_ranges {
+        for row in &self.band_line_ranges {
+            let line = &row.text_range;
             let line_end = line.end.min(display_end);
             if band.range.start >= line_end || band.range.end <= line.start {
                 continue;
             }
             let seg = band.range.start.max(line.start)..band.range.end.min(line_end);
-            let rects = self.line_bands(seg);
-            let Some(mut union) = rects.first().copied() else {
-                continue;
+            let rects = self.band_rects(seg.clone(), crate::theme::BackgroundHeight::Line);
+            // A segment of pure line-break has no selection geometry
+            // — the band still stands on the row, anchored at the
+            // caret (the fill to the extent does the painting).
+            let mut union = match rects.first().copied() {
+                Some(first) => first,
+                None => {
+                    let anchor = self.x + self.line.caret_x(seg.start);
+                    Rect::from_ltrb(anchor, row.top, anchor, row.bottom)
+                }
             };
             for rect in &rects[1..] {
                 union.join(*rect);
@@ -791,76 +922,38 @@ impl ShapedLine {
         }
     }
 
-    fn line_bands(&self, range: Range<usize>) -> Vec<Rect> {
-        self.band_rects(range, RectHeightStyle::Max)
-    }
-
-    fn band_rects(&self, range: Range<usize>, height: RectHeightStyle) -> Vec<Rect> {
-        let sk: Vec<Rect> = self
-            .paragraph
-            .get_rects_for_range(range.clone(), height, RectWidthStyle::Tight)
-            .into_iter()
-            .map(|text_box| {
-                let rect = text_box.rect;
-                Rect::from_ltrb(
-                    self.x + rect.left,
-                    rect.top,
-                    self.x + rect.right,
-                    rect.bottom,
-                )
-            })
-            .collect();
-        // Where the twin painted the glyphs, the twin places the
-        // bands: on faces whose advances lawfully differ between the
-        // engines (SF tracks per point size) a skparagraph selection
-        // sits visibly off the parley ink. Horizontal from parley,
-        // vertical stays skparagraph — the same split as the caret,
-        // anchored like the paint.
-        #[cfg(feature = "parley-text")]
-        if let Some(parley) = &self.parley {
-            let display_byte = |utf16: usize| {
-                self.display
-                    .display_byte_at_raw(self.display.raw_byte_at_utf16(utf16) as u32)
-            };
-            let (start, end) = (display_byte(range.start), display_byte(range.end));
-            if start >= end {
-                return sk;
-            }
-            let (top, bottom) = match sk.first() {
-                Some(first) => (first.top, first.bottom),
-                None => return sk,
-            };
-            let bands: Vec<Rect> = parley
-                .rects(start..end)
+    /// Band rects for a SHAPE-BYTE range. `Line` height takes the
+    /// full line box; `Tight` hugs the content (the caret rect's
+    /// vertical at the range start).
+    fn band_rects(
+        &self,
+        range: Range<usize>,
+        height: crate::theme::BackgroundHeight,
+    ) -> Vec<Rect> {
+        let rects = self.line.rects(range.clone());
+        match height {
+            crate::theme::BackgroundHeight::Line => rects
                 .into_iter()
-                .filter(|rect| rect.width() > 0.01)
                 .map(|rect| {
-                    Rect::from_ltrb(self.x + rect.left, top, self.x + rect.right, bottom)
+                    Rect::from_ltrb(self.x + rect.left, rect.top, self.x + rect.right, rect.bottom)
                 })
-                .collect();
-            if !bands.is_empty() {
-                return bands;
-            }
+                .collect(),
+            crate::theme::BackgroundHeight::Tight => self
+                .line
+                .content_rects(range)
+                .into_iter()
+                .map(|rect| {
+                    Rect::from_ltrb(self.x + rect.left, rect.top, self.x + rect.right, rect.bottom)
+                })
+                .collect(),
         }
-        sk
     }
 
     pub(crate) fn byte_at_point(&self, x: f32, y: f32) -> u32 {
         let paragraph_x = (x - self.x).max(0.0);
-        #[cfg(feature = "parley-text")]
-        if let Some(parley) = &self.parley {
-            let display_byte = parley.byte_at_point(paragraph_x, y);
-            let local = self.display.raw_byte_at_display_byte(display_byte);
-            return self
-                .byte_start
-                .saturating_add(local.min(self.byte_size as usize) as u32);
-        }
-        let position = self
-            .paragraph
-            .get_glyph_position_at_coordinate(Point::new(paragraph_x, y));
-        let local = self
-            .display
-            .raw_byte_at_utf16(position.position.max(0) as usize);
+        let shape_byte = self.line.byte_at_point(paragraph_x, y);
+        let display_byte = display_byte_of(&self.excisions, shape_byte);
+        let local = self.display.raw_byte_at_display_byte(display_byte);
         self.byte_start
             .saturating_add(local.min(self.byte_size as usize) as u32)
     }
@@ -886,19 +979,8 @@ struct InlinePlaceholderRect {
     rect: Rect,
 }
 
-fn placeholder_rects(
-    paragraph: &Paragraph,
-    placeholders: &[ParagraphPlaceholder],
-) -> Vec<InlinePlaceholderRect> {
-    paragraph
-        .get_rects_for_placeholders()
-        .into_iter()
-        .zip(placeholders.iter())
-        .map(|(text_box, placeholder)| InlinePlaceholderRect {
-            byte: placeholder.byte,
-            rect: text_box.rect,
-        })
-        .collect()
+pub(crate) fn block_gap(resolved: &crate::theme::TextAttributes) -> f32 {
+    resolved.block_gap.unwrap_or(0.0)
 }
 
 pub(crate) fn line_text_x(document_x: f32, resolved: &crate::theme::TextAttributes) -> f32 {
@@ -909,11 +991,11 @@ fn horizontal_geometry(
     document_x: f32,
     resolved: &crate::theme::TextAttributes,
     alignment: crate::theme::TextAlignment,
-    paragraph: &Paragraph,
+    longest_line: f32,
     layout_width: f32,
 ) -> (f32, f32, f32) {
     let aligned_box = (layout_width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0);
-    let slack = (aligned_box - paragraph.longest_line()).max(0.0);
+    let slack = (aligned_box - longest_line).max(0.0);
     let aligned_x = match alignment {
         crate::theme::TextAlignment::Left => 0.0,
         crate::theme::TextAlignment::Center => slack / 2.0,
@@ -925,25 +1007,6 @@ fn horizontal_geometry(
         extent_left,
         extent_left + aligned_box,
     )
-}
-
-pub(crate) fn caret_x_for_display_position(
-    paragraph: &Paragraph,
-    display_position: usize,
-) -> f32 {
-    if display_position == 0 {
-        return 0.0;
-    }
-
-    paragraph
-        .get_rects_for_range(
-            0..display_position,
-            RectHeightStyle::Tight,
-            RectWidthStyle::Tight,
-        )
-        .into_iter()
-        .map(|text_box| text_box.rect.right)
-        .fold(0.0, f32::max)
 }
 
 pub(crate) fn visible_unit_segments(
@@ -1046,477 +1109,6 @@ pub(crate) fn rows_share_metrics(
                 && attributes.font_families.is_none()
                 && attributes.font_size.is_none()
         })
-}
-
-/// One glyph run of a laid-out line, baked as an immutable
-/// `SkTextBlob`. `Paragraph::paint` re-walks runs and emits
-/// ephemeral glyph lists every frame — which also defeats skia's
-/// text sub-run cache, keyed on BLOB identity. A stable blob per
-/// run turns the per-frame paint into a draw of memoized atlas
-/// quads (the Graphite road's text fast path).
-pub(crate) struct BlobRun {
-    blob: skia_safe::TextBlob,
-    color: skia_safe::Color,
-}
-
-/// The color geography of the text handed to the builder: one
-/// entry per pushed style run, in display-text utf8 offsets.
-/// `plain` means blob-representable — no underline, squiggle or
-/// strikethrough (those paint through `Paragraph::paint`).
-pub(crate) struct StyleSpan {
-    utf8_start: usize,
-    color: skia_safe::Color,
-    plain: bool,
-    bold: bool,
-    italic: bool,
-    size: f32,
-    families: Option<Vec<String>>,
-    line_height: Option<f32>,
-}
-
-/// Bake the laid-out paragraph's runs into blobs. `None` when any
-/// span needs decoration painting — the caller falls back.
-fn build_blob_runs(paragraph: &mut Paragraph, spans: &[StyleSpan]) -> Option<Vec<BlobRun>> {
-    if spans.iter().any(|span| !span.plain) {
-        return None;
-    }
-    let color_at = |utf8: usize| -> skia_safe::Color {
-        match spans.binary_search_by(|span| span.utf8_start.cmp(&utf8)) {
-            Ok(index) => spans[index].color,
-            Err(0) => spans.first().map(|span| span.color).unwrap_or_default(),
-            Err(index) => spans[index - 1].color,
-        }
-    };
-    let mut runs: Vec<BlobRun> = Vec::new();
-    let mut sound = true;
-    paragraph.visit(|_line, info| {
-        let Some(info) = info else { return };
-        let count = info.count();
-        if count == 0 {
-            return;
-        }
-        let glyphs = info.glyphs();
-        let positions = info.positions();
-        if glyphs.len() < count || positions.len() < count {
-            sound = false;
-            return;
-        }
-        let origin = info.origin();
-        let mut builder = skia_safe::TextBlobBuilder::new();
-        {
-            let (out_glyphs, out_points) = builder.alloc_run_pos(info.font(), count, None);
-            out_glyphs.copy_from_slice(&glyphs[..count]);
-            for (slot, position) in out_points.iter_mut().zip(&positions[..count]) {
-                *slot = skia_safe::Point::new(position.x + origin.x, position.y + origin.y);
-            }
-        }
-        let Some(blob) = builder.make() else {
-            sound = false;
-            return;
-        };
-        let color = info
-            .utf8_starts()
-            .first()
-            .map(|start| color_at(*start as usize))
-            .unwrap_or_else(|| color_at(0));
-        runs.push(BlobRun { blob, color });
-    });
-    sound.then_some(runs)
-}
-
-#[cfg(test)]
-pub(crate) fn line_paragraph(
-    marks: &BlockStyle,
-    text: &str,
-    fonts: FontCollection,
-    theme: &crate::theme::Theme,
-    decorations: &[TextDecorationInterval],
-) -> Paragraph {
-    line_paragraph_with_placeholders(&marks.resolved(theme), text, fonts, theme, decorations, &[]).0
-}
-
-fn line_paragraph_with_placeholders(
-    resolved: &crate::theme::TextAttributes,
-    text: &str,
-    fonts: FontCollection,
-    theme: &crate::theme::Theme,
-    decorations: &[TextDecorationInterval],
-    placeholders: &[ParagraphPlaceholder],
-) -> (Paragraph, Vec<StyleSpan>) {
-    let mut spans = Vec::new();
-    let paragraph = paragraph_with_max_lines(
-        resolved,
-        text,
-        fonts,
-        theme,
-        decorations,
-        placeholders,
-        Some(1),
-        &mut spans,
-    );
-    (paragraph, spans)
-}
-
-pub(crate) fn paragraph(
-    resolved: &crate::theme::TextAttributes,
-    text: &str,
-    fonts: FontCollection,
-    theme: &crate::theme::Theme,
-    decorations: &[TextDecorationInterval],
-    placeholders: &[ParagraphPlaceholder],
-) -> Paragraph {
-    paragraph_with_max_lines(
-        resolved,
-        text,
-        fonts,
-        theme,
-        decorations,
-        placeholders,
-        None,
-        &mut Vec::new(),
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn paragraph_with_max_lines(
-    resolved: &crate::theme::TextAttributes,
-    text: &str,
-    fonts: FontCollection,
-    theme: &crate::theme::Theme,
-    decorations: &[TextDecorationInterval],
-    placeholders: &[ParagraphPlaceholder],
-    max_lines: Option<usize>,
-    spans: &mut Vec<StyleSpan>,
-) -> Paragraph {
-    let text_style = text_style(resolved);
-    let mut paragraph_style = ParagraphStyle::new();
-    paragraph_style.set_text_direction(TextDirection::LTR);
-    paragraph_style.set_text_style(&text_style);
-    paragraph_style.set_text_align(match resolved.alignment.unwrap_or_default() {
-        crate::theme::TextAlignment::Left => skia_safe::textlayout::TextAlign::Left,
-        crate::theme::TextAlignment::Center => skia_safe::textlayout::TextAlign::Center,
-        crate::theme::TextAlignment::Right => skia_safe::textlayout::TextAlign::Right,
-    });
-    if let Some(max_lines) = max_lines {
-        paragraph_style.set_max_lines(max_lines);
-    }
-
-    let mut builder = ParagraphBuilder::new(&paragraph_style, fonts);
-    add_text_runs(
-        &mut builder,
-        text,
-        &text_style,
-        decorations,
-        placeholders,
-        theme,
-        spans,
-    );
-    builder.build()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn add_text_runs(
-    builder: &mut ParagraphBuilder,
-    text: &str,
-    base_style: &TextStyle,
-    decorations: &[TextDecorationInterval],
-    placeholders: &[ParagraphPlaceholder],
-    theme: &crate::theme::Theme,
-    spans: &mut Vec<StyleSpan>,
-) {
-    if decorations.is_empty() && placeholders.is_empty() {
-        spans.push(StyleSpan {
-            utf8_start: 0,
-            color: base_style.color(),
-            plain: true,
-            bold: false,
-            italic: false,
-            size: base_style.font_size(),
-            families: None,
-            line_height: None,
-        });
-        builder.add_text(text);
-        return;
-    }
-
-    let mut offset = 0;
-    for placeholder in placeholders {
-        let start = placeholder.range.start.min(text.len());
-        let end = placeholder.range.end.min(text.len());
-        if start < offset
-            || end < start
-            || !text.is_char_boundary(start)
-            || !text.is_char_boundary(end)
-        {
-            continue;
-        }
-
-        add_text_slice(
-            builder,
-            text,
-            base_style,
-            decorations,
-            theme,
-            offset..start,
-            spans,
-        );
-        // A placeholder occupies glyphs the visitor cannot speak
-        // for — the line paints through `Paragraph::paint`.
-        spans.push(StyleSpan {
-            utf8_start: start,
-            color: base_style.color(),
-            plain: false,
-            bold: false,
-            italic: false,
-            size: base_style.font_size(),
-            families: None,
-            line_height: None,
-        });
-        builder.add_placeholder(&PlaceholderStyle::new(
-            placeholder.width,
-            placeholder.height,
-            match placeholder.align {
-                crate::markup::InlayAlignment::Top => PlaceholderAlignment::Top,
-                crate::markup::InlayAlignment::Middle => PlaceholderAlignment::Middle,
-                crate::markup::InlayAlignment::Bottom => PlaceholderAlignment::Bottom,
-            },
-            TextBaseline::Alphabetic,
-            0.0,
-        ));
-        offset = end;
-    }
-
-    add_text_slice(
-        builder,
-        text,
-        base_style,
-        decorations,
-        theme,
-        offset..text.len(),
-        spans,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn add_text_slice(
-    builder: &mut ParagraphBuilder,
-    text: &str,
-    base_style: &TextStyle,
-    decorations: &[TextDecorationInterval],
-    theme: &crate::theme::Theme,
-    range: Range<usize>,
-    spans: &mut Vec<StyleSpan>,
-) {
-    if range.start >= range.end {
-        return;
-    }
-
-    if decorations.is_empty() {
-        spans.push(StyleSpan {
-            utf8_start: range.start,
-            color: base_style.color(),
-            plain: true,
-            bold: false,
-            italic: false,
-            size: base_style.font_size(),
-            families: None,
-            line_height: None,
-        });
-        builder.add_text(&text[range]);
-        return;
-    }
-
-    let mut cuts: Vec<usize> = Vec::with_capacity(decorations.len() * 2 + 1);
-    for decoration in decorations {
-        for edge in [
-            decoration.range.start as usize,
-            decoration.range.end as usize,
-        ] {
-            if edge > range.start && edge < range.end && text.is_char_boundary(edge) {
-                cuts.push(edge);
-            }
-        }
-    }
-    cuts.sort_unstable();
-    cuts.dedup();
-    cuts.push(range.end);
-
-    let mut active: Vec<&TextDecorationInterval> = Vec::new();
-    let mut next = 0usize;
-    let mut start = range.start;
-    for &end in &cuts {
-        if start >= end {
-            continue;
-        }
-        while let Some(decoration) = decorations.get(next) {
-            if (decoration.range.start as usize).max(range.start) <= start {
-                active.push(decoration);
-                next += 1;
-            } else {
-                break;
-            }
-        }
-        active.retain(|decoration| (decoration.range.end as usize) > start);
-        if active.is_empty() {
-            spans.push(StyleSpan {
-                utf8_start: start,
-                color: base_style.color(),
-                plain: true,
-                bold: false,
-                italic: false,
-                size: base_style.font_size(),
-                families: None,
-                line_height: None,
-            });
-            builder.push_style(base_style);
-        } else {
-            let mut run_style = base_style.clone();
-
-            for decoration in &active {
-                apply_attributes(&mut run_style, theme.attributes(decoration.id));
-            }
-            let style = run_style.font_style();
-            // The run's OVERRIDES travel with the span: inline code
-            // changes family and size mid-line; flattening them to
-            // the base painted every size equal and pulled markup,
-            // band heights and the caret with it.
-            let families: Vec<String> = run_style
-                .font_families()
-                .iter()
-                .map(|family| family.to_string())
-                .collect();
-            let base_families: Vec<String> = base_style
-                .font_families()
-                .iter()
-                .map(|family| family.to_string())
-                .collect();
-            spans.push(StyleSpan {
-                utf8_start: start,
-                color: run_style.color(),
-                plain: run_style.decoration_type().is_empty(),
-                bold: style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD,
-                italic: style.slant() != skia_safe::font_style::Slant::Upright,
-                size: run_style.font_size(),
-                families: (families != base_families).then_some(families),
-                line_height: (run_style.height_override()
-                    && (run_style.height() - base_style.height()).abs() > 1e-3)
-                    .then(|| run_style.height()),
-            });
-            builder.push_style(&run_style);
-        }
-        builder.add_text(&text[start..end]);
-        builder.pop();
-        start = end;
-    }
-}
-
-pub(crate) fn apply_attributes(
-    text_style: &mut TextStyle,
-    attributes: &crate::theme::TextAttributes,
-) {
-    if attributes.bold || attributes.italic {
-        let current = text_style.font_style();
-        let weight = if attributes.bold {
-            skia_safe::font_style::Weight::BOLD
-        } else {
-            current.weight()
-        };
-        let slant = if attributes.italic {
-            skia_safe::font_style::Slant::Italic
-        } else {
-            current.slant()
-        };
-        text_style.set_font_style(FontStyle::new(weight, current.width(), slant));
-    }
-    let mut decorations = TextDecoration::empty();
-    if attributes.underline || attributes.squiggle.is_some() {
-        decorations |= TextDecoration::UNDERLINE;
-    }
-    if attributes.strikethrough {
-        decorations |= TextDecoration::LINE_THROUGH;
-    }
-    if !decorations.is_empty() {
-        text_style.set_decoration_type(decorations);
-        match attributes.squiggle {
-            // The diagnostics look wins the decoration lane: a wavy
-            // underline in the severity's color.
-            Some(color) => {
-                text_style.set_decoration_style(TextDecorationStyle::Wavy);
-                text_style.set_decoration_color(color);
-            }
-            None => {
-                text_style.set_decoration_style(TextDecorationStyle::Solid);
-                text_style
-                    .set_decoration_color(attributes.color.unwrap_or_else(|| text_style.color()));
-            }
-        }
-    }
-    if let Some(color) = attributes.color {
-        text_style.set_color(color);
-    }
-
-    if let Some(families) = &attributes.font_families {
-        text_style.set_font_families(families);
-    }
-    if let Some(size) = attributes.font_size {
-        text_style.set_font_size(size);
-    }
-    if let Some(height) = attributes.line_height {
-        text_style.set_height(height);
-        text_style.set_height_override(true);
-    }
-}
-
-fn text_style(resolved: &crate::theme::TextAttributes) -> TextStyle {
-    let mut text_style = TextStyle::new();
-    text_style.set_height_override(true);
-    apply_attributes(&mut text_style, resolved);
-    text_style
-}
-
-pub(crate) fn block_gap(resolved: &crate::theme::TextAttributes) -> f32 {
-    resolved.block_gap.unwrap_or(0.0)
-}
-
-/// Build the parley twin for a PLAIN line — the DEFAULT road
-/// (`HIMARK_NO_PARLEY` falls back to skparagraph-only); same
-/// display text, same spans, same resolved base.
-#[cfg(feature = "parley-text")]
-fn build_parley(
-    resolved: &crate::theme::TextAttributes,
-    text: &str,
-    spans: &[StyleSpan],
-    no_placeholders: bool,
-) -> Option<crate::parley_line::ParleyLine> {
-    if crate::env_flags::no_parley() || !no_placeholders {
-        return None;
-    }
-    crate::parley_line::ensure_fonts();
-    if spans.iter().any(|span| !span.plain) {
-        return None;
-    }
-    let families = resolved.font_families.clone().unwrap_or_default();
-    let names: Vec<&str> = families.iter().map(String::as_str).collect();
-    let size = resolved.font_size?;
-    let spans: Vec<crate::parley_line::SpanStyle> = spans
-        .iter()
-        .map(|span| crate::parley_line::SpanStyle {
-            start: span.utf8_start,
-            color: span.color,
-            bold: span.bold,
-            italic: span.italic,
-            size: Some(span.size),
-            families: span.families.clone(),
-            line_height: span.line_height,
-        })
-        .collect();
-    Some(crate::parley_line::ParleyLine::shape_with_families(
-        text,
-        &names,
-        size,
-        resolved.line_height,
-        &spans,
-    ))
 }
 
 #[cfg(test)]

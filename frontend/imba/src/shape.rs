@@ -212,9 +212,6 @@ struct ParleyCtx {
     /// fvar axis defaults per blob — parsed from the bytes ONCE,
     /// not per run per shape.
     axes: HashMap<(u64, u32), Vec<(u32, f32)>>,
-    /// Decoration metrics per blob (underline/strikeout position
-    /// and thickness, in design units with the upem to scale by).
-    decor: HashMap<(u64, u32), DecorMetrics>,
     /// The name-bridged BASE face per blob: the family walk
     /// (instantiating every platform cut to fingerprint them) runs
     /// once per font, not once per variation combo.
@@ -224,15 +221,6 @@ struct ParleyCtx {
     /// parley shaped with (a variable font's default differs from
     /// its named instances — advances drift, carets follow).
     typefaces: HashMap<(u64, u32, Vec<(u32, i32)>), Option<skia_safe::Typeface>>,
-}
-
-#[derive(Clone, Copy)]
-struct DecorMetrics {
-    upem: f32,
-    underline_position: f32,
-    underline_thickness: f32,
-    strikeout_position: f32,
-    strikeout_thickness: f32,
 }
 
 thread_local! {
@@ -248,7 +236,6 @@ impl ParleyCtx {
             fallback_family: None,
             manager: skia_safe::FontMgr::new(),
             axes: HashMap::new(),
-            decor: HashMap::new(),
             bases: HashMap::new(),
             typefaces: HashMap::new(),
         }
@@ -335,56 +322,6 @@ impl ParleyCtx {
             }
         }
         coords
-    }
-
-    /// Underline/strikeout geometry from the font's own tables,
-    /// parsed once per blob.
-    fn decor_metrics(&mut self, font: &parley::FontData) -> DecorMetrics {
-        *self
-            .decor
-            .entry((font.data.id(), font.index))
-            .or_insert_with(|| {
-                use skrifa::raw::TableProvider;
-                let fallback = DecorMetrics {
-                    upem: 1000.0,
-                    underline_position: -100.0,
-                    underline_thickness: 50.0,
-                    strikeout_position: 300.0,
-                    strikeout_thickness: 50.0,
-                };
-                let Ok(face) = skrifa::FontRef::from_index(font.data.as_ref(), font.index) else {
-                    return fallback;
-                };
-                let upem = face
-                    .head()
-                    .map(|head| head.units_per_em() as f32)
-                    .unwrap_or(1000.0);
-                let (underline_position, underline_thickness) = face
-                    .post()
-                    .map(|post| {
-                        (
-                            post.underline_position().to_i16() as f32,
-                            post.underline_thickness().to_i16() as f32,
-                        )
-                    })
-                    .unwrap_or((-100.0, 50.0));
-                let (strikeout_position, strikeout_thickness) = face
-                    .os2()
-                    .map(|os2| {
-                        (
-                            os2.y_strikeout_position() as f32,
-                            os2.y_strikeout_size() as f32,
-                        )
-                    })
-                    .unwrap_or((300.0, 50.0));
-                DecorMetrics {
-                    upem,
-                    underline_position,
-                    underline_thickness,
-                    strikeout_position,
-                    strikeout_thickness,
-                }
-            })
     }
 
     /// The name-bridged base face for a blob — the expensive walk,
@@ -592,7 +529,7 @@ impl ParleyLine {
             layout.align(Alignment::Start, AlignmentOptions::default());
             let blobs = build_blobs(ctx, &layout);
             let boxes = collect_boxes(&layout);
-            let ink = build_ink(ctx, &layout, spec.decorations);
+            let ink = build_ink(&layout, spec.decorations);
             ParleyLine {
                 layout,
                 blobs,
@@ -655,6 +592,21 @@ impl ParleyLine {
         self.layout.height()
     }
 
+    /// The height up to the last row that CARRIES TEXT: a trailing
+    /// newline mints an empty final row, and the full layout height
+    /// counts it — a single visual row would report two rows' worth
+    /// and starve every below-the-text computation (the wash gap).
+    pub fn content_height(&self) -> f32 {
+        let mut bottom = None;
+        for line in self.layout.lines() {
+            let range = line.text_range();
+            if range.start < range.end || bottom.is_none() {
+                bottom = Some(line.metrics().block_max_coord);
+            }
+        }
+        bottom.unwrap_or_else(|| self.layout.height())
+    }
+
     pub fn first_baseline(&self) -> Option<f32> {
         self.layout.first_baseline()
     }
@@ -688,17 +640,65 @@ impl ParleyLine {
         cursor.geometry(&self.layout, 1.0).x0 as f32
     }
 
-    /// The caret's full geometry: (x, top, height) — strong caret
-    /// rect of the layout's own metrics.
+    /// The caret's full geometry: (x, top, height) — x from the
+    /// strong caret, vertical hugging the CONTENT (the anchor run's
+    /// ascent/descent at the row's baseline), the way an editor
+    /// caret stands on its glyphs rather than filling the leaded
+    /// line box.
     pub fn caret_geometry(&self, byte: usize) -> (f32, f32, f32) {
         let cursor =
             parley::Cursor::from_byte_index(&self.layout, byte, parley::Affinity::Downstream);
         let rect = cursor.geometry(&self.layout, 1.0);
-        (
-            rect.x0 as f32,
-            rect.y0 as f32,
-            (rect.y1 - rect.y0) as f32,
-        )
+        let x = rect.x0 as f32;
+        match self.content_vertical(byte) {
+            Some((top, bottom)) => (x, top, bottom - top),
+            None => (x, rect.y0 as f32, (rect.y1 - rect.y0) as f32),
+        }
+    }
+
+    /// The content band at a byte: row baseline minus the anchor
+    /// run's ascent to baseline plus its descent.
+    fn content_vertical(&self, byte: usize) -> Option<(f32, f32)> {
+        let rows = self.layout.len();
+        for (index, line) in self.layout.lines().enumerate() {
+            let range = line.text_range();
+            let is_last = index + 1 == rows;
+            if byte > range.end || (byte == range.end && !is_last) {
+                continue;
+            }
+            let baseline = line.metrics().baseline;
+            let mut best: Option<(f32, f32)> = None;
+            for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let run_range = run.run().text_range();
+                let hits = run_range.start <= byte && byte <= run_range.end;
+                if hits || best.is_none() {
+                    let metrics = run.run().font_metrics();
+                    let band = (baseline - metrics.ascent, baseline + metrics.descent);
+                    best = Some(band);
+                    if hits {
+                        break;
+                    }
+                }
+            }
+            return best;
+        }
+        None
+    }
+
+    /// Selection rects with CONTENT-height verticals — the tight
+    /// band road (inline code chips hugging their glyphs).
+    pub fn content_rects(&self, range: Range<usize>) -> Vec<skia_safe::Rect> {
+        let (top, bottom) = match self.content_vertical(range.start) {
+            Some(band) => band,
+            None => return self.rects(range),
+        };
+        self.rects(range)
+            .into_iter()
+            .map(|rect| skia_safe::Rect::from_ltrb(rect.left, top, rect.right, bottom))
+            .collect()
     }
 
     /// The caret boundary nearest a point — editor-grade click
@@ -941,10 +941,9 @@ fn collect_boxes(layout: &parley::Layout<Brush>) -> Vec<(u64, skia_safe::Rect)> 
 }
 
 /// Decorations → paintable geometry: horizontal extents from the
-/// selection geometry of the range, vertical from the FIRST run's
-/// own font tables (underline/strikeout position and thickness).
+/// selection geometry of the range, vertical from the anchor run's
+/// own scaled metrics (underline/strikethrough offset and size).
 fn build_ink(
-    ctx: &mut ParleyCtx,
     layout: &parley::Layout<Brush>,
     decorations: &[DecorationSpec],
 ) -> Vec<Ink> {
@@ -956,29 +955,6 @@ fn build_ink(
         if spec.range.start >= spec.range.end {
             continue;
         }
-        // The anchor run: the first glyph run intersecting the range
-        // names the font whose tables place the lines.
-        let mut anchor: Option<(DecorMetrics, f32, f32)> = None;
-        'lines: for line in layout.lines() {
-            for item in line.items() {
-                let PositionedLayoutItem::GlyphRun(run) = item else {
-                    continue;
-                };
-                let range = run.run().text_range();
-                if range.start < spec.range.end && spec.range.start < range.end {
-                    anchor = Some((
-                        ctx.decor_metrics(run.run().font()),
-                        run.run().font_size(),
-                        line.metrics().baseline,
-                    ));
-                    break 'lines;
-                }
-            }
-        }
-        let Some((metrics, size, _)) = anchor else {
-            continue;
-        };
-        let scale = size / metrics.upem.max(1.0);
         let selection = parley::Selection::new(
             parley::Cursor::from_byte_index(layout, spec.range.start, parley::Affinity::Downstream),
             parley::Cursor::from_byte_index(layout, spec.range.end, parley::Affinity::Upstream),
@@ -993,17 +969,35 @@ fn build_ink(
             if right - left < 0.01 {
                 continue;
             }
+            // The anchor run on THIS line names the metrics.
+            let mut metrics = None;
+            for item in line.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let range = run.run().text_range();
+                if range.start < spec.range.end && spec.range.start < range.end {
+                    metrics = Some(*run.run().font_metrics());
+                    break;
+                }
+            }
+            let Some(metrics) = metrics else { continue };
             if let Some(color) = spec.squiggle {
-                let thickness = (metrics.underline_thickness * scale).max(1.0) * 2.0;
-                let y = baseline - metrics.underline_position * scale;
+                let thickness = metrics.underline_size.max(1.0) * 2.0;
+                let y = baseline + metrics.underline_offset.abs().max(1.0);
                 out.push(Ink {
-                    rect: skia_safe::Rect::from_ltrb(left, y - thickness / 2.0, right, y + thickness / 2.0),
+                    rect: skia_safe::Rect::from_ltrb(
+                        left,
+                        y - thickness / 2.0,
+                        right,
+                        y + thickness / 2.0,
+                    ),
                     color,
                     kind: InkKind::Squiggle,
                 });
             } else if spec.underline {
-                let thickness = (metrics.underline_thickness * scale).max(1.0);
-                let y = baseline - metrics.underline_position * scale;
+                let thickness = metrics.underline_size.max(1.0);
+                let y = baseline + metrics.underline_offset.abs().max(1.0);
                 out.push(Ink {
                     rect: skia_safe::Rect::from_ltrb(left, y, right, y + thickness),
                     color: spec.color,
@@ -1011,8 +1005,8 @@ fn build_ink(
                 });
             }
             if spec.strikethrough {
-                let thickness = (metrics.strikeout_thickness * scale).max(1.0);
-                let y = baseline - metrics.strikeout_position * scale;
+                let thickness = metrics.strikethrough_size.max(1.0);
+                let y = baseline - metrics.strikethrough_offset.abs();
                 out.push(Ink {
                     rect: skia_safe::Rect::from_ltrb(left, y, right, y + thickness),
                     color: spec.color,

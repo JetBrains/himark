@@ -61,7 +61,6 @@ fn parley_shapes_paints_and_answers_geometry() {
     let shaped = crate::shaped_line::ShapedLine::placeholder(
         text,
         color,
-        &crate::embedded_fonts::collection(),
         &theme,
         900.0,
         0.0,
@@ -149,58 +148,6 @@ fn fallback_corpus_keeps_its_eyes_open() {
         failures.is_empty(),
         "hard fallback classes carry tofu:\n{}",
         failures.join("\n")
-    );
-}
-
-/// GEOMETRY is correctness (selections and carets must not drift
-/// at flip time) — caret x per char boundary against the
-/// SkParagraph road on the shared face; tolerance in fractions of
-/// the font size, not pixel hunting.
-#[test]
-fn caret_geometry_tracks_the_skparagraph_road() {
-    crate::parley_line::ensure_fonts();
-    let text = "fn main() { return 42; } // готово";
-    let theme = crate::theme::Theme::embedded();
-    let base = theme.base();
-    let size = base.font_size.expect("size");
-    let color = base.color.expect("ink");
-
-    let parley = ParleyLine::shape(
-        text,
-        crate::embedded_fonts::FAMILY,
-        size,
-        &[SpanStyle::plain(color)],
-    );
-    // The reference must stay RAW skparagraph: a ShapedLine under
-    // the parley default answers geometry from its own twin, and the
-    // comparison would measure parley against parley on different
-    // family chains.
-    let mut paragraph = crate::shaped_line::line_paragraph(
-        &crate::markup::BlockStyle::default(),
-        text,
-        crate::embedded_fonts::collection(),
-        &theme,
-        &[],
-    );
-    paragraph.layout(f32::MAX / 2.0);
-
-    let mut worst = 0.0f32;
-    for (byte, _) in text
-        .char_indices()
-        .chain(std::iter::once((text.len(), ' ')))
-    {
-        let ours = parley.caret_x(byte);
-        let display = text[..byte].encode_utf16().count();
-        let theirs = crate::shaped_line::caret_x_for_display_position(&paragraph, display);
-        worst = worst.max((ours - theirs).abs());
-    }
-    eprintln!(
-        "[parley-geometry] worst caret drift {worst:.3}px over {} chars",
-        text.chars().count()
-    );
-    assert!(
-        worst < size * 0.2,
-        "caret drift {worst}px exceeds a fifth of the font size"
     );
 }
 
