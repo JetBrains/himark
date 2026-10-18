@@ -2405,8 +2405,18 @@ where
         }
         // Re-observe the viewport top from paint too — the belt for
         // programmatic `set_scroll_y` placements, which raise no
-        // pulse (docs §3.1).
-        if (viewport.top - list.viewport_top).abs() > 0.5 {
+        // pulse (docs §3.1). THROTTLED like the editor's paint
+        // report: a host scroller slides the band under this list
+        // every frame, and an exact report per paint made every
+        // scrolled frame noisy — the host redrew on each report, so
+        // the band never rode its margin. The settle pulse stays the
+        // exact road; a pending correction keeps the belt exact too,
+        // so the landed correction is what clears it.
+        let slack = match list.settle_to {
+            Some(_) => 0.5,
+            None => (viewport.height() * 0.5).max(1.0),
+        };
+        if (viewport.top - list.viewport_top).abs() > slack {
             merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
                 EventResult::command(ListCommand::ViewportTop(viewport.top, viewport.height())),
             );

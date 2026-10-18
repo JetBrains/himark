@@ -356,6 +356,9 @@ impl Himark {
         }
         let probe = std::time::Instant::now();
         let label = crate::perform::command_label(&commands[0]);
+        if std::env::var_os("HIMARK_TRACE_BATCH").is_some() {
+            eprintln!("[batch] {label} (+{} more)", commands.len() - 1);
+        }
         let theme_before = ::editor::env::Themes::of(&self.store);
         let ui = self.ui.clone();
         let mut batch = crate::perform::AppEffects::new();

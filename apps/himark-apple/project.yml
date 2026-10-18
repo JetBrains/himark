@@ -82,3 +82,23 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
     frameworks: [UIKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
     scheme: {}
+
+# Extra schemes: same targets, Run/Test/Analyze in Release. The per-target
+# `scheme: {}` ones stay Debug for ⌘R; pick these to run optimized Swift.
+schemes:
+  himark-desktop-release:
+    build:
+      targets: { himark-desktop: all }
+    run: { config: Release }
+    test: { config: Release }
+    profile: { config: Release }
+    analyze: { config: Release }
+    archive: { config: Release }
+  himark-macOS-release:
+    build:
+      targets: { himark-macOS: all }
+    run: { config: Release }
+    test: { config: Release }
+    profile: { config: Release }
+    analyze: { config: Release }
+    archive: { config: Release }

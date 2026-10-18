@@ -1003,7 +1003,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         // asks the layer for a drawable the previous paint has not
         // released: `nextDrawable` then blocks a whole vsync, two
         // or three times per step, and the drag crawls.
-        render()
+        request()
     }
 
     // The backing scale can flip (wake from hibernation, moving to a
