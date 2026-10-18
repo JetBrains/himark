@@ -521,6 +521,9 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
             let len = view.byte_count();
             documents::text_ext::line_col_at(&mut view, len)
         };
+        // The text the server answers FOR: its positions are
+        // line/col in this revision, and nothing else.
+        let revision = entry.revision();
         let uri = uris.uri_of(&location);
         trace(|| format!("enrich: asking tokens + hints for {}", uri.as_str()));
         let mut asks = of(store, wire)
@@ -535,6 +538,7 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
             Verb::Dynamic(Arc::new(TokensLanded {
                 wire,
                 document,
+                revision,
                 result,
             }))
         });
@@ -549,6 +553,7 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
             Verb::Dynamic(Arc::new(HintsLanded {
                 wire,
                 document,
+                revision,
                 result,
             }))
         });
@@ -562,6 +567,8 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
 struct TokensLanded {
     wire: imba::store::Id<EnrichWire>,
     document: DocumentId,
+    /// The revision the ask was made at — see `apply`.
+    revision: u64,
     result: Option<Vec<SemanticSpan>>,
 }
 
@@ -595,7 +602,7 @@ impl imba::command::DynamicCommand for TokensLanded {
                 self.document
             )
         });
-        apply(store, ui, self.wire, self.document, fx, |document| {
+        apply(store, ui, self.wire, self.document, self.revision, fx, |document| {
             semantic_markup(document, spans)
         });
     }
@@ -604,6 +611,8 @@ impl imba::command::DynamicCommand for TokensLanded {
 struct HintsLanded {
     wire: imba::store::Id<EnrichWire>,
     document: DocumentId,
+    /// The revision the ask was made at — see `apply`.
+    revision: u64,
     result: Option<Vec<HintItem>>,
 }
 
@@ -637,20 +646,27 @@ impl imba::command::DynamicCommand for HintsLanded {
                 self.document
             )
         });
-        apply(store, ui, self.wire, self.document, fx, |document| {
+        apply(store, ui, self.wire, self.document, self.revision, fx, |document| {
             hints_markup(document, hints)
         });
     }
 }
 
 /// Land one layer into its open document: the replacement is built
-/// against the CURRENT text, then swapped wholesale with the
-/// producer-brought change set.
+/// against the text the ask was made for, then swapped wholesale
+/// with the producer-brought change set. A landing for a revision
+/// the document has LEFT is dropped: the server's line/col positions
+/// name the old text, and resolving them against the new one put
+/// every hint a keystroke to the side of its word (the `inse: Batch`
+/// screenshot). The edit that moved the revision already marked the
+/// document dirty — a fresh ask is in flight, and the standing layer
+/// keeps riding the edits until it lands.
 fn apply(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
     wire: imba::store::Id<EnrichWire>,
     document_id: DocumentId,
+    revision: u64,
     fx: &mut Fx<'_>,
     build: impl FnOnce(&editor::document::Document) -> (MarkupId, Markup),
 ) {
@@ -660,6 +676,16 @@ fn apply(
     let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
         return;
     };
+    if document.revision() != revision {
+        trace(|| {
+            format!(
+                "enrich: a landing for revision {revision} dropped — {:?} is at {}",
+                document_id,
+                document.revision()
+            )
+        });
+        return;
+    }
     let (markup, replacement) = build(&document);
     document.ensure_document_markup(markup);
     let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);
