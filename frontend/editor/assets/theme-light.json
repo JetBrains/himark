@@ -23,9 +23,9 @@
     },
     "inline_code": {
       "font_families": [
+        "JetBrains Mono",
         "SF Mono",
         "Menlo",
-        "JetBrains Mono",
         "Consolas",
         "monospace"
       ],
@@ -107,9 +107,9 @@
     },
     "code_block": {
       "font_families": [
+        "JetBrains Mono",
         "SF Mono",
         "Menlo",
-        "JetBrains Mono",
         "Consolas",
         "monospace"
       ],
@@ -213,9 +213,9 @@
     },
     "source_code": {
       "font_families": [
+        "JetBrains Mono",
         "SF Mono",
         "Menlo",
-        "JetBrains Mono",
         "Consolas",
         "monospace"
       ],
@@ -365,9 +365,9 @@
     },
     "terminal": {
       "font_families": [
+        "JetBrains Mono",
         "SF Mono",
         "Menlo",
-        "JetBrains Mono",
         "Consolas",
         "monospace"
       ],
