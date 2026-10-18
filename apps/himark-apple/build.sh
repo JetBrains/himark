@@ -82,7 +82,7 @@ XC
   fi
   cat >> "$out" <<XC
 LIBRARY_SEARCH_PATHS$qualifier = $lib_dir $SKIA
-OTHER_LDFLAGS$qualifier = $lib_dir/libhimark_api.a -lskparagraph -lskshaper -lskunicode_core -lskunicode_icu -lskia -lskia-bindings $EXTRA
+OTHER_LDFLAGS$qualifier = $lib_dir/libhimark_api.a -lskia -lskia-bindings $EXTRA
 XC
   echo "    wrote $out$qualifier (skia: $SKIA)"
 }
