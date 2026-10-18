@@ -972,6 +972,7 @@ trait RunReparse {
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
         let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+            editor::parley_line::world(),
             editor::theme::Theme::embedded(),
         ));
         editor::reparse::ReparseHandler(workshop).reparse(self)

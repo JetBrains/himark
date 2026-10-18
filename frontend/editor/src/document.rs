@@ -2180,6 +2180,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         placeholder: impl Into<Arc<str>>,
+        ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) {
         let text = placeholder.into();
@@ -2193,6 +2194,7 @@ impl Document {
         let height = crate::shaped_line::ShapedLine::placeholder(
             &text,
             theme.ui().peeker.dim_text.0,
+            ui,
             theme,
             width,
             0.0,

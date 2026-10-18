@@ -47,7 +47,7 @@ impl crate::document::Document {
         theme: &crate::theme::Theme,
     ) {
         viewport.paint(canvas, theme);
-        if let Some(placeholder) = self.placeholder_line(editor, theme) {
+        if let Some(placeholder) = self.placeholder_line(editor, ui, theme) {
             placeholder.paint(canvas, 0.0);
         }
         let text_focused = focused && self.focus(editor) == crate::editor_view::EditorFocus::Text;
@@ -59,6 +59,7 @@ impl crate::document::Document {
     pub(crate) fn placeholder_line(
         &self,
         editor: crate::editor::EditorId,
+        ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) -> Option<ShapedLine> {
         if self.text().byte_count() != 0 {
@@ -69,6 +70,7 @@ impl crate::document::Document {
         Some(ShapedLine::placeholder(
             text,
             theme.ui().peeker.dim_text.0,
+            ui,
             theme,
             state.layout.layout_width(),
             0.0,
@@ -503,12 +505,12 @@ mod tests {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        document.set_placeholder(editor, "Message the agent", &theme);
+        document.set_placeholder(editor, "Message the agent", ui, &theme);
 
         let placeholder_height = document.content_height(editor);
         assert!(placeholder_height > 0.0, "the placeholder reserves its row");
 
-        assert!(document.placeholder_line(editor, &theme).is_some());
+        assert!(document.placeholder_line(editor, ui, &theme).is_some());
         document.insert(
             editor,
             "M",
@@ -517,7 +519,7 @@ mod tests {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        assert!(document.placeholder_line(editor, &theme).is_none());
+        assert!(document.placeholder_line(editor, ui, &theme).is_none());
         assert_eq!(
             document.content_height(editor),
             placeholder_height,

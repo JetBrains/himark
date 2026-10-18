@@ -602,10 +602,11 @@ impl EditorView {
     pub fn set_placeholder(
         &mut self,
         placeholder: impl Into<std::sync::Arc<str>>,
+        ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) {
         self.document
-            .set_placeholder(self.editor, placeholder, theme);
+            .set_placeholder(self.editor, placeholder, ui, theme);
     }
 
     pub fn content_height(&self) -> f32 {

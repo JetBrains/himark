@@ -8738,3 +8738,35 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
     let state = mermaid_state(&mut engine);
     eprintln!("[mermaid-engine] {name}: inlay state {state:?}");
 }
+
+/// THE RESIZE METER, through the engine: how much text does one
+/// width step lay out when a real window changes size? The answer
+/// is the difference between a smooth drag and a second-long hang.
+#[test]
+fn engine_resize_shape_meter() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let window = engine.add_window();
+    let body: String = (0..400)
+        .map(|n| format!("line {n} of a document that is long enough to matter here\n"))
+        .collect();
+    assert!(engine.open_document(window, "wide.md", &body, true));
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
+    settle_until(&mut engine, "the document shows", |engine| {
+        let _ = engine.draw(window, surface.canvas(), 1200.0, 900.0, 1.0);
+        engine
+            .substring(window, HimarkRange { start: 0, length: 64 })
+            .is_some_and(|text| text.contains("line 0"))
+    });
+
+    for step in 0..8 {
+        let width = 1200.0 - step as f32 * 23.0;
+        let before = editor::parley_line::shaper(&engine.app.ui_handle()).shapes_so_far();
+        let started = std::time::Instant::now();
+        let _ = engine.draw(window, surface.canvas(), width, 900.0, 1.0);
+        let spent = started.elapsed();
+        eprintln!(
+            "[engine-resize] width {width:.0}: {spent:?} and {} shapes",
+            editor::parley_line::shaper(&engine.app.ui_handle()).shapes_so_far() - before
+        );
+    }
+}

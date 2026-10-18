@@ -179,6 +179,7 @@ fn resize_relayout_round_trips_through_the_effect() {
     );
 
     let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+        editor::parley_line::world(),
         theme.clone(),
     ));
     let handler = TableRelayoutHandler(workshop);

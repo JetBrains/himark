@@ -23,7 +23,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext, PositionedLayoutItem};
 
@@ -40,22 +40,129 @@ const _: () = {
 
 // ─── the font registry ───
 
-static FONTS: Mutex<Vec<&'static [u8]>> = Mutex::new(Vec::new());
-static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// THE FONT WORLD: one database, shared by every thread that lays
+/// text out. Fontique's two stores both have a shared mode — the
+/// collection so "any changes are visible to all clones", the
+/// source cache so "only one copy of font data is loaded into
+/// memory in multi-threaded scenarios" (fontique's words) — so a
+/// clone costs an `Arc` bump where a fresh one costs a scan of
+/// every font file on the machine.
+///
+/// It is a VALUE the edge creates and hands to each `UiCtx`
+/// (`ui.set(world.clone())`), not a global: a ctx without one
+/// builds its own, which is what a bare test wants and what the
+/// app must never do.
+#[derive(Clone)]
+pub struct FontWorld(Arc<WorldInner>);
 
-/// Register embedded font bytes for every shaping thread. Additive
-/// and idempotent (the same slice registers once); threads pick up
-/// new registrations before their next shape.
-pub fn register_font(bytes: &'static [u8]) {
-    let mut fonts = FONTS.lock().unwrap();
-    if fonts
-        .iter()
-        .any(|known| std::ptr::eq(known.as_ptr(), bytes.as_ptr()) && known.len() == bytes.len())
-    {
-        return;
+struct WorldInner {
+    /// The template every shaper clones from. Registrations land
+    /// here and reach existing clones through the shared store.
+    template: Mutex<FontContext>,
+    /// Bumped by every registration; a shaper re-adopts the template
+    /// when its own mark falls behind.
+    generation: AtomicU64,
+    /// The first registered family — the fallback when a chain
+    /// resolves to nothing.
+    fallback: Mutex<Option<String>>,
+    /// The fontique→skia bridge, shared because the walk behind a
+    /// miss (enumerate the family, instantiate every cut, ask
+    /// CoreText for a variation copy) is far too dear to repeat per
+    /// thread, and because a `Typeface` is `Send + Sync` by skia's
+    /// own promise.
+    typefaces: Mutex<HashMap<TypefaceKey, Option<skia_safe::Typeface>>>,
+}
+
+type TypefaceKey = (u64, u32, Vec<(u32, i32)>);
+
+impl Default for FontWorld {
+    fn default() -> Self {
+        Self::new()
     }
-    fonts.push(bytes);
-    GENERATION.fetch_add(1, Ordering::Release);
+}
+
+impl FontWorld {
+    /// Builds the database. Costs a system font scan (~90ms in
+    /// release); do it once, at boot, and clone the handle.
+    pub fn new() -> Self {
+        let mut fonts = FontContext {
+            collection: parley::fontique::Collection::new(
+                parley::fontique::CollectionOptions {
+                    shared: true,
+                    ..Default::default()
+                },
+            ),
+            source_cache: parley::fontique::SourceCache::new(
+                parley::fontique::SourceCacheOptions { shared: true },
+            ),
+        };
+        seed_symbol_fallbacks(&mut fonts.collection);
+        Self(Arc::new(WorldInner {
+            template: Mutex::new(fonts),
+            generation: AtomicU64::new(1),
+            fallback: Mutex::new(None),
+            typefaces: Mutex::new(HashMap::new()),
+        }))
+    }
+
+    /// Takes a face into the world for every thread at once. The
+    /// shared store carries it to clones already in hand.
+    pub fn register(&self, bytes: &'static [u8]) {
+        let blob = parley::fontique::Blob::new(Arc::new(bytes));
+        let mut template = self.0.template.lock().expect("the font world");
+        let registered = template.collection.register_fonts(blob, None);
+        let mut fallback = self.0.fallback.lock().expect("the world's fallback");
+        if fallback.is_none() {
+            if let Some((id, _)) = registered.first() {
+                *fallback = template.collection.family_name(*id).map(str::to_string);
+            }
+        }
+        self.0.generation.fetch_add(1, Ordering::Release);
+    }
+
+    fn context(&self) -> FontContext {
+        let template = self.0.template.lock().expect("the font world");
+        FontContext {
+            collection: template.collection.clone(),
+            source_cache: template.source_cache.clone(),
+        }
+    }
+
+    fn fallback_family(&self) -> Option<String> {
+        self.0.fallback.lock().expect("the world's fallback").clone()
+    }
+
+    /// How many faces the bridge has crossed. Test support.
+    #[doc(hidden)]
+    pub fn bridged_for_test(&self) -> usize {
+        self.0.typefaces.lock().expect("the bridge").len()
+    }
+}
+
+/// Fontique's fallback is keyed by SCRIPT SAMPLE text, so the keycap
+/// and technical symbols (⌘ ⌃ ⌥ ⇧ ⌫ ⎋ — script Common, inheriting
+/// the surrounding run's script) never reach the faces that carry
+/// them. Appending the symbol faces to the common scripts' fallback
+/// lists lets per-cluster coverage matching find them. Seeded once,
+/// when a world is born.
+#[allow(unused_variables)]
+fn seed_symbol_fallbacks(collection: &mut parley::fontique::Collection) {
+    #[cfg(target_vendor = "apple")]
+    {
+        let ids: Vec<parley::fontique::FamilyId> = ["Apple Symbols", "Menlo"]
+            .iter()
+            .filter_map(|name| collection.family_by_name(name).map(|info| info.id()))
+            .collect();
+        if ids.is_empty() {
+            return;
+        }
+        for script in [*b"Latn", *b"Zyyy", *b"Cyrl", *b"Grek"] {
+            collection.append_fallbacks(
+                parley::fontique::Script::from_bytes(script),
+                ids.iter().copied(),
+            );
+        }
+    }
 }
 
 /// One style run over the text, in utf8 offsets of the shaped text.
@@ -192,23 +299,78 @@ pub struct ParleyLine {
     ink: Vec<Ink>,
 }
 
-/// Per-thread shaping machinery: the font database, the layout
-/// scratch space, and the fontique→skia typeface bridge. Mint once
-/// per thread, exactly like `UiCtx`.
-struct ParleyCtx {
+/// What a line is shaped FROM — everything but the width. Shaping
+/// is width-independent (only line BREAKING reads the width), which
+/// is the whole reason this key exists: a window resize re-breaks,
+/// it does not re-shape.
+#[derive(PartialEq, Eq, Hash)]
+struct ShapeKey {
+    text: Box<str>,
+    style: u64,
+}
+
+impl ShapeKey {
+    fn of(spec: &ShapeSpec<'_>) -> Self {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        spec.families.hash(&mut hasher);
+        spec.size.to_bits().hash(&mut hasher);
+        spec.line_height.map(f32::to_bits).hash(&mut hasher);
+        spec.letter_spacing.to_bits().hash(&mut hasher);
+        for span in spec.spans {
+            span.start.hash(&mut hasher);
+            brush_of(span.color).hash(&mut hasher);
+            span.bold.hash(&mut hasher);
+            span.italic.hash(&mut hasher);
+            span.size.map(f32::to_bits).hash(&mut hasher);
+            span.families.hash(&mut hasher);
+            span.line_height.map(f32::to_bits).hash(&mut hasher);
+        }
+        for inline_box in spec.boxes {
+            inline_box.index.hash(&mut hasher);
+            inline_box.width.to_bits().hash(&mut hasher);
+            inline_box.height.to_bits().hash(&mut hasher);
+            (inline_box.align as u8).hash(&mut hasher);
+        }
+        Self {
+            text: spec.text.into(),
+            style: hasher.finish(),
+        }
+    }
+}
+
+/// Past this many shaped lines the memo drops whole: a window's
+/// worth of text is a few hundred, and a cleared memo costs one
+/// frame of re-shaping, not a leak for the life of the process.
+const SHAPED_MEMO: usize = 1024;
+
+/// THE SHAPER of one UI context: the thread's view of the font
+/// world, its layout scratch, its memo, its platform manager. It
+/// lives in the `UiCtx` that owns the thread — `Shaper::of(ui)` —
+/// because that is where this codebase keeps per-thread machinery,
+/// and because a static would outlive the ctx it serves and hide
+/// the sharing the edge is supposed to decide.
+pub struct Shaper {
+    world: FontWorld,
+    inner: RefCell<ShaperState>,
+}
+
+struct ShaperState {
     fonts: FontContext,
     layouts: LayoutContext<Brush>,
-    /// How much of the global registry this thread has consumed.
+    /// Which generation of the world this view has adopted.
     synced: u64,
     /// The first registered family — the deterministic fallback
     /// when a chain resolves to nothing.
     fallback_family: Option<String>,
-    /// ONE platform manager for the context's lifetime. Skia has no
-    /// system-manager singleton anymore: every `FontMgr::new()` is
-    /// a fresh `SkFontMgr_New_CoreText` — CoreText enumerating and
-    /// SORTING every family on the machine. Minting it per cache
-    /// miss put that walk on the shaping path.
-    manager: skia_safe::FontMgr,
+    /// ONE platform manager per thread, built on FIRST MISS and not
+    /// before: every `FontMgr::new()` is a fresh
+    /// `SkFontMgr_New_CoreText` — CoreText enumerating and SORTING
+    /// every family on the machine — and a thread whose faces the
+    /// shared bridge already knows never needs one at all. (Not
+    /// shared: skia-safe marks `Typeface` `Send + Sync` and the
+    /// manager not.)
+    manager: Option<skia_safe::FontMgr>,
     /// fvar axis defaults per blob — parsed from the bytes ONCE,
     /// not per run per shape.
     axes: HashMap<(u64, u32), Vec<(u32, f32)>>,
@@ -216,81 +378,96 @@ struct ParleyCtx {
     /// (instantiating every platform cut to fingerprint them) runs
     /// once per font, not once per variation combo.
     bases: HashMap<(u64, u32), Option<skia_safe::Typeface>>,
-    /// fontique blob id + ttc index + variation coords → skia
-    /// typeface, so the blob road rasterizes the same INSTANCE
-    /// parley shaped with (a variable font's default differs from
-    /// its named instances — advances drift, carets follow).
-    typefaces: HashMap<(u64, u32, Vec<(u32, i32)>), Option<skia_safe::Typeface>>,
+    /// Shaped lines BEFORE line breaking, keyed by everything but
+    /// the width. A resize re-breaks a clone (under a microsecond)
+    /// instead of re-shaping (ten); skparagraph kept exactly this
+    /// memo, and losing it is what made a window drag crawl.
+    shaped: HashMap<ShapeKey, parley::Layout<Brush>>,
+    /// This context's view of the bridge — blob id + ttc index +
+    /// variation coords → skia typeface, so the blob road rasterizes
+    /// the same INSTANCE parley shaped with (a variable font's
+    /// default differs from its named instances — advances drift,
+    /// carets follow). Backed by the world's shared map: this one
+    /// spares the lock in `build_blobs`'s inner loop, not the work.
+    typefaces: HashMap<TypefaceKey, Option<skia_safe::Typeface>>,
+    /// How many lines this context has shaped — the meter for "how
+    /// much text does one frame lay out?", which no profile answers
+    /// directly.
+    shapes: u64,
 }
 
-thread_local! {
-    static CTX: RefCell<ParleyCtx> = RefCell::new(ParleyCtx::new());
-}
+impl Shaper {
+    /// The shaper this context lays text out with. The world comes
+    /// from the ctx when the edge put one there; a ctx without one
+    /// (a bare test) builds its own and pays for its own scan.
+    pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Shaper> {
+        ui.env(|| {
+            let world = ui
+                .get::<FontWorld>()
+                .cloned()
+                .unwrap_or_else(FontWorld::new);
+            std::rc::Rc::new(Shaper::in_world(world))
+        })
+        .clone()
+    }
 
-impl ParleyCtx {
-    fn new() -> Self {
+    /// A shaper over a world handed in directly — for the edge that
+    /// owns the world, and for tests.
+    pub fn in_world(world: FontWorld) -> Self {
+        let fonts = world.context();
+        let fallback_family = world.fallback_family();
+        let synced = world.0.generation.load(Ordering::Acquire);
         Self {
-            fonts: FontContext::new(),
-            layouts: LayoutContext::new(),
-            synced: 0,
-            fallback_family: None,
-            manager: skia_safe::FontMgr::new(),
-            axes: HashMap::new(),
-            bases: HashMap::new(),
-            typefaces: HashMap::new(),
+            world,
+            inner: RefCell::new(ShaperState {
+                fonts,
+                layouts: LayoutContext::new(),
+                synced,
+                fallback_family,
+                shaped: HashMap::new(),
+                manager: None,
+                axes: HashMap::new(),
+                bases: HashMap::new(),
+                typefaces: HashMap::new(),
+                shapes: 0,
+            }),
         }
     }
 
+    pub fn world(&self) -> &FontWorld {
+        &self.world
+    }
+
+    /// TEST SUPPORT: how many shaped lines the memo holds.
+    #[doc(hidden)]
+    pub fn memo_len_for_test(&self) -> usize {
+        self.inner.borrow().shaped.len()
+    }
+
+    /// How many lines this context has shaped. The meter a bench
+    /// reads to ask "how much text did that frame lay out?".
+    pub fn shapes_so_far(&self) -> u64 {
+        self.inner.borrow().shapes
+    }
+}
+
+impl ShaperState {
+
     /// Catch up with [`register_font`] — additive, cheap when
-    /// nothing changed.
-    fn sync(&mut self) {
-        let generation = GENERATION.load(Ordering::Acquire);
+    /// nothing changed, and never a second font world.
+    fn sync(&mut self, world: &FontWorld) {
+        let generation = world.0.generation.load(Ordering::Acquire);
         if generation == self.synced {
             return;
         }
-        let fonts = FONTS.lock().unwrap().clone();
-        for bytes in fonts {
-            let blob = parley::fontique::Blob::new(std::sync::Arc::new(bytes));
-            let registered = self.fonts.collection.register_fonts(blob, None);
-            if self.fallback_family.is_none() {
-                if let Some((id, _)) = registered.first() {
-                    self.fallback_family =
-                        self.fonts.collection.family_name(*id).map(str::to_string);
-                }
-            }
-        }
-        self.seed_symbol_fallbacks();
+        // Adopt the world as it now stands: an `Arc` bump apiece,
+        // and this context sees every registered family.
+        self.fonts = world.context();
+        self.fallback_family = world.fallback_family();
+        // A new face can change what a line resolves to, so every
+        // shaped line the memo holds is suspect.
+        self.shaped.clear();
         self.synced = generation;
-    }
-
-    /// Fontique's fallback is keyed by SCRIPT SAMPLE text, so the
-    /// keycap and technical symbols (⌘ ⌃ ⌥ ⇧ ⌫ ⎋ — script Common,
-    /// inheriting the surrounding run's script) never reach the
-    /// faces that carry them. Appending the symbol faces to the
-    /// common scripts' fallback lists lets per-cluster coverage
-    /// matching find them.
-    fn seed_symbol_fallbacks(&mut self) {
-        #[cfg(target_vendor = "apple")]
-        {
-            let ids: Vec<parley::fontique::FamilyId> = ["Apple Symbols", "Menlo"]
-                .iter()
-                .filter_map(|name| {
-                    self.fonts
-                        .collection
-                        .family_by_name(name)
-                        .map(|info| info.id())
-                })
-                .collect();
-            if ids.is_empty() {
-                return;
-            }
-            for script in [*b"Latn", *b"Zyyy", *b"Cyrl", *b"Grek"] {
-                self.fonts.collection.append_fallbacks(
-                    parley::fontique::Script::from_bytes(script),
-                    ids.iter().copied(),
-                );
-            }
-        }
     }
 
     fn position(
@@ -330,7 +507,10 @@ impl ParleyCtx {
     /// cut by postscript name with glyph count as the id-space
     /// guard; parse the bytes for faces the platform does not know.
     fn base(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
-        let manager = self.manager.clone();
+        let manager = self
+            .manager
+            .get_or_insert_with(skia_safe::FontMgr::new)
+            .clone();
         self.bases
             .entry((font.data.id(), font.index))
             .or_insert_with(|| {
@@ -364,6 +544,7 @@ impl ParleyCtx {
 
     fn typeface(
         &mut self,
+        world: &FontWorld,
         font: &parley::FontData,
         variations: &[(skrifa::Tag, f32)],
     ) -> Option<skia_safe::Typeface> {
@@ -375,6 +556,15 @@ impl ParleyCtx {
         let key = (font.data.id(), font.index, coords);
         if let Some(hit) = self.typefaces.get(&key) {
             return hit.clone();
+        }
+        // The shared answer before the expensive one: another thread
+        // laying out another document has almost certainly met this
+        // face already.
+        let shared = &world.0.typefaces;
+        if let Some(hit) = shared.lock().expect("the typeface bridge").get(&key) {
+            let hit = hit.clone();
+            self.typefaces.insert(key, hit.clone());
+            return hit;
         }
         let instanced = self.base(font).and_then(|typeface| {
             if position.is_empty() {
@@ -397,15 +587,19 @@ impl ParleyCtx {
             );
             typeface.clone_with_arguments(&arguments)
         });
+        shared
+            .lock()
+            .expect("the typeface bridge")
+            .insert(key.clone(), instanced.clone());
         self.typefaces.insert(key, instanced.clone());
         instanced
     }
 }
 
-impl ParleyLine {
+impl Shaper {
     /// Shape one styled text: uniform family + size, colored spans.
-    pub fn shape(text: &str, family: &str, size: f32, spans: &[SpanStyle]) -> ParleyLine {
-        Self::shape_with_families(text, &[family], size, None, spans)
+    pub fn shape(&self, text: &str, family: &str, size: f32, spans: &[SpanStyle]) -> ParleyLine {
+        self.shape_with_families(text, &[family], size, None, spans)
     }
 
     /// Shape against a FAMILY CHAIN with CSS semantics: the first
@@ -414,6 +608,7 @@ impl ParleyLine {
     /// chain falls to the first registered face — never to a silent
     /// proportional default.
     pub fn shape_with_families(
+        &self,
         text: &str,
         families: &[&str],
         size: f32,
@@ -423,14 +618,32 @@ impl ParleyLine {
         let mut spec = ShapeSpec::new(text, families, size);
         spec.line_height = line_height;
         spec.spans = spans;
-        Self::shape_spec(&spec)
+        self.shape_spec(&spec)
     }
 
     /// The full road: spans, inline boxes, decorations, wrapping.
-    pub fn shape_spec(spec: &ShapeSpec<'_>) -> ParleyLine {
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            ctx.sync();
+    pub fn shape_spec(&self, spec: &ShapeSpec<'_>) -> ParleyLine {
+        {
+            let ctx = &mut *self.inner.borrow_mut();
+            ctx.shapes += 1;
+            ctx.sync(&self.world);
+            // The memo answers with the SHAPED line; only the break
+            // reads the width.
+            let key = ShapeKey::of(spec);
+            if let Some(shaped) = ctx.shaped.get(&key) {
+                let mut layout = shaped.clone();
+                layout.break_all_lines(spec.max_width);
+                layout.align(Alignment::Start, AlignmentOptions::default());
+                let blobs = build_blobs(&self.world, ctx, &layout);
+                let boxes = collect_boxes(&layout);
+                let ink = build_ink(&layout, spec.decorations);
+                return ParleyLine {
+                    layout,
+                    blobs,
+                    boxes,
+                    ink,
+                };
+            }
             let family = resolve_family(&mut ctx.fonts.collection, spec.families)
                 .or_else(|| ctx.fallback_family.clone());
             let span_families: Vec<Option<String>> = spec
@@ -524,10 +737,15 @@ impl ParleyLine {
                     },
                 });
             }
-            let mut layout = builder.build(spec.text);
+            let shaped: parley::Layout<Brush> = builder.build(spec.text);
+            if ctx.shaped.len() >= SHAPED_MEMO {
+                ctx.shaped.clear();
+            }
+            let mut layout = shaped.clone();
+            ctx.shaped.insert(key, shaped);
             layout.break_all_lines(spec.max_width);
             layout.align(Alignment::Start, AlignmentOptions::default());
-            let blobs = build_blobs(ctx, &layout);
+            let blobs = build_blobs(&self.world, ctx, &layout);
             let boxes = collect_boxes(&layout);
             let ink = build_ink(&layout, spec.decorations);
             ParleyLine {
@@ -536,12 +754,13 @@ impl ParleyLine {
                 boxes,
                 ink,
             }
-        })
+        }
     }
 
     /// Shape a single-line label, ellipsizing with "…" when wider
     /// than `clip` — the chrome label road.
     pub fn ellipsized(
+        &self,
         text: &str,
         families: &[&str],
         size: f32,
@@ -559,7 +778,7 @@ impl ParleyLine {
             spec.letter_spacing = letter_spacing;
             let spans = [span.clone()];
             spec.spans = &spans;
-            ParleyLine::shape_spec(&spec)
+            self.shape_spec(&spec)
         };
         let whole = shape(text);
         let Some(clip) = clip else { return whole };
@@ -583,7 +802,11 @@ impl ParleyLine {
             }
         }
     }
+}
 
+/// A shaped line answers for itself: every query below reads the
+/// layout it already holds, with no context and no lock.
+impl ParleyLine {
     pub fn width(&self) -> f32 {
         self.layout.width()
     }
@@ -810,117 +1033,123 @@ impl ParleyLine {
         }
     }
 
+}
+
+impl Shaper {
     /// TEST SUPPORT for the bold diagnosis: per run, the serving
-    /// face's postscript name, the embolden flag, and the fontique
-    /// weight attribute.
+    /// face's postscript name, the embolden flag, and the face skia
+    /// bridged to.
     #[doc(hidden)]
-    pub fn face_report_for_test(&self) -> Vec<(Option<String>, bool, String)> {
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            let mut out = Vec::new();
-            for line in self.layout.lines() {
-                for item in line.items() {
-                    let PositionedLayoutItem::GlyphRun(run) = item else {
-                        continue;
-                    };
-                    let skia = ctx
-                        .typeface(run.run().font(), run.run().synthesis().variation_settings())
-                        .and_then(|typeface| typeface.post_script_name())
-                        .unwrap_or_else(|| "NONE".into());
-                    out.push((
-                        postscript_name_of(run.run().font()),
-                        run.run().synthesis().embolden(),
-                        format!("skia={skia}"),
-                    ));
-                }
+    pub fn face_report_for_test(&self, line: &ParleyLine) -> Vec<(Option<String>, bool, String)> {
+        let ctx = &mut *self.inner.borrow_mut();
+        let mut out = Vec::new();
+        for row in line.layout.lines() {
+            for item in row.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let skia = ctx
+                    .typeface(
+                        &self.world,
+                        run.run().font(),
+                        run.run().synthesis().variation_settings(),
+                    )
+                    .and_then(|typeface| typeface.post_script_name())
+                    .unwrap_or_else(|| "NONE".into());
+                out.push((
+                    postscript_name_of(run.run().font()),
+                    run.run().synthesis().embolden(),
+                    format!("skia={skia}"),
+                ));
             }
-            out
-        })
+        }
+        out
     }
 
-    /// TEST SUPPORT for the fallback watch: the families that
-    /// served this line, plus notdef counts.
+    /// TEST SUPPORT for the fallback watch: the families that served
+    /// this line, plus notdef counts.
     #[doc(hidden)]
-    pub fn coverage_for_test(&self) -> (Vec<String>, usize, usize) {
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            let mut families = Vec::new();
-            let mut notdefs = 0usize;
-            let mut total = 0usize;
-            for line in self.layout.lines() {
-                for item in line.items() {
-                    let PositionedLayoutItem::GlyphRun(run) = item else {
-                        continue;
-                    };
-                    let family = match ctx
-                        .typeface(run.run().font(), run.run().synthesis().variation_settings())
-                    {
-                        Some(typeface) => typeface.family_name().to_string(),
-                        None => format!(
-                            "UNRASTERIZABLE({} bytes, index {})",
-                            run.run().font().data.as_ref().len(),
-                            run.run().font().index
-                        ),
-                    };
-                    if !families.contains(&family) {
-                        families.push(family);
-                    }
-                    for glyph in run.positioned_glyphs() {
-                        total += 1;
-                        if glyph.id == 0 {
-                            notdefs += 1;
-                        }
+    pub fn coverage_for_test(&self, line: &ParleyLine) -> (Vec<String>, usize, usize) {
+        let ctx = &mut *self.inner.borrow_mut();
+        let mut families = Vec::new();
+        let mut notdefs = 0usize;
+        let mut total = 0usize;
+        for row in line.layout.lines() {
+            for item in row.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let family = match ctx.typeface(
+                    &self.world,
+                    run.run().font(),
+                    run.run().synthesis().variation_settings(),
+                ) {
+                    Some(typeface) => typeface.family_name().to_string(),
+                    None => format!(
+                        "UNRASTERIZABLE({} bytes, index {})",
+                        run.run().font().data.as_ref().len(),
+                        run.run().font().index
+                    ),
+                };
+                if !families.contains(&family) {
+                    families.push(family);
+                }
+                for glyph in run.positioned_glyphs() {
+                    total += 1;
+                    if glyph.id == 0 {
+                        notdefs += 1;
                     }
                 }
             }
-            (families, notdefs, total)
-        })
+        }
+        (families, notdefs, total)
     }
 
     /// TEST SUPPORT: advances of the bridged skia faces per run —
     /// the variable-font parity meter.
     #[doc(hidden)]
-    pub fn bridge_advances_for_test(&self) -> Vec<(Option<String>, Vec<(u32, f32)>, f32, f32)> {
-        CTX.with(|cell| {
-            let ctx = &mut *cell.borrow_mut();
-            let mut out = Vec::new();
-            for line in self.layout.lines() {
-                for item in line.items() {
-                    let PositionedLayoutItem::GlyphRun(run) = item else {
-                        continue;
-                    };
-                    let synthesis = run.run().synthesis();
-                    let vars: Vec<(u32, f32)> = synthesis
-                        .variation_settings()
-                        .iter()
-                        .map(|(tag, value)| (u32::from_be_bytes(tag.to_be_bytes()), *value))
-                        .collect();
-                    let Some(typeface) = ctx.typeface(run.run().font(), synthesis.variation_settings())
-                    else {
-                        continue;
-                    };
-                    let name = typeface.post_script_name();
-                    let font = skia_safe::Font::new(typeface, run.run().font_size());
-                    let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
-                    let ids: Vec<u16> = glyphs.iter().map(|glyph| glyph.id as u16).collect();
-                    let mut widths = vec![0.0f32; ids.len()];
-                    font.get_widths(&ids, &mut widths);
-                    let parley_advance: f32 = glyphs.iter().map(|glyph| glyph.advance).sum();
-                    let skia_advance: f32 = widths.iter().sum();
-                    out.push((name, vars, parley_advance, skia_advance));
-                }
+    pub fn bridge_advances_for_test(
+        &self,
+        line: &ParleyLine,
+    ) -> Vec<(Option<String>, Vec<(u32, f32)>, f32, f32)> {
+        let ctx = &mut *self.inner.borrow_mut();
+        let mut out = Vec::new();
+        for row in line.layout.lines() {
+            for item in row.items() {
+                let PositionedLayoutItem::GlyphRun(run) = item else {
+                    continue;
+                };
+                let synthesis = run.run().synthesis();
+                let vars: Vec<(u32, f32)> = synthesis
+                    .variation_settings()
+                    .iter()
+                    .map(|(tag, value)| (u32::from_be_bytes(tag.to_be_bytes()), *value))
+                    .collect();
+                let Some(typeface) =
+                    ctx.typeface(&self.world, run.run().font(), synthesis.variation_settings())
+                else {
+                    continue;
+                };
+                let name = typeface.post_script_name();
+                let font = skia_safe::Font::new(typeface, run.run().font_size());
+                let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
+                let ids: Vec<u16> = glyphs.iter().map(|glyph| glyph.id as u16).collect();
+                let mut widths = vec![0.0f32; ids.len()];
+                font.get_widths(&ids, &mut widths);
+                let ours: f32 = glyphs.iter().map(|glyph| glyph.advance).sum();
+                let theirs: f32 = widths.iter().sum();
+                out.push((name, vars, ours, theirs));
             }
-            out
-        })
+        }
+        out
     }
 
-    /// TEST SUPPORT: sizes of the bridge caches.
+    /// TEST SUPPORT: how many faces this context has bridged, and
+    /// how many the world holds for everyone.
     #[doc(hidden)]
-    pub fn bridge_cache_sizes_for_test() -> (usize, usize, usize) {
-        CTX.with(|cell| {
-            let ctx = cell.borrow();
-            (ctx.bases.len(), ctx.typefaces.len(), ctx.axes.len())
-        })
+    pub fn bridge_sizes_for_test(&self) -> (usize, usize) {
+        let ctx = self.inner.borrow();
+        (ctx.typefaces.len(), self.world.bridged_for_test())
     }
 }
 
@@ -1029,7 +1258,8 @@ fn build_ink(
 /// into the typeface itself, so skia rasterizes the instance
 /// fontique shaped.
 fn build_blobs(
-    ctx: &mut ParleyCtx,
+    world: &FontWorld,
+    ctx: &mut ShaperState,
     layout: &parley::Layout<Brush>,
 ) -> Vec<(skia_safe::TextBlob, skia_safe::Color)> {
     let mut out = Vec::new();
@@ -1043,7 +1273,7 @@ fn build_blobs(
                 continue;
             }
             let synthesis = run.run().synthesis();
-            let Some(typeface) = ctx.typeface(run.run().font(), synthesis.variation_settings())
+            let Some(typeface) = ctx.typeface(world, run.run().font(), synthesis.variation_settings())
             else {
                 continue;
             };
@@ -1138,4 +1368,124 @@ fn generic_of(name: &str) -> Option<parley::fontique::GenericFamily> {
 
 fn brush_of(color: skia_safe::Color) -> Brush {
     [color.r(), color.g(), color.b(), color.a()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOTO: &[u8] = include_bytes!("../../editor/assets/NotoSans-Regular.ttf");
+
+    fn world() -> FontWorld {
+        let world = FontWorld::new();
+        world.register(NOTO);
+        world
+    }
+
+    fn plain() -> [SpanStyle; 1] {
+        [SpanStyle::plain(skia_safe::Color::BLACK)]
+    }
+
+    /// THE THREAD LAW: a world is built once and SHARED. Every
+    /// thread that shaped used to scan the system fonts and load
+    /// its own copy of every face, and — the blobs being its own —
+    /// miss the typeface bridge for every face it met, paying
+    /// CoreText for a family walk and a variation copy apiece. A
+    /// window resize wakes three layout workers at once; it froze.
+    #[test]
+    fn threads_share_one_world_and_one_bridge() {
+        let world = world();
+        let shape = |world: &FontWorld| {
+            let shaper = Shaper::in_world(world.clone());
+            let line = shaper.shape("the workers meet the same faces", "Noto Sans", 14.0, &plain());
+            assert!(!line.blobs().is_empty(), "the line reaches the blob road");
+        };
+
+        shape(&world);
+        let warm = world.bridged_for_test();
+        assert!(warm > 0, "the bridge answered at least one face");
+
+        let workers: Vec<_> = (0..3)
+            .map(|_| {
+                let world = world.clone();
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    let shaper = Shaper::in_world(world);
+                    let line =
+                        shaper.shape("the workers meet the same faces", "Noto Sans", 14.0, &plain());
+                    assert!(!line.blobs().is_empty());
+                    started.elapsed()
+                })
+            })
+            .collect();
+        for (worker, handle) in workers.into_iter().enumerate() {
+            eprintln!("[threads] worker {worker} shaped in {:?}", handle.join().expect("worker"));
+        }
+
+        assert_eq!(
+            world.bridged_for_test(),
+            warm,
+            "a worker minted its own typefaces — the world is not shared"
+        );
+    }
+
+    /// THE RESIZE LAW: shaping is width-independent, so a width
+    /// change must RE-BREAK, never re-shape. (skparagraph kept this
+    /// memo internally; without it a window drag re-shaped every
+    /// visible line at every pixel.)
+    #[test]
+    fn a_width_change_re_breaks_without_re_shaping() {
+        let shaper = Shaper::in_world(world());
+        let text = "a line with enough words in it to wrap more than once when narrowed";
+        let at = |width: f32| {
+            let mut spec = ShapeSpec::new(text, &["Noto Sans"], 14.0);
+            let spans = plain();
+            spec.spans = &spans;
+            spec.max_width = Some(width);
+            shaper.shape_spec(&spec)
+        };
+
+        let wide = at(600.0);
+        let memo = shaper.memo_len_for_test();
+        let narrow = at(220.0);
+        assert_eq!(
+            shaper.memo_len_for_test(),
+            memo,
+            "a width change minted a new shaping — the memo keys on the width"
+        );
+        assert!(
+            narrow.rows().len() > wide.rows().len(),
+            "the narrow line really did re-break: {} rows vs {}",
+            narrow.rows().len(),
+            wide.rows().len()
+        );
+        assert!(!narrow.blobs().is_empty());
+
+        let mut bold = ShapeSpec::new(text, &["Noto Sans"], 14.0);
+        let bold_spans = [SpanStyle {
+            bold: true,
+            ..SpanStyle::plain(skia_safe::Color::BLACK)
+        }];
+        bold.spans = &bold_spans;
+        let _ = shaper.shape_spec(&bold);
+        assert!(
+            shaper.memo_len_for_test() > memo,
+            "a style change must shape anew"
+        );
+    }
+
+    /// A ctx carries its shaper, and two asks on one ctx get the
+    /// same one — the memo and the bridge are per context, not per
+    /// call.
+    #[test]
+    fn a_context_keeps_one_shaper() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        ui.set(world());
+        let first = Shaper::of(&ui);
+        let second = Shaper::of(&ui);
+        assert!(std::rc::Rc::ptr_eq(&first, &second), "one shaper per ctx");
+        let line = first.shape("through the context", "Noto Sans", 13.0, &plain());
+        assert!(!line.blobs().is_empty());
+        assert_eq!(second.memo_len_for_test(), 1, "the memo is the ctx's own");
+    }
 }

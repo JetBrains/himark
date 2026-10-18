@@ -864,6 +864,9 @@ struct ShapedLabel {
 /// `&str` — a flat (style, String) key would clone the label text on
 /// every lookup.
 pub struct TextShaper {
+    /// The ctx's shaper — held, not looked up per label: a widget
+    /// lays out without a ctx in hand.
+    shaper: std::rc::Rc<crate::shape::Shaper>,
     labels: std::cell::RefCell<
         std::collections::HashMap<StyleKey, std::collections::HashMap<String, LabelEntry>>,
     >,
@@ -898,6 +901,7 @@ impl TextShaper {
     pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Self> {
         ui.env(|| {
             std::rc::Rc::new(TextShaper {
+                shaper: crate::shape::Shaper::of(ui),
                 labels: Default::default(),
                 clock: Default::default(),
             })
@@ -933,7 +937,7 @@ impl TextShaper {
         let style = typeface.font_style();
         let bold = font.is_embolden()
             || style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD;
-        crate::shape::ParleyLine::ellipsized(
+        self.shaper.ellipsized(
             text,
             &[family.as_str(), "system-ui"],
             font.size(),
@@ -1118,7 +1122,7 @@ mod tests {
         let font = chrome_font();
         let symbols = "⌘⌃⌥⇧⏎⌫⎋";
         let line = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
-        let (_, notdefs, total) = line.coverage_for_test();
+        let (_, notdefs, total) = crate::shape::Shaper::of(&ui).coverage_for_test(&line);
         assert_eq!(notdefs, 0, "notdef in {symbols} ({total} glyphs)");
         assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
     }
@@ -1132,7 +1136,7 @@ mod tests {
         let ui = crate::ui::UiCtx::dont_use_too_slow();
         let shaper = TextShaper::of(&ui);
         let line = shaper.shape(&chrome_font(), "＋", skia_safe::Color::BLACK, 0.0);
-        let (_, notdefs, _) = line.coverage_for_test();
+        let (_, notdefs, _) = crate::shape::Shaper::of(&ui).coverage_for_test(&line);
         assert_eq!(notdefs, 0, "notdef in ＋");
     }
 
@@ -1147,7 +1151,7 @@ mod tests {
         let mut bold = chrome_font();
         bold.set_embolden(true);
         let line = shaper.shape(&bold, "bold label", skia_safe::Color::BLACK, 0.0);
-        let report = line.face_report_for_test();
+        let report = crate::shape::Shaper::of(&ui).face_report_for_test(&line);
         assert!(!report.is_empty(), "the label resolves at least one run");
         assert!(
             report.iter().all(|(name, embolden, _)| {
@@ -1161,16 +1165,18 @@ mod tests {
     /// road, where no system enumeration exists.
     #[test]
     fn registered_fonts_serve_labels() {
-        crate::shape::register_font(include_bytes!(
-            "../../editor/assets/NotoSans-Regular.ttf"
-        ));
-        let line = crate::shape::ParleyLine::shape(
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let world = crate::shape::FontWorld::new();
+        world.register(include_bytes!("../../editor/assets/NotoSans-Regular.ttf"));
+        ui.set(world);
+        let shaper = crate::shape::Shaper::of(&ui);
+        let line = shaper.shape(
             "seeded fonts",
             "Noto Sans",
             13.0,
             &[crate::shape::SpanStyle::plain(skia_safe::Color::BLACK)],
         );
-        let (families, notdefs, total) = line.coverage_for_test();
+        let (families, notdefs, total) = shaper.coverage_for_test(&line);
         assert_eq!(notdefs, 0, "registered face covers latin");
         assert!(total > 0);
         assert!(

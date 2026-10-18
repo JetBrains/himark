@@ -303,6 +303,7 @@ mod tests {
 
     fn workshop() -> Arc<crate::env::Workshop> {
         Arc::new(crate::env::Workshop::new(
+        crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
             theme(),
         ))
     }

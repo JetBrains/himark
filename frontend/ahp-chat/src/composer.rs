@@ -86,7 +86,7 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
     );
     let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &theme);
-    view.set_placeholder("Message the agent", &theme);
+    view.set_placeholder("Message the agent", ui, &theme);
     ScrollView::new(view)
 }
 

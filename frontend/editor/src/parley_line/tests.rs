@@ -6,16 +6,22 @@ use super::*;
 /// The spike's parity meter: both roads shape the SAME bytes
 /// (the embedded face), paint through skia, and the diff metric
 /// prints — the number that prices the migration.
+
+/// The shaper of the test thread's kept ctx — the same road the
+/// app walks, with the editor's embedded faces in its world.
+fn shaper() -> std::rc::Rc<crate::parley_line::Shaper> {
+    crate::parley_line::shaper(crate::test_document::test_ui())
+}
+
 #[test]
 fn parley_shapes_paints_and_answers_geometry() {
-    crate::parley_line::ensure_fonts();
     let text = "fn main() { простой текст } -> done";
     let theme = crate::theme::Theme::embedded();
     let base = theme.base();
     let size = base.font_size.expect("theme carries a base size");
     let color = base.color.expect("theme carries a base ink");
 
-    let line = ParleyLine::shape(
+    let line = shaper().shape(
         text,
         crate::embedded_fonts::FAMILY,
         size,
@@ -61,6 +67,7 @@ fn parley_shapes_paints_and_answers_geometry() {
     let shaped = crate::shaped_line::ShapedLine::placeholder(
         text,
         color,
+        crate::test_document::test_ui(),
         &theme,
         900.0,
         0.0,
@@ -109,7 +116,6 @@ fn parley_shapes_paints_and_answers_geometry() {
 #[cfg(target_os = "macos")]
 #[test]
 fn fallback_corpus_keeps_its_eyes_open() {
-    crate::parley_line::ensure_fonts();
     let corpus: &[(&str, &str, bool)] = &[
         ("ascii", "fn main() -> done", true),
         ("cyrillic", "простой текст", true),
@@ -128,13 +134,13 @@ fn fallback_corpus_keeps_its_eyes_open() {
 
     let mut failures = Vec::new();
     for (name, text, must) in corpus {
-        let line = ParleyLine::shape(
+        let line = shaper().shape(
             text,
             "Menlo",
             24.0,
             &[SpanStyle::plain(skia_safe::Color::BLACK)],
         );
-        let (families, notdefs, total) = line.coverage_for_test();
+        let (families, notdefs, total) = shaper().coverage_for_test(&line);
         let verdict = if notdefs == 0 { "ok" } else { "TOFU" };
         eprintln!(
             "[fallback] {name:<13} {verdict:<4} {notdefs}/{total} notdef; fonts: {}",
@@ -154,11 +160,10 @@ fn fallback_corpus_keeps_its_eyes_open() {
 /// Styled spans carry their colors and weights into the blobs.
 #[test]
 fn styled_spans_reach_the_blobs() {
-    crate::parley_line::ensure_fonts();
     let text = "plain BOLD colored";
     let bold_from = text.find("BOLD").unwrap();
     let color_from = text.find("colored").unwrap();
-    let line = ParleyLine::shape(
+    let line = shaper().shape(
         text,
         crate::embedded_fonts::FAMILY,
         24.0,
@@ -193,7 +198,6 @@ fn styled_spans_reach_the_blobs() {
 #[cfg(target_os = "macos")]
 #[test]
 fn the_editor_family_chain_lands_monospace() {
-    crate::parley_line::ensure_fonts();
     let families = [
         "SF Mono",
         "Menlo",
@@ -201,14 +205,14 @@ fn the_editor_family_chain_lands_monospace() {
         "Consolas",
         "monospace",
     ];
-    let narrow = ParleyLine::shape_with_families(
+    let narrow = shaper().shape_with_families(
         "iiiiiiiiii",
         &families,
         24.0,
         None,
         &[SpanStyle::plain(skia_safe::Color::BLACK)],
     );
-    let wide = ParleyLine::shape_with_families(
+    let wide = shaper().shape_with_families(
         "mmmmmmmmmm",
         &families,
         24.0,
@@ -233,11 +237,10 @@ fn the_editor_family_chain_lands_monospace() {
 #[cfg(target_os = "macos")]
 #[test]
 fn bold_runs_resolve_a_bold_cut() {
-    crate::parley_line::ensure_fonts();
     let text = "normal BOLDBOLD normal";
     let from = text.find("BOLD").unwrap();
     let to = from + "BOLDBOLD".len();
-    let line = ParleyLine::shape_with_families(
+    let line = shaper().shape_with_families(
         text,
         &["SF Mono", "Menlo", "monospace"],
         24.0,
@@ -252,7 +255,7 @@ fn bold_runs_resolve_a_bold_cut() {
             SpanStyle::plain(skia_safe::Color::BLACK).at(to),
         ],
     );
-    let report = line.face_report_for_test();
+    let report = shaper().face_report_for_test(&line);
     for (postscript, embolden, weight) in &report {
         eprintln!("[parley-bold] run face {postscript:?} embolden {embolden} weight {weight:?}");
     }
@@ -272,12 +275,11 @@ fn bold_runs_resolve_a_bold_cut() {
 #[cfg(target_os = "macos")]
 #[test]
 fn variable_fonts_rasterize_the_shaped_instance() {
-    crate::parley_line::ensure_fonts();
     let text = "weights wander when instances differ 0123456789";
     // The bundled code font must answer its own name — regular AND
     // a real Bold cut, not an emboldened fake.
     for bold in [false, true] {
-        let line = ParleyLine::shape_with_families(
+        let line = shaper().shape_with_families(
             text,
             &["JetBrains Mono"],
             16.0,
@@ -287,7 +289,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
                 ..SpanStyle::plain(skia_safe::Color::BLACK)
             }],
         );
-        let report = line.face_report_for_test();
+        let report = shaper().face_report_for_test(&line);
         let want = if bold {
             "JetBrainsMono-Bold"
         } else {
@@ -310,7 +312,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
         (vec!["JetBrains Mono", "Menlo", "monospace"], true),
         (vec!["SF Mono", "Menlo", "monospace"], true),
     ] {
-        let line = ParleyLine::shape_with_families(
+        let line = shaper().shape_with_families(
             text,
             &families,
             16.0,
@@ -320,7 +322,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
                 ..SpanStyle::plain(skia_safe::Color::BLACK)
             }],
         );
-        for (face, vars, ours, theirs) in line.bridge_advances_for_test() {
+        for (face, vars, ours, theirs) in shaper().bridge_advances_for_test(&line) {
             eprintln!(
                 "[parley-vf] {families:?} bold={bold} face {face:?} vars {vars:?} parley {ours:.2} skia {theirs:.2}"
             );
@@ -337,9 +339,8 @@ fn variable_fonts_rasterize_the_shaped_instance() {
 /// byte_at_point).
 #[test]
 fn caret_x_round_trips_through_hit_testing() {
-    crate::parley_line::ensure_fonts();
     let text = "a long first line";
-    let line = ParleyLine::shape_with_families(
+    let line = shaper().shape_with_families(
         text,
         &["JetBrains Mono"],
         14.0,
@@ -364,7 +365,6 @@ fn caret_x_round_trips_through_hit_testing() {
 #[cfg(target_os = "macos")]
 #[test]
 fn typeface_bridge_caches_hold_across_shapes() {
-    crate::parley_line::ensure_fonts();
     let shape = |text: &str| {
         for (families, bold) in [
             (vec!["JetBrains Mono", "monospace"], false),
@@ -372,7 +372,7 @@ fn typeface_bridge_caches_hold_across_shapes() {
             (vec!["system-ui"], false),
             (vec!["system-ui"], true),
         ] {
-            let line = ParleyLine::shape_with_families(
+            let line = shaper().shape_with_families(
                 text,
                 &families,
                 15.0,
@@ -386,11 +386,11 @@ fn typeface_bridge_caches_hold_across_shapes() {
         }
     };
     shape("the first pass fills every cache");
-    let first = ParleyLine::bridge_cache_sizes_for_test();
+    let first = shaper().bridge_sizes_for_test();
     for round in 0..20 {
         shape(&format!("round {round} re-shapes the same styles"));
     }
-    let second = ParleyLine::bridge_cache_sizes_for_test();
+    let second = shaper().bridge_sizes_for_test();
     assert_eq!(
         first, second,
         "the same styles missed the bridge caches on re-shape"

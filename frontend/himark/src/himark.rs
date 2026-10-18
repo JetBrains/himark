@@ -183,21 +183,29 @@ pub struct SessionRow {
     pub modified_at: String,
 }
 
-/// The TOKEN that fonts are ready: shaping serves itself through
-/// `imba::shape`'s registry, so "which fonts" is no longer a value
-/// the engine carries — constructing this registers the embedded
-/// faces and nothing else.
-pub struct AppFonts;
+/// THE FONT WORLD the app shapes with, built once at boot. Every
+/// `UiCtx` the engine mints is handed this one — the UI thread's
+/// and the workshop's alike — so the system scan happens once and
+/// the typeface bridge is answered once, for everyone.
+pub struct AppFonts {
+    world: ::editor::parley_line::FontWorld,
+}
 
 impl AppFonts {
     pub fn platform() -> Self {
-        ::editor::parley_line::ensure_fonts();
-        Self
+        Self {
+            world: ::editor::parley_line::world(),
+        }
     }
 
+    /// The embedded faces ARE the world's — a test and a shell boot
+    /// the same way.
     pub fn embedded() -> Self {
-        ::editor::parley_line::ensure_fonts();
-        Self
+        Self::platform()
+    }
+
+    pub fn world(&self) -> ::editor::parley_line::FontWorld {
+        self.world.clone()
     }
 }
 
@@ -207,7 +215,6 @@ impl Himark {
     /// over this (`crate::app`'s `Himark::new` is the workbench
     /// shell's boot).
     pub fn bare(fonts: AppFonts, shell: Arc<dyn Shell>) -> Self {
-        let _ = fonts;
         let total_started = crate::startup_profile::start();
         let mut store = Store::new();
 
@@ -215,6 +222,8 @@ impl Himark {
         store.put(::editor::env::Themes(theme.clone()));
 
         let ui = std::rc::Rc::new(UiCtx::dont_use_too_slow());
+        // The one world, into the ctx that paints.
+        ui.set(fonts.world());
         ui.set(theme.ui().scrollbar.style());
 
         let overlay_font = hikit::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
@@ -242,6 +251,7 @@ impl Himark {
         });
 
         let workshop = Arc::new(::editor::env::Workshop::new(
+            fonts.world(),
             ::editor::env::Themes::of(&store),
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());

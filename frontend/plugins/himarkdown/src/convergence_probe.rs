@@ -144,6 +144,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
 
 fn test_cx_for_probe() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
+        editor::parley_line::world(),
         editor::theme::Theme::embedded(),
     ))
 }

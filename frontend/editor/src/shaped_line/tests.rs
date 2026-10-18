@@ -4,7 +4,6 @@
 use super::*;
 
 fn plain_shaped(text: &str) -> ParleyLine {
-    crate::parley_line::ensure_fonts();
     let resolved = BlockStyle::default().resolved(&crate::theme::Theme::embedded());
     let display = DisplayText::build_segments(
         false,
@@ -13,7 +12,8 @@ fn plain_shaped(text: &str) -> ParleyLine {
         true,
         text.len(),
     );
-    shape_inputs(&resolved, &display, &[], &crate::theme::Theme::embedded()).shape(None)
+    shape_inputs(&resolved, &display, &[], &crate::theme::Theme::embedded())
+        .shape(crate::test_document::test_ui(), None)
 }
 
 #[test]
@@ -63,6 +63,7 @@ fn placeholder_geometry_is_identical_to_typed_text() {
     let placeholder = ShapedLine::placeholder(
         source,
         theme.ui().peeker.dim_text.0,
+        crate::test_document::test_ui(),
         &theme,
         500.0,
         0.0,
@@ -82,7 +83,6 @@ fn placeholder_geometry_is_identical_to_typed_text() {
 
 #[test]
 fn rows_partition_the_text_at_breaks_and_wraps() {
-    crate::parley_line::ensure_fonts();
     let theme = crate::theme::Theme::embedded();
     let resolved = BlockStyle::default().resolved(&theme);
     let samples = [
@@ -106,7 +106,7 @@ fn rows_partition_the_text_at_breaks_and_wraps() {
             false,
             sample.len(),
         );
-        let line = shape_inputs(&resolved, &display, &[], &theme).shape(Some(220.0));
+        let line = shape_inputs(&resolved, &display, &[], &theme).shape(crate::test_document::test_ui(), Some(220.0));
         let rows = line.rows();
         if sample.is_empty() {
             // The empty layout's synthetic row has no text to cover.
@@ -188,6 +188,7 @@ fn selection_edges_sit_on_the_caret() {
     let shaped = ShapedLine::placeholder(
         source,
         theme.ui().peeker.dim_text.0,
+        crate::test_document::test_ui(),
         &theme,
         900.0,
         0.0,

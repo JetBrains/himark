@@ -292,13 +292,14 @@ fn cell_view(
 
 fn cell_intrinsics(
     text: &str,
+    ui: &UiCtx,
     theme: &editor::theme::Theme,
 ) -> ColumnIntrinsics {
     if text.is_empty() {
         return ColumnIntrinsics { min: 0.0, max: 0.0 };
     }
 
-    ::editor::parley_line::ensure_fonts();
+    let shaper = ::editor::parley_line::shaper(ui);
     let base = theme.base();
     let families: Vec<&str> = base
         .font_families
@@ -311,11 +312,11 @@ fn cell_intrinsics(
     // widest unbreakable word = min intrinsic.
     let mut widest = imba::shape::ShapeSpec::new(text, &families, size);
     widest.spans = &span;
-    let max = imba::shape::ParleyLine::shape_spec(&widest).width();
+    let max = shaper.shape_spec(&widest).width();
     let mut narrow = imba::shape::ShapeSpec::new(text, &families, size);
     narrow.spans = &span;
     narrow.max_width = Some(1.0);
-    let min = imba::shape::ParleyLine::shape_spec(&narrow).width();
+    let min = shaper.shape_spec(&narrow).width();
     ColumnIntrinsics {
         min: min.ceil(),
         max: max.ceil(),
@@ -438,6 +439,7 @@ impl TableEditor {
                 .iter()
                 .map(|row| row.iter().map(|cell| cell.content.as_str())),
             columns,
+            ui,
             theme,
             &chrome,
         );
@@ -488,13 +490,14 @@ impl TableEditor {
     fn intrinsics_from<'c>(
         rows: impl Iterator<Item = impl Iterator<Item = &'c str>>,
         columns: usize,
+        ui: &UiCtx,
         theme: &editor::theme::Theme,
         chrome: &TableChrome,
     ) -> Vec<ColumnIntrinsics> {
         let mut intrinsics = vec![ColumnIntrinsics { min: 0.0, max: 0.0 }; columns];
         for row in rows {
             for (col, content) in row.enumerate().take(columns) {
-                let cell = cell_intrinsics(content, theme);
+                let cell = cell_intrinsics(content, ui, theme);
                 intrinsics[col].min = intrinsics[col].min.max(cell.min);
                 intrinsics[col].max = intrinsics[col].max.max(cell.max);
             }
@@ -964,6 +967,7 @@ impl TableEditor {
                 .iter()
                 .map(|row| row.iter().map(|cell| cell.content.as_str())),
             columns,
+            ui,
             theme,
             &self.chrome,
         );

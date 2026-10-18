@@ -24,6 +24,7 @@ fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
 
 fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
+        editor::parley_line::world(),
         test_theme(),
     ))
 }
@@ -225,6 +226,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     );
 
     let cx = std::sync::Arc::new(editor::env::Workshop::new(
+        editor::parley_line::world(),
         theme.clone(),
     ));
     let mut view = editor::editor_view::EditorView {

@@ -74,12 +74,19 @@ unsafe impl Send for Workshop {}
 unsafe impl Sync for Workshop {}
 
 impl Workshop {
-    pub fn new(theme: crate::theme::Theme) -> Self {
+    /// The workshop lays text out on ITS thread, so its kept ctx
+    /// carries the same font world the UI thread shapes with —
+    /// handed in, never fetched from a global. A world of its own
+    /// would mean a second system font scan and a second typeface
+    /// bridge, which is what made a resize freeze.
+    pub fn new(world: imba::shape::FontWorld, theme: crate::theme::Theme) -> Self {
         let mut seeded = imba::store::Store::new();
         Themes::set(&mut seeded, theme.clone());
+        let ui = imba::ui::UiCtx::dont_use_too_slow();
+        ui.set(world);
         Self {
             theme: std::sync::Mutex::new(theme),
-            measure: std::sync::Mutex::new((seeded, imba::ui::UiCtx::dont_use_too_slow())),
+            measure: std::sync::Mutex::new((seeded, ui)),
             enrichers: std::sync::Mutex::new(None),
         }
     }

@@ -323,8 +323,7 @@ pub(crate) struct ShapeInputs {
 }
 
 impl ShapeInputs {
-    pub(crate) fn shape(&self, max_width: Option<f32>) -> ParleyLine {
-        crate::parley_line::ensure_fonts();
+    pub(crate) fn shape(&self, ui: &imba::ui::UiCtx, max_width: Option<f32>) -> ParleyLine {
         let families: Vec<&str> = self.families.iter().map(String::as_str).collect();
         let mut spec = ShapeSpec::new(&self.text, &families, self.size);
         spec.line_height = self.line_height;
@@ -332,7 +331,7 @@ impl ShapeInputs {
         spec.spans = &self.spans;
         spec.boxes = &self.boxes;
         spec.decorations = &self.ink;
-        ParleyLine::shape_spec(&spec)
+        crate::parley_line::shaper(ui).shape_spec(&spec)
     }
 }
 
@@ -606,7 +605,7 @@ impl ShapedLine {
             // zero-width space gives the shaper one real cluster.
             inputs.text = "\u{200b}".to_string();
         }
-        let line = inputs.shape(None);
+        let line = inputs.shape(measure.ui, None);
 
         let placeholder_rects = display
             .placeholders()
@@ -674,6 +673,7 @@ impl ShapedLine {
     pub(crate) fn placeholder(
         text: &str,
         color: skia_safe::Color,
+        ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         layout_width: f32,
         document_x: f32,
@@ -684,7 +684,7 @@ impl ShapedLine {
         let segments = [(text.to_owned(), 0)];
         let display = DisplayText::build_segments(false, &segments, &[], true, text.len());
         let inputs = shape_inputs(&resolved, &display, &[], theme);
-        let line = inputs.shape(None);
+        let line = inputs.shape(ui, None);
         let (x, extent_left, extent_right) =
             horizontal_geometry(document_x, &resolved, alignment, line.width(), layout_width);
 

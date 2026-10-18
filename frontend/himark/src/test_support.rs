@@ -549,6 +549,7 @@ pub fn handle_effect<R: 'static>(
 
 pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::env::Workshop> {
     std::sync::Arc::new(::editor::env::Workshop::new(
+        ::editor::parley_line::world(),
         theme,
     ))
 }

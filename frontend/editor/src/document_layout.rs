@@ -1459,9 +1459,10 @@ fn visual_lines<'a>(
     let rows_share_metrics =
         crate::shaped_line::rows_share_metrics(&inline, text.placeholders(), theme);
     let inputs = crate::shaped_line::shape_inputs(&resolved, &text, &inline, theme);
-    let line = inputs.shape(Some(
-        (width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0),
-    ));
+    let line = inputs.shape(
+        measure.ui,
+        Some((width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0)),
+    );
 
     item.width = line.width() + resolved.inset.unwrap_or(0.0) * 2.0;
     let rows = line.rows();

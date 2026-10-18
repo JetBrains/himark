@@ -2533,7 +2533,7 @@ fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_vie
     );
     let mut view =
         editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &theme);
-    view.set_placeholder("Commit message", &theme);
+    view.set_placeholder("Commit message", ui, &theme);
     view
 }
 

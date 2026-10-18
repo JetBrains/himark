@@ -5439,6 +5439,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
 
     // Drive the repair lane to completion, the way the engine would.
     let workshop = std::sync::Arc::new(crate::env::Workshop::new(
+        crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
         crate::theme::Theme::embedded(),
     ));
     let mut rounds = 0;
@@ -5686,4 +5687,66 @@ fn a_one_character_diagnostic_still_paints() {
         squiggle_pixels > 0,
         "the wavy underline painted in the error color: {squiggle_pixels} pixels"
     );
+}
+
+/// THE RESIZE METER: how much text does one width step lay out?
+/// A resize marks every byte modified, so the bounded repair and the
+/// viewport build both re-shape — and a band that forgot its bounds
+/// would shape the whole document for every pixel the window moves.
+#[test]
+fn editor_resize_bench() {
+    let store = &imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    use std::time::Instant;
+    let body = "alpha beta gamma delta epsilon zeta eta theta iota kappa\n".repeat(4_000);
+    let (mut document, editor) = ime_doc(&body);
+    let theme = test_theme();
+    let band = 900.0f32;
+    let mut quiet = imba::effect::Batch::new();
+    // The viewport a painted frame would report: the budget for the
+    // synchronous part of a repair is this band times 1.5.
+    let mut seeded = imba::store::Store::new();
+    crate::env::Themes::set(&mut seeded, theme.clone());
+    document.perform(
+        &mut seeded,
+        ui,
+        editor,
+        crate::editor_view::EditorCommand::Viewport {
+            width: 900.0,
+            top: 0.0,
+            bottom: band,
+            anchor: 0,
+        },
+        &mut quiet.effects(),
+    );
+    let lines_in_band = {
+        let viewport = crate::viewport::EditorViewport::build(
+            &document, editor, 0.0..band, true, true, None, store, ui, &theme,
+        );
+        std::hint::black_box(&viewport);
+        (band / 20.0) as usize
+    };
+
+    for step in 0..6 {
+        let width = 900.0 - step as f32 * 37.0;
+        let before = crate::parley_line::shaper(ui).shapes_so_far();
+        let started = Instant::now();
+        document.resize(editor, width, 0, store, ui, &theme, &mut quiet.effects());
+        let repaired = started.elapsed();
+        let after_repair = crate::parley_line::shaper(ui).shapes_so_far();
+
+        let started = Instant::now();
+        let viewport = crate::viewport::EditorViewport::build(
+            &document, editor, 0.0..band, true, true, None, store, ui, &theme,
+        );
+        std::hint::black_box(&viewport);
+        let built = started.elapsed();
+        let after_build = crate::parley_line::shaper(ui).shapes_so_far();
+
+        eprintln!(
+            "[resize-bench] width {width:.0}: repair {repaired:?} ({} shapes) + viewport {built:?} ({} shapes) — band holds ~{lines_in_band} lines of 4000",
+            after_repair - before,
+            after_build - after_repair,
+        );
+    }
 }
