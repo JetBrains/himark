@@ -426,3 +426,54 @@ fn caret_x_round_trips_through_hit_testing() {
         );
     }
 }
+
+/// The bridge caches must be STABLE: fontique blob ids and
+/// variation coords repeat across shapes, so re-shaping the same
+/// styles can never miss into the expensive roads again (the
+/// per-miss SkFontMgr_NewSystem flame: every new combo re-sorted
+/// the machine's font list and instantiated whole families).
+#[cfg(target_os = "macos")]
+#[test]
+fn typeface_bridge_caches_hold_across_shapes() {
+    let shape = |text: &str| {
+        for (families, bold) in [
+            (vec!["JetBrains Mono", "monospace"], false),
+            (vec!["JetBrains Mono", "monospace"], true),
+            (vec!["system-ui"], false),
+            (vec!["system-ui"], true),
+        ] {
+            let line = ParleyLine::shape_with_families(
+                text,
+                &families,
+                15.0,
+                None,
+                &[SpanStyle {
+                    bold,
+                    ..SpanStyle::plain(skia_safe::Color::BLACK)
+                }],
+            );
+            assert!(!line.blobs().is_empty());
+        }
+    };
+    shape("the first pass fills every cache");
+    let (bases, typefaces, axes) = CTX.with(|cell| {
+        let ctx = cell.borrow();
+        (ctx.bases.len(), ctx.typefaces.len(), ctx.axes.len())
+    });
+    for round in 0..20 {
+        shape(&format!("round {round} re-shapes the same styles"));
+    }
+    let (bases2, typefaces2, axes2) = CTX.with(|cell| {
+        let ctx = cell.borrow();
+        (ctx.bases.len(), ctx.typefaces.len(), ctx.axes.len())
+    });
+    assert_eq!(
+        (bases, typefaces, axes),
+        (bases2, typefaces2, axes2),
+        "the same styles missed the bridge caches on re-shape"
+    );
+    assert!(
+        bases <= 8 && typefaces <= 12,
+        "first pass already minted too many faces: bases {bases}, instanced {typefaces}"
+    );
+}

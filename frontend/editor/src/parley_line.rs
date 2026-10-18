@@ -89,6 +89,20 @@ const _: () = {
 struct ParleyCtx {
     fonts: FontContext,
     layouts: LayoutContext<Brush>,
+    /// ONE platform manager for the context's lifetime. Skia has no
+    /// system-manager singleton anymore: every `FontMgr::new()` is
+    /// a fresh `SkFontMgr_New_CoreText` — CoreText enumerating and
+    /// SORTING every family on the machine. Minting it per cache
+    /// miss put that walk on the shaping path (the what-the-fuck
+    /// flame of 2026-10-16).
+    manager: skia_safe::FontMgr,
+    /// fvar axis defaults per blob — parsed from the bytes ONCE,
+    /// not per run per shape.
+    axes: HashMap<(u64, u32), Vec<(u32, f32)>>,
+    /// The name-bridged BASE face per blob: the family walk
+    /// (instantiating every platform cut to fingerprint them) runs
+    /// once per font, not once per variation combo.
+    bases: HashMap<(u64, u32), Option<skia_safe::Typeface>>,
     /// fontique blob id + ttc index + variation coords → skia
     /// typeface, so the blob road rasterizes the same INSTANCE
     /// parley shaped with (a variable font's default differs from
@@ -117,40 +131,61 @@ impl ParleyCtx {
         Self {
             fonts,
             layouts: LayoutContext::new(),
+            manager: skia_safe::FontMgr::new(),
+            axes: HashMap::new(),
+            bases: HashMap::new(),
             typefaces: HashMap::new(),
         }
     }
 
-    fn typeface(
+    /// The full design position parley shaped at: every fvar axis
+    /// at its default (cached per blob), overlaid with fontique's
+    /// synthesis coordinates. Pinning every axis frees the name
+    /// bridge from caring which cut it matched — CoreText
+    /// enumerates .SFNS as INSTANCED cuts (opsz and GRAD baked in),
+    /// and setting wght alone kept the stray axes. Empty = not a
+    /// variable font.
+    fn position(
         &mut self,
         font: &parley::FontData,
         variations: &[(skrifa::Tag, f32)],
-    ) -> Option<skia_safe::Typeface> {
-        let position = design_position(font, variations);
-        let coords: Vec<(u32, i32)> = position
-            .iter()
-            .map(|(tag, value)| (*tag, value.to_bits() as i32))
-            .collect();
-        let key = (font.data.id(), font.index, coords);
-        self.typefaces
-            .entry(key)
+    ) -> Vec<(u32, f32)> {
+        let tag_of = |tag: &skrifa::Tag| u32::from_be_bytes(tag.to_be_bytes());
+        let defaults = self
+            .axes
+            .entry((font.data.id(), font.index))
             .or_insert_with(|| {
-                // THE NAME BRIDGE first: read the face's family
-                // name out of the bytes and ask the PLATFORM
-                // manager for its native handle — no 55MB
-                // collection re-parse, and CoreText hands back the
-                // same face it vended to fontique. Byte parsing
-                // stays as the road for registered/custom fonts
-                // the platform does not know.
-                // THE NAME BRIDGE: shaping used the blob's glyph
-                // ids, so the rasterizing face must be the SAME
-                // CUT — a family can hold cuts with different
-                // glyph spaces (seen: Heiti SC Light vs Regular).
-                // Walk the platform family's style set and take
-                // the cut whose glyph count fingerprints equal;
-                // the byte road stays for faces the platform
-                // does not know.
-                let manager = skia_safe::FontMgr::new();
+                use skrifa::MetadataProvider;
+                skrifa::FontRef::from_index(font.data.as_ref(), font.index)
+                    .map(|face| {
+                        face.axes()
+                            .iter()
+                            .map(|axis| (tag_of(&axis.tag()), axis.default_value()))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+        let mut coords = defaults.clone();
+        for (tag, value) in variations {
+            let tag = tag_of(tag);
+            match coords.iter_mut().find(|(candidate, _)| *candidate == tag) {
+                Some(slot) => slot.1 = *value,
+                None => coords.push((tag, *value)),
+            }
+        }
+        coords
+    }
+
+    /// The name-bridged base face for a blob — the expensive walk,
+    /// cached per font: read family + postscript name from the
+    /// bytes, match through the platform manager, fingerprint the
+    /// cut by postscript name with glyph count as the id-space
+    /// guard; parse the bytes for faces the platform does not know.
+    fn base(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
+        let manager = self.manager.clone();
+        self.bases
+            .entry((font.data.id(), font.index))
+            .or_insert_with(|| {
                 let fingerprint = glyph_count_of(font);
                 let postscript = postscript_name_of(font);
                 family_name_of(font)
@@ -160,11 +195,6 @@ impl ParleyCtx {
                         let cuts: Vec<skia_safe::Typeface> = (0..cuts.count())
                             .filter_map(|index| cuts.new_typeface(index))
                             .collect();
-                        // The POSTSCRIPT NAME names the exact cut;
-                        // glyph count alone cannot tell Regular
-                        // from Bold (same charset — bold runs were
-                        // rasterizing regular). Count stays as the
-                        // id-space guard behind the name.
                         cuts.iter()
                             .find(|cut| {
                                 postscript.is_some()
@@ -180,30 +210,47 @@ impl ParleyCtx {
                             Some(font.index),
                         )
                     })
-                    .and_then(|typeface| {
-                        if position.is_empty() {
-                            return Some(typeface);
-                        }
-                        let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> =
-                            position
-                                .iter()
-                                .map(|(tag, value)| {
-                                    skia_safe::font_arguments::variation_position::Coordinate {
-                                        axis: skia_safe::FourByteTag::from(*tag),
-                                        value: *value,
-                                    }
-                                })
-                                .collect();
-                        let arguments = skia_safe::FontArguments::new()
-                            .set_variation_design_position(
-                                skia_safe::font_arguments::VariationPosition {
-                                    coordinates: &coordinates,
-                                },
-                            );
-                        typeface.clone_with_arguments(&arguments)
-                    })
             })
             .clone()
+    }
+
+    fn typeface(
+        &mut self,
+        font: &parley::FontData,
+        variations: &[(skrifa::Tag, f32)],
+    ) -> Option<skia_safe::Typeface> {
+        let position = self.position(font, variations);
+        let coords: Vec<(u32, i32)> = position
+            .iter()
+            .map(|(tag, value)| (*tag, value.to_bits() as i32))
+            .collect();
+        let key = (font.data.id(), font.index, coords);
+        if let Some(hit) = self.typefaces.get(&key) {
+            return hit.clone();
+        }
+        let instanced = self.base(font).and_then(|typeface| {
+            if position.is_empty() {
+                return Some(typeface);
+            }
+            let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> =
+                position
+                    .iter()
+                    .map(|(tag, value)| {
+                        skia_safe::font_arguments::variation_position::Coordinate {
+                            axis: skia_safe::FourByteTag::from(*tag),
+                            value: *value,
+                        }
+                    })
+                    .collect();
+            let arguments = skia_safe::FontArguments::new().set_variation_design_position(
+                skia_safe::font_arguments::VariationPosition {
+                    coordinates: &coordinates,
+                },
+            );
+            typeface.clone_with_arguments(&arguments)
+        });
+        self.typefaces.insert(key, instanced.clone());
+        instanced
     }
 }
 
@@ -456,35 +503,6 @@ impl ParleyLine {
             canvas.draw_text_blob(blob, origin, &paint);
         }
     }
-}
-
-/// The FULL design position parley shaped at: every fvar axis at
-/// its default, overlaid with fontique's synthesis coordinates.
-/// Pinning every axis frees the name bridge from caring which cut
-/// it matched — CoreText enumerates .SFNS as INSTANCED cuts (opsz
-/// and GRAD baked in), and matching one of those then setting only
-/// wght kept the stray axes: system-ui bold measured 52px long
-/// over a 48-char line. Empty result = not a variable font, serve
-/// the bare typeface.
-fn design_position(font: &parley::FontData, variations: &[(skrifa::Tag, f32)]) -> Vec<(u32, f32)> {
-    use skrifa::MetadataProvider;
-    let tag_of = |tag: &skrifa::Tag| u32::from_be_bytes(tag.to_be_bytes());
-    let mut coords: Vec<(u32, f32)> = skrifa::FontRef::from_index(font.data.as_ref(), font.index)
-        .map(|face| {
-            face.axes()
-                .iter()
-                .map(|axis| (tag_of(&axis.tag()), axis.default_value()))
-                .collect()
-        })
-        .unwrap_or_default();
-    for (tag, value) in variations {
-        let tag = tag_of(tag);
-        match coords.iter_mut().find(|(candidate, _)| *candidate == tag) {
-            Some(slot) => slot.1 = *value,
-            None => coords.push((tag, *value)),
-        }
-    }
-    coords
 }
 
 /// Runs → SkTextBlobs, once per shape. The run's SYNTHESIS travels
