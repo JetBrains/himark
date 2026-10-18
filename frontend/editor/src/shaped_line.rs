@@ -490,6 +490,13 @@ impl ShapedLine {
             .get_line_metrics_at(0)
             .map(|metrics| metrics.baseline as f32);
 
+        // The hint line is measured against its typed twin (the
+        // composer swaps between them as text appears) — it must
+        // ride the same geometry road, or the caret JUMPS the first
+        // keystroke.
+        #[cfg(feature = "parley-text")]
+        let parley = build_parley(&resolved, display.as_str(), &spans, true);
+
         Self {
             byte_start: 0,
             byte_size: text.len().min(u32::MAX as usize) as u32,
@@ -505,7 +512,7 @@ impl ShapedLine {
             band_line_ranges: Vec::new(),
             blob_runs,
             #[cfg(feature = "parley-text")]
-            parley: None,
+            parley,
         }
     }
 
@@ -886,7 +893,10 @@ fn horizontal_geometry(
     )
 }
 
-fn caret_x_for_display_position(paragraph: &Paragraph, display_position: usize) -> f32 {
+pub(crate) fn caret_x_for_display_position(
+    paragraph: &Paragraph,
+    display_position: usize,
+) -> f32 {
     if display_position == 0 {
         return 0.0;
     }

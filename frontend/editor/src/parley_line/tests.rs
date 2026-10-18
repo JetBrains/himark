@@ -168,14 +168,18 @@ fn caret_geometry_tracks_the_skparagraph_road() {
         size,
         &[SpanStyle::plain(color)],
     );
-    let shaped = crate::shaped_line::ShapedLine::placeholder(
+    // The reference must stay RAW skparagraph: a ShapedLine under
+    // HIMARK_PARLEY answers geometry from its own twin, and the
+    // comparison would measure parley against parley on different
+    // family chains.
+    let mut paragraph = crate::shaped_line::line_paragraph(
+        &crate::markup::BlockStyle::default(),
         text,
-        color,
-        &crate::embedded_fonts::collection(),
+        crate::embedded_fonts::collection(),
         &theme,
-        2000.0,
-        0.0,
+        &[],
     );
+    paragraph.layout(f32::MAX / 2.0);
 
     let mut worst = 0.0f32;
     for (byte, _) in text
@@ -183,7 +187,8 @@ fn caret_geometry_tracks_the_skparagraph_road() {
         .chain(std::iter::once((text.len(), ' ')))
     {
         let ours = parley.caret_x(byte);
-        let theirs = shaped.x_at_byte(byte as u32);
+        let display = text[..byte].encode_utf16().count();
+        let theirs = crate::shaped_line::caret_x_for_display_position(&paragraph, display);
         worst = worst.max((ours - theirs).abs());
     }
     eprintln!(
@@ -396,5 +401,28 @@ fn variable_fonts_rasterize_the_shaped_instance() {
                 }
             }
         });
+    }
+}
+
+/// The goal-column law: the x a caret reports must map back to the
+/// same byte — vertical motion round-trips through (caret_x,
+/// byte_at_point).
+#[test]
+fn caret_x_round_trips_through_hit_testing() {
+    let text = "a long first line";
+    let line = ParleyLine::shape_with_families(
+        text,
+        &["JetBrains Mono"],
+        14.0,
+        None,
+        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+    );
+    for byte in 0..=text.len() {
+        let x = line.caret_x(byte);
+        let hit = line.byte_at_point(x, line.height() / 2.0);
+        assert_eq!(
+            hit, byte,
+            "byte {byte} reported x {x} but that x hits byte {hit}"
+        );
     }
 }

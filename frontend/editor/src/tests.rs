@@ -420,14 +420,26 @@ fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
     let ui = crate::test_document::test_ui();
     let source = "a😀b";
     let view = view_of(plain_document(source), 800.0);
-    let target_utf16 = "a😀".encode_utf16().count() as i32;
-    let x = x_for_paragraph_position(source, target_utf16);
+    // Probe at the caret's OWN x for the boundary — the geometry
+    // source and the hit-test must be the same road (mouse x in the
+    // app comes from the painted glyphs).
+    let (x, _, _, _) = view
+        .document
+        .caret_content_rect(
+            view.editor,
+            "a😀".len() as u32,
+            store,
+            ui,
+            &test_fonts(),
+            &test_theme(),
+        )
+        .expect("caret rect");
 
     let byte = view
         .document
         .byte_at_point(
             view.editor,
-            x,
+            x + 0.1,
             10.0,
             store,
             ui,
@@ -445,14 +457,23 @@ fn caret_hit_testing_moves_inside_visible_whitespace() {
     let ui = crate::test_document::test_ui();
     let source = "a    b";
     let view = view_of(plain_document(source), 800.0);
-    let target_utf16 = "a  ".encode_utf16().count() as i32;
-    let x = x_for_paragraph_position(source, target_utf16);
+    let (x, _, _, _) = view
+        .document
+        .caret_content_rect(
+            view.editor,
+            "a  ".len() as u32,
+            store,
+            ui,
+            &test_fonts(),
+            &test_theme(),
+        )
+        .expect("caret rect");
 
     let byte = view
         .document
         .byte_at_point(
             view.editor,
-            x,
+            x + 0.1,
             10.0,
             store,
             ui,
@@ -530,23 +551,6 @@ fn assert_layout_ranges_are_utf8(document: &Document, layout: &DocumentLayout) {
     }
 
     assert_eq!(byte_start as usize, document.text().byte_count());
-}
-
-fn x_for_paragraph_position(text: &str, position: i32) -> f32 {
-    let fonts = font_collection();
-    let mut paragraph = line_paragraph(&BlockStyle::default(), text, fonts, &test_theme(), &[]);
-    paragraph.layout(800.0);
-    let width = paragraph.longest_line().ceil().max(1.0) as usize;
-
-    for step in 0..=width * 4 {
-        let x = step as f32 * 0.25;
-        let hit = paragraph.get_glyph_position_at_coordinate(Point::new(x, 10.0));
-        if hit.position == position {
-            return x;
-        }
-    }
-
-    panic!("could not find paragraph x for position {position}");
 }
 
 fn font_collection() -> FontCollection {
