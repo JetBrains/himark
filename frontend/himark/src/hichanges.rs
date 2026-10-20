@@ -10,7 +10,7 @@ use changesview::hichanges::*;
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
-use imba::{effect::AnyEffect, store::Store};
+use imba::store::Store;
 
 pub struct OpenDiffForPair {
     pub old: ResourceLocation,
@@ -27,29 +27,28 @@ impl crate::commands::HimarkCommand for OpenDiffForPair {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::ui::UiCtx,
+        ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // The SEATED SHELL resolves and places the pair — the
+        // workbench arm resolves against the window's session, the
+        // mounted arm against the origin's.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        // Resolve both sides on the UI thread — an open side hands over
-        // its live registry snapshot, so the diff is against the live
-        // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let documents = crate::workspace::session_state(store, window)
-            .expect("a diff opens from a window with a session")
-            .documents();
-        let old = documents::diff_views::DiffSideInput::resolve(store, documents, self.old.clone());
-        let new = documents::diff_views::DiffSideInput::resolve(store, documents, self.new.clone());
-        let _ = fx.push(AnyEffect::new(
-            crate::workspace::OpenDiffByLocationsEffect {
-                window,
-                documents,
-                old,
-                new,
-            },
-        ));
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DiffPlace {
+                    old: self.old.clone(),
+                    new: self.new.clone(),
+                },
+                fx,
+            )
+        });
     }
 }
 

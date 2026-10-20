@@ -284,7 +284,10 @@ impl View for EditorIdView {
             })),
             location,
             seat,
-            bindings,
+            // The focused DOCUMENT rides the walk — commands that act
+            // on "the document under focus" (reload among them) read
+            // it instead of asking a window.
+            bindings: bindings.bind(self.document),
         }
     }
 

@@ -69,6 +69,28 @@ pub fn bound_window(
     window
 }
 
+/// The navigation prelude: the gesture's origin as a bridge id —
+/// the mounted origin itself, or the window riding the same raw id
+/// (the shell seat forks on `is_mounted`). The currency
+/// `shell::navigate_origin` takes.
+pub fn bound_origin(
+    command: &str,
+    bound: &imba::focus::Bindings,
+) -> Option<crate::bridge::ViewBridgeId> {
+    let origin = bound
+        .bound::<crate::bridge::ViewBridgeId>()
+        .copied()
+        .or_else(|| {
+            bound
+                .bound::<::workbench::window::WindowId>()
+                .map(|window| crate::bridge::ViewBridgeId::from_raw(window.raw()))
+        });
+    if origin.is_none() {
+        eprintln!("[shell] a navigating command landed with no origin bound — dropped: {command}");
+    }
+    origin
+}
+
 /// The session prelude: the session state the UI bound, or a loud
 /// drop.
 pub fn bound_session(

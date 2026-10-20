@@ -646,7 +646,12 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
             // that asks for a key nobody bound drops loudly in its
             // own prelude.
             let bound = if ::workbench::window::Windows::window_ref(store, window).is_some() {
-                window_bindings(store, window)
+                // The REAL walk, not just the root facts: a windowed
+                // mint resolves the same bindings a palette capture
+                // would — the focused document among them.
+                crate::focus::window_focus_data(store, ui, window)
+                    .map(|data| data.bindings)
+                    .unwrap_or_else(|| window_bindings(store, window))
             } else {
                 let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
                 if std::env::var_os("HIMARK_TRACE_NAV").is_some() {

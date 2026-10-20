@@ -3,7 +3,6 @@
 //! The shell half of the split-diff pane: the palette's "diff two
 //! recent documents" command. The faces live in the `canvas` crate.
 
-use ::canvas::diff_pane::*;
 
 use imba::store::Store;
 
@@ -19,51 +18,6 @@ impl crate::plugin::Plugin for DiffPanePlugin {
         app.register_command(std::sync::Arc::new(OpenDiff));
         app.register_row_minter(::canvas::diff_pane::pair_row_minter());
     }
-}
-
-/// Resolve one opened side to a registered `DocumentId`: reuse the open
-/// one, or REGISTER the freshly-built one (register-at-display — a
-/// located document is always an OpenDocuments document,
-/// docs/editor/diff-canvas.md §7). A `Built` side whose location was
-/// opened by someone else meanwhile reuses the winner and drops the
-/// build — the one genuine (and rare) throwaway, a lost open race.
-pub(crate) fn open_opened_diff_pane(
-    store: &mut Store,
-    ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    documents: imba::store::Id<OpenDocuments>,
-    pair: documents::diff_views::OpenedDiffPair,
-    fx: &mut crate::app::AppFx<'_>,
-) -> bool {
-    let Some(id) = documents::diff_views::install_opened_pair(store, documents, ui, pair, false)
-    else {
-        return false;
-    };
-    let panel = DiffPanelView::over(documents, id);
-    let mut entity =
-        ::workbench::window::Windows::window(store, window).expect("the window entity");
-    let opened = entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
-    ::workbench::window::Windows::put(store, window, entity);
-    opened
-}
-
-pub(crate) fn open_diff_documents(
-    store: &mut Store,
-    documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::ui::UiCtx,
-    window: ::workbench::window::WindowId,
-    left: documents::DocumentId,
-    right: documents::DocumentId,
-    fx: &mut crate::app::AppFx<'_>,
-) -> bool {
-    let Some(panel) = diff_panel(store, documents, ui, left, right) else {
-        return false;
-    };
-    let mut entity =
-        ::workbench::window::Windows::window(store, window).expect("the window entity");
-    let opened = entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
-    ::workbench::window::Windows::put(store, window, entity);
-    opened
 }
 
 /// Open an opened pair as a standalone split-diff pane (the changes
@@ -84,13 +38,15 @@ impl crate::commands::HimarkCommand for OpenDiff {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        _fx: &mut crate::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // The SESSION road picks the pair; the SEATED SHELL places
+        // the ready view — panel in a workbench, pushed screen on
+        // the native side.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        let ui = ui;
-        let Some(state) = crate::workspace::session_state(store, window) else {
+        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
             return;
         };
         let documents = state.documents();
@@ -98,6 +54,30 @@ impl crate::commands::HimarkCommand for OpenDiff {
         let (Some(newest), Some(older)) = (recent.first(), recent.get(1)) else {
             return;
         };
-        let _ = open_diff_documents(store, documents, ui, window, older.0, newest.0, _fx);
+        let Some(view) = documents::diff_views::build_diff_view(
+            store,
+            documents,
+            ui,
+            older.0,
+            newest.0,
+            documents::diff_views::OPEN_HALF_WIDTH,
+            false,
+        ) else {
+            return;
+        };
+        let title = OpenDocuments::name(store, documents, newest.0).unwrap_or_default();
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DiffViewPlace {
+                    documents,
+                    view,
+                    title,
+                },
+                fx,
+            )
+        });
     }
 }

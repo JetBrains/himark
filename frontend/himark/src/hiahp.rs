@@ -113,7 +113,6 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
         crate::shell::windowed(
             effect.window,
             Arc::new(OpenDiffPair {
-                window: effect.window,
                 documents: effect.documents,
                 pair,
             }),
@@ -158,7 +157,6 @@ impl ::workbench::navigation::WindowedNavigator for DiffNavigator {
 }
 
 pub struct OpenDiffPair {
-    window: ::workbench::window::WindowId,
     documents: imba::store::Id<documents::OpenDocuments>,
     pair: documents::diff_views::OpenedDiffPair,
 }
@@ -177,35 +175,21 @@ impl HimarkCommand for OpenDiffPair {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        // A MOUNTED origin bound means the native road: install the
-        // pair and hand the shell a READY place — it pushes a screen
-        // and mints the standalone split-diff over it.
-        if let Some(&origin) = bound.bound::<crate::bridge::ViewBridgeId>() {
-            if !self.open_mounted(store, ui, origin, fx) {
-                eprintln!("[himark] open-diff-pair could not install its pair — dropped");
-            }
+        // ONE road for every shell: install the pair and hand the
+        // SEATED SHELL a READY place — the workbench's arm opens the
+        // split-diff panel, the native shell pushes a screen and
+        // mints the standalone split-diff over it.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
+        };
+        if !self.open_at(store, ui, origin, fx) {
+            eprintln!("[himark] open-diff-pair could not install its pair — dropped");
         }
-        let _ = crate::diff_pane::open_opened_diff_pane(
-            store,
-            ui,
-            self.window,
-            self.documents,
-            self.pair.clone(),
-            fx,
-        );
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
-            documents::lanes::sync_document_watches(store, self.documents, fx)
-        });
-        fx.scope(AppCommand::Verb, |fx| {
-            documents::lanes::sync_stripe_bases(store, self.documents, ui, fx)
-        });
     }
-
 }
 
 impl OpenDiffPair {
-    fn open_mounted(
+    fn open_at(
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,

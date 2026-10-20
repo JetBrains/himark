@@ -1065,18 +1065,46 @@ impl crate::himark::Shell for WorkbenchFrontend {
             return true;
         }
         if let Some(place) = place.place::<crate::places::DiffPlace>() {
-            // A windowed command performs the pane work; it rides
-            // the follow-up lane so it runs with its own scope.
-            fx.follow_up(imba::command::Verb::shell(Box::new(
-                crate::shell::windowed(
+            // Resolve both sides on the UI thread — an open side
+            // hands over its live registry snapshot, so the diff is
+            // against the live buffer and rebases if it moves
+            // (docs/no-diff-on-ui-thread). The landing navigates
+            // back with the READY `DiffViewPlace`.
+            let Some(state) = crate::workspace::session_state(store, window) else {
+                return false;
+            };
+            let documents = state.documents();
+            let old =
+                documents::diff_views::DiffSideInput::resolve(store, documents, place.old.clone());
+            let new =
+                documents::diff_views::DiffSideInput::resolve(store, documents, place.new.clone());
+            fx.push(
+                imba::effect::AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
                     window,
-                    std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
-                        old: place.old.clone(),
-                        new: place.new.clone(),
-                    }),
-                ),
-            )));
+                    documents,
+                    old,
+                    new,
+                })
+                .map(|command| imba::command::Verb::shell(Box::new(command))),
+            );
             return true;
+        }
+        if let Some(place) = place.place::<crate::places::DiffViewPlace>() {
+            // The READY pair: open the standalone split-diff panel
+            // over it — the workbench twin of the native shell's
+            // pushed screen.
+            let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+                return false;
+            };
+            let panel = ::canvas::diff_pane::DiffPanelView::over(place.documents, place.view);
+            let opened = entity.open_panel(
+                store,
+                ui,
+                Box::new(hikit::modal::Scrolled::new(panel)),
+                fx,
+            );
+            ::workbench::window::Windows::put(store, window, entity);
+            return opened;
         }
         if let Some(place) = place.place::<crate::places::LocationsPlace>() {
             fx.follow_up(imba::command::Verb::shell(Box::new(
@@ -1089,7 +1117,16 @@ impl crate::himark::Shell for WorkbenchFrontend {
             )));
             return true;
         }
-        false
+        // Every other place rides the window's walk-stack navigation
+        // — the windowed navigator registry answers per place kind
+        // (the canvas among them). Unknown places decline here, same
+        // as they always did there.
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+            return false;
+        };
+        let navigated = entity.navigate(store, ui, window, &place, fx);
+        ::workbench::window::Windows::put(store, window, entity);
+        navigated
     }
 }
 

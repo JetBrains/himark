@@ -36,58 +36,14 @@ impl crate::commands::HimarkCommand for OpenDiffCanvas {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        // A MOUNTED origin bound: same ask, but the place goes to
-        // the SEATED SHELL — the native side opens its canvas pane.
-        if let Some(&origin) = bound.bound::<crate::bridge::ViewBridgeId>() {
-            self.open_mounted(store, ui, origin, fx);
-            return;
-        }
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // ONE road for every shell: prefetch, then the SEATED SHELL
+        // places the canvas — the workbench's walk-stack navigation,
+        // the native side's pushed pane.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
-        if let CanvasSource::Commit { folder, id } = &self.source {
-            if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
-                changesview::hihistory::History::ask(
-                    store,
-                    history,
-                    changesview::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
-                );
-            }
-        }
-        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
-            return;
-        };
-        let place = CanvasPlace {
-            changes: self.changes,
-            source: self.source.clone(),
-            reveal: self.reveal.clone(),
-        };
-        if !fx.scope(crate::app::AppCommand::Verb, |fx| {
-            entity.navigate(
-                store,
-                ui,
-                window,
-                &hikit::navigation::NavigationLocation::new(place),
-                fx,
-            )
-        }) {
-            eprintln!("[himark] no canvas navigator registered");
-        }
-        ::workbench::window::Windows::put(store, window, entity);
-    }
-
-}
-
-impl OpenDiffCanvas {
-    fn open_mounted(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        origin: crate::bridge::ViewBridgeId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
         if let CanvasSource::Commit { folder, id } = &self.source {
             if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
                 changesview::hihistory::History::ask(
@@ -110,9 +66,10 @@ impl OpenDiffCanvas {
                 fx,
             )
         });
-        true
     }
+
 }
+
 
 /// Open a canvas file's live side in an ordinary pane — the header's
 /// click (and `workbench.open-in-full` on a focused row).
@@ -138,49 +95,25 @@ impl crate::commands::HimarkCommand for OpenCanvasFile {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // ONE road for every shell: the SEATED SHELL opens the
+        // located document — the open effect reuses a registered
+        // document and honors the carried caret either way.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        let ui = ui;
-        let Some(target) = self.target.clone() else {
-            // No caret to honor — the plain open, dedup + authority
-            // remap included.
-            crate::workspace::open_locations(store, ui, window, &[self.location.clone()], fx);
-            return;
-        };
-        // Honor the caret: the canvas row's document is registered
-        // (docs/editor/diff-canvas.md §7), so this is a show at target;
-        // fall back to a targeted fetch if it somehow is not.
-        let documents = crate::workspace::session_state(store, window)
-            .expect("canvas navigation runs in a window with a session")
-            .documents();
-        match documents::OpenDocuments::by_location(store, documents, &self.location) {
-            Some(document_id) => {
-                if let Some(mut entity) = ::workbench::window::Windows::window(store, window) {
-                    fx.scope(crate::app::AppCommand::Verb, |fx| {
-                        entity.show_document(
-                            store,
-                            ui,
-                            window,
-                            document_id,
-                            Some(target),
-                            false,
-                            fx,
-                        );
-                    });
-                    ::workbench::window::Windows::put(store, window, entity);
-                }
-            }
-            None => {
-                fx.push(crate::workspace::open_by_location_effect(
-                    window,
-                    documents,
-                    self.location.clone(),
-                    true,
-                    false,
-                    Some(target),
-                ));
-            }
-        }
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DocumentPlace {
+                    location: self.location.clone(),
+                    target: self.target.clone(),
+                    focus: true,
+                },
+                fx,
+            )
+        });
     }
 }
+

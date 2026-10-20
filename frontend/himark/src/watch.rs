@@ -21,15 +21,16 @@ impl crate::commands::HimarkCommand for ReloadDocument {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // The focused document and its session both ride the walk —
+        // the reload works from any shell.
+        let Some(&document) = bound.bound::<documents::DocumentId>() else {
+            eprintln!(
+                "[shell] reload landed with no focused document bound — dropped: {}",
+                self.id()
+            );
             return;
         };
-        let Some(document) = ::workbench::window::Windows::window_ref(store, window)
-            .and_then(|entity| entity.focused_document_id())
-        else {
-            return;
-        };
-        let Some(state) = crate::workspace::session_state(store, window) else {
+        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
             return;
         };
         fx.scope(crate::app::AppCommand::Verb, |fx| {
