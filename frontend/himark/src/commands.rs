@@ -13,27 +13,36 @@ pub fn palette_commands(
     window: ::workbench::window::WindowId,
 ) -> Vec<imba::PresentableCommand<AppCommand>> {
     // A STATE WALK over the views — no tree is built for the palette.
+    let data = crate::focus::window_focus_data(store, ui, window);
+    let bound = data.as_ref().map(|data| data.bindings.clone());
     let mut commands: Vec<imba::PresentableCommand<AppCommand>> =
-        crate::focus::window_focus_data(store, ui, window)
-            .map(|data| data.commands)
-            .unwrap_or_default();
+        data.map(|data| data.commands).unwrap_or_default();
     commands.extend(Commands::of(store).iter().map(|command| {
         imba::PresentableCommand::new(
             command.id(),
             command.name(),
-            crate::shell::windowed(window, command.clone()),
+            // The walk's facts ride the mint; without a walk (no
+            // window entity) the windowed lane resolves them at
+            // dispatch — the mounted fork binds the origin's session.
+            match &bound {
+                Some(bound) => crate::shell::bound(bound.clone(), command.clone()),
+                None => crate::shell::windowed(window, command.clone()),
+            },
         )
     }));
     commands
 }
 
-/// The WINDOWED command: a palette entry or a deferred landing that
-/// acts in a window and speaks the app's command stream. The
-/// windowless kind is `imba::command::DynamicCommand` — collections
-/// and views ride that one; this trait is shell-side only and
-/// shrinks away as gestures go windowless (content-addressed opens
-/// are the recorded road).
-pub trait WindowedCommand: Send + Sync {
+/// A REGISTERED command: a palette entry, a keymap target or a
+/// deferred landing that speaks the app's command stream. What it
+/// acts ON arrives through the focus walk's bindings — the UI binds
+/// its facts (the window, the origin bridge, the session) on the
+/// way down, and the command reads the keys it needs: a session
+/// command works in every shell; a dock toggle asks for the window
+/// and drops loudly where none is bound. The windowless kind is
+/// `imba::command::DynamicCommand` — collections and views ride
+/// that one.
+pub trait HimarkCommand: Send + Sync {
     fn id(&self) -> &'static str;
 
     fn name(&self) -> String;
@@ -42,27 +51,41 @@ pub trait WindowedCommand: Send + Sync {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     );
+}
 
-    /// The MOUNTED landing: an effect launched from a mounted
-    /// bridge rides the windowed lane with the mount's id, and no
-    /// window entity answers it. A command that knows the mounted
-    /// road takes it here; `false` drops the landing loudly.
-    fn perform_windowless(
-        &self,
-        _store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        _origin: crate::bridge::ViewBridgeId,
-        _fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
-        false
+/// The chrome prelude: the window this gesture came from, or a loud
+/// drop — the dock toggles and pane openers keep needing one.
+pub fn bound_window(
+    command: &str,
+    bound: &imba::focus::Bindings,
+) -> Option<::workbench::window::WindowId> {
+    let window = bound.bound::<::workbench::window::WindowId>().copied();
+    if window.is_none() {
+        eprintln!("[shell] a window-taking command landed with no window bound — dropped: {command}");
     }
+    window
+}
+
+/// The session prelude: the session state the UI bound, or a loud
+/// drop.
+pub fn bound_session(
+    command: &str,
+    bound: &imba::focus::Bindings,
+) -> Option<ahp_session::session::state::SessionState> {
+    let state = bound
+        .bound::<ahp_session::session::state::SessionState>()
+        .cloned();
+    if state.is_none() {
+        eprintln!("[shell] a session command landed with no session bound — dropped: {command}");
+    }
+    state
 }
 
 #[derive(Clone, Default)]
-pub struct Commands(pub(crate) Vec<Arc<dyn WindowedCommand>>);
+pub struct Commands(pub(crate) Vec<Arc<dyn HimarkCommand>>);
 
 impl Commands {
     pub fn of(store: &Store) -> Commands {
@@ -71,24 +94,24 @@ impl Commands {
             .unwrap_or_default()
     }
 
-    pub fn register(store: &mut Store, command: Arc<dyn WindowedCommand>) {
+    pub fn register(store: &mut Store, command: Arc<dyn HimarkCommand>) {
         crate::registry::Registry::update(store, |registry| registry.commands.0.push(command));
     }
 
-    pub fn find(&self, id: &str) -> Option<&Arc<dyn WindowedCommand>> {
+    pub fn find(&self, id: &str) -> Option<&Arc<dyn HimarkCommand>> {
         self.0.iter().find(|command| command.id() == id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn WindowedCommand>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn HimarkCommand>> {
         self.0.iter()
     }
 }
 
 #[derive(Clone, Default)]
-pub struct AppRequests(Vec<Arc<dyn WindowedCommand>>);
+pub struct AppRequests(Vec<Arc<dyn HimarkCommand>>);
 
 impl AppRequests {
-    pub fn push(store: &mut Store, request: Arc<dyn WindowedCommand>) {
+    pub fn push(store: &mut Store, request: Arc<dyn HimarkCommand>) {
         store.update::<AppRequests>(|requests| requests.0.push(request));
     }
 
@@ -96,7 +119,7 @@ impl AppRequests {
         self.0.is_empty()
     }
 
-    pub(crate) fn drain(store: &mut Store) -> Vec<Arc<dyn WindowedCommand>> {
+    pub(crate) fn drain(store: &mut Store) -> Vec<Arc<dyn HimarkCommand>> {
         let Some(requests) = store.get::<AppRequests>() else {
             return Vec::new();
         };
@@ -110,7 +133,7 @@ impl AppRequests {
 
 pub(crate) struct NewScratch;
 
-impl WindowedCommand for NewScratch {
+impl HimarkCommand for NewScratch {
     fn id(&self) -> &'static str {
         "workbench.new-document"
     }
@@ -121,9 +144,12 @@ impl WindowedCommand for NewScratch {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let state = crate::workspace::session_state(store, window)
             .expect("a scratch opens into a window with a session");
         let location = documents::next_scratch_location(store, state.scratch_names());
@@ -140,7 +166,7 @@ impl WindowedCommand for NewScratch {
 
 pub(crate) struct SplitPane;
 
-impl WindowedCommand for SplitPane {
+impl HimarkCommand for SplitPane {
     fn id(&self) -> &'static str {
         "workbench.split-pane"
     }
@@ -151,9 +177,12 @@ impl WindowedCommand for SplitPane {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
@@ -166,7 +195,7 @@ impl WindowedCommand for SplitPane {
 
 pub(crate) struct CloseFocused;
 
-impl WindowedCommand for CloseFocused {
+impl HimarkCommand for CloseFocused {
     fn id(&self) -> &'static str {
         "workbench.close"
     }
@@ -177,9 +206,12 @@ impl WindowedCommand for CloseFocused {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
@@ -192,7 +224,7 @@ impl WindowedCommand for CloseFocused {
 
 pub(crate) struct ClosePane;
 
-impl WindowedCommand for ClosePane {
+impl HimarkCommand for ClosePane {
     fn id(&self) -> &'static str {
         "workbench.close-pane"
     }
@@ -203,9 +235,12 @@ impl WindowedCommand for ClosePane {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.close_current(store);
@@ -215,7 +250,7 @@ impl WindowedCommand for ClosePane {
 
 pub(crate) struct NavigateBack;
 
-impl WindowedCommand for NavigateBack {
+impl HimarkCommand for NavigateBack {
     fn id(&self) -> &'static str {
         "navigation.back"
     }
@@ -226,9 +261,12 @@ impl WindowedCommand for NavigateBack {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
@@ -241,7 +279,7 @@ impl WindowedCommand for NavigateBack {
 
 pub(crate) struct NavigateForward;
 
-impl WindowedCommand for NavigateForward {
+impl HimarkCommand for NavigateForward {
     fn id(&self) -> &'static str {
         "navigation.forward"
     }
@@ -252,9 +290,12 @@ impl WindowedCommand for NavigateForward {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
@@ -267,7 +308,7 @@ impl WindowedCommand for NavigateForward {
 
 pub(crate) struct ToggleTheme;
 
-impl WindowedCommand for ToggleTheme {
+impl HimarkCommand for ToggleTheme {
     fn id(&self) -> &'static str {
         "theme.toggle"
     }
@@ -278,7 +319,7 @@ impl WindowedCommand for ToggleTheme {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let next = match ::editor::env::Themes::of(store).name() {
@@ -286,18 +327,6 @@ impl WindowedCommand for ToggleTheme {
             _ => ::editor::theme::Theme::light(),
         };
         ::editor::env::Themes::set(store, next);
-    }
-
-    /// Theme is store-wide — a mounted origin performs it the same.
-    fn perform_windowless(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        _origin: crate::bridge::ViewBridgeId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
-        self.perform(store, ui, ::workbench::window::WindowId::from_raw(0), fx);
-        true
     }
 }
 
@@ -307,7 +336,7 @@ pub(crate) struct SetTheme {
     pub(crate) dark: bool,
 }
 
-impl WindowedCommand for SetTheme {
+impl HimarkCommand for SetTheme {
     fn id(&self) -> &'static str {
         if self.dark {
             "theme.dark"
@@ -326,7 +355,7 @@ impl WindowedCommand for SetTheme {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let theme = if self.dark {
@@ -336,24 +365,11 @@ impl WindowedCommand for SetTheme {
         };
         ::editor::env::Themes::set(store, theme);
     }
-
-    /// Theme is store-wide — the native host follows the OS through
-    /// this command with no window in hand.
-    fn perform_windowless(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        _origin: crate::bridge::ViewBridgeId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
-        self.perform(store, ui, ::workbench::window::WindowId::from_raw(0), fx);
-        true
-    }
 }
 
 pub(crate) struct ChatComposer;
 
-impl WindowedCommand for ChatComposer {
+impl HimarkCommand for ChatComposer {
     fn id(&self) -> &'static str {
         "chat.composer"
     }
@@ -364,9 +380,12 @@ impl WindowedCommand for ChatComposer {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
@@ -390,7 +409,7 @@ impl WindowedCommand for ChatComposer {
 /// is gone.
 pub(crate) struct AddFolder;
 
-impl WindowedCommand for AddFolder {
+impl HimarkCommand for AddFolder {
     fn id(&self) -> &'static str {
         "session.add-folder"
     }
@@ -401,9 +420,12 @@ impl WindowedCommand for AddFolder {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
@@ -415,7 +437,7 @@ impl WindowedCommand for AddFolder {
             server: current.host,
             session: current.session,
         }
-        .perform(store, ui, window, fx);
+        .perform(store, ui, bound, fx);
     }
 }
 

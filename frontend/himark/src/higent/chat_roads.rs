@@ -70,7 +70,7 @@ pub(crate) struct OpenEditedFile {
     uri: String,
 }
 
-impl crate::commands::WindowedCommand for OpenEditedFile {
+impl crate::commands::HimarkCommand for OpenEditedFile {
     fn id(&self) -> &'static str {
         "chat.open-edited-file"
     }
@@ -83,9 +83,12 @@ impl crate::commands::WindowedCommand for OpenEditedFile {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(uris) = ahp_session::session::state::Hosts::uris(store, self.server) else {
             return;
         };
@@ -119,7 +122,7 @@ struct ApplyChannelActions {
     actions: Vec<ahp_types::actions::StateAction>,
 }
 
-impl crate::commands::WindowedCommand for ApplyChannelActions {
+impl crate::commands::HimarkCommand for ApplyChannelActions {
     fn id(&self) -> &'static str {
         "higent.apply-channel-actions"
     }
@@ -130,9 +133,12 @@ impl crate::commands::WindowedCommand for ApplyChannelActions {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let _ = window;
         fx.scope(crate::app::AppCommand::Verb, |fx| {
             ahp_session::session::channel::apply_channel_actions(

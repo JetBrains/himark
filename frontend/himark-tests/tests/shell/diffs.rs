@@ -5252,7 +5252,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         imba::store::Id<documents::OpenDocuments>,
         documents::DocumentId,
     );
-    impl himark::commands::WindowedCommand for Land {
+    impl himark::commands::HimarkCommand for Land {
         fn id(&self) -> &'static str {
             "test.land-markup"
         }
@@ -5263,7 +5263,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            _window: ::workbench::window::WindowId,
+            _bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
             let (documents, id) = (self.0, self.1);

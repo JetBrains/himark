@@ -1009,7 +1009,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
 #[test]
 fn the_docked_tree_follows_the_focused_document() {
     struct OpenAt(editor::location::ResourceLocation);
-    impl himark::commands::WindowedCommand for OpenAt {
+    impl himark::commands::HimarkCommand for OpenAt {
         fn id(&self) -> &'static str {
             "test.open-at"
         }
@@ -1020,9 +1020,12 @@ fn the_docked_tree_follows_the_focused_document() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -3054,7 +3057,7 @@ struct StubNewSession {
     directory: String,
 }
 
-impl himark::commands::WindowedCommand for StubNewSession {
+impl himark::commands::HimarkCommand for StubNewSession {
     fn id(&self) -> &'static str {
         "test.stub-new-session"
     }
@@ -3065,9 +3068,12 @@ impl himark::commands::WindowedCommand for StubNewSession {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(seat) = ahp_wire::client::Servers::client(store, self.server) else {
             return;
         };
@@ -3097,7 +3103,7 @@ struct LaunchProbe {
     launch: Box<dyn Fn(workbench::window::WindowId, &mut himark::app::AppFx<'_>) + Send + Sync>,
 }
 
-impl himark::commands::WindowedCommand for LaunchProbe {
+impl himark::commands::HimarkCommand for LaunchProbe {
     fn id(&self) -> &'static str {
         "test.launch-probe"
     }
@@ -3108,9 +3114,12 @@ impl himark::commands::WindowedCommand for LaunchProbe {
         &self,
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         (self.launch)(window, fx);
     }
 }
@@ -3120,7 +3129,7 @@ struct FillProbe<T: Send + Sync + 'static> {
     value: std::sync::Mutex<Option<T>>,
 }
 
-impl<T: Send + Sync + 'static> himark::commands::WindowedCommand for FillProbe<T> {
+impl<T: Send + Sync + 'static> himark::commands::HimarkCommand for FillProbe<T> {
     fn id(&self) -> &'static str {
         "test.fill-probe"
     }
@@ -3131,7 +3140,7 @@ impl<T: Send + Sync + 'static> himark::commands::WindowedCommand for FillProbe<T
         &self,
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
         *self.slot.lock().expect("probe slot") = self.value.lock().expect("probe value").take();
@@ -4827,7 +4836,7 @@ fn the_chat_runs_through_the_himark_host() {
     );
 
     struct SendLikeComments(&'static str);
-    impl himark::commands::WindowedCommand for SendLikeComments {
+    impl himark::commands::HimarkCommand for SendLikeComments {
         fn id(&self) -> &'static str {
             "test.send-like-comments"
         }
@@ -4838,9 +4847,12 @@ fn the_chat_runs_through_the_himark_host() {
             &self,
             store: &mut imba::store::Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let workspace = himark::workspace::entity_session(
                 workbench::window::Windows::window_ref(store, window).expect("the window entity"),
             );
@@ -4851,7 +4863,7 @@ fn the_chat_runs_through_the_himark_host() {
                 .expect("the session names its default chat");
             let seat = ahp_wire::client::Servers::client(store, key.host).expect("the seat");
             struct DropLanding;
-            impl himark::commands::WindowedCommand for DropLanding {
+            impl himark::commands::HimarkCommand for DropLanding {
                 fn id(&self) -> &'static str {
                     "test.send-landed"
                 }
@@ -4862,7 +4874,7 @@ fn the_chat_runs_through_the_himark_host() {
                     &self,
                     _store: &mut imba::store::Store,
                     _ui: &imba::ui::UiCtx,
-                    _window: ::workbench::window::WindowId,
+                    _bound: &imba::focus::Bindings,
                     _fx: &mut himark::app::AppFx<'_>,
                 ) {
                 }
@@ -6605,7 +6617,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let created = current(&engine);
 
     struct SwitchScratch;
-    impl himark::commands::WindowedCommand for SwitchScratch {
+    impl himark::commands::HimarkCommand for SwitchScratch {
         fn id(&self) -> &'static str {
             "test.switch-scratch"
         }
@@ -6616,9 +6628,12 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             &self,
             store: &mut imba::store::Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId::mint_scratch(store);
             himark::app::switch_session(store, window, target, fx);
         }
@@ -7782,7 +7797,7 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
         old: editor::location::ResourceLocation,
         new: editor::location::ResourceLocation,
     }
-    impl himark::commands::WindowedCommand for OpenWorkingDiff {
+    impl himark::commands::HimarkCommand for OpenWorkingDiff {
         fn id(&self) -> &'static str {
             "test.open-working-diff"
         }
@@ -7793,9 +7808,12 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
             &self,
             store: &mut imba::store::Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let documents = himark::workspace::session_state(store, window)
                 .expect("the test diff opens from a window with a session")
                 .documents();
@@ -7922,7 +7940,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     );
 
     struct Open(editor::location::ResourceLocation);
-    impl himark::commands::WindowedCommand for Open {
+    impl himark::commands::HimarkCommand for Open {
         fn id(&self) -> &'static str {
             "test.open-lib"
         }
@@ -7933,9 +7951,12 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -8255,7 +8276,7 @@ fn published_diagnostics_squiggle_the_open_document() {
     );
 
     struct Open(editor::location::ResourceLocation);
-    impl himark::commands::WindowedCommand for Open {
+    impl himark::commands::HimarkCommand for Open {
         fn id(&self) -> &'static str {
             "test.open-diagnosed"
         }
@@ -8266,9 +8287,12 @@ fn published_diagnostics_squiggle_the_open_document() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -8367,7 +8391,7 @@ fn published_diagnostics_squiggle_the_open_document() {
         imba::store::Id<documents::OpenDocuments>,
         editor::location::ResourceLocation,
     );
-    impl himark::commands::WindowedCommand for Clear {
+    impl himark::commands::HimarkCommand for Clear {
         fn id(&self) -> &'static str {
             "test.clear-diagnostics"
         }
@@ -8378,7 +8402,7 @@ fn published_diagnostics_squiggle_the_open_document() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            _window: ::workbench::window::WindowId,
+            _bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
             let documents_id = self.0;

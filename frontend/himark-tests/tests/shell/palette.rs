@@ -226,12 +226,12 @@ fn palette_commands_follow_the_modal_focus() {
 fn registered_commands_present_and_dispatch_by_id() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::commands::WindowedCommand;
+    use himark::commands::HimarkCommand;
 
     #[derive(Clone)]
     struct Marker;
     struct Probe;
-    impl WindowedCommand for Probe {
+    impl HimarkCommand for Probe {
         fn id(&self) -> &'static str {
             "test.probe"
         }
@@ -242,7 +242,7 @@ fn registered_commands_present_and_dispatch_by_id() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            _window: ::workbench::window::WindowId,
+            _bound: &imba::focus::Bindings,
             _fx: &mut himark::app::AppFx<'_>,
         ) {
             store.put(Marker);

@@ -30,7 +30,7 @@ impl crate::plugin::Plugin for CommentsPlugin {
 
 pub struct ToggleCommentsView;
 
-impl crate::commands::WindowedCommand for ToggleCommentsView {
+impl crate::commands::HimarkCommand for ToggleCommentsView {
     fn id(&self) -> &'static str {
         "comments.view"
     }
@@ -41,9 +41,12 @@ impl crate::commands::WindowedCommand for ToggleCommentsView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {

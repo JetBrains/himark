@@ -26,6 +26,45 @@ pub struct ImeSeat<'w, Command> {
     >,
 }
 
+/// UI→command facts riding the focus walk: views on the focused
+/// path bind typed values on the way down (the session, the window,
+/// the origin bridge), and whoever mints a command reads them.
+/// Inner bindings shadow outer — `bound` answers the deepest.
+/// Values ride Arcs so a minted command carries the snapshot
+/// whole, across threads.
+#[derive(Clone, Default)]
+pub struct Bindings(
+    Vec<(
+        std::any::TypeId,
+        std::sync::Arc<dyn std::any::Any + Send + Sync>,
+    )>,
+);
+
+impl Bindings {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn bind<T: std::any::Any + Send + Sync>(mut self, value: T) -> Self {
+        self.0
+            .push((std::any::TypeId::of::<T>(), std::sync::Arc::new(value)));
+        self
+    }
+
+    pub fn bound<T: std::any::Any + Send + Sync>(&self) -> Option<&T> {
+        self.0
+            .iter()
+            .find(|(key, _)| *key == std::any::TypeId::of::<T>())
+            .and_then(|(_, value)| value.downcast_ref::<T>())
+    }
+
+    /// Inner wins: self's entries answer before `outer`'s.
+    pub fn merge_under(mut self, outer: Bindings) -> Bindings {
+        self.0.extend(outer.0);
+        self
+    }
+}
+
 /// The SEMANTIC focus answers — collected from the VIEW tree
 /// (`View::focus_data`), never from widgets. Focus is state; the
 /// parent view picks the focused child by state and each node on the
@@ -49,6 +88,9 @@ pub struct FocusData<'w, Command> {
     /// recognition, never by re-deciding focus: the two trees share
     /// this one value instead of two copies of the routing.
     pub seat: Option<SeatKey>,
+
+    /// The walk's typed facts — see [`Bindings`].
+    pub bindings: Bindings,
 }
 
 /// An opaque, globally minted identity for a text seat. Flat on
@@ -73,6 +115,7 @@ impl<Command> Default for FocusData<'_, Command> {
             clipboard: None,
             location: None,
             seat: None,
+            bindings: Bindings::default(),
         }
     }
 }
@@ -83,6 +126,11 @@ impl<'w, Command> FocusData<'w, Command> {
             commands,
             ..Self::default()
         }
+    }
+
+    pub fn bind<T: std::any::Any + Send + Sync>(mut self, value: T) -> Self {
+        self.bindings = std::mem::take(&mut self.bindings).bind(value);
+        self
     }
 
     pub fn key(&mut self, key: Key, mods: Modifiers) -> EventResult<Command> {
@@ -123,6 +171,7 @@ impl<'w, Command> FocusData<'w, Command> {
             }),
             location: self.location,
             seat: self.seat,
+            bindings: self.bindings,
         }
     }
 
@@ -148,6 +197,7 @@ impl<'w, Command> FocusData<'w, Command> {
             clipboard: self.clipboard.or(outer.clipboard),
             location: self.location.or(outer.location),
             seat: self.seat.or(outer.seat),
+            bindings: self.bindings.merge_under(outer.bindings),
         }
     }
 

@@ -80,7 +80,7 @@ impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocati
 
 struct AddFolder;
 
-impl himark::commands::WindowedCommand for AddFolder {
+impl himark::commands::HimarkCommand for AddFolder {
     fn id(&self) -> &'static str {
         "test.add-folder"
     }
@@ -91,9 +91,12 @@ impl himark::commands::WindowedCommand for AddFolder {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let id = himark::test_support::seed_session_folders(store, &[folder_location()]);
         himark::app::switch_session(store, window, id, fx);
     }

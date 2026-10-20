@@ -406,7 +406,7 @@ impl himark::plugin::Plugin for PalettePlugin {
 
 pub struct TogglePalette;
 
-impl himark::commands::WindowedCommand for TogglePalette {
+impl himark::commands::HimarkCommand for TogglePalette {
     fn id(&self) -> &'static str {
         "palette.toggle"
     }
@@ -417,9 +417,12 @@ impl himark::commands::WindowedCommand for TogglePalette {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let entity =
             workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {

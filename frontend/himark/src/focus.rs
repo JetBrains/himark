@@ -17,10 +17,35 @@ pub(crate) fn window_focus_data<'a>(
     window: ::workbench::window::WindowId,
 ) -> Option<FocusData<'a, AppCommand>> {
     let entity = ::workbench::window::Windows::window_ref(store, window)?;
-    Some(
-        imba::View::focus_data(entity, store, ui)
-            .map(move |command| crate::shell::content(window, command)),
-    )
+    let data = imba::View::focus_data(entity, store, ui)
+        .map(move |command| crate::shell::content(window, command));
+    // The window's own facts ride the walk's ROOT — the generic
+    // bindings commands read instead of a window parameter. Bound
+    // last: an inner view that binds its own session shadows these.
+    let mut data = data.bind(window);
+    data = data.bind(crate::workspace::entity_session(entity));
+    if let Some(state) = crate::workspace::session_state(store, window) {
+        data = data.bind(state);
+    }
+    Some(data)
+}
+
+/// The mounted twin: the bridge's own walk, with the origin and its
+/// session bound at the root — what `window_focus_data` does for a
+/// window.
+pub(crate) fn bind_mounted<'a>(
+    store: &imba::store::Store,
+    id: crate::bridge::ViewBridgeId,
+    data: FocusData<'a, AppCommand>,
+) -> FocusData<'a, AppCommand> {
+    let mut data = data.bind(id);
+    if let Some(session) = crate::mounts::session_of(store, id) {
+        if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned() {
+            data = data.bind(state);
+        }
+        data = data.bind(session);
+    }
+    data
 }
 
 impl Himark {

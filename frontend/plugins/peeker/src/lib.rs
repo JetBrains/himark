@@ -1069,7 +1069,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
 
 pub struct TogglePeeker;
 
-impl himark::commands::WindowedCommand for TogglePeeker {
+impl himark::commands::HimarkCommand for TogglePeeker {
     fn id(&self) -> &'static str {
         "peeker.toggle"
     }
@@ -1080,9 +1080,12 @@ impl himark::commands::WindowedCommand for TogglePeeker {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let entity =
             workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {

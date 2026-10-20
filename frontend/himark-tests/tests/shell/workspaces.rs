@@ -10,7 +10,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
         target: Option<ahp_wire::SessionId>,
         made: Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>,
     }
-    impl himark::commands::WindowedCommand for Switch {
+    impl himark::commands::HimarkCommand for Switch {
         fn id(&self) -> &'static str {
             "test.switch"
         }
@@ -21,9 +21,12 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -158,7 +161,7 @@ fn switching_dismisses_the_overlays_first() {
     }
 
     struct SwitchFresh(Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>);
-    impl himark::commands::WindowedCommand for SwitchFresh {
+    impl himark::commands::HimarkCommand for SwitchFresh {
         fn id(&self) -> &'static str {
             "test.switch"
         }
@@ -169,9 +172,12 @@ fn switching_dismisses_the_overlays_first() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId::mint_scratch(store);
             *self.0.lock().unwrap() = Some(target.clone());
             himark::app::switch_session(store, window, target, fx)

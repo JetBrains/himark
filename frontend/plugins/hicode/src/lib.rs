@@ -11,7 +11,7 @@ use documents::OpenDocuments;
 use editor::document::Document;
 use editor::location::ResourceLocation;
 use himark::app::AppFx;
-use himark::commands::WindowedCommand;
+use himark::commands::HimarkCommand;
 use imba::{effect::Effect, store::Store};
 use text::text_view::TextView;
 
@@ -129,7 +129,7 @@ pub struct ApplyNavigation {
     pub outcome: NavigationOutcome,
 }
 
-impl WindowedCommand for ApplyNavigation {
+impl HimarkCommand for ApplyNavigation {
     fn id(&self) -> &'static str {
         "code.apply-navigation"
     }
@@ -140,58 +140,47 @@ impl WindowedCommand for ApplyNavigation {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = ui;
-        let Some(targets) = &self.outcome.targets else {
-            return;
-        };
         // A definition ask answering several targets is rare; the
         // first wins. Fanning results out belongs to the peek/dock
         // surfaces (docs/ui/location-list.md), not a fetched panel.
-        let Some(target) = targets.first() else {
-            return;
-        };
-        navigate(store, ui, window, target, &self.outcome.built, fx);
-    }
-
-    /// The MOUNTED landing: no window, no panes — hand the shell
-    /// the target as a `DocumentPlace` and ride the standing open
-    /// road (`MountFrontend` resolves it against the mount's
-    /// session; the opened landing re-navigates READY). The
-    /// stay-in-the-diff refinement is the windowed road's; here
-    /// every target opens the document.
-    fn perform_windowless(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        origin: himark::bridge::ViewBridgeId,
-        fx: &mut AppFx<'_>,
-    ) -> bool {
-        if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
-            eprintln!(
-                "[nav] ApplyNavigation windowless: targets {:?}",
-                self.outcome.targets.as_ref().map(|targets| targets.len())
-            );
-        }
         let Some(target) = self
             .outcome
             .targets
             .as_ref()
             .and_then(|targets| targets.first())
         else {
-            return true;
+            return;
         };
-        let place = himark::places::DocumentPlace {
-            location: target.location.clone(),
-            target: Some(target.range.clone()),
-            focus: true,
+        // A MOUNTED origin bound: no window, no panes — hand the
+        // shell the target as a `DocumentPlace` and ride the
+        // standing open road (`MountFrontend` resolves it against
+        // the mount's session; the opened landing re-navigates
+        // READY). The stay-in-the-diff refinement is the windowed
+        // road's; there every target opens the document.
+        if let Some(&origin) = bound.bound::<himark::bridge::ViewBridgeId>() {
+            if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
+                eprintln!(
+                    "[nav] ApplyNavigation windowless: targets {:?}",
+                    self.outcome.targets.as_ref().map(|targets| targets.len())
+                );
+            }
+            let place = himark::places::DocumentPlace {
+                location: target.location.clone(),
+                target: Some(target.range.clone()),
+                focus: true,
+            };
+            fx.scope(himark::app::AppCommand::Verb, |fx| {
+                himark::shell::navigate_origin(store, ui, origin, place, fx)
+            });
+            return;
+        }
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
         };
-        fx.scope(himark::app::AppCommand::Verb, |fx| {
-            himark::shell::navigate_origin(store, ui, origin, place, fx)
-        });
-        true
+        navigate(store, ui, window, target, &self.outcome.built, fx);
     }
 }
 

@@ -37,9 +37,18 @@ pub enum ShellCommand {
 
     Content(WindowId, ::workbench::window::WindowCommand),
 
-    Windowed(WindowId, Arc<dyn crate::commands::WindowedCommand>),
+    Windowed(WindowId, Arc<dyn crate::commands::HimarkCommand>),
 
-    Register(Arc<dyn crate::commands::WindowedCommand>),
+    /// A registered command with the focus walk's facts captured at
+    /// mint — the palette and keymap road on every shell. `Windowed`
+    /// stays the window-origin mint; its arm resolves the same
+    /// bindings at dispatch.
+    Bound(
+        imba::focus::Bindings,
+        Arc<dyn crate::commands::HimarkCommand>,
+    ),
+
+    Register(Arc<dyn crate::commands::HimarkCommand>),
 
     Opened(WindowId, OneShot<OpenedDocument>),
 
@@ -67,6 +76,7 @@ impl Clone for ShellCommand {
             Self::App(command) => Self::App(command.clone()),
             Self::Content(window, command) => Self::Content(*window, command.clone()),
             Self::Windowed(window, command) => Self::Windowed(*window, command.clone()),
+            Self::Bound(bound, command) => Self::Bound(bound.clone(), command.clone()),
             Self::Register(command) => Self::Register(command.clone()),
             Self::Opened(window, opened) => Self::Opened(*window, opened.clone()),
             Self::OpenAsync {
@@ -117,6 +127,7 @@ impl std::fmt::Display for ShellCommand {
             Self::Content(_, ::workbench::window::WindowCommand::Modal(_)) => "modal",
             Self::Content(_, ::workbench::window::WindowCommand::Focus(_)) => "focus",
             Self::Windowed(..) => "windowed",
+            Self::Bound(..) => "bound command",
             Self::Register(_) => "register",
             Self::Opened(..) => "opened",
             Self::OpenAsync { .. } => "open async",
@@ -206,12 +217,35 @@ pub fn content(window: WindowId, command: ::workbench::window::WindowCommand) ->
 
 pub fn windowed(
     window: WindowId,
-    command: Arc<dyn crate::commands::WindowedCommand>,
+    command: Arc<dyn crate::commands::HimarkCommand>,
 ) -> AppCommand {
     shell(ShellCommand::Windowed(window, command))
 }
 
-pub fn register(command: Arc<dyn crate::commands::WindowedCommand>) -> AppCommand {
+pub fn bound(
+    bound: imba::focus::Bindings,
+    command: Arc<dyn crate::commands::HimarkCommand>,
+) -> AppCommand {
+    shell(ShellCommand::Bound(bound, command))
+}
+
+/// The window-origin bindings, resolved from the entity: what the
+/// focus walk would have bound — the window and its session.
+pub fn window_bindings(
+    store: &imba::store::Store,
+    window: WindowId,
+) -> imba::focus::Bindings {
+    let mut bound = imba::focus::Bindings::new().bind(window);
+    if let Some(entity) = ::workbench::window::Windows::window_ref(store, window) {
+        bound = bound.bind(crate::workspace::entity_session(entity));
+    }
+    if let Some(state) = crate::workspace::session_state(store, window) {
+        bound = bound.bind(state);
+    }
+    bound
+}
+
+pub fn register(command: Arc<dyn crate::commands::HimarkCommand>) -> AppCommand {
     shell(ShellCommand::Register(command))
 }
 
@@ -563,7 +597,7 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                     run_app(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);
                 }
                 Some(hikit::panel::PanelRequest::Shell(payload)) => {
-                    match payload.downcast_ref::<Arc<dyn crate::commands::WindowedCommand>>() {
+                    match payload.downcast_ref::<Arc<dyn crate::commands::HimarkCommand>>() {
                         Some(command) => {
                             let command = command.clone();
                             run_app(store, ui, windowed(window, command), fx);
@@ -594,13 +628,26 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                 run_app(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
             }
         }
+        ShellCommand::Bound(bound, command) => {
+            command.perform(store, ui, &bound, fx);
+            for request in crate::commands::AppRequests::drain(store) {
+                run_app(store, ui, shell(ShellCommand::Bound(bound.clone(), request)), fx);
+            }
+            for request in imba::command::Requests::drain(store) {
+                run_app(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
+            }
+        }
         ShellCommand::Windowed(window, command) => {
-            if ::workbench::window::Windows::window_ref(store, window).is_none() {
-                // A MOUNTED origin rode the windowed lane (its id is
-                // no window's), or the window closed mid-flight: the
-                // landings that know the mounted road take it here,
-                // the rest drop loudly instead of panicking on the
-                // missing entity.
+            // The window-origin mint resolves its bindings HERE, at
+            // dispatch — the same facts the focus walk binds. A
+            // MOUNTED origin riding this lane (its id is no window's)
+            // resolves through the mounted side: the origin bridge
+            // and ITS session. The command reads what it needs; one
+            // that asks for a key nobody bound drops loudly in its
+            // own prelude.
+            let bound = if ::workbench::window::Windows::window_ref(store, window).is_some() {
+                window_bindings(store, window)
+            } else {
                 let origin = crate::bridge::ViewBridgeId::from_raw(window.raw());
                 if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
                     eprintln!(
@@ -609,15 +656,18 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                         origin.raw()
                     );
                 }
-                if !command.perform_windowless(store, ui, origin, fx) {
-                    eprintln!(
-                        "[shell] a window-taking command landed windowless — dropped: {}",
-                        command.name()
-                    );
+                let mut bound = imba::focus::Bindings::new().bind(origin);
+                if let Some(session) = crate::mounts::session_of(store, origin) {
+                    if let Some(state) =
+                        ahp_session::session::state::Hosts::state(store, &session).cloned()
+                    {
+                        bound = bound.bind(state);
+                    }
+                    bound = bound.bind(session);
                 }
-                return;
-            }
-            command.perform(store, ui, window, fx);
+                bound
+            };
+            command.perform(store, ui, &bound, fx);
             // Deferred requests must not wait for the next CONTENT
             // command — an idle window (nothing painted, nothing
             // clicked) would starve them forever.

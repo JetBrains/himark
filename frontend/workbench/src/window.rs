@@ -346,6 +346,28 @@ impl View for Layers {
             (route_seat!(0), route_seat!(1), route_seat!(2))
         };
 
+        // The focused layer's facts answer first: the modal over the
+        // toolbar; otherwise the dock when it holds focus, then the
+        // workbench content, the side panel, the toolbar.
+        let bindings = {
+            let mut layers = Vec::new();
+            if has_modal {
+                layers.push(std::mem::take(&mut modal.bindings));
+                layers.push(std::mem::take(&mut toolbar.bindings));
+            } else {
+                if focus == LayerFocus::Dock {
+                    layers.push(std::mem::take(&mut dock.bindings));
+                }
+                layers.push(std::mem::take(&mut base.bindings));
+                layers.push(std::mem::take(&mut side.bindings));
+                layers.push(std::mem::take(&mut toolbar.bindings));
+            }
+            layers
+                .into_iter()
+                .reduce(|inner, outer| inner.merge_under(outer))
+                .unwrap_or_default()
+        };
+
         FocusData {
             commands,
             on_key,
@@ -353,6 +375,7 @@ impl View for Layers {
             clipboard,
             location,
             seat,
+            bindings,
         }
     }
 

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::commands::WindowedCommand;
+use crate::commands::HimarkCommand;
 use ::workbench::window::Windows;
 use ahp_session::session::agents::Agents;
 use ahp_wire::client::HostId;
@@ -12,13 +12,9 @@ use ahp_wire::SessionId;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
-fn current_session(store: &Store, window: ::workbench::window::WindowId) -> Option<SessionId> {
-    Some(crate::workspace::window_session(store, window)?)
-}
-
 pub struct NewChat;
 
-impl WindowedCommand for NewChat {
+impl HimarkCommand for NewChat {
     fn id(&self) -> &'static str {
         "agent.new-chat"
     }
@@ -31,10 +27,13 @@ impl WindowedCommand for NewChat {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(workspace) = current_session(store, window) else {
+        // The SESSION road: the walk bound the session's id, so a
+        // new chat opens from any shell.
+        let Some(workspace) = bound.bound::<SessionId>().cloned() else {
+            eprintln!("[shell] a session command landed with no session bound — dropped: new-chat");
             return;
         };
         let Some(key) = Agents::live_session(store, &workspace) else {
@@ -49,8 +48,11 @@ impl WindowedCommand for NewChat {
                 client: client.chat.clone(),
                 session: key.session.clone(),
             })
-            .map(move |created| {
-                crate::shell::windowed(window, Arc::new(OpenCreatedChat { server, created }))
+            .map({
+                let bound = bound.clone();
+                move |created| {
+                    crate::shell::bound(bound.clone(), Arc::new(OpenCreatedChat { server, created }))
+                }
             }),
         );
     }
@@ -61,7 +63,7 @@ struct OpenCreatedChat {
     created: Result<ahp_wire::client::ChatUri, String>,
 }
 
-impl WindowedCommand for OpenCreatedChat {
+impl HimarkCommand for OpenCreatedChat {
     fn id(&self) -> &'static str {
         "agent.open-created-chat"
     }
@@ -74,9 +76,12 @@ impl WindowedCommand for OpenCreatedChat {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let chat = match &self.created {
             Ok(chat) => chat.clone(),

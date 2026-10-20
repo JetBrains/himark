@@ -206,7 +206,7 @@ fn the_at_completion_serves_markdown_panes() {
     );
 
     struct EnterSeeded(ahp_wire::SessionId);
-    impl himark::commands::WindowedCommand for EnterSeeded {
+    impl himark::commands::HimarkCommand for EnterSeeded {
         fn id(&self) -> &'static str {
             "test.enter-seeded"
         }
@@ -217,9 +217,12 @@ fn the_at_completion_serves_markdown_panes() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             himark::app::switch_session(store, window, self.0.clone(), fx)
         }
     }

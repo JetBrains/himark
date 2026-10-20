@@ -14,7 +14,7 @@ pub(crate) struct NavigateToPlace {
     pub place: hikit::navigation::EditorPlace,
 }
 
-impl crate::commands::WindowedCommand for NavigateToPlace {
+impl crate::commands::HimarkCommand for NavigateToPlace {
     fn id(&self) -> &'static str {
         "toc.jump"
     }
@@ -25,9 +25,12 @@ impl crate::commands::WindowedCommand for NavigateToPlace {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
@@ -75,7 +78,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 pub(crate) struct ToggleToc;
 
-impl crate::commands::WindowedCommand for ToggleToc {
+impl crate::commands::HimarkCommand for ToggleToc {
     fn id(&self) -> &'static str {
         "toc.toggle"
     }
@@ -86,9 +89,12 @@ impl crate::commands::WindowedCommand for ToggleToc {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };

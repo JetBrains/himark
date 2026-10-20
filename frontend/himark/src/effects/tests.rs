@@ -90,7 +90,7 @@ impl EffectHandler<SlowProbe> for External {
 /// so the test lifts into `Register` and the text IS the name.
 struct LiftedText(String);
 
-impl crate::commands::WindowedCommand for LiftedText {
+impl crate::commands::HimarkCommand for LiftedText {
     fn id(&self) -> &'static str {
         "test.lifted-text"
     }
@@ -101,7 +101,7 @@ impl crate::commands::WindowedCommand for LiftedText {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
     }

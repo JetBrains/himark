@@ -235,16 +235,17 @@ impl View for EditorIdView {
         // The editor view is MINTED from the store per ask (documents
         // are persistent, the clone is cheap); handlers re-mint per
         // call because the data may not outlive a temporary.
-        let (mut commands, location, seat) = match self.gathered(store) {
+        let (mut commands, location, seat, bindings) = match self.gathered(store) {
             Some(view) => {
                 let mut data = view.focus_data(store, ui);
                 (
                     std::mem::take(&mut data.commands),
                     data.location.take(),
                     data.seat.take(),
+                    std::mem::take(&mut data.bindings),
                 )
             }
-            None => (Vec::new(), None, None),
+            None => (Vec::new(), None, None, Default::default()),
         };
         if let Some(at) = crate::OpenDocuments::location(store, self.documents, self.document) {
             for entry in crate::dynamic::DocumentCommands::of(store).iter(self.documents) {
@@ -283,6 +284,7 @@ impl View for EditorIdView {
             })),
             location,
             seat,
+            bindings,
         }
     }
 

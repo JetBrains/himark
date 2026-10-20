@@ -17,7 +17,7 @@ pub struct OpenDiffForPair {
     pub new: ResourceLocation,
 }
 
-impl crate::commands::WindowedCommand for OpenDiffForPair {
+impl crate::commands::HimarkCommand for OpenDiffForPair {
     fn id(&self) -> &'static str {
         "changes.open-diff"
     }
@@ -28,9 +28,12 @@ impl crate::commands::WindowedCommand for OpenDiffForPair {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
@@ -52,7 +55,7 @@ impl crate::commands::WindowedCommand for OpenDiffForPair {
 
 pub struct ToggleChangesView;
 
-impl crate::commands::WindowedCommand for ToggleChangesView {
+impl crate::commands::HimarkCommand for ToggleChangesView {
     fn id(&self) -> &'static str {
         "changes.view"
     }
@@ -63,9 +66,12 @@ impl crate::commands::WindowedCommand for ToggleChangesView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
@@ -140,7 +146,7 @@ pub struct RefetchChanges {
     pub folder: Option<ResourceLocation>,
 }
 
-impl crate::commands::WindowedCommand for RefetchChanges {
+impl crate::commands::HimarkCommand for RefetchChanges {
     fn id(&self) -> &'static str {
         "changes.refetch"
     }
@@ -151,11 +157,12 @@ impl crate::commands::WindowedCommand for RefetchChanges {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-        let Some(changes) = crate::workspace::session_state(store, window)
+        let Some(changes) = bound
+            .bound::<ahp_session::session::state::SessionState>()
             .map(|state| state.changes())
             .or_else(|| {
                 // An addressed refetch (the view's chip) names its

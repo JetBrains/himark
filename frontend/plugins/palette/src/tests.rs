@@ -4,7 +4,7 @@
 use super::*;
 
 struct DummyCommand;
-impl himark::commands::WindowedCommand for DummyCommand {
+impl himark::commands::HimarkCommand for DummyCommand {
     fn id(&self) -> &'static str {
         "test.dummy"
     }
@@ -15,7 +15,7 @@ impl himark::commands::WindowedCommand for DummyCommand {
         &self,
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
     }

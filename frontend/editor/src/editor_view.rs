@@ -875,7 +875,7 @@ impl View for EditorView {
         let inner = match self.document.focus(self.editor) {
             EditorFocus::Inlay(key) => {
                 let wrap = move |command| EditorCommand::Inlay { key, command };
-                let (commands, location, seat) =
+                let (commands, location, seat, bindings) =
                     match self.document.inlay_focus_data(store, ui, key) {
                         Some(mut data) => (
                             std::mem::take(&mut data.commands)
@@ -884,8 +884,9 @@ impl View for EditorView {
                                 .collect(),
                             data.location.take(),
                             data.seat.take(),
+                            std::mem::take(&mut data.bindings),
                         ),
-                        None => (Vec::new(), None, None),
+                        None => (Vec::new(), None, None, Default::default()),
                     };
                 let with_inlay = move |f: &mut dyn FnMut(
                     imba::focus::FocusData<'_, crate::markup::InlayCommand>,
@@ -914,6 +915,7 @@ impl View for EditorView {
                     })),
                     location,
                     seat,
+                    bindings,
                 }
             }
             EditorFocus::Text => FocusData {
@@ -945,6 +947,7 @@ impl View for EditorView {
                     .map(|location| Box::new(location.clone()) as Box<dyn std::any::Any>),
 
                 seat: self.document.seat_key(self.editor),
+                bindings: Default::default(),
             },
             EditorFocus::None => FocusData::default(),
         };

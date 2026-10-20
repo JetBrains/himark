@@ -52,7 +52,7 @@ struct OpenPicked {
     target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::commands::WindowedCommand for OpenPicked {
+impl crate::commands::HimarkCommand for OpenPicked {
     fn id(&self) -> &'static str {
         "peek.open-picked"
     }
@@ -63,9 +63,12 @@ impl crate::commands::WindowedCommand for OpenPicked {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(documents) =
             crate::workspace::session_state(store, window).map(|state| state.documents())
         else {

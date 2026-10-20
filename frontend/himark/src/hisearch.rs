@@ -33,7 +33,7 @@ pub struct OpenLspFeed {
     pub position: documents::text_ext::LineCol,
 }
 
-impl crate::commands::WindowedCommand for OpenLspFeed {
+impl crate::commands::HimarkCommand for OpenLspFeed {
     fn id(&self) -> &'static str {
         "search.open-lsp-feed"
     }
@@ -46,9 +46,12 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(lists) = ::workbench::window::Windows::window_ref(store, window)
             .map(|entity| crate::workspace::entity_state(entity).lists())
         else {
@@ -71,7 +74,7 @@ impl crate::commands::WindowedCommand for OpenLspFeed {
                 position: self.position,
             },
         );
-        ShowFeedInDock { lists, feed }.perform(store, ui, window, fx);
+        ShowFeedInDock { lists, feed }.perform(store, ui, bound, fx);
     }
 }
 
@@ -87,7 +90,7 @@ pub(crate) struct ShowFeedInDock {
     pub feed: FeedId,
 }
 
-impl crate::commands::WindowedCommand for ShowFeedInDock {
+impl crate::commands::HimarkCommand for ShowFeedInDock {
     fn id(&self) -> &'static str {
         "search.show-feed"
     }
@@ -100,9 +103,12 @@ impl crate::commands::WindowedCommand for ShowFeedInDock {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -128,7 +134,7 @@ impl crate::commands::WindowedCommand for ShowFeedInDock {
 
 pub struct ToggleSearchView;
 
-impl crate::commands::WindowedCommand for ToggleSearchView {
+impl crate::commands::HimarkCommand for ToggleSearchView {
     fn id(&self) -> &'static str {
         OWNER
     }
@@ -141,9 +147,12 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
@@ -177,7 +186,7 @@ impl crate::commands::WindowedCommand for ToggleSearchView {
 /// [`ToggleSearchView`]) keeps the toggle every dock button has.
 pub struct FocusSearchView;
 
-impl crate::commands::WindowedCommand for FocusSearchView {
+impl crate::commands::HimarkCommand for FocusSearchView {
     fn id(&self) -> &'static str {
         "search.focus"
     }
@@ -190,9 +199,12 @@ impl crate::commands::WindowedCommand for FocusSearchView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(OWNER) {
@@ -227,7 +239,7 @@ impl crate::commands::WindowedCommand for FocusSearchView {
             return;
         }
         ::workbench::window::Windows::put(store, window, entity);
-        ToggleSearchView.perform(store, ui, window, fx);
+        ToggleSearchView.perform(store, ui, bound, fx);
     }
 }
 

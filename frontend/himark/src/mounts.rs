@@ -977,14 +977,22 @@ fn mount_place_inner(
         let session = place.0.clone();
         let mut commands = app.session_commands(&session);
         return app.mount(move |store, ui, id, _fx| {
+            // The mount's facts, bound at mint: the origin bridge
+            // and the session this palette was opened over — the
+            // registry's session commands work from the native
+            // palette exactly as from a window's.
+            let mut bound = imba::focus::Bindings::new().bind(id);
+            if let Some(state) =
+                ahp_session::session::state::Hosts::state(store, &session).cloned()
+            {
+                bound = bound.bind(state);
+            }
+            bound = bound.bind(session.clone());
             commands.extend(crate::commands::Commands::of(store).iter().map(|command| {
                 imba::PresentableCommand::new(
                     command.id(),
                     command.name(),
-                    crate::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        command.clone(),
-                    ),
+                    crate::shell::bound(bound.clone(), command.clone()),
                 )
             }));
             Some(Arc::new(DynModalMount {

@@ -86,7 +86,7 @@ pub fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
             match payload.downcast::<AppCommand>() {
                 Ok(command) => Some(*command),
                 Err(payload) => {
-                    match payload.downcast::<std::sync::Arc<dyn crate::commands::WindowedCommand>>()
+                    match payload.downcast::<std::sync::Arc<dyn crate::commands::HimarkCommand>>()
                     {
                         Ok(command) => Some(crate::shell::windowed(window, *command)),
                         Err(_) => {

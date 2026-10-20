@@ -13,7 +13,7 @@ use imba::store::Store;
 use ahp_wire::client::HostId;
 
 pub type NewSessionFlow =
-    Arc<dyn Fn(HostId) -> Arc<dyn crate::commands::WindowedCommand> + Send + Sync>;
+    Arc<dyn Fn(HostId) -> Arc<dyn crate::commands::HimarkCommand> + Send + Sync>;
 
 pub(crate) type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + Send + Sync>;
 

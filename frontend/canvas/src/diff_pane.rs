@@ -223,12 +223,13 @@ fn pane_focus_data<'w>(
     let Some(view) = mint() else {
         return FocusData::default();
     };
-    let (mut commands, location, seat) = {
+    let (mut commands, location, seat, bindings) = {
         let mut data = view.focus_data(store, ui);
         (
             std::mem::take(&mut data.commands),
             data.location.take(),
             data.seat.take(),
+            std::mem::take(&mut data.bindings),
         )
     };
     // Route by the ACTIVE face: in the inline face only the inline
@@ -329,6 +330,7 @@ fn pane_focus_data<'w>(
         })),
         location,
         seat,
+        bindings,
     }
 }
 

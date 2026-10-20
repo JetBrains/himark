@@ -146,7 +146,7 @@ struct EnterFreshSession {
     previous: std::sync::Mutex<Option<Box<dyn ::workbench::window::Workspace>>>,
 }
 
-impl crate::commands::WindowedCommand for EnterFreshSession {
+impl crate::commands::HimarkCommand for EnterFreshSession {
     fn id(&self) -> &'static str {
         "session.enter-fresh"
     }
@@ -157,9 +157,12 @@ impl crate::commands::WindowedCommand for EnterFreshSession {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
@@ -534,28 +537,37 @@ impl Himark {
                             // window's walk — bound EDITING keys
                             // (backspace, enter, arrows) resolve
                             // through presentables either way.
-                            self.bridges
+                            let chain = self
+                                .bridges
                                 .get(&id)
                                 .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                                .map(|data| crate::focus::bind_mounted(&store, id, data))
                                 .or_else(|| {
                                     crate::focus::window_focus_data(&store, ui.as_ref(), window)
-                                })
+                                });
+                            let bound = chain.as_ref().map(|data| data.bindings.clone());
+                            chain
                                 .map(|data| data.commands)
                                 .unwrap_or_default()
                                 .into_iter()
                                 .find(|presentable| presentable.id == binding.as_ref())
                                 .map(|presentable| presentable.command)
                                 .or_else(|| {
-                                    // The global registry speaks
-                                    // WINDOWED commands — a window
-                                    // road only.
-                                    if self.windows().entity(window).is_none() {
-                                        return None;
-                                    }
+                                    // The registry resolves on EVERY
+                                    // shell: the walk's bindings ride
+                                    // the mint; a chain-less origin
+                                    // resolves at dispatch instead.
                                     crate::commands::Commands::of(&store)
                                         .find(binding.as_ref())
-                                        .map(|command| {
-                                            crate::shell::windowed(window, command.clone())
+                                        .map(|command| match &bound {
+                                            Some(bound) => crate::shell::bound(
+                                                bound.clone(),
+                                                command.clone(),
+                                            ),
+                                            None => crate::shell::windowed(
+                                                window,
+                                                command.clone(),
+                                            ),
                                         })
                                 })
                         })
@@ -1087,7 +1099,7 @@ struct OpenLocationsAsk {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::commands::WindowedCommand for OpenLocationsAsk {
+impl crate::commands::HimarkCommand for OpenLocationsAsk {
     fn id(&self) -> &'static str {
         "workspace.open-locations"
     }
@@ -1100,9 +1112,12 @@ impl crate::commands::WindowedCommand for OpenLocationsAsk {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         crate::workspace::open_locations(store, ui, window, &self.locations, fx);
     }
 }

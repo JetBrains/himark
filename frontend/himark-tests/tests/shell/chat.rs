@@ -26,7 +26,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         target: Option<ahp_wire::SessionId>,
         made: Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>,
     }
-    impl himark::commands::WindowedCommand for Switch {
+    impl himark::commands::HimarkCommand for Switch {
         fn id(&self) -> &'static str {
             "test.switch-chat"
         }
@@ -37,9 +37,12 @@ fn switching_workspaces_stashes_the_chat_panel() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -129,7 +132,7 @@ fn the_composer_command_fronts_the_chat_panel() {
     app.draw_window(window, surface.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -140,9 +143,12 @@ fn the_composer_command_fronts_the_chat_panel() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -273,7 +279,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
     app.draw_window(window, wide.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -284,9 +290,12 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -352,7 +361,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
 
     // Opening a document splits the space with the chat...
     struct OpenDoc;
-    impl himark::commands::WindowedCommand for OpenDoc {
+    impl himark::commands::HimarkCommand for OpenDoc {
         fn id(&self) -> &'static str {
             "test.open-doc"
         }
@@ -363,9 +372,12 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             &self,
             store: &mut Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -411,7 +423,7 @@ fn dump_chat_narrow_screenshot() {
     app.draw_window(window, narrow.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -422,9 +434,12 @@ fn dump_chat_narrow_screenshot() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -456,7 +471,7 @@ fn dump_chat_narrow_screenshot() {
     settle(&mut app, &mut narrow);
 
     struct OpenDoc;
-    impl himark::commands::WindowedCommand for OpenDoc {
+    impl himark::commands::HimarkCommand for OpenDoc {
         fn id(&self) -> &'static str {
             "test.open-doc"
         }
@@ -467,9 +482,12 @@ fn dump_chat_narrow_screenshot() {
             &self,
             store: &mut Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let state = himark::workspace::session_state(store, window).expect("state");
             let document = himark::app::markdown_scratch();
             let id = documents::OpenDocuments::register(
@@ -511,7 +529,7 @@ fn dump_chat_column_screenshot() {
     app.draw_window(window, wide.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -522,9 +540,12 @@ fn dump_chat_column_screenshot() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -576,7 +597,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     app.draw_window(window, narrow.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -587,9 +608,12 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -631,7 +655,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     );
 
     struct OpenDoc;
-    impl himark::commands::WindowedCommand for OpenDoc {
+    impl himark::commands::HimarkCommand for OpenDoc {
         fn id(&self) -> &'static str {
             "test.open-doc"
         }
@@ -642,9 +666,12 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             &self,
             store: &mut Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -711,7 +738,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
     app.draw_window(window, wide.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -722,9 +749,12 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -865,7 +895,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
     app.draw_window(window, surface.canvas());
 
     struct EnterSession;
-    impl himark::commands::WindowedCommand for EnterSession {
+    impl himark::commands::HimarkCommand for EnterSession {
         fn id(&self) -> &'static str {
             "test.enter-session"
         }
@@ -876,9 +906,12 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/live"),

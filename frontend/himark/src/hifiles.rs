@@ -75,7 +75,7 @@ fn remove_from_session(
 
 pub struct ToggleSessionTree;
 
-impl crate::commands::WindowedCommand for ToggleSessionTree {
+impl crate::commands::HimarkCommand for ToggleSessionTree {
     fn id(&self) -> &'static str {
         "files.tree"
     }
@@ -86,9 +86,12 @@ impl crate::commands::WindowedCommand for ToggleSessionTree {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         // The focused location is a state walk over the views now —
         // nothing is laid to answer it.
         let reveal = {

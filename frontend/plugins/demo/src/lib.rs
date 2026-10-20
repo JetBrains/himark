@@ -51,7 +51,7 @@ impl himark::plugin::Plugin for DemoPlugin {
 
 pub struct OpenMonsterDemo;
 
-impl himark::commands::WindowedCommand for OpenMonsterDemo {
+impl himark::commands::HimarkCommand for OpenMonsterDemo {
     fn id(&self) -> &'static str {
         "demo.open-document"
     }
@@ -62,9 +62,12 @@ impl himark::commands::WindowedCommand for OpenMonsterDemo {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let documents = himark::workspace::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
@@ -81,7 +84,7 @@ impl himark::commands::WindowedCommand for OpenMonsterDemo {
 
 pub struct OpenWallOfTextDemo;
 
-impl himark::commands::WindowedCommand for OpenWallOfTextDemo {
+impl himark::commands::HimarkCommand for OpenWallOfTextDemo {
     fn id(&self) -> &'static str {
         "demo.open-wall-of-text"
     }
@@ -92,9 +95,12 @@ impl himark::commands::WindowedCommand for OpenWallOfTextDemo {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let documents = himark::workspace::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();

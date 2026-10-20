@@ -36,7 +36,7 @@ pub(crate) struct AddSessionFolders {
     pub session: SessionUri,
 }
 
-impl crate::commands::WindowedCommand for AddSessionFolders {
+impl crate::commands::HimarkCommand for AddSessionFolders {
     fn id(&self) -> &'static str {
         "session.add-folder"
     }
@@ -49,9 +49,12 @@ impl crate::commands::WindowedCommand for AddSessionFolders {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let server = self.server;
         let session = self.session.clone();
         fx.push(
@@ -204,7 +207,7 @@ struct SessionFoldersPicked {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::commands::WindowedCommand for SessionFoldersPicked {
+impl crate::commands::HimarkCommand for SessionFoldersPicked {
     fn id(&self) -> &'static str {
         "session.folder-granted"
     }
@@ -217,9 +220,12 @@ impl crate::commands::WindowedCommand for SessionFoldersPicked {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
             eprintln!(
                 "[higent] folder grant DROPPED: no client for {:?} ({})",
@@ -258,7 +264,7 @@ struct GrantAck {
     result: Result<(), String>,
 }
 
-impl crate::commands::WindowedCommand for GrantAck {
+impl crate::commands::HimarkCommand for GrantAck {
     fn id(&self) -> &'static str {
         "session.folder-grant-ack"
     }
@@ -271,7 +277,7 @@ impl crate::commands::WindowedCommand for GrantAck {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         // The dispatch is a wire notification: this result is the

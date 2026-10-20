@@ -27,7 +27,7 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
             ))
         }),
         new_session: Arc::new(move |store, server| {
-            let command: Arc<dyn crate::commands::WindowedCommand> =
+            let command: Arc<dyn crate::commands::HimarkCommand> =
                 match crate::higent::flows::AgentFlows::new_session_flow(store) {
                     Some(flow) => flow(server),
                     None => {
@@ -46,7 +46,7 @@ pub struct AddHost {
     pub url: String,
 }
 
-impl crate::commands::WindowedCommand for AddHost {
+impl crate::commands::HimarkCommand for AddHost {
     fn id(&self) -> &'static str {
         "agent.add-host"
     }
@@ -59,7 +59,7 @@ impl crate::commands::WindowedCommand for AddHost {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
@@ -69,34 +69,18 @@ impl crate::commands::WindowedCommand for AddHost {
         if flow(store, &self.url).is_none() {
             return;
         }
-        ToggleAgentsView.perform(store, ui, window, fx);
-    }
-
-    /// The MOUNTED landing: the flow is the whole verb — there is
-    /// no side slot to roll away afterwards.
-    fn perform_windowless(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        _origin: crate::bridge::ViewBridgeId,
-        _fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
-        match crate::higent::flows::AgentFlows::add_host_flow(store) {
-            Some(flow) => {
-                flow(store, &self.url);
-                true
-            }
-            None => {
-                eprintln!("[higent] no add-host capability installed — url dropped");
-                false
-            }
+        // The flow is the whole verb on a mounted origin; a WINDOW
+        // bound means the drawer stands in a side slot — fold it
+        // back to show the fresh host.
+        if bound.bound::<::workbench::window::WindowId>().is_some() {
+            ToggleAgentsView.perform(store, ui, bound, fx);
         }
     }
 }
 
 pub struct ToggleAgentsView;
 
-impl crate::commands::WindowedCommand for ToggleAgentsView {
+impl crate::commands::HimarkCommand for ToggleAgentsView {
     fn id(&self) -> &'static str {
         "agent.toggle-agents"
     }
@@ -109,9 +93,12 @@ impl crate::commands::WindowedCommand for ToggleAgentsView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.has_side_panel() {
@@ -169,7 +156,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 pub struct ShareHost;
 
-impl crate::commands::WindowedCommand for ShareHost {
+impl crate::commands::HimarkCommand for ShareHost {
     fn id(&self) -> &'static str {
         "host.share"
     }
@@ -182,9 +169,12 @@ impl crate::commands::WindowedCommand for ShareHost {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let client = store
             .get::<ahp_wire::client::LocalHost>()
             .and_then(|local| local.0)
@@ -206,7 +196,7 @@ struct SharedHost {
     result: Result<String, String>,
 }
 
-impl crate::commands::WindowedCommand for SharedHost {
+impl crate::commands::HimarkCommand for SharedHost {
     fn id(&self) -> &'static str {
         "host.shared"
     }
@@ -219,7 +209,7 @@ impl crate::commands::WindowedCommand for SharedHost {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {

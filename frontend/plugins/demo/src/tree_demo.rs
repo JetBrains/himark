@@ -317,7 +317,7 @@ impl PanelView for TreeDemoView {
 
 pub struct OpenTreeDemo;
 
-impl himark::commands::WindowedCommand for OpenTreeDemo {
+impl himark::commands::HimarkCommand for OpenTreeDemo {
     fn id(&self) -> &'static str {
         "demo.tree"
     }
@@ -328,9 +328,12 @@ impl himark::commands::WindowedCommand for OpenTreeDemo {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let mut entity =
             workbench::window::Windows::window(store, window).expect("the window entity");

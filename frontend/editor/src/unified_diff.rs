@@ -275,7 +275,7 @@ impl imba::View for UnifiedDiffView {
                 // persistent, the clone is cheap); handlers re-mint
                 // per call because the semantic data may not outlive
                 // a temporary.
-                let (commands, location, seat) = match self.inline_face(store) {
+                let (commands, location, seat, bindings) = match self.inline_face(store) {
                     Some(view) => {
                         let mut data = view.focus_data(store, ui);
                         (
@@ -285,9 +285,10 @@ impl imba::View for UnifiedDiffView {
                                 .collect(),
                             data.location.take(),
                             data.seat.take(),
+                            std::mem::take(&mut data.bindings),
                         )
                     }
-                    None => (Vec::new(), None, None),
+                    None => (Vec::new(), None, None, Default::default()),
                 };
                 let with_face = move |f: &mut dyn FnMut(
                     imba::focus::FocusData<'_, EditorCommand>,
@@ -314,6 +315,7 @@ impl imba::View for UnifiedDiffView {
                     })),
                     location,
                     seat,
+                    bindings,
                 }
             }
         };

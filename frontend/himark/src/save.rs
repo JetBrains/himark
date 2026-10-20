@@ -4,7 +4,7 @@
 use imba::{effect::AnyEffect, store::Store};
 
 use crate::app::AppFx;
-use crate::commands::WindowedCommand;
+use crate::commands::HimarkCommand;
 use documents::StoreDocumentEffect;
 use editor::location::ResourceLocation;
 
@@ -31,7 +31,7 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
 /// one `AppCommand::DocumentStored` per store.
 pub struct SaveAll;
 
-impl WindowedCommand for SaveAll {
+impl HimarkCommand for SaveAll {
     fn id(&self) -> &'static str {
         "file.save-all"
     }
@@ -42,23 +42,24 @@ impl WindowedCommand for SaveAll {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        save_all(store, _window, fx);
+        // The SESSION road: the UI bound the session into the walk,
+        // so the save works from any shell — no window needed.
+        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+            return;
+        };
+        save_all(store, &state, fx);
     }
 }
 
 pub(crate) fn save_all(
     store: &mut Store,
-    window: ::workbench::window::WindowId,
+    state: &ahp_session::session::state::SessionState,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(documents) =
-        crate::workspace::session_state(store, window).map(|state| state.documents())
-    else {
-        return;
-    };
+    let documents = state.documents();
     let owed: Vec<(documents::DocumentId, ResourceLocation)> =
         documents::OpenDocuments::list(store, documents)
             .into_iter()
@@ -101,7 +102,7 @@ pub(crate) fn save_all(
 
 struct SyncWatches;
 
-impl WindowedCommand for SyncWatches {
+impl HimarkCommand for SyncWatches {
     fn id(&self) -> &'static str {
         "file.sync-watches"
     }
@@ -112,17 +113,18 @@ impl WindowedCommand for SyncWatches {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        if let Some(state) = crate::workspace::session_state(store, window) {
-            fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_document_watches(store, state.documents(), fx)
-            });
-            fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
-            });
-        }
+        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+            return;
+        };
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            documents::lanes::sync_document_watches(store, state.documents(), fx)
+        });
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
+        });
     }
 }
 

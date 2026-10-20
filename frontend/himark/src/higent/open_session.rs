@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::commands::WindowedCommand;
+use crate::commands::HimarkCommand;
 use ::workbench::window::Windows;
 use ahp_wire::client::ChatUri;
 use ahp_wire::client::HostId;
@@ -25,7 +25,7 @@ pub struct OpenNewSession {
     pub host: Option<HostId>,
 }
 
-impl WindowedCommand for OpenNewSession {
+impl HimarkCommand for OpenNewSession {
     fn id(&self) -> &'static str {
         "session.new"
     }
@@ -38,9 +38,12 @@ impl WindowedCommand for OpenNewSession {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let seed = Windows::window_ref(store, window)
             .map(crate::workspace::entity_session)
             .filter(|session| session.names_session())
@@ -159,7 +162,7 @@ pub(crate) struct OpenSubscribedSession {
     pub result: Result<ahp_types::state::SessionState, String>,
 }
 
-impl WindowedCommand for OpenSubscribedSession {
+impl HimarkCommand for OpenSubscribedSession {
     fn id(&self) -> &'static str {
         "agent.open-session"
     }
@@ -172,9 +175,12 @@ impl WindowedCommand for OpenSubscribedSession {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let state = match &self.result {
             Ok(state) => state,
             Err(error) => {
@@ -211,7 +217,7 @@ struct EnterSessionWork {
     default_chat: Option<ChatUri>,
 }
 
-impl WindowedCommand for EnterSessionWork {
+impl HimarkCommand for EnterSessionWork {
     fn id(&self) -> &'static str {
         "agent.enter-session"
     }
@@ -224,9 +230,12 @@ impl WindowedCommand for EnterSessionWork {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let key = SessionId {
             host: self.server,
@@ -289,7 +298,7 @@ pub struct OpenCreatedSession {
     pub result: Result<SessionUri, String>,
 }
 
-impl WindowedCommand for OpenCreatedSession {
+impl HimarkCommand for OpenCreatedSession {
     fn id(&self) -> &'static str {
         "agent.open-created-session"
     }
@@ -302,9 +311,12 @@ impl WindowedCommand for OpenCreatedSession {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         match &self.result {
             Ok(session) => open_session_with(
                 store,
@@ -464,7 +476,7 @@ pub(crate) struct OpenSessionRow {
     pub(crate) session: SessionUri,
 }
 
-impl WindowedCommand for OpenSessionRow {
+impl HimarkCommand for OpenSessionRow {
     fn id(&self) -> &'static str {
         "agent.open-session-row"
     }
@@ -477,9 +489,12 @@ impl WindowedCommand for OpenSessionRow {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         open_session(store, window, self.server, self.session.clone(), true, fx);
     }
 }

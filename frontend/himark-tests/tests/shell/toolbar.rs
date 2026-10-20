@@ -14,7 +14,7 @@ struct Mark {
     hits: Arc<AtomicUsize>,
 }
 
-impl himark::commands::WindowedCommand for Mark {
+impl himark::commands::HimarkCommand for Mark {
     fn id(&self) -> &'static str {
         self.id
     }
@@ -27,7 +27,7 @@ impl himark::commands::WindowedCommand for Mark {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
         self.hits.fetch_add(1, Ordering::Relaxed);

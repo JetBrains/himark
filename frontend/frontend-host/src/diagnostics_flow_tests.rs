@@ -288,7 +288,7 @@ struct OpenScripted {
     host: ahp_wire::client::HostId,
 }
 
-impl himark::commands::WindowedCommand for OpenScripted {
+impl himark::commands::HimarkCommand for OpenScripted {
     fn id(&self) -> &'static str {
         "test.open-diagnosed-session"
     }
@@ -299,9 +299,12 @@ impl himark::commands::WindowedCommand for OpenScripted {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         himark::higent::open_session::open_session(
             store,
             window,
@@ -317,7 +320,7 @@ impl himark::commands::WindowedCommand for OpenScripted {
 /// does: a document location spelled with the session's authority.
 struct OpenMain;
 
-impl himark::commands::WindowedCommand for OpenMain {
+impl himark::commands::HimarkCommand for OpenMain {
     fn id(&self) -> &'static str {
         "test.open-main"
     }
@@ -328,9 +331,12 @@ impl himark::commands::WindowedCommand for OpenMain {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let key = himark::workspace::window_session(store, window).expect("a session");
         let state = himark::workspace::session_state(store, window).expect("a state");
         let location = ResourceLocation::new(
@@ -518,7 +524,7 @@ struct OpenLivePath {
     path: Vec<String>,
 }
 
-impl himark::commands::WindowedCommand for OpenLivePath {
+impl himark::commands::HimarkCommand for OpenLivePath {
     fn id(&self) -> &'static str {
         "test.open-live-path"
     }
@@ -529,9 +535,12 @@ impl himark::commands::WindowedCommand for OpenLivePath {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let location = ResourceLocation::new(
             ResourceType::document(),
             Authority::new("local"),
@@ -546,7 +555,7 @@ struct OpenLiveSession {
     session: String,
 }
 
-impl himark::commands::WindowedCommand for OpenLiveSession {
+impl himark::commands::HimarkCommand for OpenLiveSession {
     fn id(&self) -> &'static str {
         "test.open-live-session"
     }
@@ -557,9 +566,12 @@ impl himark::commands::WindowedCommand for OpenLiveSession {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         himark::higent::open_session::open_session(
             store,
             window,
@@ -806,7 +818,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     }
 
     struct ClearHints;
-    impl himark::commands::WindowedCommand for ClearHints {
+    impl himark::commands::HimarkCommand for ClearHints {
         fn id(&self) -> &'static str {
             "test.clear-hints"
         }
@@ -817,9 +829,12 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             &self,
             store: &mut imba::store::Store,
             ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let state = himark::workspace::session_state(store, window).expect("a state");
             let key = himark::workspace::window_session(store, window).expect("a session");
             let location = ResourceLocation::new(

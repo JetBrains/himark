@@ -11,7 +11,7 @@ use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use himark::app::AppCommand;
 use himark::app::AppFx;
-use himark::commands::WindowedCommand;
+use himark::commands::HimarkCommand;
 use himark::workspace::open_locations;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
@@ -309,7 +309,7 @@ impl EffectHandler<FilePickerEffect> for FilePickerHandler {
 
 pub(crate) struct OpenFilePicker;
 
-impl WindowedCommand for OpenFilePicker {
+impl HimarkCommand for OpenFilePicker {
     fn id(&self) -> &'static str {
         "file.open"
     }
@@ -320,9 +320,12 @@ impl WindowedCommand for OpenFilePicker {
         &self,
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let _ = fx.push(
             AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
                 himark::app::windowed(window, Arc::new(OpenPicked { locations }))
@@ -390,7 +393,7 @@ fn open_folder_session(
     true
 }
 
-impl WindowedCommand for OpenPicked {
+impl HimarkCommand for OpenPicked {
     fn id(&self) -> &'static str {
         "file.open-picked"
     }
@@ -401,9 +404,12 @@ impl WindowedCommand for OpenPicked {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let (folders, documents): (Vec<_>, Vec<_>) = self
             .locations
@@ -516,7 +522,7 @@ struct ShowWorkingCopy {
     target: std::ops::Range<documents::text_ext::LineCol>,
 }
 
-impl himark::commands::WindowedCommand for ShowWorkingCopy {
+impl himark::commands::HimarkCommand for ShowWorkingCopy {
     fn id(&self) -> &'static str {
         "vcs.apply-open-working-copy"
     }
@@ -527,9 +533,12 @@ impl himark::commands::WindowedCommand for ShowWorkingCopy {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let documents = self.documents;
         match documents::OpenDocuments::by_location(store, documents, &self.location) {
@@ -656,7 +665,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
 
 pub(crate) struct RefreshTerminal(pub(crate) Arc<std::sync::atomic::AtomicBool>);
 
-impl WindowedCommand for RefreshTerminal {
+impl HimarkCommand for RefreshTerminal {
     fn id(&self) -> &'static str {
         "terminal.refresh"
     }
@@ -667,7 +676,7 @@ impl WindowedCommand for RefreshTerminal {
         &self,
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
         self.0.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -676,7 +685,7 @@ impl WindowedCommand for RefreshTerminal {
 
 pub(crate) struct OpenTerminal;
 
-impl WindowedCommand for OpenTerminal {
+impl HimarkCommand for OpenTerminal {
     fn id(&self) -> &'static str {
         "terminal.open"
     }
@@ -687,9 +696,15 @@ impl WindowedCommand for OpenTerminal {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        // The pane the landing opens is WINDOW furniture — this
+        // command stays on the window road until a terminal place
+        // exists for the mounted shells.
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(entity) = workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -760,7 +775,7 @@ struct ShowTerminal {
     terminals: imba::store::Id<terminals::Terminals>,
 }
 
-impl WindowedCommand for ShowTerminal {
+impl HimarkCommand for ShowTerminal {
     fn id(&self) -> &'static str {
         "terminal.show"
     }
@@ -771,9 +786,12 @@ impl WindowedCommand for ShowTerminal {
         &self,
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let Some(session) = &self.session else {
             return;

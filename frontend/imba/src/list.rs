@@ -1750,7 +1750,7 @@ where
         // owned answers (commands, location) are drained through one
         // cursor here and every handler re-seeks on the call — a
         // state walk per ask, nothing laid.
-        let (commands, location, seat) = {
+        let (commands, location, seat, bindings) = {
             let mut cursor = self.items.cursor();
             match cursor.seek_to_index(index as u32) {
                 true => {
@@ -1759,6 +1759,7 @@ where
                         std::mem::take(&mut data.commands),
                         data.location.take(),
                         data.seat.take(),
+                        std::mem::take(&mut data.bindings),
                     )
                 }
                 false => return FocusData::default(),
@@ -1792,6 +1793,7 @@ where
             })),
             location,
             seat,
+            bindings,
         }
     }
 

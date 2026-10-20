@@ -22,7 +22,7 @@ pub struct OpenDiffCanvas {
     pub reveal: Option<ResourceLocation>,
 }
 
-impl crate::commands::WindowedCommand for OpenDiffCanvas {
+impl crate::commands::HimarkCommand for OpenDiffCanvas {
     fn id(&self) -> &'static str {
         "diff.open-canvas"
     }
@@ -33,10 +33,18 @@ impl crate::commands::WindowedCommand for OpenDiffCanvas {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = ui;
+        // A MOUNTED origin bound: same ask, but the place goes to
+        // the SEATED SHELL — the native side opens its canvas pane.
+        if let Some(&origin) = bound.bound::<crate::bridge::ViewBridgeId>() {
+            self.open_mounted(store, ui, origin, fx);
+            return;
+        }
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
@@ -70,9 +78,10 @@ impl crate::commands::WindowedCommand for OpenDiffCanvas {
         ::workbench::window::Windows::put(store, window, entity);
     }
 
-    /// The MOUNTED landing: same ask, but the place goes to the
-    /// SEATED SHELL — the native side opens its canvas pane.
-    fn perform_windowless(
+}
+
+impl OpenDiffCanvas {
+    fn open_mounted(
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
@@ -115,7 +124,7 @@ pub(crate) struct OpenCanvasFile {
     pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::commands::WindowedCommand for OpenCanvasFile {
+impl crate::commands::HimarkCommand for OpenCanvasFile {
     fn id(&self) -> &'static str {
         "diff.open-file"
     }
@@ -126,9 +135,12 @@ impl crate::commands::WindowedCommand for OpenCanvasFile {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let Some(target) = self.target.clone() else {
             // No caret to honor — the plain open, dedup + authority

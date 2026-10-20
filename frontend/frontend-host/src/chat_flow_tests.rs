@@ -449,7 +449,7 @@ struct OpenScripted {
     session: SessionUri,
 }
 
-impl himark::commands::WindowedCommand for OpenScripted {
+impl himark::commands::HimarkCommand for OpenScripted {
     fn id(&self) -> &'static str {
         "test.open-scripted-session"
     }
@@ -460,9 +460,12 @@ impl himark::commands::WindowedCommand for OpenScripted {
         &self,
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         himark::higent::open_session::open_session(
             store,
             window,

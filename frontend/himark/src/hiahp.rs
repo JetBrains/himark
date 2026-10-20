@@ -17,7 +17,7 @@ use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
 use crate::app::AppCommand;
-use crate::commands::WindowedCommand;
+use crate::commands::HimarkCommand;
 use crate::workspace::OpenByLocationEffect;
 
 /// The AHP wiring as a plugin: the wire handlers, the build road,
@@ -163,7 +163,7 @@ pub struct OpenDiffPair {
     pair: documents::diff_views::OpenedDiffPair,
 }
 
-impl WindowedCommand for OpenDiffPair {
+impl HimarkCommand for OpenDiffPair {
     fn id(&self) -> &'static str {
         "vcs.open-diff-pair"
     }
@@ -174,10 +174,18 @@ impl WindowedCommand for OpenDiffPair {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = ui;
+        // A MOUNTED origin bound means the native road: install the
+        // pair and hand the shell a READY place — it pushes a screen
+        // and mints the standalone split-diff over it.
+        if let Some(&origin) = bound.bound::<crate::bridge::ViewBridgeId>() {
+            if !self.open_mounted(store, ui, origin, fx) {
+                eprintln!("[himark] open-diff-pair could not install its pair — dropped");
+            }
+            return;
+        }
         let _ = crate::diff_pane::open_opened_diff_pane(
             store,
             ui,
@@ -194,10 +202,10 @@ impl WindowedCommand for OpenDiffPair {
         });
     }
 
-    /// The MOUNTED landing: install the pair and hand the shell a
-    /// READY place — the native side pushes a screen and mints the
-    /// standalone split-diff over it.
-    fn perform_windowless(
+}
+
+impl OpenDiffPair {
+    fn open_mounted(
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
@@ -292,7 +300,7 @@ pub(crate) struct FetchFailed {
     location: ResourceLocation,
 }
 
-impl WindowedCommand for FetchFailed {
+impl HimarkCommand for FetchFailed {
     fn id(&self) -> &'static str {
         "file.fetch-failed"
     }
@@ -303,21 +311,10 @@ impl WindowedCommand for FetchFailed {
         &self,
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        _window: ::workbench::window::WindowId,
+        _bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
-    }
-
-    fn perform_windowless(
-        &self,
-        _store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        _origin: crate::bridge::ViewBridgeId,
-        _fx: &mut crate::app::AppFx<'_>,
-    ) -> bool {
-        eprintln!("[himark] fetch failed: {:?}", self.location);
-        true
     }
 }
 

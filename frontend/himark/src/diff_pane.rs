@@ -72,7 +72,7 @@ pub(crate) fn open_diff_documents(
 
 pub struct OpenDiff;
 
-impl crate::commands::WindowedCommand for OpenDiff {
+impl crate::commands::HimarkCommand for OpenDiff {
     fn id(&self) -> &'static str {
         "diff.open"
     }
@@ -83,9 +83,12 @@ impl crate::commands::WindowedCommand for OpenDiff {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let ui = ui;
         let Some(state) = crate::workspace::session_state(store, window) else {
             return;

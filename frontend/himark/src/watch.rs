@@ -5,7 +5,7 @@ use imba::store::Store;
 
 pub struct ReloadDocument;
 
-impl crate::commands::WindowedCommand for ReloadDocument {
+impl crate::commands::HimarkCommand for ReloadDocument {
     fn id(&self) -> &'static str {
         "file.reload"
     }
@@ -18,9 +18,12 @@ impl crate::commands::WindowedCommand for ReloadDocument {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(document) = ::workbench::window::Windows::window_ref(store, window)
             .and_then(|entity| entity.focused_document_id())
         else {

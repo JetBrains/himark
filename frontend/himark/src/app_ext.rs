@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::app::AppCommand;
 use crate::app::Himark;
 use crate::app::OpenedDocument;
-use crate::commands::WindowedCommand;
+use crate::commands::HimarkCommand;
 use editor::document::Document;
 use hikit::modal::ModalView;
 
@@ -55,7 +55,7 @@ pub trait AppExt {
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool;
 
-    fn register_command(&mut self, command: Arc<dyn WindowedCommand>) -> bool;
+    fn register_command(&mut self, command: Arc<dyn HimarkCommand>) -> bool;
 
     fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool;
 
@@ -168,7 +168,7 @@ impl AppExt for Himark {
         self.perform_command(crate::shell::close_modal(window))
     }
 
-    fn register_command(&mut self, command: Arc<dyn WindowedCommand>) -> bool {
+    fn register_command(&mut self, command: Arc<dyn HimarkCommand>) -> bool {
         self.perform_command(crate::shell::register(command))
     }
 

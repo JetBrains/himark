@@ -10,7 +10,7 @@ use imba::store::Store;
 
 pub struct ToggleHistoryView;
 
-impl crate::commands::WindowedCommand for ToggleHistoryView {
+impl crate::commands::HimarkCommand for ToggleHistoryView {
     fn id(&self) -> &'static str {
         "history.view"
     }
@@ -21,9 +21,12 @@ impl crate::commands::WindowedCommand for ToggleHistoryView {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {

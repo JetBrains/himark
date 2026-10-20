@@ -133,7 +133,7 @@ struct ShowStubDock {
     owner: &'static str,
 }
 
-impl himark::commands::WindowedCommand for ShowStubDock {
+impl himark::commands::HimarkCommand for ShowStubDock {
     fn id(&self) -> &'static str {
         "test.dock-show"
     }
@@ -146,9 +146,12 @@ impl himark::commands::WindowedCommand for ShowStubDock {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
+        bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -299,7 +302,7 @@ fn dock_header_buttons_dispatch_their_commands() {
     struct Mark {
         hits: Arc<AtomicUsize>,
     }
-    impl himark::commands::WindowedCommand for Mark {
+    impl himark::commands::HimarkCommand for Mark {
         fn id(&self) -> &'static str {
             "test.dock-mark"
         }
@@ -310,7 +313,7 @@ fn dock_header_buttons_dispatch_their_commands() {
             &self,
             _store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            _window: ::workbench::window::WindowId,
+            _bound: &imba::focus::Bindings,
             _fx: &mut himark::app::AppFx<'_>,
         ) {
             self.hits.fetch_add(1, Ordering::Relaxed);
@@ -452,7 +455,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 
     struct Switch(std::sync::Arc<Mutex<Option<ahp_wire::SessionId>>>);
-    impl himark::commands::WindowedCommand for Switch {
+    impl himark::commands::HimarkCommand for Switch {
         fn id(&self) -> &'static str {
             "test.switch"
         }
@@ -463,9 +466,12 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
             &self,
             store: &mut Store,
             _ui: &imba::ui::UiCtx,
-            window: ::workbench::window::WindowId,
+            bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            return;
+        };
             let target = match self.0.lock().unwrap().clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
