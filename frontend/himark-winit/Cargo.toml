@@ -19,6 +19,9 @@ graphite = [
 ]
 
 [dependencies]
+himark = { path = "../himark" }
+workbench = { path = "../workbench" }
+demo = { path = "../plugins/demo" }
 desktop = { path = "../desktop" }
 frontend-host = { path = "../frontend-host" }
 skia-safe = "0.153.3"

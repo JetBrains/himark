@@ -46,10 +46,7 @@ pub fn go_to_reference() -> Arc<locations::peek::GoToReference> {
             {
                 return;
             }
-            crate::commands::AppRequests::push(
-                store,
-                Arc::new(crate::hisearch::ShowFeedInDock { lists, feed }),
-            );
+            crate::commands::AppRequests::push(store, Arc::new(PromoteFeed { lists, feed }));
         }),
     })
 }
@@ -71,25 +68,65 @@ impl crate::commands::HimarkCommand for OpenPicked {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::ui::UiCtx,
+        ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        // The SEATED SHELL opens the pick — any shell's.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        let Some(documents) =
-            crate::workspace::session_state(store, window).map(|state| state.documents())
-        else {
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DocumentPlace {
+                    location: self.location.clone(),
+                    target: self.target.clone(),
+                    focus: true,
+                },
+                fx,
+            )
+        });
+    }
+}
+
+/// Front a reference feed — the SEATED SHELL decides how: the
+/// workbench's chrome claims the place into its search dock.
+struct PromoteFeed {
+    lists: imba::store::Id<locations::LocationLists>,
+    feed: locations::FeedId,
+}
+
+impl crate::commands::HimarkCommand for PromoteFeed {
+    fn id(&self) -> &'static str {
+        "peek.promote-feed"
+    }
+    fn name(&self) -> String {
+        "Show All References".to_owned()
+    }
+    fn perform(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        fx.push(crate::workspace::open_by_location_effect(
-            window,
-            documents,
-            self.location.clone(),
-            true,
-            true,
-            self.target.clone(),
-        ));
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::FeedPlace {
+                    lists: self.lists,
+                    feed: self.feed,
+                },
+                fx,
+            )
+        });
     }
 }

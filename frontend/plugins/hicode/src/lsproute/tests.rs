@@ -3,7 +3,7 @@
 
 use super::*;
 use editor::location::ResourceType;
-use hicode::FindDefinitionEffect;
+use crate::FindDefinitionEffect;
 
 fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("backend home");
@@ -45,7 +45,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
 
     let seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        crate::test_connector(),
+        Arc::new(desktop::connector::DesktopConnector),
         format!("unix:{}", socket.display()),
     ));
 
@@ -115,7 +115,7 @@ fn definition_routes_over_the_seat() {
     );
     let handler = DefinitionRoute {
         directory: Arc::clone(&directory),
-        uris: Arc::new(crate::uris::FileUris),
+        uris: Arc::new(ahp_wire::uris::FileUris),
     };
     let targets = block_on(Box::pin(async move {
         handler
@@ -148,7 +148,7 @@ fn unserved_locations_answer_nothing() {
     );
     let handler = DefinitionRoute {
         directory: Arc::clone(&directory),
-        uris: Arc::new(crate::uris::FileUris),
+        uris: Arc::new(ahp_wire::uris::FileUris),
     };
     let answered = block_on(Box::pin(async move {
         handler
@@ -174,7 +174,7 @@ fn unserved_locations_answer_nothing() {
     );
     let handler = DefinitionRoute {
         directory,
-        uris: Arc::new(crate::uris::FileUris),
+        uris: Arc::new(ahp_wire::uris::FileUris),
     };
     let answered = block_on(Box::pin(async move {
         handler

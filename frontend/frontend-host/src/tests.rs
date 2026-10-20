@@ -2,6 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use std::ffi::c_char;
+
+/// The demo opens, as the host's doors run them.
+fn open_demo(engine: &mut HimarkEngine, window: u64) {
+    use himark::app_ext::AppExt as _;
+    engine.app.open_async(
+        ::workbench::window::WindowId::from_raw(window),
+        "torture sample".to_owned(),
+        true,
+        Some(demo::demo_location("torture sample")),
+        demo::monster_document,
+    );
+}
+
+fn open_demo_wall(engine: &mut HimarkEngine, window: u64) {
+    use himark::app_ext::AppExt as _;
+    engine.app.open_async(
+        ::workbench::window::WindowId::from_raw(window),
+        "wall of text".to_owned(),
+        true,
+        Some(demo::demo_location("wall of text")),
+        demo::wall_of_text_document,
+    );
+}
 use std::ptr::{null, null_mut};
 
 #[allow(unused_imports)]
@@ -274,7 +298,7 @@ fn hosted_engine_with_language_servers(
         waited += 1;
         assert!(waited < 500, "the backend never bound its socket");
     }
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
@@ -419,7 +443,7 @@ fn probe_scratch_after_wall_close() {
     settle(&mut engine);
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
-    engine.open_demo_wall(window);
+    open_demo_wall(&mut engine, window);
     for _ in 0..60 {
         settle(&mut engine);
         let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -519,7 +543,7 @@ fn probe_history_reopen_layout() {
     let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
     settle(&mut engine);
 
-    engine.open_demo_wall(window);
+    open_demo_wall(&mut engine, window);
     for _ in 0..40 {
         settle(&mut engine);
         let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
@@ -1673,7 +1697,7 @@ fn a_failed_spawn_lands_and_shows_no_panel() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     std::env::set_var("HIMARK_HOST_HOME", dir.path());
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
@@ -1710,7 +1734,7 @@ fn hostless_engines_do_not_register_the_host_commands() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     std::env::set_var("HIMARK_HOST_HOME", dir.path());
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     assert!(!engine.perform_command(window, "file.open"));
     assert!(engine.perform_command(window, "terminal.open"));
@@ -1765,14 +1789,14 @@ fn scroll_gestures_break_on_touch_not_on_momentum() {
 
 #[test]
 fn phased_scrolls_route_to_the_gesture_owner_per_window() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let a = engine.add_window();
     let b = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
     let _ = engine.draw(b, surface.canvas(), 1100.0, 800.0, 1.0);
-    engine.open_demo_wall(a);
-    engine.open_demo_wall(b);
+    open_demo_wall(&mut engine, a);
+    open_demo_wall(&mut engine, b);
     for _ in 0..10 {
         settle(&mut engine);
         let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -1913,7 +1937,7 @@ fn ffi_null_engine_calls_are_noops() {
 
 #[test]
 fn registered_commands_dispatch_by_id() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
@@ -1934,7 +1958,7 @@ fn registered_commands_dispatch_by_id() {
 
 #[test]
 fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1280, 860)).expect("surface");
     let draw = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
@@ -3277,7 +3301,7 @@ fn block_on_seat<T>(mut future: ahp_wire::client::ClientFuture<T>) -> T {
 #[ignore = "needs a running agent host and a claude.ai login; spends a real prompt"]
 fn real_claude_answers_through_the_agent_host() {
     std::env::remove_var("HIMARK_AHP_URL");
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -3608,7 +3632,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
         .replacen("http://", "ws://", 1);
 
     std::env::set_var("HIMARK_HOST_HOME", dir.path().join("client-home"));
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -4275,7 +4299,7 @@ fn the_drawer_connects_to_the_himark_host() {
         assert!(waited < 250, "the host never bound its socket");
     }
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -4325,7 +4349,7 @@ fn dump_chat_pane_snapshot() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -4465,7 +4489,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -4664,7 +4688,7 @@ fn the_chat_runs_through_the_himark_host() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
 
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -5031,7 +5055,7 @@ fn real_claude_answers_through_the_himark_host() {
     let host = spawn_host_with_env(dir.path(), "claude", false);
     let socket = host.socket.clone();
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -5805,7 +5829,7 @@ fn two_engines_sync_a_live_document() {
     }
 
     let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
-        let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+        let mut engine = crate::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
         let seat = Arc::new(ahp_wire::wire::WireHost::at(
             ahp_wire::wire::test_runtime(),
@@ -5970,7 +5994,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
     }
 
     let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
-        let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+        let mut engine = crate::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
         let seat = Arc::new(ahp_wire::wire::WireHost::at(
             ahp_wire::wire::test_runtime(),
@@ -6158,7 +6182,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
 
     engine.compose_new_windows = true;
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
@@ -6321,7 +6345,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
 
     engine.compose_new_windows = true;
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
@@ -6550,7 +6574,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
@@ -7233,7 +7257,7 @@ fn diff_resize_probe_over_real_code() {
 
 #[test]
 fn a_drain_hands_the_ui_thread_back_mid_burst() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
@@ -7472,7 +7496,7 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
     // (`sizedString`). Cut deletes the selection, so a naive second
     // run finds nothing and the pasteboard stays empty; the probe
     // must cut once and the fill must drain the stash.
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
@@ -8014,7 +8038,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             .expect("the window entity");
     assert_eq!(
         entity.dock_owner(),
-        Some(himark::hisearch::OWNER),
+        Some(workbench_shell::hisearch::OWNER),
         "the Search tab activated"
     );
 
@@ -8054,16 +8078,16 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
 /// toggles away); the toolbar's `search.view` keeps the toggle.
 #[test]
 fn cmd_shift_f_opens_then_focuses_the_search_dock() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     // The capability gate normally registers these when the seat
     // serves searchLocations; the KEY ROAD under test is the same.
     engine
         .app
-        .register_command(std::sync::Arc::new(himark::hisearch::ToggleSearchView));
+        .register_command(std::sync::Arc::new(workbench_shell::hisearch::ToggleSearchView));
     engine
         .app
-        .register_command(std::sync::Arc::new(himark::hisearch::FocusSearchView));
+        .register_command(std::sync::Arc::new(workbench_shell::hisearch::FocusSearchView));
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
@@ -8108,7 +8132,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
 
 #[test]
 fn input_reaches_a_second_window() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let a = engine.add_window();
     let b = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -8136,7 +8160,7 @@ fn input_reaches_a_second_window() {
 /// test drawers (it did, once).
 #[test]
 fn a_test_engine_registers_no_outward_hosts() {
-    let engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let engine = crate::with_fonts(AppFonts::embedded());
     assert_eq!(
         ahp_session::session::agents::Agents::list(engine.app.store()).len(),
         0,
@@ -8721,7 +8745,7 @@ fn the_demo_sample_diagrams_through_the_engine() {
 }
 
 fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
@@ -8768,7 +8792,7 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
 /// is the difference between a smooth drag and a second-long hang.
 #[test]
 fn engine_resize_shape_meter() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let body: String = (0..400)
         .map(|n| format!("line {n} of a document that is long enough to matter here\n"))

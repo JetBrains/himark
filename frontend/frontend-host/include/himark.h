@@ -238,6 +238,10 @@ typedef struct {
 
 HimarkEngine *himark_create(HimarkEngineCallbacks callbacks);
 
+void himark_open_demo(HimarkEngine *engine, HimarkBridge bridge);
+
+void himark_open_demo_wall(HimarkEngine *engine, HimarkBridge bridge);
+
 HimarkWindow himark_add_window(HimarkEngine *engine);
 
 void himark_destroy(HimarkEngine *engine);
@@ -296,10 +300,6 @@ bool himark_open_document(HimarkEngine *engine,
                           const char *utf8,
                           uintptr_t len,
                           bool primary);
-
-void himark_open_demo(HimarkEngine *engine, HimarkBridge bridge);
-
-void himark_open_demo_wall(HimarkEngine *engine, HimarkBridge bridge);
 
 bool himark_has_text_focus(HimarkEngine *engine, HimarkBridge bridge);
 

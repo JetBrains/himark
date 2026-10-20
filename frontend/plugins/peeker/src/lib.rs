@@ -1008,7 +1008,7 @@ pub fn build(
         );
 
         let documents = himark::workspace::entity_state(&entity).documents();
-        let peeker = fx.scope(himark::modal::modal_scope(window), |fx| {
+        let peeker = fx.scope(workbench_shell::modal::modal_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<PeekerCommand>, |fx| {
                 Peeker::open(
                     store, ui, documents, viewport, recents, widgets, folders, fx,

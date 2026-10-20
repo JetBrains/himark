@@ -137,6 +137,18 @@ impl Place for SessionsPlace {}
 #[derive(Clone, PartialEq)]
 pub struct DismissPlace;
 
+/// A LOCATIONS FEED to front — reference results, search hits. The
+/// workbench promotes it into the search dock; a mounted shell can
+/// mint a results view over the same feed.
+#[derive(Clone, PartialEq)]
+pub struct FeedPlace {
+    pub lists: imba::store::Id<locations::LocationLists>,
+    pub feed: locations::FeedId,
+}
+
+impl Place for FeedPlace {}
+
+
 impl Place for DismissPlace {}
 
 /// A session's FILE tree.

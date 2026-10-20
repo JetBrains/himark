@@ -431,7 +431,7 @@ fn error_at(line: u64, from: u64, to: u64) -> serde_json::Value {
 
 #[test]
 fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut items = std::collections::HashMap::new();
     items.insert(
@@ -624,7 +624,7 @@ fn live_host_squiggles_the_opened_file() {
         .map(str::to_owned)
         .collect();
 
-    let mut engine = HimarkEngine::new();
+    let mut engine = crate::production_engine(None);
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
     eprintln!("[live] local host {host:?}");
@@ -712,7 +712,7 @@ fn live_host_squiggles_the_opened_file() {
 /// and both land as document-scoped markups that reach the pixels.
 #[test]
 fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut answers = std::collections::HashMap::new();
     // "main" at 0:3, four long, token type 0 = function.
@@ -894,7 +894,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
 fn live_canvas_face_serves_completion_and_hover() {
     use crate::HIMARK_MOD_CONTROL;
     let session = std::env::var("HIMARK_LIVE_SESSION").expect("HIMARK_LIVE_SESSION");
-    let mut engine = HimarkEngine::new();
+    let mut engine = crate::production_engine(None);
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
     assert!(engine.app.perform_batch(vec![himark::app::windowed(

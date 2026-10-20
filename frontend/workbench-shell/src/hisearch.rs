@@ -33,7 +33,7 @@ pub struct OpenLspFeed {
     pub position: documents::text_ext::LineCol,
 }
 
-impl crate::commands::HimarkCommand for OpenLspFeed {
+impl himark::commands::HimarkCommand for OpenLspFeed {
     fn id(&self) -> &'static str {
         "search.open-lsp-feed"
     }
@@ -47,13 +47,13 @@ impl crate::commands::HimarkCommand for OpenLspFeed {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
             return;
         };
         let Some(lists) = ::workbench::window::Windows::window_ref(store, window)
-            .map(|entity| crate::workspace::entity_state(entity).lists())
+            .map(|entity| himark::workspace::entity_state(entity).lists())
         else {
             return;
         };
@@ -82,7 +82,7 @@ impl crate::commands::HimarkCommand for OpenLspFeed {
 /// uses: a references ask opening the tab at ASK time, and the
 /// peek's promote button, which reuses the standing feed instead of
 /// asking again.
-pub(crate) struct ShowFeedInDock {
+pub struct ShowFeedInDock {
     /// The feed's HOME collection and its wire — carried with the
     /// feed so a promote fronts the right rows even if the window
     /// moved on.
@@ -90,7 +90,7 @@ pub(crate) struct ShowFeedInDock {
     pub feed: FeedId,
 }
 
-impl crate::commands::HimarkCommand for ShowFeedInDock {
+impl himark::commands::HimarkCommand for ShowFeedInDock {
     fn id(&self) -> &'static str {
         "search.show-feed"
     }
@@ -104,9 +104,9 @@ impl crate::commands::HimarkCommand for ShowFeedInDock {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
             return;
         };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
@@ -120,12 +120,12 @@ impl crate::commands::HimarkCommand for ShowFeedInDock {
         LocationLists::set_search(store, self.lists, self.feed);
 
         fx.scope(
-            move |command| crate::shell::content(window, command),
+            move |command| himark::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = SearchView::open(store, ui, self.lists);
         fx.scope(
-            move |command| crate::shell::content(window, command),
+            move |command| himark::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -134,11 +134,11 @@ impl crate::commands::HimarkCommand for ShowFeedInDock {
 
 /// The search feature as a plugin: the toggles and the toolbar
 /// button.
-pub struct SearchPlugin;
+pub struct ChromePlugin;
 
-impl crate::plugin::Plugin for SearchPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
-        use crate::app_ext::AppExt;
+impl himark::plugin::Plugin for ChromePlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
         app.register_command(std::sync::Arc::new(ToggleSearchView));
         app.register_command(std::sync::Arc::new(FocusSearchView));
         app.register_toolbar_button(toolbar_button());
@@ -147,7 +147,7 @@ impl crate::plugin::Plugin for SearchPlugin {
 
 pub struct ToggleSearchView;
 
-impl crate::commands::HimarkCommand for ToggleSearchView {
+impl himark::commands::HimarkCommand for ToggleSearchView {
     fn id(&self) -> &'static str {
         OWNER
     }
@@ -161,9 +161,9 @@ impl crate::commands::HimarkCommand for ToggleSearchView {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
             return;
         };
         let mut entity =
@@ -175,18 +175,18 @@ impl crate::commands::HimarkCommand for ToggleSearchView {
         }
 
         fx.scope(
-            move |command| crate::shell::content(window, command),
+            move |command| himark::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
-        let session = crate::workspace::entity_session(&entity);
-        let lists = crate::workspace::entity_state(&entity).lists();
+        let session = himark::workspace::entity_session(&entity);
+        let lists = himark::workspace::entity_state(&entity).lists();
         let folders = ahp_session::session::folders::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, ui, lists);
         let owner = self.id();
         fx.scope(
-            move |command| crate::shell::content(window, command),
+            move |command| himark::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -199,7 +199,7 @@ impl crate::commands::HimarkCommand for ToggleSearchView {
 /// [`ToggleSearchView`]) keeps the toggle every dock button has.
 pub struct FocusSearchView;
 
-impl crate::commands::HimarkCommand for FocusSearchView {
+impl himark::commands::HimarkCommand for FocusSearchView {
     fn id(&self) -> &'static str {
         "search.focus"
     }
@@ -213,9 +213,9 @@ impl crate::commands::HimarkCommand for FocusSearchView {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
             return;
         };
         let mut entity =
@@ -225,7 +225,7 @@ impl crate::commands::HimarkCommand for FocusSearchView {
             if let Some(panel) = entity.dock_panel_mut() {
                 fx.scope(
                     move |command| {
-                        crate::shell::content(
+                        himark::shell::content(
                             window,
                             ::workbench::window::WindowCommand::Dock(
                                 imba::dyn_view::DynCommand::new(

@@ -12,6 +12,7 @@ use std::{
 };
 
 use desktop::{is_insertable_text, startup_profile_log};
+use himark::app_ext::AppExt as _;
 use skia_safe::{
     surfaces, AlphaType, Color, ColorSpace, ColorType, Contains, Font, FontMgr, FontStyle,
     ImageInfo, Paint, Point, Rect,
@@ -200,7 +201,7 @@ struct Engine {
 
 impl Engine {
     fn new() -> Self {
-        let mut inner = himark_api::HimarkEngine::new();
+        let mut inner = himark_api::production_engine(None);
 
         inner.set_host(himark_api::host::HimarkHostCallbacks::agent_host_filesystem());
         let window = inner.add_window();
@@ -316,11 +317,23 @@ impl Engine {
     }
 
     fn open_demo(&mut self) {
-        self.inner.open_demo(self.window);
+        self.inner.app.open_async(
+            ::workbench::window::WindowId::from_raw(self.window),
+            "torture sample".to_owned(),
+            true,
+            Some(demo::demo_location("torture sample")),
+            demo::monster_document,
+        );
     }
 
     fn open_demo_wall(&mut self) {
-        self.inner.open_demo_wall(self.window);
+        self.inner.app.open_async(
+            ::workbench::window::WindowId::from_raw(self.window),
+            "wall of text".to_owned(),
+            true,
+            Some(demo::demo_location("wall of text")),
+            demo::wall_of_text_document,
+        );
     }
 
     fn open_document(&mut self, name: &str, source: &str, primary: bool) -> bool {

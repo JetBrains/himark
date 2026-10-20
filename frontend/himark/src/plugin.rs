@@ -34,6 +34,10 @@ pub trait Plugin {
 pub struct PluginContext {
     pub languages: Arc<::editor::reparse::SyntaxLanguages>,
     pub diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
+    /// The wire client directory and the uri map — a plugin whose
+    /// effects route over the wire closes its handlers over these.
+    pub clients: Arc<ahp_wire::fs::ClientDirectory>,
+    pub resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 /// Collect, register, install — in list order (toolbar buttons and
@@ -43,6 +47,8 @@ pub struct PluginContext {
 pub fn install_all(
     app: &mut Himark,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
+    clients: Arc<ahp_wire::fs::ClientDirectory>,
+    resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
     plugins: &[Box<dyn Plugin>],
 ) -> PluginContext {
     use crate::app_ext::AppExt;
@@ -60,6 +66,8 @@ pub fn install_all(
     let cx = PluginContext {
         languages: shared,
         diff_policy,
+        clients,
+        resource_uris,
     };
     for plugin in plugins {
         plugin.install(app, &cx);

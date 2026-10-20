@@ -1630,6 +1630,7 @@ dependencies = [
  "tokio",
  "tracing",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -1976,22 +1977,28 @@ dependencies = [
 name = "hicode"
 version = "0.1.0"
 dependencies = [
+ "agent-host",
  "ahp-chat",
  "ahp-locations",
  "ahp-session",
  "ahp-types",
  "ahp-wire",
  "canvas",
+ "desktop",
  "documents",
  "editor",
  "himark",
  "himark-ahp-ext-types",
+ "host-discovery",
  "imba",
  "locations",
  "serde_json",
  "skia-safe",
+ "tempfile",
  "text",
+ "tokio",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -2340,6 +2347,7 @@ dependencies = [
  "terminals",
  "text",
  "toc",
+ "tokio",
  "workbench",
 ]
 
@@ -2391,8 +2399,10 @@ dependencies = [
 name = "himark-winit"
 version = "0.1.0"
 dependencies = [
+ "demo",
  "desktop",
  "frontend-host",
+ "himark",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
@@ -2401,6 +2411,7 @@ dependencies = [
  "skia-safe",
  "softbuffer",
  "winit",
+ "workbench",
 ]
 
 [[package]]
@@ -4219,6 +4230,7 @@ dependencies = [
  "terminals",
  "text",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -7377,6 +7389,36 @@ dependencies = [
  "rpds",
  "skia-safe",
  "text",
+]
+
+[[package]]
+name = "workbench-shell"
+version = "0.1.0"
+dependencies = [
+ "ahp-changes",
+ "ahp-comments",
+ "ahp-locations",
+ "ahp-session",
+ "ahp-types",
+ "ahp-wire",
+ "canvas",
+ "changesview",
+ "comments",
+ "documents",
+ "editor",
+ "filetree",
+ "hikit",
+ "himark",
+ "himark-ahp-ext-types",
+ "himarkdown",
+ "host-discovery",
+ "imba",
+ "locations",
+ "rpds",
+ "serde_json",
+ "skia-safe",
+ "terminals",
+ "workbench",
 ]
 
 [[package]]

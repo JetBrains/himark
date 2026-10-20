@@ -11,7 +11,7 @@ use crate::app::Himark;
 /// The semantic focus chain of a window — a STATE WALK over the view
 /// tree. No arena, no layout, no realize: focus is state, and the
 /// views carry it (imba `View::focus_data`).
-pub(crate) fn window_focus_data<'a>(
+pub fn window_focus_data<'a>(
     store: &'a imba::store::Store,
     ui: &'a imba::ui::UiCtx,
     window: ::workbench::window::WindowId,
@@ -166,7 +166,7 @@ impl Himark {
 }
 
 /// The focused location out of an already-collected focus chain.
-pub(crate) fn focused_location(
+pub fn focused_location(
     data: &mut FocusData<'_, AppCommand>,
 ) -> Option<editor::location::ResourceLocation> {
     data.location.take().and_then(|location| {

@@ -12,11 +12,11 @@ use imba::ui::UiCtx;
 
 use std::ops::Range;
 
-use crate::app::AppCommand;
-use crate::app::AppFonts;
-use crate::app::Himark;
-use crate::app::OpenedDocument;
-use crate::app_ext::AppExt;
+use himark::app::AppCommand;
+use himark::app::AppFonts;
+use himark::app::Himark;
+use himark::app::OpenedDocument;
+use himark::app_ext::AppExt;
 use ::editor::test_document::plain_document;
 use editor::caret::Caret;
 use editor::caret::MultiCaret;
@@ -64,7 +64,7 @@ fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::Wind
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
-    assert!(app.perform_command(crate::shell::opened(
+    assert!(app.perform_command(himark::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -80,7 +80,7 @@ fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::Wind
 }
 
 fn invoke(app: &mut Himark, window: ::workbench::window::WindowId, id: &str) {
-    let command = crate::commands::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
@@ -238,13 +238,13 @@ fn typing_lands_in_the_card_not_the_host_document() {
     );
     assert_eq!(view.text(), "looks wrong", "the card holds the comment");
 
-    let workshop = crate::test_support::test_workshop(editor::theme::Theme::embedded());
-    let mut pending = crate::test_support::surviving_launches(batch);
+    let workshop = himark::test_support::test_workshop(editor::theme::Theme::embedded());
+    let mut pending = himark::test_support::surviving_launches(batch);
     while let Some(effect) = pending.pop() {
-        let landing = crate::test_support::handle_effect(effect, &workshop);
+        let landing = himark::test_support::handle_effect(effect, &workshop);
         let mut batch = imba::effect::Batch::new();
         imba::View::perform(&mut view, &mut store, &ui, landing, &mut batch.effects());
-        pending.extend(crate::test_support::surviving_launches(batch));
+        pending.extend(himark::test_support::surviving_launches(batch));
     }
     assert!(
         view.parsed_markdown(),
@@ -304,7 +304,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         &ids,
         Err("wire died".to_owned()),
     );
-    assert!(app.perform_command(crate::shell::content(
+    assert!(app.perform_command(himark::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));
@@ -312,7 +312,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
     comments::Comments::sent_outcome(&mut app.store_mut(), comments, &ids, Ok(()));
-    assert!(app.perform_command(crate::shell::content(
+    assert!(app.perform_command(himark::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));

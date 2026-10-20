@@ -33,6 +33,7 @@ members = [
     "frontend/toc",
     "frontend/workbench",
     "frontend/himark",
+    "frontend/workbench-shell",
     "frontend/plugins/himarkdown",
     "frontend/plugins/demo",
     "frontend/plugins/himermaid",

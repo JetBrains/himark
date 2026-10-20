@@ -29,11 +29,11 @@ use std::collections::HashMap;
 use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
 
-use himark::bridge::ViewBridgeId;
+use crate::bridge::ViewBridgeId;
 use imba::event::{Event, EventResult, MouseButton};
 use skia_safe::{Canvas, Point, Rect, Size};
 
-use crate::{
+use crate::ffi::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed,
 };
 
@@ -192,7 +192,7 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 /// engine (`Himark`), where the `ToView` road can quiesce them.
 #[derive(Default)]
 pub(crate) struct Stages {
-    catalogs: Handles<himark::himark::Catalog>,
+    catalogs: Handles<crate::himark::Catalog>,
 }
 
 /// The place table is process-wide like the event table: places
@@ -614,7 +614,7 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
     else {
         return false;
     };
-    let location = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>() {
+    let location = if let Some(ready) = place.place::<crate::places::OpenDocumentPlace>() {
         ahp_session::session::state::Hosts::states(engine.app.store())
             .into_iter()
             .map(|state| state.documents())
@@ -623,7 +623,7 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
             .find_map(|collection| {
                 documents::OpenDocuments::location(engine.app.store(), collection, ready.document)
             })
-    } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
+    } else if let Some(ready) = place.place::<crate::places::DiffViewPlace>() {
         documents::OpenDocuments::diff_view_ref(engine.app.store(), ready.documents, ready.view)
             .map(|held| held.right.document())
             .and_then(|right| {
@@ -637,7 +637,7 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
     let Some(location) = location else {
         return false;
     };
-    himark::mounts::follow_session_tree(&mut engine.app, &session, location)
+    crate::mounts::follow_session_tree(&mut engine.app, &session, location)
 }
 
 /// Drain the reveal a mounted road parked — a caret-follow or a
@@ -830,7 +830,7 @@ pub unsafe extern "C" fn himark_commands_copy(engine: *mut HimarkEngine) -> Hima
     let Some(engine) = engine.as_mut() else {
         return HimarkCommands { raw: 0 };
     };
-    let snapshot: Vec<(String, String)> = himark::commands::Commands::of(engine.app.store())
+    let snapshot: Vec<(String, String)> = crate::commands::Commands::of(engine.app.store())
         .iter()
         .map(|command| (command.id().to_owned(), command.name()))
         .collect();
@@ -917,7 +917,7 @@ unsafe fn with_catalog<R>(
     engine: *mut HimarkEngine,
     catalog: HimarkCatalog,
     missing: R,
-    read: impl FnOnce(&himark::himark::Catalog) -> R,
+    read: impl FnOnce(&crate::himark::Catalog) -> R,
 ) -> R {
     let Some(engine) = engine.as_ref() else {
         return missing;
@@ -1015,7 +1015,7 @@ unsafe fn catalog_session_string(
     index: usize,
     out: *mut c_char,
     cap: usize,
-    read: impl Fn(&himark::himark::SessionRow) -> String,
+    read: impl Fn(&crate::himark::SessionRow) -> String,
 ) -> usize {
     with_catalog(engine, catalog, 0, |snapshot| {
         copy_optional_utf8(snapshot.sessions.get(index).map(read), out, cap)
@@ -1124,7 +1124,7 @@ pub unsafe extern "C" fn himark_place_session_view(
     len: usize,
 ) -> HimarkPlace {
     use hikit::navigation::NavigationLocation;
-    use himark::places::*;
+    use crate::places::*;
     let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
         HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),
         HIMARK_PLACE_CHAT_TRANSCRIPT => |s| NavigationLocation::new(ChatTranscriptPlace(s)),
@@ -1212,7 +1212,7 @@ pub unsafe extern "C" fn himark_bridge_overlays(
     };
     let Some((epoch, anchors)) = engine
         .app
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+        .bridge_overlays(crate::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
     };
@@ -1237,7 +1237,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_anchor(
     };
     let Some((_, anchors)) = engine
         .app
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+        .bridge_overlays(crate::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
     };
@@ -1277,7 +1277,7 @@ pub unsafe extern "C" fn himark_overlay_content_rect(
     };
     let Some(rect) = engine
         .app
-        .overlay_content(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+        .overlay_content(crate::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
     };
@@ -1309,7 +1309,7 @@ pub unsafe extern "C" fn himark_overlay_mint(
     };
     match engine
         .app
-        .mint_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
+        .mint_overlay(crate::bridge::ViewBridgeId::from_raw(bridge.raw), index)
     {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
@@ -1338,7 +1338,7 @@ pub unsafe extern "C" fn himark_bridge_mint(
         return HimarkBridge { raw: 0 };
     };
     let (place, session) = place;
-    match himark::mounts::mount_place(&mut engine.app, &place, session) {
+    match crate::mounts::mount_place(&mut engine.app, &place, session) {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
     }
@@ -1413,10 +1413,10 @@ unsafe impl Sync for ShellCtx {}
 struct CallbackShell {
     ctx: ShellCtx,
     on_navigate: HimarkNavigateFn,
-    next: std::sync::Arc<dyn himark::himark::Shell>,
+    next: std::sync::Arc<dyn crate::himark::Shell>,
 }
 
-impl himark::himark::Shell for CallbackShell {
+impl crate::himark::Shell for CallbackShell {
     fn navigate(
         &self,
         origin: ViewBridgeId,
@@ -1427,7 +1427,7 @@ impl himark::himark::Shell for CallbackShell {
     ) -> bool {
         if origin.is_mounted() {
             let mut focus = false;
-            let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
+            let classified = if let Some(ready) = place.place::<crate::places::OpenDocumentPlace>()
             {
                 focus = ready.focus;
                 // The document's name: it is registered by the time
@@ -1442,16 +1442,16 @@ impl himark::himark::Shell for CallbackShell {
                     })
                     .unwrap_or_default();
                 Some((HIMARK_PLACE_DOCUMENT, title))
-            } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
+            } else if let Some(ready) = place.place::<crate::places::DiffViewPlace>() {
                 Some((HIMARK_PLACE_DIFF, ready.title.clone()))
             } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
                 Some((
                     HIMARK_PLACE_CANVAS,
                     ready.source.title(store, ready.changes),
                 ))
-            } else if place.place::<himark::places::DismissPlace>().is_some() {
+            } else if place.place::<crate::places::DismissPlace>().is_some() {
                 Some((HIMARK_PLACE_DISMISS, String::new()))
-            } else if place.place::<himark::places::ChatPlace>().is_some() {
+            } else if place.place::<crate::places::ChatPlace>().is_some() {
                 // "Show this session" — the sessions drawer's pick.
                 Some((HIMARK_PLACE_CHAT, String::new()))
             } else {
@@ -1464,9 +1464,9 @@ impl himark::himark::Shell for CallbackShell {
                 // place that NAMES a session (the drawer's pick)
                 // carries its own — that is the whole message.
                 let session = place
-                    .place::<himark::places::ChatPlace>()
+                    .place::<crate::places::ChatPlace>()
                     .map(|chat| chat.0.clone())
-                    .or_else(|| himark::mounts::session_of(store, origin));
+                    .or_else(|| crate::mounts::session_of(store, origin));
                 let handle = HimarkPlace {
                     raw: PLACES
                         .lock()

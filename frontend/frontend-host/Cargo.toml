@@ -28,6 +28,7 @@ ahp-comments = { path = "../ahp-comments" }
 text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
+workbench-shell = { path = "../workbench-shell" }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }
 himarkdown = { path = "../plugins/himarkdown" }

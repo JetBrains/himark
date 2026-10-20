@@ -9,10 +9,10 @@ use std::sync::{
 
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
-use himark::app::AppCommand;
-use himark::app::AppFx;
-use himark::commands::HimarkCommand;
-use himark::workspace::open_locations;
+use crate::app::AppCommand;
+use crate::app::AppFx;
+use crate::commands::HimarkCommand;
+use crate::workspace::open_locations;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
 
@@ -142,7 +142,7 @@ pub struct HimarkLocation {
     pub segment_count: usize,
 }
 
-pub(crate) unsafe fn location_from_abi(abi: &HimarkLocation) -> Option<ResourceLocation> {
+pub unsafe fn location_from_abi(abi: &HimarkLocation) -> Option<ResourceLocation> {
     let kind = abi.kind.to_str()?;
     let authority = abi.authority.to_str()?;
     let raw = match abi.segment_count {
@@ -161,7 +161,7 @@ pub(crate) unsafe fn location_from_abi(abi: &HimarkLocation) -> Option<ResourceL
 }
 
 #[derive(Default)]
-pub(crate) struct HostRequests {
+pub struct HostRequests {
     next: AtomicU64,
     pending: Mutex<std::collections::HashMap<u64, Answer>>,
 }
@@ -182,7 +182,7 @@ impl HostRequests {
         id
     }
 
-    pub(crate) fn fulfill(&self, id: u64, value: Box<dyn std::any::Any + Send + Sync>) -> bool {
+    pub fn fulfill(&self, id: u64, value: Box<dyn std::any::Any + Send + Sync>) -> bool {
         let mut pending = self.pending.lock().expect("host requests");
         let Some(answer) = pending.get_mut(&id) else {
             return false;
@@ -282,10 +282,10 @@ impl EffectHandler<ahp_wire::effects::ShareHostEffect> for ShareHostHandler {
 
 pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
 
-impl EffectHandler<himark::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
+impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
     async fn handle(
         &self,
-        effect: himark::higent::folder_grant::PickFoldersEffect,
+        effect: crate::higent::folder_grant::PickFoldersEffect,
     ) -> Vec<ResourceLocation> {
         let Some(pick) = self.0.callbacks.pick_files else {
             return Vec::new();
@@ -321,14 +321,14 @@ impl HimarkCommand for OpenFilePicker {
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
             return;
         };
         let _ = fx.push(
             AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
-                himark::app::windowed(window, Arc::new(OpenPicked { locations }))
+                crate::app::windowed(window, Arc::new(OpenPicked { locations }))
             }),
         );
     }
@@ -367,7 +367,7 @@ fn open_folder_session(
     });
     match existing {
         Some(session) => {
-            himark::higent::open_session::open_session(store, window, host, session, false, fx)
+            crate::higent::open_session::open_session(store, window, host, session, false, fx)
         }
         None => {
             let _ = fx.push(
@@ -377,9 +377,9 @@ fn open_folder_session(
                     working_directories: dirs,
                 })
                 .map(move |result| {
-                    himark::app::windowed(
+                    crate::app::windowed(
                         window,
-                        Arc::new(himark::higent::open_session::OpenCreatedSession {
+                        Arc::new(crate::higent::open_session::OpenCreatedSession {
                             initial_prompt: None,
                             server: host,
                             open_chat: false,
@@ -405,9 +405,9 @@ impl HimarkCommand for OpenPicked {
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
             return;
         };
         let ui = ui;
@@ -418,9 +418,9 @@ impl HimarkCommand for OpenPicked {
             .partition(|location| location.kind().is_directory());
         if !folders.is_empty() {
             let workspace = workbench::window::Windows::window_ref(store, window)
-                .map(|entity| himark::workspace::entity_session(&entity))
+                .map(|entity| crate::workspace::entity_session(&entity))
                 .unwrap_or_else(|| ahp_wire::SessionId::local_default(store));
-            let state = himark::workspace::session_state(store, window);
+            let state = crate::workspace::session_state(store, window);
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 let diagnostics_wire = state.diagnostics_wire();

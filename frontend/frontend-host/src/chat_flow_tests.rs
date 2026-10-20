@@ -523,7 +523,7 @@ const CHAT: &str = "ahp-chat:/scripted";
 const SESSION: &str = "ahp-session:/scripted";
 
 fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
-    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let mut engine = crate::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let expected_turns = snapshot.turns.len();
     let script = Script::new(CHAT, SESSION, snapshot);

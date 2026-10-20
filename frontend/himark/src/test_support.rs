@@ -123,7 +123,7 @@ impl Himark {
 
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
-    pub(crate) fn sole_family(&self) -> ahp_session::session::state::SessionState {
+    pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
         crate::workspace::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }

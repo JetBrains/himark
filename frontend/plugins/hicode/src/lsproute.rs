@@ -6,13 +6,13 @@ use std::sync::Arc;
 use ahp_wire::fs::ClientDirectory;
 use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
-use hicode::{CodeTarget, FindDefinitionEffect};
+use crate::{CodeTarget, FindDefinitionEffect};
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
 
-pub(crate) struct DefinitionRoute {
-    pub(crate) directory: Arc<ClientDirectory>,
-    pub(crate) uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
+pub struct DefinitionRoute {
+    pub directory: Arc<ClientDirectory>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<FindDefinitionEffect> for DefinitionRoute {

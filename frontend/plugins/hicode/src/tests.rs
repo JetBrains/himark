@@ -304,7 +304,7 @@ fn references_stream_into_the_search_dock() {
     let entity = workbench::window::Windows::window_ref(app.store(), window).expect("the window");
     assert_eq!(
         entity.dock_owner(),
-        Some(himark::hisearch::OWNER),
+        Some(workbench_shell::hisearch::OWNER),
         "the Search tab activated"
     );
     let lists = himark::workspace::entity_state(&entity).lists();

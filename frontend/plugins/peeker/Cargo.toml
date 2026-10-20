@@ -16,6 +16,7 @@ ahp-session = { path = "../../ahp-session" }
 ahp-wire = { path = "../../ahp-wire" }
 ahp-chat = { path = "../../ahp-chat" }
 himark = { path = "../../himark" }
+workbench-shell = { path = "../../workbench-shell" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 skia-safe = "0.153.3"
