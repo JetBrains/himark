@@ -105,6 +105,42 @@ final class DesktopScrollHost: NSView {
                 self.scroll.scrollWheel(with: event)
             }
         }
+        // HIMARK_DEBUG_SCROLLRUN="dy,frames,delay": a sustained
+        // per-frame scroll at fixed velocity — the band-coverage
+        // harness. Reports the worst uncovered strip seen.
+        if let spec = ProcessInfo.processInfo.environment["HIMARK_DEBUG_SCROLLRUN"] {
+            let parts = spec.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + parts[2]) { [weak self] in
+                    guard let self else { return }
+                    var frame = 0
+                    var worst: CGFloat = 0
+                    Timer.scheduledTimer(withTimeInterval: 1.0 / 120.0, repeats: true) { timer in
+                        frame += 1
+                        if frame > Int(parts[1]) {
+                            timer.invalidate()
+                            NSLog("[scrollrun] done: worst uncovered %.1fpt", worst)
+                            return
+                        }
+                        let limit = max(0, (self.content?.frame.height ?? 0)
+                            - self.scroll.contentSize.height)
+                        let y = min(self.scroll.contentView.bounds.origin.y + parts[0], limit)
+                        self.scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+                        self.scroll.reflectScrolledClipView(self.scroll.contentView)
+                        if let content = self.content {
+                            let clip = self.scroll.contentView.bounds
+                            let band = content.metalLayer.frame
+                            let uncovered = max(band.minY - clip.minY, clip.maxY - band.maxY)
+                            if uncovered > worst {
+                                worst = uncovered
+                                NSLog("[scrollrun] frame %d: uncovered %.1fpt (clip %.0f..%.0f band %.0f..%.0f)",
+                                      frame, uncovered, clip.minY, clip.maxY, band.minY, band.maxY)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // HIMARK_DEBUG_NSSCROLL: programmatic offset sanity — no
         // wheels involved at all.
         if ProcessInfo.processInfo.environment["HIMARK_DEBUG_NSSCROLL"] != nil {
@@ -277,6 +313,14 @@ final class DesktopScrollHost: NSView {
             NSLog("measured bridge \(bridge.raw): content \(Int(size.height)) clip \(Int(scroll.contentSize.height)) doc \(Int(content?.frame.height ?? -1))")
         }
         guard let content, size.height.isFinite else { return }
+        // GROW-ONLY while the hand is on the wheel: a shrinking
+        // document under a live scroll clamps the clip and the view
+        // JUMPS — heights refined by rows realizing mid-flight apply
+        // once the gesture rests (the next idle measure is exact).
+        if Date().timeIntervalSince(lastUserScroll) < 0.3,
+           size.height < content.frame.height {
+            return
+        }
         let height = max(size.height, scroll.contentSize.height)
         if content.frame.size.height != height
             || content.frame.size.width != scroll.contentSize.width {

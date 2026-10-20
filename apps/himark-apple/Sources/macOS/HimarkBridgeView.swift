@@ -41,6 +41,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// already on screen — the margin is consumed, not repainted.
     private var scrolled = false
 
+    /// The last observed viewport top and the recent per-event
+    /// travel (signed, decayed) — the band leads the SCROLL
+    /// DIRECTION by a few frames of this.
+    private var scrollAnchor: CGFloat = 0
+    private var scrollStep: CGFloat = 0
+
     private var idleTicks = 0
 
     private static let idleGraceTicks = 30
@@ -59,6 +65,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// screen first and the repaint (worst 17.5ms, two frames) kept
     /// it there.
     private static let bandGuard: CGFloat = 64
+
+    /// How far the velocity lead may stretch the band — the paint
+    /// cost grows with it, so a bound keeps a wild flick's band
+    /// from covering the whole document.
+    private static let bandLeadMax: CGFloat = 1_200
 
     // ─── the sync probe (HIMARK_TRACE_SYNC) ───
     //
@@ -139,6 +150,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     /// Content coordinates read top-down inside a scroller, exactly
     /// as the engine lays out.
     override var isFlipped: Bool { scrollEmbedded }
+
+    /// OFF: responsive scrolling translates the layer tree off the
+    /// MAIN THREAD during momentum — the band can only follow on
+    /// main-thread boundsChanged, so a fast flick exposed regions
+    /// nobody painted (the black washes) and repositioned the band
+    /// against stale coordinates (the shake). The band machinery IS
+    /// this view's responsive scrolling; one authority.
+    override class var isCompatibleWithResponsiveScrolling: Bool { false }
 
     // ─── the event road: mint, dispatch, release ───
 
@@ -290,9 +309,14 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                   visible.minY.isFinite
             else { return }
             // The painted BAND: the viewport plus the margin, inside
-            // the document.
-            let top = max(0, visible.minY - Self.bandMargin)
-            let bottom = min(bounds.maxY, visible.maxY + Self.bandMargin)
+            // the document — LED in the travel direction by a few
+            // frames of the current velocity, so a flick's next
+            // steps land on painted rows.
+            let lead = min(max(Self.bandMargin, abs(scrollStep) * 4), Self.bandLeadMax)
+            let leadDown = scrollStep >= 0 ? lead : Self.bandMargin
+            let leadUp = scrollStep <= 0 ? lead : Self.bandMargin
+            let top = max(0, visible.minY - leadUp)
+            let bottom = min(bounds.maxY, visible.maxY + leadDown)
             let band = CGRect(
                 x: visible.minX, y: top, width: visible.width, height: bottom - top)
             // GEOMETRY AND PIXELS MOVE TOGETHER OR NOT AT ALL. One
@@ -530,6 +554,25 @@ class HimarkBridgeView: NSView, NSTextInputClient {
             return
         }
         scrolled = true
+        let top = visibleRect.minY
+        let step = top - scrollAnchor
+        scrollAnchor = top
+        // Decay toward the fresh step: momentum reads steady, a
+        // direction flip resets fast.
+        scrollStep = abs(step) > 0.5 ? (scrollStep * 0.5 + step * 0.5) : scrollStep * 0.5
+        // The EMERGENCY paint: the clip escaped the band — nothing
+        // correct is on screen for the exposed strip, and waiting
+        // for the tick shows the void for a frame. Paint NOW, inside
+        // the scroll's own transaction.
+        if scrollEmbedded, metalLayer.frame.width > 0.5 {
+            let visible = visibleRect.intersection(bounds)
+            if visible.height > 0.5,
+               visible.minY < metalLayer.frame.minY - 0.5
+                   || visible.maxY > metalLayer.frame.maxY + 0.5 {
+                render()
+                scrolled = false
+            }
+        }
         resumeDisplayLink()
     }
 
@@ -546,8 +589,11 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let bottomRoom = band.maxY - visible.maxY
         let needTop = visible.minY > 0.5
         let needBottom = visible.maxY < bounds.height - 0.5
-        return (needTop && topRoom < Self.bandGuard)
-            || (needBottom && bottomRoom < Self.bandGuard)
+        // The guard scales with speed: repaint while the remaining
+        // runway still covers the NEXT few frames of travel.
+        let guardRoom = max(Self.bandGuard, abs(scrollStep) * 2)
+        return (needTop && topRoom < guardRoom)
+            || (needBottom && bottomRoom < guardRoom)
     }
 
     // ─── overlay promotion: in-window layers, reconciled per frame ───
