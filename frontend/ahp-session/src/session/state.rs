@@ -768,6 +768,23 @@ impl Hosts {
     /// The session whose documents collection this is — the sibling
     /// road for an edge that holds a documents id and needs the
     /// collection next to it (the stripe-base resolver).
+    /// The owning session's KEY — what a mounted view remembers
+    /// itself under.
+    pub fn owner_key_of_documents(
+        store: &Store,
+        documents: Id<documents::OpenDocuments>,
+    ) -> Option<ahp_wire::SessionId> {
+        let hosts = store.get::<Hosts>()?;
+        hosts.entries.iter().find_map(|(host, entry)| {
+            entry.rows.iter().find_map(|(uri, state)| {
+                (state.documents == documents).then(|| ahp_wire::SessionId {
+                    host: *host,
+                    session: uri.clone(),
+                })
+            })
+        })
+    }
+
     pub fn owner_of_documents(
         store: &Store,
         documents: Id<documents::OpenDocuments>,

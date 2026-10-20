@@ -18,7 +18,9 @@ use ahp_wire::client::SessionUri;
 /// The native folder picker, asked from the SHELL (it owns the
 /// window): the effect's handler lives host-side.
 pub struct PickFoldersEffect {
-    pub window: ::workbench::window::WindowId,
+    /// The anchor id the host may sheet the picker to — a window's
+    /// or a mounted origin's raw id, 0 for none.
+    pub window: u64,
 }
 
 impl std::fmt::Display for PickFoldersEffect {
@@ -52,15 +54,17 @@ impl crate::commands::HimarkCommand for AddSessionFolders {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+        // The picker needs no window — the host sheets it where it
+        // likes; the ORIGIN rides along as the anchor id.
+        let anchor = crate::commands::bound_origin(self.id(), bound)
+            .map(|origin| origin.raw())
+            .unwrap_or(0);
         let server = self.server;
         let session = self.session.clone();
         fx.push(
-            AnyEffect::new(PickFoldersEffect { window }).map(move |locations| {
-                crate::shell::windowed(
-                    window,
+            AnyEffect::new(PickFoldersEffect { window: anchor }).map(move |locations| {
+                crate::shell::bound(
+                    imba::focus::Bindings::new(),
                     Arc::new(SessionFoldersPicked {
                         server,
                         session: session.clone(),
@@ -98,29 +102,27 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
     }
 
     fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        let Some(windows) = store.get::<::workbench::window::Windows>() else {
-            return;
-        };
+        // The picker needs no window — requiring one killed this
+        // road on every mounted shell. A window SHOWING the session
+        // anchors the sheet when one exists; 0 sheets app-modally.
         let target = ahp_wire::SessionId {
             host: self.server,
             session: self.session.clone(),
         };
-        let ids = windows.ids();
-        let Some(window) = ids
-            .iter()
-            .copied()
-            .find(|id| {
-                windows
-                    .entity(*id)
-                    .is_some_and(|entity| crate::workspace::entity_session(entity) == target)
+        let anchor = store
+            .get::<::workbench::window::Windows>()
+            .and_then(|windows| {
+                windows.ids().into_iter().find(|id| {
+                    windows
+                        .entity(*id)
+                        .is_some_and(|entity| crate::workspace::entity_session(entity) == target)
+                })
             })
-            .or(ids.first().copied())
-        else {
-            return;
-        };
+            .map(|window| window.raw())
+            .unwrap_or(0);
         let (server, session) = (self.server, self.session.clone());
         fx.push(
-            AnyEffect::new(PickFoldersEffect { window }).map(move |locations| {
+            AnyEffect::new(PickFoldersEffect { window: anchor }).map(move |locations| {
                 imba::command::Verb::Dynamic(Arc::new(ChatFoldersPicked {
                     server,
                     session: session.clone(),
@@ -220,12 +222,9 @@ impl crate::commands::HimarkCommand for SessionFoldersPicked {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        bound: &imba::focus::Bindings,
+        _bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
-            return;
-        };
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
             eprintln!(
                 "[higent] folder grant DROPPED: no client for {:?} ({})",
@@ -254,7 +253,12 @@ impl crate::commands::HimarkCommand for SessionFoldersPicked {
                         SessionWorkingDirectorySetAction { directory },
                     ),
                 })
-                .map(move |result| crate::shell::windowed(window, Arc::new(GrantAck { result }))),
+                .map(move |result| {
+                    crate::shell::bound(
+                        imba::focus::Bindings::new(),
+                        Arc::new(GrantAck { result }),
+                    )
+                }),
             );
         }
     }

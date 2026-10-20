@@ -62,3 +62,6 @@ canvas = { path = "../canvas", features = ["test-support"] }
 toc = { path = "../toc", features = ["test-support"] }
 ahp-session = { path = "../ahp-session", features = ["test-support"] }
 himarkdown = { path = "../plugins/himarkdown" }
+
+[build-dependencies]
+cbindgen = "0.29.4"

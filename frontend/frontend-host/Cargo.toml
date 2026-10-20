@@ -120,5 +120,3 @@ documents = { path = "../documents" }
 himark = { path = "../himark", features = ["test-support"] }
 editor = { path = "../editor" }
 
-[build-dependencies]
-cbindgen = "0.29.4"

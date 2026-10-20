@@ -332,7 +332,7 @@ impl Himark {
 
     /// The one `&mut store` door outside the batch loop: mutate,
     /// then outdate every standing frame.
-    pub(crate) fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
+    pub fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
         mutate(&mut self.store);
         self.invalidate_frames();
     }

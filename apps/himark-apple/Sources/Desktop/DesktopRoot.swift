@@ -855,11 +855,27 @@ struct DocumentPane: View {
 
 /// The floating glass pill naming the open document.
 struct DocumentPill: View {
-    let host: DesktopHost
+    @ObservedObject var host: DesktopHost
     let opened: DesktopHost.Opened
 
     var body: some View {
         HStack(spacing: 7) {
+            Button { host.goBack() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(host.back.isEmpty ? .quaternary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(host.back.isEmpty)
+            .keyboardShortcut("[", modifiers: .command)
+            Button { host.goForward() } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(host.forward.isEmpty ? .quaternary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(host.forward.isEmpty)
+            .keyboardShortcut("]", modifiers: .command)
             Image(systemName: opened.kind == UInt32(HIMARK_PLACE_DOCUMENT)
                 ? "doc.text" : "plus.forwardslash.minus")
                 .font(.system(size: 11))

@@ -418,8 +418,10 @@ final class HimarkEngine {
         id.withCString { himark_perform_command(engine, bridge, $0) }
     }
 
-    func openDemo(bridge: HimarkBridge) { himark_open_demo(engine, bridge) }
-    func openDemoWall(bridge: HimarkBridge) { himark_open_demo_wall(engine, bridge) }
+    func openDemo(bridge: HimarkBridge, name: String = "torture sample") {
+        name.withCString { himark_open_demo(engine, bridge, $0, UInt(strlen($0))) }
+    }
+    func openDemoWall(bridge: HimarkBridge) { openDemo(bridge: bridge, name: "wall of text") }
 
     func openDocument(bridge: HimarkBridge, name: String, source: String, primary: Bool = true) {
         name.withCString { namePtr in

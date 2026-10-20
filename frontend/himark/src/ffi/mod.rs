@@ -1806,6 +1806,83 @@ pub unsafe extern "C" fn himark_open_document(
     engine.open_document(bridge.raw, name, source, primary)
 }
 
+/// DEMO documents, registered by name — the demo plugin owns the
+/// builders (the crate sits above this one); the door only looks
+/// them up.
+#[derive(Clone, Default)]
+pub struct DemoDocs(
+    rpds::HashTrieMapSync<
+        String,
+        (
+            editor::location::ResourceLocation,
+            Arc<
+                dyn Fn(
+                        &imba::store::Store,
+                        &imba::ui::UiCtx,
+                        &editor::theme::Theme,
+                    ) -> editor::document::Document
+                    + Send
+                    + Sync,
+            >,
+        ),
+    >,
+);
+
+impl DemoDocs {
+    pub fn register(
+        store: &mut imba::store::Store,
+        name: &str,
+        location: editor::location::ResourceLocation,
+        build: Arc<
+            dyn Fn(
+                    &imba::store::Store,
+                    &imba::ui::UiCtx,
+                    &editor::theme::Theme,
+                ) -> editor::document::Document
+                + Send
+                + Sync,
+        >,
+    ) {
+        store.update::<DemoDocs>(|docs| {
+            docs.0.insert_mut(name.to_owned(), (location, build));
+        });
+    }
+}
+
+/// Open a registered demo document into the bridge — the debug
+/// harness road.
+#[no_mangle]
+pub unsafe extern "C" fn himark_open_demo(
+    engine: *mut HimarkEngine,
+    bridge: bridges::HimarkBridge,
+    name: *const c_char,
+    len: usize,
+) {
+    let Some(engine) = engine.as_mut() else {
+        return;
+    };
+    let Some(name) = str_from(name, len) else {
+        return;
+    };
+    let Some((location, build)) = engine
+        .app
+        .store()
+        .get::<DemoDocs>()
+        .and_then(|docs| docs.0.get(name).cloned())
+    else {
+        eprintln!("[himark] no demo document registered as '{name}'");
+        return;
+    };
+    use crate::app_ext::AppExt as _;
+    engine.app.open_async(
+        wid(bridge.raw),
+        name.to_owned(),
+        true,
+        Some(location),
+        move |store, ui, theme| build(store, ui, theme),
+    );
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn himark_has_text_focus(
     engine: *mut HimarkEngine,

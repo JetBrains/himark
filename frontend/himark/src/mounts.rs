@@ -929,6 +929,15 @@ fn mount_place_inner(
             );
             ::documents::OpenDocuments::put_document(store, collection, document, held);
             ::documents::OpenDocuments::touch(store, collection, document);
+            // Remembered to its session: the palette's command walk
+            // and the dispatch fork's session binding reach this
+            // pane — comments.add, save-all and friends work from
+            // the document pane, not just the chat's.
+            if let Some(key) =
+                ahp_session::session::state::Hosts::owner_key_of_documents(store, collection)
+            {
+                remember_session(store, id, key);
+            }
             // BARE — no imba scroller: the editor screen rides the
             // stage road, and the native scroller owns the physics
             // (docs/ui/imba-ffi.md, touch section).
@@ -941,6 +950,11 @@ fn mount_place_inner(
         let documents = place.documents;
         let view = place.view;
         return app.mount(move |store, ui, id, fx| {
+            if let Some(key) =
+                ahp_session::session::state::Hosts::owner_key_of_documents(store, documents)
+            {
+                remember_session(store, id, key);
+            }
             let mut panel = ::canvas::diff_pane::DiffPanelView::over(documents, view);
             // One file, one column: the phone shows diffs INLINE —
             // the pane's own layout road, persisted in the view

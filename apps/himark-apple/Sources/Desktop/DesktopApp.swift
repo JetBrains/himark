@@ -120,15 +120,44 @@ final class DesktopHost: NSObject, ObservableObject {
         executor.async { engine.runPending() }
     }
 
+    /// NAVIGATION HISTORY: landings stack, the chevrons and
+    /// cmd-[ / cmd-] walk it. The place HANDLES stay alive in the
+    /// stacks — a place re-mints on every revisit.
+    @Published private(set) var back: [Opened] = []
+    @Published private(set) var forward: [Opened] = []
+
+    private static let historyDepth = 50
+
     private func land(_ opened: Opened) {
-        if let standing = document { engine.release(place: standing.place) }
+        if let standing = document { back.append(standing) }
+        // A fresh landing forks history: the forward stack dies.
+        for entry in forward { engine.release(place: entry.place) }
+        forward = []
+        if back.count > Self.historyDepth {
+            engine.release(place: back.removeFirst().place)
+        }
         document = opened
         // Navigation goes THROUGH the host — the perfect spot to
         // command the tree: the files island follows every landing.
         engine.treeFollow(place: opened.place)
     }
 
+    func goBack() {
+        guard let previous = back.popLast() else { return }
+        if let standing = document { forward.append(standing) }
+        document = previous
+        engine.treeFollow(place: previous.place)
+    }
+
+    func goForward() {
+        guard let next = forward.popLast() else { return }
+        if let standing = document { back.append(standing) }
+        document = next
+        engine.treeFollow(place: next.place)
+    }
+
     /// The document pane closed: drop the record and the handle.
+    /// History entries keep theirs — the chevrons still walk back.
     func closedDocument(_ opened: Opened) {
         if document?.id == opened.id { document = nil }
         engine.release(place: opened.place)

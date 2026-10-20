@@ -62,7 +62,7 @@ targets:
           export PATH="$HOME/.cargo/bin:$PATH"
           cd "$SRCROOT/../.."
           cargo build -p frontend-host --release --target aarch64-apple-darwin
-          cp frontend/frontend-host/include/himark.h "$SRCROOT/himark.h"
+          cp frontend/himark/include/himark.h "$SRCROOT/himark.h"
     frameworks: [AppKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
     scheme: {}
 

@@ -10,11 +10,11 @@
 use std::sync::Arc;
 
 use himark::app::AppFonts;
-use himark::app_ext::AppExt;
 
 /// The engine, its C surface and every symbol the header speaks —
 /// re-exported whole so the staticlib carries them and the tests
 /// keep their vocabulary.
+pub use himark::app_ext::AppExt;
 pub use himark::ffi::*;
 
 /// The grammar pack as a plugin: every tree-sitter language this
@@ -216,39 +216,6 @@ pub fn agent_host_autostart() -> bool {
 #[no_mangle]
 pub extern "C" fn himark_create(callbacks: HimarkEngineCallbacks) -> *mut HimarkEngine {
     Box::into_raw(Box::new(production_engine(Some(callbacks))))
-}
-
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_demo(
-    engine: *mut HimarkEngine,
-    bridge: himark::ffi::bridges::HimarkBridge,
-) {
-    if let Some(engine) = engine.as_mut() {
-        engine.app.open_async(
-            ::workbench::window::WindowId::from_raw(bridge.raw),
-            "torture sample".to_owned(),
-            true,
-            Some(demo::demo_location("torture sample")),
-            demo::monster_document,
-        );
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_demo_wall(
-    engine: *mut HimarkEngine,
-    bridge: himark::ffi::bridges::HimarkBridge,
-) {
-    if let Some(engine) = engine.as_mut() {
-        engine.app.open_async(
-            ::workbench::window::WindowId::from_raw(bridge.raw),
-            "wall of text".to_owned(),
-            true,
-            Some(demo::demo_location("wall of text")),
-            demo::wall_of_text_document,
-        );
-    }
 }
 
 

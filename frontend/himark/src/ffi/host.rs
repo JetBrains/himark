@@ -291,7 +291,7 @@ impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFolde
             return Vec::new();
         };
         let request = self.0.requests.begin();
-        unsafe { pick(self.0.callbacks.ctx, request, effect.window.raw()) };
+        unsafe { pick(self.0.callbacks.ctx, request, effect.window) };
         self.0.requests.response(request).await
     }
 }

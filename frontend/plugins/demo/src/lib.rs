@@ -46,6 +46,22 @@ impl himark::plugin::Plugin for DemoPlugin {
         app.register_command(std::sync::Arc::new(tree_demo::OpenTreeDemo));
         app.register_command(std::sync::Arc::new(OpenMonsterDemo));
         app.register_command(std::sync::Arc::new(OpenWallOfTextDemo));
+        // The FFI door's lookups — the debug harness opens these by
+        // name through `himark_open_demo`.
+        app.setup(|store| {
+            himark::ffi::DemoDocs::register(
+                store,
+                "torture sample",
+                demo_location("torture sample"),
+                std::sync::Arc::new(monster_document),
+            );
+            himark::ffi::DemoDocs::register(
+                store,
+                "wall of text",
+                demo_location("wall of text"),
+                std::sync::Arc::new(wall_of_text_document),
+            );
+        });
     }
 }
 
