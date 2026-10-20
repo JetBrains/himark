@@ -16,6 +16,28 @@ use crate::app::AppEffects;
 
 pub(crate) type EffectDispatcher = Arc<dyn Fn(AppCommand) + Send + Sync>;
 
+/// A thread-safe door to the UI loop: post one command from any
+/// thread and the host's inbox carries it into the next drain —
+/// what a background event source (a terminal's pty among them)
+/// uses where an effect landing would be too late. Filled at
+/// `attach_host`; a post before that (or on a hostless build)
+/// drops with a note.
+#[derive(Clone, Default)]
+pub struct Poster(Arc<std::sync::OnceLock<EffectDispatcher>>);
+
+impl Poster {
+    pub fn post(&self, command: AppCommand) {
+        match self.0.get() {
+            Some(dispatch) => dispatch(command),
+            None => eprintln!("[effects] a post before any host attached — dropped"),
+        }
+    }
+
+    pub(crate) fn fill(&self, dispatcher: EffectDispatcher) {
+        let _ = self.0.set(dispatcher);
+    }
+}
+
 pub(crate) type AppEffect = imba::effect::AnyEffect<AppCommand>;
 
 pub(crate) fn trace_effects(message: impl FnOnce() -> String) {

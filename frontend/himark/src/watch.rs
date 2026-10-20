@@ -3,6 +3,16 @@
 
 use imba::store::Store;
 
+/// The reload command as a plugin.
+pub struct WatchPlugin;
+
+impl crate::plugin::Plugin for WatchPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(ReloadDocument));
+    }
+}
+
 pub struct ReloadDocument;
 
 impl crate::commands::HimarkCommand for ReloadDocument {

@@ -14,6 +14,15 @@ use imba::store::Store;
 /// is the save.rs/fsroute debt class — a catalog consult at a
 /// DocumentCommand border; burns when generic document commands learn
 /// their session.
+/// The peek feature's document command as a plugin.
+pub struct PeekPlugin;
+
+impl crate::plugin::Plugin for PeekPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        app.register_document_command(go_to_reference());
+    }
+}
+
 pub fn go_to_reference() -> Arc<locations::peek::GoToReference> {
     Arc::new(locations::peek::GoToReference {
         lists: Arc::new(|store, documents| {

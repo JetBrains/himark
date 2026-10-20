@@ -8,6 +8,18 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
+/// The history feature as a plugin: the dock toggle and its
+/// toolbar button.
+pub struct HistoryPlugin;
+
+impl crate::plugin::Plugin for HistoryPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(ToggleHistoryView));
+        app.register_toolbar_button(toolbar_button());
+    }
+}
+
 pub struct ToggleHistoryView;
 
 impl crate::commands::HimarkCommand for ToggleHistoryView {

@@ -122,6 +122,22 @@ impl imba::effect::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler
     }
 }
 
+/// Code navigation as a plugin: the gather handler and the go-to
+/// document commands. The wire route for the definition ask stays
+/// the host's (it closes over its client directory).
+pub struct CodePlugin;
+
+impl himark::plugin::Plugin for CodePlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        app.register_handler::<CodeNavigationEffect>(CodeNavigationHandler {
+            caller: app.effect_caller(),
+        });
+        app.register_document_command(std::sync::Arc::new(GoDefinition));
+        app.register_document_command(std::sync::Arc::new(GoReferences));
+        app.register_document_command(std::sync::Arc::new(GoImplementations));
+    }
+}
+
 /// The landing half of a navigation ask — public so a shell test can
 /// hand a canvas a fixed outcome without a language server.
 #[doc(hidden)]

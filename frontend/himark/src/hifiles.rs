@@ -73,6 +73,18 @@ fn remove_from_session(
     })
 }
 
+/// The files feature as a plugin: the tree toggle and its toolbar
+/// button.
+pub struct FilesPlugin;
+
+impl crate::plugin::Plugin for FilesPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(ToggleSessionTree));
+        app.register_toolbar_button(toolbar_button());
+    }
+}
+
 pub struct ToggleSessionTree;
 
 impl crate::commands::HimarkCommand for ToggleSessionTree {

@@ -13,7 +13,6 @@ pub mod host;
 use himark::app::AppFonts;
 use host::{HimarkHostCallbacks, HimarkLocation};
 mod lsproute;
-mod sessions;
 use ahp_wire::uris;
 
 use demo::demo_location;
@@ -415,47 +414,6 @@ impl himark::plugin::Plugin for LanguagePack {
     }
 }
 
-/// The SESSIONS browser as a plugin: hosts, their folders, their
-/// sessions and the speed search over them — the engine's drawer,
-/// the same one the workbench stands in a side slot. Its asks are
-/// the mounted road's: a pick ENTERS the session and then hands the
-/// shell the place naming it. Host-local because the pick command
-/// (`sessions::ShowSession`) is this crate's.
-struct SessionsDrawerPlugin;
-
-impl himark::plugin::Plugin for SessionsDrawerPlugin {
-    fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
-        app.register_place_arm(Arc::new(|store, ui, id, _fx, place| {
-            let place = place.place::<himark::places::SessionsPlace>()?;
-            let showing = place.0.clone();
-            let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
-                open_session: Arc::new(move |_store| Some(showing.clone())),
-                open_row: Arc::new(move |server, session| {
-                    imba::command::Verb::once(crate::sessions::ShowSession {
-                        origin: id,
-                        server,
-                        session,
-                    })
-                }),
-                new_session: Arc::new(move |_store, server| {
-                    imba::command::Verb::once(himark::higent::open_session::CreateHeadless {
-                        host: Some(server),
-                    })
-                }),
-                add_host: Arc::new(move |url| {
-                    himark::app::shell_verb(himark::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        Arc::new(himark::higent::drawer::AddHost { url }),
-                    ))
-                }),
-            });
-            Some(Box::new(ahp_session::session::drawer::AgentsPanel::open(
-                store, ui, asks,
-            )))
-        }));
-    }
-}
-
 /// Everything this host installs beyond its own FFI and wiring —
 /// each crate registers its own pieces, in this order.
 fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
@@ -464,12 +422,22 @@ fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
         Box::new(himarkdown::MarkdownPlugin),
         Box::new(palette::PalettePlugin),
         Box::new(peeker::PeekerPlugin),
-        Box::new(SessionsDrawerPlugin),
+        Box::new(himark::higent::SessionsPlugin),
         Box::new(himark::diff_pane::DiffPanePlugin),
         Box::new(demo::DemoPlugin),
         Box::new(himark::hiahp::AhpPlugin),
         Box::new(himark::hicomments::CommentsPlugin),
         Box::new(himark::higent::AgentsPlugin),
+        Box::new(himark::hiterminal::TerminalPlugin),
+        Box::new(himark::hichanges::ChangesPlugin),
+        Box::new(himark::hihistory::HistoryPlugin),
+        Box::new(himark::hisearch::SearchPlugin),
+        Box::new(himark::hifiles::FilesPlugin),
+        Box::new(himark::save::SavePlugin),
+        Box::new(himark::watch::WatchPlugin),
+        Box::new(himark::hipeek::PeekPlugin),
+        Box::new(hicode::CodePlugin),
+        Box::new(hiscript::plugin::ScriptPlugin),
     ]
 }
 
@@ -660,24 +628,6 @@ impl HimarkEngine {
             );
         }
 
-        let refresh: Arc<
-            dyn Fn(workbench::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync,
-        > = {
-            let inbox = inbox.clone();
-            let wake = wake.clone();
-            Arc::new(move |window, flag| {
-                inbox
-                    .lock()
-                    .expect("inbox")
-                    .push_back(himark::app::windowed(
-                        window,
-                        Arc::new(host::RefreshTerminal(flag)),
-                    ));
-                wake.fire();
-            })
-        };
-        app.register_handler::<host::NewTerminalEffect>(host::SessionTerminalHandler { refresh });
-        app.register_command(Arc::new(host::OpenTerminal));
         documents::OpenDocuments::install_hook(
             &mut app.store_mut(),
             Arc::new(docsync::DocsyncHook {
@@ -1342,19 +1292,6 @@ impl HimarkEngine {
             self.app
                 .observe_stripe_bases(Arc::new(fsroute::resolve_base));
             self.app
-                .register_command(Arc::new(himark::hichanges::ToggleChangesView));
-
-            self.app
-                .register_command(Arc::new(himark::watch::ReloadDocument));
-            self.app
-                .register_command(Arc::new(himark::hichanges::RefetchChanges::default()));
-            self.app
-                .register_toolbar_button(himark::hichanges::toolbar_button());
-            self.app
-                .register_command(Arc::new(himark::hihistory::ToggleHistoryView));
-            self.app
-                .register_toolbar_button(himark::hihistory::toolbar_button());
-            self.app
                 .register_handler::<hicode::FindDefinitionEffect>(lsproute::DefinitionRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
@@ -1379,38 +1316,6 @@ impl HimarkEngine {
                     },
                 );
 
-            editor::change_sink::InstalledChangeSink::install(
-                &mut self.app.store_mut(),
-                Arc::new(docsync::SyncSink),
-            );
-            self.app.register_handler::<hicode::CodeNavigationEffect>(
-                hicode::CodeNavigationHandler {
-                    caller: self.app.effect_caller(),
-                },
-            );
-            self.app
-                .register_document_command(Arc::new(hicode::GoDefinition));
-            self.app
-                .register_document_command(Arc::new(hicode::GoReferences));
-            self.app
-                .register_document_command(Arc::new(hicode::GoImplementations));
-            self.app
-                .register_document_command(himark::hipeek::go_to_reference());
-            self.app
-                .register_document_command(Arc::new(host::OpenWorkingCopy));
-        }
-        if capabilities.store_document && !installed.store_document {
-            self.app
-                .register_document_command(Arc::new(himark::save::save_document(true)));
-            self.app.register_command(Arc::new(himark::save::SaveAll));
-
-            self.app
-                .register_editor_command(Arc::new(hiscript::plugin::RunScript));
-            let caller = self.app.effect_caller();
-            self.app
-                .register_handler::<hiscript::plugin::RunScriptEffect>(
-                    hiscript::plugin::RunScriptHandler { caller },
-                );
         }
         if capabilities.list_directory && !installed.list_directory {
             self.app
@@ -1429,24 +1334,9 @@ impl HimarkEngine {
                         directory: Arc::clone(&self.clients),
                     },
                 );
-            self.app
-                .register_command(Arc::new(himark::hisearch::ToggleSearchView));
-            self.app
-                .register_command(Arc::new(himark::hisearch::FocusSearchView));
-            self.app
-                .register_toolbar_button(himark::hisearch::toolbar_button());
         }
 
         self.agent_host_filesystem.include(capabilities);
-        if !(installed.fetch_document && installed.list_directory)
-            && self.agent_host_filesystem.fetch_document
-            && self.agent_host_filesystem.list_directory
-        {
-            self.app
-                .register_command(Arc::new(himark::hifiles::ToggleSessionTree));
-            self.app
-                .register_toolbar_button(himark::hifiles::toolbar_button());
-        }
     }
 
     pub fn set_host(&mut self, callbacks: HimarkHostCallbacks) {

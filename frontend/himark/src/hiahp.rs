@@ -35,6 +35,12 @@ impl crate::plugin::Plugin for AhpPlugin {
             Arc::clone(&cx.diff_policy),
         );
         app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
+        app.setup(|store| {
+            ::editor::change_sink::InstalledChangeSink::install(
+                store,
+                Arc::new(::ahp_docsync::SyncSink),
+            )
+        });
     }
 }
 

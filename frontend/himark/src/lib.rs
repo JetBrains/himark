@@ -16,6 +16,7 @@ pub mod hihistory;
 pub mod himark;
 pub mod hipeek;
 pub mod hisearch;
+pub mod hiterminal;
 pub mod keymap;
 pub mod modal;
 pub mod mounts;

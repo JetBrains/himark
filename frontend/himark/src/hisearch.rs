@@ -132,6 +132,19 @@ impl crate::commands::HimarkCommand for ShowFeedInDock {
     }
 }
 
+/// The search feature as a plugin: the toggles and the toolbar
+/// button.
+pub struct SearchPlugin;
+
+impl crate::plugin::Plugin for SearchPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(ToggleSearchView));
+        app.register_command(std::sync::Arc::new(FocusSearchView));
+        app.register_toolbar_button(toolbar_button());
+    }
+}
+
 pub struct ToggleSearchView;
 
 impl crate::commands::HimarkCommand for ToggleSearchView {

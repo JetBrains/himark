@@ -327,6 +327,18 @@ fn show_now_or_with_store(
     Some(shows.remove(at))
 }
 
+/// The script runner as a plugin: the editor command and its
+/// effect handler.
+pub struct ScriptPlugin;
+
+impl himark::plugin::Plugin for ScriptPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        app.register_editor_command(std::sync::Arc::new(RunScript));
+        let caller = app.effect_caller();
+        app.register_handler::<RunScriptEffect>(RunScriptHandler { caller });
+    }
+}
+
 pub struct RunScript;
 
 impl editor::dynamic::DynamicEditorCommand for RunScript {

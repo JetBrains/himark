@@ -1625,7 +1625,6 @@ dependencies = [
  "serde_json",
  "skia-safe",
  "tempfile",
- "terminals",
  "text",
  "tokio",
  "tracing",

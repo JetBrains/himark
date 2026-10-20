@@ -12,6 +12,20 @@ use std::sync::Arc;
 use editor::location::ResourceLocation;
 use imba::store::Store;
 
+/// The changes feature as a plugin: the dock toggle and its
+/// toolbar button, the palette refetch, the working-copy open.
+pub struct ChangesPlugin;
+
+impl crate::plugin::Plugin for ChangesPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(Arc::new(ToggleChangesView));
+        app.register_command(Arc::new(RefetchChanges::default()));
+        app.register_toolbar_button(toolbar_button());
+        app.register_document_command(Arc::new(OpenWorkingCopy));
+    }
+}
+
 pub struct OpenDiffForPair {
     pub old: ResourceLocation,
     pub new: ResourceLocation,
@@ -207,3 +221,86 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 #[cfg(test)]
 mod tests;
+
+/// Open a scoped (vcs) location's WORKING COPY in an ordinary pane —
+/// the diff editor's "open in full" for changes-scoped documents.
+pub(crate) struct OpenWorkingCopy;
+
+impl documents::dynamic::DocumentCommand for OpenWorkingCopy {
+    fn id(&self) -> &'static str {
+        "workbench.open-in-full"
+    }
+    fn name(&self) -> String {
+        "Open Working Copy".to_owned()
+    }
+
+    fn offers_at(&self, location: &ResourceLocation) -> bool {
+        changesview::hichanges::scoped(location)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn perform(
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _documents: imba::store::Id<documents::OpenDocuments>,
+        _document_id: documents::DocumentId,
+        document: &mut editor::document::Document,
+        editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
+        _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        _fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
+    ) {
+        let working =
+            changesview::hichanges::working_copy(location).unwrap_or_else(|| location.clone());
+        let byte = document.caret_byte(editor);
+        let mut view = document.text().view();
+        let at = documents::text_ext::line_col_at(&mut view, byte as usize);
+        crate::commands::AppRequests::push(
+            store,
+            Arc::new(ShowWorkingCopy {
+                location: working,
+                target: at..at,
+            }),
+        );
+    }
+}
+
+struct ShowWorkingCopy {
+    location: editor::location::ResourceLocation,
+    target: std::ops::Range<documents::text_ext::LineCol>,
+}
+
+impl crate::commands::HimarkCommand for ShowWorkingCopy {
+    fn id(&self) -> &'static str {
+        "vcs.apply-open-working-copy"
+    }
+    fn name(&self) -> String {
+        "Open Working Copy".to_owned()
+    }
+    fn perform(
+        &self,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        // The SEATED SHELL opens the located document — the open
+        // effect reuses a registered document and honors the caret.
+        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+            return;
+        };
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            crate::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                crate::places::DocumentPlace {
+                    location: self.location.clone(),
+                    target: Some(self.target.clone()),
+                    focus: true,
+                },
+                fx,
+            )
+        });
+    }
+}

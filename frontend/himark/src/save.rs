@@ -26,6 +26,18 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
     )
 }
 
+/// The save feature as a plugin: save-all and the per-document
+/// save command.
+pub struct SavePlugin;
+
+impl crate::plugin::Plugin for SavePlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(SaveAll));
+        app.register_document_command(std::sync::Arc::new(save_document(true)));
+    }
+}
+
 /// Stores every open, modified, file-backed document — each through
 /// its own lane (superseding that document's in-flight save), landing
 /// one `AppCommand::DocumentStored` per store.

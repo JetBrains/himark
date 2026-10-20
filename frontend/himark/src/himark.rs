@@ -107,6 +107,8 @@ pub struct Himark {
 
     pub(crate) ui: std::rc::Rc<UiCtx>,
 
+    pub(crate) poster: crate::effects::Poster,
+
     pub(crate) stats: Stats,
 
     /// The mounted views, one each — a workbench window is just
@@ -268,6 +270,7 @@ impl Himark {
         let engine = Self {
             store,
             ui,
+            poster: crate::effects::Poster::default(),
             stats: Stats::new(overlay_font),
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
             effects: crate::effects::EffectLauncher::new(),
@@ -1140,8 +1143,16 @@ impl Himark {
         dispatcher: crate::effects::EffectDispatcher,
         scheduler: Arc<dyn Fn() + Send + Sync>,
     ) -> crate::effects::BackgroundRunner {
+        self.poster.fill(Arc::clone(&dispatcher));
         self.effects
             .attach(dispatcher, scheduler, Arc::clone(&self.handlers))
+    }
+
+    /// The thread-safe command door — see [`crate::effects::Poster`].
+    /// Handed out before attach, usable after: the cell fills when
+    /// the host attaches.
+    pub fn poster(&self) -> crate::effects::Poster {
+        self.poster.clone()
     }
 
     pub fn register_handler<E: imba::effect::Effect>(

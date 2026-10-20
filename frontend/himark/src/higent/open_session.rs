@@ -498,3 +498,34 @@ impl HimarkCommand for OpenSessionRow {
         open_session(store, window, self.server, self.session.clone(), true, fx);
     }
 }
+
+/// A sessions-drawer row was picked (the MOUNTED road). Entering the
+/// session is the engine's half (subscribe, adopt, relaunch the
+/// poll); the other half is the shell's, which has to re-point its
+/// views — so the place naming the session goes to the shell through
+/// the one door it has.
+pub struct ShowSession {
+    pub origin: crate::bridge::ViewBridgeId,
+    pub server: ahp_wire::client::HostId,
+    pub session: ahp_wire::client::SessionUri,
+}
+
+impl imba::command::DynamicOnceCommand for ShowSession {
+    fn perform(
+        self: Box<Self>,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
+    ) {
+        let key = ahp_wire::SessionId {
+            host: self.server,
+            session: self.session.clone(),
+        };
+        Box::new(EnterHeadless {
+            server: self.server,
+            session: self.session,
+        })
+        .perform(store, ui, fx);
+        crate::shell::navigate_origin(store, ui, self.origin, crate::places::ChatPlace(key), fx);
+    }
+}
