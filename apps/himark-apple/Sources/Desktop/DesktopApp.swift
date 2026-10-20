@@ -80,21 +80,21 @@ final class DesktopHost: NSObject, ObservableObject {
         HimarkBridgeView.overlayHost = { window in
             window.contentView.flatMap(OverlayCanvasView.find)
         }
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-        engine.setWake(context: ctx) { ctx in
-            let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
-            DispatchQueue.main.async { host.drain() }
+        // The engine took its callbacks AT CREATION; the seat hooks
+        // them to this host now that it stands.
+        engine.seat.onWake = { [weak self] in
+            DispatchQueue.main.async { self?.drain() }
         }
-        engine.setEffectWake(context: ctx) { ctx in
-            let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
-            host.executor.async { host.engine.runPending() }
+        engine.seat.onEffectWake = { [weak self] in
+            guard let self else { return }
+            self.executor.async { [weak self] in self?.engine.runPending() }
         }
         // The navigate callback: fired mid-batch on the main thread —
         // record the opened place and return; the pane mints later.
-        engine.setShell(context: ctx) { ctx, _, place, kind, title, titleLen, focus in
-            let host = Unmanaged<DesktopHost>.fromOpaque(ctx!).takeUnretainedValue()
+        engine.seat.onNavigate = { [weak self] _, place, kind, title, focus in
+            guard let self else { return false }
             if kind == UInt32(HIMARK_PLACE_DISMISS) {
-                DispatchQueue.main.async { host.dismissals += 1 }
+                DispatchQueue.main.async { self.dismissals += 1 }
                 return true
             }
             if kind == UInt32(HIMARK_PLACE_CHAT) {
@@ -102,25 +102,18 @@ final class DesktopHost: NSObject, ObservableObject {
                 // row and the engine entered it. Which session the
                 // place names rides the handle.
                 let selected = DesktopHost.Selected(
-                    host: host.engine.placeSessionHost(place),
-                    uri: host.engine.placeSessionUri(place),
+                    host: self.engine.placeSessionHost(place),
+                    uri: self.engine.placeSessionUri(place),
                     title: "")
-                host.engine.release(place: place)
-                DispatchQueue.main.async { host.showSession(selected) }
+                self.engine.release(place: place)
+                DispatchQueue.main.async { self.showSession(selected) }
                 return true
             }
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
                 || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
-            var name = ""
-            if let title, titleLen > 0 {
-                name = String(
-                    bytes: UnsafeRawBufferPointer(
-                        start: UnsafeRawPointer(title), count: Int(titleLen)),
-                    encoding: .utf8) ?? ""
-            }
-            let opened = Opened(place: place, kind: kind, title: name, focus: focus)
-            DispatchQueue.main.async { host.land(opened) }
+            let opened = Opened(place: place, kind: kind, title: title, focus: focus)
+            DispatchQueue.main.async { self.land(opened) }
             return true
         }
         let engine = self.engine

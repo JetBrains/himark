@@ -102,8 +102,47 @@ final class HimarkEngine {
         }
     }
 
+    /// The engine's boot seat: the C callbacks land here (from any
+    /// thread), the HOST hooks in once its own init completes — the
+    /// cycle (callbacks close over the object that owns the engine)
+    /// unknotted without a half-wired engine. A callback firing
+    /// before the host hooked in is dropped, same as the old
+    /// set-later road.
+    final class Seat {
+        var onWake: (() -> Void)?
+        var onEffectWake: (() -> Void)?
+        /// (origin, place, kind, title, focus) -> claimed. Fired
+        /// mid-batch on the main thread — RECORD and return.
+        var onNavigate: ((HimarkBridge, HimarkPlace, UInt32, String, Bool) -> Bool)?
+    }
+
+    let seat = Seat()
+
     init() {
-        engine = himark_create()
+        let ctx = Unmanaged.passUnretained(seat).toOpaque()
+        engine = himark_create(HimarkEngineCallbacks(
+            ctx: ctx,
+            wake: { ctx in
+                guard let ctx else { return }
+                Unmanaged<Seat>.fromOpaque(ctx).takeUnretainedValue().onWake?()
+            },
+            effect_wake: { ctx in
+                guard let ctx else { return }
+                Unmanaged<Seat>.fromOpaque(ctx).takeUnretainedValue().onEffectWake?()
+            },
+            on_navigate: { ctx, origin, place, kind, title, titleLen, focus in
+                guard let ctx else { return false }
+                let seat = Unmanaged<Seat>.fromOpaque(ctx).takeUnretainedValue()
+                guard let navigate = seat.onNavigate else { return false }
+                var name = ""
+                if let title, titleLen > 0 {
+                    name = String(
+                        bytes: UnsafeRawBufferPointer(
+                            start: UnsafeRawPointer(title), count: Int(titleLen)),
+                        encoding: .utf8) ?? ""
+                }
+                return navigate(origin, place, kind, name, focus)
+            }))
     }
 
     deinit {
@@ -116,16 +155,6 @@ final class HimarkEngine {
 
     func setChromeClearance(_ width: Float) {
         himark_set_chrome_clearance(engine, width)
-    }
-
-    func setWake(context: UnsafeMutableRawPointer,
-                 callback: @escaping @convention(c) (UnsafeMutableRawPointer?) -> Void) {
-        himark_set_wake(engine, callback, context)
-    }
-
-    func setEffectWake(context: UnsafeMutableRawPointer,
-                       callback: @escaping @convention(c) (UnsafeMutableRawPointer?) -> Void) {
-        himark_set_effect_wake(engine, callback, context)
     }
 
     @discardableResult
@@ -174,11 +203,23 @@ final class HimarkEngine {
         for index in 0..<count {
             rows.append(CatalogSession(
                 host: himark_catalog_session_host(engine, catalog, index),
-                uri: sizedString { himark_catalog_session_uri(engine, catalog, index, $0, $1) } ?? "",
-                title: sizedString { himark_catalog_session_title(engine, catalog, index, $0, $1) } ?? "",
-                provider: sizedString { himark_catalog_session_provider(engine, catalog, index, $0, $1) } ?? "",
+                uri: sizedString {
+                    himark_catalog_session_string(
+                        engine, catalog, index, UInt32(HIMARK_SESSION_URI), $0, $1)
+                } ?? "",
+                title: sizedString {
+                    himark_catalog_session_string(
+                        engine, catalog, index, UInt32(HIMARK_SESSION_TITLE), $0, $1)
+                } ?? "",
+                provider: sizedString {
+                    himark_catalog_session_string(
+                        engine, catalog, index, UInt32(HIMARK_SESSION_PROVIDER), $0, $1)
+                } ?? "",
                 status: himark_catalog_session_status(engine, catalog, index),
-                modified: sizedString { himark_catalog_session_modified(engine, catalog, index, $0, $1) } ?? ""
+                modified: sizedString {
+                    himark_catalog_session_string(
+                        engine, catalog, index, UInt32(HIMARK_SESSION_MODIFIED), $0, $1)
+                } ?? ""
             ))
         }
         return rows
@@ -208,27 +249,31 @@ final class HimarkEngine {
         /// The command palette and the sessions browser — engine
         /// views, both: the shell paints the glass and nothing else.
         case palette, sessions
+
+        /// The one minting door's discriminant — the engine's
+        /// HIMARK_PLACE_* vocabulary.
+        var placeKind: UInt32 {
+            switch self {
+            case .chat: UInt32(HIMARK_PLACE_CHAT)
+            case .changes: UInt32(HIMARK_PLACE_CHANGES)
+            case .files: UInt32(HIMARK_PLACE_FILES)
+            case .transcript: UInt32(HIMARK_PLACE_CHAT_TRANSCRIPT)
+            case .composer: UInt32(HIMARK_PLACE_CHAT_COMPOSER)
+            case .changesCanvas: UInt32(HIMARK_PLACE_CHANGES_CANVAS)
+            case .history: UInt32(HIMARK_PLACE_HISTORY)
+            case .search: UInt32(HIMARK_PLACE_SEARCH)
+            case .comments: UInt32(HIMARK_PLACE_COMMENTS)
+            case .peeker: UInt32(HIMARK_PLACE_PEEKER)
+            case .palette: UInt32(HIMARK_PLACE_PALETTE)
+            case .sessions: UInt32(HIMARK_PLACE_SESSIONS)
+            }
+        }
     }
 
     func mint(_ kind: SessionViewKind, host: UInt64, uri: String) -> HimarkBridge {
         let place: HimarkPlace = uri.withCString { cstr in
-            switch kind {
-            case .chat: himark_place_chat(engine, host, cstr, UInt(strlen(cstr)))
-            case .changes: himark_place_changes(engine, host, cstr, UInt(strlen(cstr)))
-            case .changesCanvas:
-                himark_place_changes_canvas(engine, host, cstr, UInt(strlen(cstr)))
-            case .history: himark_place_history(engine, host, cstr, UInt(strlen(cstr)))
-            case .search: himark_place_search(engine, host, cstr, UInt(strlen(cstr)))
-            case .comments: himark_place_comments(engine, host, cstr, UInt(strlen(cstr)))
-            case .peeker: himark_place_peeker(engine, host, cstr, UInt(strlen(cstr)))
-            case .palette: himark_place_palette(engine, host, cstr, UInt(strlen(cstr)))
-            case .sessions: himark_place_sessions(engine, host, cstr, UInt(strlen(cstr)))
-            case .files: himark_place_files(engine, host, cstr, UInt(strlen(cstr)))
-            case .transcript:
-                himark_place_chat_transcript(engine, host, cstr, UInt(strlen(cstr)))
-            case .composer:
-                himark_place_chat_composer(engine, host, cstr, UInt(strlen(cstr)))
-            }
+            himark_place_session_view(
+                engine, kind.placeKind, host, cstr, UInt(strlen(cstr)))
         }
         guard place.raw != 0 else { return HimarkBridge(raw: 0) }
         defer { himark_place_release(engine, place) }
@@ -296,10 +341,6 @@ final class HimarkEngine {
     /// the session's files tree stands on the landed location.
     func treeFollow(place: HimarkPlace) {
         _ = himark_tree_follow(engine, place)
-    }
-
-    func setShell(context: UnsafeMutableRawPointer, onNavigate: HimarkNavigateFn) {
-        himark_set_shell(engine, context, onNavigate)
     }
 
     // ─── the normalized bridge surface: handles, never pointers ───

@@ -21,14 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine = HimarkEngine()
 
         engine.setChromeClearance(130.0)
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-        engine.setWake(context: ctx) { ctx in
-            let delegate = Unmanaged<AppDelegate>.fromOpaque(ctx!).takeUnretainedValue()
-            DispatchQueue.main.async { delegate.drain() }
+        engine.seat.onWake = { [weak self] in
+            DispatchQueue.main.async { self?.drain() }
         }
-        engine.setEffectWake(context: ctx) { ctx in
-            let delegate = Unmanaged<AppDelegate>.fromOpaque(ctx!).takeUnretainedValue()
-            delegate.executor.async { delegate.engine.runPending() }
+        engine.seat.onEffectWake = { [weak self] in
+            self?.executor.async { [weak self] in self?.engine.runPending() }
         }
 
         HostBridge.install(engine: engine) { [weak self] in self?.repaintAll() }

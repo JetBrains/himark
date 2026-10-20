@@ -1022,49 +1022,28 @@ unsafe fn catalog_session_string(
     })
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_uri(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, |row| row.uri.clone())
-}
+/// Which string `himark_catalog_session_string` reads.
+pub const HIMARK_SESSION_URI: u32 = 0;
+pub const HIMARK_SESSION_TITLE: u32 = 1;
+pub const HIMARK_SESSION_PROVIDER: u32 = 2;
+pub const HIMARK_SESSION_MODIFIED: u32 = 3;
 
+/// ONE sized-string door for the catalog row's text fields.
 #[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_title(
+pub unsafe extern "C" fn himark_catalog_session_string(
     engine: *mut HimarkEngine,
     catalog: HimarkCatalog,
     index: usize,
+    field: u32,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, |row| row.title.clone())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_provider(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, |row| row.provider.clone())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_modified(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, |row| {
-        row.modified_at.clone()
+    catalog_session_string(engine, catalog, index, out, cap, move |row| match field {
+        HIMARK_SESSION_URI => row.uri.clone(),
+        HIMARK_SESSION_TITLE => row.title.clone(),
+        HIMARK_SESSION_PROVIDER => row.provider.clone(),
+        HIMARK_SESSION_MODIFIED => row.modified_at.clone(),
+        _ => String::new(),
     })
 }
 
@@ -1132,149 +1111,39 @@ unsafe fn mint_session_place(
     }
 }
 
+/// ONE minting door for every session view: `kind` speaks the
+/// `HIMARK_PLACE_*` vocabulary (the session-view kinds — the READY
+/// kinds `DOCUMENT`/`DIFF`/`CANVAS` and `DISMISS` are the navigate
+/// callback's and refuse here).
 #[no_mangle]
-pub unsafe extern "C" fn himark_place_chat(
+pub unsafe extern "C" fn himark_place_session_view(
     engine: *mut HimarkEngine,
+    kind: u32,
     host: u64,
     uri: *const c_char,
     len: usize,
 ) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::ChatPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_chat_transcript(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::ChatTranscriptPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_chat_composer(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::ChatComposerPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_changes(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::ChangesPlace(session))
-    })
-}
-
-/// The desktop flavor: rows open the DIFF CANVAS, not one file.
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_changes_canvas(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::ChangesCanvasPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_history(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::HistoryPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_search(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::SearchPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_comments(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::CommentsPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_peeker(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::PeekerPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_palette(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::PalettePlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_sessions(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::SessionsPlace(session))
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_files(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    mint_session_place(engine, host, uri, len, |session| {
-        hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(session))
-    })
+    use hikit::navigation::NavigationLocation;
+    use himark::places::*;
+    let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
+        HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),
+        HIMARK_PLACE_CHAT_TRANSCRIPT => |s| NavigationLocation::new(ChatTranscriptPlace(s)),
+        HIMARK_PLACE_CHAT_COMPOSER => |s| NavigationLocation::new(ChatComposerPlace(s)),
+        HIMARK_PLACE_CHANGES => |s| NavigationLocation::new(ChangesPlace(s)),
+        HIMARK_PLACE_CHANGES_CANVAS => |s| NavigationLocation::new(ChangesCanvasPlace(s)),
+        HIMARK_PLACE_HISTORY => |s| NavigationLocation::new(HistoryPlace(s)),
+        HIMARK_PLACE_SEARCH => |s| NavigationLocation::new(SearchPlace(s)),
+        HIMARK_PLACE_COMMENTS => |s| NavigationLocation::new(CommentsPlace(s)),
+        HIMARK_PLACE_PEEKER => |s| NavigationLocation::new(PeekerPlace(s)),
+        HIMARK_PLACE_PALETTE => |s| NavigationLocation::new(PalettePlace(s)),
+        HIMARK_PLACE_SESSIONS => |s| NavigationLocation::new(SessionsPlace(s)),
+        HIMARK_PLACE_FILES => |s| NavigationLocation::new(FilesPlace(s)),
+        _ => {
+            refuse("session view kind", kind as u64);
+            return HimarkPlace { raw: 0 };
+        }
+    };
+    mint_session_place(engine, host, uri, len, make)
 }
 
 #[no_mangle]
@@ -1488,6 +1357,17 @@ pub const HIMARK_PLACE_DIFF: u32 = 5;
 pub const HIMARK_PLACE_CANVAS: u32 = 6;
 /// Not a view: the ORIGIN's hosting face asks to close.
 pub const HIMARK_PLACE_DISMISS: u32 = 7;
+// The remaining session-view kinds — `himark_place_session_view`'s
+// half of the vocabulary; the callback never speaks them.
+pub const HIMARK_PLACE_CHAT_TRANSCRIPT: u32 = 8;
+pub const HIMARK_PLACE_CHAT_COMPOSER: u32 = 9;
+pub const HIMARK_PLACE_CHANGES_CANVAS: u32 = 10;
+pub const HIMARK_PLACE_HISTORY: u32 = 11;
+pub const HIMARK_PLACE_SEARCH: u32 = 12;
+pub const HIMARK_PLACE_COMMENTS: u32 = 13;
+pub const HIMARK_PLACE_PEEKER: u32 = 14;
+pub const HIMARK_PLACE_PALETTE: u32 = 15;
+pub const HIMARK_PLACE_SESSIONS: u32 = 16;
 
 /// The host's navigate answer: called on the MAIN thread, in the
 /// middle of an engine batch — the host must only RECORD (push the
@@ -1508,6 +1388,20 @@ pub type HimarkNavigateFn = unsafe extern "C" fn(
     // steal it.
     focus: bool,
 ) -> bool;
+
+pub(crate) fn seat_callback_shell(
+    engine: &mut HimarkEngine,
+    ctx: *mut c_void,
+    on_navigate: HimarkNavigateFn,
+) {
+    engine.app.seat_shell(move |next| {
+        std::sync::Arc::new(CallbackShell {
+            ctx: ShellCtx(ctx),
+            on_navigate,
+            next,
+        })
+    });
+}
 
 struct ShellCtx(*mut c_void);
 unsafe impl Send for ShellCtx {}
@@ -1602,24 +1496,6 @@ impl himark::himark::Shell for CallbackShell {
 
 /// Seat the native navigate callback over the engine's shell
 /// chain. One installation per engine; the last one wins.
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_shell(
-    engine: *mut HimarkEngine,
-    ctx: *mut c_void,
-    on_navigate: HimarkNavigateFn,
-) {
-    let Some(engine) = engine.as_mut() else {
-        return;
-    };
-    engine.app.seat_shell(move |next| {
-        std::sync::Arc::new(CallbackShell {
-            ctx: ShellCtx(ctx),
-            on_navigate,
-            next,
-        })
-    });
-}
-
 /// Unmount a minted bridge: the slot, its frame and every stage a
 /// host still holds for it go together.
 #[no_mangle]

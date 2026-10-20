@@ -63,30 +63,23 @@ final class AppHost: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
-        engine.setWake(context: ctx) { ctx in
-            let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
-            DispatchQueue.main.async { host.drain() }
+        // The engine took its callbacks AT CREATION; the seat hooks
+        // them to this host now that it stands.
+        engine.seat.onWake = { [weak self] in
+            DispatchQueue.main.async { self?.drain() }
         }
-        engine.setEffectWake(context: ctx) { ctx in
-            let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
-            host.executor.async { host.engine.runPending() }
+        engine.seat.onEffectWake = { [weak self] in
+            guard let self else { return }
+            self.executor.async { [weak self] in self?.engine.runPending() }
         }
         // The navigate callback: fired mid-batch on the main thread —
         // record the push and return; the screen mints later.
-        engine.setShell(context: ctx) { ctx, origin, place, kind, title, titleLen, _ in
+        engine.seat.onNavigate = { [weak self] origin, place, kind, title, _ in
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
             else { return false }
-            let host = Unmanaged<AppHost>.fromOpaque(ctx!).takeUnretainedValue()
-            var name = ""
-            if let title, titleLen > 0 {
-                name = String(
-                    bytes: UnsafeRawBufferPointer(
-                        start: UnsafeRawPointer(title), count: Int(titleLen)),
-                    encoding: .utf8) ?? ""
-            }
-            let push = Push(place: place, kind: kind, title: name, origin: origin.raw)
-            DispatchQueue.main.async { host.land(push) }
+            guard let self else { return false }
+            let push = Push(place: place, kind: kind, title: title, origin: origin.raw)
+            DispatchQueue.main.async { self.land(push) }
             return true
         }
         let engine = self.engine

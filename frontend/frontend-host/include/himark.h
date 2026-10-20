@@ -72,6 +72,17 @@
 #define HIMARK_SCROLL_PHASE_MOMENTUM_ENDED 7
 
 /**
+ * Which string `himark_catalog_session_string` reads.
+ */
+#define HIMARK_SESSION_URI 0
+
+#define HIMARK_SESSION_TITLE 1
+
+#define HIMARK_SESSION_PROVIDER 2
+
+#define HIMARK_SESSION_MODIFIED 3
+
+/**
  * The place-kind vocabulary the callback speaks. `DOCUMENT` and
  * `DIFF` are READY places — minting is synchronous; the session
  * kinds are the tab places the host already knows how to mint.
@@ -93,7 +104,53 @@
  */
 #define HIMARK_PLACE_DISMISS 7
 
+#define HIMARK_PLACE_CHAT_TRANSCRIPT 8
+
+#define HIMARK_PLACE_CHAT_COMPOSER 9
+
+#define HIMARK_PLACE_CHANGES_CANVAS 10
+
+#define HIMARK_PLACE_HISTORY 11
+
+#define HIMARK_PLACE_SEARCH 12
+
+#define HIMARK_PLACE_COMMENTS 13
+
+#define HIMARK_PLACE_PEEKER 14
+
+#define HIMARK_PLACE_PALETTE 15
+
+#define HIMARK_PLACE_SESSIONS 16
+
 typedef struct HimarkEngine HimarkEngine;
+
+typedef struct {
+    uint64_t raw;
+} HimarkBridge;
+
+typedef struct {
+    uint64_t raw;
+} HimarkPlace;
+
+/**
+ * Everything the engine needs from its host, taken AT CREATION —
+ * no half-wired engine ever exists, and the effects a boot batch
+ * launches wake the host's executor instead of firing into empty
+ * slots. One `ctx` serves every callback; `on_navigate` may be
+ * null for a shell that claims no places.
+ */
+typedef struct {
+    void *ctx;
+    void (*wake)(void*);
+    void (*effect_wake)(void*);
+    bool (*on_navigate)(void *ctx,
+                        HimarkBridge origin,
+                        HimarkPlace place,
+                        uint32_t kind,
+                        const char *title,
+                        uintptr_t title_len,
+                        bool focus);
+} HimarkEngineCallbacks;
 
 /**
  * The handle NEWTYPES: single-field structs, so C and Swift see
@@ -104,10 +161,6 @@ typedef struct HimarkEngine HimarkEngine;
 typedef struct {
     uint64_t raw;
 } HimarkWindow;
-
-typedef struct {
-    uint64_t raw;
-} HimarkBridge;
 
 typedef struct {
     uint32_t start;
@@ -173,10 +226,6 @@ typedef struct {
 
 typedef struct {
     uint64_t raw;
-} HimarkPlace;
-
-typedef struct {
-    uint64_t raw;
 } HimarkCatalog;
 
 /**
@@ -187,31 +236,11 @@ typedef struct {
     uint64_t raw;
 } HimarkCommands;
 
-/**
- * The host's navigate answer: called on the MAIN thread, in the
- * middle of an engine batch — the host must only RECORD (push the
- * screen async, mint from the handle later) and answer whether it
- * claims the place. `true` claims: the handle is the host's to
- * mint from and release. `false` declines: the engine releases
- * the handle and the workbench fallthrough takes the place.
- */
-typedef bool (*HimarkNavigateFn)(void *ctx,
-                                 HimarkBridge origin,
-                                 HimarkPlace place,
-                                 uint32_t kind,
-                                 const char *title,
-                                 uintptr_t title_len,
-                                 bool focus);
-
-HimarkEngine *himark_create(void);
+HimarkEngine *himark_create(HimarkEngineCallbacks callbacks);
 
 HimarkWindow himark_add_window(HimarkEngine *engine);
 
 void himark_destroy(HimarkEngine *engine);
-
-void himark_set_wake(HimarkEngine *engine, void (*callback)(void*), void *context);
-
-void himark_set_effect_wake(HimarkEngine *engine, void (*callback)(void*), void *context);
 
 void himark_run_pending(HimarkEngine *engine);
 
@@ -530,29 +559,15 @@ uint64_t himark_catalog_session_host(HimarkEngine *engine, HimarkCatalog catalog
 
 int64_t himark_catalog_session_status(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
 
-uintptr_t himark_catalog_session_uri(HimarkEngine *engine,
-                                     HimarkCatalog catalog,
-                                     uintptr_t index,
-                                     char *out,
-                                     uintptr_t cap);
-
-uintptr_t himark_catalog_session_title(HimarkEngine *engine,
-                                       HimarkCatalog catalog,
-                                       uintptr_t index,
-                                       char *out,
-                                       uintptr_t cap);
-
-uintptr_t himark_catalog_session_provider(HimarkEngine *engine,
-                                          HimarkCatalog catalog,
-                                          uintptr_t index,
-                                          char *out,
-                                          uintptr_t cap);
-
-uintptr_t himark_catalog_session_modified(HimarkEngine *engine,
-                                          HimarkCatalog catalog,
-                                          uintptr_t index,
-                                          char *out,
-                                          uintptr_t cap);
+/**
+ * ONE sized-string door for the catalog row's text fields.
+ */
+uintptr_t himark_catalog_session_string(HimarkEngine *engine,
+                                        HimarkCatalog catalog,
+                                        uintptr_t index,
+                                        uint32_t field,
+                                        char *out,
+                                        uintptr_t cap);
 
 /**
  * Enter a session headlessly: subscribe, adopt, wire, poll — the
@@ -567,62 +582,17 @@ bool himark_session_enter(HimarkEngine *engine, uint64_t host, const char *uri, 
  */
 bool himark_session_new(HimarkEngine *engine, uint64_t host);
 
-HimarkPlace himark_place_chat(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
-
-HimarkPlace himark_place_chat_transcript(HimarkEngine *engine,
-                                         uint64_t host,
-                                         const char *uri,
-                                         uintptr_t len);
-
-HimarkPlace himark_place_chat_composer(HimarkEngine *engine,
-                                       uint64_t host,
-                                       const char *uri,
-                                       uintptr_t len);
-
-HimarkPlace himark_place_changes(HimarkEngine *engine,
-                                 uint64_t host,
-                                 const char *uri,
-                                 uintptr_t len);
-
 /**
- * The desktop flavor: rows open the DIFF CANVAS, not one file.
+ * ONE minting door for every session view: `kind` speaks the
+ * `HIMARK_PLACE_*` vocabulary (the session-view kinds — the READY
+ * kinds `DOCUMENT`/`DIFF`/`CANVAS` and `DISMISS` are the navigate
+ * callback's and refuse here).
  */
-HimarkPlace himark_place_changes_canvas(HimarkEngine *engine,
-                                        uint64_t host,
-                                        const char *uri,
-                                        uintptr_t len);
-
-HimarkPlace himark_place_history(HimarkEngine *engine,
-                                 uint64_t host,
-                                 const char *uri,
-                                 uintptr_t len);
-
-HimarkPlace himark_place_search(HimarkEngine *engine,
-                                uint64_t host,
-                                const char *uri,
-                                uintptr_t len);
-
-HimarkPlace himark_place_comments(HimarkEngine *engine,
-                                  uint64_t host,
-                                  const char *uri,
-                                  uintptr_t len);
-
-HimarkPlace himark_place_peeker(HimarkEngine *engine,
-                                uint64_t host,
-                                const char *uri,
-                                uintptr_t len);
-
-HimarkPlace himark_place_palette(HimarkEngine *engine,
-                                 uint64_t host,
-                                 const char *uri,
-                                 uintptr_t len);
-
-HimarkPlace himark_place_sessions(HimarkEngine *engine,
-                                  uint64_t host,
-                                  const char *uri,
-                                  uintptr_t len);
-
-HimarkPlace himark_place_files(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
+HimarkPlace himark_place_session_view(HimarkEngine *engine,
+                                      uint32_t kind,
+                                      uint64_t host,
+                                      const char *uri,
+                                      uintptr_t len);
 
 void himark_place_release(HimarkEngine *engine, HimarkPlace place);
 
@@ -683,10 +653,6 @@ HimarkBridge himark_bridge_mint(HimarkEngine *engine, HimarkPlace place);
 /**
  * Seat the native navigate callback over the engine's shell
  * chain. One installation per engine; the last one wins.
- */
-void himark_set_shell(HimarkEngine *engine, void *ctx, HimarkNavigateFn on_navigate);
-
-/**
  * Unmount a minted bridge: the slot, its frame and every stage a
  * host still holds for it go together.
  */

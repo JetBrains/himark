@@ -109,6 +109,7 @@ skia-safe = "0.153.3"
 skia-safe = { version = "0.153.3", features = ["metal", "graphite"] }
 
 [dev-dependencies]
+terminals = { path = "../terminals" }
 agent-host = { path = "../../backend/agent-host" }
 tempfile = "3"
 operation = { path = "../operation" }

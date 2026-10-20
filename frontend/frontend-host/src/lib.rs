@@ -487,9 +487,44 @@ impl Default for HimarkEngine {
     }
 }
 
+/// Everything the engine needs from its host, taken AT CREATION —
+/// no half-wired engine ever exists, and the effects a boot batch
+/// launches wake the host's executor instead of firing into empty
+/// slots. One `ctx` serves every callback; `on_navigate` may be
+/// null for a shell that claims no places.
+#[repr(C)]
+pub struct HimarkEngineCallbacks {
+    pub ctx: *mut c_void,
+    pub wake: extern "C" fn(*mut c_void),
+    pub effect_wake: extern "C" fn(*mut c_void),
+    #[allow(clippy::type_complexity)]
+    pub on_navigate: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            origin: bridges::HimarkBridge,
+            place: bridges::HimarkPlace,
+            kind: u32,
+            title: *const c_char,
+            title_len: usize,
+            focus: bool,
+        ) -> bool,
+    >,
+}
+
 impl HimarkEngine {
     pub fn new() -> Self {
+        Self::booted(None)
+    }
+
+    fn booted(callbacks: Option<HimarkEngineCallbacks>) -> Self {
         let mut engine = Self::with_fonts(app_fonts());
+        if let Some(callbacks) = callbacks {
+            engine.set_wake_raw(callbacks.wake, callbacks.ctx);
+            engine.set_effect_wake_raw(callbacks.effect_wake, callbacks.ctx);
+            if let Some(on_navigate) = callbacks.on_navigate {
+                bridges::seat_callback_shell(&mut engine, callbacks.ctx, on_navigate);
+            }
+        }
 
         engine.compose_new_windows = true;
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -1663,8 +1698,8 @@ pub fn agent_host_autostart() -> bool {
 }
 
 #[no_mangle]
-pub extern "C" fn himark_create() -> *mut HimarkEngine {
-    Box::into_raw(Box::new(HimarkEngine::new()))
+pub extern "C" fn himark_create(callbacks: HimarkEngineCallbacks) -> *mut HimarkEngine {
+    Box::into_raw(Box::new(HimarkEngine::booted(Some(callbacks))))
 }
 
 #[no_mangle]
@@ -1678,28 +1713,6 @@ pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> bridges
 pub unsafe extern "C" fn himark_destroy(engine: *mut HimarkEngine) {
     if !engine.is_null() {
         drop(Box::from_raw(engine));
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_wake(
-    engine: *mut HimarkEngine,
-    callback: extern "C" fn(*mut c_void),
-    context: *mut c_void,
-) {
-    if let Some(engine) = engine.as_ref() {
-        engine.set_wake_raw(callback, context);
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_effect_wake(
-    engine: *mut HimarkEngine,
-    callback: extern "C" fn(*mut c_void),
-    context: *mut c_void,
-) {
-    if let Some(engine) = engine.as_ref() {
-        engine.set_effect_wake_raw(callback, context);
     }
 }
 
