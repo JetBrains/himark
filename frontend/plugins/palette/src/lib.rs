@@ -385,6 +385,25 @@ pub fn bare(
     PaletteView::new(store, ui, commands)
 }
 
+/// The palette as a plugin: the toggle command and the mounted
+/// road's bare-view factory.
+pub struct PalettePlugin;
+
+impl himark::plugin::Plugin for PalettePlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(TogglePalette));
+        // The COMMAND PALETTE: one view, both roads. The workbench
+        // opens it as a modal over a window; a mounted host mints
+        // it as a place, and the engine walks that session's views
+        // for the commands. Bare — the host's island glass is the
+        // floor it would otherwise paint.
+        app.register_palette(std::sync::Arc::new(|store, ui, commands| {
+            Box::new(bare(store, ui, commands))
+        }));
+    }
+}
+
 pub struct TogglePalette;
 
 impl himark::commands::WindowedCommand for TogglePalette {

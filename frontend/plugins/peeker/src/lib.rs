@@ -1020,6 +1020,53 @@ pub fn build(
     }
 }
 
+/// The peeker as a plugin: the toggle command and the go-to-file
+/// face on the MOUNTED road — the peeker whole (query, results,
+/// preview, the FSP search behind them), answered as an external
+/// place arm. The peeker crate sits above himark, so himark cannot
+/// name it itself.
+pub struct PeekerPlugin;
+
+impl himark::plugin::Plugin for PeekerPlugin {
+    fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(TogglePeeker));
+        app.register_place_arm(std::sync::Arc::new(|store, ui, id, fx, place| {
+            let place = place.place::<himark::places::PeekerPlace>()?;
+            let key = place.0.clone();
+            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+            let documents = state.documents();
+            let recents = recents::RecentLocations::list(store, state.recents());
+            let folders = ahp_session::session::folders::session_folders(store, &key);
+            let view = fx.scope(
+                move |command: PeekerCommand| {
+                    himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
+                },
+                |fx| {
+                    Peeker::open(
+                        store,
+                        ui,
+                        documents,
+                        // The desktop go-to sheet's viewport (engine
+                        // pixels) — near-full-window glass; display
+                        // relays out live, this seeds the preview's
+                        // wrap width.
+                        skia_safe::Size::new(3_100.0, 1_850.0),
+                        recents,
+                        Vec::new(),
+                        folders,
+                        fx,
+                    )
+                    // The island's glass is the floor — the peeker
+                    // keeps only its well and the list divider.
+                    .unfloored()
+                },
+            );
+            Some(Box::new(view))
+        }));
+    }
+}
+
 pub struct TogglePeeker;
 
 impl himark::commands::WindowedCommand for TogglePeeker {

@@ -963,6 +963,28 @@ pub fn register_handlers(app: &mut himark::app::Himark) {
     ));
 }
 
+/// Markdown as a plugin: the language, the enrichment passes
+/// (tables, fence embeds, images), the table relayout handler and
+/// the insert-table editor command.
+pub struct MarkdownPlugin;
+
+impl himark::plugin::Plugin for MarkdownPlugin {
+    fn languages(&self, languages: &mut editor::reparse::SyntaxLanguages) {
+        languages.register(&["markdown"], std::sync::Arc::new(MarkdownLanguage));
+    }
+
+    fn enrichers(&self, enrichers: &mut editor::enrich::Enrichers) {
+        enrichers.register(std::sync::Arc::new(TableEnricher));
+        enrichers.register(std::sync::Arc::new(fence_embed::FenceEmbedEnricher));
+        enrichers.register(std::sync::Arc::new(image::ImageEnricher));
+    }
+
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        register_handlers(app);
+        app.register_editor_command(std::sync::Arc::new(table::InsertTable));
+    }
+}
+
 #[cfg(test)]
 trait RunReparse {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome;

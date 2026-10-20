@@ -9,6 +9,18 @@ use imba::store::Store;
 
 use documents::OpenDocuments;
 
+/// The split-diff pane as a plugin: the palette command and the
+/// chat's diff-pair row minter.
+pub struct DiffPanePlugin;
+
+impl crate::plugin::Plugin for DiffPanePlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        use crate::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(OpenDiff));
+        app.register_row_minter(::canvas::diff_pane::pair_row_minter());
+    }
+}
+
 /// Resolve one opened side to a registered `DocumentId`: reuse the open
 /// one, or REGISTER the freshly-built one (register-at-display — a
 /// located document is always an OpenDocuments document,

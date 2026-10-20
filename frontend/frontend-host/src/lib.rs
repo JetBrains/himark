@@ -68,6 +68,10 @@ impl AgentHostFilesystemCapabilities {
 pub struct HimarkEngine {
     pub(crate) app: Himark,
 
+    /// The plugin-collected language set, shared — the late
+    /// capability-gated routes and the open road reparse with it.
+    languages: Arc<editor::reparse::SyntaxLanguages>,
+
     /// The normalized surface's stage tables (`bridges`).
     pub(crate) stages: bridges::Stages,
 
@@ -346,12 +350,127 @@ fn app_fonts() -> AppFonts {
     AppFonts::platform()
 }
 
-fn enrichment_passes() -> editor::enrich::Enrichers {
-    let mut enrichers = himarkdown::markdown_enrichers(editor::enrich::Enrichers::new());
-    himermaid::register_enricher(&mut enrichers);
+/// The grammar pack as a plugin: every tree-sitter language this
+/// host ships, plus the enrichment passes of crates that sit below
+/// himark and cannot speak the plugin trait themselves (hisitter's
+/// caret passes, himermaid's renders).
+struct LanguagePack;
 
-    hisitter::caret_passes::register_caret_enrichers(&mut enrichers);
-    enrichers
+impl himark::plugin::Plugin for LanguagePack {
+    fn languages(&self, languages: &mut editor::reparse::SyntaxLanguages) {
+        hirust::register(languages);
+        hipython::register(languages);
+        hijavascript::register(languages);
+        hitypescript::register(languages);
+        higo::register(languages);
+        hijava::register(languages);
+        hic::register(languages);
+        hicpp::register(languages);
+        hicsharp::register(languages);
+        hiruby::register(languages);
+        hiphp::register(languages);
+        hibash::register(languages);
+        hilua::register(languages);
+        hiswift::register(languages);
+        hikotlin::register(languages);
+        hiscala::register(languages);
+        hihaskell::register(languages);
+        hielixir::register(languages);
+        hiocaml::register(languages);
+        hizig::register(languages);
+        hisql::register(languages);
+        hijson::register(languages);
+        hicss::register(languages);
+        hihtml::register(languages);
+        hiyaml::register(languages);
+        hitoml::register(languages);
+        hicmake::register(languages);
+        hid::register(languages);
+        hidart::register(languages);
+        hielm::register(languages);
+        hierlang::register(languages);
+        hifortran::register(languages);
+        hifsharp::register(languages);
+        higleam::register(languages);
+        higlsl::register(languages);
+        higraphql::register(languages);
+        higroovy::register(languages);
+        hihcl::register(languages);
+        hijulia::register(languages);
+        himake::register(languages);
+        hinix::register(languages);
+        hiobjc::register(languages);
+        hiodin::register(languages);
+        hiperl::register(languages);
+        hipowershell::register(languages);
+        hir::register(languages);
+        hisolidity::register(languages);
+        hixml::register(languages);
+        himermaid::register(languages);
+    }
+
+    fn enrichers(&self, enrichers: &mut editor::enrich::Enrichers) {
+        himermaid::register_enricher(enrichers);
+        hisitter::caret_passes::register_caret_enrichers(enrichers);
+    }
+}
+
+/// The SESSIONS browser as a plugin: hosts, their folders, their
+/// sessions and the speed search over them — the engine's drawer,
+/// the same one the workbench stands in a side slot. Its asks are
+/// the mounted road's: a pick ENTERS the session and then hands the
+/// shell the place naming it. Host-local because the pick command
+/// (`sessions::ShowSession`) is this crate's.
+struct SessionsDrawerPlugin;
+
+impl himark::plugin::Plugin for SessionsDrawerPlugin {
+    fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
+        app.register_place_arm(Arc::new(|store, ui, id, _fx, place| {
+            let place = place.place::<himark::places::SessionsPlace>()?;
+            let showing = place.0.clone();
+            let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
+                open_session: Arc::new(move |_store| Some(showing.clone())),
+                open_row: Arc::new(move |server, session| {
+                    imba::command::Verb::once(crate::sessions::ShowSession {
+                        origin: id,
+                        server,
+                        session,
+                    })
+                }),
+                new_session: Arc::new(move |_store, server| {
+                    imba::command::Verb::once(himark::higent::open_session::CreateHeadless {
+                        host: Some(server),
+                    })
+                }),
+                add_host: Arc::new(move |url| {
+                    himark::app::shell_verb(himark::shell::windowed(
+                        ::workbench::window::WindowId::from_raw(id.raw()),
+                        Arc::new(himark::higent::drawer::AddHost { url }),
+                    ))
+                }),
+            });
+            Some(Box::new(ahp_session::session::drawer::AgentsPanel::open(
+                store, ui, asks,
+            )))
+        }));
+    }
+}
+
+/// Everything this host installs beyond its own FFI and wiring —
+/// each crate registers its own pieces, in this order.
+fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
+    vec![
+        Box::new(LanguagePack),
+        Box::new(himarkdown::MarkdownPlugin),
+        Box::new(palette::PalettePlugin),
+        Box::new(peeker::PeekerPlugin),
+        Box::new(SessionsDrawerPlugin),
+        Box::new(himark::diff_pane::DiffPanePlugin),
+        Box::new(demo::DemoPlugin),
+        Box::new(himark::hiahp::AhpPlugin),
+        Box::new(himark::hicomments::CommentsPlugin),
+        Box::new(himark::higent::AgentsPlugin),
+    ]
 }
 
 /// Find — or autostart — the local himark agent host. The lockfile
@@ -392,66 +511,6 @@ fn autostart_himark_host() -> Option<String> {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     None
-}
-
-fn syntax_languages() -> editor::reparse::SyntaxLanguages {
-    static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> =
-        std::sync::OnceLock::new();
-    LANGUAGES
-        .get_or_init(|| {
-            let mut languages = editor::reparse::SyntaxLanguages::new();
-            hirust::register(&mut languages);
-            hipython::register(&mut languages);
-            hijavascript::register(&mut languages);
-            hitypescript::register(&mut languages);
-            higo::register(&mut languages);
-            hijava::register(&mut languages);
-            hic::register(&mut languages);
-            hicpp::register(&mut languages);
-            hicsharp::register(&mut languages);
-            hiruby::register(&mut languages);
-            hiphp::register(&mut languages);
-            hibash::register(&mut languages);
-            hilua::register(&mut languages);
-            hiswift::register(&mut languages);
-            hikotlin::register(&mut languages);
-            hiscala::register(&mut languages);
-            hihaskell::register(&mut languages);
-            hielixir::register(&mut languages);
-            hiocaml::register(&mut languages);
-            hizig::register(&mut languages);
-            hisql::register(&mut languages);
-            hijson::register(&mut languages);
-            hicss::register(&mut languages);
-            hihtml::register(&mut languages);
-            hiyaml::register(&mut languages);
-            hitoml::register(&mut languages);
-            hicmake::register(&mut languages);
-            hid::register(&mut languages);
-            hidart::register(&mut languages);
-            hielm::register(&mut languages);
-            hierlang::register(&mut languages);
-            hifortran::register(&mut languages);
-            hifsharp::register(&mut languages);
-            higleam::register(&mut languages);
-            higlsl::register(&mut languages);
-            higraphql::register(&mut languages);
-            higroovy::register(&mut languages);
-            hihcl::register(&mut languages);
-            hijulia::register(&mut languages);
-            himake::register(&mut languages);
-            hinix::register(&mut languages);
-            hiobjc::register(&mut languages);
-            hiodin::register(&mut languages);
-            hiperl::register(&mut languages);
-            hipowershell::register(&mut languages);
-            hir::register(&mut languages);
-            hisolidity::register(&mut languages);
-            hixml::register(&mut languages);
-            himermaid::register(&mut languages);
-            himarkdown::markdown_languages(languages)
-        })
-        .clone()
 }
 
 impl Default for HimarkEngine {
@@ -500,125 +559,19 @@ impl HimarkEngine {
 
     pub(crate) fn with_fonts(fonts: AppFonts) -> Self {
         let mut app = Himark::new(fonts);
-        app.register_syntax_languages(syntax_languages());
         // ONE policy: what the diff view computes with is what the
         // chat's cells are built with. Myers, time-bounded — the
         // structural engine's per-region search is unbounded and
         // stalled the shared worker for seconds on large regions,
         // with no measured gain in hunk quality over Myers.
-        let languages = Arc::new(syntax_languages());
-        let diff_policy: Arc<dyn ::editor::diff::DiffPolicy> = Arc::new(myersdiff::Myers);
-        app.register_diff_policy(Arc::clone(&diff_policy));
-        app.register_enrichers(enrichment_passes());
-        app.register_command(Arc::new(palette::TogglePalette));
-        app.register_command(Arc::new(peeker::TogglePeeker));
-        // The go-to-file face on the MOUNTED road: the peeker whole
-        // (query, results, preview, the FSP search behind them),
-        // answered as an external place arm — the peeker crate sits
-        // above himark, so himark cannot name it itself.
-        app.register_place_arm(Arc::new(|store, ui, id, fx, place| {
-            let place = place.place::<himark::places::PeekerPlace>()?;
-            let key = place.0.clone();
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let documents = state.documents();
-            let recents = recents::RecentLocations::list(store, state.recents());
-            let folders = ahp_session::session::folders::session_folders(store, &key);
-            let view = fx.scope(
-                move |command: peeker::PeekerCommand| {
-                    himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
-                },
-                |fx| {
-                    peeker::Peeker::open(
-                        store,
-                        ui,
-                        documents,
-                        // The desktop go-to sheet's viewport (engine
-                        // pixels) — near-full-window glass; display
-                        // relays out live, this seeds the preview's
-                        // wrap width.
-                        skia_safe::Size::new(3_100.0, 1_850.0),
-                        recents,
-                        Vec::new(),
-                        folders,
-                        fx,
-                    )
-                    // The island's glass is the floor — the peeker
-                    // keeps only its well and the list divider.
-                    .unfloored()
-                },
-            );
-            Some(Box::new(view))
-        }));
+        let plugins = himark::plugin::install_all(&mut app, Arc::new(myersdiff::Myers), &plugins());
+        let languages = Arc::clone(&plugins.languages);
 
-        // The COMMAND PALETTE: one view, both roads. The workbench
-        // opens it as a modal over a window; a mounted host mints
-        // it as a place, and the engine walks that session's views
-        // for the commands. Bare — the host's island glass is the
-        // floor it would otherwise paint.
-        app.register_palette(Arc::new(|store, ui, commands| {
-            Box::new(palette::bare(store, ui, commands))
-        }));
-
-        // The SESSIONS browser: hosts, their folders, their sessions
-        // and the speed search over them — the engine's drawer, the
-        // same one the workbench stands in a side slot. Its asks are
-        // the mounted road's: a pick ENTERS the session and then
-        // hands the shell the place naming it.
-        app.register_place_arm(Arc::new(|store, ui, id, _fx, place| {
-            let place = place.place::<himark::places::SessionsPlace>()?;
-            let showing = place.0.clone();
-            let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
-                open_session: Arc::new(move |_store| Some(showing.clone())),
-                open_row: Arc::new(move |server, session| {
-                    imba::command::Verb::once(crate::sessions::ShowSession {
-                        origin: id,
-                        server,
-                        session,
-                    })
-                }),
-                new_session: Arc::new(move |_store, server| {
-                    imba::command::Verb::once(himark::higent::open_session::CreateHeadless {
-                        host: Some(server),
-                    })
-                }),
-                add_host: Arc::new(move |url| {
-                    himark::app::shell_verb(himark::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        Arc::new(himark::higent::drawer::AddHost { url }),
-                    ))
-                }),
-            });
-            Some(Box::new(ahp_session::session::drawer::AgentsPanel::open(
-                store, ui, asks,
-            )))
-        }));
-
-        app.register_command(Arc::new(himark::diff_pane::OpenDiff));
-        app.register_row_minter(canvas::diff_pane::pair_row_minter());
-        app.register_command(Arc::new(demo::tree_demo::OpenTreeDemo));
-        app.register_command(Arc::new(demo::OpenMonsterDemo));
-        app.register_command(Arc::new(demo::OpenWallOfTextDemo));
-
-        himarkdown::register_handlers(&mut app);
-        app.register_editor_command(Arc::new(himarkdown::table::InsertTable));
-
-        himark::hiahp::register_all(&mut app);
-        himark::hiahp::install_build_handler(&mut app, languages, diff_policy);
+        // The composer button is WORKBENCH furniture, not a feature's
+        // — it stays the shell's own registration.
+        app.register_toolbar_button(workbench::toolbar::composer_button());
 
         let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(uris::FileUris);
-        // The comments hook and the comment gesture are no longer
-        // boot-global: the session ceremony installs them per session,
-        // wired with their sibling ids (docs/entities.md law 4).
-        comments::install(&mut app.store_mut());
-        ahp_lsp::enrich::install_edit_sink(&mut app.store_mut());
-        app.register_command(Arc::new(himark::hicomments::ToggleCommentsView));
-        app.register_toolbar_button(himark::hicomments::toolbar_button());
-
-        app.register_command(Arc::new(himark::higent::drawer::ToggleAgentsView));
-        app.register_command(Arc::new(himark::higent::new_chat::NewChat));
-        app.register_toolbar_button(himark::higent::drawer::toolbar_button());
-
-        app.register_toolbar_button(workbench::toolbar::composer_button());
 
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
         let wake = Arc::new(WakeSlot::default());
@@ -772,6 +725,7 @@ impl HimarkEngine {
 
         Self {
             app,
+            languages,
             compose_new_windows: false,
             scroll_states: std::collections::HashMap::new(),
             stage_wheels: std::collections::HashMap::new(),
@@ -1382,7 +1336,7 @@ impl HimarkEngine {
         if capabilities.fetch_document && !installed.fetch_document {
             himark::hiahp::install_open_handlers(
                 &mut self.app,
-                Arc::new(syntax_languages()),
+                Arc::clone(&self.languages),
                 Arc::new(myersdiff::Myers),
             );
             self.app
@@ -1600,13 +1554,14 @@ impl HimarkEngine {
         let name = name.into();
         let source = source.into();
         let document_name = name.clone();
+        let languages = Arc::clone(&self.languages);
         self.app.open_async(
             wid(window),
             name,
             primary,
             None,
             move |store, ui, theme| {
-                document_for(&document_name, &source, store, ui, theme)
+                ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
             },
         );
         true
@@ -2130,16 +2085,6 @@ pub unsafe extern "C" fn himark_open_document(
         return false;
     };
     engine.open_document(bridge.raw, name, source, primary)
-}
-
-fn document_for(
-    name: &str,
-    source: &str,
-    store: &imba::store::Store,
-    ui: &imba::ui::UiCtx,
-    theme: &editor::theme::Theme,
-) -> editor::document::Document {
-    ahp_chat::open::document_for(&syntax_languages(), name, source, store, ui, theme)
 }
 
 #[no_mangle]

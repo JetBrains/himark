@@ -15,6 +15,19 @@ use imba::store::Store;
 #[cfg(test)]
 mod tests;
 
+/// The comments feature as a plugin: the model hook, the dock
+/// toggle and its toolbar button.
+pub struct CommentsPlugin;
+
+impl crate::plugin::Plugin for CommentsPlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+        app.setup(|store| ::comments::install(store));
+        use crate::app_ext::AppExt;
+        app.register_command(Arc::new(ToggleCommentsView));
+        app.register_toolbar_button(toolbar_button());
+    }
+}
+
 pub struct ToggleCommentsView;
 
 impl crate::commands::WindowedCommand for ToggleCommentsView {

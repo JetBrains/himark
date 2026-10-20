@@ -20,6 +20,24 @@ use crate::app::AppCommand;
 use crate::commands::WindowedCommand;
 use crate::workspace::OpenByLocationEffect;
 
+/// The AHP wiring as a plugin: the wire handlers, the build road,
+/// and the LSP edit sink — everything the protocol registers
+/// unconditionally at boot. The capability-gated open/store/list
+/// routes stay the HOST's (they close over its client directory).
+pub struct AhpPlugin;
+
+impl crate::plugin::Plugin for AhpPlugin {
+    fn install(&self, app: &mut crate::app::Himark, cx: &crate::plugin::PluginContext) {
+        register_all(app);
+        install_build_handler(
+            app,
+            Arc::clone(&cx.languages),
+            Arc::clone(&cx.diff_policy),
+        );
+        app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
+    }
+}
+
 /// Building a document from text in hand (Text, layout, syntax) is not a
 /// filesystem capability — the chat's cells build off-thread with no host
 /// in sight. It installs at boot, on its own.

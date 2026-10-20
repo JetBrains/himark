@@ -37,6 +37,18 @@ pub fn demo_location(name: &str) -> editor::location::ResourceLocation {
     )
 }
 
+/// The demo documents as a plugin: the three palette commands.
+pub struct DemoPlugin;
+
+impl himark::plugin::Plugin for DemoPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
+        app.register_command(std::sync::Arc::new(tree_demo::OpenTreeDemo));
+        app.register_command(std::sync::Arc::new(OpenMonsterDemo));
+        app.register_command(std::sync::Arc::new(OpenWallOfTextDemo));
+    }
+}
+
 pub struct OpenMonsterDemo;
 
 impl himark::commands::WindowedCommand for OpenMonsterDemo {
