@@ -2036,6 +2036,8 @@ impl ChatView {
                 fx,
             )
         });
+        // The place grew the turn — the ROW total follows as data.
+        self.account_cell_height(store, ui, turn, key, fx);
     }
 
     /// From a turn and a cell key to the cell, in two keyed hops — and
@@ -2061,20 +2063,94 @@ impl ChatView {
             return;
         };
         let index = range.start;
-        fx.scope(
-            move |command: RowsCommand| lift_rows_command(&turn, &key, command),
-            |fx| {
+        {
+            let turn = turn.clone();
+            let key = key.clone();
+            fx.scope(
+                move |command: RowsCommand| lift_rows_command(&turn, &key, command),
+                |fx| {
+                    self.rows.perform(
+                        store,
+                        ui,
+                        ScrollCommand::Content(ListCommand::Child(
+                            index,
+                            RowCommand::Turn(ListCommand::Child(cell, command)),
+                        )),
+                        fx,
+                    )
+                },
+            );
+        }
+        self.account_cell_height(store, ui, &turn, &key, fx);
+    }
+
+    /// HEIGHTS LAND AS DATA (the editor-repair law): a routed cell
+    /// command may have moved the cell's content height — a resolve
+    /// landing, a streamed delta, a folded tool row. The cell answers
+    /// its measured height from its own content (no tree is built),
+    /// and the splices ride the same `SetHeight` command the rope
+    /// speaks everywhere: the turn's element first, then the row's
+    /// total. The list's paint report stays a BELT for what this
+    /// accounting misses — it must stay quiet in the steady state,
+    /// because a paint-born correction is a store edit per frame,
+    /// and a scroll that edits the store re-lays the window.
+    fn account_cell_height(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        turn: &ahp_wire::client::TurnId,
+        key: &crate::turn::CellKey,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(range) = self.rows.content().row_range(turn) else {
+            return;
+        };
+        let index = range.start;
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(index) else {
+            return;
+        };
+        let Some(cell_index) = row.cell_at(key) else {
+            return;
+        };
+        let (Some(stored), Some(cell)) = (
+            row.cell_height_at(cell_index),
+            row.cell_view(cell_index),
+        ) else {
+            return;
+        };
+        let measured = cell.measured_height(store);
+        if (measured - stored).abs() > 0.5 {
+            fx.scope(ChatPanelCommand::Rows, |fx| {
                 self.rows.perform(
                     store,
                     ui,
                     ScrollCommand::Content(ListCommand::Child(
                         index,
-                        RowCommand::Turn(ListCommand::Child(cell, command)),
+                        RowCommand::Turn(ListCommand::SetHeight(cell_index, measured)),
                     )),
                     fx,
                 )
-            },
-        );
+            });
+        }
+        // The row's total follows the cells' sum — independent check:
+        // a `Place` splice fixes the inner element itself but leaves
+        // the row at its estimate.
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(index) else {
+            return;
+        };
+        let total = row.cells_height();
+        let stored_row = self.rows.content().height_at(index).unwrap_or(total);
+        if (total - stored_row).abs() > 0.5 {
+            fx.scope(ChatPanelCommand::Rows, |fx| {
+                self.rows.perform(
+                    store,
+                    ui,
+                    ScrollCommand::Content(ListCommand::SetHeight(index, total)),
+                    fx,
+                )
+            });
+            fx.settle();
+        }
     }
 
     fn composer_command(

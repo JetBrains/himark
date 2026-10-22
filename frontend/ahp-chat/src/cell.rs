@@ -370,6 +370,43 @@ impl Cell {
         chrome.title_size * 1.8
     }
 
+    /// The cell's height as DATA — the same number its display lays
+    /// to, derived from the content without building a tree. Heights
+    /// land through the COMMAND road (the editor-repair law): a
+    /// landing that changed content re-splices its lists with this,
+    /// and the list's paint report stays a belt, not the mechanism.
+    pub(crate) fn measured_height(&self, store: &Store) -> f32 {
+        let chrome = env::Themes::of(store).ui().chat.clone();
+        if let CellBody::Tools(group) = &self.body {
+            // The tools card is its own shape: the rows, padded both
+            // sides (`display`'s tools arm).
+            return group.rows_height() + chrome.pad * 2.0 + chrome.gap;
+        }
+        let header_h = match (&self.body, self.kind) {
+            (_, CellKind::User) => Self::header_band(&chrome),
+            (CellBody::Diff { .. } | CellBody::PendingDiff { .. }, _) => {
+                Self::header_band(&chrome)
+            }
+            _ => 0.0,
+        };
+        let editor_height = match &self.body {
+            CellBody::Markdown(editor) => editor
+                .document
+                .content_height(editor.editor)
+                .max(chrome.min_cell_height),
+            CellBody::PendingText { estimate, .. } => *estimate,
+            CellBody::PendingDiff { .. } => 0.0,
+            CellBody::Diff { view, .. } => view
+                .split
+                .right
+                .document
+                .content_height(view.split.right.editor)
+                .max(chrome.min_cell_height),
+            CellBody::Tools(_) => unreachable!("handled above"),
+        };
+        header_h + editor_height + chrome.pad * 2.0 + chrome.gap
+    }
+
     /// The built document lands: mount its editor at this cell's width
     /// and replay whatever streamed in while the build ran.
     fn resolve_text(

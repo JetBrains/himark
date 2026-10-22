@@ -95,6 +95,23 @@ impl TurnView {
         self.cells.row_range(key).map(|range| range.start)
     }
 
+    /// The turn's height exactly as the transcript ropes it: the
+    /// cells' sum — the height accounting re-splices the row to this
+    /// after a cell's element moved.
+    pub(crate) fn cells_height(&self) -> f32 {
+        self.cells.total_height()
+    }
+
+    /// One cell's STORED element height.
+    pub(crate) fn cell_height_at(&self, index: usize) -> Option<f32> {
+        self.cells.height_at(index)
+    }
+
+    /// One cell to MEASURE — a clone of refcounts, not of content.
+    pub(crate) fn cell_view(&self, index: usize) -> Option<Cell> {
+        self.cells.view_at(index)
+    }
+
     pub fn id(&self) -> &str {
         &self.id
     }

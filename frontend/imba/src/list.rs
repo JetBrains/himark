@@ -2401,6 +2401,18 @@ where
                 (animation.start..animation.start + animation.len()).contains(&row.index)
             });
             if !animating && (row.live - row.height).abs() > 0.5 {
+                // The BELT, not the mechanism: heights are supposed to
+                // land as data through the command road (a build's
+                // landing, a placed cell, the editor repair). A report
+                // here in the steady state is a store edit per frame —
+                // and a scroll that edits the store re-lays the window.
+                // HIMARK_TRACE_HEIGHTS names the rows that still drift.
+                if std::env::var_os("HIMARK_TRACE_HEIGHTS").is_some() {
+                    eprintln!(
+                        "[heights] paint belt: row {} stored {:.1} -> live {:.1}",
+                        row.index, row.height, row.live
+                    );
+                }
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
                     EventResult::command(ListCommand::SetHeight(row.index, row.live)),
                 );

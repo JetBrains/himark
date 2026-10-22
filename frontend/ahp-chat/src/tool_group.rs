@@ -207,6 +207,12 @@ impl ToolGroup {
         (group, height)
     }
 
+    /// The rows' standing height — the cell's height accounting reads
+    /// it after any command that may have grown or folded a row.
+    pub(crate) fn rows_height(&self) -> f32 {
+        self.rows.total_height()
+    }
+
     pub(crate) fn oracle(&self) -> Vec<String> {
         let mut out = Vec::new();
         for index in 0..self.rows.len() {

@@ -58,6 +58,12 @@ impl TranscriptView {
         self.list.total_height()
     }
 
+    /// One row's STORED element height — the height accounting
+    /// compares it against the cells' sum.
+    pub(crate) fn height_at(&self, index: usize) -> Option<f32> {
+        self.list.height_at(index)
+    }
+
     pub(crate) fn row_range(
         &self,
         key: &ahp_wire::client::TurnId,
