@@ -73,6 +73,10 @@ pub enum CanvasCommand {
         key: ResourceLocation,
         command: RowCommand,
     },
+
+    /// The summary pill's press: collapse every open file while any
+    /// stands open, expand every parked one after.
+    ToggleAll,
 }
 
 impl std::fmt::Display for CanvasCommand {
@@ -83,6 +87,7 @@ impl std::fmt::Display for CanvasCommand {
             CanvasCommand::ToRow { command, .. } => command.fmt(out),
             CanvasCommand::ToPending { command, .. } => command.fmt(out),
             CanvasCommand::Landed { .. } => out.write_str("canvas landed"),
+            CanvasCommand::ToggleAll => out.write_str("canvas toggle all"),
         }
     }
 }
@@ -183,9 +188,13 @@ const PREFETCH_UNKNOWN_LINES: i64 = 400;
 
 fn sticky_style() -> imba::list::StickySource {
     std::sync::Arc::new(|store: &Store| {
-        let window = env::Themes::of(store).ui().window.clone();
+        let theme = env::Themes::of(store);
+        let window = theme.ui().window.clone();
         StickyStyle {
-            background: window.background.0,
+            // The planted band backs onto the canvas PAGE — the strip
+            // behind a floating plaque is the same ground the cards
+            // ride on, in both themes.
+            background: theme.ui().diff.plaque_page.0,
             divider: window.divider.0,
             divider_width: window.divider_width,
         }
@@ -1371,6 +1380,25 @@ impl Canvas {
         fx.settle();
     }
 
+    /// The summary pill's one verb: anything open → collapse all;
+    /// everything parked → expand all. Each flip is the header
+    /// chevron's own `toggle_collapse`, so the stash discipline (built
+    /// views stay alive, placeholders park) holds file by file.
+    fn toggle_all(&mut self, fx: &mut Effects<'_, CanvasCommand>) {
+        let keys: Vec<ResourceLocation> = self.files.keys().cloned().collect();
+        let any_open = keys
+            .iter()
+            .any(|key| (&self.rows).row_range(&CanvasKey::Diff(key.clone())).is_some());
+        for key in keys {
+            let open = (&self.rows)
+                .row_range(&CanvasKey::Diff(key.clone()))
+                .is_some();
+            if any_open == open && (open || self.stash.get(&key).is_some()) {
+                self.toggle_collapse(&key, fx);
+            }
+        }
+    }
+
     /// A header ask, wherever it was pressed — the in-flow row or the
     /// planted sticky copy route identically.
     fn header_action(
@@ -1570,6 +1598,7 @@ impl Canvas {
     ) {
         match command {
             CanvasCommand::Landed { key, prep } => self.land(store, ui, key, prep, fx),
+            CanvasCommand::ToggleAll => self.toggle_all(fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
             CanvasCommand::ToPending { key, command } => {
                 self.to_pending(key, command, store, ui, fx)
@@ -1668,19 +1697,70 @@ impl Canvas {
                             }),
                     )
                 }
-                None => imba::ThunkBox::new(
-                    arena,
-                    imba::layout::Layout::layout(
-                        self.rows.display(arena, store, ui),
+                None => {
+                    // The summary pill floats top-center over the
+                    // scroll: the file count, the +A −R totals and
+                    // the expansion toggle. Wrapped OUTSIDE the
+                    // sticky host so it rides above the planted
+                    // header bands.
+                    let pill = (self.files.size() > 0).then(|| {
+                        let (mut added, mut removed) = (0i64, 0i64);
+                        for (_, file) in self.files.iter() {
+                            added += file.added.unwrap_or(0).max(0);
+                            removed += file.removed.unwrap_or(0).max(0);
+                        }
+                        crate::diff_summary::SummaryPill::new(
+                            store,
+                            ui,
+                            crate::diff_summary::SummarySpec {
+                                files: self.files.size(),
+                                added,
+                                removed,
+                                collapsed: self.stash.size(),
+                            },
+                            constraints.max.width,
+                        )
+                    });
+                    // The list starts below the pill's strip — the
+                    // first card never hides under the capsule. The
+                    // canvas PAGE paints behind it all: the ground
+                    // the plaques ride on (gray in light, near-black
+                    // in dark).
+                    use imba::layout::LayoutExt as _;
+                    let strip = pill.as_ref().map(|pill| pill.clearance()).unwrap_or(0.0);
+                    let page = env::Themes::of(store).ui().diff.plaque_page.0;
+                    imba::ThunkBox::new(
                         arena,
-                        constraints,
+                        imba::layout::Layout::layout(
+                            self.rows
+                                .display(arena, store, ui)
+                                .pad_insets(imba::layout::Insets {
+                                    left: 0.0,
+                                    top: strip,
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                })
+                                .backdrop(
+                                    move |_arena: &Arena,
+                                          canvas: &skia_safe::Canvas,
+                                          rect: Rect| {
+                                        let mut paint = Paint::default();
+                                        paint.set_anti_alias(false);
+                                        paint.set_color(page);
+                                        canvas.draw_rect(rect, &paint);
+                                    },
+                                ),
+                            arena,
+                            constraints,
+                        )
+                        .map(CanvasCommand::Rows)
+                        // The list plants its sticky headers here —
+                        // the canvas IS the pane face, so the band
+                        // spans it edge to edge.
+                        .overlay_host(imba::list::STICKY_HOST)
+                        .wrap(move |inner| SummaryOver { inner, pill }),
                     )
-                    .map(CanvasCommand::Rows)
-                    // The list plants its sticky headers here —
-                    // the canvas IS the pane face, so the band
-                    // spans it edge to edge.
-                    .overlay_host(imba::list::STICKY_HOST),
-                ),
+                }
             };
             inner
         })
@@ -3040,6 +3120,8 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
                 let base = theme.resolve([]).font_size.unwrap_or(26.0);
                 let size = base * 1.1;
+                let diff_chrome = theme.ui().diff.clone();
+                let margin = diff_chrome.plaque_margin;
                 let mut buttons = vec![DiffHeaderPress::OpenPane, DiffHeaderPress::OpenFile];
                 if header.built {
                     buttons.push(DiffHeaderPress::ToggleFace);
@@ -3060,7 +3142,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                         baseline: size,
                     },
                     band,
-                    width,
+                    (width - margin * 2.0).max(1.0),
                 );
                 let widget = face.widget(|press| {
                     Some(RowCommand::Header(match press {
@@ -3070,19 +3152,50 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                         DiffHeaderPress::ToggleCollapse => HeaderAction::ToggleCollapse,
                     }))
                 });
-                imba::ThunkBox::new(arena, imba::eager(widget))
+                // The plaque's HEADER band: top corners always; a
+                // collapsed card ends here, so it rounds the bottom
+                // too and stops a gap short of the next card.
+                let collapsed = header.collapsed;
+                let fill = diff_chrome.plaque_header.0;
+                let radius = diff_chrome.plaque_radius;
+                let gap = chrome.gap;
+                let laid = imba::layout::fixed(imba::eager(widget))
+                    .pad_insets(imba::layout::Insets {
+                        left: margin,
+                        top: 0.0,
+                        right: margin,
+                        bottom: 0.0,
+                    })
+                    .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                        let plaque = Rect::new(
+                            rect.left + margin,
+                            rect.top,
+                            rect.right - margin,
+                            if collapsed { rect.bottom - gap } else { rect.bottom },
+                        );
+                        paint_plaque(canvas, plaque, fill, radius, true, collapsed);
+                    })
+                    .layout(arena, constraints);
+                imba::ThunkBox::new(arena, laid)
             }
             CanvasRow::Diff(diff) => match &diff.body {
                 RowBody::Placeholder { armed } => {
+                    let diff_chrome = theme.ui().diff.clone();
+                    let margin = diff_chrome.plaque_margin;
+                    let inner_w = (width - margin * 2.0).max(1.0);
+                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
                     let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
-                    let skeleton = skeleton_layout(arena, &theme, &diff.file, width, body_height);
+                    let skeleton = skeleton_layout(arena, &theme, &diff.file, inner_w, body_height);
                     let card = imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(width, body_height))
+                        .child(imba::layout::spacer(inner_w, body_height))
                         .child(imba::layout::fixed(skeleton))
+                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                            paint_plaque(canvas, rect, fill, radius, false, true);
+                        })
                         .pad_insets(imba::layout::Insets {
-                            left: 0.0,
+                            left: margin,
                             top: 0.0,
-                            right: 0.0,
+                            right: margin,
                             bottom: chrome.gap,
                         })
                         .layout(arena, constraints);
@@ -3093,11 +3206,15 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                     )
                 }
                 RowBody::Failed(error) => {
+                    let diff_chrome = theme.ui().diff.clone();
+                    let margin = diff_chrome.plaque_margin;
+                    let inner_w = (width - margin * 2.0).max(1.0);
+                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
                     let text = format!("{} — {error}", diff.file.title);
                     let font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.85);
                     let shaper = imba::layout::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
-                    let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
+                    let body = imba::leaf::leaf::<RowCommand>(inner_w, chrome.title_size * 3.0)
                         .paint_instead(move |_arena, canvas, rect| {
                             shaper.draw(
                                 canvas,
@@ -3110,18 +3227,25 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             );
                         });
                     imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(width, chrome.title_size * 3.0))
+                        .child(imba::layout::spacer(inner_w, chrome.title_size * 3.0))
                         .child(imba::layout::fixed(body))
+                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                            paint_plaque(canvas, rect, fill, radius, false, true);
+                        })
                         .pad_insets(imba::layout::Insets {
-                            left: 0.0,
+                            left: margin,
                             top: 0.0,
-                            right: 0.0,
+                            right: margin,
                             bottom: chrome.gap,
                         })
                         .layout(arena, constraints)
                 }
                 RowBody::Built { pane } => {
-                    let editor_target = (width - gutter).max(120.0);
+                    let diff_chrome = theme.ui().diff.clone();
+                    let margin = diff_chrome.plaque_margin;
+                    let inner_w = (width - margin * 2.0).max(1.0);
+                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
+                    let editor_target = (inner_w - gutter).max(120.0);
                     let body = imba::layout::Layout::layout(
                         pane.display(arena, store, ui),
                         arena,
@@ -3155,11 +3279,22 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             arena,
                             Size::new(width, body_height + chrome.gap),
                         );
-                        face.place_boxed(0.0, 0.0, imba::ThunkBox::new(arena, body));
+                        // Bottom-most: the plaque body under the
+                        // mounting pane and its skeleton face.
+                        face.place(
+                            margin,
+                            0.0,
+                            imba::leaf::leaf::<RowCommand>(inner_w, body_height).paint_instead(
+                                move |_arena, canvas, rect| {
+                                    paint_plaque(canvas, rect, fill, radius, false, true);
+                                },
+                            ),
+                        );
+                        face.place_boxed(margin, 0.0, imba::ThunkBox::new(arena, body));
                         face.place_boxed(
+                            margin,
                             0.0,
-                            0.0,
-                            skeleton_layout(arena, &theme, &diff.file, width, body_height),
+                            skeleton_layout(arena, &theme, &diff.file, inner_w, body_height),
                         );
                         return imba::ThunkBox::new(arena, face);
                     }
@@ -3193,12 +3328,15 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             None => None,
                         };
                     let card = imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(width, body_height))
+                        .child(imba::layout::spacer(inner_w, body_height))
                         .child(imba::layout::fixed(body))
+                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                            paint_plaque(canvas, rect, fill, radius, false, true);
+                        })
                         .pad_insets(imba::layout::Insets {
-                            left: 0.0,
+                            left: margin,
                             top: 0.0,
-                            right: 0.0,
+                            right: margin,
                             bottom: chrome.gap,
                         })
                         .layout(arena, constraints);
@@ -3213,6 +3351,29 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
 }
 
 // ------------------------------------------------------------- header
+
+/// One PLAQUE face (docs/himark-islands-canvas-many-files.png): the
+/// card fill with the chosen corners rounded — the header band rounds
+/// the top, the diff body rounds the bottom, a collapsed header
+/// rounds all four.
+fn paint_plaque(
+    canvas: &skia_safe::Canvas,
+    rect: Rect,
+    fill: skia_safe::Color,
+    radius: f32,
+    top: bool,
+    bottom: bool,
+) {
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_color(fill);
+    let corner = |on: bool| {
+        let r = if on { radius } else { 0.0 };
+        skia_safe::Point::new(r, r)
+    };
+    let radii = [corner(top), corner(top), corner(bottom), corner(bottom)];
+    canvas.draw_rrect(skia_safe::RRect::new_rect_radii(rect, &radii), &paint);
+}
 
 /// The skeleton under a pending header: rounded bars at the line
 /// rhythm, tinted from the diff palette, the mix proportioned to the
@@ -3294,6 +3455,60 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedPlacehol
         &'w mut self,
         target: imba::focus::SeatKey,
     ) -> imba::focus::LayoutData<'w, RowCommand>
+    where
+        'a: 'w,
+    {
+        self.inner.layout_data(target)
+    }
+}
+
+/// The summary pill floated over the canvas face: paints after the
+/// list (and its planted sticky bands), answers the press inside its
+/// capsule, and passes everything else through.
+struct SummaryOver<'a> {
+    inner: imba::WidgetBox<'a, CanvasCommand>,
+    pill: Option<crate::diff_summary::SummaryPill>,
+}
+
+impl<'a> Widget<'a, CanvasCommand> for SummaryOver<'a> {
+    fn size(&self) -> Size {
+        self.inner.size()
+    }
+
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, CanvasCommand>> {
+        self.inner.overlays()
+    }
+
+    fn handle_event(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: Rect,
+    ) -> EventResult<CanvasCommand> {
+        if let Some(pill) = &self.pill {
+            match event {
+                Event::Paint { canvas, .. } => {
+                    let result = self.inner.handle_event(arena, event, viewport);
+                    pill.paint(canvas);
+                    return result;
+                }
+                Event::MouseDown {
+                    button: imba::event::MouseButton::Left,
+                    point,
+                    ..
+                } if pill.hit(*point) => {
+                    return EventResult::command(CanvasCommand::ToggleAll);
+                }
+                _ => {}
+            }
+        }
+        self.inner.handle_event(arena, event, viewport)
+    }
+
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, CanvasCommand>
     where
         'a: 'w,
     {

@@ -12,7 +12,7 @@ pub(crate) const FOLD_CONTEXT: u32 = 3;
 
 pub(crate) const FOLD_MIN_LINES: u32 = 3;
 
-pub(crate) const FOLD_STEP: u32 = 5;
+pub(crate) const FOLD_STEP: u32 = 10;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FoldSpec {
@@ -397,13 +397,6 @@ impl FoldStrip {
     }
 }
 
-const FOLD_BUTTONS: [FoldCommand; 5] = [
-    FoldCommand::Remove,
-    FoldCommand::HideBottom,
-    FoldCommand::RevealBottom,
-    FoldCommand::HideTop,
-    FoldCommand::RevealTop,
-];
 
 impl imba::View for FoldStrip {
     type Command = FoldCommand;
@@ -453,99 +446,207 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
         arena: &'a imba::arena::Arena,
         constraints: imba::constraints::Constraints,
     ) -> imba::ThunkBox<'a, FoldCommand> {
-        use imba::event::{Event, EventResult, MouseButton};
-        use imba::layout::LayoutExt;
-        use imba::thunk_ext::ThunkExt;
-
-        let chrome = self.chrome;
         let width = constraints.max.width.max(1.0);
-        let height = chrome.fold_height;
+        let (chip, gap) = chip_metrics(&self.chrome);
+        let height = strip_height(&self.chrome);
         if self.silent {
             // The spacer face: same reserved height, nothing painted,
             // nothing answered — the shared strip renders elsewhere.
             return imba::ThunkBox::new(arena, imba::leaf::leaf::<FoldCommand>(width, height));
         }
-        let size = chrome.fold_button_size;
-        let gap = size * 0.35;
-        let button_top = (height - size) * 0.5;
-
-        // The label paints at the strip's hand-computed baseline:
-        // `Text` puts its baseline at top + ascent, so pad the top by
-        // baseline − ascent for exact parity with the old `draw_str`.
-        let font = strip_font(chrome.fold_text_size);
-        let ascent = -font.metrics().1.ascent;
-        let baseline = (height + chrome.fold_text_size * 0.7) * 0.5;
-        let label = imba::layout::Text::with_shaper(
-            format!("… {} unchanged lines", self.lines),
-            font,
-            chrome.fold_text.0,
-            self.shaper.clone(),
-        )
-        .pad_insets(imba::layout::Insets {
-            left: size * 0.5,
-            top: baseline - ascent,
-            right: 0.0,
-            bottom: 0.0,
-        });
-
-        let mut row = imba::layout::Row::new(arena)
-            .child(label)
-            .weighted(1.0, imba::layout::Fill::new());
-        // Left-to-right is the old right-to-left button walk reversed;
-        // each button carries the inter-button gap as its right inset,
-        // so the last one also ends a gap short of the strip's edge.
-        for command in FOLD_BUTTONS.into_iter().rev() {
-            let color = chrome.fold_button.0;
-            let glyph = imba::leaf::leaf::<FoldCommand>(size, size).paint_instead(
-                move |_arena, canvas, rect| paint_fold_glyph(canvas, rect, color, command),
-            );
-            row = row.child(
-                imba::layout::fixed(glyph)
-                    .on_event(
-                        move |_arena: &imba::arena::Arena,
-                              event: &Event<'_>,
-                              _size: skia_safe::Size| {
-                            match event {
-                                Event::MouseDown {
-                                    button: MouseButton::Left,
-                                    ..
-                                } => EventResult::command(command),
-                                _ => EventResult::Ignored,
-                            }
-                        },
-                    )
-                    .pad_insets(imba::layout::Insets {
-                        left: 0.0,
-                        top: button_top,
-                        right: gap,
-                        bottom: 0.0,
-                    }),
-            );
-        }
-
-        row.backdrop(
-            move |_arena: &imba::arena::Arena,
-                  canvas: &skia_safe::Canvas,
-                  rect: skia_safe::Rect| {
-                paint_strip_chrome(canvas, rect, &chrome);
-            },
-        )
-        // FALLBACK-ordered, like the old leaf `.event()`: the buttons
-        // answer first; a left press anywhere else on the strip is
-        // swallowed so it never reaches the document underneath.
-        .on_event(
-            |_arena: &imba::arena::Arena, event: &Event<'_>, _size: skia_safe::Size| match event {
-                Event::MouseDown {
-                    button: MouseButton::Left,
-                    ..
-                } => EventResult::handled(),
-                _ => EventResult::Ignored,
-            },
-        )
-        .layout(
+        imba::ThunkBox::new(
             arena,
-            imba::constraints::Constraints::tight(skia_safe::Size::new(width, height)),
+            imba::eager(FoldFace {
+                chrome: self.chrome,
+                lines: self.lines,
+                shaper: self.shaper,
+                width,
+                height,
+                chip,
+                gap,
+            }),
         )
+    }
+}
+
+fn chip_metrics(chrome: &crate::theme::DiffChrome) -> (f32, f32) {
+    ((chrome.fold_text_size * 1.5).ceil(), 6.0)
+}
+
+/// The strip's whole footprint — the silent spacer and the painted
+/// face MUST agree, or the split's sides drift apart at every fold.
+fn strip_height(chrome: &crate::theme::DiffChrome) -> f32 {
+    let (chip, gap) = chip_metrics(chrome);
+    chip * 3.0 + gap * 2.0 + 12.0
+}
+
+/// The fold's face (docs/himark-islands-canvas-many-files.png): a
+/// hairline through the middle, a chip stack at the left — `+N
+/// lines` above, `unfold` riding the line, `+N lines` below — and
+/// the folded count dimmed at the right edge.
+struct FoldFace {
+    chrome: crate::theme::DiffChrome,
+    lines: u32,
+    shaper: std::rc::Rc<imba::layout::TextShaper>,
+    width: f32,
+    height: f32,
+    chip: f32,
+    gap: f32,
+}
+
+impl FoldFace {
+    /// The three chips, top to bottom, with their rects and labels.
+    fn chips(&self) -> [(FoldCommand, skia_safe::Rect, String); 3] {
+        let font = strip_font(self.chrome.fold_text_size);
+        let inset = self.chrome.fold_text_size;
+        let pad = self.chrome.fold_text_size * 0.7;
+        let reveal = format!("+ {} lines", FOLD_STEP.min(self.lines));
+        let reveal_w = self.shaper.advance(&font, &reveal) + pad * 2.0;
+        // The unfold chip leads with its glyph.
+        let unfold_w =
+            self.shaper.advance(&font, "unfold") + pad * 2.0 + self.chrome.fold_text_size * 0.9;
+        let mid = self.height * 0.5;
+        [
+            (
+                FoldCommand::RevealTop,
+                skia_safe::Rect::from_xywh(
+                    inset,
+                    mid - self.chip * 1.5 - self.gap,
+                    reveal_w,
+                    self.chip,
+                ),
+                reveal.clone(),
+            ),
+            (
+                FoldCommand::Remove,
+                skia_safe::Rect::from_xywh(inset, mid - self.chip * 0.5, unfold_w, self.chip),
+                "unfold".to_owned(),
+            ),
+            (
+                FoldCommand::RevealBottom,
+                skia_safe::Rect::from_xywh(inset, mid + self.chip * 0.5 + self.gap, reveal_w, self.chip),
+                reveal,
+            ),
+        ]
+    }
+}
+
+impl<'a> imba::Widget<'a, FoldCommand> for FoldFace {
+    fn size(&self) -> skia_safe::Size {
+        skia_safe::Size::new(self.width, self.height)
+    }
+
+    fn handle_event(
+        &self,
+        _arena: &imba::arena::Arena,
+        event: &imba::event::Event<'_>,
+        _viewport: skia_safe::Rect,
+    ) -> imba::event::EventResult<FoldCommand> {
+        use imba::event::{Event, EventResult, MouseButton};
+        match event {
+            Event::Paint { canvas, .. } => {
+                let chrome = &self.chrome;
+                let font = strip_font(chrome.fold_text_size);
+                let (ascent, descent) = {
+                    let metrics = font.metrics().1;
+                    (-metrics.ascent, metrics.descent)
+                };
+                let mut paint = skia_safe::Paint::default();
+                paint.set_anti_alias(true);
+                let mid = self.height * 0.5;
+                let chips = self.chips();
+
+                // The folded count, dimmed at the right edge, riding
+                // the line's level.
+                let label = format!("{} lines folded", self.lines);
+                let label_w = self.shaper.advance(&font, &label);
+                let label_x = self.width - chrome.fold_text_size - label_w;
+                self.shaper.draw(
+                    canvas,
+                    &font,
+                    &label,
+                    chrome.fold_text.0,
+                    0.0,
+                    label_x,
+                    mid + (ascent - descent) * 0.5,
+                );
+
+                // The hairline, from past the chips to short of the
+                // count.
+                let chips_right = chips
+                    .iter()
+                    .map(|(_, rect, _)| rect.right)
+                    .fold(0.0_f32, f32::max);
+                paint.set_color(chrome.fold_rule.0);
+                paint.set_stroke_width(1.0);
+                paint.set_style(skia_safe::paint::Style::Stroke);
+                canvas.draw_line(
+                    (chips_right + chrome.fold_text_size, mid),
+                    (label_x - chrome.fold_text_size, mid),
+                    &paint,
+                );
+
+                // The chips: filled, hairline-framed, labels centered.
+                for (command, rect, text) in &chips {
+                    paint.set_style(skia_safe::paint::Style::Fill);
+                    paint.set_color(chrome.fold_background.0);
+                    canvas.draw_round_rect(*rect, 6.0, 6.0, &paint);
+                    paint.set_style(skia_safe::paint::Style::Stroke);
+                    paint.set_color(chrome.fold_rule.0);
+                    canvas.draw_round_rect(*rect, 6.0, 6.0, &paint);
+
+                    let mut text_x = rect.left + chrome.fold_text_size * 0.7;
+                    if *command == FoldCommand::Remove {
+                        // The unfold glyph: two chevrons parting.
+                        let cx = text_x + chrome.fold_text_size * 0.3;
+                        let cy = rect.center_y();
+                        let arm = chrome.fold_text_size * 0.26;
+                        paint.set_color(chrome.fold_button.0);
+                        paint.set_stroke_width(1.6);
+                        paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+                        let mut path = skia_safe::PathBuilder::new();
+                        path.move_to((cx - arm, cy - arm * 0.5));
+                        path.line_to((cx, cy - arm * 1.3));
+                        path.line_to((cx + arm, cy - arm * 0.5));
+                        path.move_to((cx - arm, cy + arm * 0.5));
+                        path.line_to((cx, cy + arm * 1.3));
+                        path.line_to((cx + arm, cy + arm * 0.5));
+                        canvas.draw_path(&path.detach(), &paint);
+                        text_x = cx + arm + chrome.fold_text_size * 0.45;
+                    }
+                    paint.set_style(skia_safe::paint::Style::Fill);
+                    self.shaper.draw(
+                        canvas,
+                        &font,
+                        text,
+                        chrome.fold_text.0,
+                        0.0,
+                        text_x,
+                        rect.center_y() + (ascent - descent) * 0.5,
+                    );
+                }
+                EventResult::handled()
+            }
+            Event::MouseDown {
+                button: MouseButton::Left,
+                point,
+                ..
+            } => {
+                for (command, rect, _) in self.chips() {
+                    if point.x >= rect.left
+                        && point.x < rect.right
+                        && point.y >= rect.top
+                        && point.y < rect.bottom
+                    {
+                        return EventResult::command(command);
+                    }
+                }
+                // A press anywhere else on the strip is swallowed so
+                // it never reaches the document underneath.
+                EventResult::handled()
+            }
+            _ => imba::event::EventResult::Ignored,
+        }
     }
 }
 
@@ -561,80 +662,7 @@ pub(crate) fn strip_font(size: f32) -> skia_safe::Font {
     font
 }
 
-/// The strip's backdrop — background wash plus the 1px top and
-/// bottom rules — painted UNDER the row's label and glyphs.
-fn paint_strip_chrome(
-    canvas: &skia_safe::Canvas,
-    rect: skia_safe::Rect,
-    chrome: &crate::theme::DiffChrome,
-) {
-    use skia_safe::Paint;
-    let mut paint = Paint::default();
-    paint.set_anti_alias(true);
-    paint.set_color(chrome.fold_background.0);
-    canvas.draw_rect(rect, &paint);
-    paint.set_color(chrome.fold_rule.0);
-    canvas.draw_rect(
-        skia_safe::Rect::from_xywh(rect.left, rect.top, rect.width(), 1.0),
-        &paint,
-    );
-    canvas.draw_rect(
-        skia_safe::Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
-        &paint,
-    );
-}
 
-/// One button's hand-painted glyph — the chevron or X stroke, plus
-/// the reveal/hide boundary bar — inside the button's own rect.
-fn paint_fold_glyph(
-    canvas: &skia_safe::Canvas,
-    rect: skia_safe::Rect,
-    color: skia_safe::Color,
-    command: FoldCommand,
-) {
-    use skia_safe::{Paint, PathBuilder, Point};
-    let mut paint = Paint::default();
-    paint.set_anti_alias(true);
-    paint.set_color(color);
-    paint.set_style(skia_safe::paint::Style::Stroke);
-    paint.set_stroke_width(2.0);
-
-    let cx = rect.center_x();
-    let cy = rect.center_y();
-    let arm = rect.width() * 0.22;
-    let mut path = PathBuilder::new();
-    match command {
-        FoldCommand::Remove => {
-            path.move_to(Point::new(cx - arm, cy - arm));
-            path.line_to(Point::new(cx + arm, cy + arm));
-            path.move_to(Point::new(cx - arm, cy + arm));
-            path.line_to(Point::new(cx + arm, cy - arm));
-        }
-        FoldCommand::RevealTop | FoldCommand::HideBottom => {
-            path.move_to(Point::new(cx - arm, cy + arm * 0.6));
-            path.line_to(Point::new(cx, cy - arm * 0.8));
-            path.line_to(Point::new(cx + arm, cy + arm * 0.6));
-        }
-        FoldCommand::HideTop | FoldCommand::RevealBottom => {
-            path.move_to(Point::new(cx - arm, cy - arm * 0.6));
-            path.line_to(Point::new(cx, cy + arm * 0.8));
-            path.line_to(Point::new(cx + arm, cy - arm * 0.6));
-        }
-    }
-    canvas.draw_path(&path.detach(), &paint);
-
-    let bar_y = match command {
-        FoldCommand::RevealTop | FoldCommand::HideTop => Some(rect.top + 2.0),
-        FoldCommand::RevealBottom | FoldCommand::HideBottom => Some(rect.bottom - 2.0),
-        FoldCommand::Remove => None,
-    };
-    if let Some(bar_y) = bar_y {
-        let mut bar = PathBuilder::new();
-        bar.move_to(Point::new(cx - arm, bar_y));
-        bar.line_to(Point::new(cx + arm, bar_y));
-        canvas.draw_path(&bar.detach(), &paint);
-    }
-}
 
 /// TEST SUPPORT: the fold strips a marks markup carries — the right
 /// side's interactive strips (silent spacers are the left side's).

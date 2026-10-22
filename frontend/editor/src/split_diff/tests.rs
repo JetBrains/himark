@@ -1122,7 +1122,7 @@ fn a_typing_storm_holds_one_pair_repair_in_flight() {
 
 #[test]
 fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
-    let middle: Vec<String> = (0..14).map(|n| format!("same {n}")).collect();
+    let middle: Vec<String> = (0..34).map(|n| format!("same {n}")).collect();
     let left_source = format!("LEFT HEAD\n{}\nLEFT TAIL\n", middle.join("\n"));
     let right_source = format!("RIGHT HEAD\n{}\nRIGHT TAIL\n", middle.join("\n"));
     let mut view = pair(&left_source, &right_source, 240.0);

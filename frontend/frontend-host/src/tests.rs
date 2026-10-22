@@ -682,13 +682,21 @@ fn dock_x(x: f32) -> f32 {
 
 /// The center of the canvas header's side-by-side button — the
 /// RIGHTMOST of the three header buttons, inset from the canvas
-/// pane's right edge (the pane ends where the dock begins). Mirrors
+/// PLAQUE's right edge (the card stands a margin in from the pane,
+/// and the pane ends where the dock begins). Mirrors
 /// `HeaderFace::new` in hidiff/src/canvas.rs.
 fn canvas_pane_button_x() -> f32 {
     let ui = editor::theme::Theme::embedded();
     let chat = &ui.ui().chat;
     let zone = chat.title_size * 1.2 + chat.title_size;
-    900.0 - workbench::dock::DOCK_WIDTH - chat.pad - zone * 0.5
+    900.0 - workbench::dock::DOCK_WIDTH - ui.ui().diff.plaque_margin - chat.pad - zone * 0.5
+}
+
+/// The summary pill's strip above the canvas's first row — the list
+/// starts below it. Mirrors `diff_summary::strip_height`.
+fn canvas_pill_strip() -> f32 {
+    let ui = editor::theme::Theme::embedded();
+    ::canvas::diff_summary::strip_height(ui.ui().chat.title_size)
 }
 
 /// Mirrors `ListRow`'s own sizing (text block + 8px each side) so the
@@ -1274,7 +1282,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     assert!(himark::test_driver::click(
         &mut engine.app,
         canvas_pane_button_x(),
-        chrome_top + canvas_composer_band() + 40.0,
+        chrome_top + canvas_pill_strip() + canvas_composer_band() + 40.0,
         900.0,
         700.0,
     ));
@@ -2929,7 +2937,7 @@ fn a_one_sided_diff_goes_quiet() {
         .ui()
         .toolbar
         .height;
-    let header_y = chrome_top + canvas_composer_band() + 40.0;
+    let header_y = chrome_top + canvas_pill_strip() + canvas_composer_band() + 40.0;
     assert!(himark::test_driver::click(
         &mut engine.app,
         90.0,
@@ -8818,3 +8826,4 @@ fn engine_resize_shape_meter() {
         );
     }
 }
+

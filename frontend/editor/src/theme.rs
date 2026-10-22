@@ -910,6 +910,18 @@ pub struct DiffChrome {
 
     pub fold_button: Rgba,
     pub fold_button_size: f32,
+
+    /// The canvas PLAQUES (docs/himark-islands-canvas-many-files.png):
+    /// each file's header + diff rides its own rounded card over the
+    /// canvas page. The page fill behind and between the cards, the
+    /// body fill, the header band, the inset from the pane edges, and
+    /// the corner radius. Dark: cards lighter than the page; light:
+    /// white cards on the gray page.
+    pub plaque_page: Rgba,
+    pub plaque: Rgba,
+    pub plaque_header: Rgba,
+    pub plaque_margin: f32,
+    pub plaque_radius: f32,
 }
 
 impl Default for DiffChrome {
@@ -923,6 +935,11 @@ impl Default for DiffChrome {
             fold_text_size: 22.0,
             fold_button: Rgba(Color::new(0xccb6c2cc)),
             fold_button_size: 28.0,
+            plaque_page: Rgba(Color::new(0xff0a0a10)),
+            plaque: Rgba(Color::new(0xff17171b)),
+            plaque_header: Rgba(Color::new(0xff1d1d22)),
+            plaque_margin: 14.0,
+            plaque_radius: 10.0,
         }
     }
 }

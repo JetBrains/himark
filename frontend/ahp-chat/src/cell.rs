@@ -1081,9 +1081,9 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             );
         }
         if let Some((header, pending)) = header {
-            // The canvas's own file band (diff_header): stats leading,
-            // the name right-aligned before the corner-arrow button,
-            // the band's body opening the working copy.
+            // The canvas's own file band (diff_header): the dimmed
+            // path leading into the name, stats trailing it, the
+            // band's body opening the working copy.
             use ::canvas::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
             let title = if pending {
                 format!("{} — fetching contents…", header.title)

@@ -230,7 +230,12 @@
    "fold_background": "#0a0a10",
    "fold_rule": "#ff2b2b30",
    "fold_text": "#c89b9b9f",
-   "fold_button": "#e8b3b3b8"
+   "fold_button": "#e8b3b3b8",
+   "plaque_page": "#0a0a10",
+   "plaque": "#17171b",
+   "plaque_header": "#1d1d22",
+   "plaque_margin": 14.0,
+   "plaque_radius": 10.0
   },
   "window": {
    "background": "#0a0a10",

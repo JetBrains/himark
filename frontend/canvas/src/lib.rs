@@ -11,6 +11,7 @@ pub mod canvas;
 pub mod diff_canvas;
 pub mod diff_header;
 pub mod diff_pane;
+pub mod diff_summary;
 
 /// A tracked diff pair's row: the documents collection and the view.
 #[derive(Clone, PartialEq)]

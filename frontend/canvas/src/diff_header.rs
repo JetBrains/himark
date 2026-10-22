@@ -3,11 +3,12 @@
 
 //! The diff FILE BAND, drawn once for every place a diff shows a file
 //! header: the canvas rows and the chat's edit cells. The shape is the
-//! canvas's own — the fold chevron (where folding exists), the `+N −M`
-//! trail leading, the file name right-aligned before the hairline
-//! buttons at the right edge, the band's body pressing the primary
-//! action. Call sites pick the affordances and map the presses onto
-//! their own command type; the geometry and the glyphs live here.
+//! canvas's own — the fold chevron (where folding exists), the dimmed
+//! directory prefix leading into the file name, the `+N −M` trail
+//! after it, the hairline buttons at the right edge, the band's body
+//! pressing the primary action. Call sites pick the affordances and
+//! map the presses onto their own command type; the geometry and the
+//! glyphs live here.
 
 use imba::{
     arena::Arena,
@@ -55,6 +56,9 @@ pub struct DiffHeaderSpec {
 }
 
 pub struct DiffHeaderFace {
+    /// The directory half of the title, trailing slash kept — dimmed.
+    prefix: String,
+    /// The leaf: the file name (plus any call-site suffix).
     title: String,
     added: Option<i64>,
     removed: Option<i64>,
@@ -98,8 +102,14 @@ impl DiffHeaderFace {
             right -= zone;
         }
 
+        // The path splits at its last slash: the directories dim, the
+        // file name carries the title weight.
+        let split = spec.title.rfind('/').map(|at| at + 1).unwrap_or(0);
+        let (prefix, title) = spec.title.split_at(split);
+
         Self {
-            title: spec.title,
+            prefix: prefix.to_owned(),
+            title: title.to_owned(),
             added: spec.added.filter(|n| *n > 0),
             removed: spec.removed.filter(|n| *n > 0),
             band,
@@ -184,8 +194,44 @@ impl DiffHeaderFace {
             paint.set_style(skia_safe::paint::Style::Fill);
         }
 
-        // The +N −M trail after the chevron.
+        // The text run clips at the buttons — a narrow pane crops the
+        // path and counts rather than drawing through the glyphs.
+        let buttons_left = self
+            .buttons
+            .last()
+            .map(|(_, zone)| zone.left - self.inset * 0.5)
+            .unwrap_or(self.width - self.inset);
+        canvas.save();
+        canvas.clip_rect(
+            Rect::new(rect.left, rect.top, rect.left + buttons_left, rect.bottom),
+            None,
+            false,
+        );
+
+        // The directory prefix, dimmed, leading into the file name.
         let mut x = rect.left + self.lead();
+        if !self.prefix.is_empty() {
+            x += self.shaper.draw(
+                canvas,
+                &self.trail_font,
+                &self.prefix,
+                self.affordance_color,
+                0.0,
+                x,
+                baseline,
+            );
+        }
+        x += self.shaper.draw(
+            canvas,
+            &self.title_font,
+            &self.title,
+            self.title_color,
+            0.0,
+            x,
+            baseline,
+        ) + self.trail_font.size();
+
+        // The +N −M trail after the name.
         if let Some(added) = self.added {
             let label = format!("+{added}");
             x += self.shaper.draw(
@@ -209,6 +255,7 @@ impl DiffHeaderFace {
                 baseline,
             );
         }
+        canvas.restore();
 
         // The buttons, hairline glyphs on the affordance color.
         paint.set_style(skia_safe::paint::Style::Stroke);
@@ -259,23 +306,6 @@ impl DiffHeaderFace {
             }
         }
         paint.set_style(skia_safe::paint::Style::Fill);
-
-        // The file name, right-aligned before the buttons.
-        let buttons_left = self
-            .buttons
-            .last()
-            .map(|(_, zone)| zone.left)
-            .unwrap_or(self.width - self.inset);
-        let title_width = self.shaper.advance(&self.title_font, &self.title);
-        self.shaper.draw(
-            canvas,
-            &self.title_font,
-            &self.title,
-            self.title_color,
-            0.0,
-            (rect.left + buttons_left - self.inset - title_width).max(rect.left + self.lead()),
-            baseline,
-        );
     }
 }
 

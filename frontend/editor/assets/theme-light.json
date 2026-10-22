@@ -227,10 +227,15 @@
   "ui": {
     "diff": {
       "spacer_fill": "#10000000",
-      "fold_background": "#ffffff",
+      "fold_background": "#f4f5f7",
       "fold_rule": "#2e1c2126",
       "fold_text": "#c24a5258",
-      "fold_button": "#d6454549"
+      "fold_button": "#d6454549",
+      "plaque_page": "#ececee",
+      "plaque": "#ffffff",
+      "plaque_header": "#f3f4f6",
+      "plaque_margin": 14.0,
+      "plaque_radius": 10.0
     },
     "window": {
       "background": "#ffffff",
