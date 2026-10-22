@@ -1754,10 +1754,12 @@ impl Canvas {
                             constraints,
                         )
                         .map(CanvasCommand::Rows)
-                        // The list plants its sticky headers here —
-                        // the canvas IS the pane face, so the band
-                        // spans it edge to edge.
-                        .overlay_host(imba::list::STICKY_HOST)
+                        // The sticky headers are NOT claimed here —
+                        // they bubble to whoever owns the scroll
+                        // physics (the parity law): the workbench's
+                        // `Scrolled` wrapper plants them in-texture;
+                        // the mounted road exports them to the shell,
+                        // which pins native layers over its scroller.
                         .wrap(move |inner| SummaryOver { inner, pill }),
                     )
                 }

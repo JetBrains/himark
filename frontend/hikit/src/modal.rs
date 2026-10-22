@@ -202,7 +202,24 @@ where
         store: &'a Store,
         ui: &'a imba::ui::UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        self.scroll.display(arena, store, ui)
+        let _ = arena;
+        // The STICKY bands plant HERE, with the scroll physics (the
+        // parity law): the ScrollView translates the bubbled anchors
+        // by its offset, so a band pinned to the content's visible
+        // top lands at this wrapper's top. The mounted road has no
+        // Scrolled — there the bands bubble out to the shell.
+        imba::layout::laid(move |arena: &'a imba::arena::Arena, constraints| {
+            use imba::thunk_ext::ThunkExt as _;
+            imba::ThunkBox::new(
+                arena,
+                imba::layout::Layout::layout(
+                    self.scroll.display(arena, store, ui),
+                    arena,
+                    constraints,
+                )
+                .overlay_host(imba::list::STICKY_HOST),
+            )
+        })
     }
 }
 

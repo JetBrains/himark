@@ -78,7 +78,7 @@ final class DesktopHost: NSObject, ObservableObject {
         }
         HimarkBridgeView.releaseWheels = { view in WheelRouter.shared.unregister(view) }
         HimarkBridgeView.overlayHost = { window in
-            window.contentView.flatMap(OverlayCanvasView.find)
+            window.contentView.flatMap(OverlayHostView.find)
         }
         // The engine took its callbacks AT CREATION; the seat hooks
         // them to this host now that it stands.

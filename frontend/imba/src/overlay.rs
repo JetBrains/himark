@@ -18,8 +18,23 @@ pub struct OverlayHost(pub &'static str);
 
 pub const WINDOW: OverlayHost = OverlayHost("window");
 
+/// How a shell PRESENTS this overlay when it reaches a frame root
+/// unclaimed (the mounted road, where the shell plays every host):
+/// FLANKED beside its anchor (popovers, menus, hover cards) or
+/// COVERING it, pinned to the scroller's visible top (the list's
+/// sticky file header, the editor's scope lines and stripe). The
+/// overlay carries its own attachment so no layer above needs a
+/// table of host names.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Attachment {
+    Flank,
+    Cover,
+}
+
 pub struct Overlay<'a, Command> {
     pub host: OverlayHost,
+
+    pub attachment: Attachment,
 
     pub anchor: Rect,
 
@@ -60,6 +75,7 @@ impl<'a, Command: 'a> Overlay<'a, Command> {
     {
         Overlay {
             host: self.host,
+            attachment: self.attachment,
             anchor: self.anchor,
             content: Box::new(MappedContent {
                 inner: self.content,

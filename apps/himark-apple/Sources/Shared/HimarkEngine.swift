@@ -4,6 +4,16 @@
 import QuartzCore
 import Metal
 
+/// What an exported overlay IS to the shell — mirrors the engine's
+/// `himark_bridge_overlay_kind` door.
+enum HimarkOverlayKind {
+    /// Flanks its anchor: completion lists, menus, hover cards.
+    case popover
+    /// Covers its anchor, pinned to the scroller's visible top:
+    /// the canvas's planted sticky file header.
+    case sticky
+}
+
 /// The engine's ONE animation clock. Every view used to drive
 /// `himark_animation_tick` from its own display link — N engine-wide
 /// ticks per frame, and the verdict ("something moved this frame")
@@ -307,12 +317,16 @@ final class HimarkEngine {
         sizedString { himark_place_session_uri(engine, place, $0, $1) } ?? ""
     }
 
-    /// A bridge's exported WINDOW overlays: the popover presence
-    /// the shell reconciles against. Epoch moves on change only.
-    func overlays(bridge: HimarkBridge) -> (epoch: UInt64, anchors: [CGRect]) {
+    /// A bridge's exported overlays: the layer presence the shell
+    /// reconciles against. Epoch moves on change only. A POPOVER
+    /// flanks its anchor (completion lists, menus); a STICKY band
+    /// covers it, pinned to the scroller's visible top.
+    func overlays(
+        bridge: HimarkBridge
+    ) -> (epoch: UInt64, anchors: [(kind: HimarkOverlayKind, host: String, rect: CGRect)]) {
         var epoch: UInt64 = 0
         let count = Int(himark_bridge_overlays(engine, bridge, &epoch))
-        var anchors: [CGRect] = []
+        var anchors: [(kind: HimarkOverlayKind, host: String, rect: CGRect)] = []
         anchors.reserveCapacity(count)
         for index in 0..<count {
             var x: Float = 0
@@ -320,9 +334,15 @@ final class HimarkEngine {
             var w: Float = 0
             var h: Float = 0
             if himark_bridge_overlay_anchor(engine, bridge, UInt(index), &x, &y, &w, &h) {
-                anchors.append(CGRect(
+                let kind: HimarkOverlayKind =
+                    himark_bridge_overlay_kind(engine, bridge, UInt(index)) == 1
+                        ? .sticky : .popover
+                let host = sizedString {
+                    himark_bridge_overlay_host(engine, bridge, UInt(index), $0, $1)
+                } ?? ""
+                anchors.append((kind, host, CGRect(
                     x: CGFloat(x), y: CGFloat(y),
-                    width: CGFloat(w), height: CGFloat(h)))
+                    width: CGFloat(w), height: CGFloat(h))))
             }
         }
         return (epoch, anchors)

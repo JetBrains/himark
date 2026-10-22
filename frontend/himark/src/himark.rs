@@ -24,11 +24,12 @@ use crate::stats::Stats;
 pub(crate) struct Mounted {
     pub(crate) bridge: crate::bridge::ViewBridge,
 
-    /// The WINDOW overlays this bridge's last frame bubbled —
+    /// The overlays this bridge's last frame bubbled — kinds and
     /// anchors in content coordinates, an epoch that moves when the
-    /// set changes. The shell reconciles native popovers against
+    /// set changes. The shell reconciles native layers against
     /// this; the bridge composites none of them.
-    pub(crate) overlay_anchors: Vec<skia_safe::Rect>,
+    pub(crate) overlay_anchors:
+        Vec<(imba::overlay::Attachment, imba::overlay::OverlayHost, skia_safe::Rect)>,
     pub(crate) overlay_epoch: u64,
 
     /// Set on a POPOVER's slot: the bridge whose overlay this view
@@ -713,7 +714,7 @@ impl Himark {
                 .stage_viewport
                 .unwrap_or_else(|| skia_safe::Rect::from_size(size));
             let mut frame = layout.realize(viewport);
-            let anchors = frame.window_overlays();
+            let anchors = frame.exported_overlays();
             if anchors != slot.overlay_anchors {
                 slot.overlay_anchors = anchors;
                 slot.overlay_epoch += 1;
@@ -817,9 +818,15 @@ impl Himark {
         }
     }
 
-    /// A bridge's exported overlay PRESENCE: the epoch and anchors
-    /// the shell reconciles its popovers against.
-    pub fn bridge_overlays(&self, id: ViewBridgeId) -> Option<(u64, Vec<skia_safe::Rect>)> {
+    /// A bridge's exported overlay PRESENCE: the epoch, and the
+    /// kinded anchors the shell reconciles its layers against.
+    pub fn bridge_overlays(
+        &self,
+        id: ViewBridgeId,
+    ) -> Option<(
+        u64,
+        Vec<(imba::overlay::Attachment, imba::overlay::OverlayHost, skia_safe::Rect)>,
+    )> {
         let slot = self.bridges.get(&id)?;
         Some((slot.overlay_epoch, slot.overlay_anchors.clone()))
     }
@@ -829,12 +836,22 @@ impl Himark {
     /// Recursive popovers are normal — this bridge exports its own
     /// bubbled overlays like any other.
     pub fn mint_overlay(&mut self, parent: ViewBridgeId, index: usize) -> Option<ViewBridgeId> {
-        self.bridges.get(&parent)?;
+        // The positional index names an overlay ONLY in this frame's
+        // set — translate it to the stable identity (host, nth of
+        // that host) now, so the mount keeps re-deriving the SAME
+        // overlay while the set reorders around it.
+        let anchors = &self.bridges.get(&parent)?.overlay_anchors;
+        let (_, host, _) = *anchors.get(index)?;
+        let within = anchors[..index]
+            .iter()
+            .filter(|(_, other, _)| *other == host)
+            .count();
         let id = self.mount(move |_store, _ui, _id, _fx| {
             Some(std::sync::Arc::new(crate::mounts::OverlayMount {
                 pinned: std::sync::OnceLock::new(),
                 band: std::sync::Mutex::new(None),
-                index,
+                host,
+                within,
                 content: std::sync::Mutex::new(None),
             })
                 as std::sync::Arc<dyn crate::bridge::BridgeView>)
@@ -1082,7 +1099,7 @@ impl Himark {
                 // The paint road is the per-frame rebuild now — the
                 // bubbled overlay anchors must move with it, or a
                 // popover's presence lags the standing frame.
-                let anchors = frame.window_overlays();
+                let anchors = frame.exported_overlays();
                 if anchors != slot.overlay_anchors {
                     slot.overlay_anchors = anchors;
                     slot.overlay_epoch += 1;

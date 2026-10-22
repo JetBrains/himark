@@ -1541,6 +1541,7 @@ impl EditorView {
             let view: &'a crate::completion::CompletionPopupView = arena.alloc(completion.view());
             overlays.push(imba::overlay::Overlay {
                 host: imba::overlay::WINDOW,
+                attachment: imba::overlay::Attachment::Flank,
                 anchor,
                 content: Box::new(move |host: Size, anchor: Rect| {
                     let content = imba::ThunkBox::new(
@@ -1565,6 +1566,7 @@ impl EditorView {
             let card: &'a crate::hover::HoverView = arena.alloc(card.clone());
             overlays.push(imba::overlay::Overlay {
                 host: imba::overlay::WINDOW,
+                attachment: imba::overlay::Attachment::Flank,
                 anchor,
                 content: Box::new(move |host: Size, anchor: Rect| {
                     let content = imba::ThunkBox::new(

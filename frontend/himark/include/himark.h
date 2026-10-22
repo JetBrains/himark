@@ -624,6 +624,27 @@ bool himark_bridge_overlay_anchor(HimarkEngine *engine,
                                   float *out_height);
 
 /**
+ * An exported overlay's KIND: 0 — a popover the shell flanks to
+ * its anchor (completion lists, menus); 1 — a sticky band the
+ * shell pins over its scroller's visible top, covering the
+ * anchor. Indexed like `himark_bridge_overlay_anchor`.
+ */
+uint8_t himark_bridge_overlay_kind(HimarkEngine *engine, HimarkBridge bridge, uintptr_t index);
+
+/**
+ * An exported overlay's HOST name — with `within` (how many
+ * earlier indices share it) this is the overlay's STABLE identity:
+ * the exported set reorders as views mount and scroll, and a shell
+ * keying its layers by position would swap their contents.
+ * Indexed like `himark_bridge_overlay_anchor`.
+ */
+uintptr_t himark_bridge_overlay_host(HimarkEngine *engine,
+                                     HimarkBridge bridge,
+                                     uintptr_t index,
+                                     char *out,
+                                     uintptr_t cap);
+
+/**
  * A POPOVER bridge's content slice, in the PARENT'S coordinates
  * — the rect the popover shows. Stashed by the bridge's last
  * layout: lay it (`himark_bridge_layout`) before reading. False

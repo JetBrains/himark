@@ -56,6 +56,9 @@ final class DesktopScrollHost: NSView {
     private(set) var bridge = HimarkBridge(raw: 0)
     private(set) var content: HimarkBridgeView?
     let scroll = FullTrackScrollView()
+    /// The pane's overlay host, wrapping the scroller — sticky
+    /// bands and popovers of the content bridge hang here.
+    private lazy var overlays = OverlayHostView(wrapping: scroll)
     /// A deliberate landing moves the keyboard here on mint.
     private let grabsFocus: Bool
 
@@ -73,12 +76,16 @@ final class DesktopScrollHost: NSView {
         self.grabsFocus = grabsFocus
         super.init(frame: .zero)
 
-        scroll.autoresizingMask = [.width, .height]
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.automaticallyAdjustsContentInsets = false
-        addSubview(scroll)
-        scroll.frame = bounds
+        // The pane's OWN overlay host wraps the scroller: the
+        // content bridge resolves it as the nearest host, so its
+        // sticky bands pin over THIS pane's viewport (and its
+        // popovers ride here too) instead of the window canvas.
+        overlays.frame = bounds
+        overlays.autoresizingMask = [.width, .height]
+        addSubview(overlays)
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(boundsChanged),
@@ -271,9 +278,12 @@ final class DesktopScrollHost: NSView {
         super.layout()
         // Autoresizing from a zero-sized FOLD leaves the scroller
         // degenerate (the rail's tree sat unscrollable until a
-        // remount) — the frame is restated, not inherited.
-        if scroll.frame != bounds {
-            scroll.frame = bounds
+        // remount) — the frames are restated, not inherited.
+        if overlays.frame != bounds {
+            overlays.frame = bounds
+        }
+        if scroll.frame != overlays.bounds {
+            scroll.frame = overlays.bounds
         }
         guard let content else { return }
         // Seed from the LAST MEASURE when one exists; a provisional
@@ -700,38 +710,15 @@ struct PlainPlaceBridge: NSViewRepresentable {
     }
 }
 
-/// The OVERLAY CANVAS: a window-spanning platform view SwiftUI lays
+/// The window's OVERLAY CANVAS: an `OverlayHostView` SwiftUI lays
 /// LAST, so it composites above every island and pill. The bridge
-/// views hang their overlay layers (completion popups, hover cards,
-/// combo menus) in here — a subview added straight to SwiftUI's
-/// hosting view sits beneath its own render layers and never shows.
-/// Empty space passes every click through.
-final class OverlayCanvasView: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        return hit === self ? nil : hit
-    }
-
-    /// The canvas standing in a window, found from its content view.
-    static func find(in view: NSView) -> OverlayCanvasView? {
-        if let canvas = view as? OverlayCanvasView { return canvas }
-        for child in view.subviews {
-            if let canvas = find(in: child) { return canvas }
-        }
-        return nil
-    }
-}
-
+/// views hang their window-level overlay layers (completion popups,
+/// hover cards, combo menus) in here — a subview added straight to
+/// SwiftUI's hosting view sits beneath its own render layers and
+/// never shows. The scrolled panes wrap their scrollers in hosts of
+/// their own, so sticky bands pin per pane; this one is the window
+/// fallback.
 struct OverlayCanvas: NSViewRepresentable {
-    func makeNSView(context: Context) -> OverlayCanvasView { OverlayCanvasView(frame: .zero) }
-    func updateNSView(_ view: OverlayCanvasView, context: Context) {}
+    func makeNSView(context: Context) -> OverlayHostView { OverlayHostView(frame: .zero) }
+    func updateNSView(_ view: OverlayHostView, context: Context) {}
 }

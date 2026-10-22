@@ -246,6 +246,7 @@ impl<'a> crate::Widget<'a, std::convert::Infallible> for EmitterWidget {
         }
         vec![crate::overlay::Overlay {
             host: ROW_HOST,
+            attachment: crate::overlay::Attachment::Flank,
             anchor: skia_safe::Rect::from_xywh(2.0, 4.0, 6.0, 8.0),
             content: Box::new(|_host: skia_safe::Size, _anchor: skia_safe::Rect| Vec::new()),
         }]

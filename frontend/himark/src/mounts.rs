@@ -356,7 +356,12 @@ pub(crate) struct OverlayMount {
     /// every popover layout, IME ask and clock tick walk a 10k-line
     /// document end to end (popup-causes-freezes.trace).
     pub(crate) band: std::sync::Mutex<Option<skia_safe::Rect>>,
-    pub(crate) index: usize,
+    /// The overlay's stable identity: the host it was minted FOR
+    /// and which of that host's overlays it stands (the exported
+    /// set reorders as views mount and scroll; a positional index
+    /// would swap this popover's content under the shell).
+    pub(crate) host: imba::overlay::OverlayHost,
+    pub(crate) within: usize,
     /// The union of the overlay's NON-host-covering pieces, in the
     /// parent's coordinates — the slice the shell's popover shows.
     /// Stashed at layout; read through the content-rect door.
@@ -423,10 +428,12 @@ impl BridgeView for OverlayMount {
             base.place(0.0, 0.0, inner);
             base.realize_into(band)
         };
+        // The stable identity pick: the nth overlay OF THIS HOST,
+        // however the rest of the exported set reordered.
         let picked = imba::Widget::overlays(&mut stacked)
             .into_iter()
-            .filter(|overlay| overlay.host == imba::overlay::WINDOW)
-            .nth(self.index);
+            .filter(|overlay| overlay.host == self.host)
+            .nth(self.within);
         let Some(overlay) = picked else {
             // The overlay left between frames — the shell's next
             // reconciliation closes this popover; stand empty.

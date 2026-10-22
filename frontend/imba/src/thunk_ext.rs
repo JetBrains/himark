@@ -425,6 +425,7 @@ where
         if let Some(content) = self.content.take() {
             overlays.push(Overlay {
                 host: self.host,
+                attachment: crate::overlay::Attachment::Flank,
                 anchor: Rect::from_size(self.inner.size()),
                 content: Box::new(content),
             });

@@ -80,6 +80,7 @@ pub(crate) fn projected_overlays<'a>(
             let inlay = interval.inlay.clone();
             overlays.push(imba::overlay::Overlay {
                 host,
+                attachment: imba::overlay::Attachment::Flank,
                 // The anchor's left edge is the MINTING EDITOR's left
                 // edge (0 here; translations on the way up carry it
                 // into host coordinates).

@@ -40,6 +40,7 @@ targets:
       - Sources/Shared
       - Sources/Desktop
       - path: Sources/macOS/HimarkBridgeView.swift
+      - path: Sources/macOS/OverlayHostView.swift
       - path: Sources/macOS/HostBridge.swift
     configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
     settings:

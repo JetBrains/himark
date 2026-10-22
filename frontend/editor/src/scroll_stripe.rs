@@ -287,6 +287,7 @@ pub(crate) fn scroll_stripe_overlays<'a>(
     let theme = theme.clone();
     vec![imba::overlay::Overlay {
         host: HOST,
+        attachment: imba::overlay::Attachment::Cover,
         anchor: Rect::from_xywh(0.0, viewport.top, 1.0, viewport.height()),
         content: Box::new(move |host_size: Size, _anchor: Rect| {
             let chrome = &theme.ui().scroll_stripe;

@@ -1241,7 +1241,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_anchor(
     else {
         return false;
     };
-    let Some(anchor) = anchors.get(index) else {
+    let Some((_, _, anchor)) = anchors.get(index) else {
         return false;
     };
     if !out_x.is_null() {
@@ -1257,6 +1257,59 @@ pub unsafe extern "C" fn himark_bridge_overlay_anchor(
         *out_height = anchor.height();
     }
     true
+}
+
+/// An exported overlay's KIND: 0 — a popover the shell flanks to
+/// its anchor (completion lists, menus); 1 — a sticky band the
+/// shell pins over its scroller's visible top, covering the
+/// anchor. Indexed like `himark_bridge_overlay_anchor`.
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_overlay_kind(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    index: usize,
+) -> u8 {
+    let Some(engine) = engine.as_mut() else {
+        return 0;
+    };
+    let Some((_, anchors)) = engine
+        .app
+        .bridge_overlays(crate::bridge::ViewBridgeId::from_raw(bridge.raw))
+    else {
+        return 0;
+    };
+    match anchors.get(index) {
+        Some((imba::overlay::Attachment::Cover, _, _)) => 1,
+        _ => 0,
+    }
+}
+
+/// An exported overlay's HOST name — with `within` (how many
+/// earlier indices share it) this is the overlay's STABLE identity:
+/// the exported set reorders as views mount and scroll, and a shell
+/// keying its layers by position would swap their contents.
+/// Indexed like `himark_bridge_overlay_anchor`.
+#[no_mangle]
+pub unsafe extern "C" fn himark_bridge_overlay_host(
+    engine: *mut HimarkEngine,
+    bridge: HimarkBridge,
+    index: usize,
+    out: *mut std::os::raw::c_char,
+    cap: usize,
+) -> usize {
+    let Some(engine) = engine.as_mut() else {
+        return 0;
+    };
+    let Some((_, anchors)) = engine
+        .app
+        .bridge_overlays(crate::bridge::ViewBridgeId::from_raw(bridge.raw))
+    else {
+        return 0;
+    };
+    let Some((_, host, _)) = anchors.get(index) else {
+        return 0;
+    };
+    crate::ffi::copy_optional_utf8(Some(host.0.to_owned()), out, cap)
 }
 
 /// A POPOVER bridge's content slice, in the PARENT'S coordinates

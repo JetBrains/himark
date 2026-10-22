@@ -236,6 +236,7 @@ pub(crate) fn sticky_overlays<'a>(
     };
     vec![imba::overlay::Overlay {
         host: HOST,
+        attachment: imba::overlay::Attachment::Cover,
 
         anchor: Rect::from_xywh(0.0, viewport.top, width.max(1.0), height),
         content: Box::new(move |host_size: Size, anchor: Rect| seed.layout(host_size, anchor)),

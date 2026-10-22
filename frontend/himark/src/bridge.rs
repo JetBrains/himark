@@ -333,17 +333,22 @@ impl Frame {
         self.tree.handle_event(&self.arena, event, viewport)
     }
 
-    /// Drain the WINDOW overlays that bubbled to this frame's root
-    /// uncaught — on the mounted road nobody plays the window, and
-    /// handling them is the BRIDGE's job: their anchors become the
-    /// shell's popovers, their contents are re-derived by the
-    /// popover's own bridge. Draining consumes; once per frame.
-    pub(crate) fn window_overlays(&mut self) -> Vec<Rect> {
+    /// Drain the overlays that bubbled to this frame's root uncaught
+    /// — on the mounted road nobody plays the window or the top
+    /// scroller, and handling them is the BRIDGE's job: their
+    /// anchors become the shell's layers, their contents re-derived
+    /// by each layer's own bridge. EVERY uncaught overlay rides out
+    /// — the shell plays whatever host didn't stand — and each
+    /// carries its own `Attachment`, so this layer knows no host
+    /// names. Draining consumes; once per frame; bubble order is
+    /// the index contract with `OverlayMount`.
+    pub(crate) fn exported_overlays(
+        &mut self,
+    ) -> Vec<(imba::overlay::Attachment, imba::overlay::OverlayHost, Rect)> {
         self.tree
             .overlays()
             .into_iter()
-            .filter(|overlay| overlay.host == imba::overlay::WINDOW)
-            .map(|overlay| overlay.anchor)
+            .map(|overlay| (overlay.attachment, overlay.host, overlay.anchor))
             .collect()
     }
 
