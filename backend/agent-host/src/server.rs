@@ -599,6 +599,39 @@ struct WatchEntry {
     root: Uri,
 }
 
+/// One item on the ORDERED document-feed lane toward the language
+/// and search servers. Mirror mutations happen under the state
+/// lock; their didOpen/didChange/didSave/didClose must reach the
+/// servers in the SAME order — two connections' sends racing
+/// OUTSIDE the lock could invert a didChange pair, and the server's
+/// copy diverged silently from the mirror (the 2026-10-23
+/// shifted-highlight screenshot; a divergence survives until the
+/// document reopens). Enqueue INSIDE the `update` closure, so the
+/// lane inherits the lock's serialization; ONE feeder thread
+/// drains in order.
+enum DocumentFeed {
+    Open {
+        dirs: Vec<String>,
+        uri: String,
+        text: String,
+        uid: himark_ahp_ext_types::documents::Uid,
+    },
+    Change {
+        dirs: Vec<String>,
+        uri: String,
+        operation: himark_ahp_ext_types::documents::TextOperation,
+        uid: himark_ahp_ext_types::documents::Uid,
+    },
+    Save {
+        dirs: Vec<String>,
+        uri: String,
+    },
+    Close {
+        dirs: Vec<String>,
+        uri: String,
+    },
+}
+
 pub struct Host {
     state: Mutex<Arc<State>>,
     store: Store,
@@ -620,6 +653,9 @@ pub struct Host {
     pub(crate) http: crate::http::HttpServer,
 
     pub(crate) web_root: std::sync::Mutex<Option<std::path::PathBuf>>,
+
+    /// The ordered document-feed lane's door — see `DocumentFeed`.
+    doc_feed: std::sync::mpsc::Sender<DocumentFeed>,
 }
 
 impl Host {
@@ -738,7 +774,21 @@ impl Host {
                 disk_texts: rpds::HashTrieMapSync::new_sync(),
             },
         );
+        let (doc_feed, doc_feed_rx) = std::sync::mpsc::channel::<DocumentFeed>();
         let host = Arc::new_cyclic(|weak: &std::sync::Weak<Self>| {
+            // The document-feed drainer: one thread, items in
+            // enqueue order — which is mirror order, because every
+            // enqueue happens inside the state lock.
+            let feeder = weak.clone();
+            std::thread::Builder::new()
+                .name("doc-feeder".to_owned())
+                .spawn(move || {
+                    while let Ok(item) = doc_feed_rx.recv() {
+                        let Some(host) = feeder.upgrade() else { break };
+                        host.apply_document_feed(item);
+                    }
+                })
+                .expect("the doc feeder spawns");
             let events_host = weak.clone();
             let lsp = crate::lsp::Pool::new(Arc::new(move |server, event| {
                 if let Some(host) = events_host.upgrade() {
@@ -767,6 +817,7 @@ impl Host {
                 )
             });
             Self {
+                doc_feed,
                 lsp,
                 fsp,
                 lsp_inflight: Mutex::new(HashMap::new()),
@@ -1521,14 +1572,19 @@ impl Host {
                     state.sessions.insert_mut(uri, session);
                 }
             }
+            // The dropped mirrors leave the language server too —
+            // kept open, their text would shadow the files and
+            // serve stale positions until the host dies. ORDER LAW:
+            // enqueue inside the lock (see `DocumentFeed`).
+            for (dirs, resource) in &closed {
+                let _ = self.doc_feed.send(DocumentFeed::Close {
+                    dirs: dirs.clone(),
+                    uri: resource.clone(),
+                });
+            }
             closed
         });
-        // The dropped mirror leaves the language server too — kept
-        // open, its text would shadow the file and serve stale
-        // positions until the host dies.
-        for (dirs, resource) in &closed {
-            self.lsp_feed_close(dirs, resource);
-        }
+        let _ = closed;
         // A closed session's folders leave the FSP registry.
         self.fsp_sync_folders();
     }
@@ -3491,15 +3547,22 @@ impl Host {
             }
             state.document_seq = seq;
             state.sessions.insert_mut(params.channel.clone(), session);
+            // ORDER LAW: enqueue inside the lock (see `DocumentFeed`).
+            if let Some((dirs, uri)) = &feed {
+                let _ = self.doc_feed.send(DocumentFeed::Open {
+                    dirs: dirs.clone(),
+                    uri: uri.clone(),
+                    text: text.clone(),
+                    uid: version,
+                });
+            }
             Some((channel, version, feed))
         });
         let Some((channel, version, feed)) = opened else {
             return rpc::failure(id, INVALID_PARAMS, format!("no session {}", params.channel));
         };
 
-        if let Some((dirs, uri)) = feed {
-            self.lsp_feed_open(&dirs, &uri, &text, version);
-            self.fsp_feed_open(&uri, &text);
+        if let Some((_dirs, uri)) = feed {
             // The host owns disk reloads for this mirror from here on.
             self.watch_mirror(channel.clone(), uri);
         }
@@ -3652,20 +3715,18 @@ impl Host {
             if state.replay.len() > REPLAY_DEPTH {
                 state.replay.dequeue_mut();
             }
-            Some((uri, dirs, action))
+            // ORDER LAW: enqueue inside the lock (see `DocumentFeed`).
+            if let Some(uri) = uri {
+                let _ = self.doc_feed.send(DocumentFeed::Change {
+                    dirs: dirs.unwrap_or_default(),
+                    uri,
+                    operation: action.operation.clone(),
+                    uid: action.id,
+                });
+            }
+            Some(())
         });
-        let Some((uri, dirs, action)) = feed else {
-            return;
-        };
-        if let Some(uri) = uri {
-            self.lsp_feed_change(
-                &dirs.unwrap_or_default(),
-                &uri,
-                &action.operation,
-                action.id,
-            );
-            self.fsp_feed_change(&uri, &action.operation);
-        }
+        let _ = feed;
     }
 
     fn subscribe_document(
@@ -3756,11 +3817,14 @@ impl Host {
                 .clone()
                 .unwrap_or_default();
             state.sessions.insert_mut(owner, session);
-            Some(dirs)
+            // ORDER LAW: enqueue inside the lock (see `DocumentFeed`).
+            let _ = self.doc_feed.send(DocumentFeed::Save {
+                dirs,
+                uri: params.uri.clone(),
+            });
+            Some(())
         });
-        if let Some(dirs) = dirs {
-            self.lsp_feed_save(&dirs, &params.uri);
-        }
+        let _ = dirs;
         self.changes_touched(&path);
         rpc::success(
             id,
@@ -3815,16 +3879,19 @@ impl Host {
             if state.replay.len() > REPLAY_DEPTH {
                 state.replay.dequeue_mut();
             }
-            Some(uri.map(|uri| (dirs.unwrap_or_default(), uri)))
+            // ORDER LAW: enqueue inside the lock — the feed lane
+            // inherits its serialization (see `DocumentFeed`).
+            if let Some(uri) = uri {
+                let _ = self.doc_feed.send(DocumentFeed::Change {
+                    dirs: dirs.unwrap_or_default(),
+                    uri,
+                    operation: action.operation.clone(),
+                    uid: action.id,
+                });
+            }
+            Some(())
         });
-        let Some(feed) = feed else {
-            return;
-        };
-
-        if let Some((dirs, uri)) = feed {
-            self.lsp_feed_change(&dirs, &uri, &action.operation, action.id);
-            self.fsp_feed_change(&uri, &action.operation);
-        }
+        let _ = feed;
     }
 
     async fn handle_lsp(
@@ -4312,6 +4379,22 @@ impl Host {
     ) {
         if let Some(engine) = self.fsp_engine() {
             engine.feed_change(uri, operation);
+        }
+    }
+
+    /// The feeder thread's half of the ORDER LAW (`DocumentFeed`).
+    fn apply_document_feed(&self, item: DocumentFeed) {
+        match item {
+            DocumentFeed::Open { dirs, uri, text, uid } => {
+                self.lsp_feed_open(&dirs, &uri, &text, uid);
+                self.fsp_feed_open(&uri, &text);
+            }
+            DocumentFeed::Change { dirs, uri, operation, uid } => {
+                self.lsp_feed_change(&dirs, &uri, &operation, uid);
+                self.fsp_feed_change(&uri, &operation);
+            }
+            DocumentFeed::Save { dirs, uri } => self.lsp_feed_save(&dirs, &uri),
+            DocumentFeed::Close { dirs, uri } => self.lsp_feed_close(&dirs, &uri),
         }
     }
 
