@@ -1552,6 +1552,9 @@ impl Document {
             }
             EditorCommand::ViewportTop(top) => {
                 self.note_viewport_top(editor, top);
+                // Retained-viewport bookkeeping only — the quiet
+                // commit keeps the standing tree alive.
+                fx.quiet();
             }
             EditorCommand::Viewport {
                 width,

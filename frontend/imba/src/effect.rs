@@ -282,6 +282,14 @@ impl<R: 'static> Batch<R> {
         self.messages.len() != before
     }
 
+    pub fn take_quiet(&mut self) -> bool {
+        let before = self.messages.len();
+        self.messages.retain(
+            |message| !matches!(message, Message::Launch(_, effect) if effect.is::<Quiet>()),
+        );
+        self.messages.len() != before
+    }
+
     pub fn is_empty(&self) -> bool {
         self.messages.is_empty()
     }
@@ -384,6 +392,26 @@ impl Effect for Settle {
     type Result = ();
 }
 
+/// The engine-unwrapped QUIET declaration. A perform arm that calls
+/// `fx.quiet()` certifies the whole command was DISPLAY-NEUTRAL:
+/// retained-viewport bookkeeping, nothing a standing frame paints.
+/// A batch whose every command declared quiet commits without
+/// invalidating the frames — which is what lets the settle pulse's
+/// own `ViewportTop` observations ride for free: ONE tree serves the
+/// pulse, the clock and the paint. Mark an arm only when its writes
+/// are invisible by construction; a wrong quiet is a stale frame.
+pub struct Quiet;
+
+impl std::fmt::Display for Quiet {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("quiet")
+    }
+}
+
+impl Effect for Quiet {
+    type Result = ();
+}
+
 pub struct Effects<'a, R> {
     sink: &'a mut dyn Sink<R>,
 }
@@ -392,6 +420,11 @@ impl<'a, R: 'static> Effects<'a, R> {
     /// Ask the engine for a settle pulse before this frame paints.
     pub fn settle(&mut self) {
         self.notify(Settle);
+    }
+
+    /// Declare THIS command display-neutral (see `Quiet`).
+    pub fn quiet(&mut self) {
+        self.notify(Quiet);
     }
 
     pub fn launch<E: Effect<Result = R>>(&mut self, effect: E) -> CancellationToken {

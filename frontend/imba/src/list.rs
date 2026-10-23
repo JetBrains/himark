@@ -1704,6 +1704,10 @@ where
                 self.viewport_top = top;
                 self.viewport_height = height;
                 self.settle_to = None;
+                // Retained-viewport bookkeeping only — nothing a
+                // frame paints moved. The quiet commit keeps the
+                // standing tree alive through the observation.
+                fx.quiet();
             }
             ListCommand::Revealed => {
                 self.row_reveal = None;

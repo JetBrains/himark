@@ -14731,3 +14731,16 @@ timestamp,commit,profile,bench,metric,value_ms
 1792710093,5e99db2e6,debug,chat-edits,frame_p95_ms,16.4271
 1792710093,5e99db2e6,debug,chat-edits,frame_max_ms,22.8075
 1792710093,5e99db2e6,debug,chat-edits,background_total_ms,2009.0300
+1792713757,f503dbfa5,debug,editor-scroll,build_p50_ms,0.0025
+1792713757,f503dbfa5,debug,editor-scroll,build_p95_ms,0.1322
+1792713761,f503dbfa5,debug,plain-typing,keystroke_p50_ms,0.3853
+1792713762,f503dbfa5,debug,fold-toggle,monster_ms,2.0213
+1792713777,f503dbfa5,debug,list-scroll,build_ms,4.3603
+1792713777,f503dbfa5,debug,list-scroll,frame_p50_ms,0.1218
+1792713777,f503dbfa5,debug,list-scroll,frame_p95_ms,0.1366
+1792713777,f503dbfa5,debug,tree-ops,toggle_ms,0.0772
+1792713777,f503dbfa5,debug,tree-ops,build_ms,305.8908
+1792713909,f503dbfa5,debug,chat-edits,frame_p50_ms,14.6039
+1792713909,f503dbfa5,debug,chat-edits,frame_p95_ms,16.1642
+1792713909,f503dbfa5,debug,chat-edits,frame_max_ms,26.1259
+1792713909,f503dbfa5,debug,chat-edits,background_total_ms,1984.5793

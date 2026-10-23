@@ -376,9 +376,14 @@ impl Himark {
             stage_frames: &mut self.stage_frames,
         };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
+        // EVERY command must declare itself display-neutral
+        // (`fx.quiet()`) for the batch to commit quietly — one
+        // unmarked arm and the frames invalidate as always.
+        let mut all_quiet = true;
         while let Some(command) = queue.pop_front() {
             let mut fx = batch.effects();
             performer.perform(&mut store, &ui, command, &mut fx);
+            all_quiet &= batch.take_quiet();
 
             // The performed command's follow-ups run next, in push
             // order — the loop's own lane, not a store note.
@@ -395,7 +400,11 @@ impl Himark {
             }
         }
 
-        {
+        // A QUIET batch (every arm display-neutral) skips the
+        // session lanes whole: they react to landings and edits,
+        // and a quiet batch certified it made none — this is most
+        // of what a per-frame observation batch used to cost.
+        if !all_quiet {
             let mut fx = batch.effects();
             // The resident sessions subscription: hosts connect, list
             // and drain whether or not any view shows them — the
@@ -526,11 +535,22 @@ impl Himark {
             for command in late {
                 let mut fx = batch.effects();
                 performer.perform(&mut store, &ui, command, &mut fx);
+                all_quiet &= batch.take_quiet();
             }
         }
         let probe_perform = probe.elapsed();
         self.store = store;
-        self.sweep();
+        if all_quiet {
+            // The QUIET commit: the standing frames stay TRUE — no
+            // revision bump, so the settle pulse's observations do
+            // not outdate the tree the pulse itself just built. ONE
+            // tree serves the pulse, the clock and the paint.
+            if std::env::var_os("HIMARK_TRACE_BATCH").is_some() {
+                eprintln!("[batch] {label}: quiet commit");
+            }
+        } else {
+            self.sweep();
+        }
         let probe_commit = probe.elapsed().saturating_sub(probe_perform);
         if batch.take_settle() {
             self.settle_requested = true;
@@ -541,8 +561,11 @@ impl Himark {
             .saturating_sub(probe_perform)
             .saturating_sub(probe_commit);
 
-        let theme_changed = theme_before.name() != ::editor::env::Themes::of(&self.store).name();
-        self.batch_tail(&label, theme_changed);
+        if !all_quiet {
+            let theme_changed =
+                theme_before.name() != ::editor::env::Themes::of(&self.store).name();
+            self.batch_tail(&label, theme_changed);
+        }
 
         if crate::app::trace_stalls_enabled() && probe.elapsed().as_millis() >= 10 {
             eprintln!(
