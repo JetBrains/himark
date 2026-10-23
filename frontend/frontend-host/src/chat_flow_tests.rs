@@ -1115,3 +1115,101 @@ fn edited_source(step: usize, after: bool) -> String {
     }
     format!("fn file{step}() {{\n{text}}}\n")
 }
+
+/// The SCROLL LAW, measured: a fully WOKEN transcript scrolls on the
+/// shell's per-frame road — one Scroll dispatch, one clock tick, one
+/// paint — and the engine builds at most ONE tree per tick. The
+/// whole stack stands behind that number: heights land as data (no
+/// paint-born `SetHeight`), the settle pulse's observations commit
+/// QUIETLY, and the clock and the paint reuse the pulse's tree.
+/// Timings ride perf.csv (`chat-scroll`); the build count is the law.
+#[test]
+fn a_scroll_tick_builds_one_tree() {
+    let reply: String = (0..24)
+        .map(|line| format!("reply line {line} with a little text to wrap on\n"))
+        .collect();
+    let (mut engine, window, _script) = boot(chat_page(
+        CHAT,
+        (0..48)
+            .map(|at| completed_turn(&format!("t{at}"), &format!("prompt {at}"), &reply))
+            .collect(),
+        None,
+    ));
+    paint(&mut engine, window);
+
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+
+    // WAKE the whole transcript: stepped scroll through the content
+    // (a fling culls the middle — unpainted rows never wake), the
+    // worker landing builds between steps.
+    for _ in 0..90 {
+        let _ = himark::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 600.0);
+        engine.worker().run_pending();
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        engine.drain();
+    }
+    // Land every straggler, then return to the top and settle.
+    for _ in 0..60 {
+        engine.worker().run_pending();
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        engine.drain();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let _ = himark::test_driver::scroll(&mut engine.app, -10_000_000.0);
+    for _ in 0..30 {
+        engine.worker().run_pending();
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        engine.drain();
+    }
+
+    // The MEASURED pass: steady-state scroll down through the woken
+    // region, the real per-frame shape.
+    let mounted = Cell::documents_mounted();
+    let born = editor::document::Document::born_on_this_thread();
+    let built = engine.app.frames_built();
+    const TICKS: usize = 240;
+    let mut ticks: Vec<std::time::Duration> = Vec::new();
+    for at in 0..TICKS {
+        let started = std::time::Instant::now();
+        let _ = himark::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 90.0);
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(60_000.0 + at as f64 * 8.0),
+        );
+        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        engine.drain();
+        ticks.push(started.elapsed());
+    }
+    let trees = engine.app.frames_built() - built;
+
+    assert_eq!(
+        Cell::documents_mounted() - mounted,
+        0,
+        "a steady scroll mounted a cell — the warmup missed rows or a wake re-armed"
+    );
+    assert_eq!(
+        editor::document::Document::born_on_this_thread() - born,
+        0,
+        "a steady scroll built a document on the UI thread"
+    );
+    assert!(
+        trees as usize <= TICKS + 8,
+        "{TICKS} scroll ticks built {trees} trees — the one-tree-per-frame law broke \
+         (an unquiet per-tick batch, or a paint-born height correction returned)"
+    );
+
+    ticks.sort();
+    let ms = |at: usize| ticks[at].as_secs_f64() * 1000.0;
+    let (p50, p95, worst) = (
+        ms(TICKS / 2),
+        ms(TICKS * 95 / 100),
+        ms(TICKS - 1),
+    );
+    eprintln!(
+        "chat-scroll: ticks={TICKS}, trees={trees}, tick p50={p50:.3}ms p95={p95:.3}ms max={worst:.3}ms"
+    );
+    imba::perf::record("chat-scroll", "tick_p50_ms", p50);
+    imba::perf::record("chat-scroll", "tick_p95_ms", p95);
+    imba::perf::record("chat-scroll", "tick_max_ms", worst);
+    imba::perf::record("chat-scroll", "trees_per_tick", trees as f64 / TICKS as f64);
+}

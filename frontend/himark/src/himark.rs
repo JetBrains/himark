@@ -121,6 +121,13 @@ pub struct Himark {
     /// rebuilt lazily when next asked.
     pub(crate) revision: u64,
 
+    /// Standing frames BUILT by this app — the one-tree-per-frame
+    /// law's probe: a pure-scroll tick builds at most ONE (the
+    /// settle pulse's; the quiet commit lets the clock and the
+    /// paint reuse it). Per instance, so parallel test engines
+    /// never count into each other.
+    pub(crate) frames_built: u64,
+
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
 
@@ -282,6 +289,7 @@ impl Himark {
             stage_frames: Default::default(),
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
+            frames_built: 0,
             pending_file_events: Vec::new(),
             pending_reveals: Vec::new(),
             palette: None,
@@ -322,6 +330,11 @@ impl Himark {
 
     pub fn workshop(&self) -> &Arc<::editor::env::Workshop> {
         &self.workshop
+    }
+
+    /// The one-tree-per-frame probe (see `frames_built`).
+    pub fn frames_built(&self) -> u64 {
+        self.frames_built
     }
 
     /// The empty-session housekeeping, run after every batch — the

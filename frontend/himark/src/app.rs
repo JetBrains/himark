@@ -278,6 +278,7 @@ impl Himark {
             // at its size, realize the WHOLE rect — a window fills
             // its viewport; a native scroller holds the layout and
             // realizes slices instead.
+            self.frames_built += 1;
             let layout = slot
                 .bridge
                 .layout(&self.store, &self.ui, Constraints::tight(size), arena);
