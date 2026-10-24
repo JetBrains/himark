@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use imba::{
+    anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
     constraints::Constraints,
     event::{Event, EventResult},
@@ -85,6 +86,9 @@ pub enum WorkbenchCommand {
     /// The tree header's minimize: the chat returns — beside the
     /// tree when the window fits both, fronted over it otherwise.
     RestoreChat,
+
+    /// The chat column's slide advancing.
+    ChatTick(AnimationClock),
 }
 
 impl std::fmt::Display for WorkbenchCommand {
@@ -99,6 +103,7 @@ impl std::fmt::Display for WorkbenchCommand {
             WorkbenchCommand::RunCommand(id) => out.write_str(id),
             WorkbenchCommand::MaximizeTree => out.write_str("maximize tree"),
             WorkbenchCommand::RestoreChat => out.write_str("restore chat"),
+            WorkbenchCommand::ChatTick(_) => out.write_str("chat column tick"),
         }
     }
 }
@@ -116,15 +121,58 @@ pub struct ChatColumn {
     share: f32,
 
     resizing: bool,
+
+    /// How much of the column stands revealed, 0..1 — the dock's
+    /// slide, mirrored: the column rolls in from the window's left
+    /// edge and the tree narrows with it.
+    reveal: Animation<f32>,
+
+    /// Rolling away: minimized once the slide lands.
+    closing: bool,
 }
 
 impl ChatColumn {
     fn of(panel: Panel) -> Self {
+        // Born REVEALED: a chat that opens with the window stands;
+        // the slide is for the Chat tab's hide and show.
+        let reveal = Animation::done(
+            1.0,
+            Motion::Ease {
+                duration_ms: crate::dock::SLIDE_MS,
+                easing: Easing::EaseOut,
+            },
+        );
         Self {
             node: WorkbenchNode::Leaf(PaneSlot::of(panel)),
             share: CHAT_COLUMN_RATIO,
             resizing: false,
+            reveal,
+            closing: false,
         }
+    }
+
+    /// The revealed share of the column's width, 0..1.
+    pub(crate) fn revealed(&self) -> f32 {
+        self.reveal.value().clamp(0.0, 1.0)
+    }
+
+    /// Mid-slide — the frame keeps a clock on it.
+    pub(crate) fn sliding(&self) -> bool {
+        self.reveal.running()
+    }
+
+    fn show(&mut self) {
+        self.closing = false;
+        self.reveal.set(1.0);
+    }
+
+    fn hide(&mut self) {
+        if self.closing {
+            return;
+        }
+        self.closing = true;
+        self.resizing = false;
+        self.reveal.set(0.0);
     }
 
     pub(crate) fn replace_panel(&mut self, panel: Panel) -> Panel {
@@ -291,6 +339,9 @@ impl Workbench {
 
     pub(crate) fn restore_chat(&mut self) {
         self.chat_minimized = false;
+        if let Some(chat) = &mut self.chat {
+            chat.show();
+        }
     }
 
     /// Is the chat DISPLAYED at this width, by the layout's own
@@ -420,14 +471,30 @@ impl View for Workbench {
                 }
             }
             WorkbenchCommand::MaximizeTree => {
-                self.chat_minimized = self.chat.is_some();
+                // The column rolls away; it reads MINIMIZED once the
+                // slide lands (`ChatTick`). The keyboard leaves now.
                 self.chat_fronted = false;
                 self.chat_focused = false;
+                if let Some(chat) = &mut self.chat {
+                    chat.hide();
+                }
             }
             WorkbenchCommand::RestoreChat => {
                 self.chat_minimized = false;
                 self.chat_fronted = self.chat.is_some();
                 self.chat_focused = self.chat.is_some();
+                if let Some(chat) = &mut self.chat {
+                    chat.show();
+                }
+            }
+            WorkbenchCommand::ChatTick(now) => {
+                if let Some(chat) = &mut self.chat {
+                    chat.reveal.advance(now);
+                    if chat.closing && !chat.reveal.running() {
+                        chat.closing = false;
+                        self.chat_minimized = true;
+                    }
+                }
             }
         }
     }
@@ -519,8 +586,16 @@ fn column_tabs<'a>(
     for (label, command) in &words.session_actions {
         header = header.tab(*label, side_open, run(command));
     }
+    // The Chat tab TOGGLES: standing, it rolls the column away;
+    // otherwise it fronts the chat (the registered `chat.composer`,
+    // which also rolls an open drawer away).
     for (label, command) in &words.chat_word {
-        header = header.tab(*label, chat_showing && !side_open, run(command));
+        let command: &'static str = command;
+        let standing = chat_showing && !side_open;
+        header = header.tab(*label, standing, move || match standing {
+            true => WorkbenchCommand::MaximizeTree,
+            false => WorkbenchCommand::RunCommand(command),
+        });
     }
     header
 }
@@ -652,6 +727,21 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
             )
         };
 
+        // The chat column's slide needs a clock WHEREVER the chat is
+        // held — whole, hidden or beside the tree — so a roll-away
+        // lands as minimized even when no column visibly moves.
+        let slide_clock = move |container: &mut imba::container::Container<'a, WorkbenchCommand>| {
+            let clock = imba::leaf::leaf::<WorkbenchCommand>(1.0, 1.0).event(
+                move |_arena, event, _size| match event {
+                    Event::AnimationClock { now } => {
+                        EventResult::command(WorkbenchCommand::ChatTick(*now))
+                    }
+                    _ => EventResult::Ignored,
+                },
+            );
+            container.place(0.0, geometry.top, clock);
+        };
+
         let Some(chat) = chat else {
             let root = imba::layout::Layout::layout(
                 workbench.root.display(arena, store, ui),
@@ -702,6 +792,9 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                     .layout(arena, header_constraints(geometry.split_width)),
             );
             container.place(geometry.x, geometry.top + header_h, column);
+            if chat.sliding() {
+                slide_clock(&mut container);
+            }
             return page(container);
         }
 
@@ -727,6 +820,9 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                 );
             }
             container.place(geometry.x, geometry.top + header_h, root);
+            if chat.sliding() {
+                slide_clock(&mut container);
+            }
             return page(container);
         }
 
@@ -734,10 +830,17 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let divider_width = theme.ui().window.divider_width.max(1.0);
         let divider_color = theme.ui().window.divider.0;
 
-        let chat_rect = Rect::from_xywh(geometry.x, geometry.top, column_width, split_height);
-        let root_x = geometry.x + column_width;
-        let root_width = (geometry.split_width - column_width).max(1.0);
+        // The slide (the dock's, mirrored): the column lays at its
+        // full width but stands `slide` past the window's left edge,
+        // and the tree takes the rest from where it shows.
+        let revealed = (column_width * chat.revealed()).round();
+        let slide = column_width - revealed;
+        let chat_x = geometry.x - slide;
+        let chat_rect = Rect::from_xywh(geometry.x, geometry.top, revealed, split_height);
+        let root_x = geometry.x + revealed;
+        let root_width = (geometry.split_width - revealed).max(1.0);
         let root_rect = Rect::from_xywh(root_x, geometry.top, root_width, split_height);
+        let sliding = chat.sliding();
 
         let column = imba::layout::Layout::layout(
             chat.node.display(arena, store, ui),
@@ -763,7 +866,12 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let window = theme.ui().window.clone();
         let handle = imba::leaf::leaf::<WorkbenchCommand>(HANDLE_REACH * 2.0, split_height).event(
             move |_arena, event, _leaf_size| match event {
-                Event::MouseDown { .. } => EventResult::command(WorkbenchCommand::ChatBeginResize),
+                Event::AnimationClock { now } if sliding => {
+                    EventResult::command(WorkbenchCommand::ChatTick(*now))
+                }
+                Event::MouseDown { .. } if !sliding => {
+                    EventResult::command(WorkbenchCommand::ChatBeginResize)
+                }
                 Event::MouseDrag { point, .. } if resizing => {
                     let width = (point.x + (root_x - HANDLE_REACH))
                         .clamp(window.chat_min_width, chat_column_max(surface_width, &window));
@@ -782,7 +890,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         // leftmost, so it insets past the semaphore), the tree names
         // its focused file.
         container.place_boxed(
-            geometry.x,
+            chat_x,
             geometry.top,
             chat_header(arena, store, ui, workbench, chat, &words, false)
                 .layout(arena, header_constraints(column_width - divider_width)),
@@ -793,7 +901,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
             tree_header(arena, store, ui, workbench, &words, false)
             .layout(arena, header_constraints(root_width)),
         );
-        container.place(geometry.x, geometry.top + header_h, column);
+        container.place(chat_x, geometry.top + header_h, column);
         // The column divider: one hairline, header to floor.
         container.place_boxed(
             root_x - divider_width,
@@ -805,6 +913,9 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         );
         container.place(root_x, geometry.top + header_h, root);
         container.place(root_x - HANDLE_REACH, geometry.top, handle);
+        if sliding {
+            slide_clock(&mut container);
+        }
 
         imba::ThunkBox::new(
             arena,

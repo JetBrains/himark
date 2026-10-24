@@ -157,4 +157,24 @@ fn dump_frame_screenshot() {
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::write(format!("{dir}/frame.png"), data.as_bytes()).expect("write");
+
+    // The chat column mid-slide: MaximizeTree rolls it off the left
+    // edge over the dock's slide time; a frame 64ms in shows it
+    // partly gone and the tree widened to where it shows.
+    assert!(app.perform_command(himark::app::content(
+        window,
+        ::workbench::window::WindowCommand::Base(
+            ::workbench::workbench::WorkbenchCommand::MaximizeTree
+        ),
+    )));
+    app.draw_window(window, surface.canvas());
+    let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+    app.draw_window(window, surface.canvas());
+    let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(64.0));
+    app.draw_window(window, surface.canvas());
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/frame-slide.png"), data.as_bytes()).expect("write");
 }

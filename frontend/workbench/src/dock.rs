@@ -29,7 +29,7 @@ pub const DOCK_MIN_WIDTH: f32 = 240.0;
 
 pub(crate) const DOCK_MAX_RATIO: f32 = 0.6;
 
-const SLIDE_MS: f64 = 160.0;
+pub(crate) const SLIDE_MS: f64 = 160.0;
 
 const HANDLE_REACH: f32 = 4.0;
 
