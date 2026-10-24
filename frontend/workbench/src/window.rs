@@ -396,11 +396,12 @@ impl View for Layers {
 fn below_layer<'a, Command: 'a>(
     arena: &'a Arena,
     size: Size,
+    x: f32,
     top: f32,
     thunk: imba::ThunkBox<'a, Command>,
 ) -> imba::container::Container<'a, Command> {
     let mut layer = imba::container::container(arena, size);
-    layer.place_boxed(0.0, top, thunk);
+    layer.place_boxed(x, top, thunk);
     layer
 }
 
@@ -412,16 +413,6 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
     modal: Option<DynWidget>,
 
     focus: LayerFocus,
-
-    toolbar_height: f32,
-
-    /// The global cluster's hit width: the toolbar layer claims ONLY
-    /// this top-left corner — column headers own the rest of the band.
-    cluster_width: f32,
-
-    /// The dock cluster's left edge while the dock is CLOSED — the
-    /// toolbar layer claims that top-right corner too.
-    dock_strip_x: Option<f32>,
 
     dock_edge_x: Option<f32>,
 }
@@ -449,9 +440,6 @@ where
             dock,
             modal,
             focus,
-            toolbar_height,
-            cluster_width,
-            dock_strip_x,
             dock_edge_x,
         } = self;
 
@@ -464,9 +452,6 @@ where
                 dock: dock.map(|dock| dock.realize(arena, viewport)),
                 modal: modal.map(|modal| modal.realize(arena, viewport)),
                 focus,
-                toolbar_height,
-                cluster_width,
-                dock_strip_x,
                 dock_edge_x,
             },
         )
@@ -480,9 +465,6 @@ struct RealizedLayers<'a> {
     dock: Option<imba::WidgetBox<'a, imba::dyn_view::DynCommand>>,
     modal: Option<imba::WidgetBox<'a, imba::dyn_view::DynCommand>>,
     focus: LayerFocus,
-    toolbar_height: f32,
-    cluster_width: f32,
-    dock_strip_x: Option<f32>,
     dock_edge_x: Option<f32>,
 }
 
@@ -668,19 +650,8 @@ impl<'a> RealizedLayers<'a> {
                         .map(WindowCommand::Dock),
                 );
             }
-            {
-                let event = tick(
-                    &mut claimed,
-                    point.y < self.toolbar_height
-                        && (point.x < self.cluster_width
-                            || self.dock_strip_x.is_some_and(|edge| point.x >= edge)),
-                );
-                merged = merged.merge(
-                    self.toolbar
-                        .handle_event(arena, &event, viewport)
-                        .map(WindowCommand::Toolbar),
-                );
-            }
+            // The toolbar layer draws nothing and claims nothing:
+            // the headers' words are the workbench's.
             let event = tick(&mut claimed, true);
             merged = merged.merge(
                 self.base
@@ -941,7 +912,8 @@ impl Window {
                 modal: None,
             },
             viewport_size: Size::new(1.0, 1.0),
-            dock_width: crate::dock::DOCK_WIDTH,
+            // Unset until the first dock opens — the theme answers then.
+            dock_width: 0.0,
             workspace,
             workbenches: Vec::new(),
             focused_location: None,
@@ -1106,10 +1078,18 @@ impl Window {
         fx: &mut Effects<'_, WindowCommand>,
     ) {
         self.dismiss_side_panel(store, fx);
-        self.content.side = Some(crate::drawer::Drawer::new(panel));
+        // The drawer rolls in over the chat column — as wide as it.
+        let width = self
+            .content
+            .workbench
+            .chat_column_rect(store, self.viewport_size())
+            .width();
+        self.content.side = Some(crate::drawer::Drawer::new(panel, width));
+        self.workbench_mut().set_side_open(true);
     }
 
     pub fn dismiss_side_panel(&mut self, store: &mut Store, fx: &mut Effects<'_, WindowCommand>) {
+        self.workbench_mut().set_side_open(false);
         let released = self
             .content
             .side
@@ -1156,6 +1136,9 @@ impl Window {
         if self.has_modal() {
             return;
         }
+        // The Chat tab over an open drawer: the drawer rolls away and
+        // the chat it covered stands.
+        self.roll_away_side_panel();
         if self.workbench().chat().is_none() {
             let Some(pane) = self.workspace.front_chat_pane(store) else {
                 return;
@@ -1240,6 +1223,11 @@ impl Window {
                 });
             }
             None => {
+                // The first open takes the chrome's side width; a
+                // dragged width survives dismissals.
+                if self.dock_width <= 0.0 {
+                    self.dock_width = ::editor::env::Themes::of(store).ui().window.side_width;
+                }
                 *self.content.workbench.dock_mut() =
                     Some(crate::dock::Dock::new(panel, owner, self.dock_width));
             }
@@ -2060,14 +2048,8 @@ impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
         imba::ThunkBox::new(arena, {
             let size = constraints.max;
             // No window toolbar band: columns draw their OWN headers.
-            // The band height still shapes the overlay layers (side,
-            // modal), which open under the header line; the global
-            // cluster floats over the leftmost column's header.
-            let toolbar_height = ::editor::env::Themes::of(store).ui().toolbar.height;
-            let below = Constraints::tight(Size::new(
-                size.width,
-                (size.height - toolbar_height).max(1.0),
-            ));
+            // The modal stands over the whole window; the side drawer
+            // covers the chat column under the column's header.
             let full = Constraints::tight(size);
 
             let revealed = layers
@@ -2079,26 +2061,11 @@ impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
 
             LayersWidget {
                 focus: layers.focus,
-                toolbar_height,
-                cluster_width: crate::toolbar::global_cluster_width(
-                    store,
-                    ui,
-                    !layers
-                        .workbench
-                        .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
-                ),
-                dock_strip_x: match layers
-                    .workbench
-                    .dock()
-                    .is_some_and(|dock| dock.target_width() > 0.0)
-                {
-                    true => None,
-                    false => Some(size.width - crate::toolbar::dock_cluster_width(store)),
-                },
                 dock_edge_x: layers.workbench.dock().map(|_| size.width - revealed),
                 base: below_layer(
                     arena,
                     size,
+                    0.0,
                     0.0,
                     imba::ThunkBox::new(
                         arena,
@@ -2109,36 +2076,32 @@ impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
                         ),
                     ),
                 ),
-                toolbar: layers.toolbar.layout(
-                    arena,
-                    store,
-                    ui,
-                    !layers
-                        .workbench
-                        .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
-                    size.width,
-                    layers
-                        .workbench
-                        .dock()
-                        .is_some_and(|dock| dock.target_width() > 0.0),
-                ),
+                toolbar: layers.toolbar.layout(arena, size.width),
                 side: layers.side.as_ref().map(|side| {
+                    let rect = layers.workbench.chat_column_rect(store, size);
                     below_layer(
                         arena,
                         size,
-                        toolbar_height,
-                        side.layout_dyn(arena, store, ui, below),
+                        rect.left,
+                        rect.top,
+                        side.layout_dyn(
+                            arena,
+                            store,
+                            ui,
+                            Constraints::tight(Size::new(rect.width(), rect.height())),
+                        ),
                     )
                 }),
                 dock: layers.workbench.dock().map(|dock| {
-                    below_layer(arena, size, 0.0, dock.layout_dyn(arena, store, ui, full))
+                    below_layer(arena, size, 0.0, 0.0, dock.layout_dyn(arena, store, ui, full))
                 }),
                 modal: layers.modal.as_ref().map(|modal| {
                     below_layer(
                         arena,
                         size,
-                        toolbar_height,
-                        modal.as_ref().layout_dyn(arena, store, ui, below),
+                        0.0,
+                        0.0,
+                        modal.as_ref().layout_dyn(arena, store, ui, full),
                     )
                 }),
             }

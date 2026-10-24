@@ -48,6 +48,14 @@ pub trait PanelView: imba::dyn_view::CloneDynView + Clone + Sized + 'static {
 
     fn title(&self, store: &Store) -> String;
 
+    /// The title's quiet companion in a column header — where the
+    /// panel's subject lives (a session's folder, a file's
+    /// directory). None when the title says it all.
+    fn subtitle(&self, store: &Store) -> Option<String> {
+        let _ = store;
+        None
+    }
+
     fn dismantle(&mut self, store: &mut Store);
 
     /// The pane LEFT ITS SLOT without being closed: another panel took
@@ -101,6 +109,7 @@ pub trait PanelView: imba::dyn_view::CloneDynView + Clone + Sized + 'static {
 pub trait DynPanelView: imba::dyn_view::CloneDynView {
     fn clone_panel(&self) -> Box<dyn DynPanelView>;
     fn title(&self, store: &Store) -> String;
+    fn subtitle(&self, store: &Store) -> Option<String>;
     fn dismantle(&mut self, store: &mut Store);
     fn displaced(&mut self, store: &mut Store);
     fn take_request(&mut self) -> Option<PanelRequest>;
@@ -128,6 +137,9 @@ impl<P: PanelView> DynPanelView for P {
     }
     fn title(&self, store: &Store) -> String {
         PanelView::title(self, store)
+    }
+    fn subtitle(&self, store: &Store) -> Option<String> {
+        PanelView::subtitle(self, store)
     }
     fn dismantle(&mut self, store: &mut Store) {
         PanelView::dismantle(self, store)

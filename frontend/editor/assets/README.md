@@ -16,3 +16,14 @@ without a system install. SIL Open Font License 1.1.
 
 Source:
 https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304
+
+# Bundled Chrome Font
+
+`BricolageGrotesque-Variable.ttf` (axes opsz 12–96, wdth 75–100,
+wght 200–800) is the application CHROME font — every label, title,
+tab, query and transcript line outside the editor's code shapes with
+it (docs/Design.md, the typographic redesign). Registered with both
+text stacks at startup like the code font. SIL Open Font License 1.1.
+
+Source:
+https://github.com/google/fonts/tree/main/ofl/bricolagegrotesque

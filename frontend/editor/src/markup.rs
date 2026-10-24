@@ -243,6 +243,13 @@ pub struct BlockStyle {
 }
 
 impl BlockStyle {
+    /// A block style of one id — the covering style an input wears.
+    pub(crate) fn with(id: StyleId) -> Self {
+        let mut style = Self::default();
+        style.add(id);
+        style
+    }
+
     fn add(&mut self, id: StyleId) {
         if !self.ids.contains(&id) {
             self.ids.push(id);

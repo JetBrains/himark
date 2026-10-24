@@ -10,21 +10,23 @@ use imba::{
     arena::Arena,
     constraints::Constraints,
     event::{Event, EventResult, Key},
-    layout::Layout as _,
+    layout::{Insets, Layout as _, LayoutExt as _},
     leaf::leaf,
-    list::{ListCommand, ListOps, ListView},
+    list::{ListCommand, ListOps, ListSlice, ListView},
     scroll::{ScrollCommand, ScrollView},
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,
     PresentableCommand, View,
 };
-use skia_safe::{Paint, Size};
+use skia_safe::Size;
 
-/// Keys-only controller over the raw label list — the palette's own
+mod sheet;
+
+/// Keys-only controller over the command rows — the palette's own
 /// input does the filtering; the table does the movement
 /// (docs/ui/list-keyboard.md).
-type Rows = ListKeyboardController<ScrollView<ListView<hikit::rows::LabelRow, usize>>>;
+type Rows = ListKeyboardController<ScrollView<ListView<CommandRow, usize>>>;
 type RowsCommand = ListKeyCommand<ScrollCommand<ListCommand<std::convert::Infallible>>>;
 
 #[derive(Clone)]
@@ -35,6 +37,95 @@ struct Entry {
     shortcut: Option<String>,
 
     command: std::sync::Arc<std::sync::Mutex<Option<AppCommand>>>,
+}
+
+/// One command row: its name with the typed letters marked, its
+/// shortcut at the right. The SELECTED row speaks louder — a larger,
+/// heavier name — so the row knows whether it is the one.
+#[derive(Clone)]
+struct CommandRow {
+    name: String,
+    marks: Vec<std::ops::Range<usize>>,
+    shortcut: Option<String>,
+    selected: bool,
+}
+
+impl View for CommandRow {
+    type Command = std::convert::Infallible;
+
+    fn perform(
+        &mut self,
+        _store: &mut Store,
+        _ui: &UiCtx,
+        _command: Self::Command,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        let themes = ::editor::env::Themes::of(store);
+        let theme = themes.ui();
+        let chrome = &theme.peeker.palette;
+        let ink = &theme.ink;
+        let (role, color, shortcut) = match self.selected {
+            true => (
+                &chrome.selected_row,
+                ink.ink_bright.0,
+                sheet::mono(ui, chrome.selected_shortcut_size, ink.ink_2.0),
+            ),
+            false => (
+                &chrome.row,
+                ink.ink.0,
+                sheet::mono(ui, chrome.shortcut_size, ink.ink_3.0),
+            ),
+        };
+        let plain = sheet::styled(ui, role, color);
+        let mark = sheet::MatchMark::of(
+            ui,
+            role,
+            chrome.mark_weight,
+            ink.ink.0,
+            ink.live.0,
+            chrome.mark_thickness,
+            chrome.mark_offset,
+        );
+        let mut row = imba::layout::Row::new(arena)
+            .child_by_baseline(
+                sheet::marked_label(arena, &self.name, &self.marks, &plain, &mark).pad_insets(
+                    Insets {
+                        left: chrome.pad_x,
+                        ..Default::default()
+                    },
+                ),
+            )
+            // Main-axis only: a bare `Fill` would stretch to the
+            // row's height and drag the baseline group to its top.
+            .weighted(1.0, imba::layout::Fill::new().height(0.0));
+        if let Some(keys) = &self.shortcut {
+            row = row.child_by_baseline(hikit::ui::text(&shortcut, keys.clone()).pad_insets(
+                Insets {
+                    left: chrome.shortcut_gap,
+                    right: chrome.pad_x,
+                    ..Default::default()
+                },
+            ));
+        }
+        // A press on the row is the LIST's: `Select`, then
+        // `Activate(Click)` (docs/ui/list-keyboard.md §2).
+        row.align(imba::layout::Alignment::CenterStart)
+            .height(chrome.row_height)
+            .on_event(
+                move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                    Event::MouseDown { .. } => EventResult::handled(),
+                    _ => EventResult::Ignored,
+                },
+            )
+    }
 }
 
 #[derive(Clone)]
@@ -71,6 +162,9 @@ pub struct PaletteView {
 
     matches: Vec<usize>,
 
+    /// The trimmed query the rows were marked against.
+    query: String,
+
     list: Rows,
 
     request: hikit::modal::RequestSlot<ModalRequest>,
@@ -88,13 +182,18 @@ impl PaletteView {
                 command: std::sync::Arc::new(std::sync::Mutex::new(Some(presentable.command))),
             })
             .collect();
-        let mut input =
-            editor::editor_view::EditorView::input(600.0, store, ui);
+        let mut input = editor::editor_view::EditorView::input_styled(
+            600.0,
+            store,
+            ui,
+            editor::theme::StyleId::Query,
+        );
         input.focus_text();
         let mut palette = Self {
             input,
             entries,
             matches: Vec::new(),
+            query: String::new(),
             list: ListKeyboardController::new(ScrollView::new(ListView::empty())),
             request: Default::default(),
         };
@@ -115,7 +214,19 @@ impl PaletteView {
             .collect()
     }
 
+    /// The row for the `row`th match, selected or not.
+    fn row(&self, row: usize, selected: bool) -> CommandRow {
+        let entry = &self.entries[self.matches[row]];
+        CommandRow {
+            name: entry.name.clone(),
+            marks: sheet::match_runs(&entry.name, &self.query),
+            shortcut: entry.shortcut.clone(),
+            selected,
+        }
+    }
+
     fn filter(&mut self, store: &Store, ui: &UiCtx, query: &str) {
+        self.query = query.to_owned();
         let query = query.to_lowercase();
         self.matches.clear();
         for (index, entry) in self.entries.iter().enumerate() {
@@ -133,27 +244,51 @@ impl PaletteView {
             .cursor_index()
             .unwrap_or(0)
             .min(self.matches.len().saturating_sub(1));
-        let labels = self.labels();
-
-        let trails: Vec<Option<String>> = self
-            .matches
-            .iter()
-            .map(|&index| self.entries[index].shortcut.clone())
-            .collect();
+        let mut slice: ListSlice<CommandRow, usize> = ListSlice::new();
+        for row in 0..self.matches.len() {
+            slice.push_keyed(row, self.row(row, row == selected), store, ui);
+        }
         let scroll_y = self.list.inner().scroll_y();
-        let mut list =
-            ListView::from_slice(hikit::rows::label_slice(store, ui, &labels, &trails, None))
-                .with_selection(hikit::rows::selection_style(store));
-        if !labels.is_empty() {
+        let mut list = ListView::from_slice(slice).with_selection(selection_style(store));
+        if !self.matches.is_empty() {
             list.select_only(selected);
         }
         *self.list.inner_mut() = ScrollView::new(list);
         self.list.inner_mut().set_scroll_y(scroll_y);
     }
 
+    /// The selection moved: the row it left speaks quietly again and
+    /// the row it reached speaks up — two rows re-laid, in place.
+    fn restyle(&mut self, store: &Store, ui: &UiCtx, left: Option<usize>, reached: Option<usize>) {
+        for (row, selected) in [(left, false), (reached, true)] {
+            let Some(row) = row.filter(|&row| row < self.matches.len()) else {
+                continue;
+            };
+            let mut slice: ListSlice<CommandRow, usize> = ListSlice::new();
+            slice.push_keyed(row, self.row(row, selected), store, ui);
+            self.list
+                .inner_mut()
+                .content_mut()
+                .splice_slice(row..row + 1, slice);
+        }
+    }
+
     #[cfg(test)]
     fn selected(&self) -> usize {
         self.list.cursor_index().unwrap_or(0)
+    }
+}
+
+/// The selected row's flat wash, across the sheet's whole width.
+fn selection_style(store: &Store) -> imba::list::SelectionStyle {
+    imba::list::SelectionStyle {
+        fill: ::editor::env::Themes::of(store)
+            .ui()
+            .peeker
+            .palette
+            .selected_fill
+            .0,
+        ..hikit::rows::selection_style(store)
     }
 }
 
@@ -208,9 +343,14 @@ impl View for PaletteView {
                         return self.perform(store, ui, PaletteCommand::Pick(row), fx);
                     }
                 }
+                let left = self.list.cursor_index();
                 fx.scope(PaletteCommand::Rows, |fx| {
                     imba::View::perform(&mut self.list, store, ui, command, fx)
                 });
+                let reached = self.list.cursor_index();
+                if reached != left {
+                    self.restyle(store, ui, left, reached);
+                }
             }
             PaletteCommand::Pick(row) => {
                 let picked = self
@@ -227,6 +367,10 @@ impl View for PaletteView {
         }
     }
 
+    /// The sheet's content, top to bottom: the query band (caps
+    /// label, the query, the count), a hairline, the ranked rows, a
+    /// hairline, the key footer — at the width it is given and its
+    /// own height (the rows scroll past the chrome's cap).
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -234,114 +378,131 @@ impl View for PaletteView {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
+            use imba::layout::{fixed, Column};
+            use imba::Thunk as _;
+            let width = constraints.max.width;
+            let themes = ::editor::env::Themes::of(store);
+            let theme = themes.ui();
+            let chrome = &theme.peeker.palette;
+            let ink = &theme.ink;
+            let loose = Constraints {
+                min: Size::default(),
+                max: Size::new(width, constraints.max.height),
+            };
 
-            let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
-            let row_height = chrome.row_height;
+            let input_width = (width - 2.0 * chrome.pad_x).max(1.0);
+            let input_height = self.input.content_height().max(1.0);
+            let input = imba::layout::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(input_width, input_height)),
+            )
+            .map(PaletteCommand::Input);
 
-            let list_width = size.width;
-            let list_x = 0.0;
-            let input_height = chrome.input_height;
-            let list_top = chrome.margin + input_height;
-
-            let list_height =
-                (size.height - list_top - chrome.hint_bottom - chrome.row_height).max(row_height);
-
-            let match_count = self.matches.len();
-            let total = self.entries.len();
-            let row_font = hikit::fonts::ui_font(ui, chrome.row_size);
-            let hint_font = hikit::fonts::ui_font(ui, chrome.hint_size);
-
-            let mut container = imba::container::container(arena, size);
-
-            // The press-away catcher. The SHEET behind it is not
-            // the palette's business — whoever stands the palette
-            // up dresses it (`Dressed`), or mounts it bare over
-            // glass it already drew.
-            let backdrop =
-                leaf::<PaletteCommand>(size.width, size.height).event(|_arena, event, _size| {
-                    match event {
-                        Event::MouseDown { .. } => EventResult::command(PaletteCommand::Close),
-                        _ => EventResult::Ignored,
-                    }
-                });
-            container.place(0.0, 0.0, backdrop);
-
-            let input_w = (list_width - chrome.input_inset_x * 2.0).max(chrome.input_min_width);
-            let input_h = (input_height - chrome.input_inset_y * 2.0).max(1.0);
-            container.place(
-                chrome.input_inset_x,
-                chrome.margin * 0.5 + chrome.input_inset_y,
-                imba::layout::Layout::layout(
-                    self.input.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(input_w, input_h),
-                        max: Size::new(input_w, input_h),
+            let count = format!("{} of {} commands", self.matches.len(), self.entries.len());
+            let head = Column::new(arena)
+                .child(hikit::ui::text(&hikit::ui::caps(store, ui), "COMMAND"))
+                .child(fixed(input).pad_insets(Insets {
+                    top: chrome.label_gap,
+                    ..Default::default()
+                }))
+                .child(hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(
+                    Insets {
+                        top: chrome.count_gap,
+                        ..Default::default()
                     },
-                )
-                .map(PaletteCommand::Input),
-            );
+                ))
+                .pad_insets(Insets {
+                    left: chrome.pad_x,
+                    right: chrome.pad_x,
+                    top: chrome.pad_top,
+                    bottom: chrome.pad_bottom,
+                })
+                .layout(arena, loose);
 
-            // The chrome labels as `imba::layout::text`, centered in their
-            // row band (the design-system row rule); the texts ignore
-            // presses, so the backdrop's close-on-click still answers
-            // underneath them.
-            if match_count == 0 {
-                let metrics = row_font.metrics().1;
-                let text_height = (-metrics.ascent + metrics.descent).ceil().max(1.0);
-                container.place_boxed(
-                    list_x + chrome.row_text_x,
-                    list_top + ((row_height - text_height) * 0.5).max(0.0),
-                    imba::layout::text(
-                        ui,
+            let hint = hikit::ui::brief(store, ui).sized(chrome.footer_size);
+            let foot = sheet::key_hints(
+                arena,
+                &[("↑↓", "move"), ("⏎", "run"), ("esc", "close")],
+                &sheet::mono(ui, chrome.footer_size, ink.ink_2.0),
+                &hint,
+                chrome.footer_gap,
+            )
+            .pad_insets(Insets {
+                left: chrome.pad_x,
+                right: chrome.pad_x,
+                top: chrome.footer_pad_y,
+                bottom: chrome.footer_pad_y,
+            })
+            .layout(arena, loose);
+
+            // The rows take what the bands leave, up to the cap.
+            let pads = chrome.list_pad_top + chrome.list_pad_bottom;
+            let room = constraints.max.height - head.size().height - foot.size().height - 2.0 - pads;
+            let rows: imba::ThunkBox<'a, PaletteCommand> = match self.matches.is_empty() {
+                true => imba::layout::Layout::layout(
+                    hikit::ui::text(
+                        &sheet::styled(ui, &chrome.row, ink.ink_3.0),
                         "no matching commands",
-                        row_font.clone(),
-                        chrome.dim_text.0,
                     )
-                    .layout(arena, Constraints::tight(size).loosen()),
-                );
-            }
-            let hint_ascent = -hint_font.metrics().1.ascent;
-            container.place_boxed(
-                list_x,
-                size.height - chrome.hint_bottom - hint_ascent,
-                imba::layout::text(
-                    ui,
-                    format!("{match_count} of {total} commands   ↑↓ select   ⏎ run   esc dismiss"),
-                    hint_font.clone(),
-                    chrome.dim_text.0,
-                )
-                .layout(arena, Constraints::tight(size).loosen()),
-            );
-
-            container.place(
-                list_x,
-                list_top,
-                imba::layout::Layout::layout(
-                    self.list.display(arena, store, ui),
+                    .pad_insets(Insets {
+                        left: chrome.pad_x,
+                        ..Default::default()
+                    })
+                    .align(imba::layout::Alignment::CenterStart)
+                    .sized(width, chrome.row_height),
                     arena,
-                    Constraints::tight(Size::new(list_width, list_height)),
-                )
-                .map(PaletteCommand::Rows),
-            );
+                    loose,
+                ),
+                false => {
+                    let total = self.list.inner().content().total_height();
+                    let height = total.min(chrome.list_max_height).min(room).max(chrome.row_height);
+                    imba::ThunkBox::new(
+                        arena,
+                        imba::layout::Layout::layout(
+                            self.list.display(arena, store, ui),
+                            arena,
+                            Constraints::tight(Size::new(width, height)),
+                        )
+                        .map(PaletteCommand::Rows),
+                    )
+                }
+            };
 
-            // Movement and Enter live in the controller's overlay.
-            let empty = match_count == 0;
-            let keymap = leaf::<PaletteCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: Key::Enter, ..
-                    } if empty => EventResult::command(PaletteCommand::Close),
-                    Event::KeyDown {
-                        key: Key::Escape, ..
-                    } => EventResult::command(PaletteCommand::Close),
-                    _ => EventResult::Ignored,
-                },
-            );
-            container.place(0.0, 0.0, keymap);
+            let column = Column::new(arena)
+                .child(fixed(head))
+                .child(hikit::ui::rule_h(chrome.rule.0, width))
+                .child(fixed(rows).pad_insets(Insets {
+                    top: chrome.list_pad_top,
+                    bottom: chrome.list_pad_bottom,
+                    ..Default::default()
+                }))
+                .child(hikit::ui::rule_h(chrome.rule.0, width))
+                .child(fixed(foot))
+                .layout(arena, loose);
 
-            container
+            // Enter-with-nothing and Escape close, wherever the
+            // keyboard stands inside the sheet.
+            let size = column.size();
+            let empty = self.matches.is_empty();
+            let mut sheet = imba::container::container(arena, size);
+            sheet.place_boxed(0.0, 0.0, column);
+            sheet.place(
+                0.0,
+                0.0,
+                leaf::<PaletteCommand>(size.width, size.height).event(
+                    move |_arena, event, _size| match event {
+                        Event::KeyDown {
+                            key: Key::Enter, ..
+                        } if empty => EventResult::command(PaletteCommand::Close),
+                        Event::KeyDown {
+                            key: Key::Escape, ..
+                        } => EventResult::command(PaletteCommand::Close),
+                        _ => EventResult::Ignored,
+                    },
+                ),
+            );
+            sheet
         })
     }
 }
@@ -360,18 +521,19 @@ impl ModalView for PaletteView {
     }
 }
 
-/// Build the palette overlay: a plain z-stacked modal layer that
-/// OWNS its input. The command walk runs BEFORE the modal mounts, so
+/// Build the palette overlay: the palette standing on its SHEET,
+/// centered under the window's top; it OWNS its input. The command walk runs BEFORE the modal mounts, so
 /// the window's own commands are all collected.
 pub fn build(
     store: &mut Store,
     ui: &UiCtx,
     window: workbench::window::WindowId,
 ) -> Box<dyn ModalView> {
-    use hikit::modal::Dress as _;
-    let sheet = ::editor::env::Themes::of(store).ui().peeker.background.0;
+    let sheet = sheet::Sheet(::editor::env::Themes::of(store).ui().peeker.palette.sheet.clone());
     let commands = himark::commands::palette_commands(store, ui, window);
-    Box::new(bare(store, ui, commands).dressed(hikit::ui::Surface::fill(sheet).radius(0.0)))
+    Box::new(sheet::Sheeted::new(bare(store, ui, commands), sheet, || {
+        PaletteCommand::Close
+    }))
 }
 
 /// The palette UNDRESSED, over commands someone else walked: the

@@ -1,8 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use hikit::rows::DRAWER_WIDTH;
-
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -40,6 +38,9 @@ impl std::fmt::Display for DrawerCommand {
 pub(crate) struct Drawer {
     content: Box<dyn ModalView>,
 
+    /// The panel's width — how far it rolls.
+    width: f32,
+
     offset: Animation<f32>,
 
     closing: bool,
@@ -51,6 +52,7 @@ impl Clone for Drawer {
     fn clone(&self) -> Self {
         Self {
             content: self.content.clone(),
+            width: self.width,
             offset: self.offset,
             closing: self.closing,
 
@@ -60,9 +62,9 @@ impl Clone for Drawer {
 }
 
 impl Drawer {
-    pub fn new(content: Box<dyn ModalView>) -> Self {
+    pub fn new(content: Box<dyn ModalView>, width: f32) -> Self {
         let mut offset = Animation::done(
-            -DRAWER_WIDTH,
+            -width,
             Motion::Ease {
                 duration_ms: SLIDE_MS,
                 easing: Easing::EaseOut,
@@ -71,6 +73,7 @@ impl Drawer {
         offset.set(0.0);
         Self {
             content,
+            width,
             offset,
             closing: false,
             request: None,
@@ -90,7 +93,7 @@ impl Drawer {
             return;
         }
         self.closing = true;
-        self.offset.set(-DRAWER_WIDTH);
+        self.offset.set(-self.width);
     }
 }
 

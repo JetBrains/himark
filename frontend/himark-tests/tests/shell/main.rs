@@ -351,6 +351,7 @@ impl View for FocusProbe {
 }
 
 mod chat;
+mod comments;
 mod completion;
 mod diagnostics;
 mod diff_probes;
@@ -359,8 +360,11 @@ mod dock;
 mod drawer;
 mod editing;
 mod find;
+mod frame;
 mod navigation;
 mod palette;
+mod side_tabs;
+mod history_tab;
 mod panes;
 mod toc;
 mod toolbar;

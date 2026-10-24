@@ -8,6 +8,7 @@
 
 use imba::store::Store;
 use imba::{arena::Arena, constraints::Constraints, dyn_view::DynCommand, ui::UiCtx, View};
+use skia_safe::Size;
 
 /// A one-slot mailbox for a view's outbound request. Cloning a view
 /// never clones its pending ask — the clone starts empty.
@@ -277,6 +278,10 @@ where
         self.scroll.content().title(store)
     }
 
+    fn subtitle(&self, store: &Store) -> Option<String> {
+        self.scroll.content().subtitle(store)
+    }
+
     fn dismantle(&mut self, store: &mut Store) {
         self.scroll.content_mut().dismantle(store);
     }
@@ -434,21 +439,20 @@ impl<V: ModalView + View + Clone + Send + Sync + 'static> ModalView for Dressed<
 }
 
 /// A modal standing in a window's SIDE SLOT: the drawer's panel —
-/// its floor, its header and its width. The slot hands the whole
-/// window's constraints and the panel takes the left band of it;
-/// the view inside lays content into what is left and knows none
+/// its floor and its edge rule. The slot hands the exact column the
+/// drawer covers (the chat column under its header, whose tabs name
+/// the panel); the view inside lays content into it and knows none
 /// of this. A mounted host that draws its own island mounts the
 /// same view undressed.
 #[derive(Clone)]
 pub struct Paneled<V> {
     inner: V,
-    title: &'static str,
 }
 
-/// `view.paneled("Sessions")` — the modifier that composes them.
+/// `view.paneled()` — the modifier that composes them.
 pub trait Panel: Sized {
-    fn paneled(self, title: &'static str) -> Paneled<Self> {
-        Paneled { inner: self, title }
+    fn paneled(self) -> Paneled<Self> {
+        Paneled { inner: self }
     }
 }
 
@@ -479,57 +483,37 @@ impl<V: View> View for Paneled<V> {
         self.inner.focus_data(store, ui)
     }
 
+    /// The side column: the content over the ground, one hairline on
+    /// the column's far edge, over the ground. A press on its ground
+    /// stays in the column.
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        let title = self.title;
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            use imba::layout::Layout as _;
+            use imba::layout::LayoutExt as _;
             let size = constraints.max;
-            let width = crate::rows::DRAWER_WIDTH;
-            let theme = ::editor::env::Themes::of(store);
-            let ui_theme = theme.ui().clone();
-            let header = ui_theme.panel.header_height;
-            let inset = crate::rows::panel_inset(&ui_theme);
-            let pad = 6.0;
-            let title_font = crate::fonts::ui_font(ui, ui_theme.panel.title_size);
-            let shaper = imba::layout::TextShaper::of(ui);
-
-            let mut panel = imba::container::container(arena, size);
-            use imba::thunk_ext::ThunkExt as _;
-            let floor = imba::leaf::leaf::<V::Command>(width, size.height)
-                .paint_instead(move |_arena, canvas, rect| {
-                    crate::rows::paint_panel_chrome(
-                        &shaper,
-                        canvas,
-                        rect,
-                        &ui_theme,
-                        &title_font,
-                        title,
-                        "",
-                    );
-                })
-                .event(|_arena, event, _size| match event {
-                    imba::event::Event::MouseDown { .. } => imba::event::EventResult::handled(),
-                    _ => imba::event::EventResult::Ignored,
-                })
-                .hit_opaque();
-            panel.place(0.0, 0.0, floor);
-            panel.place(
-                inset + 1.0,
-                inset + header + pad,
-                imba::layout::Layout::layout(
-                    self.inner.display(arena, store, ui),
-                    arena,
-                    Constraints::tight(skia_safe::Size::new(
-                        width - inset * 2.0 - 2.0,
-                        (size.height - inset * 2.0 - header - pad).max(1.0),
-                    )),
-                ),
+            let ink = ::editor::env::Themes::of(store).ui().ink.clone();
+            let width = size.width.max(1.0);
+            let column = self
+                .inner
+                .display(arena, store, ui)
+                .sized(width, size.height)
+                .backdrop(crate::ui::ground(ink.ground.0))
+                .shield()
+                .layout(arena, Constraints::tight(Size::new(width, size.height)));
+            let mut surface = imba::container::container(arena, Size::new(width, size.height));
+            surface.place_boxed(0.0, 0.0, column);
+            surface.place_boxed(
+                width - 1.0,
+                0.0,
+                crate::ui::rule_v::<V::Command>(ink.rule.0, size.height)
+                    .layout(arena, Constraints::tight(Size::new(1.0, size.height))),
             );
-            panel
+            surface
         })
     }
 }

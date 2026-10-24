@@ -5,7 +5,7 @@ use imba::{
     arena::Arena,
     constraints::Constraints,
     effect::Effects,
-    leaf::leaf,
+    layout::LayoutExt as _,
     list::{ListCommand, ListSlice, ListView},
     store::Store,
     thunk_ext::ThunkExt,
@@ -20,7 +20,16 @@ use hikit::{tree_item::TreeItemCommand, tree_item::TreeItemView};
 
 #[derive(Clone)]
 pub struct ToolFace {
+    /// The call in one line — what the oracle reads.
     pub line: String,
+
+    /// What the row shows after the tool's name: the invocation (a
+    /// command, a path), or where the call stands.
+    pub detail: String,
+
+    /// A FAILED call's reason, one line — its own mono line under
+    /// the row.
+    pub error: Option<String>,
 
     pub markdown: text::text::Text,
     pub failed: bool,
@@ -64,9 +73,14 @@ impl std::fmt::Display for ToolRowCommand {
 
 pub(crate) type ToolRowsCommand = ListCommand<TreeItemCommand<ToolRowCommand>>;
 
+/// One row's words: a call's name and its invocation, or a run's
+/// names with their counts ("Bash ×3").
 #[derive(Clone)]
 pub(crate) struct FaceLine {
-    text: String,
+    names: Vec<(String, usize)>,
+    detail: String,
+    error: Option<String>,
+    open: bool,
     failed: bool,
     live: bool,
 }
@@ -123,36 +137,14 @@ impl View for ToolRowView {
                     )
                     .map(|command| ToolRowCommand::Cell(Box::new(command))),
                 ),
-                Self::Face(face) => {
-                    let theme = env::Themes::of(store);
-                    let tree = theme.ui().tree.clone();
-                    let chat = theme.ui().chat.clone();
-                    let font = hikit::fonts::ui_text_font(ui, tree.font_size);
-                    let color = if face.failed {
-                        chat.stop_color.0
-                    } else if face.live {
-                        chat.text_color.0
-                    } else {
-                        chat.notice_color.0
-                    };
-                    let text = face.text.clone();
-                    let shaper = imba::layout::TextShaper::of(ui);
-                    // The face row's height is ITS OWN: its text
-                    // block plus a symmetric padding.
-                    let metrics = font.metrics().1;
-                    let height =
-                        (-metrics.ascent + metrics.descent).ceil() + 2.0 * hikit::ui::space::S;
-                    imba::ThunkBox::new(
+                Self::Face(face) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        face_row(arena, store, ui, face, width),
                         arena,
-                        leaf::<ToolRowCommand>(width, height).paint_instead(
-                            move |_arena, canvas, rect| {
-                                let baseline =
-                                    rect.top + rect.height() * 0.5 + tree.font_size * 0.36;
-                                shaper.draw(canvas, &font, &text, color, 0.0, rect.left, baseline);
-                            },
-                        ),
-                    )
-                }
+                        constraints,
+                    ),
+                ),
             }
         })
     }
@@ -250,23 +242,24 @@ impl ToolGroup {
     }
 
     pub(crate) fn summary(&self) -> String {
-        let mut order: Vec<&str> = Vec::new();
-        let mut counts: Vec<usize> = Vec::new();
-        for call in self.calls.iter() {
-            match order.iter().position(|name| *name == call.display_name) {
-                Some(index) => counts[index] += 1,
-                None => {
-                    order.push(&call.display_name);
-                    counts.push(1);
-                }
-            }
-        }
-        order
+        self.counts()
             .into_iter()
-            .zip(counts)
             .map(|(name, count)| format!("{count} × {name}"))
             .collect::<Vec<_>>()
             .join(", ")
+    }
+
+    /// The run's tools in first-call order, each with how many times
+    /// it ran.
+    fn counts(&self) -> Vec<(String, usize)> {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for call in self.calls.iter() {
+            match counts.iter_mut().find(|(name, _)| *name == call.display_name) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((call.display_name.clone(), 1)),
+            }
+        }
+        counts
     }
 
     fn call(&self, id: &str) -> Option<&CallEntry> {
@@ -323,6 +316,8 @@ impl ToolGroup {
                 // not move must not splice rows or rewrite bodies.
                 let held = &self.calls[index].face;
                 if held.line == face.line
+                    && held.detail == face.detail
+                    && held.error == face.error
                     && held.failed == face.failed
                     && held.live == face.live
                     && held.markdown == face.markdown
@@ -577,7 +572,10 @@ impl ToolGroup {
         let live = self.calls.iter().any(|call| call.face.live);
         let view = TreeItemView::branch(
             ToolRowView::Face(FaceLine {
-                text: self.summary(),
+                names: self.counts(),
+                detail: String::new(),
+                error: None,
+                open: self.expanded,
                 failed,
                 live,
             }),
@@ -591,13 +589,18 @@ impl ToolGroup {
 
     fn face_row(&self, store: &Store, ui: &UiCtx, id: &str) -> TreeItemView<ToolRowView> {
         let call = self.call(id);
-        let line = call.map(|call| call.face.line.clone()).unwrap_or_default();
+        let name = call.map(|call| call.display_name.clone()).unwrap_or_default();
+        let detail = call.map(|call| call.face.detail.clone()).unwrap_or_default();
+        let error = call.and_then(|call| call.face.error.clone());
         let failed = call.map(|call| call.face.failed).unwrap_or(false);
         let live = call.map(|call| call.face.live).unwrap_or(false);
         let open = call.map(|call| call.expanded).unwrap_or(false);
         let view = TreeItemView::branch(
             ToolRowView::Face(FaceLine {
-                text: line,
+                names: vec![(name, 1)],
+                detail,
+                error,
+                open,
                 failed,
                 live,
             }),
@@ -633,7 +636,7 @@ impl ToolGroup {
                     CellCommand::Editor(command),
                 ))),
             },
-            |fx| Cell::build_text(store, ui, kind, markdown, width, fx),
+            |fx| Cell::build_bare(store, ui, kind, markdown, width, fx),
         );
         (
             TreeItemView::leaf(ToolRowView::Body(cell), self.depth() + 1),
@@ -696,6 +699,146 @@ impl ToolGroup {
         constraints: Constraints,
     ) -> impl Thunk<'a, ToolRowsCommand> + 'a {
         imba::layout::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
+    }
+}
+
+/// A tool call's ROW (docs/Design.md: a tool call is its own row in
+/// the text column, never a label on the prose): the disclosure
+/// chevron hanging into the gutter, the tool's name in bold, then the
+/// run's count or the call's invocation in mono, ellipsized. A failed
+/// call reads in the removed ink and carries its reason on a mono
+/// line of its own.
+fn face_row<'a>(
+    arena: &'a Arena,
+    store: &'a Store,
+    ui: &'a UiCtx,
+    face: &FaceLine,
+    width: f32,
+) -> impl imba::layout::Layout<'a, ToolRowCommand> + imba::layout::LayoutValue + 'a {
+    let theme = env::Themes::of(store);
+    let chat = theme.ui().chat.clone();
+    let ink = theme.ui().ink.clone();
+    let shaper = imba::layout::TextShaper::of(ui);
+    let style = |font: skia_safe::Font, color: skia_safe::Color| hikit::ui::TextStyle {
+        font,
+        color,
+        tracking: 0.0,
+        shaper: shaper.clone(),
+    };
+    let (name_ink, word_ink, detail_ink) = match (face.failed, face.live) {
+        (true, _) => (ink.removed.0, ink.removed.0, ink.ink_2.0),
+        (false, true) => (ink.ink.0, ink.ink_3.0, ink.ink_2.0),
+        (false, false) => (ink.ink_2.0, ink.ink_3.0, ink.ink_3.0),
+    };
+    let name = style(hikit::fonts::role_font(ui, &chat.tool_name), name_ink);
+    let word = style(hikit::fonts::ui_text_font(ui, chat.tool_name.size), word_ink);
+    let detail = style(hikit::fonts::mono_font(ui, chat.tool_detail_size), detail_ink);
+    let chevron = Disclosure {
+        open: face.open,
+        color: match face.failed {
+            true => ink.removed.0,
+            false => chat.chevron_color.0,
+        },
+        size: chat.chevron_size,
+        stroke: chat.chevron_stroke,
+    };
+
+    let mut words = imba::layout::Row::new(arena).gap(chat.tool_gap);
+    for (index, (tool, count)) in face.names.iter().enumerate() {
+        if index > 0 {
+            words = words.child_by_baseline(hikit::ui::text(&word, "·"));
+        }
+        words = words.child_by_baseline(hikit::ui::text(&name, tool.clone()));
+        if *count > 1 {
+            words = words.child_by_baseline(hikit::ui::text(&word, format!("×{count}")));
+        }
+    }
+    if face.failed {
+        words = words.child_by_baseline(hikit::ui::text(&word, "failed"));
+    }
+    if !face.detail.is_empty() {
+        // Last and flexible: the invocation takes what the row has
+        // left and ellipsizes inside it.
+        words = words.child_by_baseline(hikit::ui::text(&detail, face.detail.clone()));
+    }
+    let row = imba::layout::Row::new(arena)
+        .align_items(imba::layout::CrossAlign::Center)
+        .child(chevron.layout(chat.chevron_hang, chat.tool_row_height))
+        .child(words)
+        .sized(width, chat.tool_row_height);
+    let mut column = imba::layout::Column::new(arena).child(row);
+    if let Some(error) = &face.error {
+        let error_style = style(
+            hikit::fonts::mono_font(ui, chat.tool_error_size),
+            ink.ink_3.0,
+        );
+        column = column.child(
+            imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(0.0, chat.tool_error_line))
+                .child_aligned(
+                    imba::layout::Alignment::CenterStart,
+                    hikit::ui::text(&error_style, error.clone()),
+                )
+                .pad_insets(imba::layout::Insets {
+                    left: chat.chevron_hang,
+                    top: chat.tool_error_gap,
+                    right: 0.0,
+                    bottom: 0.0,
+                }),
+        );
+    }
+    column
+}
+
+/// The DISCLOSURE chevron, a named glyph: ▸ closed, ▾ open, stroked
+/// in a `size` box at the left of its slot, centered on the row.
+#[derive(Clone, Copy)]
+pub(crate) struct Disclosure {
+    pub open: bool,
+    pub color: skia_safe::Color,
+    pub size: f32,
+    pub stroke: f32,
+}
+
+impl Disclosure {
+    /// The glyph in a slot `width` × `height` — the slot is the
+    /// chevron's hang into the gutter.
+    pub(crate) fn layout<'a, Command: 'a>(
+        self,
+        width: f32,
+        height: f32,
+    ) -> impl imba::layout::Layout<'a, Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::Fill::<Command>::new()
+            .sized(width, height)
+            .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                // The mock's 16-unit glyph: M6 3 l5 5 -5 5 closed,
+                // M3 6 l5 5 5 -5 open.
+                let unit = self.size / 16.0;
+                let left = rect.left;
+                let top = rect.top + (rect.height() - self.size) * 0.5;
+                let at = |x: f32, y: f32| (left + x * unit, top + y * unit);
+                let mut path = skia_safe::PathBuilder::new();
+                match self.open {
+                    false => {
+                        path.move_to(at(6.0, 3.0));
+                        path.line_to(at(11.0, 8.0));
+                        path.line_to(at(6.0, 13.0));
+                    }
+                    true => {
+                        path.move_to(at(3.0, 6.0));
+                        path.line_to(at(8.0, 11.0));
+                        path.line_to(at(13.0, 6.0));
+                    }
+                }
+                let mut paint = skia_safe::Paint::default();
+                paint.set_anti_alias(true);
+                paint.set_stroke(true);
+                paint.set_stroke_width(self.stroke);
+                paint.set_stroke_cap(skia_safe::PaintCap::Round);
+                paint.set_stroke_join(skia_safe::PaintJoin::Round);
+                paint.set_color(self.color);
+                canvas.draw_path(&path.detach(), &paint);
+            })
     }
 }
 

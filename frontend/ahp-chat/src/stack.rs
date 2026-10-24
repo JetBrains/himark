@@ -2,21 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use ahp_types::state::{ConfirmationOption, ConfirmationOptionKind, Message, PendingMessage};
-use hikit::fonts::ui_text_font;
 use imba::{
     arena::Arena,
     constraints::Constraints,
     container::{container, Container},
-    event::{Event, EventResult},
     layout::Layout as _,
     layout::LayoutExt as _,
-    leaf::leaf,
-    thunk_ext::ThunkExt,
     ui::UiCtx,
 };
-use skia_safe::{Paint, Rect, Size};
-
-use crate::turn::TurnView;
+use skia_safe::Size;
 
 type ChatChrome = editor::theme::ChatChrome;
 
@@ -184,21 +178,20 @@ impl WidgetStack {
             .collect()
     }
 
+    /// One line of the stack: the transcript's row height.
     fn line(chrome: &ChatChrome) -> f32 {
-        chrome.title_size * 1.9
+        chrome.tool_row_height
     }
 
     fn ask_height(&self, chrome: &ChatChrome) -> f32 {
         let line = Self::line(chrome);
-        let box_pad = chrome.pad * 0.75;
         self.ask
             .as_ref()
             .map(|ask| {
-                let mut height = box_pad * 2.0 + line + line * 0.9;
-                if ask.input.is_some() {
-                    height += line * 1.3;
-                }
-                height + ask.options.len() as f32 * line + chrome.pad * 0.5
+                // The caps line, the invocation, the input when there
+                // is one, an option a row — and the row gap after.
+                let lines = 2 + usize::from(ask.input.is_some()) + ask.options.len();
+                chrome.row_gap + lines as f32 * line
             })
             .unwrap_or(0.0)
     }
@@ -209,243 +202,123 @@ impl WidgetStack {
         }
         let line = Self::line(chrome);
         let rows = if self.collapsed { 0 } else { self.queue.len() };
-        line + rows as f32 * line + chrome.pad * 0.5
+        chrome.row_gap + (1 + rows) as f32 * line
     }
 
-    pub(crate) fn height(&self, chrome: &ChatChrome) -> f32 {
+    pub(crate) fn height(&self, _store: &imba::store::Store, chrome: &ChatChrome) -> f32 {
         self.ask_height(chrome) + self.queue_height(chrome)
     }
 
+    /// The stack in the transcript's voice (docs/Design.md): no
+    /// cards. The ask is a caps line, the invocation in the reading
+    /// register, the input in mono, then its options as rows with the
+    /// number in the gutter's margin. The queue is a caps line (it
+    /// folds) over its messages, each with a quiet "remove".
     pub(crate) fn layout<'a>(
         &'a self,
         arena: &'a Arena,
+        store: &'a imba::store::Store,
         ui: &'a UiCtx,
         chrome: &ChatChrome,
         width: f32,
     ) -> Container<'a, StackCommand> {
-        let pad = chrome.pad;
-        let box_pad = pad * 0.75;
+        let grid = crate::cell::Grid::of(store, width, false);
         let line = Self::line(chrome);
-        let radius = chrome.radius;
-        let box_w = TurnView::content_width((width - pad * 2.0).max(1.0));
-        let box_x = ((width - box_w) / 2.0).max(pad);
-        let ask_h = self.ask_height(chrome);
-        let mut stack = container(arena, Size::new(width, self.height(chrome)));
+        let gutter = (grid.edge - chrome.gutter_pad).max(0.0);
+        let mut stack = container(arena, Size::new(width, self.height(store, chrome)));
+        // A label vertically centered in one line of the column.
+        let lined = |label: imba::layout::Text, width: f32| {
+            imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(width, line))
+                .child_aligned(imba::layout::Alignment::CenterStart, label)
+                .layout(arena, Constraints::tight(Size::new(width, line)).loosen())
+        };
+        // The same, flush right against the text column — the margin.
+        let margin = |label: imba::layout::Text| {
+            imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(gutter, line))
+                .child_aligned(imba::layout::Alignment::CenterEnd, label)
+                .layout(arena, Constraints::tight(Size::new(gutter, line)).loosen())
+        };
+        let caps = hikit::ui::caps(store, ui);
+        let reading = hikit::ui::reading(store, ui);
+        let row = hikit::ui::row(store, ui);
+        let mono = hikit::ui::margin(store, ui);
+        let brief = hikit::ui::brief(store, ui);
 
+        let mut y = chrome.row_gap;
         if let Some(ask) = &self.ask {
-            let card_h = ask_h - pad * 0.5;
-            let title_style = hikit::ui::TextStyle {
-                font: ui_text_font(ui, chrome.title_size * 0.8),
-                color: chrome.accent.0,
-                tracking: 0.0,
-                shaper: imba::layout::TextShaper::of(ui),
-            };
-            let body_style = hikit::ui::TextStyle {
-                font: ui_text_font(ui, chrome.title_size * 0.85),
-                color: chrome.text_color.0,
-                tracking: 0.0,
-                shaper: imba::layout::TextShaper::of(ui),
-            };
-            let code_style = hikit::ui::TextStyle {
-                font: ui_text_font(ui, chrome.title_size * 0.8),
-                color: chrome.text_color.0,
-                tracking: 0.0,
-                shaper: imba::layout::TextShaper::of(ui),
-            };
-            let has_preview = ask.input.is_some();
-            let mut body = imba::layout::Column::new(arena)
-                .gap(hikit::ui::space::M)
-                .child(hikit::ui::text(&title_style, ask.title.clone()))
-                .child(hikit::ui::text(&body_style, ask.invocation.clone()));
+            stack.place_boxed(
+                grid.edge,
+                y,
+                lined(hikit::ui::text(&caps, ask.title.to_uppercase()), grid.column),
+            );
+            y += line;
+            let invocation = ask.invocation.lines().next().unwrap_or("").to_owned();
+            stack.place_boxed(
+                grid.edge,
+                y,
+                lined(hikit::ui::text(&reading, invocation), grid.column),
+            );
+            y += line;
             if let Some(preview) = &ask.input {
-                body = body.child(
-                    imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(box_w - box_pad * 2.0, line))
-                        .child_aligned(
-                            imba::layout::Alignment::CenterStart,
-                            hikit::ui::text(&code_style, preview.clone()).pad_insets(
-                                imba::layout::Insets {
-                                    left: hikit::ui::space::M,
-                                    ..Default::default()
-                                },
-                            ),
-                        )
-                        .backdrop(
-                            hikit::ui::Surface::fill(chrome.input_fill.0)
-                                .radius(hikit::ui::RADIUS_S)
-                                .painter(),
-                        ),
-                );
-            }
-            let card = imba::layout::ZBox::new(arena)
-                .child(imba::layout::spacer(box_w, card_h))
-                .child(body.pad(box_pad))
-                .backdrop(
-                    hikit::ui::Surface::bordered(chrome.ask_surface.0, chrome.ask_border.0)
-                        .radius(radius)
-                        .painter(),
-                )
-                .shield()
-                .layout(arena, Constraints::tight(Size::new(box_w, card_h)));
-            stack.place_boxed(box_x, 0.0, card);
-
-            let mut option_y =
-                box_pad + line + line * 0.9 + if has_preview { line * 1.3 } else { 0.0 };
-            for (index, option) in ask.options.iter().enumerate() {
-                let label = option.label.clone();
-                let number = format!("{}", index + 1);
-                let option_font = ui_text_font(ui, chrome.title_size * 0.85);
-                let chip_font = ui_text_font(ui, chrome.title_size * 0.7);
-                let text_color = chrome.text_color.0;
-                let chip_color = chrome.accent.0;
-                // The numbered chip stays a bespoke glyph painter (a
-                // stroked round rect with a centered digit); the label
-                // is a `Text` at exact baseline parity — the old
-                // painter drew it at x = left + line * 0.9 (the chip
-                // leaf's width) with its baseline at top + line * 0.66.
-                let chip = leaf::<StackCommand>(line * 0.9, line).paint_instead(
-                    move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_anti_alias(true);
-                        let chip = Rect::from_xywh(
-                            rect.left,
-                            rect.top + line * 0.18,
-                            line * 0.62,
-                            line * 0.62,
-                        );
-                        paint.set_color(chip_color);
-                        paint.set_stroke(true);
-                        paint.set_stroke_width(1.0);
-                        canvas.draw_round_rect(chip, 4.0, 4.0, &paint);
-                        paint.set_stroke(false);
-                        let number_w = chip_font.measure_str(number.as_str(), None).0;
-                        canvas.draw_str(
-                            number.as_str(),
-                            (
-                                chip.left + (chip.width() - number_w) / 2.0,
-                                chip.top + chip.height() * 0.72,
-                            ),
-                            &chip_font,
-                            &paint,
-                        );
-                    },
-                );
-                let label_ascent = -option_font.metrics().1.ascent;
-                let row = imba::layout::Row::new(arena)
-                    .child(imba::layout::fixed(chip))
-                    .child(
-                        imba::layout::text(ui, label, option_font.clone(), text_color).pad_insets(
-                            imba::layout::Insets {
-                                left: 0.0,
-                                top: (line * 0.66 - label_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            },
-                        ),
-                    )
-                    .sized(box_w - box_pad * 2.0, line)
-                    .on_click(move || StackCommand::Answer(index));
+                let preview = preview.lines().next().unwrap_or("").to_owned();
                 stack.place_boxed(
-                    box_x + box_pad,
-                    option_y,
-                    row.layout(
-                        arena,
-                        Constraints::tight(Size::new(box_w - box_pad * 2.0, line)),
-                    ),
+                    grid.edge,
+                    y,
+                    lined(hikit::ui::text(&mono, preview), grid.column),
                 );
-                option_y += line;
+                y += line;
             }
+            for (index, option) in ask.options.iter().enumerate() {
+                stack.place_boxed(
+                    0.0,
+                    y,
+                    margin(hikit::ui::text(&mono, format!("{}", index + 1))),
+                );
+                let pick = imba::layout::ZBox::new(arena)
+                    .child(imba::layout::spacer(grid.column, line))
+                    .child_aligned(
+                        imba::layout::Alignment::CenterStart,
+                        hikit::ui::text(&row, option.label.clone()),
+                    )
+                    .on_click(move || StackCommand::Answer(index))
+                    .layout(arena, Constraints::tight(Size::new(grid.column, line)).loosen());
+                stack.place_boxed(grid.edge, y, pick);
+                y += line;
+            }
+            y += chrome.row_gap;
         }
 
         if !self.queue.is_empty() {
-            let queue_y = ask_h;
-            let header_font = ui_text_font(ui, chrome.title_size * 0.65);
-            let row_font = ui_text_font(ui, chrome.title_size * 0.8);
-            let dim = chrome.notice_color.0;
-            let text_color = chrome.text_color.0;
-            let count = self.queue.len();
-            let collapsed = self.collapsed;
-            let header = leaf::<StackCommand>(box_w, line)
-                .paint_instead(move |_arena, canvas, rect| {
-                    let mut paint = Paint::default();
-                    paint.set_anti_alias(true);
-                    paint.set_color(dim);
-
-                    let mut path = skia_safe::PathBuilder::new();
-                    let cx = rect.left + box_pad + line * 0.14;
-                    let cy = rect.top + line * 0.5;
-                    let r = line * 0.13;
-                    if collapsed {
-                        path.move_to((cx - r * 0.5, cy - r));
-                        path.line_to((cx + r * 0.7, cy));
-                        path.line_to((cx - r * 0.5, cy + r));
-                    } else {
-                        path.move_to((cx - r, cy - r * 0.5));
-                        path.line_to((cx + r, cy - r * 0.5));
-                        path.line_to((cx, cy + r * 0.7));
-                    }
-                    path.close();
-                    canvas.draw_path(&path.detach(), &paint);
-                    canvas.draw_str(
-                        format!("PROMPT QUEUE {count}").as_str(),
-                        (rect.left + box_pad + line * 0.5, rect.top + line * 0.66),
-                        &header_font,
-                        &paint,
-                    );
-                })
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(StackCommand::ToggleQueue),
-                    _ => EventResult::Ignored,
-                });
-            stack.place(box_x, queue_y, header);
-            if !collapsed {
-                for (index, held) in self.queue.iter().enumerate() {
+            let head = format!("QUEUED \u{00B7} {}", self.queue.len());
+            let toggle = imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(grid.column, line))
+                .child_aligned(
+                    imba::layout::Alignment::CenterStart,
+                    hikit::ui::text(&caps, head),
+                )
+                .on_click(|| StackCommand::ToggleQueue)
+                .layout(arena, Constraints::tight(Size::new(grid.column, line)).loosen());
+            stack.place_boxed(grid.edge, y, toggle);
+            y += line;
+            if !self.collapsed {
+                let remove_w = imba::layout::text_advance(ui, &brief.font, "remove");
+                for held in self.queue.iter() {
                     let id = held.id.clone();
                     let text: String = held.message.text.lines().next().unwrap_or("").to_owned();
-                    let row_font = row_font.clone();
-                    let shaper = imba::layout::TextShaper::of(ui);
-                    let row_y = queue_y + line + index as f32 * line;
-                    let row = leaf::<StackCommand>(box_w - box_pad * 2.0, line)
-                        .paint_instead(move |_arena, canvas, rect| {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(dim);
-                            canvas.draw_circle(
-                                (rect.left + line * 0.2, rect.top + line * 0.5),
-                                2.5,
-                                &paint,
-                            );
-                            shaper.draw(
-                                canvas,
-                                &row_font,
-                                &text,
-                                text_color,
-                                0.0,
-                                rect.left + line * 0.55,
-                                rect.top + line * 0.66,
-                            );
-                            paint.set_color(dim);
-
-                            let cx = rect.right - line * 0.5;
-                            let cy = rect.top + line * 0.5;
-                            let r = line * 0.16;
-                            paint.set_stroke(true);
-                            paint.set_stroke_width(1.6);
-                            canvas.draw_line((cx - r, cy - r), (cx + r, cy + r), &paint);
-                            canvas.draw_line((cx - r, cy + r), (cx + r, cy - r), &paint);
-                            paint.set_stroke(false);
-                        })
-                        .event(move |_arena, event, size| match event {
-                            Event::MouseDown { point, .. } => {
-                                if point.x > size.width - line {
-                                    EventResult::command(StackCommand::RemoveQueued(id.clone()))
-                                } else {
-                                    EventResult::handled()
-                                }
-                            }
-                            _ => EventResult::Ignored,
-                        });
-                    stack.place(box_x + box_pad, row_y, row);
+                    let text_w = (grid.column - remove_w - chrome.options_gap).max(1.0);
+                    stack.place_boxed(grid.edge, y, lined(hikit::ui::text(&row, text), text_w));
+                    let remove = imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(remove_w, line))
+                        .child_aligned(
+                            imba::layout::Alignment::CenterStart,
+                            hikit::ui::text(&brief, "remove"),
+                        )
+                        .on_click(move || StackCommand::RemoveQueued(id.clone()))
+                        .layout(arena, Constraints::tight(Size::new(remove_w, line)).loosen());
+                    stack.place_boxed(grid.edge + grid.column - remove_w, y, remove);
+                    y += line;
                 }
             }
         }

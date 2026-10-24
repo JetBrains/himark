@@ -4,6 +4,7 @@
 pub mod agents;
 pub mod channel;
 pub mod drawer;
+mod drawer_row;
 pub mod driver;
 pub mod folders;
 pub mod state;

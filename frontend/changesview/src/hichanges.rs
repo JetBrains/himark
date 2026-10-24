@@ -1340,10 +1340,14 @@ pub fn dir_forest(
     for entry in files {
         let label = entry.working.name().to_owned();
 
+        // A row's tally names only what moved: "+98", not "+98 −0"
+        // (the commit's meta line is where a zero reads, quietly).
         let mut trail = Vec::new();
-        if entry.added.is_some() || entry.removed.is_some() {
-            trail.push((format!("+{}", entry.added.unwrap_or(0)), counts.0));
-            trail.push((format!("−{}", entry.removed.unwrap_or(0)), counts.1));
+        if let Some(added) = entry.added.filter(|count| *count != 0) {
+            trail.push((format!("+{added}"), counts.0));
+        }
+        if let Some(removed) = entry.removed.filter(|count| *count != 0) {
+            trail.push((format!("−{removed}"), counts.1));
         }
         let key = sink.file_key(&entry, at);
         sink.file(&entry, &key);

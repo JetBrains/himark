@@ -13,7 +13,7 @@ use imba::{
 };
 use skia_safe::Size;
 
-use crate::cell::{Cell, CellCommand, CellKind, DiffHeader};
+use crate::cell::{Cell, CellCommand, CellKind, DiffHeader, LineRole};
 use crate::chat::model::PartId;
 use crate::file_edit::FileEditRefs;
 use crate::tool_group::{ToolCallSpec, ToolFace};
@@ -27,6 +27,9 @@ pub(crate) enum CellSpec {
     Diff(DiffSpec),
 
     Tools(Vec<ToolCallSpec>),
+
+    /// A turn's own quiet line — how it ended, what it spent.
+    Line(LineRole, String),
 }
 
 #[derive(Clone)]
@@ -283,7 +286,7 @@ pub(crate) fn dress_tail(turn: &crate::chat::model::Turn) -> DressedCells {
         Life::Live | Life::Complete => {}
         Life::Cancelled => cells.push_back_mut((
             CellKey::Life,
-            CellSpec::Text(CellKind::Notice, "*Turn cancelled.*".to_owned()),
+            CellSpec::Line(LineRole::Notice, "Turn cancelled.".to_owned()),
         )),
         Life::Failed(said) => cells.push_back_mut((
             CellKey::Life,
@@ -291,10 +294,7 @@ pub(crate) fn dress_tail(turn: &crate::chat::model::Turn) -> DressedCells {
         )),
     }
     if let Some(spent) = &turn.usage {
-        cells.push_back_mut((
-            CellKey::Usage,
-            CellSpec::Text(CellKind::Notice, spent.clone()),
-        ));
+        cells.push_back_mut((CellKey::Usage, CellSpec::Line(LineRole::Usage, spent.clone())));
     }
     cells
 }
@@ -303,7 +303,7 @@ pub(crate) type DressedCells = rpds::VectorSync<(CellKey, CellSpec)>;
 
 fn tool_spec_of(call: &crate::chat::model::ToolCall) -> ToolCallSpec {
     use crate::chat::model::ToolStatus;
-    let face = match &call.status {
+    let mut face = match &call.status {
         ToolStatus::Streaming => streaming_tool_face(&call.display),
         ToolStatus::Waiting => pending_tool_face(&call.display, &call.invocation),
         ToolStatus::Running => running_tool_face(&call.display, &call.invocation),
@@ -316,6 +316,18 @@ fn tool_spec_of(call: &crate::chat::model::ToolCall) -> ToolCallSpec {
             *ok,
         ),
     };
+    // The row names what ran — the input itself (a command, a
+    // path) when the wire carried it inline.
+    if let Some(input) = call
+        .input
+        .as_deref()
+        .map(one_line)
+        .filter(|input| !input.is_empty() && *input != call.display)
+    {
+        if !matches!(call.status, ToolStatus::Streaming | ToolStatus::Denied) {
+            face.detail = input;
+        }
+    }
     ToolCallSpec {
         id: call.id.as_str().to_owned(),
         display_name: call.display.clone(),
@@ -326,6 +338,8 @@ fn tool_spec_of(call: &crate::chat::model::ToolCall) -> ToolCallSpec {
 pub(crate) fn streaming_tool_face(display_name: &str) -> ToolFace {
     ToolFace {
         line: format!("{display_name} — preparing…"),
+        detail: "preparing…".to_owned(),
+        error: None,
         markdown: text(format!("**{display_name}** — preparing…")),
         failed: false,
         live: true,
@@ -337,6 +351,8 @@ pub(crate) fn pending_tool_face(display_name: &str, invocation: &str) -> ToolFac
         line: one_line(&format!(
             "{display_name} — waiting for approval: {invocation}"
         )),
+        detail: one_line(&format!("waiting for approval · {invocation}")),
+        error: None,
         markdown: text(format!(
             "**{display_name}** — waiting for approval\n\n{invocation}"
         )),
@@ -348,6 +364,8 @@ pub(crate) fn pending_tool_face(display_name: &str, invocation: &str) -> ToolFac
 pub(crate) fn running_tool_face(display_name: &str, invocation: &str) -> ToolFace {
     ToolFace {
         line: one_line(&format!("{display_name} — running… {invocation}")),
+        detail: one_line(invocation),
+        error: None,
         markdown: text(format!("**{display_name}** — running…\n\n{invocation}")),
         failed: false,
         live: true,
@@ -357,6 +375,8 @@ pub(crate) fn running_tool_face(display_name: &str, invocation: &str) -> ToolFac
 pub(crate) fn denied_tool_face(display_name: &str) -> ToolFace {
     ToolFace {
         line: format!("{display_name} — denied"),
+        detail: "denied".to_owned(),
+        error: None,
         markdown: text(format!("**{display_name}** — denied")),
         failed: false,
         live: false,
@@ -384,8 +404,22 @@ pub(crate) fn completed_tool_face_with(
         markdown.push_str(&output);
         markdown.push_str("\n```");
     }
+    // A failure says WHY on a line of its own: the first thing the
+    // output said, else the wire's past tense.
+    let error = (!success).then(|| {
+        let reason = one_line(&output);
+        match reason.is_empty() {
+            true => one_line(past_tense),
+            false => reason,
+        }
+    });
     ToolFace {
         line: one_line(&format!("{display_name} — {past_tense}")),
+        detail: match call.filter(|call| *call != display_name) {
+            Some(call) => one_line(call),
+            None => one_line(past_tense),
+        },
+        error,
         markdown: text(markdown),
         failed: !success,
         live: false,

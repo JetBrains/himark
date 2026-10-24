@@ -380,11 +380,14 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
         match event {
             Event::Paint { canvas, .. } => {
                 let window = &self.theme.ui().window;
+                let sticky_chrome = &self.theme.ui().sticky;
                 let bounds = Rect::from_size(self.size);
                 let mut paint = skia_safe::Paint::default();
                 paint.set_anti_alias(false);
 
-                paint.set_color(window.background.0);
+                // The scope band stands on its own ground, a hairline
+                // under it (docs/Design.md, the sticky scope).
+                paint.set_color(sticky_chrome.background.0);
                 canvas.draw_rect(bounds, &paint);
 
                 // Text and gutter numbers live in EDITOR coordinates;
@@ -437,7 +440,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 }
                 canvas.restore();
 
-                paint.set_color(window.divider.0);
+                paint.set_color(sticky_chrome.rule.0);
                 canvas.draw_rect(
                     Rect::from_xywh(
                         0.0,

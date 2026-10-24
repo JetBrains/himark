@@ -44,8 +44,6 @@ use imba::{
 };
 use skia_safe::Size;
 
-const PANEL_PAD: f32 = 6.0;
-
 /// What a row DOES when activated — the whole changes/history
 /// behavioural difference, carried as data minted by the node
 /// builders (`hichanges::folder_node`, `hihistory::graph_node`).
@@ -85,9 +83,10 @@ pub enum ViewSets {
     History,
 }
 
-/// A history row carries its own commit tip: a rested hover shows
-/// it beside the row, anchored by the row itself.
-pub type HistoryRow = TooltipView<hikit::forest::TreeRow, crate::hihistory::CommitTip>;
+/// A dock row (dressed per its role, crate::dock_rows) carries its
+/// own commit tip: a rested hover shows it beside the row, anchored
+/// by the row itself.
+pub type HistoryRow = TooltipView<crate::dock_rows::DockRow, crate::hihistory::CommitTip>;
 pub type RowCommand =
     TooltipCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>;
 pub type Rows = ListKeyboardController<
@@ -172,11 +171,18 @@ impl ChangesView {
         sets: ViewSets,
         open_canvas: CanvasOpener,
     ) -> Self {
+        // A commit's tree hangs at its title's edge (under the branch
+        // line and the commit); a repository's files at its name's.
+        let hang = match sets {
+            ViewSets::History => 2,
+            ViewSets::WorkingCopies => 1,
+        };
         let mut view = Self {
             list: ListKeyboardController::searchable(
                 ForestList::wrapping(
                     store,
                     Arc::new(move |row, key: &ResourceLocation| {
+                        let row = crate::dock_rows::DockRow::new(row, key.clone(), changes, hang);
                         let key = key.clone();
                         TooltipView::new(row, move |_, store| {
                             let history = Changes::of(store, changes)?.history();
@@ -204,8 +210,41 @@ impl ChangesView {
         self.sets
     }
 
+    /// Each folder's newest commit row — the rail rings it a grade
+    /// brighter.
+    fn newest(&self, store: &Store) -> Vec<ResourceLocation> {
+        let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) else {
+            return Vec::new();
+        };
+        Changes::folders(store, self.changes)
+            .iter()
+            .filter_map(|folder| {
+                let entry = History::folder(store, history, folder)?;
+                let first = entry.commits.first()?;
+                Some(folder.child(
+                    editor::location::ResourceType::new(crate::dock_rows::COMMIT_KIND),
+                    &first.id,
+                ))
+            })
+            .collect()
+    }
+
     pub fn row_count(&self) -> usize {
         self.list.inner().list().len()
+    }
+
+    /// TEST SUPPORT: where row `index` stands under the view's top
+    /// and how tall it is — the working copies' head band, then the
+    /// rows above it as the list measured them.
+    #[doc(hidden)]
+    pub fn row_span(&self, store: &Store, index: usize) -> (f32, f32) {
+        let band = match self.sets {
+            ViewSets::History => 0.0,
+            ViewSets::WorkingCopies => editor::env::Themes::of(store).ui().history.header_top,
+        };
+        let list = self.list.inner().list();
+        let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
+        (band + above, list.height_at(index).unwrap_or(0.0))
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -224,8 +263,8 @@ impl ChangesView {
 
     pub fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let mut items = rpds::HashTrieMapSync::new_sync();
-        let chat = editor::env::Themes::of(store).ui().chat.clone();
-        let counts = (chat.added_color.0, chat.removed_color.0);
+        let ink = editor::env::Themes::of(store).ui().ink.clone();
+        let counts = (ink.added.0, ink.removed.0);
         let history = Changes::of(store, self.changes).map(|held| held.history());
         let nodes: Vec<ForestNode<ResourceLocation>> = Changes::folders(store, self.changes)
             .iter()
@@ -474,12 +513,32 @@ impl View for ChangesView {
             // SCROLLER-FREE: the view lays its content height; the
             // scroll sits where the view is MOUNTED — the workbench
             // pane's ScrollView, a native shell's scroller.
-            let band = PANEL_PAD;
+            // The history's branch line carries its own air; the
+            // working copies' first row takes the same top.
+            let themes = editor::env::Themes::of(store);
+        let theme = themes.ui();
+            let band = match self.sets {
+                ViewSets::History => 0.0,
+                ViewSets::WorkingCopies => theme.history.header_top,
+            };
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 constraints.reserve(Size::new(0.0, band)),
-            )
+            );
+            let rows = match self.sets {
+                ViewSets::History => crate::dock_rows::railed(
+                    arena,
+                    crate::dock_rows::Rail {
+                        list: self.list.inner().list(),
+                        newest: self.newest(store),
+                        chrome: theme.history.clone(),
+                        ink: theme.ink.clone(),
+                    },
+                    rows,
+                ),
+                ViewSets::WorkingCopies => rows,
+            }
             .map(ChangesViewCommand::Rows);
             // Both dimensions come from what the ROWS answered, then
             // back into the band: content-sizing is not "ignore the

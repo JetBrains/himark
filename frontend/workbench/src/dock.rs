@@ -13,14 +13,15 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Paint, Rect, Size};
+use skia_safe::Size;
 
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 
-/// TEST SUPPORT: no production caller outside this crate.
+/// TEST SUPPORT: the side width the tests lay against — the theme's
+/// `window.side_width`; production reads the theme.
 #[doc(hidden)]
-pub const DOCK_WIDTH: f32 = 600.0;
+pub const DOCK_WIDTH: f32 = 720.0;
 
 /// TEST SUPPORT: no production caller outside this crate.
 #[doc(hidden)]
@@ -230,6 +231,11 @@ impl View for Dock {
         }
     }
 
+    /// The side column: its header is the TABS — every registered
+    /// side word, the owner's in the title rank — over the ground,
+    /// the content under it, one hairline on its left edge. The
+    /// column slides in from the right by its reveal; a handle on
+    /// that edge resizes it.
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -237,136 +243,60 @@ impl View for Dock {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            use imba::layout::Layout as _;
+            use imba::layout::LayoutExt as _;
             let size = constraints.max;
             let revealed = self.revealed();
             let edge = size.width - revealed;
             let mut surface = container(arena, size);
 
             let theme = ::editor::env::Themes::of(store);
-            let chrome = &theme.ui().peeker;
-            let body_bg = chrome.background.0;
-            let rule = chrome.rule.0;
+            let ink = theme.ui().ink.clone();
             let body_width = self.width.max(1.0);
-            let mut body = container(arena, Size::new(body_width, size.height));
-            let backdrop = leaf::<DockCommand>(body_width, size.height)
-                .paint_instead(move |_arena, canvas, rect| {
-                    let mut paint = Paint::default();
-                    paint.set_color(body_bg);
-                    canvas.draw_rect(rect, &paint);
-                    let mut hairline = Paint::default();
-                    hairline.set_color(rule);
-                    canvas.draw_rect(
-                        Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                        &hairline,
-                    );
-                })
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::handled(),
-                    _ => EventResult::Ignored,
-                })
-                .hit_opaque();
-            body.place(0.0, 0.0, backdrop);
 
-            // The dock's OWN header: its buttons, right-aligned, the
-            // active owner pressed — the window has no toolbar.
-            let bar = theme.ui().toolbar.clone();
-            let header_h = bar.height;
             let buttons = crate::toolbar::ToolbarButtons::of(store);
             let owner = self.owner;
-            {
-                let bar = bar.clone();
-                let header = leaf::<DockCommand>(body_width, header_h).paint_below(
-                    move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_color(bar.background.0);
-                        canvas.draw_rect(rect, &paint);
-                        paint.set_anti_alias(false);
-                        paint.set_color(bar.rule.0);
-                        canvas.draw_rect(
-                            Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
-                            &paint,
-                        );
-                        // The dock's SEPARATOR runs through its header
-                        // too — the column edge is one line, top to
-                        // bottom.
-                        canvas.draw_rect(
-                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                            &paint,
-                        );
-                    },
-                );
-                body.place(0.0, 0.0, header);
-            }
-            let mut x = body_width
-                - bar.button_inset
-                - buttons
-                    .iter()
-                    .filter(|button| matches!(button.side, crate::toolbar::ToolbarSide::Right))
-                    .count() as f32
-                    * bar.button_size;
+            let mut header = hikit::header::ColumnHeader::<DockCommand>::new(
+                arena,
+                store,
+                ui,
+                theme.ui().window.side_text_edge,
+            );
             for (index, button) in buttons.iter().enumerate() {
                 if !matches!(button.side, crate::toolbar::ToolbarSide::Right) {
                     continue;
                 }
-                let glyph = button.glyph.clone();
-                let pressed = button.command == owner;
-                let bar = bar.clone();
-                let cell = leaf::<DockCommand>(bar.button_size, header_h)
-                    .paint_below(move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_anti_alias(false);
-                        paint.set_color(bar.rule.0);
-                        canvas.draw_rect(
-                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                            &paint,
-                        );
-                        if pressed {
-                            paint.set_color(bar.pressed_fill.0);
-                            canvas.draw_rect(
-                                Rect::from_xywh(
-                                    rect.left,
-                                    rect.top,
-                                    rect.width(),
-                                    rect.height() - 1.0,
-                                ),
-                                &paint,
-                            );
-                        }
-                        paint.set_anti_alias(true);
-                        let square = Rect::from_xywh(
-                            rect.left,
-                            rect.top + (rect.height() - rect.width()) * 0.5,
-                            rect.width(),
-                            rect.width(),
-                        );
-                        let inset = (rect.width() * 0.25).max(1.0);
-                        glyph(canvas, square.with_inset((inset, inset)), bar.glyph_color.0);
-                    })
-                    .event(move |_arena, event, _size| match event {
-                        Event::MouseDown { .. } => {
-                            EventResult::command(DockCommand::HeaderButton(index))
-                        }
-                        _ => EventResult::Ignored,
-                    });
-                body.place(x, 0.0, cell);
-                x += bar.button_size;
+                header = header.tab(button.label, button.command == owner, move || {
+                    DockCommand::HeaderButton(index)
+                });
             }
+            let header_h = header.band_height();
 
-            let content = self
-                .content
-                .as_ref()
-                .layout_dyn(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(
-                        (body_width - 1.0).max(1.0),
-                        (size.height - header_h).max(1.0),
-                    )),
-                )
-                .map(DockCommand::Content);
-            body.place(1.0, header_h, content);
-            surface.place(edge, 0.0, body);
+            let content = imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
+                self.content
+                    .as_ref()
+                    .layout_dyn(arena, store, ui, constraints)
+                    .map(DockCommand::Content)
+            });
+            let body = imba::layout::Column::new(arena)
+                .child(header.height(header_h))
+                .weighted(1.0, content)
+                .sized(body_width, size.height)
+                .backdrop(hikit::ui::ground(ink.ground.0))
+                .shield();
+            surface.place_boxed(
+                edge,
+                0.0,
+                body.layout(arena, Constraints::tight(Size::new(body_width, size.height))),
+            );
+            // The column's edge rule stands OVER its ground — the
+            // split tree's mirror of the chat divider.
+            surface.place_boxed(
+                edge,
+                0.0,
+                hikit::ui::rule_v::<DockCommand>(ink.rule.0, size.height)
+                    .layout(arena, Constraints::tight(Size::new(1.0, size.height))),
+            );
 
             let animating = self.reveal.running();
             let resizing = self.resizing;

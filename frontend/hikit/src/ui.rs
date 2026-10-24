@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The design system (docs/design-system.md): typography roles, the
+//! The design system (docs/ui/design-system.md): typography roles, the
 //! spacing scale, `Surface`, and `ListRow` — chrome comes from this
 //! role table, not from per-view constants. Views name structure
 //! (`ListRow`, `Surface`) and pick roles; a bare f32 in a view is a
@@ -25,13 +25,6 @@ pub mod space {
 pub const RADIUS: f32 = 10.0;
 pub const RADIUS_S: f32 = 6.0;
 
-/// Type scale.
-const LABEL_SIZE: f32 = 24.0;
-const CAPTION_SIZE: f32 = 22.0;
-const HEADING_SIZE: f32 = 24.0;
-const CAPS_SIZE: f32 = 15.0;
-const CAPS_TRACKING: f32 = 1.5;
-
 /// A typography role resolved against the theme: font, color,
 /// tracking. Placement is never part of the style — text sits on the
 /// baseline its own metrics give it.
@@ -53,47 +46,118 @@ impl TextStyle {
         self.font.set_size(size);
         self
     }
-}
 
-/// Default row/body text.
-pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_text_font(ui, LABEL_SIZE),
-        color: editor::env::Themes::of(store).ui().peeker.text.0,
-        tracking: 0.0,
-        shaper: imba::layout::TextShaper::of(ui),
+    /// The role's line height, from the font's own metrics (ascent
+    /// plus descent, rounded up) — what a row of this text is tall.
+    pub fn line_height(&self) -> f32 {
+        let metrics = self.font.metrics().1;
+        (-metrics.ascent + metrics.descent).ceil()
+    }
+
+    /// The role at a ramp rung, in `color`.
+    fn of(ui: &UiCtx, role: &editor::theme::TypeRole, color: Color) -> Self {
+        Self {
+            font: crate::fonts::role_font(ui, role),
+            color,
+            tracking: role.tracking,
+            shaper: imba::layout::TextShaper::of(ui),
+        }
     }
 }
 
-/// Secondary, dimmed.
-pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_text_font(ui, CAPTION_SIZE),
-        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: 0.0,
-        shaper: imba::layout::TextShaper::of(ui),
-    }
+fn ramp(store: &Store) -> editor::theme::TypeChrome {
+    editor::env::Themes::of(store).ui().type_ramp.clone()
 }
 
-/// Emphasized row/title text.
-pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_font(ui, HEADING_SIZE),
-        color: editor::env::Themes::of(store).ui().peeker.text.0,
-        tracking: 0.0,
-        shaper: imba::layout::TextShaper::of(ui),
-    }
+fn ink(store: &Store) -> editor::theme::InkChrome {
+    editor::env::Themes::of(store).ui().ink.clone()
 }
 
-/// The tracked small-caps chip/header look ("YOU", "REFRESH", group
-/// headers). Callers pass UPPERCASED strings.
+/// READING — the agent's prose, list rows' body: ink 2.
+pub fn reading(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).reading, ink(store).ink_2.0)
+}
+
+/// ROW — tree and list rows.
+pub fn row(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).row, ink(store).ink_2.0)
+}
+
+/// ROW, strong — a directory's name, the expanded commit's title.
+pub fn row_strong(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).row_strong, ink(store).ink_2.0)
+}
+
+/// BRIEF — paths, metadata, counts: ink 3.
+pub fn brief(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).brief, ink(store).ink_3.0)
+}
+
+/// TITLE — the file, the session, the active tab: primary ink.
+pub fn title(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).title, ink(store).ink.0)
+}
+
+/// SUBTITLE — the title's quiet companion ("in himark-jb").
+pub fn subtitle(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).subtitle, ink(store).ink_3.0)
+}
+
+/// DISPLAY — the column's one big action (Sessions).
+pub fn display(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).display, ink(store).ink.0)
+}
+
+/// PROMPT — your own messages.
+pub fn prompt(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).prompt, ink(store).ink.0)
+}
+
+/// HEADLINE — the commit you're reading, condensed.
+pub fn headline(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).headline, ink(store).ink_bright.0)
+}
+
+/// QUERY — the modal's light, large input (palette, jump).
+pub fn query(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).query, ink(store).ink_bright.0)
+}
+
+/// QUERY, the side column's size (find).
+pub fn query_small(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).query_small, ink(store).ink_bright.0)
+}
+
+/// LABEL — the tracked caps group heads and field labels. Callers
+/// pass UPPERCASED strings.
 pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle::of(ui, &ramp(store).label, ink(store).ink_3.0)
+}
+
+/// MARGIN — keys, tool invocations, line numbers, in the mono face.
+pub fn margin(store: &Store, ui: &UiCtx) -> TextStyle {
+    let role = ramp(store).margin;
     TextStyle {
-        font: crate::fonts::ui_font(ui, CAPS_SIZE),
-        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: CAPS_TRACKING,
+        font: crate::fonts::mono_font(ui, role.size),
+        color: ink(store).ink_3.0,
+        tracking: role.tracking,
         shaper: imba::layout::TextShaper::of(ui),
     }
+}
+
+/// Default row/body text — the READING role.
+pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
+    reading(store, ui)
+}
+
+/// Secondary, dimmed — the BRIEF role.
+pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
+    brief(store, ui)
+}
+
+/// Emphasized row/title text — the TITLE role.
+pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
+    title(store, ui)
 }
 
 /// A styled `imba::layout::Text`.
@@ -179,6 +243,38 @@ impl Surface {
             );
         }
     }
+}
+
+/// A FLAT GROUND painter, for `.backdrop(...)`: the page color under
+/// a column, a sheet — the one fill the redesign keeps (no wells).
+pub fn ground(color: Color) -> impl Fn(&Arena, &skia_safe::Canvas, Rect) {
+    move |_arena, canvas, rect| {
+        let mut paint = Paint::default();
+        paint.set_color(color);
+        canvas.draw_rect(rect, &paint);
+    }
+}
+
+/// A vertical hairline RULE as a layout: one pixel wide, the given
+/// height — the column divider.
+pub fn rule_v<'a, Command: 'a>(
+    color: Color,
+    height: f32,
+) -> impl imba::layout::Layout<'a, Command> + imba::layout::LayoutValue + 'a {
+    imba::layout::Fill::<Command>::new()
+        .sized(1.0, height)
+        .backdrop(ground(color))
+}
+
+/// A horizontal hairline RULE as a layout: the given width, one
+/// pixel tall — the rule between bands.
+pub fn rule_h<'a, Command: 'a>(
+    color: Color,
+    width: f32,
+) -> impl imba::layout::Layout<'a, Command> + imba::layout::LayoutValue + 'a {
+    imba::layout::Fill::<Command>::new()
+        .sized(width, 1.0)
+        .backdrop(ground(color))
 }
 
 /// Per-edge 1px rules — the hairlines a sheet or panel wears where
@@ -347,6 +443,8 @@ pub struct ListRow<'a, Command> {
     style: RowStyle,
     badge: Option<imba::layout::Text>,
     label: Option<imba::layout::Text>,
+    /// A word GLUED to the label's end (a directory's "/").
+    suffix: Option<imba::layout::Text>,
     trails: Vec<RowEntry<'a, Command>>,
 }
 
@@ -357,11 +455,12 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
             style,
             badge: None,
             label: None,
+            suffix: None,
             trails: Vec::new(),
         }
     }
 
-    pub(crate) fn badge_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub fn badge_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.badge = Some(text(style, content));
         self
     }
@@ -371,8 +470,14 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         self
     }
 
-    pub(crate) fn label_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub fn label_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.label = Some(text(style, content));
+        self
+    }
+
+    /// A word right after the label, in its own style — no gap.
+    pub fn suffix_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+        self.suffix = Some(text(style, content));
         self
     }
 
@@ -382,7 +487,7 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         self
     }
 
-    pub(crate) fn trail_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+    pub fn trail_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
         self.trails.push(RowEntry::Text(text(style, content)));
         self
     }
@@ -408,6 +513,7 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for ListRow<'a, Command>
             style,
             badge,
             label,
+            suffix,
             trails,
         } = self;
         let mut row = imba::layout::Row::new(row_arena);
@@ -427,6 +533,15 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for ListRow<'a, Command>
                 // A trail-less label keeps the trail inset off the
                 // right edge — the ellipsis lands short of the frame,
                 // not against it.
+                right: match trails.is_empty() && suffix.is_none() {
+                    true => style.trail_inset,
+                    false => 0.0,
+                },
+                ..Default::default()
+            }));
+        }
+        if let Some(suffix) = suffix {
+            row = row.child_by_baseline(suffix.pad_insets(imba::layout::Insets {
                 right: match trails.is_empty() {
                     true => style.trail_inset,
                     false => 0.0,

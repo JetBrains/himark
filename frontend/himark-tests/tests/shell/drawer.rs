@@ -223,11 +223,50 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     assert!(hikit::modal::ModalView::take_request(&mut panel).is_none());
 }
 
+/// One summary as the catalog carries it — idle and read unless the
+/// caller says otherwise, so lines stay bare of activity words.
+fn summary_at(
+    title: &str,
+    folders: &[&str],
+    modified: &str,
+    status: u32,
+) -> ahp_types::state::SessionSummary {
+    ahp_types::state::SessionSummary {
+        origin: None,
+        provider: "test".to_owned(),
+        title: title.to_owned(),
+        status,
+        activity: None,
+        project: None,
+        working_directories: (!folders.is_empty())
+            .then(|| folders.iter().map(|folder| folder.to_string()).collect()),
+        annotations: None,
+        resource: format!("test-session:/{title}"),
+        created_at: String::new(),
+        modified_at: modified.to_owned(),
+        changes: None,
+        meta: None,
+    }
+}
+
+/// An RFC 3339 stamp `ago` before now — the recency groups and the
+/// ages read off the real clock, through the same humantime the
+/// drawer parses with (summary.rs).
+fn stamp_ago(ago: std::time::Duration) -> String {
+    humantime::format_rfc3339_seconds(std::time::SystemTime::now() - ago).to_string()
+}
+
+/// The sessions are ONE recency list across hosts and folders: the
+/// repo column carries the first folder's name (or the host's), the
+/// age column leads with the turn's state when it wants a look, and
+/// the hosts that are not connected stand in the foot — picking one
+/// nudges a connect.
 #[test]
-fn the_drawer_groups_sessions_by_folder_most_recent_first() {
+fn the_drawer_lists_sessions_by_recency_with_their_repo() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
+    let offline = app.register_client(ahp_wire::client::inert());
     let mut store = app.store_mut().clone();
     let host = ahp_wire::SessionId::local_default(&store).host;
     ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
@@ -236,58 +275,32 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
         host,
         ahp_session::session::state::HostStatus::Connected,
     );
-    let summary =
-        |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
-            origin: None,
-            provider: "test".to_owned(),
-            title: title.to_owned(),
-            // Idle and read — labels stay bare of activity marks.
-            status: 33,
-            activity: None,
-            project: None,
-            working_directories: (!folders.is_empty())
-                .then(|| folders.iter().map(|folder| folder.to_string()).collect()),
-            annotations: None,
-            resource: format!("test-session:/{title}"),
-            created_at: String::new(),
-            modified_at: modified.to_owned(),
-            changes: None,
-            meta: None,
-        };
+    ahp_session::session::agents::Agents::seed(&mut store, offline, "Far Host");
+    ahp_session::session::agents::Agents::set_status(
+        &mut store,
+        offline,
+        ahp_session::session::state::HostStatus::Failed("unreachable".to_owned()),
+    );
+    let name = ahp_session::session::agents::Agents::record(&store, host)
+        .expect("the host record")
+        .name;
     const HIMARK: &str = "file:///dev/himark";
     const DOCS: &str = "file:///dev/docs";
+    let hours = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 3600));
     ahp_session::session::agents::Agents::add_sessions(
         &mut store,
         host,
         vec![
-            summary("older himark", &[HIMARK], "2026-09-20T10:00:00Z"),
-            {
-                // Changed since last viewed — the filled dot.
-                let mut stray = summary("stray", &[], "2026-09-21T10:00:00Z");
-                stray.status = 1;
-                stray
-            },
-            {
-                // The last turn failed — the bang.
-                let mut errored = summary("docs session", &[DOCS], "2026-09-21T12:00:00Z");
-                errored.status = 34; // Error | IsRead
-                errored
-            },
-            {
-                // A turn is streaming — the hollow dot.
-                let mut busy = summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z");
-                busy.status = 40; // InProgress | IsRead
-                busy
-            },
-            // The pair sessions share a folder SET — order must not
-            // split them into two groups.
-            {
-                // Blocked on the user's answer — the question mark.
-                let mut asking = summary("pair", &[HIMARK, DOCS], "2026-09-22T11:00:00Z");
-                asking.status = 56; // InputNeeded | IsRead
-                asking
-            },
-            summary("pair reversed", &[DOCS, HIMARK], "2026-09-21T09:00:00Z"),
+            summary_at("older himark", &[HIMARK], &hours(24 * 30), 33),
+            // Changed since last viewed: no word, a brighter title.
+            summary_at("stray", &[], &hours(24 * 3), 1),
+            // The last turn failed.
+            summary_at("docs session", &[DOCS], &hours(24 * 2), 34),
+            // A turn is streaming.
+            summary_at("fresh himark", &[HIMARK], &hours(2), 40),
+            // Blocked on the user's answer; the first folder names it.
+            summary_at("pair", &[HIMARK, DOCS], &hours(1), 56),
+            summary_at("pair reversed", &[DOCS, HIMARK], &hours(24 * 10), 33),
         ],
         true,
     );
@@ -308,49 +321,39 @@ fn the_drawer_groups_sessions_by_folder_most_recent_first() {
         &mut batch.effects(),
     );
 
+    let line = |repo: &str, word: &str, age: &str| (repo.to_owned(), word.to_owned(), age.to_owned());
     assert_eq!(
-        panel.rows(),
+        panel.lines(),
         vec![
-            ("Local".to_owned(), 0),
-            // The two-folder set holds the freshest session, so that
-            // group leads; both orderings of the set land in it.
-            ("docs, himark".to_owned(), 1),
-            ("? pair".to_owned(), 2),
-            ("pair reversed".to_owned(), 2),
-            ("himark".to_owned(), 1),
-            ("○ fresh himark".to_owned(), 2),
-            ("older himark".to_owned(), 2),
-            ("docs".to_owned(), 1),
-            ("! docs session".to_owned(), 2),
-            // No folder — the stray stays a plain row, ranked by its
-            // own recency; unread, so it wears the filled dot.
-            ("● stray".to_owned(), 1),
-            ("+ New Session…".to_owned(), 1),
-            ("+ Add Host…".to_owned(), 0),
+            line("", "TODAY", ""),
+            line("himark", "pair", "needs you · 1h"),
+            line("himark", "fresh himark", "working · 2h"),
+            line("", "THIS WEEK", ""),
+            line("docs", "docs session", "failed · 2d"),
+            line(&name, "stray", "3d"),
+            line("", "EARLIER", ""),
+            line("docs", "pair reversed", "10d"),
+            line("himark", "older himark", "30d"),
+            line(&name, "+ New Session…", ""),
+            line("", "+ Add Host…", ""),
+            line("", "Far Host", ""),
+            line("", "unreachable", ""),
         ],
     );
-
-    // Folding a folder row hides its sessions and nothing else.
-    let index = panel
-        .rows()
-        .iter()
-        .position(|(label, depth)| label == "himark" && *depth == 1)
-        .expect("the himark folder row stands");
-    panel.activate(&mut store, &ui, index, &mut batch.effects());
     assert_eq!(
-        panel.rows(),
-        vec![
-            ("Local".to_owned(), 0),
-            ("docs, himark".to_owned(), 1),
-            ("? pair".to_owned(), 2),
-            ("pair reversed".to_owned(), 2),
-            ("himark".to_owned(), 1),
-            ("docs".to_owned(), 1),
-            ("! docs session".to_owned(), 2),
-            ("● stray".to_owned(), 1),
-            ("+ New Session…".to_owned(), 1),
-            ("+ Add Host…".to_owned(), 0),
-        ],
+        panel.rows().get(11),
+        Some(&("Far Host — offline".to_owned(), 0)),
+        "the foot names the host and its state"
+    );
+
+    // Picking the offline host asks for a connect.
+    panel.activate(&mut store, &ui, 11, &mut batch.effects());
+    assert!(
+        matches!(
+            hikit::modal::ModalView::take_request(&mut panel),
+            Some(ModalRequest::Perform(_))
+        ),
+        "the pick nudges the host"
     );
 }
 
@@ -539,4 +542,113 @@ fn the_drawer_speed_search_filters_sessions() {
         ),
     );
     assert_eq!(panel.match_count(), 0, "cleared");
+}
+
+/// The Sessions drawer over a seeded catalog, 2880×1800 — two hosts
+/// (one offline), sessions across today, this week and earlier, the
+/// window's own session the here row.
+/// `HIMARK_SHOT=<dir> cargo test -p himark-tests --test shell dump_sessions_drawer_screenshot -- --ignored`
+#[test]
+#[ignore]
+fn dump_sessions_drawer_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    // The leftmost header's tabs are the app's registrations: the
+    // chat word (the shell's) and the Sessions word (the agent host's).
+    app.register_toolbar_button(::workbench::toolbar::composer_button());
+    app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
+        command: "agent.toggle-agents",
+        label: "Sessions",
+        order: 0.0,
+        side: ::workbench::toolbar::ToolbarSide::Left,
+        glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
+    });
+    let window = app.sole_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    app.draw_window(window, surface.canvas());
+    let offline = app.register_client(ahp_wire::client::inert());
+    let host = ahp_wire::SessionId::local_default(app.store()).host;
+    const JB: &str = "file:///Users/dev/himark-jb";
+    const KIT: &str = "file:///Users/dev/hikit";
+    let minutes = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 60));
+    let days = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 86_400 + 600));
+    let seed = |store: &mut Store| {
+        use ahp_session::session::agents::Agents;
+        use ahp_session::session::state::HostStatus;
+        Agents::seed(store, host, "himark Host");
+        Agents::set_status(store, host, HostStatus::Connected);
+        Agents::seed(store, offline, "VS Code Agent Host");
+        Agents::set_status(
+            store,
+            offline,
+            HostStatus::Failed("agent host unreachable at ws://127.0.0.1:8123/?tkn=4f1c".to_owned()),
+        );
+    };
+    seed(&mut app.store_mut());
+    ahp_session::session::agents::Agents::add_sessions(
+        &mut app.store_mut(),
+        host,
+        vec![
+            summary_at("hello", &[JB], &minutes(5), 33),
+            summary_at("", &[JB], &minutes(7), 33),
+            summary_at("", &[KIT], &minutes(12), 33),
+            summary_at("", &[JB], &minutes(60), 33),
+            summary_at("hey", &[JB], &days(4), 33),
+            summary_at("scroll-bar marks on the panel edge", &[KIT], &days(6), 33),
+            summary_at("how do I run from xcode in release?", &[JB], &days(6), 33),
+            summary_at("ok, what is possible with claude mods, and what is not yet", &[JB], &days(9), 33),
+            summary_at("Screenshot 2026-10-09 at 16.05.00.png", &[JB], &days(14), 33),
+            summary_at("/statusline", &[JB], &days(14), 33),
+            summary_at("diagnostics are still not reported, no squiggles anywhere", &[KIT], &days(15), 33),
+            summary_at("just testing, say hi", &[JB], &days(20), 33),
+            summary_at("hey, you here?", &[JB], &days(21), 33),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut summary)| {
+            // Untitled sessions would share a resource — tell them apart.
+            if summary.title.is_empty() {
+                summary.resource = format!("test-session:/untitled-{index}");
+            }
+            summary
+        })
+        .collect(),
+        true,
+    );
+    let open = ahp_wire::SessionId {
+        host,
+        session: ahp_wire::client::SessionUri::new("test-session:/hello"),
+    };
+    {
+        let mut store = app.store_mut();
+        let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
+        let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &open);
+        let _ = entity.switch_to(himark::workspace::SessionWorkspace::boxed(open.clone(), state));
+        ::workbench::window::Windows::put(&mut store, window, entity);
+    }
+    assert!(app.perform_command(himark::app::windowed(
+        window,
+        Arc::new(himark::higent::drawer::ToggleAgentsView),
+    )));
+    super::dock::settle(&mut app, &mut surface);
+    // Opening the drawer nudges every host; the seeded states stand
+    // again over whatever the nudge reached.
+    seed(&mut app.store_mut());
+    super::dock::settle(&mut app, &mut surface);
+    let rows = ::workbench::window::Windows::window_ref(app.store(), window)
+        .expect("window")
+        .side_panel()
+        .expect("the drawer is up")
+        .as_any()
+        .downcast_ref::<ahp_session::session::drawer::AgentsPanel>()
+        .map(|panel| panel.lines());
+    eprintln!("{rows:#?}");
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/sessions-drawer.png"), data.as_bytes()).expect("write");
 }

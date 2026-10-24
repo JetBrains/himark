@@ -94,6 +94,7 @@ impl himark::commands::HimarkCommand for ToggleSessionTree {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "files.tree",
+        label: "Files",
         order: 0.0,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

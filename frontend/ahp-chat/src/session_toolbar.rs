@@ -4,7 +4,11 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use imba::{container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
+use imba::{
+    constraints::Constraints, container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx,
+    View,
+};
+use skia_safe::Size;
 
 use ahp_wire::client::SessionChannel;
 use hikit::combo::{Combo, ComboCommand, ComboOption};
@@ -202,6 +206,20 @@ impl SessionToolbar {
         }
     }
 
+    /// WHERE the session works: its first folder's name — the chat
+    /// header's subtitle. None while the session has no folder.
+    pub(crate) fn folder_name(&self) -> Option<String> {
+        let anchor = self.dir_anchor.as_deref()?;
+        if anchor == NO_FOLDER {
+            return None;
+        }
+        self.dir
+            .options()
+            .into_iter()
+            .find(|option| option.id == anchor)
+            .map(|option| option.label)
+    }
+
     pub(crate) fn model_selection(&self) -> Option<ahp_types::state::ModelSelection> {
         let model = self.model.value()?;
         Some(ahp_types::state::ModelSelection {
@@ -267,10 +285,13 @@ impl SessionToolbar {
         }
     }
 
-    /// Lay the combo strip left to right within `budget`. The strip
-    /// degrades gracefully: a cell that would overflow the budget is
-    /// dropped along with everything after it — never clipped, and
-    /// never under whatever the caller anchors to the right (SEND).
+    /// Lay the combo strip left to right within `budget`: the picks
+    /// as bare WORDS ("Fable · High · Auto"), a dim dot between two.
+    /// A combo with nothing to offer stands out of the strip. The
+    /// strip degrades gracefully: a word that would overflow the
+    /// budget is dropped along with everything after it — never
+    /// clipped, and never under whatever the caller anchors to the
+    /// right (SEND).
     pub fn place<'a>(
         &'a self,
         arena: &'a imba::arena::Arena,
@@ -282,8 +303,19 @@ impl SessionToolbar {
         height: f32,
         budget: f32,
     ) -> f32 {
+        use imba::layout::{Layout as _, LayoutExt as _};
         let themes = editor::env::Themes::of(store);
         let theme = themes.ui();
+        let gap = theme.chat.options_gap;
+        let dot = hikit::ui::brief(store, ui)
+            .sized(theme.combo.value_size)
+            .colored(theme.ink.ink_4.0);
+        let dot_ascent = -dot.font.metrics().1.ascent;
+        let dot_top = (height * 0.5 + theme.combo.value_size * 0.35 - dot_ascent).max(0.0);
+        let dot_w = imba::layout::text_advance(ui, &dot.font, "\u{00B7}");
+        // The combo cell keeps a trailing gap (and a chevron slot the
+        // theme zeroes) after its word; the dot measures from the word.
+        let tail = theme.combo.gap + theme.combo.chevron + theme.combo.pad;
         let mut x = left;
         let combos: [(&Combo, fn(ComboCommand) -> ToolbarCommand); 4] = [
             (&self.model, ToolbarCommand::Model),
@@ -301,13 +333,36 @@ impl SessionToolbar {
             }
         };
         let mut dropped = false;
+        let mut first = true;
+        let mut right = left;
         for (index, (combo, wrap)) in combos.into_iter().enumerate() {
+            if combo.is_empty() {
+                span(index, x, 0.0);
+                continue;
+            }
             let width = combo.cell_width(ui, &theme.combo);
-            if dropped || x + width > budget {
+            let lead = match first {
+                true => 0.0,
+                false => gap + dot_w + gap,
+            };
+            if dropped || x + lead + width - tail > budget {
                 dropped = true;
                 span(index, x, 0.0);
                 continue;
             }
+            if !first {
+                root.place_boxed(
+                    x + gap,
+                    y,
+                    hikit::ui::text(&dot, "\u{00B7}")
+                        .pad_insets(imba::layout::Insets {
+                            top: dot_top,
+                            ..Default::default()
+                        })
+                        .layout(arena, Constraints::tight(Size::new(dot_w, height)).loosen()),
+                );
+            }
+            x += lead;
             span(index, x, width);
             root.place(
                 x,
@@ -316,11 +371,12 @@ impl SessionToolbar {
                     .cell(arena, store, ui, height)
                     .map(move |command| super::chat::ChatPanelCommand::Toolbar(wrap(command))),
             );
-            // Pills breathe — the ruled strip packed cells flush.
-            x += width + 6.0;
+            right = x + width - tail;
+            x = right;
+            first = false;
         }
         span(4, x, 0.0);
-        x
+        right
     }
 }
 

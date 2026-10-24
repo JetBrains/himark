@@ -106,6 +106,7 @@ impl himark::commands::HimarkCommand for ToggleChangesView {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "changes.view",
+        label: "Changes",
         order: 1.0,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

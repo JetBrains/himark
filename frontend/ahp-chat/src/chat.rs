@@ -329,6 +329,7 @@ fn sleeping_height(turn: &model::Turn, chrome: &editor::theme::ChatChrome) -> f3
             }
             CellSpec::Tools(specs) => (specs.len().max(1) as f32) * line + chrome.gap,
             CellSpec::Diff(_) => line * 3.0 + chrome.gap,
+            CellSpec::Line(..) => chrome.usage_line + chrome.row_gap,
         })
         .sum();
     body.max(line) + chrome.gap
@@ -394,6 +395,37 @@ impl ChatPanel {
         self.title.clone()
     }
 
+    /// TEST SUPPORT: stand every mount's toolbar at these picks
+    /// (model, effort, mode) — a screenshot harness runs no agents
+    /// to sync them from.
+    #[doc(hidden)]
+    pub fn seed_toolbar(&mut self, store: &Store, ui: &UiCtx, picks: [&str; 3]) {
+        let ids: Vec<ChatViewId> = self.views.keys().copied().collect();
+        for id in ids {
+            let Some(mut view) = self.views.get(&id).cloned() else {
+                continue;
+            };
+            let toolbar = &mut view.band.toolbar;
+            for (combo, pick) in [&mut toolbar.model, &mut toolbar.effort, &mut toolbar.edits]
+                .into_iter()
+                .zip(picks)
+            {
+                combo.set_options(
+                    store,
+                    ui,
+                    vec![hikit::combo::ComboOption::plain(pick, pick)],
+                );
+                combo.pick_id(pick);
+            }
+            self.views.insert_mut(id, view);
+        }
+    }
+
+    /// The folder the session works in, for the pane's subtitle.
+    pub(crate) fn folder_name(&self) -> Option<String> {
+        self.first_view()?.band.toolbar.folder_name()
+    }
+
     fn first_view(&self) -> Option<&ChatView> {
         self.views.values().next()
     }
@@ -429,6 +461,9 @@ impl ChatPanel {
                                     .join("\n"),
                             ),
                             CellSpec::Diff(spec) => ("Diff".to_owned(), spec.header.title.clone()),
+                            CellSpec::Line(_, text) => {
+                                (format!("{:?}", crate::cell::CellKind::Notice), text.clone())
+                            }
                         })
                         .collect(),
                 ),
@@ -485,13 +520,13 @@ impl ChatPanel {
     }
 
     pub(crate) fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
-        let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = env::Themes::of(store).ui().chat.clone();
         let band = self
             .first_view()
-            .map(|view| view.band.composer.band_height(&chrome, nominal_height))
+            .map(|view| view.band.composer.band_height(store, &chrome, nominal_height))
             .unwrap_or(0.0);
-        band + self.stack.height(&chrome) + theme.ui().toolbar.height
+        band + self.stack.height(store, &chrome)
+            + crate::composer::ComposerBand::options_height(&chrome)
     }
 
     /// Idle -> Subscribing, exactly once: the double-subscription
@@ -1694,8 +1729,6 @@ impl ChatPanel {
                 focused: view.focus == ChatArea::Composer,
                 stack: &self.stack,
                 nominal_height: 800.0,
-                // The mounted band's host owns the card.
-                well: None,
             },
         );
         Some(imba::layout::laid(
@@ -1728,25 +1761,27 @@ impl ChatPanel {
                 view.panel_width
                     .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
 
-                let band_h = view.band.composer.band_height(&chrome, size.height);
-                let stack_h = self.stack.height(&chrome);
-
-                let toolbar_h = theme.ui().toolbar.height;
+                let (band_h, stack_h, toolbar_h) =
+                    view.band.heights(store, &self.stack, size.height);
                 let rows_height = (size.height - band_h - stack_h - toolbar_h).max(1.0);
                 view.rows_height
                     .store(rows_height.to_bits(), Ordering::Relaxed);
 
                 let mut panel = container(arena, size);
 
+                // The transcript stands ON the composer (docs/Design.md:
+                // the list is bottom-anchored): a short conversation
+                // sits down by the input, not up under the header.
+                let laid_height = view.rows.content().total_height().clamp(1.0, rows_height);
                 panel.place(
                     0.0,
-                    0.0,
+                    rows_height - laid_height,
                     imba::layout::Layout::layout(
                         view.rows.display(arena, store, ui),
                         arena,
                         Constraints {
-                            min: Size::new(size.width, rows_height),
-                            max: Size::new(size.width, rows_height),
+                            min: Size::new(size.width, laid_height),
+                            max: Size::new(size.width, laid_height),
                         },
                     )
                     .map(ChatPanelCommand::Rows)
@@ -1760,14 +1795,6 @@ impl ChatPanel {
                     focused: view.focus == ChatArea::Composer,
                     stack: &self.stack,
                     nominal_height: size.height,
-                    // The workbench face brings its own card.
-                    well: Some(
-                        hikit::ui::Surface::bordered(
-                            chrome.composer_surface.0,
-                            chrome.composer_border.0,
-                        )
-                        .radius(24.0),
-                    ),
                 };
                 panel.place(
                     0.0,
@@ -1789,7 +1816,7 @@ impl ChatPanel {
                 let rows_height_ = rows_height;
                 let focus = view.focus;
                 let boot = matches!(self.state, Link::Idle);
-                let strip_top = size.height - toolbar_h + 1.0;
+                let strip_top = size.height - toolbar_h + chrome.options_top;
                 panel.wrap_realized(move |panel| ChatWidget {
                     panel,
                     rows_height: rows_height_,
@@ -1880,6 +1907,7 @@ impl ChatView {
                 (cell, height)
             }
             CellSpec::Tools(specs) => Cell::tools(store, ui, specs, content_width),
+            CellSpec::Line(role, text) => Cell::line(store, role, &text),
             // A diff cell is TWO documents, a parse each, a diff and its
             // marks. The cell is born as a header band and
             // `BuildFileEditEffect` fetches both sides and builds the
@@ -2303,7 +2331,7 @@ fn cell_location() -> editor::location::ResourceLocation {
 /// by minting a document again.
 fn redress(spec: &CellSpec) -> Vec<CellCommand> {
     match spec {
-        CellSpec::Text(_, text) => {
+        CellSpec::Text(_, text) | CellSpec::Line(_, text) => {
             vec![CellCommand::Rewrite(text::text::Text::from_string_exact(
                 text,
             ))]

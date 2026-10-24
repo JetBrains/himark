@@ -10,6 +10,7 @@
 pub mod combo;
 pub mod fonts;
 pub mod forest;
+pub mod header;
 pub mod list_keyboard;
 pub mod menu;
 pub mod modal;

@@ -1,36 +1,28 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The GLOBAL CLUSTER: the only window-level chrome — a small strip
-//! pinned top-left, after the platform semaphore clearance, holding
-//! the window-scoped buttons (drawer, toc, chat). Everything else a
-//! toolbar used to show lives in the COLUMN headers now: the chat
-//! column names its session, the split tree names its file, the dock
-//! carries its own buttons ([docs/ui/toolbar.md]).
+//! The window's registered BUTTONS, and where their words land. The
+//! redesign has no toolbar band and no icons: a registered button is
+//! a WORD a column header shows at its trailing edge — the chat
+//! column carries the session actions (Sessions), the tree column
+//! its file's (Contents) and, while the side column is closed, the
+//! side column's tabs; the dock's header carries those tabs itself
+//! (docs/ui/toolbar.md, docs/Design.md).
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult},
-    layout::Layout as _,
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    ui::UiCtx,
-    Thunk,
-};
-use skia_safe::{Canvas, Paint, Rect, Size};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk};
+use skia_safe::{Canvas, Rect, Size};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolbarSide {
-    /// The global cluster, top-left of the window.
+    /// The chat column's trailing words.
     #[default]
     Left,
 
-    /// The dock's own header.
+    /// The side column's tabs.
     Right,
 
-    /// Legacy name — rides the global cluster after the Left group.
+    /// Legacy name — the chat's own word, shown by the tree column
+    /// while the chat is hidden.
     Well,
 }
 
@@ -38,10 +30,14 @@ pub enum ToolbarSide {
 pub struct ToolbarButton {
     pub command: &'static str,
 
+    /// The word the header shows.
+    pub label: &'static str,
+
     pub order: f32,
 
     pub side: ToolbarSide,
 
+    /// A glyph for shells that still draw icons (none of ours).
     pub glyph: std::sync::Arc<dyn Fn(&Canvas, Rect, skia_safe::Color) + Send + Sync>,
 }
 
@@ -69,13 +65,14 @@ impl ToolbarButtons {
         self.0.iter()
     }
 
-    /// The global cluster's buttons: the Left side always, the Well
-    /// side (the chat bubble) only while the chat is NOT displayed.
-    fn cluster(&self, show_chat: bool) -> impl Iterator<Item = (usize, &ToolbarButton)> {
-        self.0.iter().enumerate().filter(move |(_, button)| {
-            matches!(button.side, ToolbarSide::Left)
-                || (show_chat && matches!(button.side, ToolbarSide::Well))
-        })
+    /// The buttons of one side, in order.
+    pub fn on(&self, side: ToolbarSide) -> impl Iterator<Item = &ToolbarButton> {
+        self.0.iter().filter(move |button| button.side == side)
+    }
+
+    /// The side column's TABS — their words, in order.
+    pub fn tabs(&self) -> Vec<&ToolbarButton> {
+        self.on(ToolbarSide::Right).collect()
     }
 }
 
@@ -97,36 +94,22 @@ impl std::fmt::Display for ToolbarCommand {
     }
 }
 
-/// The width the global cluster occupies at the window's top-left:
-/// the platform clearance plus its buttons. The leftmost column's
-/// header insets its content by this much.
-pub(crate) fn global_cluster_width(store: &Store, ui: &UiCtx, show_chat: bool) -> f32 {
+/// Where the LEFTMOST column's title starts: past the platform
+/// semaphore (the clearance the shell wrote) and never short of the
+/// chrome's own lead inset.
+pub(crate) fn leading_inset(store: &Store, ui: &UiCtx) -> f32 {
     let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
     let clearance = ui
         .get::<crate::toolbar::ChromeClearance>()
         .map(|clearance| clearance.0)
         .unwrap_or(0.0);
-    let buttons = ToolbarButtons::of(store).cluster(show_chat).count() as f32;
-    chrome.button_inset + clearance + buttons * chrome.button_size + 1.0
+    chrome.lead_inset.max(clearance)
 }
 
-/// The DOCK CLUSTER's width: the right-side mirror of the global
-/// cluster — the dock's buttons, pinned top-right at all times. The
-/// rightmost column header reserves this much trailing room while
-/// the dock is closed (open, the dock's own header takes over in
-/// the same pixels).
-pub(crate) fn dock_cluster_width(store: &Store) -> f32 {
-    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
-    let buttons = ToolbarButtons::of(store)
-        .iter()
-        .filter(|button| matches!(button.side, ToolbarSide::Right))
-        .count() as f32;
-    match buttons > 0.0 {
-        true => chrome.button_inset + buttons * chrome.button_size,
-        false => 0.0,
-    }
-}
-
+/// The window-level toolbar: no band of its own any more — the
+/// headers show the words. It keeps the request slot the shells
+/// drain, and lays an empty strip so the window frame's layers keep
+/// their shape.
 #[derive(Clone, Default)]
 pub struct Toolbar {
     request: hikit::modal::RequestSlot<ToolbarRequest>,
@@ -161,229 +144,30 @@ impl Toolbar {
         }
     }
 
-    /// The cluster strip: transparent over the leftmost column's own
-    /// header — buttons only, no backdrop of its own.
+    /// An EMPTY strip: nothing is drawn and nothing is hit — the
+    /// words live in the column headers.
     pub(crate) fn layout<'a>(
         &'a self,
         arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-        show_chat: bool,
         window_width: f32,
-        dock_open: bool,
     ) -> impl Thunk<'a, ToolbarCommand> + 'a {
-        let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
-        let clearance = ui
-            .get::<crate::toolbar::ChromeClearance>()
-            .map(|clearance| clearance.0)
-            .unwrap_or(0.0);
-        let buttons = ToolbarButtons::of(store);
-        let count = buttons.cluster(show_chat).count();
-        let size = Size::new(window_width.max(1.0), chrome.height);
-
-        let mut strip = imba::container::container(arena, size);
-        let mut x = chrome.button_inset + clearance;
-        for (index, button) in buttons.cluster(show_chat) {
-            let glyph = button.glyph.clone();
-            let chrome = chrome.clone();
-            let cell = leaf::<ToolbarCommand>(chrome.button_size, chrome.height)
-                .paint_below(move |_arena, canvas, rect| {
-                    let mut paint = Paint::default();
-                    // The group's STYLE: a hairline on every cell edge.
-                    paint.set_anti_alias(false);
-                    paint.set_color(chrome.rule.0);
-                    canvas.draw_rect(
-                        Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                        &paint,
-                    );
-                    paint.set_anti_alias(true);
-                    let square = Rect::from_xywh(
-                        rect.left,
-                        rect.top + (rect.height() - rect.width()) * 0.5,
-                        rect.width(),
-                        rect.width(),
-                    );
-                    let inset = (rect.width() * 0.25).max(1.0);
-                    glyph(
-                        canvas,
-                        square.with_inset((inset, inset)),
-                        chrome.glyph_color.0,
-                    );
-                })
-                .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(ToolbarCommand::Button(index)),
-                    _ => EventResult::Ignored,
-                });
-            strip.place(x, 0.0, cell);
-            x += chrome.button_size;
-        }
-        if count > 0 {
-            let rule = chrome.rule.0;
-            let edge = leaf::<ToolbarCommand>(1.0, chrome.height).paint_below(
-                move |_arena, canvas, rect| {
-                    let mut paint = Paint::default();
-                    paint.set_color(rule);
-                    canvas.draw_rect(rect, &paint);
-                },
-            );
-            strip.place(x, 0.0, edge);
-        }
-
-        // The right mirror: the dock's buttons, always discoverable.
-        // While the dock is OPEN its own header renders them (same
-        // pixels, pressed state, rides the slide) — the strip yields.
-        if !dock_open {
-            let mut x = window_width
-                - chrome.button_inset
-                - buttons
-                    .iter()
-                    .filter(|button| matches!(button.side, ToolbarSide::Right))
-                    .count() as f32
-                    * chrome.button_size;
-            for (index, button) in buttons.iter().enumerate() {
-                if !matches!(button.side, ToolbarSide::Right) {
-                    continue;
-                }
-                let glyph = button.glyph.clone();
-                let chrome = chrome.clone();
-                let cell = leaf::<ToolbarCommand>(chrome.button_size, chrome.height)
-                    .paint_below(move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_anti_alias(false);
-                        paint.set_color(chrome.rule.0);
-                        canvas.draw_rect(
-                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                            &paint,
-                        );
-                        paint.set_anti_alias(true);
-                        let square = Rect::from_xywh(
-                            rect.left,
-                            rect.top + (rect.height() - rect.width()) * 0.5,
-                            rect.width(),
-                            rect.width(),
-                        );
-                        let inset = (rect.width() * 0.25).max(1.0);
-                        glyph(
-                            canvas,
-                            square.with_inset((inset, inset)),
-                            chrome.glyph_color.0,
-                        );
-                    })
-                    .event(move |_arena, event, _size| match event {
-                        Event::MouseDown { .. } => {
-                            EventResult::command(ToolbarCommand::Button(index))
-                        }
-                        _ => EventResult::Ignored,
-                    });
-                strip.place(x, 0.0, cell);
-                x += chrome.button_size;
-            }
-        }
         imba::layout::Layout::layout(
-            imba::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
+            imba::layout::Fill::<ToolbarCommand>::new(),
             arena,
-            Constraints::tight(size),
+            Constraints::tight(Size::new(window_width.max(1.0), 0.0)),
         )
     }
 }
 
-/// A COLUMN HEADER: the per-column strip every column draws at its
-/// own top — background, bottom rule, a left-aligned title. The
-/// leftmost column passes the global cluster's width as `inset` so
-/// its title clears the semaphore and the cluster buttons.
-pub(crate) fn column_header<'a, Command: Clone + 'a>(
-    arena: &'a Arena,
-    store: &'a Store,
-    ui: &'a UiCtx,
-    width: f32,
-    title: String,
-    inset: f32,
-    trailing: f32,
-) -> imba::ThunkBox<'a, Command> {
-    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
-    let size = Size::new(width.max(1.0), chrome.height);
-    let title_font = hikit::fonts::ui_text_font(ui, chrome.title_size);
-
-    // A long path DEGRADES gracefully: drop leading segments behind
-    // an ellipsis until the title fits what the buttons leave it.
-    let available = (width - inset - trailing - chrome.button_inset * 2.0).max(1.0);
-    let mut title = title;
-    while imba::layout::text_advance(ui, &title_font, &title) > available {
-        let Some((_, rest)) = title.trim_start_matches("…/").split_once('/') else {
-            break;
-        };
-        title = format!("…/{rest}");
-    }
-
-    let mut strip = imba::container::container(arena, size);
-    let backdrop = leaf::<Command>(size.width, size.height).paint_below({
-        let chrome = chrome.clone();
-        move |_arena, canvas, rect| {
-            let mut paint = Paint::default();
-            paint.set_color(chrome.background.0);
-            canvas.draw_rect(rect, &paint);
-            paint.set_anti_alias(false);
-            paint.set_color(chrome.rule.0);
-            canvas.draw_rect(
-                Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
-                &paint,
-            );
-        }
-    });
-    strip.place(0.0, 0.0, backdrop);
-
-    let baseline = (chrome.height + chrome.title_size * 0.7) * 0.5;
-    let ascent = -title_font.metrics().1.ascent;
-    let bounds = Constraints {
-        min: Size::default(),
-        max: Size::new(
-            (width - inset - trailing - chrome.button_inset).max(1.0),
-            chrome.height,
-        ),
-    };
-    let label = imba::layout::text(ui, title, title_font.clone(), chrome.title_color.0)
-        .layout(arena, bounds);
-    strip.place_boxed(inset + chrome.button_inset, baseline - ascent, label);
-
-    imba::ThunkBox::new(
-        arena,
-        imba::layout::Layout::layout(
-            imba::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
-            arena,
-            Constraints::tight(size),
-        ),
-    )
-}
-
-/// The chat bubble in the global cluster — `chat.composer` (⌘I):
-/// front the session's chat.
+/// The chat's own word — `chat.composer` (⌘I): front the session's
+/// chat. The tree column shows it while the chat is hidden.
 pub fn composer_button() -> crate::toolbar::ToolbarButton {
     crate::toolbar::ToolbarButton {
         command: "chat.composer",
+        label: "Chat",
         order: 0.0,
         side: crate::toolbar::ToolbarSide::Well,
-        glyph: std::sync::Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
-            paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
-            let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
-
-            let bubble = skia_safe::Rect::from_xywh(l, t + h * 0.04, w, h * 0.68);
-            canvas.draw_round_rect(bubble, w * 0.18, w * 0.18, &paint);
-            let mut tail = skia_safe::PathBuilder::new();
-            tail.move_to((l + w * 0.24, t + h * 0.72));
-            tail.line_to((l + w * 0.18, t + h * 0.96));
-            tail.line_to((l + w * 0.46, t + h * 0.72));
-            canvas.draw_path(&tail.detach(), &paint);
-
-            let mut caret = skia_safe::PathBuilder::new();
-            caret.move_to((l + w * 0.32, t + h * 0.22));
-            caret.line_to((l + w * 0.32, t + h * 0.54));
-            canvas.draw_path(&caret.detach(), &paint);
-        }),
+        glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
     }
 }
 

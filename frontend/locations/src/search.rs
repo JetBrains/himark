@@ -22,7 +22,7 @@ use imba::{
 };
 use skia_safe::Size;
 
-use crate::views::locations_forest;
+use crate::views::{locations_forest, result_row, ResultRow};
 use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
 use editor::{editor_view::EditorCommand, editor_view::EditorView};
 use hikit::modal::ModalRequest;
@@ -31,8 +31,6 @@ use hikit::{forest::ForestList, forest::ForestSearcher};
 use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
 use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
 use imba::list::{ActivateTrigger, ListOps};
-
-const MIN_QUERY: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SearchArea {
@@ -75,7 +73,10 @@ pub struct SearchView {
     /// model and NOTES asks; the wire lane does the rest.
     lists: imba::store::Id<LocationLists>,
     input: EditorView,
-    search: ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>,
+    search: ListKeyboardController<
+        ForestList<LocationKey, ResultRow>,
+        ForestSearcher<LocationKey, ResultRow>,
+    >,
     focus: SearchArea,
     last_query: String,
 
@@ -123,7 +124,7 @@ impl SearchView {
             lists,
             input: seeded_input(store, ui, &row.query),
             search: ListKeyboardController::searchable(
-                ForestList::new(store),
+                ForestList::wrapping(store, result_row(lists)),
                 ForestSearcher::default(),
                 store,
                 ui,
@@ -343,8 +344,10 @@ impl View for SearchView {
                 self.requery(store, ui, query, fx);
             }
             SearchCommand::List(command) => {
-                type Search =
-                    ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>;
+                type Search = ListKeyboardController<
+                    ForestList<LocationKey, ResultRow>,
+                    ForestSearcher<LocationKey, ResultRow>,
+                >;
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
                         self.search.inner_mut().fold_cursor(*expand, store, ui);
@@ -421,17 +424,9 @@ impl View for SearchView {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let theme = editor::env::Themes::of(store);
-            let ui_theme = theme.ui();
-            // The CHAT COMPOSER's dress, the commit box's copy of it:
-            // the bare input band, a hairline, and the toolbar row
-            // with the accent cell flush right — the box reads as an
-            // input even when the caret is elsewhere.
-            let chrome = ui_theme.chat.clone();
-            let pad = chrome.pad;
-            let box_pad = pad * 0.75;
-            let editor_h = chrome.title_size * 1.6;
-            let toolbar_h = ui_theme.toolbar.height;
-            let input_band = editor_h + box_pad * 2.0;
+            let find = theme.ui().find.clone();
+            let window = theme.ui().window.clone();
+            let ink = theme.ui().ink.clone();
 
             let feed = self.feed(store);
             let row = feed.and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
@@ -440,22 +435,80 @@ impl View for SearchView {
                 .unwrap_or((0, true, false, 0));
             let running = feed.is_some() && !done;
 
-            // The status band and the results tree are laid BEFORE the
-            // panel exists: the panel is SIZED from them. A view may
-            // never size itself to the ceiling — on the mounted road
-            // (the rail's search tab) that ceiling is infinite.
-            let input_bottom = input_band + toolbar_h;
-            let status = match (feed.is_some(), done, truncated) {
-                (false, _, _) => "type to search the session".to_owned(),
-                (true, false, _) => format!("{hits} results — searching… (click stops)"),
-                (true, true, false) => match hits {
-                    0 => "no results".to_owned(),
-                    _ => format!("{hits} results in {} files", self.files),
-                },
-                (true, true, true) => format!("{hits} results (cut off)"),
+            // The head, top to bottom (the Find artboard): the caps
+            // "FIND IN …", the query over its hairline, the counts.
+            let scope = LocationLists::folders(store, self.lists)
+                .first()
+                .map(|folder| format!("FIND IN {}", folder.name().to_uppercase()))
+                .unwrap_or_else(|| "FIND".to_owned());
+            let label = hikit::ui::text(&hikit::ui::caps(store, ui), scope);
+
+            // The query: the input editor on its band, a hairline
+            // under it — no box, no button; Enter takes the keyboard
+            // to the results.
+            let editor_h = self.input.content_height().max(1.0).min(find.query_band);
+            let focused_input = self.focus == SearchArea::Input;
+            let input = imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
+                imba::layout::Layout::layout(
+                    self.input.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(constraints.max.width.max(1.0), editor_h)),
+                )
+                .map(SearchCommand::Input)
+                .focus_scope(focused_input)
+            })
+            .align(imba::layout::Alignment::CenterStart)
+            .height(find.query_band)
+            .pad_insets(imba::layout::Insets {
+                bottom: find.query_pad_bottom,
+                ..Default::default()
+            });
+            let rule = find.query_rule.0;
+            let query = imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
+                hikit::ui::Hairline::new(rule)
+                    .bottom()
+                    .wrap(input.layout(arena, constraints))
+            });
+
+            // The counts line: the numbers lead in primary ink, the
+            // words follow in the secondary; while the stream runs a
+            // press on it stops the stream.
+            let words = crate::views::role_style(ui, &find.options, ink.ink_2.0);
+            let counts = {
+                let mut role = find.options;
+                role.weight = find.count_weight;
+                crate::views::role_style(ui, &role, ink.ink.0)
             };
-            let band = hikit::ui::ListRow::new(arena, hikit::ui::RowStyle::header(store, ui))
-                .label(status)
+            let spans: Vec<(bool, String)> = match (feed.is_some(), done, truncated) {
+                (false, _, _) => vec![(false, "type to search the session".to_owned())],
+                (true, false, _) => vec![
+                    (true, hits.to_string()),
+                    (false, " results — searching…".to_owned()),
+                ],
+                (true, true, _) if hits == 0 => vec![(false, "no results".to_owned())],
+                (true, true, cut) => {
+                    let mut spans = vec![
+                        (true, hits.to_string()),
+                        (false, " in ".to_owned()),
+                        (true, self.files.to_string()),
+                        (false, " files".to_owned()),
+                    ];
+                    if cut {
+                        spans.push((false, " (cut off)".to_owned()));
+                    }
+                    spans
+                }
+            };
+            let mut line = imba::layout::Row::new(arena);
+            for (count, span) in spans {
+                let style = match count {
+                    true => &counts,
+                    false => &words,
+                };
+                line = line.child_by_baseline(hikit::ui::text(style, span));
+            }
+            let line = line
+                .weighted(1.0, imba::layout::Fill::new().height(0.0))
                 .on_event(
                     move |_arena: &Arena, event: &Event<'_>, _size| match event {
                         Event::MouseDown { .. } if running => {
@@ -464,10 +517,39 @@ impl View for SearchView {
                         _ => EventResult::Ignored,
                     },
                 );
-            // The status row sizes to its own text; it just inherits
-            // the width band with the input and toolbar reserved out.
-            let band = band.layout(arena, constraints.reserve(Size::new(0.0, input_bottom)));
-            let tree_top = input_bottom + imba::Thunk::size(&band).height;
+
+            // The head's bands size to their own text: the column's
+            // width, any height.
+            let head = Constraints {
+                min: Size::new(constraints.min.width, 0.0),
+                max: Size::new(constraints.max.width, f32::INFINITY),
+            };
+            let edges = imba::layout::Insets {
+                left: window.side_text_edge,
+                top: 0.0,
+                right: window.side_trailing,
+                bottom: 0.0,
+            };
+            let field = imba::layout::Column::new(arena)
+                .child(label)
+                .child(query.pad_insets(imba::layout::Insets {
+                    top: find.query_gap,
+                    ..Default::default()
+                }))
+                .pad_insets(imba::layout::Insets {
+                    top: find.head_top,
+                    ..edges
+                })
+                .layout(arena, head);
+            // Presses above the field's rule are the input's area.
+            let input_bottom = imba::Thunk::size(&field).height;
+            let band = line
+                .pad_insets(imba::layout::Insets {
+                    top: find.options_top,
+                    ..edges
+                })
+                .layout(arena, head);
+            let tree_top = input_bottom + imba::Thunk::size(&band).height + find.results_top;
             let tree = imba::layout::Layout::layout(
                 self.search.display(arena, store, ui),
                 arena,
@@ -481,12 +563,12 @@ impl View for SearchView {
             let size = constraints.constrain(Size::new(laid.width, tree_top + laid.height));
             let mut panel = imba::container::container(arena, size);
 
-            // Bottom-most: a press anywhere on the input band focuses
-            // the box (the editor sits on top).
+            // Bottom-most: a press anywhere on the head focuses the
+            // input (the editor sits on top).
             panel.place(
                 0.0,
                 0.0,
-                imba::leaf::leaf::<SearchCommand>(size.width, input_band).event(
+                imba::leaf::leaf::<SearchCommand>(size.width, input_bottom).event(
                     |_arena, event, _size| match event {
                         Event::MouseDown {
                             button: imba::event::MouseButton::Left,
@@ -496,127 +578,7 @@ impl View for SearchView {
                     },
                 ),
             );
-            let editor_w = (size.width - pad * 2.0).max(120.0);
-            panel.place(
-                pad,
-                box_pad,
-                imba::layout::Layout::layout(
-                    self.input.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(editor_w, editor_h),
-                        max: Size::new(editor_w, editor_h),
-                    },
-                )
-                .map(SearchCommand::Input)
-                .focus_scope(self.focus == SearchArea::Input),
-            );
-
-            // The toolbar row: ruled off above, the SEARCH cell flush
-            // right — STOP while the stream runs, in the stop color.
-            let rule = ui_theme.toolbar.rule.0;
-            panel.place(
-                0.0,
-                input_band,
-                imba::leaf::leaf::<SearchCommand>(size.width, 1.0).paint_instead(
-                    move |_arena, canvas, rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_anti_alias(false);
-                        paint.set_color(rule);
-                        canvas.draw_rect(rect, &paint);
-                    },
-                ),
-            );
-            {
-                let combo = ui_theme.combo.clone();
-                let caps_font = hikit::fonts::ui_font(ui, combo.label_size * 1.1);
-                let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                let label = if running { "STOP" } else { "SEARCH" };
-                let cell_width = label
-                    .chars()
-                    .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                    .sum::<f32>()
-                    + if running {
-                        0.0
-                    } else {
-                        imba::layout::text_advance(ui, &key_font, "⏎") + combo.gap
-                    }
-                    + combo.pad * 2.0;
-                let sendable = self.query().trim().len() >= MIN_QUERY;
-                let accent = if running {
-                    chrome.stop_color.0
-                } else {
-                    chrome.accent.0
-                };
-                let on_accent = chrome.on_accent.0;
-                let accent_soft = ui_theme.peeker.dim_text.0;
-                let cell_h = toolbar_h - 1.0;
-                let mid = cell_h * 0.5;
-                let caps_ascent = -caps_font.metrics().1.ascent;
-                let key_ascent = -key_font.metrics().1.ascent;
-                let mut cell = imba::layout::Row::new(arena).gap(combo.gap).child(
-                    imba::layout::text(ui, label, caps_font.clone(), on_accent)
-                        .tracking(1.5)
-                        .pad_insets(imba::layout::Insets {
-                            left: 0.0,
-                            top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        }),
-                );
-                if !running {
-                    cell = cell.child(
-                        imba::layout::text(ui, "⏎", key_font.clone(), accent_soft).pad_insets(
-                            imba::layout::Insets {
-                                left: 0.0,
-                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            },
-                        ),
-                    );
-                }
-                let cell = cell
-                    .pad_insets(imba::layout::Insets {
-                        left: combo.pad,
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: 0.0,
-                    })
-                    .sized(cell_width, cell_h)
-                    .backdrop(
-                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                            let mut paint = skia_safe::Paint::default();
-                            let mut fill = accent;
-                            if !sendable && !running {
-                                fill = fill.with_a(0x50);
-                            }
-                            paint.set_color(fill.with_a(fill.a() / 3));
-                            canvas.draw_rect(rect, &paint);
-                            paint.set_anti_alias(false);
-                            paint.set_color(fill);
-                            canvas.draw_rect(
-                                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                                &paint,
-                            );
-                        },
-                    )
-                    .on_click(move || match running {
-                        true => SearchCommand::Cancel,
-                        false => SearchCommand::Focus(SearchArea::Results, None),
-                    });
-                panel.place_boxed(
-                    size.width - cell_width,
-                    input_band + 1.0,
-                    cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
-                );
-            }
-
-            // The status band: counts while streaming and after; a
-            // click while running stops the stream. Per-frame reads
-            // go through row_ref — no row clone per paint. (Both it
-            // and the tree were laid above, where they sized the
-            // panel.)
+            panel.place_boxed(0.0, 0.0, field);
             panel.place_boxed(0.0, input_bottom, band);
             panel.place(0.0, tree_top, tree);
             // The refresh probe: a 1px leaf whose own paint files
@@ -736,7 +698,7 @@ impl hikit::modal::ModalView for SearchView {
 
 fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) -> EditorView {
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
+    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::QuerySmall);
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let mut input = EditorView::of_document(
@@ -746,6 +708,7 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) ->
         ui,
         &editor::theme::Theme::embedded(),
     );
+    input.document.mark_input(input.editor, editor::theme::StyleId::QuerySmall);
     input.set_caret(text.len() as u32);
     input.focus_text();
     input

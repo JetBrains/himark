@@ -9,21 +9,19 @@
 //! RowCommand>`): the panel wraps.
 
 use editor::env;
-use hikit::fonts::ui_text_font;
 use imba::{
     arena::Arena,
     constraints::Constraints,
     container::container,
     effect::Effects,
     event::{Event, EventResult},
-    leaf::leaf,
     list::{ListCommand, ListView},
     store::Store,
     thunk_ext::ThunkExt,
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Paint, Rect, Size};
+use skia_safe::{Rect, Size};
 
 use crate::cell::Cell;
 use crate::chat::model;
@@ -233,37 +231,31 @@ impl View for ChatRow {
         imba::layout::laid(
             move |_arena: &'a Arena, constraints: Constraints| match self {
                 ChatRow::Loader { armed } => {
+                    use imba::layout::Layout as _;
                     let chrome = env::Themes::of(store).ui().chat.clone();
                     let width = constraints.max.width.max(1.0);
                     let text = if *armed {
-                        "· · ·  older turns above  · · ·"
+                        "older turns above"
                     } else {
-                        "loading older turns…"
+                        "loading older turns\u{2026}"
                     };
-                    let font = ui_text_font(ui, chrome.title_size * 0.8);
-                    let color = chrome.loader_color.0;
-                    let height = chrome.loader_height;
-                    let band = leaf::<RowCommand>(width, height).paint_instead(
-                        move |_arena, canvas, rect| {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(color);
-                            let label_width = font.measure_str(text, None).0;
-                            canvas.draw_str(
-                                text,
-                                (
-                                    rect.left + (rect.width() - label_width) / 2.0,
-                                    rect.top + rect.height() * 0.6,
-                                ),
-                                &font,
-                                &paint,
-                            );
-                        },
-                    );
-                    let mut row = container(arena, Size::new(width, height));
-                    row.place(0.0, 0.0, band);
+                    // A brief line in the text column — no band, no fill.
+                    let grid = crate::cell::Grid::of(store, width, false);
+                    let band = imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(width, chrome.loader_height))
+                        .child_aligned(
+                            imba::layout::Alignment::CenterStart,
+                            imba::layout::LayoutExt::pad_insets(
+                                hikit::ui::text(&hikit::ui::brief(store, ui), text),
+                                imba::layout::Insets {
+                                    left: grid.edge,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .layout(arena, Constraints::tight(Size::new(width, chrome.loader_height)));
                     let armed = *armed;
-                    Either::Loader(row.wrap(move |inner| ArmedLoader { inner, armed }))
+                    Either::Loader(band.wrap(move |inner| ArmedLoader { inner, armed }))
                 }
                 ChatRow::Sleeping(_) => {
                     let width = constraints.max.width.max(1.0);

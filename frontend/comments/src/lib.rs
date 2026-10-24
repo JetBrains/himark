@@ -17,6 +17,7 @@ use text::text::Text;
 
 pub mod cards;
 pub mod panel;
+pub mod rows;
 pub mod view;
 
 /// The feature gate — app configuration, owned by the feature:

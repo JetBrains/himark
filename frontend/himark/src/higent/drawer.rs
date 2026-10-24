@@ -116,7 +116,7 @@ impl crate::commands::HimarkCommand for ToggleAgentsView {
             std::sync::Arc::new(ahp_session::session::driver::RetryHosts),
         )));
         use hikit::modal::Panel as _;
-        let panel = AgentsPanel::open(store, ui, drawer_asks(window)).paneled("Sessions");
+        let panel = AgentsPanel::open(store, ui, drawer_asks(window)).paneled();
         fx.scope(
             move |command| crate::shell::content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
@@ -128,6 +128,7 @@ impl crate::commands::HimarkCommand for ToggleAgentsView {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "agent.toggle-agents",
+        label: "Sessions",
         order: 2.0,
         side: ::workbench::toolbar::ToolbarSide::Left,
         glyph: Arc::new(|canvas, rect, color| {

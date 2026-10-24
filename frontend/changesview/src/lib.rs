@@ -8,5 +8,6 @@
 //! toggles mount the panes and inject the one open-canvas verb.
 
 pub mod changes_view;
+pub mod dock_rows;
 pub mod hichanges;
 pub mod hihistory;

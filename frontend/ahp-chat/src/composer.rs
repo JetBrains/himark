@@ -76,16 +76,23 @@ impl Clone for Composer {
 const EDITOR_CHILD: usize = 1;
 
 fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<EditorView> {
-    let document = editor::document::Document::new(
-        text::text::Text::from_string_exact(""),
-        editor::markup::Markup::new(),
-    )
+    // The input speaks in the PROMPT register — the same type your
+    // message wears once sent (docs/Design.md). The covering style
+    // is greedy, so everything typed wears it.
+    let mut markup = editor::markup::Markup::new();
+    markup.push_styled_covering(0..0, editor::theme::StyleId::ChatPrompt);
+    let document =
+        editor::document::Document::new(text::text::Text::from_string_exact(""), markup)
     .with_syntax(
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
     let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &theme);
+    // The LIVE mark at the input's start is the editor's own caret
+    // in the input dress (the Find query's), not a painted bar.
+    view.document
+        .mark_input(view.editor, editor::theme::StyleId::ChatPrompt);
     view.set_placeholder("Message the agent", ui, &theme);
     ScrollView::new(view)
 }
@@ -192,22 +199,27 @@ impl Composer {
         }
     }
 
-    fn metrics(chrome: &ChatChrome) -> (f32, f32) {
-        let pad = chrome.pad;
-        (pad, pad * 0.75)
+    /// One line of the prompt register — the input's line box.
+    fn prompt_line(store: &Store) -> f32 {
+        let prompt = env::Themes::of(store).ui().type_ramp.prompt;
+        (prompt.size * prompt.line_height).round()
     }
 
-    fn editor_height(&self, chrome: &ChatChrome, panel_height: f32) -> f32 {
-        let (pad, box_pad) = Self::metrics(chrome);
-        let one_line = chrome.title_size * 1.6;
+    fn editor_height(&self, store: &Store, chrome: &ChatChrome, panel_height: f32) -> f32 {
+        let line = Self::prompt_line(store);
+        let rest = line * chrome.input_lines.max(1.0);
         if self.blurred {
-            return one_line;
+            return line;
         }
-        let grown = self
-            .content_height()
-            .clamp(one_line, chrome.input_max_height);
-        let full = (panel_height - pad * 2.0 - box_pad * 2.0).max(one_line);
+        let grown = self.content_height().clamp(rest, chrome.input_max_height.max(rest));
+        let full = (panel_height - Self::chrome_height(chrome)).max(rest);
         grown + (full - grown) * self.band.value()
+    }
+
+    /// The footer's furniture around the input: the air above it, and
+    /// the rule's gap and hairline under it.
+    fn chrome_height(chrome: &ChatChrome) -> f32 {
+        chrome.footer_top + chrome.input_rule_gap + 1.0
     }
 
     pub(crate) fn set_blurred(&mut self, blurred: bool) {
@@ -218,9 +230,8 @@ impl Composer {
         self.blurred
     }
 
-    pub(crate) fn band_height(&self, chrome: &ChatChrome, panel_height: f32) -> f32 {
-        let (_pad, box_pad) = Self::metrics(chrome);
-        self.editor_height(chrome, panel_height) + box_pad * 2.0
+    pub(crate) fn band_height(&self, store: &Store, chrome: &ChatChrome, panel_height: f32) -> f32 {
+        self.editor_height(store, chrome, panel_height) + Self::chrome_height(chrome)
     }
 
     pub(crate) fn layout<'a>(
@@ -234,18 +245,22 @@ impl Composer {
     ) -> impl imba::Thunk<'a, ComposerCommand> + 'a {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
-        let (_pad, box_pad) = Self::metrics(&chrome);
-        let pad = chrome.pad;
-        let band_h = self.band_height(&chrome, panel_height);
-        let editor_h = self.editor_height(&chrome, panel_height);
+        let ink = theme.ui().ink.clone();
+        let grid = crate::cell::Grid::of(store, width, false);
+        let band_h = self.band_height(store, &chrome, panel_height);
+        let editor_h = self.editor_height(store, &chrome, panel_height);
 
-        let editor_w = (width - pad * 2.0).max(120.0);
+        // The input row of the footer's grid: "YOU" in the gutter, the
+        // text at the column's edge (its LIVE caret marks the start),
+        // and a strong rule under it — no box, no fill.
+        let editor_x = grid.edge;
+        let editor_w = grid.column.max(120.0);
         let mut band = container(arena, Size::new(width, band_h));
         let focused = props.focused;
 
         band.place(
-            pad,
-            box_pad,
+            editor_x,
+            chrome.footer_top,
             imba::layout::Layout::layout(
                 self.input.display(arena, store, ui),
                 arena,
@@ -257,66 +272,28 @@ impl Composer {
             .map(ComposerCommand::Editor)
             .focus_scope(focused),
         );
-
-        // The input row's companions (docs/himark-islands-default):
-        // attach and mention, both funneling into the mention road —
-        // a mentioned file IS the send's attachment.
         {
-            use imba::leaf::leaf;
-            let icon_color = theme.ui().peeker.dim_text.0;
-            let shaper = imba::layout::TextShaper::of(ui);
-            let at_font = hikit::fonts::ui_text_font(ui, 16.0);
-            let mention = move || {
-                ComposerCommand::Editor(ScrollCommand::Content(EditorCommand::Paste {
-                    text: "@".to_owned(),
-                }))
-            };
-            let at = leaf::<ComposerCommand>(22.0, 22.0)
-                .paint_below({
-                    let shaper = shaper.clone();
-                    let at_font = at_font.clone();
-                    move |_arena, canvas, rect| {
-                        shaper.draw(
-                            canvas,
-                            &at_font,
-                            "@",
-                            icon_color,
-                            0.0,
-                            rect.left + 3.0,
-                            rect.top + 16.0,
-                        );
-                    }
-                })
-                .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(mention()),
-                    _ => EventResult::Ignored,
-                });
-            let clip = leaf::<ComposerCommand>(22.0, 22.0)
-                .paint_below(move |_arena, canvas, rect| {
-                    let mut paint = skia_safe::Paint::default();
-                    paint.set_anti_alias(true);
-                    paint.set_stroke(true);
-                    paint.set_stroke_width(1.4);
-                    paint.set_stroke_cap(skia_safe::PaintCap::Round);
-                    paint.set_color(icon_color);
-                    let (x, y) = (rect.left, rect.top + 2.0);
-                    let mut path = skia_safe::PathBuilder::new();
-                    path.move_to((x + 6.2, y + 6.0));
-                    path.line_to((x + 6.2, y + 11.0));
-                    path.quad_to((x + 6.2, y + 14.0), (x + 9.0, y + 14.0));
-                    path.quad_to((x + 11.8, y + 14.0), (x + 11.8, y + 11.0));
-                    path.line_to((x + 11.8, y + 5.5));
-                    path.quad_to((x + 11.8, y + 2.8), (x + 9.4, y + 2.8));
-                    path.quad_to((x + 7.0, y + 2.8), (x + 7.0, y + 5.5));
-                    path.line_to((x + 7.0, y + 10.6));
-                    canvas.draw_path(&path.detach(), &paint);
-                })
-                .event(move |_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(mention()),
-                    _ => EventResult::Ignored,
-                });
-            band.place(width - pad - 24.0, box_pad + 4.0, at);
-            band.place(width - pad - 50.0, box_pad + 4.0, clip);
+            use imba::layout::Layout as _;
+            band.place_boxed(
+                0.0,
+                chrome.footer_top,
+                crate::cell::voice::<ComposerCommand>(
+                    arena,
+                    store,
+                    ui,
+                    &chrome,
+                    grid,
+                    Self::prompt_line(store),
+                    "YOU",
+                )
+                .layout(arena, Constraints::tight(Size::new(grid.edge, editor_h)).loosen()),
+            );
+            band.place_boxed(
+                grid.edge,
+                chrome.footer_top + editor_h + chrome.input_rule_gap,
+                hikit::ui::rule_h::<ComposerCommand>(ink.rule_strong.0, grid.column)
+                    .layout(arena, Constraints::tight(Size::new(width, band_h)).loosen()),
+            );
         }
 
         let rewrap =
@@ -443,12 +420,6 @@ pub(crate) struct BandProps<'a> {
     /// window's where there is one, a nominal where the host asks
     /// loose.
     pub(crate) nominal_height: f32,
-    /// The WELL behind the input and the toolbar row, or nothing.
-    /// Whoever stands the band up decides: the workbench hands the
-    /// rounded card, a mounted host that already drew one (the
-    /// islands app's SwiftUI card) hands nothing — two of them on
-    /// the same edge is two borders.
-    pub(crate) well: Option<hikit::ui::Surface>,
 }
 
 impl ComposerBand {
@@ -459,7 +430,7 @@ impl ComposerBand {
         }
     }
 
-    /// (band, stack, toolbar) heights — the caller sizes panes and
+    /// (input, stack, options) heights — the caller sizes panes and
     /// containers from these.
     pub(crate) fn heights(
         &self,
@@ -470,10 +441,15 @@ impl ComposerBand {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         (
-            self.composer.band_height(&chrome, nominal_height),
-            stack.height(&chrome),
-            theme.ui().toolbar.height,
+            self.composer.band_height(store, &chrome, nominal_height),
+            stack.height(store, &chrome),
+            Self::options_height(&chrome),
         )
+    }
+
+    /// The options row under the input, with the footer's air below.
+    pub(crate) fn options_height(chrome: &ChatChrome) -> f32 {
+        chrome.options_top + chrome.options_line + chrome.footer_bottom
     }
 
     pub(crate) fn display<'a>(
@@ -487,8 +463,8 @@ impl ComposerBand {
         use crate::chat::ChatPanelCommand;
         use imba::layout::Layout as _;
         use imba::layout::LayoutExt as _;
-        use imba::leaf::leaf;
         use imba::thunk_ext::ThunkExt as _;
+        use imba::Thunk as _;
 
         imba::layout::laid(
             move |arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
@@ -496,25 +472,12 @@ impl ComposerBand {
                     self.heights(store, props.stack, props.nominal_height);
                 let theme = env::Themes::of(store);
                 let chrome = theme.ui().chat.clone();
+                let ink = theme.ui().ink.clone();
                 let size = Size::new(constraints.max.width.max(1.0), band_h + stack_h + toolbar_h);
+                let grid = crate::cell::Grid::of(store, size.width, false);
                 let mut panel = imba::container::container(arena, size);
-                let status = props.status.clone();
                 let composer_empty = self.composer.is_empty();
-                let inset = chrome.pad;
-                // ONE rounded container holds the input and the
-                // toolbar row (docs/himark-islands-default.png) —
-                // placed FIRST so everything paints over it; the
-                // hairline-ruled strip is gone.
-                if let Some(well) = props.well {
-                    panel.place(
-                        inset,
-                        stack_h,
-                        well.wrap(leaf::<ChatPanelCommand>(
-                            size.width - inset * 2.0,
-                            (size.height - stack_h - inset * 0.5).max(1.0),
-                        )),
-                    );
-                }
+
                 panel.place(
                     0.0,
                     stack_h,
@@ -538,173 +501,105 @@ impl ComposerBand {
                         0.0,
                         props
                             .stack
-                            .layout(arena, ui, &chrome, size.width)
+                            .layout(arena, store, ui, &chrome, size.width)
                             .map(ChatPanelCommand::Stack),
                     );
                 }
 
-                // The SEND cell's width, computed up front: the combo
-                // strip's budget ends where SEND begins — the button
-                // always fits and nothing ever covers it.
-                let send_cell_width = {
-                    let ui_theme = theme.ui();
-                    let busy = props.busy;
-                    let stop = busy && composer_empty;
-                    let label = if stop {
-                        "■ Stop"
-                    } else if busy {
-                        "Steer"
-                    } else {
-                        "Send"
-                    };
-                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                    label
-                        .chars()
-                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                        .sum::<f32>()
-                        + imba::layout::text_advance(ui, &key_font, "⌘⏎")
-                        + ui_theme.combo.gap
-                        + ui_theme.combo.pad * 2.0
+                // The footer's hairline: the transcript ends here.
+                panel.place_boxed(
+                    0.0,
+                    0.0,
+                    hikit::ui::rule_h::<ChatPanelCommand>(ink.rule.0, size.width)
+                        .layout(arena, Constraints::tight(Size::new(size.width, 1.0))),
+                );
+
+                // The OPTIONS row: the session's combos as bare words
+                // from the text column's edge, SEND at its far end —
+                // one baseline across (the combo cell centers its
+                // value; everything else meets it there).
+                let row_y = size.height - toolbar_h + chrome.options_top;
+                let row_h = chrome.options_line;
+                let baseline = row_h * 0.5 + theme.ui().combo.value_size * 0.35;
+                let on_baseline = |style: &hikit::ui::TextStyle, label: String| {
+                    let ascent = -style.font.metrics().1.ascent;
+                    hikit::ui::text(style, label).pad_insets(imba::layout::Insets {
+                        top: (baseline - ascent).max(0.0),
+                        ..Default::default()
+                    })
                 };
+
+                let busy = props.busy;
+                let stop = busy && composer_empty;
+                // SEND steps down an ink while the link cannot carry a
+                // message; stopping a live turn reads in the removed ink.
+                let send_style = hikit::ui::TextStyle {
+                    font: hikit::fonts::role_font(ui, &chrome.send),
+                    color: match (stop, props.link_ready || busy) {
+                        (true, _) => ink.removed.0,
+                        (false, true) => ink.ink.0,
+                        (false, false) => ink.ink_3.0,
+                    },
+                    tracking: chrome.send.tracking,
+                    shaper: imba::layout::TextShaper::of(ui),
+                };
+                let key_style = hikit::ui::TextStyle {
+                    font: hikit::fonts::mono_font(ui, chrome.send_key_size),
+                    color: ink.ink_3.0,
+                    tracking: 0.0,
+                    shaper: imba::layout::TextShaper::of(ui),
+                };
+                let label = match (stop, busy) {
+                    (true, _) => "\u{25A0} Stop",
+                    (false, true) => "Steer",
+                    (false, false) => "Send",
+                };
+                let mut send = imba::layout::Row::new(arena)
+                    .gap(chrome.send_key_gap)
+                    .child(on_baseline(&send_style, label.to_owned()));
+                if !stop {
+                    send = send.child(on_baseline(&key_style, "\u{2318}\u{23CE}".to_owned()));
+                }
+                let send = send
+                    .on_click(move || {
+                        ChatPanelCommand::Composer(match stop {
+                            true => ComposerCommand::Stop,
+                            false => ComposerCommand::Submit,
+                        })
+                    })
+                    .layout(arena, Constraints::tight(Size::new(size.width, row_h)).loosen());
+                let send_w = send.size().width;
+                let send_x = grid.edge + grid.column - send_w;
+
                 let toolbar_cells_right = self.toolbar.place(
                     arena,
                     &mut panel,
                     store,
                     ui,
-                    inset,
-                    size.height - toolbar_h + 1.0,
-                    toolbar_h - 1.0,
-                    (size.width - send_cell_width - theme.ui().combo.gap - inset).max(0.0),
+                    grid.edge,
+                    row_y,
+                    row_h,
+                    (send_x - chrome.options_gap).max(0.0),
                 );
+                panel.place_boxed(send_x, row_y, send);
 
-                {
-                    let ui_theme = theme.ui();
-                    let busy = props.busy;
-                    let sendable = !composer_empty && props.link_ready;
-                    let stop = busy && composer_empty;
-                    let label = if stop {
-                        "■ Stop"
-                    } else if busy {
-                        "Steer"
-                    } else {
-                        "Send"
-                    };
-                    let caps_font = hikit::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                    let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                    let pad = ui_theme.combo.pad;
-                    let cell_width = send_cell_width;
-                    // Send is GO-green; steering and stopping a live
-                    // turn are red (docs/himark-islands mock).
-                    let accent = if stop || busy {
-                        chrome.stop_color.0
-                    } else {
-                        chrome.accent.0
-                    };
-                    let on_accent = chrome.on_accent.0;
-                    let accent_soft = ui_theme.peeker.dim_text.0;
-                    let gap = ui_theme.combo.gap;
-                    // The cell's two texts as a Row of `Text`s at exact
-                    // baseline parity: the old per-char loop advanced by
-                    // glyph width + 1.5 (= `.tracking(1.5)`) from x =
-                    // left + pad, and drew the key hint a `gap` after the
-                    // label's last advance (= the Row's `.gap`). Each text
-                    // pads down so its baseline lands on the old
-                    // mid + font.size() * 0.35 line. The accent fill and
-                    // left rule stay a backdrop painter; the press is
-                    // `.on_click`, minting Stop or Submit like the old
-                    // event closure.
-                    let cell_h = toolbar_h - 1.0;
-                    let mid = cell_h * 0.5;
-                    let caps_ascent = -caps_font.metrics().1.ascent;
-                    let key_ascent = -key_font.metrics().1.ascent;
-                    let mut row = imba::layout::Row::new(arena).gap(gap).child(
-                        imba::layout::text(ui, label, caps_font.clone(), on_accent)
-                            .tracking(0.2)
-                            .pad_insets(imba::layout::Insets {
-                                left: 0.0,
-                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            }),
-                    );
-                    if !stop {
-                        row = row.child(
-                            imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                                imba::layout::Insets {
-                                    left: 0.0,
-                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                    right: 0.0,
-                                    bottom: 0.0,
-                                },
-                            ),
-                        );
-                    }
-                    let cell = row
-                        .pad_insets(imba::layout::Insets {
-                            left: pad,
-                            top: 0.0,
-                            right: 0.0,
-                            bottom: 0.0,
-                        })
-                        .sized(cell_width, cell_h)
-                        .backdrop(
-                            move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                                // A full CAPSULE, not a rounded cell
-                                // (docs/himark-islands-default.png).
-                                let mut paint = skia_safe::Paint::default();
-                                paint.set_anti_alias(true);
-                                let mut fill = accent;
-                                if !sendable && !busy {
-                                    fill = fill.with_a(0x50);
-                                }
-                                paint.set_color(fill);
-                                let pill = skia_safe::Rect::from_ltrb(
-                                    rect.left,
-                                    rect.top + 6.0,
-                                    rect.right - 5.0,
-                                    rect.bottom - 6.0,
-                                );
-                                let radius = pill.height() * 0.5;
-                                canvas.draw_round_rect(pill, radius, radius, &paint);
-                            },
-                        )
-                        .on_click(move || {
-                            ChatPanelCommand::Composer(match stop {
-                                true => ComposerCommand::Stop,
-                                false => ComposerCommand::Submit,
-                            })
-                        });
+                // The shortcut legend (or the link's status), brief,
+                // right against SEND — it yields when the words need
+                // the room.
+                let legend = match props.status.is_empty() {
+                    true => "\u{238B} chat".to_owned(),
+                    false => props.status.clone(),
+                };
+                let brief = hikit::ui::brief(store, ui);
+                let legend_w = imba::layout::text_advance(ui, &brief.font, &legend);
+                let legend_x = send_x - chrome.options_gap * 2.0 - legend_w;
+                if legend_x >= toolbar_cells_right + chrome.options_gap {
                     panel.place_boxed(
-                        size.width - cell_width - inset,
-                        size.height - toolbar_h + 1.0,
-                        cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                        legend_x,
+                        row_y,
+                        on_baseline(&brief, legend)
+                            .layout(arena, Constraints::tight(Size::new(legend_w, row_h)).loosen()),
                     );
-
-                    // The shortcut legend (or the link's status) sits on
-                    // the toolbar, right against the SEND cell. The ⌘⏎
-                    // hint already lives on the cell itself.
-                    let legend = match status.is_empty() {
-                        true => "⎋ chat".to_owned(),
-                        false => status.clone(),
-                    };
-                    let legend_w = imba::layout::text_advance(ui, &key_font, &legend);
-                    let legend_x = size.width - cell_width - inset - gap - legend_w;
-                    // Squeezed out by the combo cells? The legend yields.
-                    if legend_x >= toolbar_cells_right + gap {
-                        panel.place_boxed(
-                            legend_x,
-                            size.height - toolbar_h + 1.0,
-                            imba::layout::text(ui, legend, key_font.clone(), accent_soft)
-                                .pad_insets(imba::layout::Insets {
-                                    left: 0.0,
-                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                    right: 0.0,
-                                    bottom: 0.0,
-                                })
-                                .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
-                        );
-                    }
                 }
                 panel
             },

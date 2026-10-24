@@ -180,6 +180,14 @@ pub struct SpanStyle {
     /// Line-height multiple override (font-size relative, the old
     /// skparagraph `height` semantics); `None` inherits.
     pub line_height: Option<f32>,
+    /// A weight on the CSS scale (100..900) — a variable family
+    /// instances its `wght` axis to it, a static family picks the
+    /// nearest cut; `None` inherits the family's regular (or BOLD
+    /// when `bold`).
+    pub weight: Option<f32>,
+    /// A width as a CSS percentage (50..200, 100 normal) — the
+    /// `wdth` axis; `None` inherits.
+    pub width: Option<f32>,
 }
 
 impl SpanStyle {
@@ -197,6 +205,8 @@ impl SpanStyle {
             size: None,
             families: None,
             line_height: None,
+            weight: None,
+            width: None,
         }
     }
 }
@@ -325,6 +335,8 @@ impl ShapeKey {
             span.size.map(f32::to_bits).hash(&mut hasher);
             span.families.hash(&mut hasher);
             span.line_height.map(f32::to_bits).hash(&mut hasher);
+            span.weight.map(f32::to_bits).hash(&mut hasher);
+            span.width.map(f32::to_bits).hash(&mut hasher);
         }
         for inline_box in spec.boxes {
             inline_box.index.hash(&mut hasher);
@@ -703,9 +715,20 @@ impl Shaper {
                         range.clone(),
                     );
                 }
-                if span.bold {
-                    builder.push(
+                match span.weight {
+                    Some(weight) => builder.push(
+                        parley::StyleProperty::FontWeight(parley::FontWeight::new(weight)),
+                        range.clone(),
+                    ),
+                    None if span.bold => builder.push(
                         parley::StyleProperty::FontWeight(parley::FontWeight::BOLD),
+                        range.clone(),
+                    ),
+                    None => {}
+                }
+                if let Some(width) = span.width {
+                    builder.push(
+                        parley::StyleProperty::FontWidth(parley::FontWidth::from_percentage(width)),
                         range.clone(),
                     );
                 }
@@ -758,7 +781,9 @@ impl Shaper {
     }
 
     /// Shape a single-line label, ellipsizing with "…" when wider
-    /// than `clip` — the chrome label road.
+    /// than `clip` — the chrome label road. `weight`/`width` name the
+    /// variable axes a chrome face instances (the typographic ramp);
+    /// `bold` is the static-cut fallback.
     pub fn ellipsized(
         &self,
         text: &str,
@@ -767,10 +792,14 @@ impl Shaper {
         letter_spacing: f32,
         color: skia_safe::Color,
         bold: bool,
+        weight: Option<f32>,
+        width: Option<f32>,
         clip: Option<f32>,
     ) -> ParleyLine {
         let span = SpanStyle {
             bold,
+            weight,
+            width,
             ..SpanStyle::plain(color)
         };
         let shape = |text: &str| {

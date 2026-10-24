@@ -567,16 +567,32 @@ impl EditorView {
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
     ) -> Self {
-        let mut markup = crate::markup::Markup::new();
-        markup.push_styled_covering(0..0, crate::theme::StyleId::Input);
+        Self::input_styled(width, store, ui, crate::theme::StyleId::Input)
+    }
 
-        Self::of_document(
+    /// An INPUT wearing one of the input styles — `Input` (the
+    /// plain one-liner), `Query`/`QuerySmall` (a sheet's or a
+    /// column's query), `Field` (a filter, an inline rename). The
+    /// style covers the whole text, shapes the placeholder and
+    /// marks the caret live.
+    pub fn input_styled(
+        width: f32,
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        style: crate::theme::StyleId,
+    ) -> Self {
+        let mut markup = crate::markup::Markup::new();
+        markup.push_styled_covering(0..0, style);
+
+        let mut view = Self::of_document(
             Document::new(text::text::Text::from_string_exact(""), markup),
             width,
             store,
             ui,
             &crate::theme::Theme::embedded(),
-        )
+        );
+        view.document.mark_input(view.editor, style);
+        view
     }
 
     pub fn caret_byte(&self) -> u32 {

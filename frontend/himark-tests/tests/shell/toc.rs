@@ -593,11 +593,7 @@ fn speedsearch_arrows_step_the_matches() {
                 .is_some_and(|command| match command {
                     ::toc::OutlineCommand::List(command) => {
                         use imba::list::ListOps;
-                        type Search = hikit::list_keyboard::ListKeyboardController<
-                            hikit::forest::ForestList<::toc::OutlineKey>,
-                            hikit::forest::ForestSearcher<::toc::OutlineKey>,
-                        >;
-                        Search::selected_index(command).is_some()
+                        ::toc::OutlineSearch::selected_index(command).is_some()
                     }
                     _ => false,
                 })
@@ -689,4 +685,239 @@ fn outline_folds_survive_relandings() {
     relanded.stamp = (relanded.stamp.0 + 1, relanded.stamp.1);
     drive(&mut view, ::toc::OutlineCommand::Landed(relanded));
     assert_eq!(view.visible_rows(), 1, "the fold survived the swap");
+}
+
+/// A Rust-like `server.rs`: the declarations at the mock's lines,
+/// banded into `mod`s so the drawer heads them as groups.
+fn server_outline() -> (editor::document::Document, u32) {
+    // (depth, title, first line, last line)
+    let items: &[(u8, &str, u32, u32)] = &[
+        (0, "mod annotations", 38, 60),
+        (1, "pub fn annotations_session", 39, 42),
+        (1, "pub fn annotations_channel", 43, 46),
+        (1, "pub fn annotations_summary", 47, 59),
+        (0, "mod configuration", 70, 400),
+        (1, "pub struct HostConfig", 72, 99),
+        (1, "pub struct LanguageServer", 100, 105),
+        (1, "impl Default for HostConfig", 106, 140),
+        (2, "fn default", 107, 139),
+        (1, "fn claude_card", 141, 153),
+        (1, "fn claude_models", 154, 180),
+        (1, "fn codex_card", 181, 192),
+        (1, "fn codex_models", 193, 235),
+        (1, "fn thinking_schema", 236, 280),
+        (1, "pub fn session_config_schema", 281, 347),
+        (1, "pub fn session_config_values", 348, 399),
+        (0, "mod agents", 405, 500),
+        (1, "pub struct SessionEntry", 407, 423),
+        (1, "pub struct ChatEntry", 424, 444),
+        (1, "pub enum LiveAgent", 445, 449),
+        (1, "impl LiveAgent", 450, 499),
+        (2, "pub fn prompt", 458, 470),
+        (2, "pub fn interrupt", 471, 490),
+        (0, "mod state", 505, 700),
+        (1, "pub struct TerminalEntry", 508, 520),
+        (1, "pub struct LspDiagnostics", 521, 526),
+        (1, "pub struct ChangesetEntry", 527, 558),
+        (1, "pub struct State", 559, 611),
+        (1, "pub enum DocumentFeed", 612, 634),
+        (1, "pub struct Host", 635, 660),
+        (1, "impl Host", 661, 699),
+        (2, "pub fn new", 662, 670),
+        (2, "fn fsp_engine", 671, 690),
+    ];
+    let mut lines: Vec<String> = (1..=720).map(|line| format!("// line {line}")).collect();
+    for (_, title, first, _) in items {
+        lines[*first as usize - 1] = format!("{title} {{");
+    }
+    let source = lines.join("\n") + "\n";
+    let starts: Vec<u32> = std::iter::once(0)
+        .chain(
+            source
+                .match_indices('\n')
+                .map(|(at, _)| at as u32 + 1),
+        )
+        .collect();
+    let mut syntax = editor::markup::Syntax::new("rust", None, editor::markup::Markup::new());
+    for (_, title, first, last) in items {
+        let start = starts[*first as usize - 1];
+        let end = starts[*last as usize];
+        syntax.push_outline_item(
+            start..end,
+            editor::markup::OutlineItem {
+                title: title.to_string(),
+            },
+        );
+    }
+    let caret = starts[615];
+    let document = editor::document::Document::new(
+        text::text::Text::from_string_exact(&source),
+        editor::markup::Markup::new(),
+    )
+    .with_syntax(syntax, &[]);
+    (document, caret)
+}
+
+/// The Contents drawer over a seeded outline, 2880×1800 —
+/// `HIMARK_SHOT=<dir> cargo test -p himark-tests --test shell dump_contents_drawer_screenshot -- --ignored`
+#[test]
+#[ignore]
+fn dump_contents_drawer_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    app.draw_window(app.sole_window(), surface.canvas());
+    let window = app.sole_window();
+    let (document, caret) = server_outline();
+    assert!(app.perform_command(himark::app::opened(
+        window,
+        OpenedDocument {
+            documents: app.sole_documents(),
+            name: "server.rs".to_owned(),
+            document,
+            location: Some(located("server.rs")),
+            primary: true,
+            target: None,
+            focus: true,
+        },
+    )));
+    {
+        let (document_id, editor) = app.focused_editor_id();
+        let mut document =
+            documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+                .expect("the document");
+        document.set_carets(
+            editor,
+            ::editor::caret::MultiCaret::one(::editor::caret::Caret::at(caret)),
+        );
+        let documents = app.sole_documents();
+        documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
+    }
+    assert!(app.perform_registered(window, "toc.toggle"));
+    let landed = land_drawer_outline(&mut app);
+    super::dock::settle(&mut app, &mut surface);
+    eprintln!("{} entries landed", landed.entries().len());
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/contents-drawer.png"), data.as_bytes()).expect("write");
+}
+
+/// Derive the open drawer's outline in place (the test app runs no
+/// effect lane) and stand the landed drawer back in the window.
+fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
+    let window = app.sole_window();
+    let mut view = ::workbench::window::Windows::window_ref(app.store(), window)
+        .expect("window")
+        .side_panel()
+        .expect("the drawer is up")
+        .as_any()
+        .downcast_ref::<::toc::OutlineView>()
+        .expect("the drawer holds the outline")
+        .clone();
+    let ui = ::editor::test_document::test_ui();
+    let mut store = app.store().clone();
+    let mut batch = imba::effect::Batch::new();
+    view.perform(
+        &mut store,
+        &ui,
+        ::toc::OutlineCommand::Refresh,
+        &mut batch.effects(),
+    );
+    let landed = run_outline(batch).expect("the refresh launched the derivation");
+    view.perform(
+        &mut store,
+        &ui,
+        ::toc::OutlineCommand::Landed(landed),
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    struct StandDrawer(::toc::OutlineView);
+    impl himark::commands::HimarkCommand for StandDrawer {
+        fn id(&self) -> &'static str {
+            "test.stand-drawer"
+        }
+        fn name(&self) -> String {
+            String::new()
+        }
+        fn perform(
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            bound: &imba::focus::Bindings,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
+            let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+            fx.scope(
+                move |command| himark::shell::content(window, command),
+                |fx| entity.show_side_panel(store, Box::new(self.0.clone()), fx),
+            );
+            ::workbench::window::Windows::put(store, window, entity);
+        }
+    }
+    assert!(app.perform_command(himark::app::windowed(
+        window,
+        std::sync::Arc::new(StandDrawer(view.clone())),
+    )));
+    view
+}
+
+#[test]
+fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), surface.canvas());
+    let window = app.sole_window();
+    let (document, caret) = server_outline();
+    assert!(app.perform_command(himark::app::opened(
+        window,
+        OpenedDocument {
+            documents: app.sole_documents(),
+            name: "server.rs".to_owned(),
+            document,
+            location: Some(located("server.rs")),
+            primary: true,
+            target: None,
+            focus: true,
+        },
+    )));
+    {
+        let (document_id, editor) = app.focused_editor_id();
+        let mut document =
+            documents::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+                .expect("the document");
+        document.set_carets(
+            editor,
+            ::editor::caret::MultiCaret::one(::editor::caret::Caret::at(caret)),
+        );
+        let documents = app.sole_documents();
+        documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
+    }
+    assert!(app.perform_registered(window, "toc.toggle"));
+    let view = land_drawer_outline(&mut app);
+    let entries = view.entries();
+    assert_eq!(entries[0].place, ::toc::Place::Group { first: true }, "a top-level mod heads a group");
+    assert_eq!(entries[0].name, "annotations");
+    assert_eq!(
+        (entries[1].kind.as_deref(), entries[1].name.as_str(), entries[1].line),
+        (Some("fn"), "annotations_session", 39),
+        "the keyword is the kind, the rest the name"
+    );
+    let current: Vec<&str> = entries
+        .iter()
+        .filter(|entry| entry.current)
+        .map(|entry| entry.name.as_str())
+        .collect();
+    assert_eq!(current, vec!["DocumentFeed"], "the innermost entry holding the caret");
+    assert_eq!(view.cursor_title().as_deref(), Some("pub enum DocumentFeed"), "the cursor opens on it");
+    let member = entries.iter().find(|entry| entry.name == "default").expect("the member");
+    assert_eq!(member.place, ::toc::Place::Entry { strong: false, indent: 1 });
 }

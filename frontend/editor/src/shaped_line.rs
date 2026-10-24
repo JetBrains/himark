@@ -341,6 +341,7 @@ impl ShapeInputs {
 struct RunStyle {
     color: skia_safe::Color,
     bold: bool,
+    weight: Option<f32>,
     italic: bool,
     size: f32,
     families: Option<Vec<String>>,
@@ -365,12 +366,16 @@ pub(crate) fn shape_inputs(
         .map(|families| families.to_vec())
         .unwrap_or_default();
     let base_height = resolved.line_height;
+    let base_weight = resolved.font_weight;
 
     // ─── spans + ink over the DISPLAY text ───
     let mut spans: Vec<SpanStyle> = Vec::new();
     let mut ink: Vec<DecorationSpec> = Vec::new();
     if decorations.is_empty() {
-        spans.push(SpanStyle::plain(base_color));
+        spans.push(SpanStyle {
+            weight: base_weight,
+            ..SpanStyle::plain(base_color)
+        });
     } else {
         let mut cuts: Vec<usize> = Vec::with_capacity(decorations.len() * 2 + 2);
         cuts.push(0);
@@ -397,6 +402,7 @@ pub(crate) fn shape_inputs(
             let mut run = RunStyle {
                 color: base_color,
                 bold: false,
+                weight: base_weight,
                 italic: false,
                 size: base_size,
                 families: None,
@@ -411,6 +417,9 @@ pub(crate) fn shape_inputs(
                     let attributes = theme.attributes(decoration.id);
                     if attributes.bold {
                         run.bold = true;
+                    }
+                    if let Some(weight) = attributes.font_weight {
+                        run.weight = Some(weight);
                     }
                     if attributes.italic {
                         run.italic = true;
@@ -451,6 +460,8 @@ pub(crate) fn shape_inputs(
                 line_height: run.line_height.filter(|height| {
                     base_height.map_or(true, |base| (height - base).abs() > 1e-3)
                 }),
+                weight: run.weight,
+                width: None,
             });
             if run.underline || run.strikethrough || run.squiggle.is_some() {
                 ink.push(DecorationSpec {
@@ -670,15 +681,22 @@ impl ShapedLine {
         }
     }
 
+    /// The placeholder wears the input's own style (its covering
+    /// `StyleId`), in the placeholder ink.
     pub(crate) fn placeholder(
         text: &str,
+        style: Option<crate::theme::StyleId>,
         color: skia_safe::Color,
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         layout_width: f32,
         document_x: f32,
     ) -> Self {
-        let mut resolved = BlockStyle::default().resolved(theme);
+        let block = match style {
+            Some(id) => BlockStyle::with(id),
+            None => BlockStyle::default(),
+        };
+        let mut resolved = block.resolved(theme);
         resolved.color = Some(color);
         let alignment = resolved.alignment.take().unwrap_or_default();
         let segments = [(text.to_owned(), 0)];

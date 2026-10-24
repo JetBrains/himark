@@ -1392,8 +1392,9 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     assert_pair_aligned(&app);
 
     let mut cell_focused = false;
+    // The table's first rows sit under the column header (104).
     'probe: for x in [760, 800, 840, 880] {
-        for y in [95, 110, 125, 140] {
+        for y in [130, 145, 160, 175, 190] {
             himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
             let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
@@ -2162,8 +2163,9 @@ fn the_unified_view_switches_between_split_and_inline() {
     };
     // Aim at line 0's TEXT: the settled before-card fills its full
     // hole from birth, so the text sits `hole` below the line's top
-    // (~77px of pane chrome above; 88 lands mid-glyph).
-    himark::test_driver::click(&mut app, 550.0, 88.0 + hole, 1100.0, 800.0);
+    // (the column header above; 14 past it lands mid-glyph).
+    let header = editor::env::Themes::of(app.store()).ui().toolbar.height;
+    himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
     let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     {
         let right =
@@ -2670,7 +2672,11 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     // Re-aimed 2026-10-13 against the painted frame (the canvas
     // rides the shared Scrolled now): the card's red band and the
     // first host line below it.
-    let (card_y, text_y) = (165.0, 280.0);
+    // Re-aimed 2026-10-23 off the band geometry (the typographic
+    // redesign: the summary strip and the file band above the body).
+    let body_top = working_band_word(&app, 1100.0, "Side by side").1
+        + ::canvas::diff_header::file_band_height(app.store()) * 0.5;
+    let (card_y, text_y) = (body_top + 30.0, body_top + 150.0);
     full_click(&mut app, card_y);
     assert!(
         host_focus(&app).starts_with("Inlay"),
@@ -2849,20 +2855,35 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         "mounted inline"
     );
 
-    // The header geometry, mirrored from HeaderFace::new: the chevron
-    // strip at the left, the three buttons walking in from the right.
+    // The band geometry, mirrored from FileBand: a press on the title
+    // (at the code text edge) folds the file; the words trail at the
+    // right inset — Side by side · Open pane · Open source, the face
+    // word naming the OTHER face. The working-copy canvas heads with
+    // its summary strip.
     let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
-    let chat_pad;
-    let chat_title;
-    {
-        let ui = editor::env::Themes::of(app.store()).ui().chat.clone();
-        chat_pad = ui.pad;
-        chat_title = ui.title_size;
-    }
-    let zone = chat_title * 2.2;
-    let header_y = chrome_top + 20.0;
-    let chevron_x = chat_pad * 0.5;
-    let face_x = 1100.0 - chat_pad - zone * 2.5;
+    let (lead, right, gap, band, strip) = {
+        let theme = editor::env::Themes::of(app.store());
+        let ui = theme.ui();
+        (
+            ui.window.code_text_edge,
+            1100.0 - ui.diff.band_pad_right,
+            ui.diff.band_gap,
+            ::canvas::diff_header::file_band_height(app.store()),
+            ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx()),
+        )
+    };
+    let word = {
+        let brief = hikit::ui::brief(app.store(), &app.ui_ctx());
+        move |label: &str| brief.shaper.advance(&brief.font, label)
+    };
+    let face_x = |label: &str| {
+        right - word("Open source") - gap - word("Open pane") - gap - word(label) * 0.5
+    };
+    let header_y = chrome_top + strip + band * 0.5;
+    let chevron_x = lead + 4.0;
+    let face_x_inline = face_x("Side by side");
+    let face_x_split = face_x("Inline");
+    let face_x = face_x_inline;
 
     // The layout button flips the face…
     click(&mut app, face_x, header_y);
@@ -2882,8 +2903,9 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     assert_eq!(rows[0].1, canvas::RowPhase::Built, "…but the build is kept");
     assert_eq!(layouts.len(), 1, "the parked row still answers probes");
 
-    // …and the face button still routes INTO the parked row.
-    click(&mut app, face_x, header_y);
+    // …and the face word ("Inline" now) still routes INTO the parked
+    // row.
+    click(&mut app, face_x_split, header_y);
     settle(&mut app);
     assert_eq!(
         probe(&app).1[0].1,
@@ -2903,7 +2925,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     settle(&mut app);
     let (_, _, scrolled) = probe(&app);
     assert!(scrolled > 0.0, "the canvas scrolled: {scrolled}");
-    click(&mut app, chevron_x, chrome_top + 20.0);
+    click(&mut app, chevron_x, chrome_top + band * 0.5);
     settle(&mut app);
     let (rows, _, _) = probe(&app);
     assert_eq!(
@@ -3309,14 +3331,9 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     );
 
     let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
-    let (chat_pad, chat_title) = {
-        let ui = editor::env::Themes::of(app.store()).ui().chat.clone();
-        (ui.pad, ui.title_size)
-    };
-    let zone = chat_title * 2.2;
-    let face_x = 1100.0 - chat_pad - zone * 2.5;
-    let _ = himark::test_driver::click(&mut app, face_x, chrome_top + 20.0, 1100.0, 800.0);
-    let _ = himark::test_driver::mouse_up(&mut app, face_x, chrome_top + 20.0);
+    let (face_x, band_y) = working_band_word(&app, 1100.0, "Side by side");
+    let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
     settle(&mut app);
     settle(&mut app);
 
@@ -3340,8 +3357,9 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
 
     // Back to inline: the row-level rewrap returns all editors to the
     // full row width, so the pair sync engages again.
-    let _ = himark::test_driver::click(&mut app, face_x, chrome_top + 20.0, 1100.0, 800.0);
-    let _ = himark::test_driver::mouse_up(&mut app, face_x, chrome_top + 20.0);
+    let (face_x, band_y) = working_band_word(&app, 1100.0, "Inline");
+    let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
     settle(&mut app);
     settle(&mut app);
     settle(&mut app);
@@ -4920,8 +4938,12 @@ fn completion_serves_a_canvas_diff_face() {
     };
     // Click the face far right, past "value ": the caret lands at the
     // line end and the face holds the keyboard.
-    let _ = himark::test_driver::click(&mut app, 900.0, 240.0, 1100.0, 800.0);
-    let _ = himark::test_driver::mouse_up(&mut app, 900.0, 240.0);
+    // (Re-aimed off the band geometry, 2026-10-23.)
+    let face_y = working_band_word(&app, 1100.0, "Side by side").1
+        + ::canvas::diff_header::file_band_height(app.store()) * 0.5
+        + 90.0;
+    let _ = himark::test_driver::click(&mut app, 900.0, face_y, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, 900.0, face_y);
     settle(&mut app, &mut surface);
     let focus = OpenDocuments::document_ref(app.store(), documents, right)
         .expect("right")
@@ -5335,4 +5357,160 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         dressed(&app),
         "the row dressed despite the landing ({rounds} rounds)"
     );
+}
+
+/// Where a working-copy canvas's FIRST file band answers a press on
+/// its face word (`label`: "Side by side" on the inline face,
+/// "Inline" on the split one), mirrored from `FileBand`: the words
+/// trail at the band's right inset — face · Open pane · Open source —
+/// under the summary strip and the window chrome.
+fn working_band_word(app: &Himark, width: f32, label: &str) -> (f32, f32) {
+    let theme = editor::env::Themes::of(app.store());
+    let ui = theme.ui();
+    let brief = hikit::ui::brief(app.store(), &app.ui_ctx());
+    let word = |label: &str| brief.shaper.advance(&brief.font, label);
+    let gap = ui.diff.band_gap;
+    let x = width - ui.diff.band_pad_right - word("Open source") - gap - word("Open pane") - gap
+        - word(label) * 0.5;
+    let y = ui.toolbar.height
+        + ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx())
+        + ::canvas::diff_header::file_band_height(app.store()) * 0.5;
+    (x, y)
+}
+
+/// THE COMMIT FACE, dumped (`HIMARK_SHOT=<dir>`): a commit canvas over
+/// one file with one hunk deep in it — the commit block, the file
+/// band, the fold bands above and below — at the mock's 2x size.
+#[test]
+#[ignore]
+fn dump_commit_canvas_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let store = &imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+
+    // A long file whose one change sits near line 600: the fold above
+    // swallows the head, the fold below the tail.
+    let mut head = String::new();
+    for n in 1..=598 {
+        head.push_str(&format!("    field_{n}: Option<u32>,\n"));
+    }
+    head.push_str("    root: Uri,\n}\n\n");
+    let old_body = format!(
+        "{head}enum DocumentFeed {{\n    Open {{ uri: String }},\n    Close {{ uri: String }},\n}}\n"
+    );
+    let mut new_body = head.clone();
+    for line in [
+        "/// One item on the ORDERED document-feed lane toward the language",
+        "/// and search servers. Mirror mutations happen under the state",
+        "/// lock; their didOpen/didChange/didSave/didClose must reach the",
+        "/// servers in the SAME order.",
+        "enum DocumentFeed {",
+        "    Open {",
+        "        dirs: Vec<String>,",
+        "        uri: String,",
+        "        text: String,",
+        "    },",
+        "    Change {",
+        "        dirs: Vec<String>,",
+        "        uri: String,",
+        "    },",
+        "    Close {",
+        "        uri: String,",
+        "    },",
+        "}",
+    ] {
+        new_body.push_str(line);
+        new_body.push('\n');
+    }
+    let mut tail = String::new();
+    for n in 0..40 {
+        tail.push_str(&format!("fn helper_{n}() {{}}\n"));
+    }
+    let old_body = format!("{old_body}\n{tail}");
+    let new_body = format!("{new_body}\n{tail}");
+
+    let theme = editor::theme::Theme::embedded();
+    let _ = (&store, ui, &theme);
+    let old = editor::document::Document::new(
+        text::text::Text::from_string_exact(&old_body),
+        editor::markup::Markup::new(),
+    );
+    let new = editor::document::Document::new(
+        text::text::Text::from_string_exact(&new_body),
+        editor::markup::Markup::new(),
+    );
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["backend".to_owned(), "agent-host".to_owned(), "src".to_owned(), name.to_owned()],
+        )
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "backend/agent-host/src/server.rs".to_owned(),
+        old: location("server.rs.old", editor::location::ResourceType::document()),
+        new: location("server.rs", editor::location::ResourceType::document()),
+        added: Some(118),
+        removed: Some(35),
+        updated: 0,
+    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1400.0);
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        let view = DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::Commit {
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
+                    vec!["himark-jb".to_owned()],
+                ),
+                id: changesview::hichanges::Revision::new("1addff9c0d"),
+            },
+            file,
+            built,
+        );
+        view.head_with_commit_for_tests(
+            &mut store,
+            &ui,
+            "the document feed is an ordered lane — the servers hear edits in mirror order",
+            "Andrey Zaytsev",
+        );
+        view
+    };
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(canvas)),
+    ));
+
+    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    for _ in 0..24 {
+        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    }
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/commit-canvas.png"), data.as_bytes()).expect("write");
 }

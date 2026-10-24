@@ -18,6 +18,8 @@ fn test_store() -> Store {
 fn face(line: &str, markdown: &str) -> ToolFace {
     ToolFace {
         line: line.to_owned(),
+        detail: String::new(),
+        error: None,
         markdown: text::text::Text::from_string_exact(markdown),
         failed: false,
         live: false,

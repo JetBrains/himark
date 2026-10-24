@@ -16,7 +16,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::{Paint, Rect, Size};
+use skia_safe::{Rect, Size};
 
 type ChatChrome = editor::theme::ChatChrome;
 
@@ -141,6 +141,19 @@ enum CellBody {
     },
 
     Tools(ToolGroup),
+
+    /// One quiet line of the turn's own (how it ended, what it
+    /// spent): a label in its role, not a document.
+    Line { text: String, role: LineRole },
+}
+
+/// The roles a turn's own lines speak in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LineRole {
+    /// "Turn cancelled." — the brief register.
+    Notice,
+    /// "8 in · 2,757 out" — smaller still.
+    Usage,
 }
 
 /// What streamed into a pending cell while its build ran.
@@ -160,6 +173,61 @@ enum Grown {
 pub struct Cell {
     kind: CellKind,
     body: CellBody,
+    /// A cell nested in a tool row (a call's expanded body): it owns
+    /// its whole width — no voice gutter, no row gap.
+    bare: bool,
+}
+
+/// The transcript GRID a cell lays in (docs/Design.md): the voice
+/// gutter, the text column after it, the air under the row. A bare
+/// cell's grid is its whole width.
+#[derive(Clone, Copy)]
+pub(crate) struct Grid {
+    /// Where the text column starts — the gutter's width.
+    pub edge: f32,
+    pub column: f32,
+    pub gap: f32,
+}
+
+impl Grid {
+    pub(crate) fn of(store: &Store, width: f32, bare: bool) -> Self {
+        let theme = env::Themes::of(store);
+        let ui = theme.ui();
+        if bare {
+            return Self {
+                edge: 0.0,
+                column: width.max(1.0),
+                gap: 0.0,
+            };
+        }
+        let edge = ui.window.chat_text_edge;
+        Self {
+            edge,
+            column: (width - edge - ui.chat.text_trailing).max(120.0),
+            gap: ui.chat.row_gap,
+        }
+    }
+}
+
+/// The covering style a cell's prose wears: the prompt register for
+/// your own message, the reading register for everything said back.
+fn prose_style(kind: CellKind) -> editor::theme::StyleId {
+    match kind {
+        CellKind::User => editor::theme::StyleId::ChatPrompt,
+        CellKind::Agent
+        | CellKind::Reasoning
+        | CellKind::Tool
+        | CellKind::Notice
+        | CellKind::Error => editor::theme::StyleId::Chat,
+    }
+}
+
+/// The covering markup over a whole text — greedy both ways, so the
+/// stream's appends wear it too.
+fn prose_markup(kind: CellKind, length: u32) -> editor::markup::Markup {
+    let mut markup = editor::markup::Markup::new();
+    markup.push_styled_covering(0..length, prose_style(kind));
+    markup
 }
 
 fn mint_nonce() -> u64 {
@@ -167,8 +235,9 @@ fn mint_nonce() -> u64 {
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-fn markdown_document(text: text::text::Text) -> editor::document::Document {
-    editor::document::Document::new(text, editor::markup::Markup::new()).with_syntax(
+fn markdown_document(text: text::text::Text, kind: CellKind) -> editor::document::Document {
+    let length = text.byte_count().min(u32::MAX as usize) as u32;
+    editor::document::Document::new(text, prose_markup(kind, length)).with_syntax(
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     )
@@ -193,7 +262,7 @@ pub(crate) fn side_document(
     // A registry that knows no markdown either (a bare unit-test store)
     // still gets a document — plain, with markdown's own markup.
     if !parsers.knows(language) {
-        return markdown_document(text);
+        return markdown_document(text, CellKind::Tool);
     }
     editor::document::Document::from_language(text, language, parsers, store, ui, theme)
 }
@@ -201,16 +270,6 @@ pub(crate) fn side_document(
 pub(crate) fn document_text(document: &editor::document::Document) -> String {
     let end = document.text().byte_count().min(u32::MAX as usize) as u32;
     document.text().view().substring(0..end)
-}
-
-fn cell_surface(kind: CellKind, chrome: &ChatChrome) -> Option<skia_safe::Color> {
-    match kind {
-        CellKind::User => None,
-        CellKind::Reasoning => Some(chrome.thought_surface.0),
-        CellKind::Tool => Some(chrome.tool_surface.0),
-        CellKind::Error => Some(chrome.error_surface.0),
-        CellKind::Agent | CellKind::Notice => None,
-    }
 }
 
 impl Cell {
@@ -251,23 +310,23 @@ impl Cell {
         markdown: &str,
         content_width: f32,
     ) -> (Self, f32) {
-        let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
-        let width = Self::editor_width(kind, &chrome, content_width);
+        let chrome = env::Themes::of(store).ui().chat.clone();
+        let grid = Grid::of(store, content_width, false);
         let lines = markdown.lines().count().clamp(1, 40) as f32;
-        let estimate = (lines * chrome.title_size * 1.5).max(chrome.min_cell_height);
+        let estimate = (lines * chrome.min_cell_height).max(chrome.min_cell_height);
         (
             Self {
                 kind,
                 body: CellBody::PendingText {
                     markdown: markdown.to_owned(),
-                    width,
+                    width: grid.column,
                     estimate,
                     nonce: mint_nonce(),
                     grown: Grown::Nothing,
                 },
+                bare: false,
             },
-            estimate + chrome.pad * 2.0 + chrome.gap,
+            estimate + grid.gap,
         )
     }
 
@@ -287,13 +346,38 @@ impl Cell {
         content_width: f32,
         fx: &mut Effects<'_, EditorCommand>,
     ) -> (Self, f32) {
+        Self::build_text_in(store, ui, kind, text, content_width, false, fx)
+    }
+
+    /// A markdown cell NESTED in a tool row — a call's expanded body:
+    /// the whole width, no gutter, no row gap.
+    pub(crate) fn build_bare(
+        store: &Store,
+        ui: &UiCtx,
+        kind: CellKind,
+        text: text::text::Text,
+        content_width: f32,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) -> (Self, f32) {
+        Self::build_text_in(store, ui, kind, text, content_width, true, fx)
+    }
+
+    fn build_text_in(
+        store: &Store,
+        ui: &UiCtx,
+        kind: CellKind,
+        text: text::text::Text,
+        content_width: f32,
+        bare: bool,
+        fx: &mut Effects<'_, EditorCommand>,
+    ) -> (Self, f32) {
         note_mount();
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
-        let editor_width = Self::editor_width(kind, &chrome, content_width);
-        let mut document = markdown_document(text);
+        let grid = Grid::of(store, content_width, bare);
+        let mut document = markdown_document(text, kind);
         let editor = document.add_editor(
-            editor_width,
+            grid.column,
             None,
             ::editor::document::EditorBuild::Bounded,
             &[],
@@ -305,9 +389,7 @@ impl Cell {
         if let Some(parsers) = env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
-        let height = document.content_height(editor).max(chrome.min_cell_height)
-            + chrome.pad * 2.0
-            + chrome.gap;
+        let height = document.content_height(editor).max(chrome.min_cell_height) + grid.gap;
         (
             Self {
                 kind,
@@ -319,6 +401,7 @@ impl Cell {
                     gutter_width: 0.0,
                     base: None,
                 }),
+                bare,
             },
             height,
         )
@@ -330,7 +413,7 @@ impl Cell {
         content_width: f32,
     ) -> (Self, f32) {
         let chrome = env::Themes::of(store).ui().chat.clone();
-        let height = Self::header_band(&chrome) + chrome.pad * 2.0 + chrome.gap;
+        let height = Self::header_band(&chrome) + Grid::of(store, content_width, false).gap;
         (
             Self {
                 kind: CellKind::Tool,
@@ -338,6 +421,7 @@ impl Cell {
                     header,
                     width: content_width,
                 },
+                bare: false,
             },
             height,
         )
@@ -349,25 +433,53 @@ impl Cell {
         specs: Vec<ToolCallSpec>,
         content_width: f32,
     ) -> (Self, f32) {
-        let chrome = env::Themes::of(store).ui().chat.clone();
-        let (group, rows_height) = ToolGroup::new(
-            store,
-            ui,
-            specs,
-            (content_width - chrome.pad * 2.0).max(120.0),
-        );
-        let height = rows_height + chrome.pad * 2.0 + chrome.gap;
+        let grid = Grid::of(store, content_width, false);
+        let (group, rows_height) =
+            ToolGroup::new(store, ui, specs, Self::tools_width(store, grid));
         (
             Self {
                 kind: CellKind::Tool,
                 body: CellBody::Tools(group),
+                bare: false,
             },
-            height,
+            rows_height + grid.gap,
         )
     }
 
+    /// A turn's own quiet line: born laid, nothing to build.
+    pub(crate) fn line(store: &Store, role: LineRole, text: &str) -> (Self, f32) {
+        let cell = Self {
+            kind: CellKind::Notice,
+            body: CellBody::Line {
+                text: text.to_owned(),
+                role,
+            },
+            bare: false,
+        };
+        let height = cell.measured_height(store);
+        (cell, height)
+    }
+
+    /// The tool rows hang their chevrons into the gutter: the rows
+    /// start a chevron's hang plus the tree's text inset before the
+    /// text column, so a call's name lands ON the column's edge.
+    fn tools_lead(store: &Store, grid: Grid) -> f32 {
+        let theme = env::Themes::of(store);
+        let ui = theme.ui();
+        (grid.edge - ui.chat.chevron_hang - ui.tree.text_x).max(0.0)
+    }
+
+    fn tools_width(store: &Store, grid: Grid) -> f32 {
+        grid.edge + grid.column - Self::tools_lead(store, grid)
+    }
+
+    /// The diff header: one quiet row.
     fn header_band(chrome: &ChatChrome) -> f32 {
-        chrome.title_size * 1.8
+        chrome.tool_row_height
+    }
+
+    fn line_height(chrome: &ChatChrome) -> f32 {
+        chrome.usage_line
     }
 
     /// The cell's height as DATA — the same number its display lays
@@ -377,34 +489,28 @@ impl Cell {
     /// and the list's paint report stays a belt, not the mechanism.
     pub(crate) fn measured_height(&self, store: &Store) -> f32 {
         let chrome = env::Themes::of(store).ui().chat.clone();
-        if let CellBody::Tools(group) = &self.body {
-            // The tools card is its own shape: the rows, padded both
-            // sides (`display`'s tools arm).
-            return group.rows_height() + chrome.pad * 2.0 + chrome.gap;
-        }
-        let header_h = match (&self.body, self.kind) {
-            (_, CellKind::User) => Self::header_band(&chrome),
-            (CellBody::Diff { .. } | CellBody::PendingDiff { .. }, _) => {
-                Self::header_band(&chrome)
-            }
-            _ => 0.0,
-        };
-        let editor_height = match &self.body {
+        // The gap is width-free: only the column depends on the width.
+        let gap = Grid::of(store, 1000.0, self.bare).gap;
+        let content = match &self.body {
+            CellBody::Tools(group) => group.rows_height(),
+            CellBody::Line { .. } => Self::line_height(&chrome),
             CellBody::Markdown(editor) => editor
                 .document
                 .content_height(editor.editor)
                 .max(chrome.min_cell_height),
             CellBody::PendingText { estimate, .. } => *estimate,
-            CellBody::PendingDiff { .. } => 0.0,
-            CellBody::Diff { view, .. } => view
-                .split
-                .right
-                .document
-                .content_height(view.split.right.editor)
-                .max(chrome.min_cell_height),
-            CellBody::Tools(_) => unreachable!("handled above"),
+            CellBody::PendingDiff { .. } => Self::header_band(&chrome),
+            CellBody::Diff { view, .. } => {
+                Self::header_band(&chrome)
+                    + view
+                        .split
+                        .right
+                        .document
+                        .content_height(view.split.right.editor)
+                        .max(chrome.min_cell_height)
+            }
         };
-        header_h + editor_height + chrome.pad * 2.0 + chrome.gap
+        content + gap
     }
 
     /// The built document lands: mount its editor at this cell's width
@@ -434,12 +540,27 @@ impl Cell {
         note_mount();
         let theme = env::Themes::of(store);
         let mut document = built.document;
+        let kind = self.kind;
         let editor = fx.scope(CellCommand::Editor, |fx| {
+            // The prose register rides a markup of its own, in place
+            // before the editor lays — the build road knows nothing
+            // of voices, and nothing is shaped twice.
+            let prose = document.add_markup();
+            let length = document.text().byte_count().min(u32::MAX as usize) as u32;
+            document.replace_markup(
+                prose,
+                prose_markup(kind, length),
+                &[],
+                store,
+                ui,
+                &theme,
+                fx,
+            );
             document.add_editor(
                 width,
                 None,
                 ::editor::document::EditorBuild::Bounded,
-                &[],
+                &[prose],
                 store,
                 ui,
                 &theme,
@@ -604,6 +725,7 @@ impl Cell {
                 ),
             ),
             CellBody::Tools(group) => (kind, group.oracle().join("\n")),
+            CellBody::Line { text, .. } => (kind, text.clone()),
         }
     }
 
@@ -611,6 +733,7 @@ impl Cell {
         match &self.body {
             CellBody::Markdown(view) => Some(view),
             CellBody::Tools(_)
+            | CellBody::Line { .. }
             | CellBody::PendingText { .. }
             | CellBody::PendingDiff { .. }
             | CellBody::Diff { .. } => None,
@@ -623,19 +746,9 @@ impl Cell {
             CellBody::Diff { .. }
             | CellBody::PendingText { .. }
             | CellBody::PendingDiff { .. }
+            | CellBody::Line { .. }
             | CellBody::Tools(_) => None,
         }
-    }
-
-    fn card_geometry(kind: CellKind, _chrome: &ChatChrome, width: f32) -> (f32, f32) {
-        match kind {
-            _ => (0.0, width),
-        }
-    }
-
-    fn editor_width(kind: CellKind, chrome: &ChatChrome, width: f32) -> f32 {
-        let (_, card) = Self::card_geometry(kind, chrome, width);
-        (card - chrome.pad * 2.0).max(120.0)
     }
 }
 
@@ -699,6 +812,10 @@ impl View for Cell {
                 });
             }
             CellCommand::Rewrite(text) => {
+                if let CellBody::Line { text: held, .. } = &mut self.body {
+                    *held = text.to_string();
+                    return;
+                }
                 if let CellBody::PendingText {
                     markdown, grown, ..
                 } = &mut self.body
@@ -936,11 +1053,12 @@ impl<'a, Inner: Widget<'a, CellCommand>> Widget<'a, CellCommand> for CellWidget<
 #[cfg(test)]
 mod tests;
 
-/// The chat cell CARD, reified (docs/ui/UI.md stage 2): an exact-extent
-/// spacer pins the card's box (the same arithmetic the hand-rolled
-/// container used), a match-parent backdrop paints beneath it, the
-/// body sits padded inside, and the kind's adornments — the user
-/// bar + caps label, the diff header band — stack on top.
+/// The chat cell as a ROW of the transcript grid (docs/Design.md,
+/// "size carries rank"): the voice gutter — "YOU" in the caps role
+/// over your own message, empty for everything said back — then the
+/// text column, then the air under the row. No card, no surface: the
+/// register is the type. An exact-extent spacer pins the row's box to
+/// the same number `measured_height` lands.
 struct CardFrame<'a> {
     cell: &'a Cell,
     store: &'a Store,
@@ -953,84 +1071,90 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, CellCommand> {
         use imba::layout::LayoutExt as _;
         let CardFrame { cell, store, ui } = self;
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let theme = env::Themes::of(store);
+        let chrome = theme.ui().chat.clone();
         let width = constraints.max.width.max(1.0);
-        let (_card_x, card_width) = Cell::card_geometry(cell.kind, &chrome, width);
+        let grid = Grid::of(store, width, cell.bare);
+        let under = imba::layout::Insets {
+            bottom: grid.gap,
+            ..Default::default()
+        };
 
         if let CellBody::Tools(group) = &cell.body {
-            let inner_width = (card_width - chrome.pad * 2.0).max(120.0);
+            let lead = Cell::tools_lead(store, grid);
+            let rows_width = Cell::tools_width(store, grid);
             let rows = group
                 .layout(
                     arena,
                     store,
                     ui,
                     Constraints {
-                        min: Size::new(inner_width, 0.0),
-                        max: Size::new(inner_width, f32::MAX),
+                        min: Size::new(rows_width, 0.0),
+                        max: Size::new(rows_width, f32::MAX),
                     },
                 )
                 .map(CellCommand::ToolRows);
             return imba::layout::fixed(rows)
-                .pad(chrome.pad)
-                .backdrop(
-                    hikit::ui::Surface {
-                        // Fill only — a border per card stacks stray
-                        // hairlines through the transcript.
-                        fill: cell_surface(CellKind::Tool, &chrome),
-                        border: None,
-                        radius: chrome.radius,
-                    }
-                    .painter(),
-                )
                 .pad_insets(imba::layout::Insets {
-                    left: 0.0,
-                    top: 0.0,
-                    right: 0.0,
-                    bottom: chrome.gap,
+                    left: lead,
+                    ..under
                 })
                 .layout(arena, constraints);
         }
 
-        let (header, editor, diff, header_h) = match &cell.body {
-            CellBody::Markdown(editor) => (None, Some(editor), None, 0.0),
-            CellBody::PendingDiff { header, .. } => {
-                (Some((header, true)), None, None, Cell::header_band(&chrome))
-            }
-            CellBody::Diff { header, view } => (
-                Some((header, false)),
-                None,
-                Some(view),
-                Cell::header_band(&chrome),
+        if let CellBody::Line { text, role } = &cell.body {
+            let style = match role {
+                LineRole::Notice => hikit::ui::brief(store, ui).sized(chrome.notice_size),
+                LineRole::Usage => hikit::ui::brief(store, ui).sized(chrome.usage_size),
+            };
+            return imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(grid.column, Cell::line_height(&chrome)))
+                .child_aligned(
+                    imba::layout::Alignment::CenterStart,
+                    hikit::ui::text(&style, text.clone()),
+                )
+                .pad_insets(imba::layout::Insets {
+                    left: grid.edge,
+                    ..under
+                })
+                .layout(arena, constraints);
+        }
+
+        let header = match &cell.body {
+            CellBody::PendingDiff { header, .. } => Some((header, true)),
+            CellBody::Diff { header, .. } => Some((header, false)),
+            _ => None,
+        };
+        let header_h = match header {
+            Some(_) => Cell::header_band(&chrome),
+            None => 0.0,
+        };
+        // A diff body runs edge to edge — its own line gutter is its
+        // margin; prose keeps the text column.
+        let (body_x, editor_target) = match &cell.body {
+            CellBody::Diff { .. } => (0.0, (width - chrome_gutter(store)).max(120.0)),
+            _ => (grid.edge, grid.column),
+        };
+        let editor = cell.editor_view();
+        let diff_thunk = match &cell.body {
+            CellBody::Diff { view, .. } => Some(
+                imba::layout::Layout::layout(
+                    view.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(editor_target, 0.0),
+                        max: Size::new(editor_target + chrome_gutter(store), f32::MAX),
+                    },
+                )
+                .map(CellCommand::Diff),
             ),
-            // A cell whose build has not landed: the band stands empty
-            // at its estimated height until the document arrives.
-            CellBody::PendingText { .. } => (None, None, None, 0.0),
-            CellBody::Tools(_) => unreachable!("handled above"),
+            _ => None,
         };
-        let editor_target = match &cell.body {
-            CellBody::Diff { .. } => (card_width - chrome_gutter(store)).max(120.0),
-            _ => Cell::editor_width(cell.kind, &chrome, width),
-        };
-        let header_h = match cell.kind {
-            CellKind::User => Cell::header_band(&chrome),
-            _ => header_h,
-        };
-        let diff_thunk = diff.map(|view| {
-            imba::layout::Layout::layout(
-                view.display(arena, store, ui),
-                arena,
-                Constraints {
-                    min: Size::new(editor_target, 0.0),
-                    max: Size::new(editor_target + chrome_gutter(store), f32::MAX),
-                },
-            )
-            .map(CellCommand::Diff)
-        });
         let pending_height = match &cell.body {
             CellBody::PendingText { estimate, .. } => Some(*estimate),
             _ => None,
         };
-        let editor_height = editor
+        let body_height = editor
             .map(|editor| editor.content_height().max(chrome.min_cell_height))
             .or_else(|| {
                 diff_thunk
@@ -1039,38 +1163,16 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             })
             .or(pending_height)
             .unwrap_or(0.0);
-        let card_height = header_h + editor_height + chrome.pad * 2.0;
 
-        let mut card = imba::layout::ZBox::new(arena);
-        // Only the ERROR card keeps a border (it is the signal);
-        // bordering every tool/thought card stacked stray hairlines
-        // through the transcript.
-        let border = match cell.kind {
-            CellKind::Error => Some(chrome.stop_color.0),
-            CellKind::User | CellKind::Agent | CellKind::Notice => None,
-            CellKind::Tool | CellKind::Reasoning => None,
-        };
-        let surface = cell_surface(cell.kind, &chrome);
-        if surface.is_some() || border.is_some() {
-            card = card.child_match_parent(
-                imba::layout::Fill::new().backdrop(
-                    hikit::ui::Surface {
-                        fill: surface,
-                        border,
-                        radius: chrome.radius,
-                    }
-                    .painter(),
-                ),
-            );
-        }
-        card = card.child(imba::layout::spacer(card_width, card_height));
+        let mut row = imba::layout::ZBox::new(arena)
+            .child(imba::layout::spacer(width, header_h + body_height));
         let content = editor
             .map(|editor| {
                 imba::layout::Layout::layout(
                     editor.display(arena, store, ui),
                     arena,
                     Constraints {
-                        min: Size::new(editor_target, editor_height),
+                        min: Size::new(editor_target, body_height),
                         max: Size::new(editor_target + editor.gutter_width, f32::MAX),
                     },
                 )
@@ -1079,82 +1181,24 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             .map(|thunk| imba::ThunkBox::new(arena, thunk))
             .or(diff_thunk.map(|thunk| imba::ThunkBox::new(arena, thunk)));
         if let Some(content) = content {
-            // Normal messages keep their padding; diff bodies own the
-            // full card width.
-            let body_pad = match &cell.body {
-                CellBody::Diff { .. } => 0.0,
-                _ => chrome.pad,
-            };
-            card = card.child(
-                imba::layout::fixed(content).pad_insets(imba::layout::Insets {
-                    left: body_pad,
-                    top: header_h + chrome.pad,
-                    right: 0.0,
-                    bottom: 0.0,
-                }),
-            );
+            row = row.child(imba::layout::fixed(content).pad_insets(imba::layout::Insets {
+                left: body_x,
+                top: header_h,
+                ..Default::default()
+            }));
         }
-        if matches!(cell.kind, CellKind::User) {
-            let bar_color = chrome.notice_color.0;
-            card = card.child_match_parent(imba::layout::Fill::new().width(3.0).backdrop(
-                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                    let mut paint = Paint::default();
-                    paint.set_color(bar_color);
-                    canvas.draw_rect(rect, &paint);
-                },
-            ));
-            let caps = hikit::ui::caps(store, ui).colored(chrome.notice_color.0);
-            card = card.child(
-                imba::layout::ZBox::new(arena)
-                    .child(imba::layout::spacer(0.0, header_h))
-                    .child_aligned(
-                        imba::layout::Alignment::CenterStart,
-                        hikit::ui::text(&caps, "YOU"),
-                    )
-                    .pad_insets(imba::layout::Insets {
-                        left: chrome.pad,
-                        ..Default::default()
-                    }),
-            );
+        if matches!(cell.kind, CellKind::User) && !cell.bare {
+            row = row.child(voice(arena, store, ui, &chrome, grid, chrome.gutter_line, "YOU"));
         }
         if let Some((header, pending)) = header {
-            // The canvas's own file band (diff_header): the dimmed
-            // path leading into the name, stats trailing it, the
-            // band's body opening the working copy.
-            use ::canvas::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
-            let title = if pending {
-                format!("{} — fetching contents…", header.title)
-            } else {
-                header.title.clone()
-            };
-            let size = chrome.title_size * 0.85;
-            let face = DiffHeaderFace::new(
-                store,
-                ui,
-                DiffHeaderSpec {
-                    title,
-                    added: header.added,
-                    removed: header.removed,
-                    chevron: None,
-                    buttons: match header.uri.is_some() {
-                        true => vec![DiffHeaderPress::OpenFile],
-                        false => Vec::new(),
+            row = row.child(
+                diff_header(arena, store, ui, header, pending, header_h).pad_insets(
+                    imba::layout::Insets {
+                        left: grid.edge,
+                        ..Default::default()
                     },
-                    primary: header.uri.is_some().then_some(DiffHeaderPress::OpenFile),
-                    title_size: size,
-                    bold: false,
-                    title_color: None,
-                    baseline: header_h * 0.5 + size * 0.36,
-                },
-                header_h,
-                card_width,
+                ),
             );
-            let uri = header.uri.clone();
-            let widget = face.widget(move |press| match (press, uri.clone()) {
-                (DiffHeaderPress::OpenFile, Some(uri)) => Some(CellCommand::OpenFile(uri)),
-                _ => None,
-            });
-            card = card.child(imba::layout::fixed(imba::eager(widget)));
         }
 
         let rewrap = match &cell.body {
@@ -1171,17 +1215,80 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             }
             _ => None,
         };
-        let framed = card
-            .pad_insets(imba::layout::Insets {
-                left: 0.0,
-                top: 0.0,
-                right: 0.0,
-                bottom: chrome.gap,
-            })
-            .layout(arena, constraints);
+        let framed = row.pad_insets(under).layout(arena, constraints);
         imba::ThunkBox::new(
             arena,
             framed.wrap(move |inner| CellWidget { inner, rewrap }),
         )
     }
+}
+
+/// The VOICE in the gutter: a caps label right-aligned against the
+/// text column, centered in a `line` box at the row's top — the
+/// gutter's own line in the transcript, the input's in the footer.
+pub(crate) fn voice<'a, Command: 'a>(
+    arena: &'a Arena,
+    store: &Store,
+    ui: &UiCtx,
+    chrome: &ChatChrome,
+    grid: Grid,
+    line: f32,
+    label: &'static str,
+) -> impl imba::layout::Layout<'a, Command> + imba::layout::LayoutValue + 'a {
+    imba::layout::ZBox::new(arena)
+        .child(imba::layout::spacer(
+            (grid.edge - chrome.gutter_pad).max(0.0),
+            line,
+        ))
+        .child_aligned(
+            imba::layout::Alignment::CenterEnd,
+            hikit::ui::text(&hikit::ui::caps(store, ui), label),
+        )
+}
+
+/// A file edit's header as a quiet ROW: the file's name in the row
+/// role, its counts in the added and removed inks; pressing the name
+/// opens the working copy.
+fn diff_header<'a>(
+    arena: &'a Arena,
+    store: &Store,
+    ui: &UiCtx,
+    header: &DiffHeader,
+    pending: bool,
+    height: f32,
+) -> impl imba::layout::Layout<'a, CellCommand> + imba::layout::LayoutValue + 'a {
+    use imba::layout::LayoutExt as _;
+    let theme = env::Themes::of(store);
+    let ink = theme.ui().ink.clone();
+    let chrome = theme.ui().chat.clone();
+    let name = hikit::ui::row(store, ui).colored(ink.ink.0);
+    let brief = hikit::ui::brief(store, ui);
+    let mut words = imba::layout::Row::new(arena)
+        .gap(chrome.tool_gap)
+        .child_by_baseline(hikit::ui::text(&name, header.title.clone()));
+    if pending {
+        words = words.child_by_baseline(hikit::ui::text(&brief, "fetching contents…"));
+    }
+    if let Some(added) = header.added.filter(|n| *n > 0) {
+        words = words.child_by_baseline(hikit::ui::text(
+            &brief.clone().colored(ink.added.0),
+            format!("+{added}"),
+        ));
+    }
+    if let Some(removed) = header.removed.filter(|n| *n > 0) {
+        words = words.child_by_baseline(hikit::ui::text(
+            &brief.clone().colored(ink.removed.0),
+            format!("\u{2212}{removed}"),
+        ));
+    }
+    let uri = header.uri.clone();
+    imba::layout::ZBox::new(arena)
+        .child(imba::layout::spacer(0.0, height))
+        .child_aligned(imba::layout::Alignment::CenterStart, words)
+        .on_event(move |_arena: &Arena, event: &Event<'_>, _size: Size| match (event, uri.clone()) {
+            (Event::MouseDown { .. }, Some(uri)) => {
+                EventResult::command(CellCommand::OpenFile(uri))
+            }
+            _ => EventResult::Ignored,
+        })
 }

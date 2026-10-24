@@ -520,6 +520,10 @@ impl hikit::panel::PanelView for ChatPane {
             .unwrap_or_else(|| "Agent Chat".to_owned())
     }
 
+    fn subtitle(&self, store: &Store) -> Option<String> {
+        Chats::chat_ref(store, self.seat.chats, &self.seat.chat).and_then(|panel| panel.folder_name())
+    }
+
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
         Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
             .map(|panel| panel.footer_height(store, nominal_height))

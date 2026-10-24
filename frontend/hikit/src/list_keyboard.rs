@@ -198,6 +198,11 @@ where
     /// caret motion).
     folds: bool,
     search: Option<SearchLane<S>>,
+    /// Whether the query shows as the controller's own pill over the
+    /// rows. A surface that HOSTS the query field itself (the Files
+    /// tab's filter) turns the pill off and lays `query_input` where
+    /// its design puts it.
+    pill: bool,
 }
 
 impl<T, S> Clone for ListKeyboardController<T, S>
@@ -210,6 +215,7 @@ where
             inner: self.inner.clone(),
             folds: self.folds,
             search: self.search.clone(),
+            pill: self.pill,
         }
     }
 }
@@ -224,6 +230,7 @@ where
             inner,
             folds: false,
             search: None,
+            pill: true,
         }
     }
 }
@@ -251,6 +258,7 @@ where
                 lane: None,
                 launched: None,
             }),
+            pill: true,
         }
     }
 
@@ -258,6 +266,20 @@ where
     pub fn with_folds(mut self) -> Self {
         self.folds = true;
         self
+    }
+
+    /// The surface hosts the query field itself: no pill over the
+    /// rows. Lay `query_input` and route its commands back through
+    /// `ListKeyCommand::Input`.
+    pub fn without_pill(mut self) -> Self {
+        self.pill = false;
+        self
+    }
+
+    /// The speed-search input editor, for a surface that shows it in
+    /// its own field (see `without_pill`).
+    pub fn query_input(&self) -> Option<&EditorView> {
+        self.search.as_ref().map(|lane| &lane.input)
     }
 
     pub fn inner(&self) -> &T {
@@ -555,7 +577,7 @@ where
 
             let searching = self.searching();
 
-            if let Some(lane) = &self.search {
+            if let Some(lane) = self.search.as_ref().filter(|_| self.pill) {
                 let chrome = editor::env::Themes::of(store).ui().peeker.clone();
                 // The pill wraps the input editor's TRUE line height —
                 // the chrome never clips the text it hosts.

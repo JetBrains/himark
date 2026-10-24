@@ -23,8 +23,11 @@ use imba::{
     ui::UiCtx,
     View,
 };
+use imba::layout::{Insets, LayoutExt as _};
 use skia_safe::Size;
 use workbench::workbench_node::EditorPane;
+
+mod sheet;
 use workbench::workbench_node::PaneCommand;
 
 #[derive(Clone)]
@@ -58,6 +61,9 @@ pub struct Peeker {
 
     rows: Vec<PeekerRow>,
     labels: Vec<String>,
+    /// Each row's directory, relative to its workspace folder (empty
+    /// for a widget row).
+    dirs: Vec<String>,
 
     hidden: usize,
 
@@ -66,11 +72,9 @@ pub struct Peeker {
 
     preview_width: f32,
 
-    chrome: ::editor::theme::PeekerChrome,
-
-    /// The windowed modal paints its own opaque sheet; the mounted
-    /// GLASS road (`unfloored`) rides the host's island backdrop
-    /// and keeps only the input well and the list/preview divider.
+    /// The windowed modal stands on its own SHEET, centered in the
+    /// window; the mounted GLASS road (`unfloored`) rides the host's
+    /// island backdrop and the dialog fills the island.
     floored: bool,
 
     request: hikit::modal::RequestSlot<ModalRequest>,
@@ -151,12 +155,106 @@ enum PreviewSlot {
 
 const PEEKER_SHOWN: usize = 200;
 
-/// Keys-only controller over the raw label list — the peeker's own
+/// Keys-only controller over the file rows — the peeker's own
 /// input filters; the table does the movement, the list's cursor IS
 /// the selection (docs/ui/list-keyboard.md).
 type Rows = hikit::list_keyboard::ListKeyboardController<
-    imba::scroll::ScrollView<imba::list::ListView<hikit::rows::LabelRow, usize>>,
+    imba::scroll::ScrollView<imba::list::ListView<FileRow, usize>>,
 >;
+
+/// One match: the file's name with the typed letters marked, its
+/// directory at the right in grey. The SELECTED row grows — a
+/// taller row, a larger and heavier name, a brighter directory — so
+/// the row knows whether it is the one. The tail note ("… 12 more")
+/// is a dim, unkeyed row.
+#[derive(Clone)]
+struct FileRow {
+    name: String,
+    marks: Vec<std::ops::Range<usize>>,
+    dir: String,
+    selected: bool,
+    note: bool,
+}
+
+impl View for FileRow {
+    type Command = std::convert::Infallible;
+
+    fn perform(
+        &mut self,
+        _store: &mut Store,
+        _ui: &UiCtx,
+        _command: Self::Command,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        let themes = ::editor::env::Themes::of(store);
+        let theme = themes.ui();
+        let chrome = &theme.peeker.jump;
+        let ink = &theme.ink;
+        let (role, color, dir_color, height) = match (self.selected, self.note) {
+            (true, _) => (
+                &chrome.selected_name,
+                ink.ink_bright.0,
+                ink.ink_2.0,
+                chrome.selected_row_height,
+            ),
+            (false, false) => (&chrome.name, chrome.name_color.0, ink.ink_3.0, chrome.row_height),
+            (false, true) => (&chrome.name, ink.ink_3.0, ink.ink_3.0, chrome.row_height),
+        };
+        let plain = sheet::styled(ui, role, color);
+        let mark = sheet::MatchMark::of(
+            ui,
+            role,
+            chrome.mark_weight,
+            ink.ink_bright.0,
+            ink.live.0,
+            chrome.mark_thickness,
+            chrome.mark_offset,
+        );
+        // The flexible gap pushes the directory to the right edge
+        // (main axis only: a bare `Fill` would drag the baseline
+        // group to the row's top).
+        let mut row = imba::layout::Row::new(arena)
+            .child_by_baseline(
+                sheet::marked_label(arena, &self.name, &self.marks, &plain, &mark).pad_insets(
+                    Insets {
+                        left: chrome.pad_x,
+                        ..Default::default()
+                    },
+                ),
+            )
+            .weighted(1.0, imba::layout::Fill::new().height(0.0));
+        if !self.dir.is_empty() {
+            // Measured after the name, against what it leaves: a
+            // long directory ellipsizes, the name never does.
+            row = row.child_by_baseline(
+                hikit::ui::text(&hikit::ui::brief(store, ui).colored(dir_color), self.dir.clone())
+                    .pad_insets(Insets {
+                        left: chrome.dir_gap,
+                        right: chrome.pad_x,
+                        ..Default::default()
+                    }),
+            );
+        }
+        // A press on the row is the LIST's: `Select`, then
+        // `Activate(Click)` (docs/ui/list-keyboard.md §2).
+        row.align(imba::layout::Alignment::CenterStart)
+            .height(height)
+            .on_event(
+                move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                    Event::MouseDown { .. } => EventResult::handled(),
+                    _ => EventResult::Ignored,
+                },
+            )
+    }
+}
 type RowsCommand = hikit::list_keyboard::ListKeyCommand<
     imba::scroll::ScrollCommand<imba::list::ListCommand<std::convert::Infallible>>,
 >;
@@ -185,7 +283,12 @@ impl Peeker {
             .collect();
         let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
         let mut input =
-            editor::editor_view::EditorView::input(600.0, store, ui);
+            editor::editor_view::EditorView::input_styled(
+                600.0,
+                store,
+                ui,
+                editor::theme::StyleId::Query,
+            );
         input.focus_text();
 
         let mut peeker = Self {
@@ -203,11 +306,16 @@ impl Peeker {
             filter_query: String::new(),
             rows: Vec::new(),
             labels: Vec::new(),
+            dirs: Vec::new(),
             hidden: 0,
             list: rows_list(),
             preview: None,
-            preview_width: preview_width(viewport, &chrome),
-            chrome,
+            // The windowed sheet's preview: the dialog's width in
+            // this viewport, less the matches column.
+            preview_width: preview_width(
+                sheet::Sheet(chrome.jump.sheet.clone()).width_in(viewport),
+                &chrome.jump,
+            ),
             floored: true,
             request: Default::default(),
         };
@@ -305,22 +413,90 @@ impl Peeker {
                 location.name().to_owned(),
             );
         }
+        self.dirs = (0..self.rows.len())
+            .map(|row| {
+                self.location_at(row)
+                    .map(|location| self.place_of(location).1)
+                    .unwrap_or_default()
+            })
+            .collect();
         let selected = self.selected().min(self.row_count().saturating_sub(1));
-        let note = (self.hidden > 0).then(|| format!("… {} more — narrow the filter", self.hidden));
+        let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
+        for row in 0..self.rows.len() {
+            slice.push_keyed(row, self.file_row(row, row == selected), store, ui);
+        }
+        if self.hidden > 0 {
+            let note = FileRow {
+                name: format!("… {} more — narrow the filter", self.hidden),
+                marks: Vec::new(),
+                dir: String::new(),
+                selected: false,
+                note: true,
+            };
+            slice.push(note, store, ui);
+        }
         let scroll_y = self.list.inner().scroll_y();
-        let mut list = imba::list::ListView::from_slice(hikit::rows::label_slice(
-            store,
-            ui,
-            &self.labels,
-            &[],
-            note,
-        ))
-        .with_selection(hikit::rows::selection_style(store));
+        let mut list = imba::list::ListView::from_slice(slice).with_selection(selection_style(store));
         if !self.labels.is_empty() {
             list.select_only(selected);
         }
         *self.list.inner_mut() = imba::scroll::ScrollView::new(list);
         self.list.inner_mut().set_scroll_y(scroll_y);
+    }
+
+    /// The `row`th match as a row, selected or not.
+    fn file_row(&self, row: usize, selected: bool) -> FileRow {
+        let name = self.labels[row].clone();
+        FileRow {
+            marks: sheet::match_runs(&name, &self.filter_query),
+            name,
+            dir: self.dirs.get(row).cloned().unwrap_or_default(),
+            selected,
+            note: false,
+        }
+    }
+
+    /// The selection moved: the row it left shrinks back and the row
+    /// it reached grows — two rows re-laid, in place.
+    fn restyle(&mut self, store: &Store, ui: &UiCtx, left: Option<usize>, reached: Option<usize>) {
+        for (row, selected) in [(left, false), (reached, true)] {
+            let Some(row) = row.filter(|&row| row < self.rows.len()) else {
+                continue;
+            };
+            let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
+            slice.push_keyed(row, self.file_row(row, selected), store, ui);
+            self.list
+                .inner_mut()
+                .content_mut()
+                .splice_slice(row..row + 1, slice);
+        }
+    }
+
+    /// Where a file sits: its workspace folder shown from home
+    /// ("~/Projects/himark-jb/", empty outside every folder) and its
+    /// directory under that folder ("tools/grammar-pack/src").
+    fn place_of(&self, location: &ResourceLocation) -> (String, String) {
+        let path = location.path();
+        let parent = &path[..path.len().saturating_sub(1)];
+        match self
+            .workspace
+            .iter()
+            .find(|folder| parent.starts_with(folder.path()))
+        {
+            Some(folder) => (
+                format!("{}/", shown_path(folder.path())),
+                parent[folder.path().len()..].join("/"),
+            ),
+            None => (String::new(), parent.join("/")),
+        }
+    }
+
+    /// The sheet's caps label: what it does, and in which repo.
+    fn caption(&self) -> String {
+        match self.workspace.first() {
+            Some(folder) => format!("JUMP TO FILE · {}", folder.name().to_uppercase()),
+            None => "JUMP TO FILE".to_owned(),
+        }
     }
 
     fn selected(&self) -> usize {
@@ -613,9 +789,14 @@ impl View for Peeker {
                     }
                 }
                 let selected = Rows::selected_index(&command).is_some();
+                let left = imba::list::ListOps::cursor_index(&self.list);
                 fx.scope(PeekerCommand::Rows, |fx| {
                     imba::View::perform(&mut self.list, store, ui, command, fx)
                 });
+                let reached = imba::list::ListOps::cursor_index(&self.list);
+                if reached != left {
+                    self.restyle(store, ui, left, reached);
+                }
                 // Moving the selection returns the preview.
                 if selected {
                     self.ensure_preview(store, ui, fx);
@@ -710,6 +891,12 @@ impl View for Peeker {
         }
     }
 
+    /// The dialog: the matches column (the query band, the rows, the
+    /// key footer) and, past one hairline, the selected file's
+    /// preview under its header. Windowed, the dialog stands on its
+    /// SHEET centered in the window and a press beside it closes;
+    /// on the glass road the host's island is the sheet and the
+    /// dialog fills it.
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -717,49 +904,152 @@ impl View for Peeker {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            use imba::layout::{fixed, Column};
+            use imba::Thunk as _;
             let size = constraints.max;
-            let chrome = &self.chrome;
-            let row_font = hikit::fonts::ui_font(ui, chrome.row_size);
-            let hint_font = hikit::fonts::ui_font(ui, chrome.hint_size);
-            let margin = chrome.margin;
-            let row_height = chrome.row_height;
-            let list_width = list_width(size, chrome);
-            let preview_x = margin + list_width + chrome.list_preview_gap;
+            let themes = ::editor::env::Themes::of(store);
+            let theme = themes.ui();
+            let chrome = &theme.peeker.jump;
+            let ink = &theme.ink;
+            let sheet = sheet::Sheet(chrome.sheet.clone());
+            let dialog = match self.floored {
+                true => sheet.rect_in(
+                    size,
+                    Size::new(sheet.width_in(size), sheet.max_height_in(size)),
+                ),
+                false => skia_safe::Rect::from_size(size),
+            };
+            let list_w = list_width(dialog.width(), chrome);
             // Live, not the open-time snapshot: the mounted host
             // resizes with its window and the preview fills to it.
-            let preview_width = preview_width(size, chrome);
+            let preview_w = preview_width(dialog.width(), chrome);
+            let loose = |width: f32| Constraints {
+                min: Size::default(),
+                max: Size::new(width, dialog.height()),
+            };
 
-            let inset = margin * 4.0 / 3.0;
-            let input_height = chrome.input_height;
-            let list_top = inset + 8.0 + input_height;
-            let list_height = (size.height - inset - row_height - 2.0 - list_top).max(row_height);
-
-            let sheet_rule = ::editor::env::Themes::of(store).ui().toolbar.rule.0;
-            let match_count = self.labels.len();
-            let hidden = self.hidden;
-            let has_preview = self.preview.is_some();
-
-            let mut container = imba::container::container(arena, size);
-
-            let input_w = (list_width - chrome.input_inset_x * 2.0).max(chrome.input_min_width);
-            let input_h = (input_height - chrome.input_inset_y * 2.0).max(1.0);
-            let input_editor = imba::layout::Layout::layout(
+            // The matches column.
+            let input_width = (list_w - 2.0 * chrome.pad_x).max(1.0);
+            let input = imba::layout::Layout::layout(
                 self.input.display(arena, store, ui),
                 arena,
-                Constraints {
-                    min: Size::new(input_w, input_h),
-                    max: Size::new(input_w, input_h),
-                },
+                Constraints::tight(Size::new(input_width, self.input.content_height().max(1.0))),
             )
             .map(PeekerCommand::Input);
+            let count = format!("{} matched", self.labels.len() + self.hidden);
+            let head = Column::new(arena)
+                .child(hikit::ui::text(&hikit::ui::caps(store, ui), self.caption()))
+                .child(fixed(input).pad_insets(Insets {
+                    top: chrome.label_gap,
+                    ..Default::default()
+                }))
+                .child(hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(
+                    Insets {
+                        top: chrome.count_gap,
+                        ..Default::default()
+                    },
+                ))
+                .pad_insets(Insets {
+                    left: chrome.pad_x,
+                    right: chrome.pad_x,
+                    top: chrome.pad_top,
+                    bottom: chrome.pad_bottom,
+                })
+                .layout(arena, loose(list_w));
+            let foot = sheet::key_hints(
+                arena,
+                &[("↑↓", "move"), ("⏎", "open"), ("esc", "close")],
+                &sheet::mono(ui, chrome.footer_size, ink.ink_2.0),
+                &hikit::ui::brief(store, ui).sized(chrome.footer_size),
+                chrome.footer_gap,
+            )
+            .pad_insets(Insets {
+                left: chrome.pad_x,
+                right: chrome.pad_x,
+                top: chrome.footer_pad_y,
+                bottom: chrome.footer_pad_y,
+            })
+            .layout(arena, loose(list_w));
+            let rows_h = (dialog.height()
+                - head.size().height
+                - foot.size().height
+                - 2.0
+                - 2.0 * chrome.list_pad_y)
+                .max(chrome.row_height);
+            let rows = imba::layout::Layout::layout(
+                self.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(list_w, rows_h)),
+            )
+            .map(PeekerCommand::Rows);
+            let matches = Column::new(arena)
+                .child(fixed(head))
+                .child(hikit::ui::rule_h(ink.rule.0, list_w))
+                .child(fixed(rows).pad_insets(Insets {
+                    top: chrome.list_pad_y,
+                    bottom: chrome.list_pad_y,
+                    ..Default::default()
+                }))
+                .child(hikit::ui::rule_h(ink.rule.0, list_w))
+                .child(fixed(foot))
+                .sized(list_w, dialog.height())
+                .layout(arena, loose(list_w));
 
-            use hikit::ui::{Hairline, Surface};
-            let floor = Surface::fill(chrome.background.0).radius(0.0);
-            let panel_size = Size::new(list_width + 2.0, (size.height - inset * 2.0).max(1.0));
+            // The preview: its header, then the file itself.
+            let preview_head = self.preview_header(arena, store, ui, preview_w);
+            let body_top = preview_head.size().height + chrome.preview_top_gap;
+            let body_h = (dialog.height() - body_top).max(1.0);
+            let body: imba::ThunkBox<'a, PeekerCommand> = match &self.preview {
+                Some(PreviewSlot::Editor(preview)) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        preview.pane.display(arena, store, ui),
+                        arena,
+                        Constraints::tight(Size::new(preview_w, body_h)),
+                    )
+                    .map(PeekerCommand::Preview)
+                    .focus_scope(false),
+                ),
+                Some(PreviewSlot::Widget(index)) => match self.widgets.get(*index) {
+                    Some((_, widget)) => imba::ThunkBox::new(
+                        arena,
+                        widget
+                            .layout_dyn(
+                                arena,
+                                store,
+                                ui,
+                                Constraints::tight(Size::new(preview_w, body_h)),
+                            )
+                            .map(PeekerCommand::Widget)
+                            .focus_scope(false),
+                    ),
+                    None => imba::ThunkBox::new(arena, leaf(preview_w, body_h)),
+                },
+                None => hikit::ui::text(&hikit::ui::brief(store, ui), "no preview")
+                    .pad_insets(Insets {
+                        left: chrome.preview_pad_left,
+                        ..Default::default()
+                    })
+                    .layout(arena, loose(preview_w)),
+            };
 
-            // The click-away catcher behind everything — bare glass
-            // on the mounted road, dressed with the opaque floor and
-            // the sheet's offset echo on the windowed one.
+            let mut sheet_box = imba::container::container(arena, dialog.size());
+            sheet_box.place(
+                0.0,
+                0.0,
+                hikit::ui::Hairline::new(ink.rule.0).right().wrap(matches),
+            );
+            sheet_box.place_boxed(list_w, 0.0, preview_head);
+            sheet_box.place_boxed(list_w, body_top, body);
+            // A press on the sheet's own ground stays on the sheet.
+            let sheet_box = sheet_box.event(|_arena, event, _size| match event {
+                Event::MouseDown { .. } => EventResult::handled(),
+                _ => EventResult::Ignored,
+            });
+
+            let mut container = imba::container::container(arena, size);
+            // The click-away catcher behind the dialog; windowed, it
+            // also casts the sheet's shadow.
             let catcher =
                 leaf::<PeekerCommand>(size.width, size.height).event(|_arena, event, _size| {
                     match event {
@@ -767,157 +1057,19 @@ impl View for Peeker {
                         _ => EventResult::Ignored,
                     }
                 });
-            if self.floored {
-                container.place(0.0, 0.0, floor.wrap(catcher));
-                let echo = inset * 0.5;
-                container.place(
-                    inset + echo,
-                    inset + echo,
-                    floor.wrap(Hairline::new(sheet_rule).bottom().right().wrap(leaf::<
-                        PeekerCommand,
-                    >(
-                        panel_size.width,
-                        panel_size.height,
-                    ))),
-                );
-            } else {
-                container.place(0.0, 0.0, catcher);
-            }
-
-            // The list PANEL — the input in its well, the rows, the
-            // footer band — built in panel coordinates; the chrome
-            // DECORATES it (opaque sheet windowed, a single divider
-            // hairline on the glass).
-            let mut panel = imba::container::container(arena, panel_size);
-
-            let well_size = Size::new(
-                panel_size.width - chrome.input_inset_x,
-                input_height - chrome.input_inset_y,
-            );
-            let mut well = imba::container::container(arena, well_size);
-            well.place(
-                chrome.input_inset_x * 0.5 + 1.0,
-                chrome.input_inset_y * 0.5 + 2.0,
-                input_editor,
-            );
-            panel.place(
-                chrome.input_inset_x * 0.5,
-                chrome.input_inset_y * 0.5,
-                Surface::fill(chrome.well.0)
-                    .radius(chrome.well_radius)
-                    .wrap(well),
-            );
-
-            panel.place(
-                1.0,
-                list_top - inset,
-                imba::layout::Layout::layout(
-                    self.list.display(arena, store, ui),
-                    arena,
-                    Constraints::tight(Size::new(list_width, list_height)),
-                )
-                .map(PeekerCommand::Rows),
-            );
-
-            // The footer band: the hint labels centered in the row
-            // (the design-system row rule); the texts ignore presses,
-            // so the catcher's close-on-click answers underneath.
-            let hint_metrics = hint_font.metrics().1;
-            let hint_height = (-hint_metrics.ascent + hint_metrics.descent)
-                .ceil()
-                .max(1.0);
-            let band_size = Size::new(panel_size.width, row_height);
-            let mut band = imba::container::container(arena, band_size);
-            band.place_boxed(
-                chrome.row_text_x,
-                ((row_height - hint_height) * 0.5).max(0.0),
-                imba::layout::text(
-                    ui,
-                    format!(
-                        "{} matched   enter open   esc dismiss",
-                        match_count + hidden
-                    ),
-                    hint_font.clone(),
-                    chrome.dim_text.0,
-                )
-                .layout(arena, Constraints::tight(size).loosen()),
-            );
-            if self.floored {
-                panel.place(
-                    0.0,
-                    panel_size.height - row_height,
-                    Hairline::new(chrome.rule.0).top().wrap(band),
-                );
-            } else {
-                panel.place(0.0, panel_size.height - row_height, band);
-            }
-
-            if self.floored {
-                container.place(
-                    inset,
-                    inset,
-                    floor.wrap(Hairline::around(chrome.rule.0).wrap(panel)),
-                );
-            } else {
-                // The GLASS face: the host's island paints the floor;
-                // only the hairline between the list and the preview
-                // remains.
-                container.place(
-                    inset,
-                    inset,
-                    Hairline::new(chrome.rule.0).right().wrap(panel),
-                );
-            }
-            if !has_preview {
-                let row_ascent = -row_font.metrics().1.ascent;
-                container.place_boxed(
-                    preview_x,
-                    list_top + chrome.no_preview_offset - row_ascent,
-                    imba::layout::text(ui, "no preview", row_font.clone(), chrome.dim_text.0)
-                        .layout(arena, Constraints::tight(size).loosen()),
-                );
-            }
-
-            if let Some(slot) = &self.preview {
-                let preview_height = (size.height - list_top - margin).max(1.0);
-                match slot {
-                    PreviewSlot::Editor(preview) => {
-                        let pane = imba::layout::Layout::layout(
-                            preview.pane.display(arena, store, ui),
-                            arena,
-                            Constraints::tight(Size::new(preview_width, preview_height)),
-                        )
-                        .map(PeekerCommand::Preview)
-                        .focus_scope(false);
-                        container.place(preview_x, list_top, pane);
-                    }
-                    PreviewSlot::Widget(index) => {
-                        if let Some((_, widget)) = self.widgets.get(*index) {
-                            let mounted = widget
-                                .layout_dyn(
-                                    arena,
-                                    store,
-                                    ui,
-                                    Constraints::tight(Size::new(preview_width, preview_height)),
-                                )
-                                .map(PeekerCommand::Widget)
-                                .focus_scope(false);
-                            container.place(preview_x, list_top, mounted);
-                        }
-                    }
+            match self.floored {
+                true => {
+                    container.place(0.0, 0.0, catcher.paint_below(sheet.shadow_painter(dialog)));
+                    container.place(dialog.left, dialog.top, sheet.wrap(sheet_box));
                 }
-
-                let shield = leaf::<PeekerCommand>(preview_width, preview_height).event(
-                    |_arena, event, _size| match event {
-                        Event::MouseDown { .. } => EventResult::handled(),
-                        _ => EventResult::Ignored,
-                    },
-                );
-                container.place(preview_x, list_top, shield);
+                false => {
+                    container.place(0.0, 0.0, catcher);
+                    container.place(dialog.left, dialog.top, sheet_box);
+                }
             }
 
             // Movement and Enter live in the controller's overlay.
-            let empty = match_count == 0;
+            let empty = self.labels.is_empty();
             let keymap = leaf::<PeekerCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
@@ -936,6 +1088,88 @@ impl View for Peeker {
     }
 }
 
+impl Peeker {
+    /// The preview's header: the file's name, its full path (the
+    /// workspace folder quiet, the name bright), and at the far
+    /// right how long the file is — one baseline, a hairline under.
+    fn preview_header<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        width: f32,
+    ) -> imba::ThunkBox<'a, PeekerCommand> {
+        let themes = ::editor::env::Themes::of(store);
+        let theme = themes.ui();
+        let chrome = &theme.peeker.jump;
+        let ink = &theme.ink;
+        let title = sheet::styled(ui, &chrome.preview_title, ink.ink_bright.0);
+        let path = |color| sheet::mono(ui, chrome.path_size, color);
+        let selected = self.selected();
+        let mut row = imba::layout::Row::new(arena);
+        if let Some(location) = self.location_at(selected) {
+            let (folder, dir) = self.place_of(location);
+            let dir = match dir.is_empty() {
+                true => dir,
+                false => format!("{dir}/"),
+            };
+            row = row
+                .child_by_baseline(hikit::ui::text(&title, location.name()))
+                .child_by_baseline(hikit::ui::text(&path(ink.ink_4.0), folder).pad_insets(
+                    Insets {
+                        left: chrome.preview_gap,
+                        ..Default::default()
+                    },
+                ))
+                .child_by_baseline(hikit::ui::text(&path(ink.ink_3.0), dir))
+                .child_by_baseline(hikit::ui::text(&path(ink.ink.0), location.name()));
+        } else if let Some(index) = self.widget_at(selected) {
+            let name = self.widget_titles.get(index).cloned().unwrap_or_default();
+            row = row.child_by_baseline(hikit::ui::text(&title, name));
+        }
+        row = row.weighted(1.0, imba::layout::Fill::new().height(0.0));
+        let lines = match &self.preview {
+            Some(PreviewSlot::Editor(preview)) => {
+                documents::OpenDocuments::document(store, self.documents, preview.document)
+                    .map(|document| document.text().line_count().0)
+            }
+            _ => None,
+        };
+        if let Some(lines) = lines {
+            let noun = match lines {
+                1 => "line",
+                _ => "lines",
+            };
+            row = row.child_by_baseline(
+                hikit::ui::text(
+                    &hikit::ui::brief(store, ui).sized(chrome.meta_size),
+                    format!("{lines} {noun}"),
+                )
+                .pad_insets(Insets {
+                    left: chrome.preview_gap,
+                    ..Default::default()
+                }),
+            );
+        }
+        let laid = row
+            .pad_insets(Insets {
+                left: chrome.preview_pad_left,
+                right: chrome.preview_pad_right,
+                top: chrome.preview_pad_top,
+                bottom: chrome.preview_pad_bottom,
+            })
+            .width(width)
+            .layout(
+                arena,
+                Constraints {
+                    min: Size::default(),
+                    max: Size::new(width, f32::MAX),
+                },
+            );
+        imba::ThunkBox::new(arena, hikit::ui::Hairline::new(ink.rule.0).bottom().wrap(laid))
+    }
+}
+
 fn subsequence_match(candidate: &str, query: &str) -> bool {
     let mut candidate = candidate.chars();
     query
@@ -943,12 +1177,40 @@ fn subsequence_match(candidate: &str, query: &str) -> bool {
         .all(|wanted| candidate.by_ref().any(|ch| ch == wanted))
 }
 
-fn list_width(size: Size, chrome: &::editor::theme::PeekerChrome) -> f32 {
-    (size.width * chrome.list_ratio).clamp(chrome.list_min, chrome.list_max)
+/// The selected row's flat wash, across the matches column.
+fn selection_style(store: &Store) -> imba::list::SelectionStyle {
+    imba::list::SelectionStyle {
+        fill: ::editor::env::Themes::of(store)
+            .ui()
+            .peeker
+            .jump
+            .selected_fill
+            .0,
+        ..hikit::rows::selection_style(store)
+    }
 }
 
-fn preview_width(size: Size, chrome: &::editor::theme::PeekerChrome) -> f32 {
-    (size.width - list_width(size, chrome) - chrome.margin * 2.0 - chrome.preview_margin).max(160.0)
+/// An absolute path as the user reads it: from home as "~".
+fn shown_path(segments: &[String]) -> String {
+    let path = format!("/{}", segments.join("/"));
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && path.starts_with(&home) => {
+            format!("~{}", &path[home.len()..])
+        }
+        _ => path,
+    }
+}
+
+/// The matches column's width in a dialog `width` wide — the
+/// chrome's, short of crowding the preview out.
+fn list_width(width: f32, chrome: &::editor::theme::JumpSheetChrome) -> f32 {
+    chrome.list_width.min(width * 0.5).max(1.0)
+}
+
+/// The preview's width in a dialog `width` wide: what the matches
+/// column and its hairline leave.
+fn preview_width(width: f32, chrome: &::editor::theme::JumpSheetChrome) -> f32 {
+    (width - list_width(width, chrome) - 1.0).max(160.0)
 }
 
 impl ModalView for Peeker {
@@ -1057,8 +1319,8 @@ impl himark::plugin::Plugin for PeekerPlugin {
                         folders,
                         fx,
                     )
-                    // The island's glass is the floor — the peeker
-                    // keeps only its well and the list divider.
+                    // The island's glass is the sheet — the peeker
+                    // keeps only its hairlines.
                     .unfloored()
                 },
             );

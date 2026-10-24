@@ -14,22 +14,18 @@ use imba::list::ActivateTrigger;
 use imba::list::ListOps;
 use imba::{
     arena::Arena,
-    constraints::Constraints,
-    container::container,
     effect::Effects,
     event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
+    layout::LayoutExt as _,
     store::Store,
-    thunk_ext::ThunkExt,
     ui::UiCtx,
     View, Widget,
 };
 use skia_safe::{Rect, Size};
 
+use crate::rows::{CommentFacts, CommentsRow};
 use crate::view::comments_markup;
 use crate::{AnnotationId, CommentRecord, Comments};
-
-const PANEL_PAD: f32 = 6.0;
 
 const COMMENT_KIND: &str = "comment";
 
@@ -87,11 +83,16 @@ fn comment_label(record: &CommentRecord) -> String {
     if label.is_empty() {
         label = "(empty comment)".to_owned();
     }
-    let count = record.entries.len();
-    if count > 1 {
-        label.push_str(&format!("  ·{count}"));
-    }
     label
+}
+
+fn comment_facts(record: &CommentRecord) -> CommentFacts {
+    CommentFacts {
+        quote: comment_label(record),
+        line: record.range.as_ref().map(|range| range.start.line + 1),
+        replies: record.entries.len().saturating_sub(1),
+        resolved: record.resolved,
+    }
 }
 
 fn folder_node(
@@ -123,7 +124,7 @@ fn folder_node(
         pick: false,
         dim: false,
         trail: Vec::new(),
-        tint: hikit::tree_item::TreeTint::Label,
+        tint: hikit::tree_item::TreeTint::Directory,
         action: None,
         children: dir_children(folder, trie, items),
     })
@@ -152,9 +153,9 @@ fn dir_children(
             key: location,
             label,
             pick: false,
-            dim: true,
+            dim: false,
             trail: Vec::new(),
-            tint: hikit::tree_item::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Directory,
             action: None,
             children: nested,
         });
@@ -196,7 +197,7 @@ fn dir_children(
             pick: false,
             dim: false,
             trail: Vec::new(),
-            tint: hikit::tree_item::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::File,
             action: None,
             children: leaves,
         });
@@ -204,7 +205,10 @@ fn dir_children(
     children
 }
 
-type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
+type Rows = ListKeyboardController<
+    ForestList<ResourceLocation, CommentsRow>,
+    ForestSearcher<ResourceLocation, CommentsRow>,
+>;
 
 #[derive(Clone)]
 pub enum CommentsViewCommand {
@@ -255,7 +259,7 @@ impl CommentsView {
     pub fn open(store: &Store, ui: &UiCtx, comments: imba::store::Id<Comments>) -> Self {
         let mut panel = Self {
             list: ListKeyboardController::searchable(
-                ForestList::new(store),
+                ForestList::wrapping(store, crate::rows::dress(Arc::default())),
                 ForestSearcher::default(),
                 store,
                 ui,
@@ -301,8 +305,37 @@ impl CommentsView {
                 children: Vec::new(),
             });
         }
+        let facts: std::collections::HashMap<ResourceLocation, CommentFacts> = items
+            .iter()
+            .filter_map(|(key, item)| match item {
+                RowItem::Comment(id) => records
+                    .iter()
+                    .find(|(record_id, _)| record_id == id)
+                    .map(|(_, record)| (key.clone(), comment_facts(record))),
+                _ => None,
+            })
+            .collect();
         self.items = items;
-        self.list.inner_mut().set(&nodes, store, ui);
+        // The dresser is per refresh; the standing list (cursor,
+        // matches, scroll) and the forest's folds move into the
+        // freshly dressed one.
+        let standing = self.list.inner_mut();
+        let mut dressed = ForestList::wrapping(store, crate::rows::dress(Arc::new(facts)));
+        std::mem::swap(dressed.list_mut(), standing.list_mut());
+        dressed.forest = standing.forest.clone();
+        *standing = dressed;
+        standing.set(&nodes, store, ui);
+    }
+
+    /// TEST SUPPORT: the comment facts the rows show, in list order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn comment_rows(&self) -> Vec<CommentFacts> {
+        self.list
+            .inner()
+            .list()
+            .rows()
+            .filter_map(|row| row.comment().cloned())
+            .collect()
     }
 
     pub fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
@@ -449,88 +482,75 @@ impl View for CommentsView {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let chrome = editor::env::Themes::of(store).ui().peeker.clone();
-            let chip_height = chrome.hint_size * 2.0;
-            let band = chrome.margin + chip_height + PANEL_PAD;
-            // The chip's band is RESERVED and the rest handed down; the
-            // panel is that band plus whatever the rows answered. It
-            // used to take `constraints.max` for its own size, which is
-            // infinity on the mounted road (the native scroller
-            // measures with an open ceiling) — the crash.
-            let rows = imba::layout::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                constraints.reserve(Size::new(0.0, band)),
+        let window = editor::env::Themes::of(store).ui().window.clone();
+        // The dock's caps line: what the list holds, and its one
+        // action as a quiet word at the right — no chip.
+        let caps = hikit::ui::caps(store, ui);
+        let quiet = hikit::ui::brief(store, ui);
+        let head = imba::layout::Row::new(arena)
+            .child_by_baseline(hikit::ui::text(&caps, "COMMENTS"))
+            .weighted(1.0, imba::layout::Fill::new().height(0.0))
+            .child_by_baseline(
+                hikit::ui::text(&quiet, "Send all").on_click(|| CommentsViewCommand::SendAll),
             )
-            .map(CommentsViewCommand::Rows);
-            // Both dimensions come from what the ROWS answered — never
-            // from the ceiling. A content-sized child may still answer
-            // below the floor, so the panel constrains back into the
-            // band it owes its parent.
-            let laid = imba::Thunk::size(&rows);
-            let size = constraints.constrain(Size::new(laid.width, band + laid.height));
-            let mut overlay = container(arena, size);
-            overlay.place(0.0, band, rows);
-
-            let chip_font = hikit::fonts::ui_font(ui, chrome.hint_size);
-            let advance = chip_font.measure_str("SEND ALL", None).0;
-            let chip_width = advance + chrome.hint_size * 2.0;
-            let chip_radius = chrome.well_radius;
-            let rule = chrome.rule.0;
-            let dim = chrome.dim_text.0;
-            let chip = leaf::<CommentsViewCommand>(chip_width, chip_height)
-                .paint_instead(move |_arena, canvas, rect| {
-                    let mut paint = skia_safe::Paint::default();
-                    paint.set_anti_alias(true);
-                    paint.set_stroke(true);
-                    paint.set_stroke_width(1.0);
-                    paint.set_color(rule);
-                    canvas.draw_round_rect(
-                        rect.with_inset((0.5, 0.5)),
-                        chip_radius,
-                        chip_radius,
-                        &paint,
-                    );
-                    paint.set_stroke(false);
-                    paint.set_color(dim);
-                    canvas.draw_str(
-                        "SEND ALL",
-                        (
-                            rect.left + (rect.width() - advance) * 0.5,
-                            rect.top + rect.height() * 0.5 + 6.0,
-                        ),
-                        &chip_font,
-                        &paint,
-                    );
-                })
-                .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::command(CommentsViewCommand::SendAll),
-                    _ => EventResult::Ignored,
-                });
-
-            // The key table lives in the controller's own overlay;
-            // the surface keeps only its dismissal.
-            let searching = self.list.searching();
-            let keymap = leaf::<CommentsViewCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
+            .pad_insets(imba::layout::Insets {
+                left: window.side_text_edge,
+                top: hikit::ui::space::XL + hikit::ui::space::S,
+                right: window.side_trailing,
+                bottom: hikit::ui::space::M,
+            });
+        // The key table lives in the controller's own overlay; the
+        // surface keeps only its dismissal.
+        let searching = self.list.searching();
+        let stale = Comments::generation(store, self.comments) != self.seen;
+        let panel = imba::layout::Column::new(arena)
+            .child(head)
+            .weighted(
+                1.0,
+                self.list
+                    .display(arena, store, ui)
+                    .map_layout(CommentsViewCommand::Rows),
+            )
+            .on_event(
+                move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::command(CommentsViewCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
-            );
-            overlay.place(0.0, 0.0, keymap);
-            overlay.place(
-                (size.width - chrome.margin - chip_width).max(0.0),
-                chrome.margin,
-                chip,
-            );
+            )
+            ;
+        Reconciled { panel, stale }
+    }
+}
 
-            let stale = Comments::generation(store, self.comments) != self.seen;
-            overlay.wrap(move |inner| ReconcileShell { inner, stale })
-        })
+/// The panel with its reconcile probe: a paint that finds the
+/// collection moved past the rows asks for a refresh.
+struct Reconciled<L> {
+    panel: L,
+    stale: bool,
+}
+
+impl<L> imba::layout::LayoutValue for Reconciled<L> {}
+
+impl<'a, L> imba::layout::Layout<'a, CommentsViewCommand> for Reconciled<L>
+where
+    L: imba::layout::Layout<'a, CommentsViewCommand> + 'a,
+{
+    fn layout(
+        self,
+        arena: &'a Arena,
+        constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, CommentsViewCommand> {
+        use imba::thunk_ext::ThunkExt as _;
+        let stale = self.stale;
+        imba::ThunkBox::new(
+            arena,
+            self.panel
+                .layout(arena, constraints)
+                .wrap(move |inner| ReconcileShell { inner, stale }),
+        )
     }
 }
 

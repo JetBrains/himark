@@ -132,6 +132,14 @@ impl Panel {
         }
     }
 
+    /// The title's quiet companion (`PanelView::subtitle`).
+    pub fn subtitle(&self, store: &Store) -> Option<String> {
+        match self {
+            Self::Editor(_) => None,
+            Self::Plugin(view) => view.subtitle(store),
+        }
+    }
+
     pub fn title(&self, store: &Store) -> String {
         match self {
             Self::Editor(pane) => {

@@ -107,95 +107,19 @@ pub fn label_slice(
     slice
 }
 
-pub fn panel_inset(ui: &::editor::theme::UiTheme) -> f32 {
-    ui.peeker.margin * 4.0 / 3.0
-}
-
-pub fn paint_panel_chrome(
-    shaper: &imba::layout::TextShaper,
-    canvas: &skia_safe::Canvas,
-    rect: skia_safe::Rect,
-    ui: &::editor::theme::UiTheme,
-    title_font: &skia_safe::Font,
-    title: &str,
-    context: &str,
-) {
-    let panel = &ui.panel;
-    let inset = panel_inset(ui);
-    let rect = rect.with_inset((inset, inset));
-    let mut paint = skia_safe::Paint::default();
-
-    let echo = inset * 0.5;
-    let sheet = rect.with_offset((echo, echo));
-    paint.set_color(ui.peeker.background.0);
-    canvas.draw_rect(sheet, &paint);
-    paint.set_color(ui.toolbar.rule.0);
-    for edge in [
-        skia_safe::Rect::from_xywh(sheet.left, sheet.bottom - 1.0, sheet.width(), 1.0),
-        skia_safe::Rect::from_xywh(sheet.right - 1.0, sheet.top, 1.0, sheet.height()),
-    ] {
-        canvas.draw_rect(edge, &paint);
-    }
-    paint.set_color(ui.peeker.background.0);
-    canvas.draw_rect(rect, &paint);
-    paint.set_color(panel.header_rule.0);
-    canvas.draw_rect(
-        skia_safe::Rect::from_xywh(
-            rect.left,
-            rect.top + panel.header_height - 1.0,
-            rect.width(),
-            1.0,
-        ),
-        &paint,
-    );
-    paint.set_color(ui.peeker.rule.0);
-    for edge in [
-        skia_safe::Rect::from_xywh(rect.left, rect.top, rect.width(), 1.0),
-        skia_safe::Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
-        skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-        skia_safe::Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
-    ] {
-        canvas.draw_rect(edge, &paint);
-    }
-
-    let x = rect.left + panel.title_x;
-    let baseline = rect.top + panel.title_baseline;
-    shaper.draw(
-        canvas,
-        title_font,
-        &title.to_uppercase(),
-        panel.title_color.0,
-        crate::combo::LABEL_TRACKING,
-        x,
-        baseline,
-    );
-    if !context.is_empty() {
-        let advance = shaper.advance(title_font, context);
-        shaper.draw(
-            canvas,
-            title_font,
-            context,
-            panel.title_color.0,
-            0.0,
-            rect.right - advance - panel.title_x,
-            baseline,
-        );
-    }
-}
-
 pub fn selection_style(store: &Store) -> SelectionStyle {
     let ui = editor::env::Themes::of(store).ui().clone();
+    // The typographic design: the current row is a flat WASH across
+    // the whole column — no well, no hairline, no accent bar
+    // (docs/Design.md, "no glass, no pills, no boxes").
     SelectionStyle {
-        fill: ui.tree.highlight.0,
-        // The islands design: a soft rounded well with a hairline,
-        // floated off the panel walls — no accent bar
-        // (docs/himark-islands-default.png).
+        fill: ui.ink.selected.0,
         accent: skia_safe::Color::TRANSPARENT,
         accent_width: 0.0,
         accent_inset: 0.0,
-        radius: 20.0,
-        border: skia_safe::Color::new(0x24ffffff),
-        inset_x: 10.0,
+        radius: 0.0,
+        border: skia_safe::Color::TRANSPARENT,
+        inset_x: 0.0,
         ..SelectionStyle::default()
     }
 }
@@ -270,7 +194,3 @@ mod tests {
         );
     }
 }
-
-/// The drawer panel's fixed width — the TOC/outline drawer and the
-/// shell's drawer animation share it.
-pub const DRAWER_WIDTH: f32 = 664.0;

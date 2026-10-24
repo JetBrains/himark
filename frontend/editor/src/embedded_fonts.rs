@@ -34,6 +34,70 @@ pub fn code_font_cuts() -> &'static [&'static [u8]] {
     &JETBRAINS_MONO
 }
 
+/// The code family's name, as the font declares it.
+pub const CODE_FAMILY: &str = "JetBrains Mono";
+
+#[cfg(not(target_os = "emscripten"))]
+static CODE_TYPEFACE: OnceLock<Typeface> = OnceLock::new();
+
+/// The code face's regular cut, for skia-side chrome that sets the
+/// margin register in mono (keys, tool invocations, line numbers).
+pub fn code_typeface() -> Typeface {
+    #[cfg(not(target_os = "emscripten"))]
+    {
+        CODE_TYPEFACE
+            .get_or_init(|| {
+                FontMgr::new()
+                    .new_from_data(skia_safe::Data::new_copy(JETBRAINS_MONO[0]), None)
+                    .expect("embedded JetBrains Mono loads")
+            })
+            .clone()
+    }
+    #[cfg(target_os = "emscripten")]
+    {
+        typeface()
+    }
+}
+
+/// The CHROME FONT ships in the binary too: Bricolage Grotesque, one
+/// variable family (opsz · wdth · wght) for every chrome size — the
+/// typographic redesign's whole UI voice (docs/Design.md). Both text
+/// roads register these bytes; `chrome_typeface` instances it for
+/// skia-side metrics.
+#[cfg(not(target_os = "emscripten"))]
+static CHROME: &[u8] = include_bytes!("../assets/BricolageGrotesque-Variable.ttf");
+
+#[cfg(not(target_os = "emscripten"))]
+pub fn chrome_font_bytes() -> &'static [u8] {
+    CHROME
+}
+
+/// The chrome family's name, as the font declares it.
+pub const CHROME_FAMILY: &str = "Bricolage Grotesque";
+
+#[cfg(not(target_os = "emscripten"))]
+static CHROME_TYPEFACE: OnceLock<Typeface> = OnceLock::new();
+
+/// The chrome face at its DEFAULT variation — callers instance a
+/// weight/width with `clone_with_arguments`. Falls back to the text
+/// face on the web, where the chrome arrives over the wire.
+pub fn chrome_typeface() -> Typeface {
+    #[cfg(not(target_os = "emscripten"))]
+    {
+        CHROME_TYPEFACE
+            .get_or_init(|| {
+                FontMgr::new()
+                    .new_from_data(skia_safe::Data::new_copy(CHROME), None)
+                    .expect("embedded Bricolage Grotesque loads")
+            })
+            .clone()
+    }
+    #[cfg(target_os = "emscripten")]
+    {
+        typeface()
+    }
+}
+
 static TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
 #[cfg(not(target_os = "emscripten"))]

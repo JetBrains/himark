@@ -69,7 +69,8 @@ impl crate::document::Document {
         let text = &state.placeholder.as_ref()?.text;
         Some(ShapedLine::placeholder(
             text,
-            theme.ui().peeker.dim_text.0,
+            state.input_style,
+            theme.ui().ink.placeholder.0,
             ui,
             theme,
             state.layout.layout_width(),
@@ -90,9 +91,14 @@ impl crate::document::Document {
         let extras = self.extras_keyed(editor);
         let overlaid = crate::markup::OverlaidMarkup::new(self.markup(), &extras);
         let caret_chrome = &theme.ui().caret;
+        // An input's caret is the LIVE bar; a document's the code caret.
+        let (caret_color, caret_width) = match state.input_style {
+            Some(_) => (caret_chrome.input_color.0, caret_chrome.input_width),
+            None => (caret_chrome.color.0, caret_chrome.width),
+        };
         let mut paint = Paint::default();
         paint.set_anti_alias(false);
-        paint.set_color(caret_chrome.color.0);
+        paint.set_color(caret_color);
 
         let mut shaped_line: Option<(u32, ShapedLine)> = None;
 
@@ -103,7 +109,7 @@ impl crate::document::Document {
                 Rect::from_xywh(
                     caret_x,
                     caret_top,
-                    caret_chrome.width,
+                    caret_width,
                     caret_height.max(caret_chrome.min_height),
                 ),
                 &paint,
@@ -162,7 +168,7 @@ impl crate::document::Document {
                 Rect::from_xywh(
                     caret_x,
                     text_top + caret_top,
-                    caret_chrome.width,
+                    caret_width,
                     caret_height.max(caret_chrome.min_height),
                 ),
                 &paint,

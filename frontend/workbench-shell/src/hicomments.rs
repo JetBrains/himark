@@ -77,6 +77,7 @@ impl himark::commands::HimarkCommand for ToggleCommentsView {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "comments.view",
+        label: "Comments",
         order: 1.5,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

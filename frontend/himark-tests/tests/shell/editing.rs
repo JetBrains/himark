@@ -946,7 +946,15 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
 
     let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
     app.draw_window(app.sole_window(), surface.canvas());
-    let (click_x, click_y) = (140.0, 160.0);
+    // At the text's start (past the gutter and the content inset),
+    // under the header band.
+    let (click_x, click_y) = {
+        let ui = editor::env::Themes::of(app.store()).ui().clone();
+        (
+            ui.editor_gutter.width + ui.window.content_pad + 8.0,
+            ui.toolbar.height + 60.0,
+        )
+    };
     let _ = himark::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
     app.draw_window(app.sole_window(), surface.canvas());
 
@@ -1757,7 +1765,8 @@ fn ime_hit_test_covers_an_empty_document() {
         "the startup document is empty"
     );
 
-    for y in [100.0, 300.0, 500.0] {
+    // Below the column header (the band is 104 physical px now).
+    for y in [150.0, 300.0, 500.0] {
         assert_eq!(
             app.with_ime_client(app.sole_window(), |client| client.char_index_at(400.0, y))
                 .expect("focused"),

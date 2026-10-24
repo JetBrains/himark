@@ -51,6 +51,7 @@ impl crate::commands::HimarkCommand for NavigateToPlace {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "toc.toggle",
+        label: "Contents",
         order: 2.0,
         side: ::workbench::toolbar::ToolbarSide::Left,
         glyph: std::sync::Arc::new(|canvas, rect, color| {

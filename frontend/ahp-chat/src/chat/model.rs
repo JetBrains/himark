@@ -766,12 +766,28 @@ fn spent(usage: &UsageInfo) -> Option<String> {
         said.push(model.clone());
     }
     if let Some(input) = usage.input_tokens {
-        said.push(format!("{input} in"));
+        said.push(format!("{} in", grouped(input)));
     }
     if let Some(output) = usage.output_tokens {
-        said.push(format!("{output} out"));
+        said.push(format!("{} out", grouped(output)));
     }
-    (!said.is_empty()).then(|| format!("*{}*", said.join(" · ")))
+    (!said.is_empty()).then(|| said.join(" · "))
+}
+
+/// A count with its thousands grouped: 2757 reads "2,757".
+fn grouped(count: i64) -> String {
+    let digits = count.unsigned_abs().to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    match count < 0 {
+        true => format!("-{out}"),
+        false => out,
+    }
 }
 
 /// One wire part, read into the parts it lays — a tool call brings its

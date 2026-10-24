@@ -1,5 +1,12 @@
 # himark — Apple apps (macOS + iOS)
 
+> **Which app is which.** `himark-macOS` is THE macOS app: the Rust
+> workbench (every column, header, drawer and sheet drawn by the
+> engine — docs/ui/design-system.md) inside one AppKit window.
+> `himark-iOS` is the SwiftUI shell, kept for iOS only. `himark-desktop`
+> — the SwiftUI shell on macOS — is left behind: it still builds, but
+> the workbench is where macOS work happens.
+
 One Xcode project, two targets (`himark-macOS`, `himark-iOS`), over himark's
 C embedding ABI exported by `crates/himark-api`. Each app owns its window, the Metal
 layer, the display link — and skia and the GPU surface. himark is a headless

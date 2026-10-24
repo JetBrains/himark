@@ -94,6 +94,11 @@ pub struct Editor {
 
     pub(crate) placeholder: Option<EditorPlaceholder>,
 
+    /// An INPUT editor's covering style (a query, a field): the
+    /// placeholder shapes with it and the caret draws in the input's
+    /// live ink. None for a document.
+    pub(crate) input_style: Option<crate::theme::StyleId>,
+
     pub(crate) scroll_stripes: crate::scroll_stripe::StripeSlot,
 
     /// Where the viewport's anchored content sits AFTER a height
@@ -203,6 +208,7 @@ impl Editor {
             drag: None,
             pair_managed: false,
             placeholder: None,
+            input_style: None,
             scroll_stripes: crate::scroll_stripe::StripeSlot::default(),
             settle_to: None,
             completion: Default::default(),

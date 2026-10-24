@@ -9,9 +9,13 @@
 
 use std::sync::Arc;
 
+mod chrome;
+mod entry;
+
+pub use entry::{ContentsEntry, ContentsRow, Place};
+
 use imba::{
     arena::Arena,
-    constraints::Constraints,
     event::{Event, EventResult, Key as InputKey},
     layout::LayoutExt as _,
     store::Store,
@@ -300,31 +304,26 @@ impl View for TocView {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        {
-            let theme_ui = editor::env::Themes::of(store).ui().clone();
-            let title_font = hikit::fonts::ui_font(ui, theme_ui.panel.title_size);
-            let searching = self.search.searching();
-            DrawerPanel {
-                content: imba::layout::LayoutBox::new(
-                    arena,
-                    self.search
-                        .display(arena, store, ui)
-                        .map_layout(TocCommand::List),
-                ),
-                theme: theme_ui,
-                title_font,
-                shaper: imba::layout::TextShaper::of(ui),
-                context: self.context.clone(),
-                scaled_pad: true,
-                keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::command(TocCommand::Dismiss),
-                    _ => EventResult::Ignored,
-                },
-            }
-        }
+        let searching = self.search.searching();
+        contents_column(
+            arena,
+            store,
+            ui,
+            self.context.clone(),
+            imba::layout::LayoutBox::new(
+                arena,
+                self.search
+                    .display(arena, store, ui)
+                    .map_layout(TocCommand::List),
+            ),
+            move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
+                Event::KeyDown {
+                    key: InputKey::Escape,
+                    ..
+                } if !searching => EventResult::command(TocCommand::Dismiss),
+                _ => EventResult::Ignored,
+            },
+        )
     }
 }
 
@@ -359,6 +358,9 @@ pub struct OutlineRow {
 pub struct OutlineEffect {
     document: ::editor::document::Document,
     stamp: (u64, u64),
+    /// Where the caret stood at launch — the entry holding it is the
+    /// drawer's CURRENT one.
+    caret: Option<u32>,
 }
 
 impl std::fmt::Display for OutlineEffect {
@@ -376,7 +378,12 @@ impl imba::effect::Effect for OutlineEffect {
 #[doc(hidden)]
 pub struct OutlineRows {
     pub rows: Vec<OutlineRow>,
+    /// The drawer's reading of each row, parallel to `rows`.
+    pub entries: Vec<ContentsEntry>,
     pub stamp: (u64, u64),
+    pub caret: Option<u32>,
+    /// The innermost row holding the caret.
+    pub current: Option<OutlineKey>,
 }
 
 pub struct OutlineHandler;
@@ -388,6 +395,7 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
         let mut rows = Vec::with_capacity(items.len().min(OUTLINE_CAP));
 
         let mut enclosing: Vec<u32> = Vec::new();
+        let mut current = None;
         for (syntax, key, range, item) in items {
             if rows.len() >= OUTLINE_CAP {
                 break;
@@ -397,6 +405,14 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
             }
             let depth = enclosing.len().min(u8::MAX as usize) as u8;
             enclosing.push(range.end);
+            // Items arrive in start order, so the LAST one holding the
+            // caret is the innermost.
+            if effect
+                .caret
+                .is_some_and(|caret| range.start <= caret && caret < range.end)
+            {
+                current = Some((syntax, key));
+            }
             let line = documents::text_ext::line_col_at(&mut view, range.start as usize).line + 1;
             rows.push(OutlineRow {
                 syntax,
@@ -406,11 +422,64 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
                 line,
             });
         }
+        let prose = effect
+            .document
+            .syntax()
+            .is_some_and(|syntax| syntax.language == "markdown");
+        let entries = read_entries(&rows, prose, current);
         OutlineRows {
             rows,
+            entries,
             stamp: effect.stamp,
+            caret: effect.caret,
+            current,
         }
     }
+}
+
+/// How the drawer READS the outline: each title split into its kind
+/// and name, top-level containers turned group heads, nesting into
+/// member indent. Prose outlines (or titles that never name a kind)
+/// are all name.
+fn read_entries(rows: &[OutlineRow], prose: bool, current: Option<OutlineKey>) -> Vec<ContentsEntry> {
+    let split: Vec<(Option<&str>, &str)> = rows
+        .iter()
+        .map(|row| match prose {
+            true => (None, row.title.trim()),
+            false => entry::split_kind(&row.title),
+        })
+        .collect();
+    let prose = prose || split.iter().all(|(kind, _)| kind.is_none());
+    let mut entries = Vec::with_capacity(rows.len());
+    let mut grouped = false;
+    for (index, row) in rows.iter().enumerate() {
+        let (kind, name) = match prose {
+            true => (None, row.title.trim()),
+            false => split[index],
+        };
+        let holds = rows
+            .get(index + 1)
+            .is_some_and(|next| next.depth > row.depth);
+        if row.depth == 0 {
+            grouped = holds && kind.map_or(prose, entry::is_group_kind);
+        }
+        let place = match row.depth == 0 && grouped {
+            true => Place::Group { first: index == 0 },
+            false => Place::Entry {
+                strong: kind.is_some_and(entry::is_type_kind),
+                indent: row.depth.saturating_sub(u8::from(grouped)),
+            },
+        };
+        entries.push(ContentsEntry {
+            kind: kind.map(str::to_owned),
+            name: name.to_owned(),
+            line: row.line,
+            place,
+            current: current == Some((row.syntax, row.key)),
+            prose,
+        });
+    }
+    entries
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
@@ -436,6 +505,16 @@ impl std::fmt::Display for OutlineCommand {
     }
 }
 
+/// The outline's keyboard list: a forest of `ContentsRow`s.
+pub type OutlineSearch = ListKeyboardController<
+    ForestList<OutlineKey, ContentsRow>,
+    ForestSearcher<OutlineKey, ContentsRow>,
+>;
+
+/// What a derivation was taken against: the document's stamp and
+/// where the caret stood.
+type Derivation = ((u64, u64), Option<u32>);
+
 pub struct OutlineView {
     /// The jump-to-place request builder, injected at mount — the
     /// shell's window rides in the closure; the drawer never holds
@@ -446,11 +525,11 @@ pub struct OutlineView {
     location: editor::location::ResourceLocation,
     rows: Vec<OutlineRow>,
 
-    derived: Option<(u64, u64)>,
+    derived: Option<Derivation>,
 
-    launched: Option<(u64, u64)>,
+    launched: Option<Derivation>,
     lane: Option<imba::effect::CancellationToken>,
-    search: ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>,
+    search: OutlineSearch,
     request: Option<ModalRequest>,
 }
 
@@ -469,6 +548,28 @@ impl Clone for OutlineView {
             request: None,
         }
     }
+}
+
+/// The forest's row dresser for one landing: each key reads its
+/// entry; a key the landing never saw (none should) falls back to
+/// its bare title.
+fn contents_rows(
+    entries: Arc<std::collections::HashMap<OutlineKey, ContentsEntry>>,
+) -> hikit::forest::Wrap<OutlineKey, ContentsRow> {
+    Arc::new(move |row, key| {
+        let entry = entries.get(key).cloned().unwrap_or_else(|| ContentsEntry {
+            kind: None,
+            name: row.inner().text().to_owned(),
+            line: 0,
+            place: Place::Entry {
+                strong: false,
+                indent: row.depth().min(u16::from(u8::MAX)) as u8,
+            },
+            current: false,
+            prose: true,
+        });
+        ContentsRow::new(entry)
+    })
 }
 
 impl OutlineView {
@@ -490,7 +591,7 @@ impl OutlineView {
             launched: None,
             lane: None,
             search: ListKeyboardController::searchable(
-                ForestList::new(store),
+                ForestList::wrapping(store, contents_rows(Arc::default())),
                 ForestSearcher::default(),
                 store,
                 ui,
@@ -511,10 +612,19 @@ impl OutlineView {
     /// The search controller — the shell's tests drive the key
     /// table through it.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn search(
-        &self,
-    ) -> &ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>> {
+    pub fn search(&self) -> &OutlineSearch {
         &self.search
+    }
+
+    /// TEST SUPPORT: the entries the drawer shows, in list order.
+    #[doc(hidden)]
+    pub fn entries(&self) -> Vec<ContentsEntry> {
+        self.search
+            .inner()
+            .list()
+            .rows()
+            .map(|row| row.entry().clone())
+            .collect()
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
@@ -537,8 +647,18 @@ impl OutlineView {
             .map(|row| row.title.clone())
     }
 
-    fn stamp_of(document: &::editor::document::Document) -> (u64, u64) {
-        (document.revision(), document.markup_generation())
+    /// The document's stamp and its caret — what a derivation is
+    /// taken against. The caret is the first editor's (a document
+    /// shown twice has no one "here").
+    fn derivation_of(document: &::editor::document::Document) -> Derivation {
+        let caret = document
+            .editor_ids()
+            .next()
+            .map(|editor| document.caret_byte(editor));
+        (
+            (document.revision(), document.markup_generation()),
+            caret,
+        )
     }
 
     fn relaunch(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, OutlineCommand>) {
@@ -547,14 +667,15 @@ impl OutlineView {
         else {
             return;
         };
-        let stamp = Self::stamp_of(document);
-        if self.launched == Some(stamp) || self.derived == Some(stamp) {
+        let derivation = Self::derivation_of(document);
+        if self.launched == Some(derivation) || self.derived == Some(derivation) {
             return;
         }
-        self.launched = Some(stamp);
+        self.launched = Some(derivation);
         let effect = OutlineEffect {
             document: document.substance(),
-            stamp,
+            stamp: derivation.0,
+            caret: derivation.1,
         };
         fx.relaunch_erased(
             &mut self.lane,
@@ -574,6 +695,68 @@ impl OutlineView {
             caret: range.start,
             scroll_y: 0.0,
         }));
+    }
+
+    /// Land a derivation: the rows nest into the forest, dressed by
+    /// THIS landing's entries — the list (cursor, matches, scroll)
+    /// and the folds carry over. The first landing puts the cursor
+    /// on the entry the caret is in.
+    fn land(&mut self, landed: OutlineRows, store: &Store, ui: &UiCtx) {
+        let first = self.derived.is_none();
+        self.derived = Some((landed.stamp, landed.caret));
+        self.lane = None;
+        let entries: std::collections::HashMap<OutlineKey, ContentsEntry> = landed
+            .rows
+            .iter()
+            .zip(landed.entries)
+            .map(|(row, entry)| ((row.syntax, row.key), entry))
+            .collect();
+        self.rows = landed.rows;
+
+        let mut nodes: Vec<ForestNode<OutlineKey>> = Vec::new();
+        let mut stack: Vec<(u8, ForestNode<OutlineKey>)> = Vec::new();
+        let settle = |stack: &mut Vec<(u8, ForestNode<OutlineKey>)>,
+                      nodes: &mut Vec<ForestNode<OutlineKey>>,
+                      depth: u8| {
+            while stack.last().is_some_and(|(d, _)| *d >= depth) {
+                let (_, done) = stack.pop().expect("standing");
+                match stack.last_mut() {
+                    Some((_, parent)) => parent.children.push(done),
+                    None => nodes.push(done),
+                }
+            }
+        };
+        for row in &self.rows {
+            settle(&mut stack, &mut nodes, row.depth);
+            stack.push((
+                row.depth,
+                ForestNode {
+                    key: (row.syntax, row.key),
+                    label: row.title.clone(),
+                    pick: true,
+                    dim: false,
+                    trail: Vec::new(),
+                    tint: hikit::tree_item::TreeTint::Label,
+                    action: None,
+                    children: Vec::new(),
+                },
+            ));
+        }
+        settle(&mut stack, &mut nodes, 0);
+
+        // The dresser is per landing; the standing list and forest
+        // move into the freshly dressed one.
+        let standing = self.search.inner_mut();
+        let mut dressed = ForestList::wrapping(store, contents_rows(Arc::new(entries)));
+        std::mem::swap(dressed.list_mut(), standing.list_mut());
+        dressed.forest = standing.forest.clone();
+        *standing = dressed;
+        standing.set(&nodes, store, ui);
+        if let (true, Some(current)) = (first, landed.current) {
+            let list = standing.list_mut();
+            list.select_only(current);
+            list.reveal_row(current, imba::event::Placement::EnsureVisible);
+        }
     }
 }
 
@@ -624,9 +807,7 @@ impl View for OutlineView {
                     }
                     _ => {}
                 }
-                type Search =
-                    ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>;
-                if let Some((index, trigger)) = Search::activated(&command) {
+                if let Some((index, trigger)) = OutlineSearch::activated(&command) {
                     if let Some(key) = self.search.inner().list().key_at(index).copied() {
                         let searching = self.search.searching();
                         self.pick(store, key);
@@ -654,46 +835,10 @@ impl View for OutlineView {
             }
             OutlineCommand::Refresh => self.relaunch(store, fx),
             OutlineCommand::Landed(landed) => {
-                if self.derived.is_some_and(|derived| derived == landed.stamp) {
+                if self.derived == Some((landed.stamp, landed.caret)) {
                     return;
                 }
-                self.derived = Some(landed.stamp);
-                self.lane = None;
-                self.rows = landed.rows;
-                let line_color = editor::env::Themes::of(store).ui().peeker.dim_text.0;
-
-                let mut nodes: Vec<ForestNode<OutlineKey>> = Vec::new();
-                let mut stack: Vec<(u8, ForestNode<OutlineKey>)> = Vec::new();
-                let settle = |stack: &mut Vec<(u8, ForestNode<OutlineKey>)>,
-                              nodes: &mut Vec<ForestNode<OutlineKey>>,
-                              depth: u8| {
-                    while stack.last().is_some_and(|(d, _)| *d >= depth) {
-                        let (_, done) = stack.pop().expect("standing");
-                        match stack.last_mut() {
-                            Some((_, parent)) => parent.children.push(done),
-                            None => nodes.push(done),
-                        }
-                    }
-                };
-                for row in &self.rows {
-                    settle(&mut stack, &mut nodes, row.depth);
-                    stack.push((
-                        row.depth,
-                        ForestNode {
-                            key: (row.syntax, row.key),
-                            label: row.title.clone(),
-                            pick: true,
-                            dim: false,
-                            trail: vec![(row.line.to_string(), line_color)],
-                            tint: hikit::tree_item::TreeTint::Label,
-                            action: None,
-                            children: Vec::new(),
-                        },
-                    ));
-                }
-                settle(&mut stack, &mut nodes, 0);
-
-                self.search.inner_mut().set(&nodes, store, ui);
+                self.land(landed, store, ui);
             }
         }
     }
@@ -704,38 +849,59 @@ impl View for OutlineView {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        {
-            let theme_ui = editor::env::Themes::of(store).ui().clone();
-            let title_font = hikit::fonts::ui_font(ui, theme_ui.panel.title_size);
-            let stale =
-                documents::OpenDocuments::document_ref(store, self.documents, self.document)
-                    .is_some_and(|document| {
-                        let stamp = Self::stamp_of(document);
-                        self.derived != Some(stamp) && self.launched != Some(stamp)
-                    });
-            let searching = self.search.searching();
-            DrawerPanel {
-                content: imba::layout::LayoutBox::new(
-                    arena,
-                    self.search
-                        .display(arena, store, ui)
-                        .map_layout(OutlineCommand::List),
-                ),
-                theme: theme_ui,
-                title_font,
-                shaper: imba::layout::TextShaper::of(ui),
-                context: self.location.name().to_owned(),
-                scaled_pad: false,
-                keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
-                    Event::Paint { .. } if stale => EventResult::command(OutlineCommand::Refresh),
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::command(OutlineCommand::Dismiss),
-                    _ => EventResult::Ignored,
-                },
-            }
-        }
+        let stale = documents::OpenDocuments::document_ref(store, self.documents, self.document)
+            .is_some_and(|document| {
+                let derivation = Self::derivation_of(document);
+                self.derived != Some(derivation) && self.launched != Some(derivation)
+            });
+        let searching = self.search.searching();
+        contents_column(
+            arena,
+            store,
+            ui,
+            self.location.name().to_owned(),
+            imba::layout::LayoutBox::new(
+                arena,
+                self.search
+                    .display(arena, store, ui)
+                    .map_layout(OutlineCommand::List),
+            ),
+            move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
+                Event::Paint { .. } if stale => EventResult::command(OutlineCommand::Refresh),
+                Event::KeyDown {
+                    key: InputKey::Escape,
+                    ..
+                } if !searching => EventResult::command(OutlineCommand::Dismiss),
+                _ => EventResult::Ignored,
+            },
+        )
+    }
+}
+
+/// The drawer's column around a list: "Contents" over its subject.
+fn contents_column<'a, Command: 'a, Keys>(
+    arena: &'a Arena,
+    store: &'a Store,
+    ui: &'a UiCtx,
+    subject: String,
+    content: imba::layout::LayoutBox<'a, Command>,
+    keys: Keys,
+) -> chrome::ContentsColumn<'a, Command, Keys>
+where
+    Keys: imba::layout::EventHandler<Command> + 'a,
+{
+    let theme = editor::env::Themes::of(store).ui().clone();
+    let header = hikit::header::ColumnHeader::new(arena, store, ui, theme.contents.text_edge)
+        .title("Contents")
+        .subtitle(subject);
+    chrome::ContentsColumn {
+        header,
+        content,
+        width: theme.window.side_width,
+        top_gap: theme.contents.top_gap,
+        ground: theme.ink.ground.0,
+        rule: theme.window.divider.0,
+        keys,
     }
 }
 
@@ -750,77 +916,5 @@ impl ModalView for OutlineView {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-/// The drawer panel, REIFIED (docs/ui/UI.md stage 2): panel chrome
-/// painted behind a shielded `DRAWER_WIDTH` surface, the content
-/// padded inside it, a full-size key surface underneath. The content
-/// pad depends on the incoming height, which is exactly why this is
-/// a layout struct and not a `display`-time composition.
-struct DrawerPanel<'a, Command, Keys> {
-    content: imba::layout::LayoutBox<'a, Command>,
-    theme: ::editor::theme::UiTheme,
-    title_font: skia_safe::Font,
-    shaper: std::rc::Rc<imba::layout::TextShaper>,
-    context: String,
-    /// The toc panel scales its content pad with the height; the
-    /// outline panel uses a hairline.
-    scaled_pad: bool,
-    keys: Keys,
-}
-
-impl<Command, Keys> imba::layout::LayoutValue for DrawerPanel<'_, Command, Keys> {}
-
-impl<'a, Command: 'a, Keys> imba::layout::Layout<'a, Command> for DrawerPanel<'a, Command, Keys>
-where
-    Keys: imba::layout::EventHandler<Command> + 'a,
-{
-    fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, Command> {
-        let size = constraints.max;
-        let inset = hikit::rows::panel_inset(&self.theme);
-        let header = self.theme.panel.header_height;
-        let (top, bottom) = match self.scaled_pad {
-            true => {
-                let pad = 8.0f32.min(size.height * 0.05);
-                (inset + header + pad, inset + pad)
-            }
-            false => (inset + header, inset + 1.0),
-        };
-        let DrawerPanel {
-            content,
-            theme,
-            title_font,
-            shaper,
-            context,
-            keys,
-            ..
-        } = self;
-        let panel = content
-            .pad_insets(imba::layout::Insets {
-                left: inset + 1.0,
-                top,
-                right: inset + 1.0,
-                bottom,
-            })
-            .backdrop(
-                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                    hikit::rows::paint_panel_chrome(
-                        &shaper,
-                        canvas,
-                        rect,
-                        &theme,
-                        &title_font,
-                        "Contents",
-                        &context,
-                    );
-                },
-            )
-            .shield()
-            .sized(hikit::rows::DRAWER_WIDTH, size.height);
-        imba::layout::ZBox::new(arena)
-            .child(imba::layout::Fill::new().on_event(keys))
-            .child(panel)
-            .layout(arena, constraints)
     }
 }

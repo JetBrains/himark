@@ -72,12 +72,3 @@ pub(crate) fn folder_label(folder: &str) -> String {
     let name = trimmed.rsplit('/').next().filter(|name| !name.is_empty());
     name.unwrap_or(trimmed).to_owned()
 }
-
-/// The short names of a session's folders, in order.
-pub(crate) fn folders_label(folders: &[String]) -> String {
-    folders
-        .iter()
-        .map(|folder| folder_label(folder))
-        .collect::<Vec<_>>()
-        .join(", ")
-}

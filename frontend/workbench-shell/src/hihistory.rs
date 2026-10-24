@@ -102,6 +102,7 @@ impl himark::commands::HimarkCommand for ToggleHistoryView {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: "history.view",
+        label: "History",
         order: 1.1,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

@@ -126,7 +126,14 @@ impl himark::commands::HimarkCommand for ShowFeedInDock {
         let panel = SearchView::open(store, ui, self.lists);
         fx.scope(
             move |command| himark::shell::content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(hikit::modal::Scrolled::new(panel)),
+                    OWNER,
+                    fx,
+                )
+            },
         );
         ::workbench::window::Windows::put(store, window, entity);
     }
@@ -183,11 +190,20 @@ impl himark::commands::HimarkCommand for ToggleSearchView {
         let lists = himark::workspace::entity_state(&entity).lists();
         let folders = ahp_session::session::folders::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
+        // The dock is the SCROLLER (the content-sizing law): the
+        // results lay their whole height and the wrapper scrolls them.
         let panel = SearchView::open(store, ui, lists);
         let owner = self.id();
         fx.scope(
             move |command| himark::shell::content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(hikit::modal::Scrolled::new(panel)),
+                    owner,
+                    fx,
+                )
+            },
         );
         ::workbench::window::Windows::put(store, window, entity);
     }
@@ -239,9 +255,8 @@ impl himark::commands::HimarkCommand for FocusSearchView {
                             panel.as_mut(),
                             store,
                             &ui,
-                            imba::dyn_view::DynCommand::new(SearchCommand::Focus(
-                                SearchArea::Input,
-                                None,
+                            imba::dyn_view::DynCommand::new(imba::scroll::ScrollCommand::Content(
+                                SearchCommand::Focus(SearchArea::Input, None),
                             )),
                             fx,
                         )
@@ -259,6 +274,7 @@ impl himark::commands::HimarkCommand for FocusSearchView {
 pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
     ::workbench::toolbar::ToolbarButton {
         command: OWNER,
+        label: "Find",
         order: 0.5,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

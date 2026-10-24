@@ -181,3 +181,68 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     assert_eq!(peeker.labels().len(), 200, "the list stops at the cap");
     assert_eq!(peeker.hidden_count(), 50, "the note counts the rest");
 }
+
+/// The jump sheet over a window, a query typed — the redesign's
+/// dialog (Jump.dc.html) at the mock's 2x size.
+/// `HIMARK_SHOT=<dir> cargo test -p peeker dump_jump_screenshot -- --ignored`
+#[test]
+#[ignore]
+fn dump_jump_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let mut app = boot();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    app.draw_window(app.sole_window(), surface.canvas());
+    let files: &[&[&str]] = &[
+        &["backend", "agent-host", "src", "main.rs"],
+        &["frontend", "ahp-chat", "src", "transcript.rs"],
+        &["frontend", "hikit", "src", "panel_tests.rs"],
+        &["frontend", "ahp-chat", "src", "composer.rs"],
+        &["frontend", "himark", "src", "startup_profile.rs"],
+        &["frontend", "ahp-chat", "src", "main.rs"],
+        &["frontend", "himark", "src", "app_ext.rs"],
+        &["tools", "grammar-pack", "src", "main.rs"],
+        &["frontend", "himark", "src", "main.rs"],
+        &["frontend", "himark", "src", "app.rs"],
+    ];
+    let body = "// Copyright © 2026 JetBrains s.r.o.\n// SPDX-License-Identifier: Apache-2.0\n\nfn main() {\n    let out = std::env::args()\n        .nth(1)\n        .expect(\"usage: grammar-pack <out-dir>\");\n    let out = std::path::PathBuf::from(out);\n    std::fs::create_dir_all(&out).expect(\"out dir\");\n}\n";
+    for path in files {
+        let location = editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
+            path.iter().map(|segment| segment.to_string()).collect::<Vec<_>>(),
+        );
+        assert!(app.perform_command(himark::app::opened(
+            app.sole_window(),
+            himark::app::OpenedDocument {
+                documents: app.sole_documents(),
+                name: path.last().unwrap().to_string(),
+                document: plain_document(body),
+                location: Some(location),
+                primary: true,
+                target: None,
+                focus: false,
+            },
+        )));
+    }
+    assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
+    app.draw_window(app.sole_window(), surface.canvas());
+    assert!(himark::test_driver::type_text(&mut app, "ar"));
+    for tick in 0..30 {
+        app.draw_window(app.sole_window(), surface.canvas());
+        let busy = himark::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
+        );
+        if !busy && tick > 1 {
+            break;
+        }
+    }
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::create_dir_all(&dir).expect("the shot dir");
+    std::fs::write(format!("{dir}/jump.png"), data.as_bytes()).expect("write");
+}

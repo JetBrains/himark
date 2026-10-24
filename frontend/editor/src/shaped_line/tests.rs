@@ -62,6 +62,7 @@ fn placeholder_geometry_is_identical_to_typed_text() {
     );
     let placeholder = ShapedLine::placeholder(
         source,
+        None,
         theme.ui().peeker.dim_text.0,
         crate::test_document::test_ui(),
         &theme,
@@ -187,6 +188,7 @@ fn selection_edges_sit_on_the_caret() {
     let source = "The quick brown fox jumps over the lazy dog";
     let shaped = ShapedLine::placeholder(
         source,
+        None,
         theme.ui().peeker.dim_text.0,
         crate::test_document::test_ui(),
         &theme,

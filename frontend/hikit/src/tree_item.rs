@@ -11,7 +11,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::{Paint, Size};
+use skia_safe::Size;
 
 /// What the label NAMES — resolved to a theme color at display time
 /// (rows live long in ropes; a baked color would survive a theme
@@ -136,13 +136,16 @@ impl View for TreeLabel {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let mut style = crate::ui::RowStyle::drawer(store, ui);
-        // The islands pitch: ~23pt rows (docs/himark-islands-default
-        // rail) — the M air read ~28pt, visibly looser than the mock.
         style.air = crate::ui::space::S;
         let tree = editor::env::Themes::of(store).ui().tree.clone();
+        // State is TYPOGRAPHIC (docs/Design.md): a directory is its
+        // name in the strong row rank with a dim "/" glued on; a
+        // file is the plain row rank; a note is dim.
         let label_style = match (self.dim, self.tint) {
             (true, _) => style.trail.clone(),
-            (false, TreeTint::Directory) => style.label.clone().colored(tree.directory.0),
+            (false, TreeTint::Directory) => {
+                crate::ui::row_strong(store, ui).colored(tree.directory.0)
+            }
             (false, TreeTint::File) => style.label.clone().colored(tree.file.0),
             (false, TreeTint::Label) => style.label.clone(),
         };
@@ -151,6 +154,9 @@ impl View for TreeLabel {
             row = row.badge_styled(&label_style.clone().colored(*color), glyph.clone());
         }
         row = row.label_styled(&label_style, self.label.clone());
+        if !self.dim && self.tint == TreeTint::Directory {
+            row = row.suffix_styled(&style.label.clone().colored(style.trail.color), "/");
+        }
         for (text, color) in &self.trail {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }
@@ -265,6 +271,12 @@ impl<V: Clone> TreeItemView<V> {
 
     pub fn inner(&self) -> &V {
         &self.inner
+    }
+
+    /// A branch's state — `Some(true)` while it stands expanded;
+    /// `None` for a leaf.
+    pub fn expanded(&self) -> Option<bool> {
+        self.expanded
     }
 
     pub fn depth(&self) -> u16 {
@@ -456,31 +468,10 @@ where
         let child_viewport =
             imba::container::viewport_for_child(viewport, rect).unwrap_or_default();
         match event {
+            // No disclosure glyph: expansion reads from the rows that
+            // hang under a name (docs/Design.md, "state is
+            // typographic"); the toggle zone stays where it was.
             Event::Paint { canvas, .. } => {
-                if let Some(expanded) = self.expanded {
-                    // The STANDARD chevron — the same stroke the
-                    // editor gutter draws for folds: down when
-                    // expanded, right when collapsed.
-                    let mut paint = Paint::default();
-                    paint.set_anti_alias(true);
-                    paint.set_color(self.color);
-                    paint.set_stroke(true);
-                    paint.set_stroke_width(2.0);
-                    let cx = self.triangle_x + self.triangle_half;
-                    let cy = self.size.height * 0.5;
-                    let arm = self.triangle_half * 0.8;
-                    let mut path = skia_safe::PathBuilder::new();
-                    if expanded {
-                        path.move_to((cx - arm, cy - arm * 0.6));
-                        path.line_to((cx, cy + arm * 0.8));
-                        path.line_to((cx + arm, cy - arm * 0.6));
-                    } else {
-                        path.move_to((cx - arm * 0.6, cy - arm));
-                        path.line_to((cx + arm * 0.8, cy));
-                        path.line_to((cx - arm * 0.6, cy + arm));
-                    }
-                    canvas.draw_path(&path.detach(), &paint);
-                }
                 canvas.save();
                 canvas.translate((self.offset, 0.0));
                 let result = self

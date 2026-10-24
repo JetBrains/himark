@@ -6,15 +6,12 @@ use std::sync::Arc;
 use ahp_types::state::SessionSummary;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
-use hikit::forest::TreeRow;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
-use hikit::tree_item::TreeLabel;
-type DrawerRowsCommand = imba::scroll::ScrollCommand<
-    imba::list::ListCommand<hikit::tree_item::TreeItemCommand<hikit::tree_item::TreeLabelCommand>>,
->;
+type DrawerRowsCommand =
+    imba::scroll::ScrollCommand<imba::list::ListCommand<std::convert::Infallible>>;
 use imba::list::ActivateTrigger;
 use imba::list::ListOps;
 use imba::{
@@ -23,6 +20,7 @@ use imba::{
     container::container,
     effect::Effects,
     event::{Event, EventResult, Key as InputKey},
+    layout::LayoutExt as _,
     leaf::leaf,
     list::{ListSlice, ListView},
     scroll::ScrollView,
@@ -34,17 +32,18 @@ use imba::{
 use skia_safe::{Rect, Size};
 
 use super::agents::Agents;
+use super::drawer_row::{AgeInk, DrawerLine, Lead, LineKind, TitleForm};
 use super::state::HostStatus;
-use super::summary::{self, SessionActivity};
+use super::summary::{self, Recency, SessionActivity};
 use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
-
-const PANEL_WIDTH: f32 = hikit::rows::DRAWER_WIDTH;
-const PANEL_PAD: f32 = 6.0;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum AgentKey {
+    /// A host that is not connected — picking it nudges a connect.
     Server(HostId),
-    Folder(HostId, Vec<String>),
+    /// A recency group's head. Keyed like every line so the keyboard
+    /// walk counts lines one for one.
+    Group(Recency),
     Session(HostId, SessionUri),
 
     NewSession(HostId),
@@ -54,31 +53,30 @@ enum AgentKey {
     AddHost,
 }
 
-type TreeList = ScrollView<ListView<TreeRow, AgentKey>>;
+type Lines = ScrollView<ListView<DrawerLine, AgentKey>>;
 
-/// Speed-search over the drawer's folder and session rows — chrome
-/// rows (hosts, notes, the "+ …" affordances) stay out of the match
-/// set. Keys ascend with the rows, so zipping pairs each key with its
-/// row's visible label.
+/// Speed-search over the drawer's session titles — group heads, hosts,
+/// notes and the "+ …" affordances stay out of the match set. Keys
+/// ascend with the lines, so zipping pairs each key with its line.
 #[derive(Clone)]
 struct SessionSearcher;
 
 impl hikit::list_keyboard::Searcher for SessionSearcher {
-    type View = TreeList;
+    type View = Lines;
     type Key = AgentKey;
 
     fn capture(&self, view: &Self::View) -> hikit::list_keyboard::ItemSource<AgentKey> {
         let keys = view.content().structure_keys().ordered_keys();
-        let labels: Vec<String> = view
+        let titles: Vec<String> = view
             .content()
             .rows()
-            .map(|row| row.inner().text().to_owned())
+            .map(|line| line.text().to_owned())
             .collect();
         let items: Vec<(String, AgentKey)> = keys
             .into_iter()
-            .zip(labels)
-            .filter(|(key, _)| matches!(key, AgentKey::Session(..) | AgentKey::Folder(..)))
-            .map(|(key, label)| (label, key))
+            .zip(titles)
+            .filter(|(key, _)| matches!(key, AgentKey::Session(..)))
+            .map(|(key, title)| (title, key))
             .collect();
         Box::new(move || items)
     }
@@ -89,11 +87,11 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
 }
 
 impl AgentsPanel {
-    /// What the add-host well takes off the rows' height.
-    fn adding_height(&self, store: &Store, ui: &UiCtx) -> f32 {
-        let _ = (store, ui);
+    /// What the add-host field takes off the lines' height.
+    fn adding_height(&self, store: &Store) -> f32 {
+        let chrome = ::editor::env::Themes::of(store).ui().sessions.clone();
         match &self.adding {
-            Some(input) => input.content_height() + 2.0 * hikit::ui::space::S,
+            Some(input) => input.content_height() + 2.0 * chrome.row_pad,
             None => 0.0,
         }
     }
@@ -134,14 +132,11 @@ impl std::fmt::Display for AgentsCommand {
 }
 
 pub struct AgentsPanel {
-    list: ListKeyboardController<TreeList, SessionSearcher>,
+    list: ListKeyboardController<Lines, SessionSearcher>,
     asks: Arc<DrawerAsks>,
     /// The catalog generation the rows were last built from — the
     /// paint-side ask fires while this lags `Hosts::generation`.
     seen: Option<u64>,
-
-    collapsed: rpds::HashTrieSetSync<HostId>,
-    folded: rpds::HashTrieSetSync<(HostId, Vec<String>)>,
 
     adding: Option<EditorView>,
     request: Option<ModalRequest>,
@@ -153,8 +148,6 @@ impl Clone for AgentsPanel {
             list: self.list.clone(),
             asks: Arc::clone(&self.asks),
             seen: self.seen,
-            collapsed: self.collapsed.clone(),
-            folded: self.folded.clone(),
             adding: self.adding.clone(),
 
             request: None,
@@ -188,12 +181,9 @@ impl AgentsPanel {
                 SessionSearcher,
                 store,
                 ui,
-            )
-            .with_folds(),
+            ),
             asks,
             seen: None,
-            collapsed: rpds::HashTrieSetSync::new_sync(),
-            folded: rpds::HashTrieSetSync::new_sync(),
             adding: None,
             request: None,
         };
@@ -202,20 +192,57 @@ impl AgentsPanel {
         panel
     }
 
+    /// TEST SUPPORT: each line's word and depth — heads (groups,
+    /// hosts) at 0, what they head at 1. A host that is not connected
+    /// reads "name — state".
     pub fn rows(&self) -> Vec<(String, usize)> {
         self.list
             .inner()
             .content()
             .rows()
-            .map(|row| {
-                let label = row.inner();
-                let text = match label.badge() {
-                    Some(glyph) => format!("{glyph} {}", label.text()),
-                    None => label.text().to_owned(),
+            .map(|line| {
+                let text = match &line.kind {
+                    LineKind::Host { name, status, .. } => format!("{name} — {status}"),
+                    _ => line.text().to_owned(),
                 };
-                (text, usize::from(row.depth()))
+                (text, line.depth())
             })
             .collect()
+    }
+
+    /// TEST SUPPORT: each line's grid — (repo, word, age).
+    #[doc(hidden)]
+    pub fn lines(&self) -> Vec<(String, String, String)> {
+        self.list
+            .inner()
+            .content()
+            .rows()
+            .map(|line| {
+                (
+                    line.repo().to_owned(),
+                    line.text().to_owned(),
+                    line.age().to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    /// TEST SUPPORT: the line a host's "+ New Session…" stands on.
+    #[doc(hidden)]
+    pub fn new_session_row(&self, host: HostId) -> Option<usize> {
+        let range = self
+            .list
+            .inner()
+            .content()
+            .row_range(&AgentKey::NewSession(host))?;
+        Some(range.start)
+    }
+
+    /// TEST SUPPORT: the line a session stands on.
+    #[doc(hidden)]
+    pub fn session_row(&self, session: &ahp_wire::SessionId) -> Option<usize> {
+        let key = AgentKey::Session(session.host, session.session.clone());
+        Some(self.list.inner().content().row_range(&key)?.start)
     }
 
     #[doc(hidden)]
@@ -238,156 +265,102 @@ impl AgentsPanel {
         Some(range.start)
     }
 
+    /// Rebuild the lines from the catalog: every connected host's
+    /// sessions in ONE list, most recent first, cut into recency
+    /// groups; then the "+ …" affordances; then the foot naming the
+    /// hosts that are not connected.
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let cursor = self.list.inner().content().cursor().cloned();
-        let mut slice: ListSlice<TreeRow, AgentKey> = ListSlice::new();
-
+        let here = self.open_session_key(store);
         let now = std::time::SystemTime::now();
-        let theme = ::editor::env::Themes::of(store);
-        let dim = theme.ui().peeker.dim_text.0;
-        let (accent, stop) = (theme.ui().chat.accent.0, theme.ui().chat.stop_color.0);
-        for (server, record) in Agents::list(store) {
-            let expanded = !self.collapsed.contains(&server);
-            let label = match &record.status {
-                HostStatus::Failed(_) => format!("{} — offline", record.name),
-                _ => record.name.clone(),
-            };
-            slice.push_keyed(
-                AgentKey::Server(server),
-                hikit::tree_item::TreeItemView::branch(
-                    TreeLabel::new(label, false, false),
-                    0,
-                    expanded,
-                )
-                .toggling_on_body(),
-                store,
-                ui,
-            );
-            if !expanded {
+        let hosts = Agents::list(store);
+
+        // Sessions interleave across hosts and projects: the repo
+        // column says whose each one is.
+        let mut sessions: Vec<(HostId, &str, &SessionSummary)> = hosts
+            .iter()
+            .filter(|(_, record)| matches!(record.status, HostStatus::Connected))
+            .flat_map(|(server, record)| {
+                record
+                    .sessions
+                    .iter()
+                    .map(move |summary| (*server, record.name.as_str(), summary))
+            })
+            .collect();
+        sessions.sort_by_key(|(_, _, summary)| std::cmp::Reverse(summary::modified_stamp(summary)));
+
+        let mut slice: ListSlice<DrawerLine, AgentKey> = ListSlice::new();
+        let push = |slice: &mut ListSlice<DrawerLine, AgentKey>, key, kind, lead| {
+            slice.push_keyed(key, DrawerLine::new(kind, lead), store, ui);
+        };
+        let mut group = None;
+        for (server, host_name, summary) in sessions {
+            let recency = summary::recency(now, summary);
+            if group != Some(recency) {
+                let lead = match group {
+                    None => Lead::Top,
+                    Some(_) => Lead::Group,
+                };
+                push(
+                    &mut slice,
+                    AgentKey::Group(recency),
+                    LineKind::Group(recency.caps()),
+                    lead,
+                );
+                group = Some(recency);
+            }
+            let key = AgentKey::Session(server, SessionUri::new(summary.resource.clone()));
+            let line = session_line(now, host_name, summary, here.as_ref() == Some(&key));
+            push(&mut slice, key, line, Lead::None);
+        }
+
+        let mut lead = match group {
+            Some(_) => Lead::Group,
+            None => Lead::Top,
+        };
+        for (server, record) in hosts.iter() {
+            if !matches!(record.status, HostStatus::Connected) {
                 continue;
             }
-            match &record.status {
-                HostStatus::Idle | HostStatus::Connecting => {
-                    slice.push_keyed(
-                        AgentKey::Note(server),
-                        hikit::tree_item::TreeItemView::leaf(
-                            TreeLabel::new("connecting…".to_owned(), false, true),
-                            1,
-                        ),
-                        store,
-                        ui,
-                    );
-                }
-                HostStatus::Failed(error) => {
-                    slice.push_keyed(
-                        AgentKey::Note(server),
-                        hikit::tree_item::TreeItemView::leaf(
-                            TreeLabel::new(format!("failed: {error}"), false, true),
-                            1,
-                        ),
-                        store,
-                        ui,
-                    );
-                }
-                HostStatus::Connected => {
-                    // Sessions gather under their full folder set (order
-                    // and duplicates ignored); groups and the folder-less
-                    // strays stand most-recent first, recency being the
-                    // last message's modified_at.
-                    let mut groups: Vec<(Option<Vec<String>>, Vec<&SessionSummary>)> = Vec::new();
-                    for summary in record.sessions.iter() {
-                        let folder = summary
-                            .working_directories
-                            .as_ref()
-                            .filter(|folders| !folders.is_empty())
-                            .map(|folders| {
-                                let mut set = folders.clone();
-                                set.sort();
-                                set.dedup();
-                                set
-                            });
-                        match groups.iter_mut().find(|(held, _)| *held == folder) {
-                            Some((_, sessions)) => sessions.push(summary),
-                            None => groups.push((folder, vec![summary])),
-                        }
-                    }
-                    for (_, sessions) in groups.iter_mut() {
-                        sessions.sort_by_key(|summary| {
-                            std::cmp::Reverse(summary::modified_stamp(summary))
-                        });
-                    }
-                    groups.sort_by_key(|(_, sessions)| {
-                        std::cmp::Reverse(
-                            sessions.first().map(|first| summary::modified_stamp(first)),
-                        )
-                    });
-                    for (folder, sessions) in groups {
-                        let depth = match &folder {
-                            Some(folder) => {
-                                let key = (server, folder.clone());
-                                let expanded = !self.folded.contains(&key);
-                                slice.push_keyed(
-                                    AgentKey::Folder(server, folder.clone()),
-                                    hikit::tree_item::TreeItemView::branch(
-                                        TreeLabel::new(
-                                            super::folders::folders_label(folder),
-                                            false,
-                                            false,
-                                        ),
-                                        1,
-                                        expanded,
-                                    )
-                                    .toggling_on_body(),
-                                    store,
-                                    ui,
-                                );
-                                if !expanded {
-                                    continue;
-                                }
-                                2
-                            }
-                            None => 1,
-                        };
-                        for summary in sessions {
-                            slice.push_keyed(
-                                AgentKey::Session(
-                                    server,
-                                    SessionUri::new(summary.resource.clone()),
-                                ),
-                                hikit::tree_item::TreeItemView::leaf(
-                                    TreeLabel::new(summary::label(summary), true, false)
-                                        .with_badge(session_badge(summary, accent, stop, dim))
-                                        .with_trail(age_trail(now, dim, summary)),
-                                    depth,
-                                ),
-                                store,
-                                ui,
-                            );
-                        }
-                    }
-                    {
-                        slice.push_keyed(
-                            AgentKey::NewSession(server),
-                            hikit::tree_item::TreeItemView::leaf(
-                                TreeLabel::new("+ New Session…".to_owned(), true, false),
-                                1,
-                            ),
-                            store,
-                            ui,
-                        );
-                    }
-                }
-            }
+            let line = LineKind::Affordance {
+                repo: record.name.clone(),
+                label: "+ New Session…".to_owned(),
+            };
+            push(&mut slice, AgentKey::NewSession(*server), line, lead);
+            lead = Lead::None;
         }
-        slice.push_keyed(
-            AgentKey::AddHost,
-            hikit::tree_item::TreeItemView::leaf(
-                TreeLabel::new("+ Add Host…".to_owned(), true, false),
-                0,
-            ),
-            store,
-            ui,
-        );
+        let line = LineKind::Affordance {
+            repo: String::new(),
+            label: "+ Add Host…".to_owned(),
+        };
+        push(&mut slice, AgentKey::AddHost, line, lead);
+
+        // The foot: hosts that are not connected, set apart by a
+        // hairline — their name, their state, their error.
+        let mut lead = Lead::Foot;
+        for (server, record) in hosts.iter() {
+            let (status, failed, error) = match &record.status {
+                HostStatus::Connected => continue,
+                HostStatus::Idle | HostStatus::Connecting => ("connecting…", false, None),
+                HostStatus::Failed(error) => ("offline", true, Some(error.clone())),
+            };
+            let line = LineKind::Host {
+                name: record.name.clone(),
+                status: status.to_owned(),
+                failed,
+            };
+            push(&mut slice, AgentKey::Server(*server), line, lead);
+            if let Some(error) = error {
+                push(
+                    &mut slice,
+                    AgentKey::Note(*server),
+                    LineKind::Error(error),
+                    Lead::None,
+                );
+            }
+            lead = Lead::Host;
+        }
+
         let len = self.list.inner().content().len();
         self.list
             .inner_mut()
@@ -395,7 +368,7 @@ impl AgentsPanel {
             .splice_slice(0..len, slice);
         // The cursor survives a refresh; a fresh list lands on the
         // session the window currently shows.
-        let target = cursor.or_else(|| self.open_session_key(store));
+        let target = cursor.or(here);
         if let Some(key) = target {
             if self.list.inner().content().row_range(&key).is_some() {
                 self.list.inner_mut().content_mut().select_only(key);
@@ -433,36 +406,15 @@ impl AgentsPanel {
     ) {
         match key {
             AgentKey::Server(server) => {
-                match self.collapsed.contains(server) {
-                    true => {
-                        self.collapsed.remove_mut(server);
-                    }
-                    false => {
-                        self.collapsed.insert_mut(*server);
-                    }
-                }
                 if matches!(
                     Agents::record(store, *server).map(|record| record.status),
                     Some(HostStatus::Failed(_)) | Some(HostStatus::Idle)
-                ) && !self.collapsed.contains(server)
-                {
+                ) {
                     // The nudge rides the verb drain: connecting is the
                     // resident subscription's job, not the drawer's.
                     self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
                         std::sync::Arc::new(super::driver::ConnectHost(*server)),
                     )));
-                }
-                self.refresh(store, ui);
-            }
-            AgentKey::Folder(server, folder) => {
-                let key = (*server, folder.clone());
-                match self.folded.contains(&key) {
-                    true => {
-                        self.folded.remove_mut(&key);
-                    }
-                    false => {
-                        self.folded.insert_mut(key);
-                    }
                 }
                 self.refresh(store, ui);
             }
@@ -479,9 +431,14 @@ impl AgentsPanel {
                     store, *server,
                 )));
             }
-            AgentKey::Note(_) => {}
+            AgentKey::Group(_) | AgentKey::Note(_) => {}
             AgentKey::AddHost => {
-                let mut input = EditorView::input(600.0, store, ui);
+                let mut input = EditorView::input_styled(
+                    600.0,
+                    store,
+                    ui,
+                    ::editor::theme::StyleId::Field,
+                );
                 input.focus_text();
                 self.adding = Some(input);
             }
@@ -497,36 +454,50 @@ impl AgentsPanel {
     }
 }
 
-/// The age trail a row shows, dressed: the session's own words for
-/// how long ago it moved (`summary::age`), in the dim ink.
-fn age_trail(
+/// A session's line: the repo (its first folder's name, else its
+/// host's), its title — or an italic stand-in — and the age column,
+/// which leads with a word when the session wants a look: "open" for
+/// the window's own, the turn's state otherwise. What the states ARE
+/// is the session's to say (`summary::activity`); this is their dress.
+fn session_line(
     now: std::time::SystemTime,
-    dim: skia_safe::Color,
+    host_name: &str,
     summary: &SessionSummary,
-) -> Vec<(String, skia_safe::Color)> {
-    summary::age(now, summary)
-        .map(|age| vec![(age, dim)])
-        .unwrap_or_default()
-}
-
-/// The session's activity mark: one glyph in one color, leading the
-/// row. Circles tell the session's own pace (○ hollow while a turn is
-/// still cooking, ● filled once an answer stands unviewed);
-/// punctuation flags the states that want the user (? blocked on an
-/// answer, ! the last turn failed). What the states ARE is the
-/// session's to say (`summary::activity`) — this is only their dress.
-fn session_badge(
-    summary: &SessionSummary,
-    accent: skia_safe::Color,
-    stop: skia_safe::Color,
-    dim: skia_safe::Color,
-) -> Option<(String, skia_safe::Color)> {
-    match summary::activity(summary) {
-        SessionActivity::Blocked => Some(("?".to_owned(), accent)),
-        SessionActivity::Working => Some(("○".to_owned(), accent)),
-        SessionActivity::Failed => Some(("!".to_owned(), stop)),
-        SessionActivity::Unviewed => Some(("●".to_owned(), dim)),
-        SessionActivity::Quiet => None,
+    here: bool,
+) -> LineKind {
+    let repo = summary
+        .working_directories
+        .as_ref()
+        .and_then(|folders| folders.first())
+        .map(|folder| super::folders::folder_label(folder))
+        .unwrap_or_else(|| host_name.to_owned());
+    let (title, form) = match summary.title.trim() {
+        "" => ("untitled".to_owned(), TitleForm::Untitled),
+        title if title.starts_with('/') => (summary::label(summary), TitleForm::Command),
+        _ => (summary::label(summary), TitleForm::Plain),
+    };
+    let activity = summary::activity(summary);
+    let (word, ink) = match (here, activity) {
+        (true, _) => (Some("open"), AgeInk::Live),
+        (false, SessionActivity::Blocked) => (Some("needs you"), AgeInk::Live),
+        (false, SessionActivity::Working) => (Some("working"), AgeInk::Live),
+        (false, SessionActivity::Failed) => (Some("failed"), AgeInk::Failed),
+        (false, SessionActivity::Unviewed | SessionActivity::Quiet) => (None, AgeInk::Quiet),
+    };
+    let age = word
+        .into_iter()
+        .map(str::to_owned)
+        .chain(summary::age(now, summary))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    LineKind::Session {
+        repo,
+        title,
+        form,
+        unviewed: activity == SessionActivity::Unviewed,
+        age,
+        ink,
+        here,
     }
 }
 
@@ -584,35 +555,7 @@ impl View for AgentsPanel {
                 self.refresh(store, ui);
             }
             AgentsCommand::Rows(command) => {
-                type Rows = ListKeyboardController<TreeList, SessionSearcher>;
-                match &command {
-                    // The bespoke fold: expansion state lives in the
-                    // panel's own collapsed/folded sets.
-                    ListKeyCommand::Fold { expand, .. } => {
-                        let expand = *expand;
-                        let Some(key) = self.list.inner().content().cursor().cloned() else {
-                            return;
-                        };
-                        let expanded = match &key {
-                            AgentKey::Server(server) => !self.collapsed.contains(server),
-                            AgentKey::Folder(server, folder) => {
-                                !self.folded.contains(&(*server, folder.clone()))
-                            }
-                            _ => return,
-                        };
-                        if expanded != expand {
-                            self.activate_key(store, ui, &key, fx);
-                        }
-                        return;
-                    }
-                    ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(inner)) => {
-                        if let Some(index) = hikit::tree_item::tree_toggle(inner) {
-                            self.activate(store, ui, index, fx);
-                            return;
-                        }
-                    }
-                    _ => {}
-                }
+                type Rows = ListKeyboardController<Lines, SessionSearcher>;
                 if let Some((index, trigger)) = Rows::activated(&command) {
                     let searching = self.list.searching();
                     self.activate(store, ui, index, fx);
@@ -673,72 +616,28 @@ impl View for AgentsPanel {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let theme = ::editor::env::Themes::of(store);
             // The panel's FLOOR, its header and its width belong to
             // the window slot that stands this view up
             // (`hikit::modal::Paneled`) — a mounted host draws its
             // own island. The drawer lays rows into what it is
             // given, and that is all it knows.
             let mut panel = container(arena, size);
+            let adding_height = self.adding_height(store);
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
                     size.width,
-                    (size.height - self.adding_height(store, ui)).max(1.0),
+                    (size.height - adding_height).max(1.0),
                 )),
             )
             .map(AgentsCommand::Rows);
             panel.place(0.0, 0.0, rows);
             if let Some(input) = &self.adding {
-                let search = theme.ui().search.clone();
-                let well_height = input.content_height() + 2.0 * hikit::ui::space::S;
-                let well_width = size.width.max(1.0);
-                let well_y = size.height - well_height;
-                let input_fill = search.input_fill;
-                let empty = input.document.text().byte_count() == 0;
-                let peeker = theme.ui().peeker.clone();
-                let placeholder_font = hikit::fonts::ui_text_font(ui, peeker.hint_size);
-                let placeholder_dim = peeker.dim_text.0;
-                let hint_size = peeker.hint_size;
-                let well = leaf::<AgentsCommand>(well_width, well_height).paint_instead(
-                    move |_arena, canvas, rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_anti_alias(true);
-                        paint.set_color(input_fill.0);
-                        canvas.draw_round_rect(rect, 6.0, 6.0, &paint);
-                        if empty {
-                            paint.set_color(placeholder_dim);
-                            canvas.draw_str(
-                                "ws://host:port/?tkn=…",
-                                (
-                                    rect.left + 10.0,
-                                    rect.top + rect.height() * 0.5 + hint_size * 0.35,
-                                ),
-                                &placeholder_font,
-                                &paint,
-                            );
-                        }
-                    },
-                );
-                panel.place(0.0, well_y, well);
-                let inner_height = (well_height - search.input_pad_y * 2.0).max(1.0);
                 panel.place(
-                    search.input_pad_x,
-                    well_y + search.input_pad_y,
-                    imba::layout::Layout::layout(
-                        input.display(arena, store, ui),
-                        arena,
-                        Constraints {
-                            min: Size::new(0.0, inner_height),
-                            max: Size::new(
-                                (well_width - search.input_pad_x * 2.0).max(1.0),
-                                inner_height,
-                            ),
-                        },
-                    )
-                    .map(AgentsCommand::AddHostInput)
-                    .focus_scope(true),
+                    0.0,
+                    size.height - adding_height,
+                    self.add_host_field(arena, store, ui, input, size.width),
                 );
             }
 
@@ -777,6 +676,55 @@ impl View for AgentsPanel {
             let boot = self.seen != Some(super::state::Hosts::generation(store));
             overlay.wrap(move |inner| BootShell { inner, boot })
         })
+    }
+}
+
+impl AgentsPanel {
+    /// The add-host field: an input reads as an input by a rule under
+    /// it, a grey placeholder and the live caret — no well.
+    fn add_host_field<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        input: &'a EditorView,
+        width: f32,
+    ) -> imba::ThunkBox<'a, AgentsCommand> {
+        let themes = ::editor::env::Themes::of(store);
+        let theme = themes.ui();
+        let chrome = theme.sessions.clone();
+        let rule = theme.ink.rule_strong.0;
+        let field_width = (width - 2.0 * chrome.inset).max(1.0);
+        let height = input.content_height();
+        let mut field = imba::layout::ZBox::new(arena);
+        if input.document.text().byte_count() == 0 {
+            field = field.child_aligned(
+                imba::layout::Alignment::CenterStart,
+                hikit::ui::text(&hikit::ui::brief(store, ui), "ws://host:port/?tkn=…"),
+            );
+        }
+        let field = field
+            .child(
+                input
+                    .display(arena, store, ui)
+                    .map_layout(|command| AgentsCommand::AddHostInput(command)),
+            )
+            .sized(field_width, height);
+        let field = imba::layout::Layout::layout(
+            field,
+            arena,
+            Constraints::tight(Size::new(field_width, height)),
+        )
+        .focus_scope(true);
+        imba::layout::Layout::layout(
+            imba::layout::fixed(hikit::ui::Hairline::new(rule).bottom().wrap(field))
+                .pad_insets(imba::layout::Insets::xy(chrome.inset, chrome.row_pad)),
+            arena,
+            Constraints {
+                min: Size::default(),
+                max: Size::new(width, f32::MAX),
+            },
+        )
     }
 }
 

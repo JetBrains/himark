@@ -13,9 +13,10 @@ use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use hikit::menu::MenuView;
+use hikit::tree_item::{TreeItemView, TreeLabel, TreeLabelCommand, TreeTint};
 use hikit::{
-    forest::TreeRow, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController,
-    modal::ModalRequest, modal::ModalView,
+    list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest,
+    modal::ModalView,
 };
 use imba::list::{ActivateTrigger, ListOps};
 use imba::with_overlay::{Placement, WithOverlay, WithOverlayCommand};
@@ -24,6 +25,7 @@ use imba::{
     constraints::Constraints,
     container::container,
     event::{Event, EventResult, Key as InputKey},
+    layout::{Layout as _, LayoutExt as _},
     leaf::leaf,
     list::{ListCommand, ListSlice, ListView},
     store::Store,
@@ -31,9 +33,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Paint, Size};
-
-const PANEL_PAD: f32 = 6.0;
+use skia_safe::Size;
 
 enum Activation {
     Done,
@@ -44,6 +44,50 @@ enum Activation {
 
     Open(ResourceLocation),
 }
+
+/// The hikit tree label, set at the side column's TEXT EDGE: the
+/// tree frame insets its labels by its own `text_x`; the Files tab
+/// reads at the column's edge, so the label takes the difference as
+/// its lead — the row itself (and its selection wash) still runs
+/// edge to edge.
+#[derive(Clone)]
+pub struct EdgeLabel(TreeLabel);
+
+impl View for EdgeLabel {
+    type Command = TreeLabelCommand;
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.0.perform(store, ui, command, fx)
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        self.0
+            .display(arena, store, ui)
+            .pad_insets(imba::layout::Insets {
+                left: edge_lead(store),
+                ..Default::default()
+            })
+    }
+}
+
+/// What the column's text edge stands past the tree frame's inset.
+fn edge_lead(store: &Store) -> f32 {
+    let theme = editor::env::Themes::of(store);
+    (theme.ui().window.side_text_edge - theme.ui().tree.text_x).max(0.0)
+}
+
+type TreeRow = TreeItemView<EdgeLabel>;
 
 /// A tree row with its context menu standing on it when one is open.
 type Row = WithOverlay<TreeRow, MenuView>;
@@ -101,16 +145,15 @@ impl LocationTree {
     fn row(&self, location: &ResourceLocation, depth: u16, expanded: bool) -> Row {
         let directory = location.kind().is_directory();
         let name = location.name().to_owned();
-        let label =
-            hikit::tree_item::TreeLabel::new(name, !directory, false).tinted(match directory {
-                true => hikit::tree_item::TreeTint::Directory,
-                false => hikit::tree_item::TreeTint::File,
-            });
+        let label = EdgeLabel(
+            TreeLabel::new(name, !directory, false).tinted(match directory {
+                true => TreeTint::Directory,
+                false => TreeTint::File,
+            }),
+        );
         let row = match directory {
-            true => {
-                hikit::tree_item::TreeItemView::branch(label, depth, expanded).toggling_on_body()
-            }
-            false => hikit::tree_item::TreeItemView::leaf(label, depth),
+            true => TreeItemView::branch(label, depth, expanded).toggling_on_body(),
+            false => TreeItemView::leaf(label, depth),
         };
         WithOverlay::new(row, Placement::Below).dismissing_on_outside_press()
     }
@@ -586,6 +629,27 @@ impl SessionTreeView {
         self.tree.len()
     }
 
+    /// TEST SUPPORT: where row `index` stands under the tab's top and
+    /// how tall it is — the head (folder, filter) laid at `width`, the
+    /// tree's top gap, then the rows above it as the list measured
+    /// them. Mirrors `display`.
+    #[doc(hidden)]
+    pub fn row_span(&self, store: &Store, ui: &UiCtx, width: f32, index: usize) -> (f32, f32) {
+        let arena = Arena::default();
+        let head = self.head(&arena, store, ui).layout(
+            &arena,
+            Constraints {
+                min: Size::new(width, 0.0),
+                max: Size::new(width, f32::INFINITY),
+            },
+        );
+        let rows_top = imba::Thunk::size(&head).height
+            + editor::env::Themes::of(store).ui().files.tree_top;
+        let list = self.tree.list.inner();
+        let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
+        (rows_top + above, list.height_at(index).unwrap_or(0.0))
+    }
+
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn selected_name(&self) -> Option<String> {
@@ -765,8 +829,12 @@ impl SessionTreeView {
         );
         let at = range.start + 1;
         self.tree.list.inner_mut().splice_slice(at..at, slice);
-        let mut input =
-            ::editor::editor_view::EditorView::input(600.0, store, ui);
+        let mut input = ::editor::editor_view::EditorView::input_styled(
+            600.0,
+            store,
+            ui,
+            ::editor::theme::StyleId::Field,
+        );
         input.focus_text();
         self.edit = Some(RowEdit {
             target: EditTarget::Create {
@@ -953,7 +1021,7 @@ fn edit_text(input: &::editor::editor_view::EditorView) -> String {
 
 fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view::EditorView {
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
+    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Field);
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let mut input = ::editor::editor_view::EditorView::of_document(
@@ -963,6 +1031,7 @@ fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view:
         ui,
         &editor::theme::Theme::embedded(),
     );
+    input.document.mark_input(input.editor, editor::theme::StyleId::Field);
     input.set_caret(text.len() as u32);
     input.focus_text();
     input
@@ -1297,6 +1366,16 @@ impl View for SessionTreeView {
             // pane's ScrollView, a native shell's scroller. Reveals
             // ride the regular result chain to whichever it is.
             let width = constraints.max.width.max(1.0);
+            let theme = editor::env::Themes::of(store);
+            let files = theme.ui().files.clone();
+            let head = self.head(arena, store, ui).layout(
+                arena,
+                Constraints {
+                    min: Size::new(width, 0.0),
+                    max: Size::new(width, f32::INFINITY),
+                },
+            );
+            let rows_top = imba::Thunk::size(&head).height + files.tree_top;
             let rows = imba::layout::Layout::layout(
                 self.tree.list.display(arena, store, ui),
                 arena,
@@ -1306,9 +1385,10 @@ impl View for SessionTreeView {
                 },
             )
             .map(TreeCommand::Rows);
-            let size = Size::new(width, imba::Thunk::size(&rows).height + PANEL_PAD);
+            let size = Size::new(width, imba::Thunk::size(&rows).height + rows_top);
             let mut overlay = container(arena, size);
-            overlay.place(0.0, PANEL_PAD, rows);
+            overlay.place_boxed(0.0, 0.0, head);
+            overlay.place(0.0, rows_top, rows);
 
             // The key table lives in the controller's own overlay;
             // the surface keeps only its dismissal and retheme.
@@ -1342,43 +1422,53 @@ impl View for SessionTreeView {
                 });
             overlay.place(0.0, 0.0, keymap);
 
+            // The CURRENT row stands in its own words over the wash:
+            // the name in the title weight, the LIVE dot hanging left
+            // of it. The list's rows are shared ropes that never learn
+            // the cursor, so the mark is derived here, per frame.
+            let edited = self.edit.as_ref().map(|edit| edit.row_key().clone());
+            if let Some((index, location)) = self
+                .tree
+                .list
+                .inner()
+                .cursor_index()
+                .and_then(|index| Some((index, self.tree.list.inner().key_at(index)?.clone())))
+            {
+                if edited.as_ref() != Some(&location) {
+                    if let Some((top, height)) = self.tree.list.inner().row_span(index) {
+                        let depth = self.tree.list.inner().depth_at(index) as f32;
+                        overlay.place(
+                            0.0,
+                            rows_top + top,
+                            CurrentRow::new(store, ui, &location, depth)
+                                .layout(arena, Constraints::tight(Size::new(width, height))),
+                        );
+                    }
+                }
+            }
+
+            // The inline rename/create: a BARE input on its row, a
+            // hairline under it — no well.
             if let Some(edit) = &self.edit {
                 if let Some(range) = self.tree.list.inner().row_range(edit.row_key()) {
                     if let Some((top, height)) = self.tree.list.inner().row_span(range.start) {
-                        let theme = editor::env::Themes::of(store);
-                        let tree_theme = theme.ui().tree.clone();
-                        let search = theme.ui().search.clone();
+                        let window = theme.ui().window.clone();
                         let depth = self.tree.list.inner().depth_at(range.start) as f32;
-                        let x = depth * tree_theme.indent + tree_theme.text_x;
-                        let y = PANEL_PAD + top;
-                        let well_width = (size.width - x - PANEL_PAD).max(1.0);
-                        let input_fill = search.input_fill;
-                        let well = leaf::<TreeCommand>(well_width, height).paint_instead(
-                            move |_arena, canvas, rect| {
-                                let mut paint = Paint::default();
-                                paint.set_anti_alias(true);
-                                paint.set_color(input_fill.0);
-                                canvas.draw_round_rect(rect, 4.0, 4.0, &paint);
-                            },
-                        );
-                        overlay.place(x, y, well);
-                        let inner_height = (height - search.input_pad_y * 2.0).max(1.0);
+                        let x = text_x(store, depth);
+                        let field_width = (size.width - x - window.side_trailing).max(1.0);
+                        let input = imba::layout::Layout::layout(
+                            edit.input.display(arena, store, ui),
+                            arena,
+                            Constraints::tight(Size::new(field_width, height)),
+                        )
+                        .map(TreeCommand::Edit)
+                        .focus_scope(true);
                         overlay.place(
-                            x + search.input_pad_x,
-                            y + search.input_pad_y,
-                            imba::layout::Layout::layout(
-                                edit.input.display(arena, store, ui),
-                                arena,
-                                Constraints {
-                                    min: Size::new(0.0, inner_height),
-                                    max: Size::new(
-                                        (well_width - search.input_pad_x * 2.0).max(1.0),
-                                        inner_height,
-                                    ),
-                                },
-                            )
-                            .map(TreeCommand::Edit)
-                            .focus_scope(true),
+                            x,
+                            rows_top + top,
+                            hikit::ui::Hairline::new(files.field_rule.0)
+                                .bottom()
+                                .wrap(input),
                         );
                     }
                 }
@@ -1425,6 +1515,112 @@ impl View for SessionTreeView {
                 editing,
             })
         })
+    }
+}
+
+impl SessionTreeView {
+    /// The tab's head: the session folder's name. (The tree's speed
+    /// search is the keyboard's — no field stands for it.)
+    fn head<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::layout::Layout<'a, TreeCommand> + imba::layout::LayoutValue + 'a {
+        let theme = editor::env::Themes::of(store);
+        let files = theme.ui().files.clone();
+        let window = theme.ui().window.clone();
+        let ink = theme.ui().ink.clone();
+
+        let folders = (self.folders)(store);
+        let names: Vec<&str> = folders.iter().map(|folder| folder.name()).collect();
+        let mut column = imba::layout::Column::new(arena);
+        if !names.is_empty() {
+            column = column.child(hikit::ui::text(
+                &role_style(ui, &files.folder, ink.ink.0),
+                names.join(" · "),
+            ));
+        }
+        column.pad_insets(imba::layout::Insets {
+            left: window.side_text_edge,
+            top: files.head_top,
+            right: window.side_trailing,
+            bottom: files.head_bottom,
+        })
+    }
+}
+
+/// A ramp-shaped role the tab owns (the folder's name, the filter),
+/// resolved on the chrome face.
+fn role_style(
+    ui: &UiCtx,
+    role: &editor::theme::TypeRole,
+    color: skia_safe::Color,
+) -> hikit::ui::TextStyle {
+    hikit::ui::TextStyle {
+        font: hikit::fonts::role_font(ui, role),
+        color,
+        tracking: role.tracking,
+        shaper: imba::layout::TextShaper::of(ui),
+    }
+}
+
+/// Where a row's label stands at `depth`: the column's text edge
+/// (never short of the tree frame's own inset), one indent per level.
+fn text_x(store: &Store, depth: f32) -> f32 {
+    let theme = editor::env::Themes::of(store);
+    let tree = &theme.ui().tree;
+    theme.ui().window.side_text_edge.max(tree.text_x) + depth * tree.indent
+}
+
+/// The cursor's row restated over the selection wash: the name in
+/// the title weight and brightest ink, a directory's dim "/" kept.
+/// The wash alone says "current" — no mark.
+struct CurrentRow {
+    name: imba::layout::Text,
+    slash: Option<imba::layout::Text>,
+    lead: f32,
+    wash: skia_safe::Color,
+}
+
+impl CurrentRow {
+    fn new(store: &Store, ui: &UiCtx, location: &ResourceLocation, depth: f32) -> Self {
+        let theme = editor::env::Themes::of(store);
+        let files = theme.ui().files.clone();
+        let ink = theme.ui().ink.clone();
+        let tree = theme.ui().tree.clone();
+        let row = hikit::ui::row(store, ui).sized(tree.font_size);
+        Self {
+            name: hikit::ui::text(
+                &role_style(ui, &files.current, ink.ink_bright.0),
+                location.name(),
+            ),
+            slash: location
+                .kind()
+                .is_directory()
+                .then(|| hikit::ui::text(&row.colored(ink.ink_3.0), "/")),
+            lead: text_x(store, depth),
+            wash: ink.selected.0,
+        }
+    }
+}
+
+impl imba::layout::LayoutValue for CurrentRow {}
+
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for CurrentRow {
+    fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, Command> {
+        let mut row = imba::layout::Row::new(arena).child_by_baseline(self.name);
+        if let Some(slash) = self.slash {
+            row = row.child_by_baseline(slash);
+        }
+        row.weighted(1.0, imba::layout::Fill::new().height(0.0))
+            .pad_insets(imba::layout::Insets {
+                left: self.lead,
+                ..Default::default()
+            })
+            .align(imba::layout::Alignment::CenterStart)
+            .backdrop(hikit::ui::ground(self.wash))
+            .layout(arena, constraints)
     }
 }
 

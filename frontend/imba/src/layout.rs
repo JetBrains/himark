@@ -885,6 +885,32 @@ struct StyleKey {
     /// unwrapped shape. Rounding bounds the memo's churn while a
     /// column resizes.
     clip: u32,
+    /// The variable axes the font's typeface stands at (wght, wdth)
+    /// — an instanced chrome face shapes at its instance.
+    weight: u32,
+    width: u32,
+}
+
+/// The (weight, width) a typeface is INSTANCED at, read off its
+/// variation position: the chrome face is one variable family, and
+/// `hikit::fonts` hands out clones standing at a ramp rung. A static
+/// face answers nothing and shapes by its style's weight.
+fn typeface_axes(typeface: &skia_safe::Typeface) -> (Option<f32>, Option<f32>) {
+    let Some(position) = typeface.variation_design_position() else {
+        return (None, None);
+    };
+    let mut weight = None;
+    let mut width = None;
+    for coordinate in position {
+        if coordinate.axis == skia_safe::font_arguments::variation_position::Coordinate::wght {
+            weight = Some(coordinate.value);
+        } else if coordinate.axis
+            == skia_safe::font_arguments::variation_position::Coordinate::wdth
+        {
+            width = Some(coordinate.value);
+        }
+    }
+    (weight, width)
 }
 
 struct LabelEntry {
@@ -935,8 +961,9 @@ impl TextShaper {
         let typeface = font.typeface();
         let family = typeface.family_name();
         let style = typeface.font_style();
+        let (weight, width) = typeface_axes(&typeface);
         let bold = font.is_embolden()
-            || style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD;
+            || (weight.is_none() && style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD);
         self.shaper.ellipsized(
             text,
             &[family.as_str(), "system-ui"],
@@ -944,6 +971,8 @@ impl TextShaper {
             tracking,
             color,
             bold,
+            weight,
+            width,
             clip,
         )
     }
@@ -968,6 +997,7 @@ impl TextShaper {
     ) -> std::rc::Rc<ShapedLabel> {
         let clock = self.clock.get() + 1;
         self.clock.set(clock);
+        let (weight, width) = typeface_axes(&font.typeface());
         let style = StyleKey {
             typeface: font.typeface().unique_id(),
             size: font.size().to_bits(),
@@ -975,6 +1005,8 @@ impl TextShaper {
             argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
             embolden: font.is_embolden(),
             clip: clip.map_or(0, |width| width.round().max(1.0) as u32),
+            weight: weight.map_or(0, f32::to_bits),
+            width: width.map_or(0, f32::to_bits),
         };
         if let Some(entry) = self
             .labels

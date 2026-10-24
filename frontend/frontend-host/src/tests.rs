@@ -677,70 +677,124 @@ fn the_file_picker_round_trip_opens_the_picked_files() {
 }
 
 fn dock_x(x: f32) -> f32 {
-    900.0 - workbench::dock::DOCK_WIDTH + x
+    dock_x_in(900.0, x)
 }
 
-/// The center of the canvas header's side-by-side button — the
-/// RIGHTMOST of the three header buttons, inset from the canvas
-/// PLAQUE's right edge (the card stands a margin in from the pane,
-/// and the pane ends where the dock begins). Mirrors
-/// `HeaderFace::new` in hidiff/src/canvas.rs.
-fn canvas_pane_button_x() -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    let chat = &ui.ui().chat;
-    let zone = chat.title_size * 1.2 + chat.title_size;
-    900.0 - workbench::dock::DOCK_WIDTH - ui.ui().diff.plaque_margin - chat.pad - zone * 0.5
+/// `x` into the dock of a `width`-wide window.
+fn dock_x_in(width: f32, x: f32) -> f32 {
+    width - workbench::dock::DOCK_WIDTH + x
 }
 
-/// The summary pill's strip above the canvas's first row — the list
-/// starts below it. Mirrors `diff_summary::strip_height`.
-fn canvas_pill_strip() -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    ::canvas::diff_summary::strip_height(ui.ui().chat.title_size)
+/// A SPLIT window — dock up, canvas beside it — at the chrome's
+/// terms: the pane keeps the main area's minimum width beside the
+/// dock's column, so a file band lays its words unsqueezed.
+const SPLIT_WIDTH: f32 = 1920.0;
+const SPLIT_HEIGHT: f32 = 1080.0;
+
+/// The center of the canvas file band's "Open pane" WORD — the band
+/// lays its words right to left from the band's right pad: "Open
+/// source", a gap, "Open pane" (mirrors `canvas::diff_header::FileBand`
+/// and `working_band_word` in the shell suite). The pane ends where
+/// the dock begins, in a `width`-wide window.
+fn canvas_pane_button_x(engine: &HimarkEngine, width: f32) -> f32 {
+    let theme = editor::env::Themes::of(engine.app.store());
+    let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
+    let word = |label: &str| brief.shaper.advance(&brief.font, label);
+    let gap = theme.ui().diff.band_gap;
+    width - workbench::dock::DOCK_WIDTH
+        - theme.ui().diff.band_pad_right
+        - word("Open source")
+        - gap
+        - word("Open pane") * 0.5
 }
 
-/// Mirrors `ListRow`'s own sizing (text block + 8px each side) so the
-/// click helpers land where the rows actually laid themselves.
-fn derived_row_height(font_size: f32) -> f32 {
-    let typeface = skia_safe::FontMgr::new()
-        .legacy_make_typeface(None, skia_safe::FontStyle::normal())
-        .expect("a system typeface");
-    let metrics = skia_safe::Font::from_typeface(typeface, font_size)
-        .metrics()
-        .1;
-    // Tree rows breathe with space::M on each side.
-    (-metrics.ascent + metrics.descent).ceil() + 24.0
+/// The center of the band's LAST word, "Open source" — the live
+/// file in an ordinary pane — at the band's right pad.
+fn canvas_source_button_x(engine: &HimarkEngine, width: f32) -> f32 {
+    let theme = editor::env::Themes::of(engine.app.store());
+    let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
+    let word = brief.shaper.advance(&brief.font, "Open source");
+    width - workbench::dock::DOCK_WIDTH - theme.ui().diff.band_pad_right - word * 0.5
 }
 
-fn tree_row_y(index: usize) -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    let row = derived_row_height(ui.ui().tree.font_size);
-
-    ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
+/// The center of the root row's REFRESH chip in the dock's changes
+/// tab: the quiet word in its chip, right-aligned under the column's
+/// trailing inset (mirrors `TreeItemView`'s action chip and the
+/// changes rows' hang).
+fn changes_refresh_x(engine: &HimarkEngine, width: f32) -> f32 {
+    let store = engine.app.store();
+    let ui = engine.app.ui_ctx();
+    let theme = editor::env::Themes::of(store);
+    let style = hikit::ui::RowStyle::drawer(store, &ui);
+    let word = style.trail.shaper.advance(&style.trail.font, "refresh");
+    let hang = (theme.ui().window.side_trailing - style.trail_inset).max(0.0);
+    width - hang - hikit::ui::space::M - hikit::ui::space::S - word * 0.5
 }
 
-fn changes_row_y(index: usize) -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    let row = derived_row_height(ui.ui().tree.font_size);
-    // REFRESH rides the repository root row now — the dock is just
-    // the tree under a slim pad.
-    ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
+/// The summary line's strip above the working-copy canvas's first
+/// row — the list starts below it.
+fn canvas_pill_strip(engine: &HimarkEngine) -> f32 {
+    ::canvas::diff_summary::strip_height(engine.app.store(), &engine.app.ui_ctx())
+}
+
+/// The window's one entity.
+fn sole_entity(engine: &HimarkEngine) -> &workbench::window::Window {
+    workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("the window entity")
+}
+
+/// The center of row `index` in the dock's FILES tab: the dock's
+/// tabs band, then where the tree stands the row (its head, the
+/// rows above) — read off the view, not re-derived.
+fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
+    let store = engine.app.store();
+    let band = editor::env::Themes::of(store).ui().toolbar.height;
+    let (top, height) = sole_entity(engine)
+        .dock_panel()
+        .and_then(|side| side.as_any().downcast_ref::<filetree::SessionTreeView>())
+        .expect("the files tab is up")
+        .row_span(store, &engine.app.ui_ctx(), workbench::dock::DOCK_WIDTH, index);
+    band + top + height * 0.5
+}
+
+/// The center of row `index` in the dock's CHANGES or HISTORY tab —
+/// the same view wearing either set — under the dock's tabs band.
+fn changes_row_y(engine: &HimarkEngine, index: usize) -> f32 {
+    let store = engine.app.store();
+    let band = editor::env::Themes::of(store).ui().toolbar.height;
+    let pane = sole_entity(engine)
+        .dock_panel()
+        .and_then(|side| {
+            side.as_any()
+                .downcast_ref::<changesview::changes_view::ChangesPane>()
+        })
+        .expect("the changes tab is up");
+    let view = changesview::hichanges::Changes::view_ref(store, pane.changes(), pane.view())
+        .expect("the changes view");
+    let (top, height) = view.row_span(store, index);
+    band + top + height * 0.5
+}
+
+fn history_row_y(engine: &HimarkEngine, index: usize) -> f32 {
+    changes_row_y(engine, index)
 }
 
 /// The height of the canvas's first row on a working-copy canvas —
-/// the commit composer at the CHAT composer's footprint: input band
-/// plus the toolbar row. Mirrors `composer_band` in
-/// hidiff/src/canvas.rs with an empty box.
-fn canvas_composer_band() -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    let chat = &ui.ui().chat;
-    chat.title_size * 1.6 + chat.pad * 1.5 + ui.ui().toolbar.height
+/// the commit composer over an empty message box, as the canvas
+/// lays it.
+fn canvas_composer_band(engine: &HimarkEngine) -> f32 {
+    ::canvas::canvas::composer_band_height(engine.app.store(), &engine.app.ui_ctx())
 }
 
-fn history_row_y(index: usize) -> f32 {
-    let ui = editor::theme::Theme::embedded();
-    let row = derived_row_height(ui.ui().tree.font_size);
-    ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
+/// The vertical center of a working-copy canvas's FIRST file band:
+/// the window chrome, the summary strip, the commit composer, then
+/// half the band.
+fn canvas_band_y(engine: &HimarkEngine) -> f32 {
+    let store = engine.app.store();
+    editor::env::Themes::of(store).ui().toolbar.height
+        + canvas_pill_strip(engine)
+        + canvas_composer_band(engine)
+        + ::canvas::diff_header::file_band_height(store) * 0.5
 }
 
 fn directory_location(path: &[&str]) -> editor::location::ResourceLocation {
@@ -901,8 +955,9 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     );
     settle(&mut engine);
 
+    let row_y = tree_row_y(&engine, 0);
     let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(0), 900.0, 700.0);
+        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
 
     settle_until(&mut engine, "the root listing landed", |engine| {
@@ -925,8 +980,9 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     );
     settle(&mut engine);
 
+    let row_y = tree_row_y(&engine, 2);
     let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(2), 900.0, 700.0);
+        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the document row took the click");
     settle(&mut engine);
     let entity =
@@ -998,8 +1054,9 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
         imba::anim::AnimationClock::from_millis(6_500.0),
     );
     settle(&mut engine);
+    let row_y = tree_row_y(&engine, 0);
     let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(0), 900.0, 700.0);
+        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row collapses");
     settle(&mut engine);
     {
@@ -1179,8 +1236,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     assert!(engine.perform_command(window, "changes.view"));
     settle(&mut engine);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     for ms in [0.0, 1_000.0] {
         let _ = himark::test_driver::animate(
             &mut engine.app,
@@ -1207,8 +1264,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
             })
     };
     settle_until(&mut engine, "the changed file landed", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         rows(engine).is_some_and(|rows| {
             rows.iter()
                 .any(|(depth, label, pick)| *depth == 1 && label.starts_with("README.md") && *pick)
@@ -1226,12 +1283,13 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         "the change dims carry the counts: {listed:?}"
     );
 
+    let row_y = changes_row_y(&engine, 1);
     let clicked = himark::test_driver::click(
         &mut engine.app,
-        dock_x(90.0),
-        changes_row_y(1),
-        900.0,
-        700.0,
+        dock_x_in(SPLIT_WIDTH, 90.0),
+        row_y,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT,
     );
     assert!(clicked, "the file row took the click");
     settle(&mut engine);
@@ -1262,8 +1320,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         shot
     };
     settle_until(&mut engine, "the canvas row built its diff", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         canvas_probe(engine).is_some_and(|rows| {
             rows.iter().any(|(title, phase, _)| {
                 title == "README.md" && *phase == canvas::canvas::RowPhase::Built
@@ -1275,23 +1333,21 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     // the old road, still reachable per file (the header BODY opens
     // the live file now). The working-copy canvas heads with the
     // commit composer, so the file header sits one band down.
-    let chrome_top = editor::env::Themes::of(engine.app.store())
-        .ui()
-        .toolbar
-        .height;
+    let pane_word_x = canvas_pane_button_x(&engine, SPLIT_WIDTH);
+    let band_y = canvas_band_y(&engine);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        canvas_pane_button_x(),
-        chrome_top + canvas_pill_strip() + canvas_composer_band() + 40.0,
-        900.0,
-        700.0,
+        pane_word_x,
+        band_y,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT,
     ));
     settle(&mut engine);
 
     let mut halves = None;
     settle_until(&mut engine, "the diff pane mounted", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel
                 .as_any()
@@ -1371,13 +1427,13 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         "the old side is HEAD's content: {old_text:?}"
     );
 
-    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     settle(&mut engine);
-    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
 
     for _ in 0..4 {
         settle(&mut engine);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     }
     let _ = himark::test_driver::animate(
         &mut engine.app,
@@ -1385,7 +1441,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     );
     for _ in 0..2 {
         settle(&mut engine);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     }
     for ms in [20_000.0, 20_008.3, 20_016.7, 20_025.0] {
         assert!(
@@ -1396,7 +1452,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
             "a settled diff pane must not answer the clock at {ms}ms"
         );
     }
-    let quiet = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let quiet = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     assert!(
         !quiet,
         "a settled diff pane's paint reports no change — the display link can rest"
@@ -1413,12 +1469,14 @@ and another
     .unwrap();
     // The per-repository REFRESH chip rides the root row, right
     // aligned — the press refetches THIS folder's changeset.
+    let row_y = changes_row_y(&engine, 0);
+    let refresh_x = changes_refresh_x(&engine, SPLIT_WIDTH);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        850.0,
-        changes_row_y(0),
-        900.0,
-        700.0
+        refresh_x,
+        row_y,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT
     ));
     // The refetch is the ONLY road to the new counts: the host's
     // changeset watcher rides `.git/logs/HEAD`, which a working-tree
@@ -1427,7 +1485,7 @@ and another
     let started = std::time::Instant::now();
     loop {
         settle(&mut engine);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let seen = rows(&engine);
         if seen.as_ref().is_some_and(|rows| {
             rows.iter()
@@ -2866,8 +2924,8 @@ fn a_one_sided_diff_goes_quiet() {
 
     assert!(engine.perform_command(window, "changes.view"));
     settle(&mut engine);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     for ms in [0.0, 1_000.0] {
         let _ = himark::test_driver::animate(
             &mut engine.app,
@@ -2875,7 +2933,7 @@ fn a_one_sided_diff_goes_quiet() {
         );
     }
     settle_until(&mut engine, "the untracked row landed", |engine| {
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
             .and_then(|entity| {
                 entity
@@ -2900,18 +2958,19 @@ fn a_one_sided_diff_goes_quiet() {
             })
     });
 
+    let row_y = changes_row_y(&engine, 1);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        dock_x(90.0),
-        changes_row_y(1),
-        900.0,
-        700.0
+        dock_x_in(SPLIT_WIDTH, 90.0),
+        row_y,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT
     ));
     // The file row reveals into the canvas; the one-sided build
     // (empty old side) must land like any other.
     settle_until(&mut engine, "the one-sided canvas row built", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
@@ -2929,25 +2988,21 @@ fn a_one_sided_diff_goes_quiet() {
         built
     });
 
-    // The header BODY opens the live file in an ordinary pane. The
-    // canvas sits in a split half here, so the body span is narrow —
-    // x=90 clears the chevron and stays left of the three buttons.
-    // The composer banner heads the canvas; the header sits below it.
-    let chrome_top = editor::env::Themes::of(engine.app.store())
-        .ui()
-        .toolbar
-        .height;
-    let header_y = chrome_top + canvas_pill_strip() + canvas_composer_band() + 40.0;
+    // The band's "Open source" word opens the live file in an
+    // ordinary pane (the NAME folds the file now). The composer
+    // banner heads the canvas; the band sits below it.
+    let header_y = canvas_band_y(&engine);
+    let source_x = canvas_source_button_x(&engine, SPLIT_WIDTH);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        90.0,
+        source_x,
         header_y,
-        900.0,
-        700.0,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT,
     ));
     settle_until(&mut engine, "the header click opened the file", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         engine
             .substring(
                 window,
@@ -2962,16 +3017,17 @@ fn a_one_sided_diff_goes_quiet() {
     // Clicking the changes row again REUSES the store-held canvas —
     // the fresh view references it, so the diff stands ALREADY BUILT
     // with no placeholder frame and no rebuild.
+    let row_y = changes_row_y(&engine, 1);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        dock_x(90.0),
-        changes_row_y(1),
-        900.0,
-        700.0
+        dock_x_in(SPLIT_WIDTH, 90.0),
+        row_y,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT
     ));
     {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
@@ -2992,16 +3048,17 @@ fn a_one_sided_diff_goes_quiet() {
 
     // The header's side-by-side BUTTON opens the standalone pane; the
     // QUIET guarantee below is the pane's.
+    let pane_word_x = canvas_pane_button_x(&engine, SPLIT_WIDTH);
     assert!(himark::test_driver::click(
         &mut engine.app,
-        canvas_pane_button_x(),
+        pane_word_x,
         header_y,
-        900.0,
-        700.0,
+        SPLIT_WIDTH,
+        SPLIT_HEIGHT,
     ));
     settle_until(&mut engine, "the one-sided diff pane mounted", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut mounted = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
             mounted |= panel.as_any().is::<canvas::diff_pane::DiffPanelView>();
@@ -3011,7 +3068,7 @@ fn a_one_sided_diff_goes_quiet() {
 
     for _ in 0..4 {
         settle(&mut engine);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     }
     let _ = himark::test_driver::animate(
         &mut engine.app,
@@ -3019,7 +3076,7 @@ fn a_one_sided_diff_goes_quiet() {
     );
     for _ in 0..2 {
         settle(&mut engine);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+        let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     }
     for ms in [20_000.0, 20_008.3, 20_016.7, 20_025.0] {
         assert!(
@@ -3030,7 +3087,7 @@ fn a_one_sided_diff_goes_quiet() {
             "a settled one-sided diff must not answer the clock at {ms}ms"
         );
     }
-    let quiet = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    let quiet = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     assert!(!quiet, "a settled one-sided diff paints quiet");
 }
 
@@ -3233,14 +3290,26 @@ fs_probe!(
     }
 );
 
-fn drawer_rows(engine: &HimarkEngine) -> Option<Vec<(String, usize)>> {
+fn drawer_panel(engine: &HimarkEngine) -> Option<&ahp_session::session::drawer::AgentsPanel> {
     let entity =
         workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())?;
-    let panel = entity
+    entity
         .side_panel()?
         .as_any()
-        .downcast_ref::<ahp_session::session::drawer::AgentsPanel>()?;
-    Some(panel.rows())
+        .downcast_ref::<ahp_session::session::drawer::AgentsPanel>()
+}
+
+fn drawer_rows(engine: &HimarkEngine) -> Option<Vec<(String, usize)>> {
+    Some(drawer_panel(engine)?.rows())
+}
+
+/// The "+ New Session…" line of the himark host — the drawer's grid
+/// carries the host's name in its repo column.
+fn host_plus_row(engine: &HimarkEngine) -> Option<usize> {
+    drawer_panel(engine)?
+        .lines()
+        .iter()
+        .position(|(repo, word, _)| repo == "himark Host" && word == "+ New Session…")
 }
 
 /// The session the engine's sole window is working in — the owner a
@@ -3343,7 +3412,7 @@ fn real_claude_answers_through_the_agent_host() {
         if rows
             .iter()
             .any(|(label, depth)| *depth == 1 && label == "+ New Session…")
-            && !rows.iter().any(|(label, _)| label == "connecting…")
+            && !rows.iter().any(|(label, _)| label.contains("connecting…"))
         {
             println!("drawer: {rows:?}");
             break;
@@ -4336,10 +4405,7 @@ fn the_drawer_connects_to_the_himark_host() {
             settle(&mut engine);
         }
         rows = drawer_rows(&engine).expect("the agents drawer is up");
-        let connected = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .is_some_and(|index| rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)));
+        let connected = host_plus_row(&engine).is_some();
         if connected {
             return;
         }
@@ -4405,12 +4471,7 @@ fn dump_chat_pane_snapshot() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        rows.iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        host_plus_row(engine)
             .filter(|_| settled)
     };
     wait_for(&mut engine, &mut surface, "host row", &mut |engine| {
@@ -4559,12 +4620,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        rows.iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        host_plus_row(engine)
             .filter(|_| settled)
     };
     wait_for(
@@ -4761,12 +4817,7 @@ fn the_chat_runs_through_the_himark_host() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        rows.iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        host_plus_row(engine)
             .filter(|_| settled)
     };
     wait_for(
@@ -5097,13 +5148,7 @@ fn real_claude_answers_through_the_himark_host() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        plus = host_plus_row(&engine)
             .filter(|_| settled);
         if plus.is_some() {
             break;
@@ -5200,13 +5245,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        plus = host_plus_row(&engine)
             .filter(|_| settled);
         if plus.is_some() {
             break;
@@ -5284,8 +5323,9 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     pump(&mut engine, &mut surface);
+    let row_y = tree_row_y(&engine, 0);
     let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(0), 900.0, 700.0);
+        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
     pump(&mut engine, &mut surface);
     let _ = himark::test_driver::animate(
@@ -5328,8 +5368,9 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         assert!(waited < 50, "the expansion listing never landed");
     }
 
+    let row_y = tree_row_y(&engine, 1);
     let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(1), 900.0, 700.0);
+        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the file row took the click");
     let file = editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
@@ -6624,13 +6665,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host")
-            .and_then(|index| {
-                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
-                    .then_some(index + 1)
-            })
+        plus = host_plus_row(&engine)
             .filter(|_| settled);
         if plus.is_some() {
             break;
@@ -6681,22 +6716,9 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let mut session_row = None;
     for _ in 0..30 {
         pump(&mut engine, &mut surface);
-        let rows = drawer_rows(&engine).expect("the agents drawer is up");
-        let host_at = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == "himark Host");
-        // Sessions with a folder list at depth 2 under the folder row.
-        // The catalog is recency-ordered and the subscription may have
-        // listed MANY sessions by now (it runs from boot) — the one
-        // this test created is the freshest, so it is the FIRST
-        // session row under the host.
-        session_row = host_at.and_then(|index| {
-            let under_host = rows.iter().enumerate().skip(index + 1);
-            under_host
-                .take_while(|(_, (_, depth))| *depth != 0)
-                .find(|(_, (label, depth))| *depth == 2 && !label.contains("connecting"))
-                .map(|(at, _)| at)
-        });
+        // The catalog is ONE recency list across hosts; the session
+        // this test created is found by its key, not its place.
+        session_row = drawer_panel(&engine).and_then(|panel| panel.session_row(&created));
         if session_row.is_some() {
             break;
         }
@@ -6815,10 +6837,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         .expect("the newest commit row");
     assert_eq!(second_at, 1, "newest first: {listed:?}");
 
+    let row_y = history_row_y(&engine, second_at);
     assert!(himark::test_driver::click(
         &mut engine.app,
         dock_x(90.0),
-        history_row_y(second_at),
+        row_y,
         900.0,
         700.0
     ));
@@ -6834,10 +6857,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         .position(|(depth, label, _)| *depth == 2 && label.starts_with("README.md"))
         .expect("the commit's file row");
 
+    let row_y = history_row_y(&engine, file_at);
     assert!(himark::test_driver::click(
         &mut engine.app,
         dock_x(90.0),
-        history_row_y(file_at),
+        row_y,
         900.0,
         700.0
     ));
@@ -6953,10 +6977,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         .iter()
         .position(|(_, label, _)| label.starts_with("second commit"))
         .expect("the commit row stands");
+    let row_y = history_row_y(&engine, second_at);
     assert!(himark::test_driver::click(
         &mut engine.app,
         dock_x(90.0),
-        history_row_y(second_at),
+        row_y,
         900.0,
         700.0
     ));
@@ -7011,10 +7036,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                 })
             })
     });
+    let row_y = changes_row_y(&engine, 1);
     assert!(himark::test_driver::click(
         &mut engine.app,
         dock_x(90.0),
-        changes_row_y(1),
+        row_y,
         900.0,
         700.0
     ));
@@ -7211,10 +7237,11 @@ fn diff_resize_probe_over_real_code() {
             })
     });
 
+    let row_y = changes_row_y(&engine, 1);
     assert!(himark::test_driver::click(
         &mut engine.app,
         1400.0 - workbench::dock::DOCK_WIDTH + 90.0,
-        changes_row_y(1),
+        row_y,
         1400.0,
         900.0
     ));

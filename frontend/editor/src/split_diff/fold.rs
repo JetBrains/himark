@@ -125,6 +125,20 @@ pub(crate) fn derive_folds(
     folds
 }
 
+/// Where a fold's rows stand: the first folded line (1-based) and
+/// the last, or `None` when the fold reaches the file's end — a rope
+/// seek per edge, never a scan.
+pub(crate) fn fold_place(text: &Text, start: u32, end: u32, lines: u32) -> FoldPlace {
+    let mut view = text.view();
+    let first_line = view.line_at(start as usize).0 as u32 + 1;
+    let len = text.byte_count().min(u32::MAX as usize) as u32;
+    let last_line = (end < len).then(|| first_line + lines.saturating_sub(1));
+    FoldPlace {
+        first_line,
+        last_line,
+    }
+}
+
 pub(crate) struct LineScan {
     view: text::text_view::TextView,
     scratch: Vec<u8>,
@@ -370,9 +384,20 @@ impl std::fmt::Display for FoldCommand {
     }
 }
 
+/// Where a fold's rows stand in the file, for the band's two edges:
+/// the first folded line, and the last — or `None` when the fold
+/// runs to the end of the file ("end").
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct FoldPlace {
+    pub first_line: u32,
+    pub last_line: Option<u32>,
+}
+
 #[derive(Clone)]
 pub(crate) struct FoldStrip {
     pub lines: u32,
+
+    pub place: FoldPlace,
 
     /// The split's LEFT pane mounts the fold as a silent spacer: it
     /// reserves the aligned height, while the right pane's strip —
@@ -382,9 +407,10 @@ pub(crate) struct FoldStrip {
 }
 
 impl FoldStrip {
-    pub(crate) fn new(lines: u32) -> Self {
+    pub(crate) fn new(lines: u32, place: FoldPlace) -> Self {
         Self {
             lines,
+            place,
             silent: false,
         }
     }
@@ -392,11 +418,14 @@ impl FoldStrip {
     pub(crate) fn spacer(lines: u32) -> Self {
         Self {
             lines,
+            place: FoldPlace {
+                first_line: 0,
+                last_line: None,
+            },
             silent: true,
         }
     }
 }
-
 
 impl imba::View for FoldStrip {
     type Command = FoldCommand;
@@ -416,253 +445,211 @@ impl imba::View for FoldStrip {
         store: &'a imba::store::Store,
         ui: &'a imba::ui::UiCtx,
     ) -> impl imba::layout::Layout<'a, FoldCommand> + imba::layout::LayoutValue + 'a {
+        let theme = crate::env::Themes::of(store);
         FoldStripLayout {
-            chrome: crate::env::Themes::of(store).ui().diff.clone(),
+            chrome: theme.ui().diff.clone(),
+            gutter: theme.ui().editor_gutter.clone(),
+            ink: theme.ui().ink.clone(),
             lines: self.lines,
+            place: self.place,
             silent: self.silent,
-            shaper: imba::layout::TextShaper::of(ui),
+            ui,
         }
     }
 }
 
-/// The strip, REIFIED (docs/ui/UI.md stage 2): the label `Text` padded
-/// down to the chrome's computed baseline, a weighted `Fill` gap, and
-/// the five right-anchored glyph buttons — each a `fixed` painted
-/// leaf whose click zone is its own rect. A layout STRUCT because the
-/// strip's extent is the incoming width (the old leaf's
-/// `constraints.max.width.max(1.0)`) at the chrome's fold height.
-struct FoldStripLayout {
+/// The fold BAND (docs/Design.md): a fold has two EDGES, each
+/// carrying the line number it opens from and a chevron pointing
+/// into the fold — `⌄` on the top edge reveals the fold's first
+/// lines, `⌃` on the bottom edge its last — and a summary at the
+/// code's text edge ("598 lines folded", "rest of file folded") with
+/// "Show all" after it. Reified as a layout struct because the band
+/// spans the incoming width at a height the silent spacer must agree
+/// with.
+struct FoldStripLayout<'a> {
     chrome: crate::theme::DiffChrome,
+    gutter: crate::theme::EditorGutterChrome,
+    ink: crate::theme::InkChrome,
     lines: u32,
+    place: FoldPlace,
     silent: bool,
-    shaper: std::rc::Rc<imba::layout::TextShaper>,
+    ui: &'a imba::ui::UiCtx,
 }
 
-impl imba::layout::LayoutValue for FoldStripLayout {}
+impl imba::layout::LayoutValue for FoldStripLayout<'_> {}
 
-impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
+impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
     fn layout(
         self,
         arena: &'a imba::arena::Arena,
         constraints: imba::constraints::Constraints,
     ) -> imba::ThunkBox<'a, FoldCommand> {
+        use imba::layout::{Alignment, Column, Fill, Insets, LayoutExt as _, Row, ZBox};
         let width = constraints.max.width.max(1.0);
-        let (chip, gap) = chip_metrics(&self.chrome);
         let height = strip_height(&self.chrome);
         if self.silent {
             // The spacer face: same reserved height, nothing painted,
             // nothing answered — the shared strip renders elsewhere.
             return imba::ThunkBox::new(arena, imba::leaf::leaf::<FoldCommand>(width, height));
         }
-        imba::ThunkBox::new(
+        let FoldStripLayout {
+            chrome,
+            gutter,
+            ink,
+            lines,
+            place,
+            ui,
+            ..
+        } = self;
+        let edge_h = chrome.fold_edge_height;
+        let number_font = crate::editor_view::gutter_font(gutter.number_size);
+        let number_ink = ink.mono_dim.0;
+        let gutter_right = gutter.width - chrome.fold_gutter_inset;
+
+        // One EDGE: the number right-aligned in the gutter, the
+        // chevron after it, the pair ending at the gutter's inset.
+        let edge = |number: String, down: bool, command: FoldCommand| {
+            let chevron = Chevron {
+                size: chrome.fold_chevron_size,
+                hit: chrome.fold_chevron_hit,
+                stroke: chrome.fold_chevron_stroke,
+                color: chrome.fold_button.0,
+                down,
+            };
+            Row::new(arena)
+                .align_items(imba::layout::CrossAlign::Center)
+                .weighted(1.0, Fill::new().height(0.0))
+                .child(imba::layout::text(ui, number, number_font.clone(), number_ink))
+                .child(chevron.pad_insets(Insets {
+                    left: chrome.fold_number_gap,
+                    ..Default::default()
+                }))
+                .sized(gutter_right.max(1.0), edge_h)
+                .on_click(move || command)
+        };
+        let last = match place.last_line {
+            Some(line) => line.to_string(),
+            None => "end".to_owned(),
+        };
+        let edges = Column::new(arena)
+            .child(edge(place.first_line.to_string(), true, FoldCommand::RevealTop))
+            .child(edge(last, false, FoldCommand::RevealBottom));
+
+        // The summary at the text edge, riding the band's middle.
+        let summary_font = chrome_font(chrome.fold_text_size);
+        let summary = match place.last_line {
+            Some(_) => format!("{lines} lines folded"),
+            None => "rest of file folded".to_owned(),
+        };
+        let words = Row::new(arena)
+            .child_by_baseline(imba::layout::text(
+                ui,
+                summary,
+                summary_font.clone(),
+                chrome.fold_text.0,
+            ))
+            .child_by_baseline(
+                imba::layout::text(ui, "Show all", summary_font, chrome.fold_button.0)
+                    .on_click(|| FoldCommand::Remove)
+                    .pad_insets(Insets {
+                        left: chrome.fold_summary_gap,
+                        ..Default::default()
+                    }),
+            );
+
+        let background = chrome.fold_background.0;
+        let band = ZBox::new(arena)
+            .child(edges)
+            .child_aligned(
+                Alignment::CenterStart,
+                words.pad_insets(Insets {
+                    left: gutter.width,
+                    ..Default::default()
+                }),
+            )
+            .sized(width, height)
+            .backdrop(move |_arena: &imba::arena::Arena, canvas: &skia_safe::Canvas, rect| {
+                let mut paint = skia_safe::Paint::default();
+                paint.set_color(background);
+                canvas.draw_rect(rect, &paint);
+            })
+            // A press anywhere else on the band is swallowed so it
+            // never reaches the document underneath.
+            .shield();
+        band.layout(
             arena,
-            imba::eager(FoldFace {
-                chrome: self.chrome,
-                lines: self.lines,
-                shaper: self.shaper,
-                width,
-                height,
-                chip,
-                gap,
-            }),
+            imba::constraints::Constraints::tight(skia_safe::Size::new(width, height)),
         )
     }
-}
-
-fn chip_metrics(chrome: &crate::theme::DiffChrome) -> (f32, f32) {
-    ((chrome.fold_text_size * 1.5).ceil(), 6.0)
 }
 
 /// The strip's whole footprint — the silent spacer and the painted
 /// face MUST agree, or the split's sides drift apart at every fold.
 fn strip_height(chrome: &crate::theme::DiffChrome) -> f32 {
-    let (chip, gap) = chip_metrics(chrome);
-    chip * 3.0 + gap * 2.0 + 12.0
+    chrome.fold_edge_height * 2.0
 }
 
-/// The fold's face (docs/himark-islands-canvas-many-files.png): a
-/// hairline through the middle, a chip stack at the left — `+N
-/// lines` above, `unfold` riding the line, `+N lines` below — and
-/// the folded count dimmed at the right edge.
-struct FoldFace {
-    chrome: crate::theme::DiffChrome,
-    lines: u32,
-    shaper: std::rc::Rc<imba::layout::TextShaper>,
-    width: f32,
-    height: f32,
-    chip: f32,
-    gap: f32,
+/// The edge's glyph: a chevron pointing INTO the fold, in a square
+/// hit box — the one bespoke mark on the band.
+struct Chevron {
+    size: f32,
+    hit: f32,
+    stroke: f32,
+    color: skia_safe::Color,
+    down: bool,
 }
 
-impl FoldFace {
-    /// The three chips, top to bottom, with their rects and labels.
-    fn chips(&self) -> [(FoldCommand, skia_safe::Rect, String); 3] {
-        let font = strip_font(self.chrome.fold_text_size);
-        let inset = self.chrome.fold_text_size;
-        let pad = self.chrome.fold_text_size * 0.7;
-        let reveal = format!("+ {} lines", FOLD_STEP.min(self.lines));
-        let reveal_w = self.shaper.advance(&font, &reveal) + pad * 2.0;
-        // The unfold chip leads with its glyph.
-        let unfold_w =
-            self.shaper.advance(&font, "unfold") + pad * 2.0 + self.chrome.fold_text_size * 0.9;
-        let mid = self.height * 0.5;
-        [
-            (
-                FoldCommand::RevealTop,
-                skia_safe::Rect::from_xywh(
-                    inset,
-                    mid - self.chip * 1.5 - self.gap,
-                    reveal_w,
-                    self.chip,
-                ),
-                reveal.clone(),
-            ),
-            (
-                FoldCommand::Remove,
-                skia_safe::Rect::from_xywh(inset, mid - self.chip * 0.5, unfold_w, self.chip),
-                "unfold".to_owned(),
-            ),
-            (
-                FoldCommand::RevealBottom,
-                skia_safe::Rect::from_xywh(inset, mid + self.chip * 0.5 + self.gap, reveal_w, self.chip),
-                reveal,
-            ),
-        ]
-    }
-}
+impl imba::layout::LayoutValue for Chevron {}
 
-impl<'a> imba::Widget<'a, FoldCommand> for FoldFace {
-    fn size(&self) -> skia_safe::Size {
-        skia_safe::Size::new(self.width, self.height)
-    }
-
-    fn handle_event(
-        &self,
-        _arena: &imba::arena::Arena,
-        event: &imba::event::Event<'_>,
-        _viewport: skia_safe::Rect,
-    ) -> imba::event::EventResult<FoldCommand> {
-        use imba::event::{Event, EventResult, MouseButton};
-        match event {
-            Event::Paint { canvas, .. } => {
-                let chrome = &self.chrome;
-                let font = strip_font(chrome.fold_text_size);
-                let (ascent, descent) = {
-                    let metrics = font.metrics().1;
-                    (-metrics.ascent, metrics.descent)
-                };
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for Chevron {
+    fn layout(
+        self,
+        arena: &'a imba::arena::Arena,
+        _constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, Command> {
+        use imba::thunk_ext::ThunkExt as _;
+        let Chevron {
+            size,
+            hit,
+            stroke,
+            color,
+            down,
+        } = self;
+        imba::ThunkBox::new(
+            arena,
+            imba::leaf::leaf::<Command>(hit, hit).paint_instead(move |_arena, canvas, rect| {
                 let mut paint = skia_safe::Paint::default();
                 paint.set_anti_alias(true);
-                let mid = self.height * 0.5;
-                let chips = self.chips();
-
-                // The folded count, dimmed at the right edge, riding
-                // the line's level.
-                let label = format!("{} lines folded", self.lines);
-                let label_w = self.shaper.advance(&font, &label);
-                let label_x = self.width - chrome.fold_text_size - label_w;
-                self.shaper.draw(
-                    canvas,
-                    &font,
-                    &label,
-                    chrome.fold_text.0,
-                    0.0,
-                    label_x,
-                    mid + (ascent - descent) * 0.5,
-                );
-
-                // The hairline, from past the chips to short of the
-                // count.
-                let chips_right = chips
-                    .iter()
-                    .map(|(_, rect, _)| rect.right)
-                    .fold(0.0_f32, f32::max);
-                paint.set_color(chrome.fold_rule.0);
-                paint.set_stroke_width(1.0);
+                paint.set_color(color);
                 paint.set_style(skia_safe::paint::Style::Stroke);
-                canvas.draw_line(
-                    (chips_right + chrome.fold_text_size, mid),
-                    (label_x - chrome.fold_text_size, mid),
-                    &paint,
-                );
-
-                // The chips: filled, hairline-framed, labels centered.
-                for (command, rect, text) in &chips {
-                    paint.set_style(skia_safe::paint::Style::Fill);
-                    paint.set_color(chrome.fold_background.0);
-                    canvas.draw_round_rect(*rect, 6.0, 6.0, &paint);
-                    paint.set_style(skia_safe::paint::Style::Stroke);
-                    paint.set_color(chrome.fold_rule.0);
-                    canvas.draw_round_rect(*rect, 6.0, 6.0, &paint);
-
-                    let mut text_x = rect.left + chrome.fold_text_size * 0.7;
-                    if *command == FoldCommand::Remove {
-                        // The unfold glyph: two chevrons parting.
-                        let cx = text_x + chrome.fold_text_size * 0.3;
-                        let cy = rect.center_y();
-                        let arm = chrome.fold_text_size * 0.26;
-                        paint.set_color(chrome.fold_button.0);
-                        paint.set_stroke_width(1.6);
-                        paint.set_stroke_cap(skia_safe::paint::Cap::Round);
-                        let mut path = skia_safe::PathBuilder::new();
-                        path.move_to((cx - arm, cy - arm * 0.5));
-                        path.line_to((cx, cy - arm * 1.3));
-                        path.line_to((cx + arm, cy - arm * 0.5));
-                        path.move_to((cx - arm, cy + arm * 0.5));
-                        path.line_to((cx, cy + arm * 1.3));
-                        path.line_to((cx + arm, cy + arm * 0.5));
-                        canvas.draw_path(&path.detach(), &paint);
-                        text_x = cx + arm + chrome.fold_text_size * 0.45;
-                    }
-                    paint.set_style(skia_safe::paint::Style::Fill);
-                    self.shaper.draw(
-                        canvas,
-                        &font,
-                        text,
-                        chrome.fold_text.0,
-                        0.0,
-                        text_x,
-                        rect.center_y() + (ascent - descent) * 0.5,
-                    );
-                }
-                EventResult::handled()
-            }
-            Event::MouseDown {
-                button: MouseButton::Left,
-                point,
-                ..
-            } => {
-                for (command, rect, _) in self.chips() {
-                    if point.x >= rect.left
-                        && point.x < rect.right
-                        && point.y >= rect.top
-                        && point.y < rect.bottom
-                    {
-                        return EventResult::command(command);
-                    }
-                }
-                // A press anywhere else on the strip is swallowed so
-                // it never reaches the document underneath.
-                EventResult::handled()
-            }
-            _ => imba::event::EventResult::Ignored,
-        }
+                paint.set_stroke_width(stroke);
+                paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+                paint.set_stroke_join(skia_safe::paint::Join::Round);
+                let cx = rect.center_x();
+                let cy = rect.center_y();
+                let arm = size * 0.31;
+                let rise = size * 0.16;
+                let (near, far) = match down {
+                    true => (cy - rise, cy + rise),
+                    false => (cy + rise, cy - rise),
+                };
+                let mut path = skia_safe::PathBuilder::new();
+                path.move_to((cx - arm, near));
+                path.line_to((cx, far));
+                path.line_to((cx + arm, near));
+                canvas.draw_path(&path.detach(), &paint);
+            }),
+        )
     }
 }
 
-pub(crate) fn strip_font(size: f32) -> skia_safe::Font {
-    static TYPEFACE: std::sync::OnceLock<skia_safe::Typeface> = std::sync::OnceLock::new();
-    let typeface = TYPEFACE.get_or_init(|| {
-        skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::bold())
-            .expect("a system typeface")
-    });
-    let mut font = skia_safe::Font::from_typeface(typeface.clone(), size);
+/// The band's words wear the chrome face, like every label outside
+/// the code.
+fn chrome_font(size: f32) -> skia_safe::Font {
+    let mut font = skia_safe::Font::from_typeface(crate::embedded_fonts::chrome_typeface(), size);
     font.set_edging(skia_safe::font::Edging::AntiAlias);
     font
 }
-
-
 
 /// TEST SUPPORT: the fold strips a marks markup carries — the right
 /// side's interactive strips (silent spacers are the left side's).

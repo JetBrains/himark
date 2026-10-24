@@ -84,25 +84,27 @@ fn the_light_theme_parses_covers_and_matches_dark_geometry() {
         light_combo.menu_row_height, dark_combo.menu_row_height,
         "menu geometry matches"
     );
+    // The redesign draws a combo as a bare WORD: its ink is the light
+    // theme's own secondary ink, its menu the light sheet.
     assert_eq!(
         light_combo.value_color.0,
-        Color::from_argb(0xff, 0x20, 0x24, 0x2b),
-        "closed values use dark ink"
+        light.ui().ink.ink_2.0,
+        "closed values use the secondary ink"
     );
     assert_eq!(
         light_combo.menu_fill.0,
-        Color::from_argb(0xff, 0xf8, 0xf9, 0xfb),
-        "expanded menus use a light surface"
+        light.ui().ink.sheet.0,
+        "expanded menus use the sheet surface"
     );
     assert_eq!(
         light_combo.menu_border.0,
-        Color::from_argb(0xff, 0xb8, 0xbe, 0xc9),
-        "closed cells and expanded menus have a visible edge"
+        light.ui().ink.sheet_border.0,
+        "expanded menus have the sheet's edge"
     );
     assert_eq!(
         light_combo.menu_text.0,
-        Color::from_argb(0xff, 0x20, 0x24, 0x2b),
-        "expanded menu labels use dark ink"
+        light.ui().ink.ink.0,
+        "expanded menu labels use primary ink"
     );
 }
 

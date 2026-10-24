@@ -107,12 +107,17 @@ where
         command: DynCommand,
         fx: &mut crate::effect::Effects<'_, DynCommand>,
     ) {
+        let named = command.to_string();
         match command.downcast::<V::Command>() {
             Some(command) => fx.scope(DynCommand::new::<V::Command>, |fx| {
                 self.perform(store, ui, command, fx)
             }),
             None => {
-                debug_assert!(false, "command routed to a view with another command type");
+                debug_assert!(
+                    false,
+                    "command `{named}` routed to a view of {}",
+                    std::any::type_name::<V::Command>()
+                );
             }
         }
     }

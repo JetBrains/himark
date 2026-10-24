@@ -167,7 +167,7 @@ impl himark::commands::HimarkCommand for ShowStubDock {
 fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let before = ::workbench::workbench::panel_width(
         app.store(),
@@ -256,7 +256,7 @@ fn the_dock_resizes_by_dragging_its_edge() {
 fn an_editor_drag_still_selects_while_the_dock_is_up() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(test_driver::type_text(
         &mut app,
@@ -265,10 +265,17 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
-    assert!(test_driver::click(&mut app, 160.0, 120.0, 800.0, 600.0));
+    // On the editor's first line: past the gutter, just under the
+    // header band.
+    let ui = ::editor::env::Themes::of(app.store()).ui().clone();
+    let (x, y) = (
+        ui.editor_gutter.width + ui.window.content_pad + 8.0,
+        ui.toolbar.height + 30.0,
+    );
+    assert!(test_driver::click(&mut app, x, y, 1600.0, 900.0));
     app.draw_window(app.sole_window(), surface.canvas());
-    test_driver::drag(&mut app, 380.0, 130.0);
-    test_driver::mouse_up(&mut app, 380.0, 130.0);
+    test_driver::drag(&mut app, x + 220.0, y + 6.0);
+    test_driver::mouse_up(&mut app, x + 220.0, y + 6.0);
     let (_, held) = documents::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .next()
@@ -333,6 +340,7 @@ fn dock_header_buttons_dispatch_their_commands() {
     }
     app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
         command: "test.dock-mark",
+        label: "Test",
         order: 10.0,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|_canvas, _rect, _color| {}),
@@ -342,13 +350,34 @@ fn dock_header_buttons_dispatch_their_commands() {
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
-    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    // The dock's header is its TABS, laid left to right from the
+    // side text edge, `tab_gap` apart, every registered Right word
+    // in order; the test's is the last.
+    let theme = ::editor::env::Themes::of(app.store());
+    let chrome = theme.ui().toolbar.clone();
     let dock_width = entity(&app).dock_target_width();
     let edge = 800.0 - dock_width;
-    let x = edge + dock_width - chrome.button_inset - chrome.button_size * 0.5;
+    let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
+    let mut x = edge + theme.ui().window.side_text_edge;
+    for (index, tab) in ::workbench::toolbar::ToolbarButtons::of(app.store())
+        .tabs()
+        .iter()
+        .enumerate()
+    {
+        if index > 0 {
+            x += chrome.tab_gap;
+        }
+        let advance = styles.dim.shaper.advance(&styles.dim.font, tab.label);
+        if tab.command == "test.dock-mark" {
+            x += advance * 0.5;
+            break;
+        }
+        x += advance;
+    }
+    let y = chrome.title_baseline - chrome.title_size * 0.4;
     assert!(
-        test_driver::click(&mut app, x, chrome.height * 0.5, 800.0, 600.0),
-        "the dock header button answers the click"
+        test_driver::click(&mut app, x, y, 800.0, 600.0),
+        "the dock header tab answers the click"
     );
     settle(&mut app, &mut surface);
     assert_eq!(

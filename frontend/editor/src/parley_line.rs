@@ -23,6 +23,7 @@ pub fn world() -> FontWorld {
         for cut in crate::embedded_fonts::code_font_cuts() {
             world.register(cut);
         }
+        world.register(crate::embedded_fonts::chrome_font_bytes());
     }
     world
 }

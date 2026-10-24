@@ -56,7 +56,10 @@ pub(crate) enum CanvasBanner {
         /// The full message when the host sent one, the summary
         /// otherwise.
         message: String,
+        /// The author as the probes read it: `Name <email>`.
         author: String,
+        /// The name alone — what the byline shows.
+        author_name: String,
     },
 }
 
@@ -85,6 +88,7 @@ pub(crate) fn canvas_banner(
                     Some(email) => format!("{} <{}>", commit.author.name, email),
                     None => commit.author.name.clone(),
                 },
+                author_name: commit.author.name.clone(),
             })
         }
     }

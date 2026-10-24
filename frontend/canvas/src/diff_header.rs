@@ -1,14 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The diff FILE BAND, drawn once for every place a diff shows a file
-//! header: the canvas rows and the chat's edit cells. The shape is the
-//! canvas's own — the fold chevron (where folding exists), the dimmed
-//! directory prefix leading into the file name, the `+N −M` trail
-//! after it, the hairline buttons at the right edge, the band's body
-//! pressing the primary action. Call sites pick the affordances and
-//! map the presses onto their own command type; the geometry and the
-//! glyphs live here.
+//! The diff FILE BAND, two dresses. `FileBand` is the canvas's (the
+//! typographic redesign): one row of words on ONE baseline over the
+//! ground, a hairline above — the dimmed directory leading into the
+//! file name, the `+N −M` trail, a flexible gap, the ordinal and the
+//! word buttons. No card, no glyphs: rank is size and weight.
+//! `DiffHeaderFace` is the chat edit cell's compact painted band —
+//! the fold chevron, the hairline glyph buttons — kept for the cells
+//! until they adopt the band. Call sites map the presses onto their
+//! own command type.
 
 use imba::{
     arena::Arena,
@@ -347,5 +348,231 @@ where
             },
             _ => EventResult::Ignored,
         }
+    }
+}
+
+// ------------------------------------------------------------ file band
+
+/// The canvas's FILE BAND (Main.dc.html, the file band): the words of
+/// one file on one baseline, a hairline above, the ground under. The
+/// title group (directory, name, counts) presses `on_title`; the word
+/// buttons trail at the right edge, the ordinal before them.
+pub struct FileBand<'a, Command> {
+    title: String,
+    added: Option<i64>,
+    removed: Option<i64>,
+    collapsed: bool,
+    ordinal: Option<(usize, usize)>,
+    on_title: Option<Box<dyn Fn() -> Command + 'a>>,
+    /// The trailing word buttons, left to right.
+    words: Vec<(&'static str, Box<dyn Fn() -> Command + 'a>)>,
+    styles: FileBandStyles,
+    chrome: editor::theme::DiffChrome,
+    lead: f32,
+    rule: skia_safe::Color,
+    ground: skia_safe::Color,
+}
+
+/// The band's RANKS: the directory and the trail in the brief rung,
+/// the name in its own heavier one, the ordinal a step smaller.
+#[derive(Clone)]
+struct FileBandStyles {
+    dir: hikit::ui::TextStyle,
+    name: hikit::ui::TextStyle,
+    added: hikit::ui::TextStyle,
+    removed: hikit::ui::TextStyle,
+    ordinal: hikit::ui::TextStyle,
+    word: hikit::ui::TextStyle,
+}
+
+/// The band's height from the chrome alone — what the canvas reserves
+/// for a header row before it lays out: the insets around the name's
+/// line box.
+pub fn file_band_height(store: &Store) -> f32 {
+    let chrome = env::Themes::of(store).ui().diff.clone();
+    file_band_height_of(&chrome)
+}
+
+pub fn file_band_height_of(chrome: &editor::theme::DiffChrome) -> f32 {
+    chrome.band_pad_top
+        + (chrome.file_name.size * chrome.file_name.line_height).ceil()
+        + chrome.band_pad_bottom
+}
+
+impl<'a, Command: 'a> FileBand<'a, Command> {
+    pub fn new(store: &Store, ui: &UiCtx, title: &str) -> Self {
+        let theme = env::Themes::of(store);
+        let ink = theme.ui().ink.clone();
+        let chrome = theme.ui().diff.clone();
+        let brief = hikit::ui::brief(store, ui);
+        let name = hikit::ui::TextStyle {
+            font: hikit::fonts::role_font(ui, &chrome.file_name),
+            color: ink.ink.0,
+            tracking: chrome.file_name.tracking,
+            shaper: brief.shaper.clone(),
+        };
+        Self {
+            title: title.to_owned(),
+            added: None,
+            removed: None,
+            collapsed: false,
+            ordinal: None,
+            on_title: None,
+            words: Vec::new(),
+            styles: FileBandStyles {
+                dir: brief.clone(),
+                name,
+                added: brief.clone().colored(ink.added.0),
+                removed: brief.clone().colored(ink.removed.0),
+                ordinal: brief.clone().sized(chrome.ordinal_size),
+                word: brief,
+            },
+            lead: theme.ui().window.code_text_edge,
+            rule: ink.rule.0,
+            ground: ink.ground.0,
+            chrome,
+        }
+    }
+
+    pub fn counts(mut self, added: Option<i64>, removed: Option<i64>) -> Self {
+        self.added = added.filter(|n| *n > 0);
+        self.removed = removed.filter(|n| *n > 0);
+        self
+    }
+
+    /// A collapsed file's name steps down an ink — the fold state is
+    /// typographic, no chevron.
+    pub fn collapsed(mut self, collapsed: bool) -> Self {
+        self.collapsed = collapsed;
+        self
+    }
+
+    /// "file N of M", before the word buttons.
+    pub fn ordinal(mut self, at: usize, of: usize) -> Self {
+        self.ordinal = Some((at, of));
+        self
+    }
+
+    pub fn on_title(mut self, press: impl Fn() -> Command + 'a) -> Self {
+        self.on_title = Some(Box::new(press));
+        self
+    }
+
+    /// A trailing word button, after the ones already added.
+    pub fn word(mut self, label: &'static str, press: impl Fn() -> Command + 'a) -> Self {
+        self.words.push((label, Box::new(press)));
+        self
+    }
+}
+
+impl<'a, Command> imba::layout::LayoutValue for FileBand<'a, Command> {}
+
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command> {
+    fn layout(
+        self,
+        arena: &'a Arena,
+        constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, Command> {
+        use imba::layout::{Insets, LayoutExt as _, Row};
+        use hikit::ui::text;
+        let FileBand {
+            title,
+            added,
+            removed,
+            collapsed,
+            ordinal,
+            on_title,
+            words,
+            styles,
+            chrome,
+            lead,
+            rule,
+            ground,
+        } = self;
+        let gap = |left: f32| Insets {
+            left,
+            ..Default::default()
+        };
+
+        // The path splits at its last slash: the directories dim, the
+        // file name carries the band's weight.
+        let split = title.rfind('/').map(|at| at + 1).unwrap_or(0);
+        let (dir, name) = title.split_at(split);
+        let mut name_style = styles.name.clone();
+        if collapsed {
+            name_style = name_style.colored(styles.word.color);
+        }
+        let mut heading = Row::new(arena);
+        if !dir.is_empty() {
+            heading = heading.child_by_baseline(text(&styles.dir, dir));
+        }
+        let step = match dir.is_empty() {
+            true => 0.0,
+            false => chrome.band_name_gap,
+        };
+        heading = heading.child_by_baseline(text(&name_style, name).pad_insets(gap(step)));
+        // The trail: `+N −M`, one word space apart.
+        let space = styles.added.shaper.advance(&styles.added.font, " ");
+        let mut lead_gap = chrome.band_gap;
+        if let Some(added) = added {
+            heading = heading
+                .child_by_baseline(text(&styles.added, format!("+{added}")).pad_insets(gap(lead_gap)));
+            lead_gap = space;
+        }
+        if let Some(removed) = removed {
+            heading = heading.child_by_baseline(
+                text(&styles.removed, format!("−{removed}")).pad_insets(gap(lead_gap)),
+            );
+        }
+        let heading: imba::layout::LayoutBox<'a, Command> = match on_title {
+            Some(press) => imba::layout::LayoutBox::new(arena, heading.on_click(move || press())),
+            None => imba::layout::LayoutBox::new(arena, heading),
+        };
+
+        let mut trailing = Row::new(arena);
+        if let Some((at, of)) = ordinal {
+            trailing = trailing.child_by_baseline(text(&styles.ordinal, format!("file {at} of {of}")));
+        }
+        for (label, press) in words {
+            trailing = trailing.child_by_baseline(
+                text(&styles.word, label)
+                    .on_click(move || press())
+                    .pad_insets(gap(chrome.band_gap)),
+            );
+        }
+
+        // One Row, one baseline group — the column header's shape:
+        // the heading, a main-axis-only flexible gap, the trailing
+        // words.
+        let width = constraints.max.width.max(1.0);
+        let height = file_band_height_of(&chrome);
+        let room = (width - lead - chrome.band_pad_right).max(1.0);
+        let laid = Row::new(arena)
+            .child_by_baseline(heading)
+            .weighted(1.0, imba::layout::Fill::new().height(0.0))
+            .child_by_baseline(trailing)
+            .layout(
+                arena,
+                imba::constraints::Constraints {
+                    min: Size::new(room, 0.0),
+                    max: Size::new(room, height),
+                },
+            );
+        // The baseline sits where CSS puts it in the name's line box:
+        // half the leading above the ascent.
+        let (_, metrics) = styles.name.font.metrics();
+        let (ascent, descent) = (-metrics.ascent, metrics.descent);
+        let line = chrome.file_name.size * chrome.file_name.line_height;
+        let baseline = chrome.band_pad_top + (line - ascent - descent) * 0.5 + ascent;
+        let at = imba::Thunk::first_baseline(&laid).unwrap_or(0.0);
+        let mut band = imba::container::container(arena, Size::new(width, height));
+        band.place_boxed(lead, baseline - at, laid);
+        imba::ThunkBox::new(
+            arena,
+            hikit::ui::Hairline::new(rule).top().wrap(imba::thunk_ext::ThunkExt::paint_below(
+                band,
+                hikit::ui::ground(ground),
+            )),
+        )
     }
 }

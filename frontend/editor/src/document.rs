@@ -2201,9 +2201,11 @@ impl Document {
         else {
             return;
         };
+        let style = self.editors.get(&editor).and_then(|editor| editor.input_style);
         let height = crate::shaped_line::ShapedLine::placeholder(
             &text,
-            theme.ui().peeker.dim_text.0,
+            style,
+            theme.ui().ink.placeholder.0,
             ui,
             theme,
             width,
@@ -2212,6 +2214,15 @@ impl Document {
         .layout_height(theme);
         if let Some(editor) = self.editors.get_mut(&editor) {
             editor.placeholder = Some(EditorPlaceholder { text, height });
+        }
+    }
+
+    /// Mark an editor as an INPUT wearing `style` (the covering style
+    /// its markup carries): its placeholder shapes with it and its
+    /// caret draws live.
+    pub fn mark_input(&mut self, editor: EditorId, style: crate::theme::StyleId) {
+        if let Some(editor) = self.editors.get_mut(&editor) {
+            editor.input_style = Some(style);
         }
     }
 

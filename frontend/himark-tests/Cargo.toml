@@ -20,13 +20,16 @@ ahp-types = "0.9"
 ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
+filetree = { path = "../filetree" }
 hikit = { path = "../hikit" }
 imba = { path = "../imba" }
 ahp-lsp = { path = "../ahp-lsp" }
 canvas = { path = "../canvas", features = ["test-support"] }
 changesview = { path = "../changesview" }
+comments = { path = "../comments", features = ["test-support"] }
 hicode = { path = "../plugins/hicode" }
 himarkdown = { path = "../plugins/himarkdown" }
+humantime = "2"
 demo = { path = "../plugins/demo" }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 locations = { path = "../locations" }

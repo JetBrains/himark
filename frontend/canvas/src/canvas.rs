@@ -190,12 +190,12 @@ fn sticky_style() -> imba::list::StickySource {
     std::sync::Arc::new(|store: &Store| {
         let theme = env::Themes::of(store);
         let window = theme.ui().window.clone();
+        let ink = theme.ui().ink.clone();
         StickyStyle {
-            // The planted band backs onto the canvas PAGE — the strip
-            // behind a floating plaque is the same ground the cards
-            // ride on, in both themes.
-            background: theme.ui().diff.plaque_page.0,
-            divider: window.divider.0,
+            // The planted band stands on the same ground the file
+            // sections stack on, ruled off from the scrolling code.
+            background: ink.ground.0,
+            divider: ink.rule.0,
             divider_width: window.divider_width,
         }
     })
@@ -318,13 +318,7 @@ impl Canvas {
     #[doc(hidden)]
     pub fn probe_banner(&self) -> Option<(String, String)> {
         match self.banner_row()? {
-            BannerRow::Commit {
-                message, author, ..
-            } => {
-                let text = message.document.text();
-                let end = text.byte_count().min(u32::MAX as usize) as u32;
-                Some((text.view().substring(0..end), author))
-            }
+            BannerRow::Commit { block, .. } => Some((block.message, block.author)),
             _ => None,
         }
     }
@@ -527,10 +521,16 @@ impl Canvas {
         };
         let start = header_range.start;
         let expanded = self.rows.row_range(&CanvasKey::Diff(key.clone())).is_some();
+        let (ordinal, split) = self
+            .header_at(key)
+            .map(|header| (header.ordinal, header.split))
+            .unwrap_or_default();
         let header = CanvasRow::Header(HeaderRow {
             file,
             collapsed: !expanded,
             built: true,
+            ordinal,
+            split,
         });
         let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
         slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
@@ -671,7 +671,9 @@ impl Canvas {
                 left.max(right)
             }
         };
-        let want = body + env::Themes::of(store).ui().chat.gap;
+        // No card margin: the row is the body, the next band's
+        // hairline closes it.
+        let want = body;
         if (want - (&self.rows).height_at(index).unwrap_or(0.0)).abs() > 0.5 {
             let rows = ListCommand::SetHeight(index, want);
             fx.scope(CanvasCommand::Rows, |fx| {
@@ -733,14 +735,26 @@ impl Canvas {
                             height,
                         );
                     }
-                    Some(crate::diff_canvas::CanvasBanner::Commit { message, author }) => {
-                        let message = commit_banner_box(store, ui, &message, fx);
-                        let height = commit_band(&theme, &message);
+                    Some(crate::diff_canvas::CanvasBanner::Commit {
+                        message,
+                        author,
+                        author_name,
+                    }) => {
+                        let (headline, body) = split_message(&message);
+                        let body = body.map(|body| commit_banner_box(store, ui, &body, fx));
+                        let block = CommitBlock {
+                            message,
+                            headline,
+                            author,
+                            author_name,
+                            totals: totals_of(files.iter()),
+                        };
+                        let height = commit_band(&theme, &block, body.as_ref());
                         slice.push_keyed_sized(
                             CanvasKey::Banner,
                             CanvasRow::Banner(BannerRow::Commit {
-                                message,
-                                author,
+                                block,
+                                body,
                                 focused: false,
                             }),
                             height,
@@ -748,7 +762,8 @@ impl Canvas {
                     }
                     None => {}
                 }
-                for file in &files {
+                let count = files.len();
+                for (at, file) in files.iter().enumerate() {
                     let start = slice.len();
                     slice.push_keyed_sized(
                         CanvasKey::File(file.new.clone()),
@@ -756,6 +771,8 @@ impl Canvas {
                             file: file.clone(),
                             collapsed: false,
                             built: false,
+                            ordinal: (at + 1, count),
+                            split: false,
                         }),
                         band,
                     );
@@ -853,6 +870,10 @@ impl Canvas {
                             file: file.clone(),
                             collapsed: false,
                             built: false,
+                            // Restamped below, once the membership
+                            // settles.
+                            ordinal: (0, 0),
+                            split: false,
                         }),
                         band,
                     );
@@ -876,7 +897,62 @@ impl Canvas {
             }
         }
         if moved {
+            self.restamp();
             fx.settle();
+        }
+    }
+
+    /// After a membership or stats move: every header's "file N of M"
+    /// and the commit block's totals follow the listing. Linear in the
+    /// files, like the reconcile that calls it — and a header only
+    /// resplices when its ordinal actually moved.
+    fn restamp(&mut self) {
+        let keys: Vec<ResourceLocation> = (0..self.rows.len())
+            .filter_map(|index| match (&self.rows).key_at(index) {
+                Some(CanvasKey::File(key)) => Some(key.clone()),
+                _ => None,
+            })
+            .collect();
+        let count = keys.len();
+        for (at, key) in keys.iter().enumerate() {
+            let ordinal = (at + 1, count);
+            if self.header_at(key).is_some_and(|header| header.ordinal != ordinal) {
+                self.resplice_header(key, |header| header.ordinal = ordinal);
+            }
+        }
+        if let Some(range) = (&self.rows).row_range(&CanvasKey::Banner) {
+            if let Some(CanvasRow::Banner(BannerRow::Commit {
+                mut block,
+                body,
+                focused,
+            })) = (&self.rows).view_at(range.start)
+            {
+                let totals = totals_of(self.files.values());
+                if block.totals != totals {
+                    block.totals = totals;
+                    let height = self.rows.height_at(range.start).unwrap_or(0.0);
+                    let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                    slice.push_keyed_sized(
+                        CanvasKey::Banner,
+                        CanvasRow::Banner(BannerRow::Commit {
+                            block,
+                            body,
+                            focused,
+                        }),
+                        height,
+                    );
+                    self.rows.splice_slice(range, slice);
+                }
+            }
+        }
+    }
+
+    /// The standing header row of a file.
+    fn header_at(&self, key: &ResourceLocation) -> Option<HeaderRow> {
+        let range = (&self.rows).row_range(&CanvasKey::File(key.clone()))?;
+        match (&self.rows).view_at(range.start)? {
+            CanvasRow::Header(header) => Some(header),
+            _ => None,
         }
     }
 
@@ -943,45 +1019,46 @@ impl Canvas {
     /// reconciles on every host touch — the commit canvas never does,
     /// which is how this once shipped asymmetrically broken).
     fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile, band: f32) {
-        let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
-            return;
-        };
+        let _ = band;
         let built = matches!(
             self.phases.get(key),
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
+        self.resplice_header(key, |header| {
+            header.file = file.clone();
+            header.built = built;
+        });
+    }
+
+    /// Resplices one header row in place with `update` applied — same
+    /// band height, the FULL cover re-asserted (see `refresh_header`).
+    fn resplice_header(&mut self, key: &ResourceLocation, update: impl FnOnce(&mut HeaderRow)) {
+        let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
+            return;
+        };
+        let Some(CanvasRow::Header(mut row)) = (&self.rows).view_at(header.start) else {
+            return;
+        };
+        update(&mut row);
+        let band = self.rows.height_at(header.start).unwrap_or(0.0);
         match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(diff_range) => {
                 let Some(diff_row) = (&self.rows).view_at(diff_range.start) else {
                     return;
                 };
                 let diff_height = self.rows.height_at(diff_range.start).unwrap_or(0.0);
+                row.collapsed = false;
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-                slice.push_keyed_sized(
-                    CanvasKey::File(key.clone()),
-                    CanvasRow::Header(HeaderRow {
-                        file: file.clone(),
-                        collapsed: false,
-                        built,
-                    }),
-                    band,
-                );
+                slice.push_keyed_sized(CanvasKey::File(key.clone()), CanvasRow::Header(row), band);
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff_row, diff_height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
                 self.rows
                     .splice_slice(header.start..header.start + 2, slice);
             }
             None => {
+                row.collapsed = true;
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-                slice.push_keyed_sized(
-                    CanvasKey::File(key.clone()),
-                    CanvasRow::Header(HeaderRow {
-                        file: file.clone(),
-                        collapsed: true,
-                        built,
-                    }),
-                    band,
-                );
+                slice.push_keyed_sized(CanvasKey::File(key.clone()), CanvasRow::Header(row), band);
                 slice.cover(CanvasKey::File(key.clone()), 0..1);
                 self.rows
                     .splice_slice(header.start..header.start + 1, slice);
@@ -1066,6 +1143,8 @@ impl Canvas {
                 file: file.clone(),
                 collapsed: false,
                 built: false,
+                ordinal: (1, 1),
+                split: false,
             }),
             header_band(&theme),
         );
@@ -1269,7 +1348,7 @@ impl Canvas {
                                 .is_none_or(|view| view.dressed());
                         let height = match dressed {
                             true => height,
-                            false => (reserved_body(&theme, &file) - chrome.gap).max(0.0),
+                            false => reserved_body(&theme, &file),
                         };
                         (RowBody::Built { pane }, height)
                     }
@@ -1293,15 +1372,21 @@ impl Canvas {
             rewrap_ask: None,
             built_width: Some(built_width),
         });
-        let diff_height = body_height + chrome.gap;
+        let diff_height = body_height;
 
         if let Some(header_range) = (&self.rows).row_range(&CanvasKey::File(key.clone())) {
             let start = header_range.start;
             let expanded = self.rows.row_range(&CanvasKey::Diff(key.clone())).is_some();
+            let (ordinal, split) = self
+                .header_at(&key)
+                .map(|header| (header.ordinal, header.split))
+                .unwrap_or_default();
             let header = CanvasRow::Header(HeaderRow {
                 file,
                 collapsed: !expanded,
                 built: true,
+                ordinal,
+                split,
             });
             let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
             slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
@@ -1336,6 +1421,10 @@ impl Canvas {
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
         let band = (&self.rows).height_at(start).unwrap_or(64.0);
+        let (ordinal, split) = self
+            .header_at(key)
+            .map(|header| (header.ordinal, header.split))
+            .unwrap_or_default();
         match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(diff_range) => {
                 let Some(diff) = (&self.rows).view_at(diff_range.start) else {
@@ -1350,6 +1439,8 @@ impl Canvas {
                         file,
                         collapsed: true,
                         built,
+                        ordinal,
+                        split,
                     }),
                     band,
                 );
@@ -1369,6 +1460,8 @@ impl Canvas {
                         file,
                         collapsed: false,
                         built,
+                        ordinal,
+                        split,
                     }),
                     band,
                 );
@@ -1436,6 +1529,15 @@ impl Canvas {
             HeaderAction::ToggleFace => {
                 let command = RowCommand::Header(HeaderAction::ToggleFace);
                 self.to_row(key.clone(), command, store, ui, fx);
+                // The band's face word names the OTHER face: read the
+                // one the pane now wears.
+                let split = self
+                    .row_pane(key)
+                    .and_then(|pane| crate::diff_pane::gathered_view(store, pane.documents(), pane.id()))
+                    .map(|view| view.layout == editor::unified_diff::DiffLayout::Split);
+                if let Some(split) = split {
+                    self.resplice_header(key, |header| header.split = split);
+                }
             }
         }
     }
@@ -1672,99 +1774,77 @@ impl Canvas {
     ) -> impl imba::layout::Layout<'a, CanvasCommand> + imba::layout::LayoutValue + 'a {
         let _ = arena;
         imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
-            let inner: imba::ThunkBox<'a, CanvasCommand> = match &self.note {
-                Some(note) => {
-                    let chrome = env::Themes::of(store).ui().chat.clone();
-                    let text = note.clone();
-                    let font = hikit::fonts::ui_text_font(ui, chrome.title_size);
-                    let shaper = imba::layout::TextShaper::of(ui);
-                    let color = chrome.loader_color.0;
-                    let size = constraints.max;
-                    imba::ThunkBox::new(
-                        arena,
-                        imba::leaf::leaf::<CanvasCommand>(size.width, size.height.min(240.0))
-                            .paint_instead(move |_arena, canvas, rect| {
-                                let width = shaper.advance(&font, &text);
-                                shaper.draw(
-                                    canvas,
-                                    &font,
-                                    &text,
-                                    color,
-                                    0.0,
-                                    rect.left + (rect.width() - width) / 2.0,
-                                    rect.top + rect.height() * 0.5,
-                                );
-                            }),
-                    )
-                }
+            use imba::layout::LayoutExt as _;
+            let ground = env::Themes::of(store).ui().ink.ground.0;
+            match &self.note {
+                // The note (pending, empty, failed listing): one brief
+                // line centered on the ground.
+                Some(note) => imba::layout::Layout::layout(
+                    hikit::ui::text(&hikit::ui::brief(store, ui), note.clone())
+                        .align(imba::layout::Alignment::Center)
+                        .backdrop(hikit::ui::ground(ground)),
+                    arena,
+                    constraints,
+                ),
                 None => {
-                    // The summary pill floats top-center over the
-                    // scroll: the file count, the +A −R totals and
-                    // the expansion toggle. Wrapped OUTSIDE the
-                    // sticky host so it rides above the planted
-                    // header bands.
-                    let pill = (self.files.size() > 0).then(|| {
-                        let (mut added, mut removed) = (0i64, 0i64);
-                        for (_, file) in self.files.iter() {
-                            added += file.added.unwrap_or(0).max(0);
-                            removed += file.removed.unwrap_or(0).max(0);
-                        }
-                        crate::diff_summary::SummaryPill::new(
+                    // The SUMMARY line heads a canvas with no commit
+                    // block (the working copy): the totals and the
+                    // file count, a press toggling every file. A
+                    // commit canvas's byline carries the same facts.
+                    let summary = (self.files.size() > 0
+                        && !matches!(self.source, CanvasSource::Commit { .. }))
+                    .then(|| {
+                        crate::diff_summary::SummaryLine::new(
                             store,
                             ui,
                             crate::diff_summary::SummarySpec {
-                                files: self.files.size(),
-                                added,
-                                removed,
+                                totals: totals_of(self.files.values()),
                                 collapsed: self.stash.size(),
                             },
-                            constraints.max.width,
                         )
                     });
-                    // The list starts below the pill's strip — the
-                    // first card never hides under the capsule. The
-                    // canvas PAGE paints behind it all: the ground
-                    // the plaques ride on (gray in light, near-black
-                    // in dark).
-                    use imba::layout::LayoutExt as _;
-                    let strip = pill.as_ref().map(|pill| pill.clearance()).unwrap_or(0.0);
-                    let page = env::Themes::of(store).ui().diff.plaque_page.0;
+                    let width = constraints.max.width.max(1.0);
+                    let height = constraints.max.height;
+                    let strip = summary
+                        .as_ref()
+                        .map(|summary| summary.strip_height())
+                        .unwrap_or(0.0);
+                    let rows = imba::layout::Layout::layout(
+                        self.rows.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(constraints.min.width, (constraints.min.height - strip).max(0.0)),
+                            max: Size::new(constraints.max.width, (height - strip).max(0.0)),
+                        },
+                    )
+                    .map(CanvasCommand::Rows);
+                    // The sticky headers are NOT claimed here — they
+                    // bubble to whoever owns the scroll physics (the
+                    // parity law): the workbench's `Scrolled` wrapper
+                    // plants them in-texture; the mounted road exports
+                    // them to the shell, which pins native layers over
+                    // its scroller.
+                    let face_height = imba::Thunk::size(&rows).height + strip;
+                    let mut face = imba::container::container(arena, Size::new(width, face_height));
+                    face.place_boxed(0.0, strip, imba::ThunkBox::new(arena, rows));
+                    if let Some(summary) = summary {
+                        let lead = summary.lead();
+                        face.place_boxed(
+                            lead,
+                            0.0,
+                            imba::layout::Layout::layout(
+                                summary.on_press(|| CanvasCommand::ToggleAll),
+                                arena,
+                                Constraints::tight(Size::new((width - lead).max(1.0), strip)).loosen(),
+                            ),
+                        );
+                    }
                     imba::ThunkBox::new(
                         arena,
-                        imba::layout::Layout::layout(
-                            self.rows
-                                .display(arena, store, ui)
-                                .pad_insets(imba::layout::Insets {
-                                    left: 0.0,
-                                    top: strip,
-                                    right: 0.0,
-                                    bottom: 0.0,
-                                })
-                                .backdrop(
-                                    move |_arena: &Arena,
-                                          canvas: &skia_safe::Canvas,
-                                          rect: Rect| {
-                                        let mut paint = Paint::default();
-                                        paint.set_anti_alias(false);
-                                        paint.set_color(page);
-                                        canvas.draw_rect(rect, &paint);
-                                    },
-                                ),
-                            arena,
-                            constraints,
-                        )
-                        .map(CanvasCommand::Rows)
-                        // The sticky headers are NOT claimed here —
-                        // they bubble to whoever owns the scroll
-                        // physics (the parity law): the workbench's
-                        // `Scrolled` wrapper plants them in-texture;
-                        // the mounted road exports them to the shell,
-                        // which pins native layers over its scroller.
-                        .wrap(move |inner| SummaryOver { inner, pill }),
+                        imba::thunk_ext::ThunkExt::paint_below(face, hikit::ui::ground(ground)),
                     )
                 }
-            };
-            inner
+            }
         })
     }
 }
@@ -2160,6 +2240,45 @@ impl DiffCanvasView {
     }
 
     /// TEST SUPPORT: the armed row reveal, if any.
+    /// TEST SUPPORT: head a seeded canvas with a commit block — what
+    /// the adopt builds from the history, without one.
+    #[doc(hidden)]
+    pub fn head_with_commit_for_tests(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        message: &str,
+        author_name: &str,
+    ) {
+        let Some(mut canvas) = Canvases::take(store, self.changes, self.id) else {
+            return;
+        };
+        let theme = env::Themes::of(store);
+        let mut throwaway = imba::effect::Batch::new();
+        let (headline, body) = split_message(message);
+        let body = body.map(|body| commit_banner_box(store, ui, &body, &mut throwaway.effects()));
+        let block = CommitBlock {
+            message: message.to_owned(),
+            headline,
+            author: author_name.to_owned(),
+            author_name: author_name.to_owned(),
+            totals: totals_of(canvas.files.values()),
+        };
+        let height = commit_band(&theme, &block, body.as_ref());
+        let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+        slice.push_keyed_sized(
+            CanvasKey::Banner,
+            CanvasRow::Banner(BannerRow::Commit {
+                block,
+                body,
+                focused: false,
+            }),
+            height,
+        );
+        (&mut canvas.rows).splice_slice(0..0, slice);
+        Canvases::put(store, self.changes, self.id, canvas);
+    }
+
     #[doc(hidden)]
     pub fn probe_reveal(&self, store: &Store) -> Option<editor::location::ResourceLocation> {
         self.canvas(store)?.reveal.clone()
@@ -2532,15 +2651,80 @@ pub enum CanvasRow {
 /// working-copy canvas.
 #[derive(Clone)]
 pub enum BannerRow {
+    /// The COMMIT BLOCK: the byline and the headline as words, the
+    /// message's body (when it has one) in its own markdown box.
     Commit {
-        message: editor::editor_view::EditorView,
-        author: String,
+        block: CommitBlock,
+        body: Option<editor::editor_view::EditorView>,
         focused: bool,
     },
     Composer {
         message: editor::editor_view::EditorView,
         focused: bool,
     },
+}
+
+/// What the commit block says: the message (the probes read it
+/// whole), its first line as the headline, the author, and the
+/// canvas's totals for the byline.
+#[derive(Clone)]
+pub struct CommitBlock {
+    message: String,
+    headline: String,
+    author: String,
+    author_name: String,
+    totals: Totals,
+}
+
+/// The canvas's sums: files, added and removed lines.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct Totals {
+    pub files: usize,
+    pub added: i64,
+    pub removed: i64,
+}
+
+fn totals_of<'f>(files: impl Iterator<Item = &'f CanvasFile>) -> Totals {
+    files.fold(Totals::default(), |sum, file| Totals {
+        files: sum.files + 1,
+        added: sum.added + file.added.unwrap_or(0).max(0),
+        removed: sum.removed + file.removed.unwrap_or(0).max(0),
+    })
+}
+
+/// A commit message's headline (its first line) and its body (the
+/// rest, past the blank line git puts between them), if any.
+fn split_message(message: &str) -> (String, Option<String>) {
+    let mut lines = message.trim_end().splitn(2, '\n');
+    let headline = lines.next().unwrap_or_default().trim().to_owned();
+    let body = lines
+        .next()
+        .map(|rest| rest.trim_matches('\n').trim_end().to_owned())
+        .filter(|rest| !rest.trim().is_empty());
+    (headline, body)
+}
+
+/// Greedy word wrap at `width`: the headline's lines. A word wider
+/// than the measure stands alone on its line (the label ellipsizes).
+fn wrap_words(style: &hikit::ui::TextStyle, content: &str, width: f32) -> Vec<String> {
+    let measure = |line: &str| style.shaper.tracked_advance(&style.font, line, style.tracking);
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in content.split_whitespace() {
+        let candidate = match line.is_empty() {
+            true => word.to_owned(),
+            false => format!("{line} {word}"),
+        };
+        if !line.is_empty() && measure(&candidate) > width {
+            lines.push(std::mem::replace(&mut line, word.to_owned()));
+        } else {
+            line = candidate;
+        }
+    }
+    if !line.is_empty() || lines.is_empty() {
+        lines.push(line);
+    }
+    lines
 }
 
 #[derive(Clone)]
@@ -2551,6 +2735,12 @@ pub struct HeaderRow {
     /// Whether a diff stands behind this header — the face toggle
     /// only shows then.
     built: bool,
+
+    /// "file N of M" — restamped when the membership moves.
+    ordinal: (usize, usize),
+
+    /// The diff wears the split face — the face word offers inline.
+    split: bool,
 }
 
 #[derive(Clone)]
@@ -2575,11 +2765,9 @@ fn trace_wrap() -> bool {
     std::env::var_os("HIMARK_TRACE_WRAP").is_some()
 }
 
+/// The file band's height — the insets around the name's line box.
 fn header_band(theme: &editor::theme::Theme) -> f32 {
-    // COMPACT headers (docs/himark-islands-default.png): a little
-    // over one body line — the H1-sized banner era is over.
-    let base = theme.resolve([]).font_size.unwrap_or(26.0);
-    base * 1.2 + 18.0
+    crate::diff_header::file_band_height_of(&theme.ui().diff)
 }
 
 /// The composer banner's height — the CHAT COMPOSER's whole footprint
@@ -2603,6 +2791,15 @@ fn composer_band(
 /// A fresh commit box — the CHAT composer's input recipe
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
+/// TEST SUPPORT: the working-copy canvas's commit composer band as
+/// it lays over an empty message box — what the first file band sits
+/// under.
+#[doc(hidden)]
+pub fn composer_band_height(store: &Store, ui: &imba::ui::UiCtx) -> f32 {
+    let theme = env::Themes::of(store);
+    composer_band(&theme, Some(&fresh_composer_box(store, ui)))
+}
+
 fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_view::EditorView {
     let theme = env::Themes::of(store);
     let document = editor::document::Document::new(
@@ -2664,12 +2861,23 @@ fn commit_banner_box(
     })
 }
 
-fn commit_band(theme: &editor::theme::Theme, message: &editor::editor_view::EditorView) -> f32 {
-    let chat = theme.ui().chat.clone();
-    let line = chat.title_size * 1.5;
-    // The full message and the author line under it — no truncation;
-    // the canvas just scrolls.
-    message.content_height().max(line) + line + chat.pad * 2.0
+/// The commit block's height BEFORE it lays out: the headline as one
+/// line (the wrap needs the width; the list's paint report lands the
+/// laid height). Insets, the byline, the headline, the body.
+fn commit_band(
+    theme: &editor::theme::Theme,
+    block: &CommitBlock,
+    body: Option<&editor::editor_view::EditorView>,
+) -> f32 {
+    let _ = block;
+    let diff = theme.ui().diff.clone();
+    let ramp = theme.ui().type_ramp.clone();
+    let byline = ramp.brief.size * ramp.brief.line_height;
+    let headline = ramp.headline.size * ramp.headline.line_height;
+    let body = body
+        .map(|body| diff.headline_gap + body.content_height())
+        .unwrap_or(0.0);
+    diff.commit_pad_top + byline + diff.headline_gap + headline + body + diff.commit_pad_bottom
 }
 
 fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
@@ -2681,7 +2889,7 @@ fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
             .clamp(MIN_EST_LINES, MAX_EST_LINES),
         false => 12,
     };
-    chrome.gap + est as f32 * line
+    est as f32 * line
 }
 
 fn open_commands(location: &ResourceLocation) -> Vec<imba::PresentableCommand<RowCommand>> {
@@ -2727,9 +2935,12 @@ impl View for CanvasRow {
                         .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
                 )
             }
-            CanvasRow::Banner(BannerRow::Commit { message, .. }) => message
-                .focus_data(store, ui)
-                .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
+            CanvasRow::Banner(BannerRow::Commit { body, .. }) => match body {
+                Some(body) => body
+                    .focus_data(store, ui)
+                    .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
+                None => imba::focus::FocusData::default(),
+            },
             CanvasRow::Header(header) => {
                 imba::focus::FocusData::of_commands(open_commands(&header.file.new))
             }
@@ -2772,8 +2983,12 @@ impl View for CanvasRow {
                 let (message, focused, composer) = match banner {
                     BannerRow::Composer { message, focused } => (message, focused, true),
                     BannerRow::Commit {
-                        message, focused, ..
+                        body: Some(message),
+                        focused,
+                        ..
                     } => (message, focused, false),
+                    // A headline-only commit holds no box.
+                    BannerRow::Commit { body: None, .. } => return,
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
@@ -2903,78 +3118,111 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
         let chrome = theme.ui().chat.clone();
         let width = constraints.max.width.max(1.0);
         let gutter = theme.ui().editor_gutter.width;
+        let ground = theme.ui().ink.ground.0;
 
         match row {
             CanvasRow::Banner(BannerRow::Commit {
-                message,
-                author,
+                block,
+                body,
                 focused,
             }) => {
-                // The MESSAGE rides its own markdown box (the chat
-                // cell's dress: headers, emphasis, code — the works),
-                // the dim author byline under it. The box wraps at
-                // the canvas width over the composer's Rewrap ride.
-                let band = commit_band(&theme, message);
-                let line = chrome.title_size * 1.5;
-                let inset = chrome.pad;
-                let body_font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.9);
-                let dim = chrome.loader_color.0;
-                let editor_w = (width - inset * 2.0).max(120.0);
-                let content = message.content_height().max(line);
-                let mut face = imba::container::container(arena, Size::new(width, band));
-                // Bottom-most: a press anywhere on the band focuses
-                // the box (the editor and the byline sit on top).
-                face.place(
-                    0.0,
-                    0.0,
-                    imba::leaf::leaf::<RowCommand>(width, band).event(|_arena, event, _size| {
-                        match event {
-                            Event::MouseDown {
-                                button: imba::event::MouseButton::Left,
-                                ..
-                            } => EventResult::command(RowCommand::Composer(ComposerCommand::Focus)),
-                            _ => EventResult::Ignored,
-                        }
-                    }),
-                );
-                face.place(
-                    inset,
-                    inset,
-                    imba::layout::Layout::layout(
-                        message.display(arena, store, ui),
+                // The COMMIT BLOCK (Main.dc.html): the byline — the
+                // author, the file count, the totals — then the
+                // message's first line in the HEADLINE rung, wrapped
+                // at its measure; a message body follows in its own
+                // markdown box (the chat cell's dress), a real editor
+                // that focuses on click.
+                use imba::layout::{Column, Insets, Row};
+                let ui_theme = theme.ui();
+                let diff = ui_theme.diff.clone();
+                let ink = ui_theme.ink.clone();
+                let lead = ui_theme.window.code_text_edge;
+                let measure = (width - lead - diff.commit_pad_right).max(1.0);
+                let brief = hikit::ui::brief(store, ui);
+                let totals = block.totals;
+                let mut byline = Row::new(arena).gap(diff.byline_gap);
+                if !block.author_name.is_empty() {
+                    byline = byline
+                        .child_by_baseline(hikit::ui::text(&brief.clone().colored(ink.ink_2.0), &block.author_name))
+                        .child_by_baseline(hikit::ui::text(&brief, "·"));
+                }
+                byline = byline.child_by_baseline(hikit::ui::text(
+                    &brief,
+                    match totals.files {
+                        1 => "1 file".to_owned(),
+                        n => format!("{n} files"),
+                    },
+                ));
+                if totals.added > 0 {
+                    byline = byline.child_by_baseline(hikit::ui::text(
+                        &brief.clone().colored(ink.added.0),
+                        format!("+{}", totals.added),
+                    ));
+                }
+                if totals.removed > 0 {
+                    byline = byline.child_by_baseline(hikit::ui::text(
+                        &brief.clone().colored(ink.removed.0),
+                        format!("−{}", totals.removed),
+                    ));
+                }
+                // The headline: one Text per wrapped line, each line
+                // box the rung's line height (CSS's 1.08), the glyphs
+                // centered in it by their own metrics.
+                let headline_style = hikit::ui::headline(store, ui);
+                let line = (ui_theme.type_ramp.headline.size * ui_theme.type_ramp.headline.line_height).ceil();
+                let glyphs = headline_style.line_height();
+                let half_leading = ((line - glyphs) * 0.5).floor();
+                let mut headline = Column::new(arena);
+                for text in wrap_words(&headline_style, &block.headline, measure.min(diff.headline_max_width)) {
+                    headline = headline.child(
+                        hikit::ui::text(&headline_style, text)
+                            .pad_insets(Insets {
+                                top: half_leading,
+                                ..Default::default()
+                            })
+                            .height(line),
+                    );
+                }
+                let mut column = Column::new(arena).child(byline).child(headline.pad_insets(Insets {
+                    top: diff.headline_gap,
+                    ..Default::default()
+                }));
+                let rewrap = body.as_ref().and_then(|body| {
+                    ((body.layout_width() - measure).abs() > 1.0).then_some(measure)
+                });
+                if let Some(body) = body {
+                    let content = body.content_height().max(1.0);
+                    let laid = imba::layout::Layout::layout(
+                        body.display(arena, store, ui),
                         arena,
-                        Constraints {
-                            min: Size::new(editor_w, content),
-                            max: Size::new(editor_w, content),
-                        },
+                        Constraints::tight(Size::new(measure, content)),
                     )
                     .map(|command| RowCommand::Composer(ComposerCommand::Message(command)))
-                    .focus_scope(*focused),
-                );
-                let author = author.clone();
-                let ascent = -body_font.metrics().1.ascent;
-                let shaper = imba::layout::TextShaper::of(ui);
-                face.place(
-                    0.0,
-                    inset + content,
-                    imba::leaf::leaf::<RowCommand>(width, line).paint_instead(
-                        move |_arena, canvas, rect| {
-                            shaper.draw(
-                                canvas,
-                                &body_font,
-                                &author,
-                                dim,
-                                0.0,
-                                rect.left + inset,
-                                rect.top + ascent + (line - ascent) * 0.5,
-                            );
+                    .focus_scope(*focused);
+                    column = column.child(imba::layout::fixed(laid).pad_insets(Insets {
+                        top: diff.headline_gap,
+                        ..Default::default()
+                    }));
+                }
+                let laid = column
+                    .pad_insets(Insets {
+                        left: lead,
+                        top: diff.commit_pad_top,
+                        right: diff.commit_pad_right,
+                        bottom: diff.commit_pad_bottom,
+                    })
+                    .width(width)
+                    .backdrop(hikit::ui::ground(ink.ground.0))
+                    .layout(
+                        arena,
+                        Constraints {
+                            min: Size::new(width, 0.0),
+                            max: Size::new(width, f32::INFINITY),
                         },
-                    ),
-                );
-                let rewrap = ((message.layout_width() - editor_w).abs() > 1.0).then_some(editor_w);
+                    );
                 imba::ThunkBox::new(
                     arena,
-                    face.wrap_realized(move |inner| RewrapOnPaint { inner, rewrap }),
+                    imba::thunk_ext::ThunkExt::wrap(laid, move |inner| RewrapOnPaint { inner, rewrap }),
                 )
             }
             CanvasRow::Banner(BannerRow::Composer { message, focused }) => {
@@ -3117,137 +3365,65 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 )
             }
             CanvasRow::Header(header) => {
-                use crate::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
-                let band = header_band(&theme);
-                let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
-                let base = theme.resolve([]).font_size.unwrap_or(26.0);
-                let size = base * 1.1;
-                let diff_chrome = theme.ui().diff.clone();
-                let margin = diff_chrome.plaque_margin;
-                let mut buttons = vec![DiffHeaderPress::OpenPane, DiffHeaderPress::OpenFile];
-                if header.built {
-                    buttons.push(DiffHeaderPress::ToggleFace);
-                }
-                let face = DiffHeaderFace::new(
-                    store,
-                    ui,
-                    DiffHeaderSpec {
-                        title: header.file.title.clone(),
-                        added: header.file.added,
-                        removed: header.file.removed,
-                        chevron: Some(header.collapsed),
-                        buttons,
-                        primary: Some(DiffHeaderPress::OpenFile),
-                        title_size: size,
-                        bold: true,
-                        title_color: h1.color,
-                        baseline: size,
-                    },
-                    band,
-                    (width - margin * 2.0).max(1.0),
-                );
-                let widget = face.widget(|press| {
-                    Some(RowCommand::Header(match press {
-                        DiffHeaderPress::OpenFile => HeaderAction::OpenFile,
-                        DiffHeaderPress::OpenPane => HeaderAction::OpenPane,
-                        DiffHeaderPress::ToggleFace => HeaderAction::ToggleFace,
-                        DiffHeaderPress::ToggleCollapse => HeaderAction::ToggleCollapse,
-                    }))
-                });
-                // The plaque's HEADER band: top corners always; a
-                // collapsed card ends here, so it rounds the bottom
-                // too and stops a gap short of the next card.
-                let collapsed = header.collapsed;
-                let fill = diff_chrome.plaque_header.0;
-                let radius = diff_chrome.plaque_radius;
-                let gap = chrome.gap;
-                let laid = imba::layout::fixed(imba::eager(widget))
-                    .pad_insets(imba::layout::Insets {
-                        left: margin,
-                        top: 0.0,
-                        right: margin,
-                        bottom: 0.0,
-                    })
-                    .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                        let plaque = Rect::new(
-                            rect.left + margin,
-                            rect.top,
-                            rect.right - margin,
-                            if collapsed { rect.bottom - gap } else { rect.bottom },
-                        );
-                        paint_plaque(canvas, plaque, fill, radius, true, collapsed);
-                    })
-                    .layout(arena, constraints);
-                imba::ThunkBox::new(arena, laid)
+                // The FILE BAND (Main.dc.html): the path's words on one
+                // baseline, a hairline above. A press on the title
+                // folds the file; the words at the right edge flip
+                // the face, open the standalone pane, open the file.
+                let band = crate::diff_header::FileBand::new(store, ui, &header.file.title)
+                    .counts(header.file.added, header.file.removed)
+                    .collapsed(header.collapsed)
+                    .ordinal(header.ordinal.0, header.ordinal.1)
+                    .on_title(|| RowCommand::Header(HeaderAction::ToggleCollapse));
+                let band = match header.built {
+                    true => band.word(
+                        match header.split {
+                            true => "Inline",
+                            false => "Side by side",
+                        },
+                        || RowCommand::Header(HeaderAction::ToggleFace),
+                    ),
+                    false => band,
+                };
+                imba::layout::Layout::layout(
+                    band.word("Open pane", || RowCommand::Header(HeaderAction::OpenPane))
+                        .word("Open source", || RowCommand::Header(HeaderAction::OpenFile)),
+                    arena,
+                    constraints,
+                )
             }
             CanvasRow::Diff(diff) => match &diff.body {
                 RowBody::Placeholder { armed } => {
-                    let diff_chrome = theme.ui().diff.clone();
-                    let margin = diff_chrome.plaque_margin;
-                    let inner_w = (width - margin * 2.0).max(1.0);
-                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
-                    let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
-                    let skeleton = skeleton_layout(arena, &theme, &diff.file, inner_w, body_height);
-                    let card = imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(inner_w, body_height))
-                        .child(imba::layout::fixed(skeleton))
-                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                            paint_plaque(canvas, rect, fill, radius, false, true);
-                        })
-                        .pad_insets(imba::layout::Insets {
-                            left: margin,
-                            top: 0.0,
-                            right: margin,
-                            bottom: chrome.gap,
-                        })
-                        .layout(arena, constraints);
+                    let body_height = reserved_body(&theme, &diff.file);
                     let armed = *armed;
                     imba::ThunkBox::new(
                         arena,
-                        card.wrap(move |inner| ArmedPlaceholder { inner, armed }),
+                        skeleton_layout(arena, &theme, &diff.file, width, body_height)
+                            .wrap(move |inner| ArmedPlaceholder { inner, armed }),
                     )
                 }
                 RowBody::Failed(error) => {
-                    let diff_chrome = theme.ui().diff.clone();
-                    let margin = diff_chrome.plaque_margin;
-                    let inner_w = (width - margin * 2.0).max(1.0);
-                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
-                    let text = format!("{} — {error}", diff.file.title);
-                    let font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.85);
-                    let shaper = imba::layout::TextShaper::of(ui);
-                    let color = chrome.loader_color.0;
-                    let body = imba::leaf::leaf::<RowCommand>(inner_w, chrome.title_size * 3.0)
-                        .paint_instead(move |_arena, canvas, rect| {
-                            shaper.draw(
-                                canvas,
-                                &font,
-                                &text,
-                                color,
-                                0.0,
-                                rect.left + 16.0,
-                                rect.top + rect.height() * 0.5,
-                            );
-                        });
-                    imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(inner_w, chrome.title_size * 3.0))
-                        .child(imba::layout::fixed(body))
-                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                            paint_plaque(canvas, rect, fill, radius, false, true);
-                        })
+                    // The failure in the brief rung at the code text
+                    // edge, the band's air around it.
+                    let ui_theme = theme.ui();
+                    let diff_chrome = ui_theme.diff.clone();
+                    imba::layout::Layout::layout(
+                        hikit::ui::text(
+                            &hikit::ui::brief(store, ui),
+                            format!("{} — {error}", diff.file.title),
+                        )
                         .pad_insets(imba::layout::Insets {
-                            left: margin,
-                            top: 0.0,
-                            right: margin,
-                            bottom: chrome.gap,
+                            left: ui_theme.window.code_text_edge,
+                            top: diff_chrome.band_pad_top,
+                            right: diff_chrome.band_pad_right,
+                            bottom: diff_chrome.band_pad_bottom,
                         })
-                        .layout(arena, constraints)
+                        .width(width),
+                        arena,
+                        constraints,
+                    )
                 }
                 RowBody::Built { pane } => {
-                    let diff_chrome = theme.ui().diff.clone();
-                    let margin = diff_chrome.plaque_margin;
-                    let inner_w = (width - margin * 2.0).max(1.0);
-                    let (fill, radius) = (diff_chrome.plaque.0, diff_chrome.plaque_radius);
-                    let editor_target = (inner_w - gutter).max(120.0);
+                    let editor_target = (width - gutter).max(120.0);
                     let body = imba::layout::Layout::layout(
                         pane.display(arena, store, ui),
                         arena,
@@ -3276,31 +3452,20 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                         crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
                             .is_none_or(|view| view.dressed() || view.ever_dressed());
                     if !presentable {
-                        let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
-                        let mut face = imba::container::container(
-                            arena,
-                            Size::new(width, body_height + chrome.gap),
-                        );
-                        // Bottom-most: the plaque body under the
-                        // mounting pane and its skeleton face.
-                        face.place(
-                            margin,
-                            0.0,
-                            imba::leaf::leaf::<RowCommand>(inner_w, body_height).paint_instead(
-                                move |_arena, canvas, rect| {
-                                    paint_plaque(canvas, rect, fill, radius, false, true);
-                                },
-                            ),
-                        );
-                        face.place_boxed(margin, 0.0, imba::ThunkBox::new(arena, body));
+                        let body_height = reserved_body(&theme, &diff.file);
+                        let mut face =
+                            imba::container::container(arena, Size::new(width, body_height));
+                        face.place_boxed(0.0, 0.0, imba::ThunkBox::new(arena, body));
                         face.place_boxed(
-                            margin,
                             0.0,
-                            skeleton_layout(arena, &theme, &diff.file, inner_w, body_height),
+                            0.0,
+                            skeleton_layout(arena, &theme, &diff.file, width, body_height),
                         );
-                        return imba::ThunkBox::new(arena, face);
+                        return imba::ThunkBox::new(
+                            arena,
+                            imba::thunk_ext::ThunkExt::paint_below(face, hikit::ui::ground(ground)),
+                        );
                     }
-                    let body_height = Thunk::size(&body).height;
                     // The row-level rewrap governs the INLINE face
                     // only. On the split face the halves report their
                     // own painted geometry (`reports_geometry`) and
@@ -3329,22 +3494,17 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             },
                             None => None,
                         };
-                    let card = imba::layout::ZBox::new(arena)
-                        .child(imba::layout::spacer(inner_w, body_height))
+                    // No card: the diff stands on the ground, the next
+                    // file's hairline closes it.
+                    let body_height = Thunk::size(&body).height;
+                    let laid = imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(width, body_height))
                         .child(imba::layout::fixed(body))
-                        .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                            paint_plaque(canvas, rect, fill, radius, false, true);
-                        })
-                        .pad_insets(imba::layout::Insets {
-                            left: margin,
-                            top: 0.0,
-                            right: margin,
-                            bottom: chrome.gap,
-                        })
+                        .backdrop(hikit::ui::ground(ground))
                         .layout(arena, constraints);
                     imba::ThunkBox::new(
                         arena,
-                        card.wrap(move |inner| RewrapOnPaint { inner, rewrap }),
+                        laid.wrap(move |inner| RewrapOnPaint { inner, rewrap }),
                     )
                 }
             },
@@ -3353,29 +3513,6 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
 }
 
 // ------------------------------------------------------------- header
-
-/// One PLAQUE face (docs/himark-islands-canvas-many-files.png): the
-/// card fill with the chosen corners rounded — the header band rounds
-/// the top, the diff body rounds the bottom, a collapsed header
-/// rounds all four.
-fn paint_plaque(
-    canvas: &skia_safe::Canvas,
-    rect: Rect,
-    fill: skia_safe::Color,
-    radius: f32,
-    top: bool,
-    bottom: bool,
-) {
-    let mut paint = Paint::default();
-    paint.set_anti_alias(true);
-    paint.set_color(fill);
-    let corner = |on: bool| {
-        let r = if on { radius } else { 0.0 };
-        skia_safe::Point::new(r, r)
-    };
-    let radii = [corner(top), corner(top), corner(bottom), corner(bottom)];
-    canvas.draw_rrect(skia_safe::RRect::new_rect_radii(rect, &radii), &paint);
-}
 
 /// The skeleton under a pending header: rounded bars at the line
 /// rhythm, tinted from the diff palette, the mix proportioned to the
@@ -3399,7 +3536,10 @@ fn skeleton_layout<'a>(
     let tint =
         |color: skia_safe::Color| skia_safe::Color::from_argb(40, color.r(), color.g(), color.b());
     let (added_color, removed_color) = (tint(chrome.added_color.0), tint(chrome.removed_color.0));
-    let inset = chrome.pad;
+    // The bars start at the code text edge, where the diff's text
+    // will.
+    let inset = theme.ui().window.code_text_edge;
+    let trailing = theme.ui().diff.band_pad_right;
     let thunk =
         imba::leaf::leaf::<RowCommand>(width, height).paint_instead(move |_arena, canvas, rect| {
             let mut paint = Paint::default();
@@ -3409,7 +3549,7 @@ fn skeleton_layout<'a>(
             let green_bars = (bars as f32 * green_share).round() as usize;
             for bar in 0..bars {
                 let top = rect.top + bar as f32 * line + line * 0.2;
-                let bar_width = (rect.width() - inset * 2.0) * widths[bar % widths.len()];
+                let bar_width = (rect.width() - inset - trailing) * widths[bar % widths.len()];
                 paint.set_color(match bar < green_bars {
                     true => added_color,
                     false => removed_color,
@@ -3457,60 +3597,6 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedPlacehol
         &'w mut self,
         target: imba::focus::SeatKey,
     ) -> imba::focus::LayoutData<'w, RowCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
-/// The summary pill floated over the canvas face: paints after the
-/// list (and its planted sticky bands), answers the press inside its
-/// capsule, and passes everything else through.
-struct SummaryOver<'a> {
-    inner: imba::WidgetBox<'a, CanvasCommand>,
-    pill: Option<crate::diff_summary::SummaryPill>,
-}
-
-impl<'a> Widget<'a, CanvasCommand> for SummaryOver<'a> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, CanvasCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<CanvasCommand> {
-        if let Some(pill) = &self.pill {
-            match event {
-                Event::Paint { canvas, .. } => {
-                    let result = self.inner.handle_event(arena, event, viewport);
-                    pill.paint(canvas);
-                    return result;
-                }
-                Event::MouseDown {
-                    button: imba::event::MouseButton::Left,
-                    point,
-                    ..
-                } if pill.hit(*point) => {
-                    return EventResult::command(CanvasCommand::ToggleAll);
-                }
-                _ => {}
-            }
-        }
-        self.inner.handle_event(arena, event, viewport)
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, CanvasCommand>
     where
         'a: 'w,
     {
@@ -3644,8 +3730,38 @@ impl hikit::panel::PanelView for DiffCanvasView {
         true
     }
 
-    fn title(&self, store: &Store) -> String {
-        self.source.title(store, self.changes)
+    /// The column header names the FACE — "Commit", "Changes" — and
+    /// the subtitle says which (the typographic redesign: the commit's
+    /// message heads the canvas itself, in the headline rung).
+    fn title(&self, _store: &Store) -> String {
+        match &self.source {
+            CanvasSource::WorkingCopy { .. } => "Changes".to_owned(),
+            CanvasSource::Commit { .. } => "Commit".to_owned(),
+        }
+    }
+
+    /// The working copy's folder; a commit's short id and the branch
+    /// it sits on (its first ref, else the history's head branch).
+    fn subtitle(&self, store: &Store) -> Option<String> {
+        match &self.source {
+            CanvasSource::WorkingCopy { folder } => Some(folder.name().to_string()),
+            CanvasSource::Commit { folder, id } => {
+                let short: String = id.as_str().chars().take(8).collect();
+                let branch = Changes::of(store, self.changes)
+                    .and_then(|held| changesview::hihistory::History::folder(store, held.history(), folder))
+                    .and_then(|held| {
+                        held.commits
+                            .iter()
+                            .find(|commit| commit.id == id.as_str())
+                            .and_then(|commit| commit.refs.first().map(|at| at.name.clone()))
+                            .or_else(|| held.head.branch.clone())
+                    });
+                Some(match branch {
+                    Some(branch) => format!("{short} · {branch}"),
+                    None => short,
+                })
+            }
+        }
     }
 
     fn take_request(&mut self) -> Option<hikit::panel::PanelRequest> {

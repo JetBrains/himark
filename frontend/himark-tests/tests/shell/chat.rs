@@ -524,6 +524,16 @@ fn dump_chat_column_screenshot() {
     };
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
+    // The leftmost header's tabs are the app's registrations: the
+    // chat word (the shell's) and the Sessions word (the agent host's).
+    app.register_toolbar_button(::workbench::toolbar::composer_button());
+    app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
+        command: "agent.toggle-agents",
+        label: "Sessions",
+        order: 0.0,
+        side: ::workbench::toolbar::ToolbarSide::Left,
+        glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
+    });
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((1920, 1080)).expect("surface");
     app.draw_window(window, wide.canvas());
@@ -582,6 +592,179 @@ fn dump_chat_column_screenshot() {
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::write(format!("{dir}/chat-column.png"), data.as_bytes()).expect("write");
+}
+
+/// The transcript in the typographic redesign, seeded like the
+/// mock's conversation (docs/Design.md): a collapsed Bash run and a
+/// cancelled turn, then your prompt, a call, prose with inline code,
+/// a FAILED call with its reason, more prose, and the usage line —
+/// over the composer's footer with its options words.
+/// `HIMARK_SHOT=<dir> cargo test -p himark-tests --test shell dump_chat_transcript_screenshot -- --ignored`
+#[test]
+#[ignore]
+fn dump_chat_transcript_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let window = app.sole_window();
+    // The cells build off-thread through the AHP build road, with
+    // markdown's language — the host's boot wiring, minus the wire.
+    let mut languages = ::editor::reparse::SyntaxLanguages::new();
+    himark::plugin::Plugin::languages(&himarkdown::MarkdownPlugin, &mut languages);
+    app.register_syntax_languages(languages.clone());
+    himark::hiahp::install_build_handler(
+        &mut app,
+        Arc::new(languages),
+        Arc::new(::editor::diff::ReplaceAll),
+    );
+    let (posted, arriving) = std::sync::mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    app.draw_window(window, surface.canvas());
+
+    struct EnterSession;
+    impl himark::commands::HimarkCommand for EnterSession {
+        fn id(&self) -> &'static str {
+            "test.enter-session"
+        }
+        fn name(&self) -> String {
+            String::new()
+        }
+        fn perform(
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            bound: &imba::focus::Bindings,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
+            let target = ahp_wire::SessionId {
+                host: ahp_wire::client::HostId::LOCAL,
+                session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+            };
+            himark::app::switch_session(store, window, target, fx)
+        }
+    }
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+
+    let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
+    let home = ahp_wire::SessionId {
+        host: ahp_wire::client::HostId::LOCAL,
+        session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+    };
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let panel = ahp_chat::chat::ChatPanel::new(
+        app.store(),
+        &app.ui_ctx(),
+        ahp_wire::client::HostId::LOCAL,
+        "ahp-session:/volatile",
+        chats,
+        uri.clone(),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
+    );
+    ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    settle(&mut app, &mut surface);
+    assert!(app.perform_registered(window, "chat.composer"));
+    settle(&mut app, &mut surface);
+
+    let bash = |id: &str, command: &str, ok: bool, output: &str| {
+        serde_json::json!({
+            "kind": "toolCall",
+            "toolCall": {
+                "status": "completed",
+                "toolCallId": id,
+                "toolName": "bash",
+                "displayName": "Bash",
+                "invocationMessage": format!("Running {command}"),
+                "toolInput": command,
+                "success": ok,
+                "confirmed": "not-needed",
+                "pastTenseMessage": format!("Ran {command}"),
+                "content": [{ "type": "text", "text": output }],
+            }
+        })
+    };
+    let said = |id: &str, text: &str| serde_json::json!({ "kind": "markdown", "id": id, "content": text });
+    let user = |text: &str| serde_json::json!({ "text": text, "origin": { "kind": "user" } });
+    let mut write = bash(
+        "w1",
+        "duplicate-resumed-session-races-the-tree.md",
+        false,
+        "resourceRead ahp-content:/863ab320-0fa3-4e81-86d8-d3f6c89efeff \u{2192} rpc \u{2212}32002: no content",
+    );
+    write["toolCall"]["displayName"] = "Write".into();
+    let state: ahp_types::state::ChatState = serde_json::from_value(serde_json::json!({
+        "resource": "ahp-chat:/volatile",
+        "title": "hello",
+        "status": 0,
+        "modifiedAt": "",
+        "turns": [
+            {
+                "id": "t1",
+                "message": user("land the islands redesign"),
+                "responseParts": [
+                    bash("b1", "cargo test -p hikit", true, "ok"),
+                    bash("b2", "cargo test -p workbench", true, "ok"),
+                    bash("b3", "git stash list", true, "stash@{0}"),
+                ],
+                "state": "cancelled",
+            },
+            {
+                "id": "t2",
+                "message": user("ok. revert everything, it\u{2019}s hopeless"),
+                "responseParts": [
+                    bash("b4", "git checkout 1addff9c -- . && git stash list", true, ""),
+                    said("p1", "Reverted everything cleanly to `1addff9c`; the full islands diff is saved at `/tmp/islands-work-2026-10-23.patch` if you want it back later. The file chaos was caused by a second headless Claude process running the same session in parallel (which I\u{2019}ve now killed), explaining the stray edits and mystery stash."),
+                    write,
+                    said("p2", "The tree is back to a clean `1addff9c` and I\u{2019}ve noted the duplicate-session failure mode in memory so it gets caught early if it ever happens again."),
+                    bash("b5", "git status --porcelain", true, ""),
+                    said("p3", "If you want to retry the islands redesign later, the whole thing is one `git apply /tmp/islands-work-2026-10-23.patch` away \u{2014} and with only one session writing this time, the screenshot-iterate loop should actually be sane."),
+                ],
+                "usage": { "inputTokens": 8, "outputTokens": 2757 },
+                "state": "complete",
+            },
+        ],
+    }))
+    .expect("the seeded chat state");
+    app.perform_command(AppCommand::Verb(imba::command::Verb::at(
+        chats,
+        ahp_chat::chats::ChatsCommand::Panel(
+            uri.clone(),
+            ahp_chat::chat::ChatPanelCommand::Snapshot(Ok(state)),
+        ),
+    )));
+    settle(&mut app, &mut surface);
+    if let Some(mut panel) = ahp_chat::chats::Chats::chat(app.store(), chats, &uri) {
+        panel.seed_toolbar(app.store(), &app.ui_ctx(), ["Fable", "High", "Auto"]);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    }
+    // The cells' documents build off the UI thread: give the
+    // landings real time to arrive.
+    for _ in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        settle(&mut app, &mut surface);
+    }
+
+    let image = surface.image_snapshot();
+    let data = image
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/chat-transcript.png"), data.as_bytes()).expect("write");
 }
 
 /// The single-panel presentation: Cmd-I fronts the hidden chat

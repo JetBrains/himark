@@ -204,6 +204,261 @@ pub fn dispose_feed(
     LocationLists::remove(store, lists, feed);
 }
 
+/// A Find result row: the forest's own row, re-dressed by what its
+/// key names (docs/Design.md, the Find artboard) — a directory keeps
+/// the hikit look (strong name, dim "/"), a file stands strong in
+/// primary ink, a hit is its line in mono with the match bold and
+/// underlined LIVE and the line number dim at the right. Every row
+/// reads at the side column's text edge; a top-level row opens its
+/// group with the group gap.
+pub type ResultRow = hikit::tree_item::TreeItemView<ResultLabel>;
+
+/// The forest's wrap for the Find results: what each emitted row
+/// stands for decides its dress; the match span is found in the hit's
+/// own text against the feed's query at display time.
+pub fn result_row(
+    lists: imba::store::Id<LocationLists>,
+) -> hikit::forest::Wrap<LocationKey, ResultRow> {
+    std::sync::Arc::new(move |row: hikit::forest::TreeRow, key: &LocationKey| {
+        let depth = row.depth();
+        let label = ResultLabel {
+            label: row.inner().clone(),
+            kind: match key {
+                LocationKey::Node(location) if location.kind().is_directory() => {
+                    ResultKind::Directory
+                }
+                LocationKey::Node(_) => ResultKind::File,
+                LocationKey::Hit(_, line, _) => ResultKind::Hit { line: *line },
+            },
+            group: depth == 0,
+            lists,
+        };
+        match key {
+            LocationKey::Hit(..) => hikit::tree_item::TreeItemView::leaf(label, depth),
+            LocationKey::Node(_) => hikit::tree_item::TreeItemView::branch(label, depth, true),
+        }
+    })
+}
+
+#[derive(Clone, Copy)]
+enum ResultKind {
+    Directory,
+    File,
+    Hit { line: u32 },
+}
+
+#[derive(Clone)]
+pub struct ResultLabel {
+    label: hikit::tree_item::TreeLabel,
+    kind: ResultKind,
+    /// A top-level row: its group's first line.
+    group: bool,
+    lists: imba::store::Id<LocationLists>,
+}
+
+impl ResultLabel {
+    /// TEST SUPPORT: the row's own words.
+    #[doc(hidden)]
+    pub fn text(&self) -> &str {
+        self.label.text()
+    }
+
+    /// The span of the feed's query inside `line` — the match the
+    /// hit row sets bold. ASCII case folding keeps byte offsets.
+    fn match_span(&self, store: &Store, line: &str) -> Option<std::ops::Range<usize>> {
+        let query = LocationLists::search(store, self.lists)
+            .and_then(|feed| LocationLists::row_ref(store, self.lists, feed))
+            .map(|row| row.query.trim().to_ascii_lowercase())
+            .filter(|query| !query.is_empty())?;
+        let start = line.to_ascii_lowercase().find(&query)?;
+        Some(start..start + query.len())
+    }
+}
+
+impl imba::View for ResultLabel {
+    type Command = hikit::tree_item::TreeLabelCommand;
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.label.perform(store, ui, command, fx)
+    }
+
+    fn display<'a>(
+        &'a self,
+        _arena: &'a imba::arena::Arena,
+        store: &'a Store,
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        use imba::layout::{Layout as _, LayoutExt as _};
+        let theme = editor::env::Themes::of(store);
+        let find = theme.ui().find.clone();
+        let ink = theme.ui().ink.clone();
+        let window = theme.ui().window.clone();
+        let tree = theme.ui().tree.clone();
+        let lead = (window.side_text_edge - tree.text_x).max(0.0);
+        let insets = imba::layout::Insets {
+            left: lead,
+            top: match self.group {
+                true => find.group_gap,
+                false => 0.0,
+            },
+            right: window.side_trailing,
+            bottom: 0.0,
+        };
+        // Every row stands as tall as the tree's own: the row rank's
+        // text block plus its air.
+        let row_style = hikit::ui::RowStyle::drawer(store, ui);
+        let height = row_style.label.line_height() + 2.0 * row_style.air;
+        imba::layout::laid(move |arena: &'a imba::arena::Arena, constraints| {
+            let row: imba::ThunkBox<'a, Self::Command> = match self.kind {
+                ResultKind::Directory => self
+                    .label
+                    .display(arena, store, ui)
+                    .layout(arena, constraints),
+                ResultKind::File => {
+                    let style = role_style(ui, &find.file, ink.ink.0);
+                    imba::layout::Row::new(arena)
+                        .child_by_baseline(hikit::ui::text(&style, self.label.text()))
+                        .weighted(1.0, imba::layout::Fill::new().height(0.0))
+                        .align(imba::layout::Alignment::CenterStart)
+                        .height(height)
+                        .layout(arena, constraints)
+                }
+                ResultKind::Hit { line } => {
+                    let words = self.label.text();
+                    let plain = hikit::ui::TextStyle {
+                        font: hikit::fonts::mono_font(ui, find.hit_size),
+                        color: find.hit.0,
+                        tracking: 0.0,
+                        shaper: imba::layout::TextShaper::of(ui),
+                    };
+                    let mut strong = plain.clone().colored(ink.ink_bright.0);
+                    strong.font.set_embolden(find.match_weight >= 600.0);
+                    let mut hit = imba::layout::Row::new(arena);
+                    match self.match_span(store, words) {
+                        Some(span) => {
+                            if span.start > 0 {
+                                hit = hit.child_by_baseline(hikit::ui::text(
+                                    &plain,
+                                    &words[..span.start],
+                                ));
+                            }
+                            hit = hit.child_by_baseline(MatchUnderline {
+                                text: hikit::ui::text(&strong, &words[span.clone()]),
+                                color: ink.live.0,
+                                thickness: find.underline,
+                                offset: find.underline_offset,
+                            });
+                            if span.end < words.len() {
+                                hit = hit
+                                    .child_by_baseline(hikit::ui::text(&plain, &words[span.end..]));
+                            }
+                        }
+                        None => hit = hit.child_by_baseline(hikit::ui::text(&plain, words)),
+                    }
+                    let number = hikit::ui::margin(store, ui)
+                        .sized(find.line_size)
+                        .colored(ink.mono_dim.0);
+                    imba::layout::Row::new(arena)
+                        .weighted(1.0, hit)
+                        .child_by_baseline(
+                            hikit::ui::text(&number, format!("{}", line + 1)).pad_insets(
+                                imba::layout::Insets {
+                                    left: hikit::ui::space::S,
+                                    ..Default::default()
+                                },
+                            ),
+                        )
+                        .align(imba::layout::Alignment::CenterStart)
+                        .height(height)
+                        .layout(arena, constraints)
+                }
+            };
+            // The row body consumes nothing: an unclaimed click is the
+            // LIST's to answer (docs/ui/list-keyboard.md §2).
+            imba::thunk_ext::ThunkExt::event(row, |_arena, event, _size| match event {
+                imba::event::Event::MouseDown { .. } => imba::event::EventResult::handled(),
+                _ => imba::event::EventResult::Ignored,
+            })
+        })
+        .pad_insets(insets)
+    }
+}
+
+/// The match's LIVE underline, as a modifier on the matched words:
+/// the words lay as they are, the rule rides `offset` under their
+/// baseline — inside the words' own box, which grows to hold it.
+struct MatchUnderline {
+    text: imba::layout::Text,
+    color: skia_safe::Color,
+    thickness: f32,
+    offset: f32,
+}
+
+impl imba::layout::LayoutValue for MatchUnderline {}
+
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for MatchUnderline {
+    fn layout(
+        self,
+        arena: &'a imba::arena::Arena,
+        constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, Command> {
+        use imba::layout::LayoutExt as _;
+        use imba::thunk_ext::ThunkExt as _;
+        let MatchUnderline {
+            text,
+            color,
+            thickness,
+            offset,
+        } = self;
+        let words = imba::layout::Layout::layout(
+            text.pad_insets(imba::layout::Insets {
+                bottom: offset + thickness,
+                ..Default::default()
+            }),
+            arena,
+            constraints,
+        );
+        let baseline = imba::Thunk::first_baseline(&words).unwrap_or(0.0);
+        imba::ThunkBox::new(
+            arena,
+            words.paint_above(move |_arena, canvas, rect| {
+                let mut paint = skia_safe::Paint::default();
+                paint.set_anti_alias(true);
+                paint.set_color(color);
+                canvas.draw_rect(
+                    skia_safe::Rect::from_xywh(
+                        rect.left,
+                        rect.top + baseline + offset,
+                        rect.width(),
+                        thickness,
+                    ),
+                    &paint,
+                );
+            }),
+        )
+    }
+}
+
+/// A ramp-shaped role the Find tab owns, on the chrome face.
+pub(crate) fn role_style(
+    ui: &imba::ui::UiCtx,
+    role: &editor::theme::TypeRole,
+    color: skia_safe::Color,
+) -> hikit::ui::TextStyle {
+    hikit::ui::TextStyle {
+        font: hikit::fonts::role_font(ui, role),
+        color,
+        tracking: role.tracking,
+        shaper: imba::layout::TextShaper::of(ui),
+    }
+}
+
 /// The peek's master forest: locations grouped by FILE (no directory
 /// nesting — the card is compact), every occurrence a pickable leaf.
 pub(crate) fn files_forest<'a>(
@@ -259,13 +514,9 @@ pub(crate) fn files_forest<'a>(
 /// landed in; single-child directory chains join into one row (the
 /// TOC recipe); every occurrence is its own pickable leaf.
 pub(crate) fn locations_forest<'a>(
-    store: &Store,
+    _store: &Store,
     rows: impl IntoIterator<Item = &'a FoundLocation>,
 ) -> Vec<ForestNode<LocationKey>> {
-    let tree = editor::env::Themes::of(store).ui().tree.clone();
-    let position_color = tree.directory.0;
-    let count_color = tree.directory.0;
-
     let mut sorted: Vec<&FoundLocation> = rows.into_iter().collect();
     sorted.sort_by(|a, b| {
         (
@@ -302,10 +553,7 @@ pub(crate) fn locations_forest<'a>(
         }
     }
 
-    struct Emit {
-        position_color: skia_safe::Color,
-        count_color: skia_safe::Color,
-    }
+    struct Emit;
 
     impl Emit {
         fn dir(
@@ -327,7 +575,7 @@ pub(crate) fn locations_forest<'a>(
                 key: LocationKey::Node(location.clone()),
                 label,
                 pick: false,
-                dim: true,
+                dim: false,
                 trail: Vec::new(),
                 tint: hikit::tree_item::TreeTint::Directory,
                 action: None,
@@ -359,10 +607,9 @@ pub(crate) fn locations_forest<'a>(
                     label: found.context.trim().to_owned(),
                     pick: true,
                     dim: false,
-                    trail: vec![(
-                        format!("{}:{}", found.line + 1, found.column + 1),
-                        self.position_color,
-                    )],
+                    // The line number is the row's own (the key
+                    // carries it) — `ResultRow` sets it in mono.
+                    trail: Vec::new(),
                     tint: hikit::tree_item::TreeTint::Label,
                     action: None,
                     children: Vec::new(),
@@ -373,7 +620,7 @@ pub(crate) fn locations_forest<'a>(
                 label: location.name().to_owned(),
                 pick: true,
                 dim: false,
-                trail: vec![(format!("{}", hits.len()), self.count_color)],
+                trail: Vec::new(),
                 tint: hikit::tree_item::TreeTint::File,
                 action: None,
                 children: leaves,
@@ -381,10 +628,7 @@ pub(crate) fn locations_forest<'a>(
         }
     }
 
-    let emit = Emit {
-        position_color,
-        count_color,
-    };
+    let emit = Emit;
     // Authorities rarely mix; when they do, each gets its own root
     // ordering by the sort above. The root level emits every
     // top-level dir and any root-level files.
@@ -477,8 +721,10 @@ mod tests {
         let hit = &src.children[0].children[0];
         assert!(matches!(&hit.key, LocationKey::Hit(_, 0, 0)));
         assert!(hit.pick && !src.children[0].children.is_empty());
-        assert_eq!(src.children[0].trail[0].0, "2", "occurrence count chip");
-        assert_eq!(hit.trail[0].0, "1:1", "1-based position chip");
+        // The rows carry no chips: the line number is the hit row's
+        // own, read off its key.
+        assert!(src.children[0].trail.is_empty() && hit.trail.is_empty());
+        assert!(!src.dim, "directories read strong, not dim");
     }
 
     #[test]

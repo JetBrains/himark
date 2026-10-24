@@ -66,6 +66,7 @@ fn parley_shapes_paints_and_answers_geometry() {
 
     let shaped = crate::shaped_line::ShapedLine::placeholder(
         text,
+        None,
         color,
         crate::test_document::test_ui(),
         &theme,

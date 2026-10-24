@@ -792,13 +792,14 @@ impl SplitDiffView {
 
         if end > start {
             let lines = scan.count_lines(start, end);
+            let place = fold::fold_place(self.left.document.text(), start, end, lines);
             let spacer = crate::markup::Inlay::new(
                 crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
                 fold::FoldStrip::spacer(lines),
             );
             let strip = crate::markup::Inlay::new(
                 crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-                fold::FoldStrip::new(lines),
+                fold::FoldStrip::new(lines, place),
             )
             .over(crate::markup::INLAY_HOST);
             let offset = start - spec.left.start;
@@ -1011,13 +1012,14 @@ fn mint_fold_strips(
             // The left pane carries a silent spacer for aligned heights;
             // the right pane's strip is the shared, interactive face,
             // projected onto the pane-wide (split-wide) overlay host.
+            let place = fold::fold_place(left_text, start, end, lines);
             let spacer = crate::markup::Inlay::new(
                 crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
                 fold::FoldStrip::spacer(lines),
             );
             let strip = crate::markup::Inlay::new(
                 crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-                fold::FoldStrip::new(lines),
+                fold::FoldStrip::new(lines, place),
             )
             .over(crate::markup::INLAY_HOST);
             left_markup.replace_inlay(key, start..end, spacer);

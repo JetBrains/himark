@@ -67,6 +67,39 @@ pub(crate) fn modified_stamp(summary: &SessionSummary) -> std::time::SystemTime 
     humantime::parse_rfc3339_weak(&summary.modified_at).unwrap_or(std::time::SystemTime::UNIX_EPOCH)
 }
 
+/// The recency group a session stands in, by how long ago it last
+/// moved: the day, the week, everything before. A stamp ahead of
+/// `now` is today's; an unreadable one sank to the epoch (earlier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Recency {
+    Today,
+    ThisWeek,
+    Earlier,
+}
+
+impl Recency {
+    /// The group's caps head.
+    pub fn caps(self) -> &'static str {
+        match self {
+            Recency::Today => "TODAY",
+            Recency::ThisWeek => "THIS WEEK",
+            Recency::Earlier => "EARLIER",
+        }
+    }
+}
+
+pub fn recency(now: std::time::SystemTime, summary: &SessionSummary) -> Recency {
+    const DAY: u64 = 86_400;
+    let Ok(age) = now.duration_since(modified_stamp(summary)) else {
+        return Recency::Today;
+    };
+    match age.as_secs() {
+        seconds if seconds < DAY => Recency::Today,
+        seconds if seconds < 7 * DAY => Recency::ThisWeek,
+        _ => Recency::Earlier,
+    }
+}
+
 /// How long ago the session last moved, in the compact form a row
 /// carries ("now", "5m", "3h", "2d"). `None` when the stamp is
 /// unreadable or ahead of `now` — a trail nobody can trust is worse
@@ -169,6 +202,24 @@ mod tests {
     fn an_unknown_bit_changes_nothing() {
         let known = SessionStatus::Idle.bits() | SessionStatus::IsRead.bits();
         assert_eq!(activity(&summary(known | 1 << 20)), SessionActivity::Quiet);
+    }
+
+    /// The groups cut at a day and a week; an unreadable stamp
+    /// sinks to the last group, a future one floats to the first.
+    #[test]
+    fn recency_cuts_at_a_day_and_a_week() {
+        let now = humantime::parse_rfc3339_weak("2026-09-22T10:00:00Z").expect("stamp");
+        let at = |stamp: &str| {
+            let mut moved = summary(0);
+            moved.modified_at = stamp.to_owned();
+            recency(now, &moved)
+        };
+        assert_eq!(at("2026-09-22T09:00:00Z"), Recency::Today);
+        assert_eq!(at("2026-09-21T10:00:01Z"), Recency::Today);
+        assert_eq!(at("2026-09-18T10:00:00Z"), Recency::ThisWeek);
+        assert_eq!(at("2026-09-15T09:59:59Z"), Recency::Earlier);
+        assert_eq!(at("not a stamp"), Recency::Earlier);
+        assert_eq!(at("2026-09-23T10:00:00Z"), Recency::Today);
     }
 
     /// A stamp ahead of `now` yields no trail — a negative age is
