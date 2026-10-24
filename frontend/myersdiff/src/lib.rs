@@ -1,22 +1,31 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Myers text-diff policy (`similar`-backed): line-level pass
-//! refined per-`Replace` block by a char-level pass. Moved verbatim
-//! out of `editor::diff` so core crates carry no diff-engine
-//! dependency — they call whatever `editor::diff::DiffPolicy` the
-//! edge installed (docs/editor/structural-diff.md, "Fallback to similar").
-//! This crate is that baseline policy; `structdiff` layers the
-//! difftastic engine on top and falls back here.
+//! The text-diff policy: a LINE pass that matches the important
+//! lines first and slides hunk edges to empty lines, refined inside
+//! each replaced block by a WORD pass — words match whole, the
+//! punctuation between matched words is matched on its own, and
+//! equal whitespace on a change's edges is given back. The passes
+//! are IntelliJ's comparison algorithms ported (`ByLineRt`,
+//! `ByWordRt`, `ChunkOptimizer`; Apache 2.0) over `similar`'s Myers
+//! engine. Core crates carry no diff-engine dependency — they call
+//! whatever `editor::diff::DiffPolicy` the edge installed
+//! (docs/editor/structural-diff.md); this crate is that baseline
+//! policy, and `structdiff` layers the difftastic engine on top and
+//! falls back here.
 
-use std::ops::Range;
+mod lines;
+mod ranges;
+mod words;
+
+#[cfg(test)]
+mod tests;
 
 use operation::{op::Op, operation::Operation};
-use similar::{DiffTag, TextDiff};
 use text::text::Text;
 
 /// `editor::diff::DiffPolicy` face of [`diff`]. Ignores the syntax
-/// context — Myers is the policy for texts without trees.
+/// context — the text passes are the policy for texts without trees.
 pub struct Myers;
 
 impl editor::diff::DiffPolicy for Myers {
@@ -30,9 +39,9 @@ impl editor::diff::DiffPolicy for Myers {
     }
 }
 
+/// A replaced block past this many bytes on either side lands as
+/// plain delete+insert — no word pass.
 const REFINE_BUDGET: usize = 4 * 1024;
-
-const RETAIN_NOISE: usize = 3;
 
 /// Ceiling on the line pass: past it `similar` degrades to cruder
 /// hunks instead of stalling the worker — the diff stays exact either
@@ -40,92 +49,64 @@ const RETAIN_NOISE: usize = 3;
 /// large rewrite without this.
 const LINE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Total char-refinement budget per diff: a replace block past it
-/// lands as plain delete+insert (no word tints) rather than stall.
-/// Each block is already capped at `REFINE_BUDGET`, but a diff can
-/// hold hundreds of blocks.
+/// Total word-pass budget per diff: a replaced block past it lands
+/// as plain delete+insert (no word tints) rather than stall. Each
+/// block is already capped at `REFINE_BUDGET`, but a diff can hold
+/// hundreds of blocks.
 const REFINE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(200);
 
 pub fn diff(left: &Text, right: &Text) -> Operation {
     let left = materialize(left);
     let right = materialize(right);
-    let mut ops: Vec<Op> = Vec::new();
-
-    let lines = TextDiff::configure()
-        .timeout(LINE_DEADLINE)
-        .diff_lines(left.as_str(), right.as_str());
-    let old_offsets = prefix_offsets(lines.iter_old_slices());
-    let new_offsets = prefix_offsets(lines.iter_new_slices());
-    let refine_until = std::time::Instant::now() + REFINE_DEADLINE;
-    for op in lines.ops() {
-        let old = span(&old_offsets, op.old_range());
-        let new = span(&new_offsets, op.new_range());
-        match op.tag() {
-            DiffTag::Equal => push_retain(&mut ops, old.len()),
-            DiffTag::Delete => push_delete(&mut ops, &left[old]),
-            DiffTag::Insert => push_insert(&mut ops, &right[new]),
-            DiffTag::Replace if std::time::Instant::now() < refine_until => {
-                refine(&mut ops, &left[old], &right[new]);
-            }
-            DiffTag::Replace => {
-                push_delete(&mut ops, &left[old]);
-                push_insert(&mut ops, &right[new]);
-            }
-        }
-    }
-    Operation::from_ops(ops)
+    Operation::from_ops(diff_str(&left, &right))
 }
 
-/// Char-level refinement of one replaced region: appends the ops that
-/// turn `old` into `new`, budget-capped, with the short-retain noise
-/// suppression. Public because the structural diff (structdiff crate)
-/// refines its gap regions through the same pass so word tints behave
-/// identically on both paths.
+/// The ops turning `left` into `right`: the line pass, each replaced
+/// block refined by the word pass while the budget lasts.
+pub(crate) fn diff_str(left: &str, right: &str) -> Vec<Op> {
+    let mut ops: Vec<Op> = Vec::new();
+    let line_deadline = std::time::Instant::now() + LINE_DEADLINE;
+    let blocks = lines::blocks(left, right, Some(line_deadline));
+    let refine_until = std::time::Instant::now() + REFINE_DEADLINE;
+    for block in blocks {
+        let old = &left[block.old];
+        let new = &right[block.new];
+        if block.equal {
+            push_retain(&mut ops, old.len());
+        } else if old.is_empty() {
+            push_insert(&mut ops, new);
+        } else if new.is_empty() {
+            push_delete(&mut ops, old);
+        } else if std::time::Instant::now() < refine_until {
+            refine(&mut ops, old, new);
+        } else {
+            push_delete(&mut ops, old);
+            push_insert(&mut ops, new);
+        }
+    }
+    ops
+}
+
+/// Word-level refinement of one replaced region: appends the ops that
+/// turn `old` into `new`, budget-capped. Public because the structural
+/// diff (structdiff crate) refines its gap regions through the same
+/// pass so word tints behave identically on both paths.
 pub fn refine(ops: &mut Vec<Op>, old: &str, new: &str) {
     if old.len() > REFINE_BUDGET || new.len() > REFINE_BUDGET {
         push_delete(ops, old);
         push_insert(ops, new);
         return;
     }
-    let chars = TextDiff::from_chars(old, new);
-    let old_offsets = prefix_offsets(chars.iter_old_slices());
-    let new_offsets = prefix_offsets(chars.iter_new_slices());
-
-    let mut refined: Vec<Op> = Vec::new();
-    for op in chars.ops() {
-        let old_span = span(&old_offsets, op.old_range());
-        let new_span = span(&new_offsets, op.new_range());
-        match op.tag() {
-            DiffTag::Equal => push_retain(&mut refined, old_span.len()),
-            DiffTag::Delete => push_delete(&mut refined, &old[old_span]),
-            DiffTag::Insert => push_insert(&mut refined, &new[new_span]),
-            DiffTag::Replace => {
-                push_delete(&mut refined, &old[old_span]);
-                push_insert(&mut refined, &new[new_span]);
-            }
-        }
+    let (mut at1, mut at2) = (0usize, 0usize);
+    for change in words::changes(old, new, None) {
+        debug_assert_eq!(change.start1 - at1, change.start2 - at2, "the stretch between changes is equal");
+        push_retain(ops, change.start1 - at1);
+        push_delete(ops, &old[change.start1..change.end1]);
+        push_insert(ops, &new[change.start2..change.end2]);
+        at1 = change.end1;
+        at2 = change.end2;
     }
-
-    let mut old_at = 0usize;
-    for (index, op) in refined.iter().enumerate() {
-        let len = op.old_len() as usize;
-        if let Op::Retain(_) = op {
-            let interior = index > 0 && index + 1 < refined.len();
-            let retained = &old[old_at..old_at + len];
-            if interior && len < RETAIN_NOISE && !retained.contains('\n') {
-                push_delete(ops, retained);
-                push_insert(ops, retained);
-                old_at += len;
-                continue;
-            }
-        }
-        match op {
-            Op::Retain(len) => push_retain(ops, *len as usize),
-            Op::Delete(text) => push_delete(ops, text),
-            Op::Insert(text) => push_insert(ops, text),
-        }
-        old_at += len;
-    }
+    push_retain(ops, old.len() - at1);
 }
 
 fn push_retain(ops: &mut Vec<Op>, len: usize) {
@@ -143,7 +124,7 @@ fn push_delete(ops: &mut Vec<Op>, text: &str) {
     if text.is_empty() {
         return;
     }
-
+    // A delete sits BEFORE the insert it pairs with.
     if let Some(Op::Insert(_)) = ops.last() {
         let insert = ops.pop().expect("just matched");
         match ops.last_mut() {
@@ -175,21 +156,4 @@ fn materialize(text: &Text) -> String {
     let mut view = text.view();
     let count = view.byte_count();
     view.byte_string(0, count)
-}
-
-/// Byte offset of every slice boundary, built ONCE per diff —
-/// `offsets[i]` is where slice `i` starts, the last entry is the total.
-/// The old per-op slice-length summation was quadratic in ops.
-fn prefix_offsets<'a>(slices: impl Iterator<Item = &'a str>) -> Vec<usize> {
-    let mut offsets = vec![0usize];
-    let mut at = 0usize;
-    for slice in slices {
-        at += slice.len();
-        offsets.push(at);
-    }
-    offsets
-}
-
-fn span(offsets: &[usize], elements: Range<usize>) -> Range<usize> {
-    offsets[elements.start]..offsets[elements.end]
 }

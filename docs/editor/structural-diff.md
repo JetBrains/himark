@@ -3,8 +3,8 @@
 Syntax-aware diff for files we already parse. Before this work,
 every diff in himark was `editor::diff::diff(left, right)` — a
 line-level Myers pass (`similar`) refined per-`Replace` block by a
-char-level pass
-(frontend/editor/src/diff.rs:75, `refine` at diff.rs:89). That is
+word-level pass (today `myersdiff::refine`, IntelliJ's `ByWordRt`
+ported — docs/editor/diff.md). That is
 exact and fast, but blind to structure: reformatting, re-wrapping and
 re-indenting produce hunk noise, and a moved-in paragraph misaligns
 everything after it. Difftastic's engine — Dijkstra over a graph of
@@ -233,9 +233,8 @@ Given the `ChangeMap` and a line-starts table per side:
    is retained — restoring the "identical text is retained" property
    the Myers path has.
 5. **Refine.** Each remaining gap where both sides are nonempty goes
-   through the existing char-level `refine` (diff.rs:89):
-   `TextDiff::from_chars` under `REFINE_BUDGET` (4 KiB), then the
-   `RETAIN_NOISE` word-run suppression (diff.rs:112). Reused, not
+   through the shared word-level `myersdiff::refine` under
+   `REFINE_BUDGET` (4 KiB). Reused, not
    reimplemented — this keeps word tints
    (`fragment.words` → `DiffAddedWord`/`DiffDeletedWord`,
    frontend/editor/src/split_diff.rs:727) working identically.

@@ -71,13 +71,25 @@ pub trait DiffPolicy: Send + Sync {
 }
 ```
 
-The baseline policy is the **`myersdiff` crate** wrapping `similar`
-(MIT/Apache, pure Rust, wasm-clean — Myers with
-patience/unique-anchoring built in); it owns what Fleet layers on
-top: **by-word refinement** inside each modified block
-(identifier-ish tokens / CJK codepoints / newlines, delete+insert
-pairs within a small gap merged into modified word ranges), degrading
-to the plain line block if it blows the budget. `frontend-host`
+The baseline policy is the **`myersdiff` crate**: IntelliJ's
+comparison algorithms (`ByLineRt`, `ByWordRt`, `ChunkOptimizer` —
+platform/util/diff, Apache 2.0) ported over `similar`'s Myers engine
+(MIT/Apache, pure Rust, wasm-clean). The **line pass** matches the
+lines with more than three non-space chars first, so a brace or a
+blank line never anchors a match on its own, fills the gaps between
+those matches line by line, and slides a boundary between touching
+matches to an empty or near-empty line. Inside each replaced block
+the **word pass** cuts the texts into word chunks (letters, digits,
+`_`; one chunk per codepoint of a continuous script) and newlines,
+runs the LCS over those — words first, newlines filling the gaps —
+so a word matches whole or changes whole; slides boundaries off the
+middle of a whitespace-free run of words; matches the punctuation
+between matched words on its own; and gives equal whitespace on a
+change's edges back. Letters never match across words: `color`
+against `colour` is one changed word, not two changed letters. A
+block past the budget lands as the plain line block. The cases of
+IntelliJ's `WordComparisonUtilTest` run against it
+(frontend/myersdiff/src/tests.rs). `frontend-host`
 overrides with `structdiff::Structural` — difftastic's syntax-tree
 alignment where trees exist, Myers everywhere else; the web edge
 stays on Myers. Core crates depend on neither engine.
