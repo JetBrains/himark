@@ -1658,8 +1658,9 @@ pub struct DiffChrome {
 
     /// The FILE BAND: one hairline-topped row of words per file over
     /// the ground — no card. Its insets (left is the code text edge),
-    /// the AIR above the hairline of every band after the first (the
-    /// files group by whitespace, Multi-breaks.dc.html), the gap
+    /// the AIR under every file's diff before the next band's hairline
+    /// (the files group by whitespace, Multi-breaks.dc.html — it rides
+    /// the DIFF row, never the band: the band is sticky), the gap
     /// between its words, the tighter step from the directory into
     /// the name, the name's own rung, and the ordinal's size.
     pub band_pad_top: f32,

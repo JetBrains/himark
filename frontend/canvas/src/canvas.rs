@@ -192,9 +192,9 @@ fn sticky_style() -> imba::list::StickySource {
         let window = theme.ui().window.clone();
         let ink = theme.ui().ink.clone();
         StickyStyle {
-            // The planted band stands on the same ground the file
-            // sections stack on, ruled off from the scrolling code.
-            background: ink.ground.0,
+            // The planted band wears the FILE BAND's own fold ground
+            // (`FileBand`), ruled off from the scrolling code.
+            background: theme.ui().diff.fold_background.0,
             divider: ink.rule.0,
             divider_width: window.divider_width,
         }
@@ -533,7 +533,7 @@ impl Canvas {
             split,
         });
         let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-        slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme, ordinal));
+        slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
         if expanded {
             let height = self
                 .rows
@@ -671,9 +671,9 @@ impl Canvas {
                 left.max(right)
             }
         };
-        // No card margin: the row is the body, the next band's
-        // hairline closes it.
-        let want = body;
+        // No card margin: the row is the body and the air under it;
+        // the next band's hairline closes it.
+        let want = body + body_air(&env::Themes::of(store));
         if (want - (&self.rows).height_at(index).unwrap_or(0.0)).abs() > 0.5 {
             let rows = ListCommand::SetHeight(index, want);
             fx.scope(CanvasCommand::Rows, |fx| {
@@ -720,6 +720,7 @@ impl Canvas {
                 self.populated = true;
                 self.note = None;
                 let theme = env::Themes::of(store);
+                let band = header_band(&theme);
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
                 match crate::diff_canvas::canvas_banner(store, self.changes, &self.source) {
                     Some(crate::diff_canvas::CanvasBanner::Composer { .. }) => {
@@ -764,17 +765,16 @@ impl Canvas {
                 let count = files.len();
                 for (at, file) in files.iter().enumerate() {
                     let start = slice.len();
-                    let ordinal = (at + 1, count);
                     slice.push_keyed_sized(
                         CanvasKey::File(file.new.clone()),
                         CanvasRow::Header(HeaderRow {
                             file: file.clone(),
                             collapsed: false,
                             built: false,
-                            ordinal,
+                            ordinal: (at + 1, count),
                             split: false,
                         }),
-                        header_band(&theme, ordinal),
+                        band,
                     );
                     slice.push_keyed_sized(
                         CanvasKey::Diff(file.new.clone()),
@@ -832,9 +832,7 @@ impl Canvas {
         }
 
         let theme = env::Themes::of(store);
-        // A fresh file's band is stamped (0, 0) and reserves the bare
-        // band; the restamp below gives it its ordinal and its air.
-        let band = header_band(&theme, (0, 0));
+        let band = header_band(&theme);
         let mut anchor = match (&self.rows).row_range(&CanvasKey::Banner) {
             Some(range) => range.end,
             None => 0,
@@ -851,7 +849,7 @@ impl Canvas {
                     }
                     if file.updated > known.updated {
                         self.files.insert_mut(key.clone(), file.clone());
-                        self.refresh_header(&key, &file);
+                        self.refresh_header(&key, &file, band);
                         // The stamp moved: relaunch the build NOW,
                         // through the routed sink — no `owed`, no paint.
                         self.relaunch(store, &key, &file, fx);
@@ -860,7 +858,7 @@ impl Canvas {
                         // A value change without a stamp move should
                         // not happen; keep the chrome honest anyway.
                         self.files.insert_mut(key.clone(), file.clone());
-                        self.refresh_header(&key, &file);
+                        self.refresh_header(&key, &file, band);
                         moved = true;
                     }
                 }
@@ -899,7 +897,7 @@ impl Canvas {
             }
         }
         if moved {
-            self.restamp(&theme);
+            self.restamp();
             fx.settle();
         }
     }
@@ -908,7 +906,7 @@ impl Canvas {
     /// and the commit block's totals follow the listing. Linear in the
     /// files, like the reconcile that calls it — and a header only
     /// resplices when its ordinal actually moved.
-    fn restamp(&mut self, theme: &editor::theme::Theme) {
+    fn restamp(&mut self) {
         let keys: Vec<ResourceLocation> = (0..self.rows.len())
             .filter_map(|index| match (&self.rows).key_at(index) {
                 Some(CanvasKey::File(key)) => Some(key.clone()),
@@ -919,11 +917,7 @@ impl Canvas {
         for (at, key) in keys.iter().enumerate() {
             let ordinal = (at + 1, count);
             if self.header_at(key).is_some_and(|header| header.ordinal != ordinal) {
-                // The ordinal carries the band's air: a file that
-                // becomes (or stops being) the first changes height.
-                self.resplice_header(key, Some(header_band(theme, ordinal)), |header| {
-                    header.ordinal = ordinal
-                });
+                self.resplice_header(key, |header| header.ordinal = ordinal);
             }
         }
         if let Some(range) = (&self.rows).row_range(&CanvasKey::Banner) {
@@ -1024,26 +1018,21 @@ impl Canvas {
     /// or the file loses its sticky header (the working-copy canvas
     /// reconciles on every host touch — the commit canvas never does,
     /// which is how this once shipped asymmetrically broken).
-    fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile) {
+    fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile, band: f32) {
+        let _ = band;
         let built = matches!(
             self.phases.get(key),
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
-        self.resplice_header(key, None, |header| {
+        self.resplice_header(key, |header| {
             header.file = file.clone();
             header.built = built;
         });
     }
 
-    /// Resplices one header row in place with `update` applied — the
-    /// standing band height unless `band` names a new one, the FULL
-    /// cover re-asserted (see `refresh_header`).
-    fn resplice_header(
-        &mut self,
-        key: &ResourceLocation,
-        band: Option<f32>,
-        update: impl FnOnce(&mut HeaderRow),
-    ) {
+    /// Resplices one header row in place with `update` applied — same
+    /// band height, the FULL cover re-asserted (see `refresh_header`).
+    fn resplice_header(&mut self, key: &ResourceLocation, update: impl FnOnce(&mut HeaderRow)) {
         let Some(header) = (&self.rows).row_range(&CanvasKey::File(key.clone())) else {
             return;
         };
@@ -1051,7 +1040,7 @@ impl Canvas {
             return;
         };
         update(&mut row);
-        let band = band.unwrap_or_else(|| self.rows.height_at(header.start).unwrap_or(0.0));
+        let band = self.rows.height_at(header.start).unwrap_or(0.0);
         match (&self.rows).row_range(&CanvasKey::Diff(key.clone())) {
             Some(diff_range) => {
                 let Some(diff_row) = (&self.rows).view_at(diff_range.start) else {
@@ -1157,7 +1146,7 @@ impl Canvas {
                 ordinal: (1, 1),
                 split: false,
             }),
-            header_band(&theme, (1, 1)),
+            header_band(&theme),
         );
         slice.push_keyed_sized(
             CanvasKey::Diff(key.clone()),
@@ -1358,14 +1347,14 @@ impl Canvas {
                             crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
                                 .is_none_or(|view| view.dressed());
                         let height = match dressed {
-                            true => height,
+                            true => height + body_air(&theme),
                             false => reserved_body(&theme, &file),
                         };
                         (RowBody::Built { pane }, height)
                     }
                     None => (
                         RowBody::Failed("could not open the diff".to_owned()),
-                        chrome.title_size * 3.0,
+                        chrome.title_size * 3.0 + body_air(&theme),
                     ),
                 }
             }
@@ -1400,7 +1389,7 @@ impl Canvas {
                 split,
             });
             let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-            slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme, ordinal));
+            slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
             if expanded {
                 slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, diff_height);
                 slice.cover(CanvasKey::File(key.clone()), 0..2);
@@ -1547,7 +1536,7 @@ impl Canvas {
                     .and_then(|pane| crate::diff_pane::gathered_view(store, pane.documents(), pane.id()))
                     .map(|view| view.layout == editor::unified_diff::DiffLayout::Split);
                 if let Some(split) = split {
-                    self.resplice_header(key, None, |header| header.split = split);
+                    self.resplice_header(key, |header| header.split = split);
                 }
             }
         }
@@ -2776,11 +2765,9 @@ fn trace_wrap() -> bool {
     std::env::var_os("HIMARK_TRACE_WRAP").is_some()
 }
 
-/// The file band's row height for the file at `ordinal` — the insets
-/// around the name's line box, plus the air above the hairline from
-/// the second file on.
-fn header_band(theme: &editor::theme::Theme, ordinal: (usize, usize)) -> f32 {
-    crate::diff_header::file_band_row_height_of(&theme.ui().diff, ordinal)
+/// The file band's height — the insets around the name's line box.
+fn header_band(theme: &editor::theme::Theme) -> f32 {
+    crate::diff_header::file_band_height_of(&theme.ui().diff)
 }
 
 /// The composer banner's height — the CHAT COMPOSER's whole footprint
@@ -2902,7 +2889,17 @@ fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
             .clamp(MIN_EST_LINES, MAX_EST_LINES),
         false => 12,
     };
-    est as f32 * line
+    est as f32 * line + body_air(theme)
+}
+
+/// The AIR under every diff (Multi-breaks.dc.html): the next file's
+/// hairline stands this far below the last line, so whitespace groups
+/// the files. It is the DIFF row's tail, never the band's head — the
+/// band is the sticky row, and air inside it would pin with it. Every
+/// writer of a diff row's height adds it: the reserved estimate, the
+/// landing, the resize, and the painted row.
+fn body_air(theme: &editor::theme::Theme) -> f32 {
+    theme.ui().diff.band_air
 }
 
 fn open_commands(location: &ResourceLocation) -> Vec<imba::PresentableCommand<RowCommand>> {
@@ -3428,7 +3425,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             left: ui_theme.window.code_text_edge,
                             top: diff_chrome.band_pad_top,
                             right: diff_chrome.band_pad_right,
-                            bottom: diff_chrome.band_pad_bottom,
+                            bottom: diff_chrome.band_pad_bottom + diff_chrome.band_air,
                         })
                         .width(width),
                         arena,
@@ -3507,9 +3504,9 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             },
                             None => None,
                         };
-                    // No card: the diff stands on the ground, the next
-                    // file's hairline closes it.
-                    let body_height = Thunk::size(&body).height;
+                    // No card: the diff stands on the ground, its air
+                    // under it, and the next file's hairline closes it.
+                    let body_height = Thunk::size(&body).height + body_air(&theme);
                     let laid = imba::layout::ZBox::new(arena)
                         .child(imba::layout::spacer(width, body_height))
                         .child(imba::layout::fixed(body))

@@ -354,12 +354,11 @@ where
 // ------------------------------------------------------------ file band
 
 /// The canvas's FILE BAND (Main.dc.html, the file band): the words of
-/// one file on one baseline, a hairline above, the ground under — and
-/// from the second file on, a stretch of AIR above the hairline
-/// (`band_air`), so whitespace groups the files and the rule tells
-/// them apart. The title group (directory, name, counts) presses
-/// `on_title`; the word buttons trail at the right edge, the ordinal
-/// before them.
+/// one file on one baseline, a hairline above, the FOLD ground under —
+/// the same tint the diff's fold bands wear, so the band reads as
+/// chrome against the code and the page ground around it. The title
+/// group (directory, name, counts) presses `on_title`; the word
+/// buttons trail at the right edge, the ordinal before them.
 pub struct FileBand<'a, Command> {
     title: String,
     added: Option<i64>,
@@ -388,8 +387,9 @@ struct FileBandStyles {
     word: hikit::ui::TextStyle,
 }
 
-/// The FIRST band's height from the chrome alone — the insets around
-/// the name's line box, no air (the tests aim at the first file).
+/// The band's height from the chrome alone — what the canvas reserves
+/// for a header row before it lays out: the insets around the name's
+/// line box.
 pub fn file_band_height(store: &Store) -> f32 {
     let chrome = env::Themes::of(store).ui().diff.clone();
     file_band_height_of(&chrome)
@@ -399,26 +399,6 @@ pub fn file_band_height_of(chrome: &editor::theme::DiffChrome) -> f32 {
     chrome.band_pad_top
         + (chrome.file_name.size * chrome.file_name.line_height).ceil()
         + chrome.band_pad_bottom
-}
-
-/// The air above a band's hairline: none on the first file (the
-/// commit block or the summary strip stands right above it), the
-/// chrome's `band_air` on every file after it. `at` is the 1-based
-/// ordinal; 0 is a band not yet stamped, which sits like the first.
-pub fn file_band_air_of(chrome: &editor::theme::DiffChrome, at: usize) -> f32 {
-    match at > 1 {
-        true => chrome.band_air,
-        false => 0.0,
-    }
-}
-
-/// What the canvas reserves for the header row of the file at
-/// `ordinal` before it lays out: the band plus its air.
-pub fn file_band_row_height_of(
-    chrome: &editor::theme::DiffChrome,
-    ordinal: (usize, usize),
-) -> f32 {
-    file_band_air_of(chrome, ordinal.0) + file_band_height_of(chrome)
 }
 
 impl<'a, Command: 'a> FileBand<'a, Command> {
@@ -451,7 +431,7 @@ impl<'a, Command: 'a> FileBand<'a, Command> {
             },
             lead: theme.ui().window.code_text_edge,
             rule: ink.rule.0,
-            ground: ink.ground.0,
+            ground: chrome.fold_background.0,
             chrome,
         }
     }
@@ -568,7 +548,6 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command
         // words.
         let width = constraints.max.width.max(1.0);
         let height = file_band_height_of(&chrome);
-        let air = file_band_air_of(&chrome, ordinal.map(|(at, _)| at).unwrap_or(0));
         let room = (width - lead - chrome.band_pad_right).max(1.0);
         let laid = Row::new(arena)
             .child_by_baseline(heading)
@@ -592,23 +571,12 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command
         band.place_boxed(lead, baseline - at, laid);
         // Layers, bottom up: the ground, the hairline over it, the
         // words on top — the rule inside the ground, never under it.
-        let ruled = imba::ThunkBox::new(
+        imba::ThunkBox::new(
             arena,
             imba::thunk_ext::ThunkExt::paint_below(
                 hikit::ui::Hairline::new(rule).top().wrap(band),
                 hikit::ui::ground(ground),
             ),
-        );
-        if air <= 0.0 {
-            return ruled;
-        }
-        // The air is the band's own: ground above the hairline, so the
-        // previous file's last line and this file's rule stand apart.
-        let mut aired = imba::container::container(arena, Size::new(width, air + height));
-        aired.place_boxed(0.0, air, ruled);
-        imba::ThunkBox::new(
-            arena,
-            imba::thunk_ext::ThunkExt::paint_below(aired, hikit::ui::ground(ground)),
         )
     }
 }

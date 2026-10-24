@@ -5633,4 +5633,21 @@ fn dump_multi_file_commit_canvas_screenshot() {
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::write(format!("{dir}/multi-file-canvas.png"), data.as_bytes()).expect("write");
+
+    // Scrolled into the first diff: the band pins under the chrome,
+    // bare — its air is the diff row's tail, not the band's head.
+    let _ = himark::test_driver::scroll_at(&mut app, 1440.0, 900.0, 700.0);
+    for _ in 0..12 {
+        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    }
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/multi-file-canvas-scrolled.png"), data.as_bytes()).expect("write");
 }
