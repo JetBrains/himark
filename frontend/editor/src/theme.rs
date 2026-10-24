@@ -1519,21 +1519,15 @@ impl Default for HistoryChrome {
 }
 
 /// The Files tab under the side column's tabs (docs/Design.md, the
-/// Files artboard): the folder's name, a caps FILTER label over a
-/// then the tree. The text edge and the trailing inset are the
-/// window's side-column metrics.
+/// Files artboard): the tree itself, its root rows the session's
+/// folders — no head restates them. The text edge and the trailing
+/// inset are the window's side-column metrics.
 #[derive(Clone, Deserialize)]
 #[serde(default)]
 pub struct FilesChrome {
-    /// The air between the tabs' rule and the folder's name.
-    pub head_top: f32,
-    /// The folder's name, the head of the tab.
-    pub folder: TypeRole,
-    /// The air under the folder's name.
-    pub head_bottom: f32,
     /// The hairline under a bare field (the inline rename).
     pub field_rule: Rgba,
-    /// The air above the tree's first row.
+    /// The air between the tabs' rule and the tree's first row.
     pub tree_top: f32,
     /// The current row's name: the row size in the title weight.
     pub current: TypeRole,
@@ -1542,9 +1536,6 @@ pub struct FilesChrome {
 impl Default for FilesChrome {
     fn default() -> Self {
         Self {
-            head_top: 32.0,
-            folder: TypeRole::new(30.0, 640.0),
-            head_bottom: 12.0,
             field_rule: Rgba(Color::new(0xff2a2a2f)),
             tree_top: 16.0,
             current: TypeRole::new(28.0, 640.0),

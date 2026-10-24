@@ -630,21 +630,11 @@ impl SessionTreeView {
     }
 
     /// TEST SUPPORT: where row `index` stands under the tab's top and
-    /// how tall it is — the head (folder, filter) laid at `width`, the
-    /// tree's top gap, then the rows above it as the list measured
-    /// them. Mirrors `display`.
+    /// how tall it is — the tree's top gap, then the rows above it as
+    /// the list measured them. Mirrors `display`.
     #[doc(hidden)]
-    pub fn row_span(&self, store: &Store, ui: &UiCtx, width: f32, index: usize) -> (f32, f32) {
-        let arena = Arena::default();
-        let head = self.head(&arena, store, ui).layout(
-            &arena,
-            Constraints {
-                min: Size::new(width, 0.0),
-                max: Size::new(width, f32::INFINITY),
-            },
-        );
-        let rows_top = imba::Thunk::size(&head).height
-            + editor::env::Themes::of(store).ui().files.tree_top;
+    pub fn row_span(&self, store: &Store, ui: &UiCtx, _width: f32, index: usize) -> (f32, f32) {
+        let rows_top = editor::env::Themes::of(store).ui().files.tree_top;
         let list = self.tree.list.inner();
         let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
         (rows_top + above, list.height_at(index).unwrap_or(0.0))
@@ -1368,14 +1358,7 @@ impl View for SessionTreeView {
             let width = constraints.max.width.max(1.0);
             let theme = editor::env::Themes::of(store);
             let files = theme.ui().files.clone();
-            let head = self.head(arena, store, ui).layout(
-                arena,
-                Constraints {
-                    min: Size::new(width, 0.0),
-                    max: Size::new(width, f32::INFINITY),
-                },
-            );
-            let rows_top = imba::Thunk::size(&head).height + files.tree_top;
+            let rows_top = files.tree_top;
             let rows = imba::layout::Layout::layout(
                 self.tree.list.display(arena, store, ui),
                 arena,
@@ -1387,7 +1370,6 @@ impl View for SessionTreeView {
             .map(TreeCommand::Rows);
             let size = Size::new(width, imba::Thunk::size(&rows).height + rows_top);
             let mut overlay = container(arena, size);
-            overlay.place_boxed(0.0, 0.0, head);
             overlay.place(0.0, rows_top, rows);
 
             // The key table lives in the controller's own overlay;
@@ -1514,38 +1496,6 @@ impl View for SessionTreeView {
                 stale_roots,
                 editing,
             })
-        })
-    }
-}
-
-impl SessionTreeView {
-    /// The tab's head: the session folder's name. (The tree's speed
-    /// search is the keyboard's — no field stands for it.)
-    fn head<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::layout::Layout<'a, TreeCommand> + imba::layout::LayoutValue + 'a {
-        let theme = editor::env::Themes::of(store);
-        let files = theme.ui().files.clone();
-        let window = theme.ui().window.clone();
-        let ink = theme.ui().ink.clone();
-
-        let folders = (self.folders)(store);
-        let names: Vec<&str> = folders.iter().map(|folder| folder.name()).collect();
-        let mut column = imba::layout::Column::new(arena);
-        if !names.is_empty() {
-            column = column.child(hikit::ui::text(
-                &role_style(ui, &files.folder, ink.ink.0),
-                names.join(" · "),
-            ));
-        }
-        column.pad_insets(imba::layout::Insets {
-            left: window.side_text_edge,
-            top: files.head_top,
-            right: window.side_trailing,
-            bottom: files.head_bottom,
         })
     }
 }

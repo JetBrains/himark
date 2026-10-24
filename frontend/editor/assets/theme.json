@@ -649,15 +649,6 @@
       "file": "#b5b2ab"
     },
     "files": {
-      "head_top": 32.0,
-      "folder": {
-        "size": 30.0,
-        "weight": 640.0,
-        "width": 100.0,
-        "tracking": 0.0,
-        "line_height": 1.0
-      },
-      "head_bottom": 12.0,
       "field_rule": "#2a2a2f",
       "tree_top": 16.0,
       "current": {
