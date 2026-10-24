@@ -838,20 +838,22 @@ mod app {
         theme: &editor::theme::Theme,
     ) -> editor::document::Document {
         let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
-        if extension != "md" && extension != "markdown" {
-            let languages = web_languages();
-            if languages.knows(&extension) {
-                return editor::document::Document::from_language(
-                    text::text::Text::from_string_exact(source),
-                    &extension,
-                    &languages,
-                    store,
-                    ui,
-                    theme,
-                );
-            }
+        if extension == "md" || extension == "markdown" {
+            return himarkdown::document_from_markdown(source, store, ui, theme);
         }
-        himarkdown::document_from_markdown(source, store, ui, theme)
+        let languages = web_languages();
+        if languages.knows(&extension) {
+            return editor::document::Document::from_language(
+                text::text::Text::from_string_exact(source),
+                &extension,
+                &languages,
+                store,
+                ui,
+                theme,
+            );
+        }
+        // No known language: PLAIN TEXT, never markdown.
+        editor::document::Document::plain_text(text::text::Text::from_string_exact(source))
     }
 
     extern "C" fn wheel(

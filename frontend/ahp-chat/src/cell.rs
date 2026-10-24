@@ -254,17 +254,13 @@ pub(crate) fn side_document(
     ui: &imba::ui::UiCtx,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
-    let language = if !extension.is_empty() && parsers.knows(extension) {
-        extension
-    } else {
-        "markdown"
-    };
-    // A registry that knows no markdown either (a bare unit-test store)
-    // still gets a document — plain, with markdown's own markup.
-    if !parsers.knows(language) {
-        return markdown_document(text, CellKind::Tool);
+    // An extension the registry knows parses as that language; any
+    // other (and a bare unit-test registry) is PLAIN TEXT — code-set,
+    // no syntax — never markdown.
+    if extension.is_empty() || !parsers.knows(extension) {
+        return editor::document::Document::plain_text(text);
     }
-    editor::document::Document::from_language(text, language, parsers, store, ui, theme)
+    editor::document::Document::from_language(text, extension, parsers, store, ui, theme)
 }
 
 pub(crate) fn document_text(document: &editor::document::Document) -> String {

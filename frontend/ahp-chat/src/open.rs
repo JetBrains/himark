@@ -16,20 +16,20 @@ pub fn document_for(
 ) -> editor::document::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
     // Markdown is just another registered language; anything the
-    // registry does not know reads as markdown, like it always has.
+    // registry does not know opens as PLAIN TEXT — code-set, no
+    // syntax — never as markdown.
     let language = match extension.as_str() {
-        "md" | "markdown" => "markdown",
-        known if languages.knows(known) => known,
-        _ => "markdown",
+        "md" | "markdown" => Some("markdown"),
+        known if languages.knows(known) => Some(known),
+        _ => None,
     };
-    let mut document = editor::document::Document::from_language(
-        text::text::Text::from_string_exact(source),
-        language,
-        languages,
-        store,
-        ui,
-        theme,
-    );
+    let text = text::text::Text::from_string_exact(source);
+    let mut document = match language {
+        Some(language) => editor::document::Document::from_language(
+            text, language, languages, store, ui, theme,
+        ),
+        None => editor::document::Document::plain_text(text),
+    };
     if let Some(enrichers) = ::editor::env::Enrichers::of(store) {
         document.enrich_now(&enrichers, store, ui, theme);
     }

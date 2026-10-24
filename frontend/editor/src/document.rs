@@ -165,6 +165,17 @@ impl Document {
         self
     }
 
+    /// PLAIN TEXT: no syntax, the whole text in the source-code style
+    /// — what a file of no known language opens as (a `.txt`, a log,
+    /// a `LICENSE`). Code-set, never prose: an unknown file is not
+    /// markdown.
+    pub fn plain_text(text: Text) -> Self {
+        let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
+        let mut markup = Markup::new();
+        markup.push_styled_covering(0..byte_count, crate::theme::StyleId::SourceCode);
+        Self::new(text, markup)
+    }
+
     pub fn from_language(
         text: Text,
         language: &str,
