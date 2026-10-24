@@ -1658,11 +1658,14 @@ pub struct DiffChrome {
 
     /// The FILE BAND: one hairline-topped row of words per file over
     /// the ground — no card. Its insets (left is the code text edge),
-    /// the gap between its words, the tighter step from the directory
-    /// into the name, the name's own rung, and the ordinal's size.
+    /// the AIR above the hairline of every band after the first (the
+    /// files group by whitespace, Multi-breaks.dc.html), the gap
+    /// between its words, the tighter step from the directory into
+    /// the name, the name's own rung, and the ordinal's size.
     pub band_pad_top: f32,
     pub band_pad_right: f32,
     pub band_pad_bottom: f32,
+    pub band_air: f32,
     pub band_gap: f32,
     pub band_name_gap: f32,
     pub file_name: TypeRole,
@@ -1714,6 +1717,7 @@ impl Default for DiffChrome {
             band_pad_top: 24.0,
             band_pad_right: 48.0,
             band_pad_bottom: 20.0,
+            band_air: 96.0,
             band_gap: 20.0,
             band_name_gap: 8.0,
             file_name: TypeRole {

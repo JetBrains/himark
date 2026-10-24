@@ -303,6 +303,7 @@
       "band_pad_top": 24.0,
       "band_pad_right": 48.0,
       "band_pad_bottom": 20.0,
+      "band_air": 96.0,
       "band_gap": 20.0,
       "band_name_gap": 8.0,
       "file_name": {

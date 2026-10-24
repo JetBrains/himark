@@ -5514,3 +5514,123 @@ fn dump_commit_canvas_screenshot() {
         .expect("png");
     std::fs::write(format!("{dir}/commit-canvas.png"), data.as_bytes()).expect("write");
 }
+
+/// SEVERAL FILES, dumped (`HIMARK_SHOT=<dir>`): a commit canvas over
+/// three short files — the commit block, then band · diff · air ·
+/// band · diff · air · band · diff (Multi-breaks.dc.html) — at the
+/// mock's 2x size.
+#[test]
+#[ignore]
+fn dump_multi_file_commit_canvas_screenshot() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+
+    let location = |segments: &[&str], kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            segments.iter().map(|s| (*s).to_owned()).collect::<Vec<String>>(),
+        )
+    };
+    let document = |body: &str| {
+        editor::document::Document::new(
+            text::text::Text::from_string_exact(body),
+            editor::markup::Markup::new(),
+        )
+    };
+    let file = |dir: &str, name: &str, added: i64, removed: i64| ::canvas::diff_canvas::CanvasFile {
+        title: format!("{dir}/{name}"),
+        old: location(
+            &[dir, &format!("{name}.old")],
+            editor::location::ResourceType::document(),
+        ),
+        new: location(&[dir, name], editor::location::ResourceType::document()),
+        added: Some(added),
+        removed: Some(removed),
+        updated: 0,
+    };
+    let server = file("backend/agent-host/src", "server.rs", 118, 35);
+    let bridge = file("backend/agent-host/src", "lsp_bridge.rs", 19, 6);
+    let order = file("backend/agent-host/tests", "feed_order.rs", 6, 0);
+
+    let server_old = "enum DocumentFeed {\n    Open { uri: String },\n    Close { uri: String },\n}\n";
+    let server_new = "enum DocumentFeed {\n    Open {\n        dirs: Vec<String>,\n        uri: String,\n    },\n    Close {\n        dirs: Vec<String>,\n        uri: String,\n    },\n}\n";
+    let bridge_old = "impl Bridge {\n    pub fn send(&self, msg: Message) {\n        self.conn.send(msg);\n    }\n}\n";
+    let bridge_new = "impl Bridge {\n    pub fn send(&self, msg: Message) {\n        // fed by the ordered lane — never called outside it\n        debug_assert!(FEED_THREAD.is_set());\n        self.conn.send(msg);\n    }\n}\n";
+    let order_old = "";
+    let order_new = "#[test]\nfn edits_reach_servers_in_mirror_order() {\n    let host = TestHost::new();\n    host.change_twice_from_two_connections();\n    assert_eq!(host.server_text(), host.mirror_text());\n}\n";
+
+    let pair = |file: &::canvas::diff_canvas::CanvasFile, old: &str, new: &str| {
+        prepared_pair(
+            file.old.clone(),
+            document(old),
+            file.new.clone(),
+            document(new),
+            1400.0,
+        )
+    };
+
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        let view = DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::Commit {
+                folder: location(&["himark-jb"], editor::location::ResourceType::directory()),
+                id: changesview::hichanges::Revision::new("1addff9c0d"),
+            },
+            server.clone(),
+            pair(&server, server_old, server_new),
+        );
+        view.head_with_commit_for_tests(
+            &mut store,
+            &ui,
+            "the document feed is an ordered lane — the servers hear edits in mirror order",
+            "Andrey Zaytsev",
+        );
+        view
+    };
+    let _ = view.reconcile_for_tests(
+        &mut app.store_mut(),
+        vec![server.clone(), bridge.clone(), order.clone()],
+    );
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, bridge.new.clone(), pair(&bridge, bridge_old, bridge_new));
+        view.land_for_tests(&mut store, &ui, order.new.clone(), pair(&order, order_old, order_new));
+    }
+    assert!(app.open_panel(
+        app.sole_window(),
+        Box::new(hikit::modal::Scrolled::new(view)),
+    ));
+
+    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    for _ in 0..24 {
+        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    }
+    let data = surface
+        .image_snapshot()
+        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .expect("png");
+    std::fs::write(format!("{dir}/multi-file-canvas.png"), data.as_bytes()).expect("write");
+}
