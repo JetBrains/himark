@@ -40,6 +40,30 @@ pub trait Searcher: Clone + Send + Sync + 'static {
     fn generation(&self, view: &Self::View) -> u64;
 }
 
+/// A searcher over a SCROLLED list: the inner searcher reads the
+/// scroll view's content. The desktop drawers own their scroll
+/// (`modal::Scrolled`'s law), so their lists sit in a `ScrollView`
+/// under the controller.
+#[derive(Clone)]
+pub struct ScrolledSearcher<S>(pub S);
+
+impl<S> Searcher for ScrolledSearcher<S>
+where
+    S: Searcher,
+    <S::View as View>::Command: Send + 'static,
+{
+    type View = imba::scroll::ScrollView<S::View>;
+    type Key = S::Key;
+
+    fn capture(&self, view: &Self::View) -> ItemSource<S::Key> {
+        self.0.capture(view.content())
+    }
+
+    fn generation(&self, view: &Self::View) -> u64 {
+        self.0.generation(view.content())
+    }
+}
+
 /// The keys-only default: a controller without a search lane never
 /// captures or launches anything; this type exists so `S` has a
 /// well-formed stand-in (`fn() -> T` keeps it Send+Sync regardless

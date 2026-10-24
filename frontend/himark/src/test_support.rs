@@ -5,7 +5,6 @@ use imba::store::Store;
 
 use crate::app::Himark;
 use ::workbench::workbench::pane_width;
-use ::workbench::workbench::workbench_geometry;
 use ::workbench::workbench_node::Panel;
 use documents::entity_view::EditorIdView;
 
@@ -278,12 +277,7 @@ impl Himark {
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn first_inlay_probe_point(&self) -> Option<(f32, f32)> {
-        let toolbar = ::editor::env::Themes::of(self.store()).ui().toolbar.height;
-        let geometry = workbench_geometry(
-            self.viewport_size().width,
-            (self.viewport_size().height - toolbar).max(1.0),
-            &::editor::env::Themes::of(self.store()).ui().window,
-        );
+        let columns = self.workbench().columns(self.store(), self.viewport_size());
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = *pane.content();
         let document = documents::OpenDocuments::document_ref(
@@ -307,8 +301,8 @@ impl Himark {
 
         let ui = ::editor::env::Themes::of(self.store());
         Some((
-            geometry.x + ui.ui().window.content_pad + ui.ui().editor_gutter.width + 24.0,
-            toolbar + geometry.top + y_in_document - pane.scroll_y() + 20.0,
+            columns.main.x + ui.ui().window.content_pad + ui.ui().editor_gutter.width + 24.0,
+            columns.body_top() + y_in_document - pane.scroll_y() + 20.0,
         ))
     }
 

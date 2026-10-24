@@ -107,14 +107,10 @@ fn a_right_button_press_dispatches_its_own_command() {
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
     let y = chrome.title_baseline - chrome.title_size * 0.4;
 
-    // The leftmost header (no chat column stands in a fresh window:
-    // the tree carries the tabs), as `workbench::tree_header`
-    // composes it. LEADING: the Left words as tabs from the lead
-    // inset, dim while they do not stand. TRAILING: the drawer word
-    // (Contents) in the quiet rank, then every Right tab dim; a
-    // word's gap stands BEFORE it — quiet words `button_text_gap`,
-    // dim words `tab_gap`; the first word none. Laid right to left
-    // from the trailing inset.
+    // The band's chat section carries the Left words as tabs from
+    // the lead inset (dim while they do not stand) whether or not a
+    // chat column stands under it; its side section carries every
+    // Right tab, laid right to left from the trailing inset.
     assert!(
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window())
             .expect("window")
@@ -123,23 +119,18 @@ fn a_right_button_press_dispatches_its_own_command() {
             .is_none(),
         "a fresh window has no chat column"
     );
+    // The band's side section lays the Right tabs right to left
+    // from the trailing inset, each in a SLOT as wide as its word in
+    // the title rank (so a standing tab shifts nothing), the word at
+    // the slot's start, `tab_gap` between slots.
     let buttons = ::workbench::toolbar::ToolbarButtons::of(app.store());
-    let drawer = ::workbench::registry::Registry::of(app.store())
-        .and_then(|registry| registry.drawer_button.clone());
-    let mut words: Vec<(&str, &str, &hikit::ui::TextStyle, f32)> = Vec::new();
-    if let Some(drawer) = &drawer {
-        words.push((drawer.command, drawer.label, &styles.button, chrome.button_text_gap));
-    }
-    for tab in buttons.tabs() {
-        words.push((tab.command, tab.label, &styles.dim, chrome.tab_gap));
-    }
     let mut centers = std::collections::HashMap::new();
     let mut right_edge = width - chrome.trailing_inset;
-    for (index, (command, label, style, gap)) in words.iter().enumerate().rev() {
-        let advance = word_width(&app, style, label);
-        let left = right_edge - advance;
-        centers.insert(*command, left + advance * 0.5);
-        right_edge = left - if index > 0 { *gap } else { 0.0 };
+    for (index, tab) in buttons.tabs().iter().enumerate().rev() {
+        let slot = styles.tab_width(tab.label);
+        let left = right_edge - slot;
+        centers.insert(tab.command, left + word_width(&app, &styles.dim, tab.label) * 0.5);
+        right_edge = left - if index > 0 { chrome.tab_gap } else { 0.0 };
     }
     let tab_x = centers["test.right-mark"];
     assert!(test_driver::click(&mut app, tab_x, y, width, height));

@@ -90,13 +90,6 @@ impl std::fmt::Display for PanelCommand {
 }
 
 impl Panel {
-    pub(crate) fn full_bleed(&self) -> bool {
-        match self {
-            Self::Editor(_) => false,
-            Self::Plugin(view) => view.full_bleed(),
-        }
-    }
-
     pub fn editor(&self) -> Option<&EditorPane> {
         match self {
             Self::Editor(pane) => Some(pane),
@@ -201,6 +194,30 @@ impl Panel {
                 ))
             }
             Self::Plugin(view) => view.drawer_view_dyn(store, ui),
+        }
+    }
+
+    /// Would `drawer_view` answer: an editor over a document with an
+    /// outline (and an outline road registered), or a plugin that
+    /// offers one.
+    pub fn offers_drawer(&self, store: &Store) -> bool {
+        match self {
+            Self::Editor(pane) => {
+                let view = pane.content();
+                let Some(document) = documents::OpenDocuments::document_ref(
+                    store,
+                    view.documents(),
+                    view.document(),
+                ) else {
+                    return false;
+                };
+                documents::OpenDocuments::location(store, view.documents(), view.document())
+                    .is_some()
+                    && document.has_outline()
+                    && crate::registry::Registry::of(store)
+                        .is_some_and(|registry| registry.outline.is_some())
+            }
+            Self::Plugin(view) => view.offers_drawer_dyn(store),
         }
     }
 
@@ -427,12 +444,6 @@ pub enum WorkbenchNode {
 }
 
 impl WorkbenchNode {
-    pub(crate) fn full_bleed(&self) -> bool {
-        match self {
-            Self::Leaf(slot) => slot.panel.full_bleed(),
-            Self::Split(_) => false,
-        }
-    }
 }
 
 /// A workbench-minted identity for the panel occupying a leaf. Effects a

@@ -104,6 +104,13 @@ pub trait PanelView: imba::dyn_view::CloneDynView + Clone + Sized + 'static {
         let _ = (store, ui);
         None
     }
+
+    /// Would `drawer_view` answer? The band shows the Contents word
+    /// exactly when it would — without building the view.
+    fn offers_drawer(&self, store: &Store) -> bool {
+        let _ = store;
+        false
+    }
 }
 
 pub trait DynPanelView: imba::dyn_view::CloneDynView {
@@ -129,6 +136,7 @@ pub trait DynPanelView: imba::dyn_view::CloneDynView {
         store: &Store,
         ui: &UiCtx,
     ) -> Option<Box<dyn crate::modal::ModalView>>;
+    fn offers_drawer_dyn(&self, store: &Store) -> bool;
 }
 
 impl<P: PanelView> DynPanelView for P {
@@ -182,6 +190,9 @@ impl<P: PanelView> DynPanelView for P {
         ui: &UiCtx,
     ) -> Option<Box<dyn crate::modal::ModalView>> {
         self.drawer_view(store, ui)
+    }
+    fn offers_drawer_dyn(&self, store: &Store) -> bool {
+        self.offers_drawer(store)
     }
 }
 

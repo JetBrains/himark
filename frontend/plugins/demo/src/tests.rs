@@ -1233,8 +1233,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     let theme = editor::theme::Theme::embedded();
     let chrome = theme.ui();
     let content_height = 600.0 - chrome.toolbar.height;
-    let top = chrome.toolbar.height
-        + workbench::workbench::workbench_geometry(800.0, content_height, &chrome.window).top;
+    let top = chrome.toolbar.height;
     let first_row = skia_safe::Point::new(30.0, top + 13.0);
 
     let started = std::time::Instant::now();

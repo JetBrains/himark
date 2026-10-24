@@ -20,10 +20,13 @@ use skia_safe::Size;
 
 use crate::ui::{text, Hairline, TextStyle};
 
-/// One word on the band: inert, or a press minting a command.
+/// One word on the band: inert, or a press minting a command. A
+/// button keeps a RESERVE after its word — a tab's slot is as wide
+/// as the word in the title rank, so standing or dim it takes the
+/// same room and its neighbours never shift.
 enum Item<'a, Command> {
     Text(imba::layout::Text),
-    Button(imba::layout::Text, Box<dyn Fn() -> Command + 'a>),
+    Button(imba::layout::Text, f32, Box<dyn Fn() -> Command + 'a>),
 }
 
 /// The header's RANKS: the title (the file, the session, the active
@@ -39,6 +42,15 @@ pub struct HeaderStyles {
 }
 
 impl HeaderStyles {
+    /// A tab's SLOT: the word's width in whichever rank is wider —
+    /// the title rank's, standing or not — so a tab's size never
+    /// follows its selection.
+    pub fn tab_width(&self, label: &str) -> f32 {
+        let title = self.title.shaper.advance(&self.title.font, label);
+        let dim = self.dim.shaper.advance(&self.dim.font, label);
+        title.max(dim)
+    }
+
     pub fn of(store: &Store, ui: &UiCtx) -> Self {
         let chrome = editor::env::Themes::of(store).ui().toolbar.clone();
         Self {
@@ -113,18 +125,21 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         active: bool,
         on_press: impl Fn() -> Command + 'a,
     ) -> Self {
+        let label = label.into();
         let style = match active {
             true => &self.styles.title,
             false => &self.styles.dim,
         };
-        let item = Item::Button(text(style, label), Box::new(on_press));
+        let slot = self.styles.tab_width(&label);
+        let reserve = (slot - style.shaper.advance(&style.font, &label)).max(0.0);
+        let item = Item::Button(text(style, label), reserve, Box::new(on_press));
         Self::push(&mut self.leading, self.chrome.tab_gap, item);
         self
     }
 
     /// A trailing text button in the quiet rank.
     pub fn button(mut self, label: impl Into<String>, on_press: impl Fn() -> Command + 'a) -> Self {
-        let item = Item::Button(text(&self.styles.button, label), Box::new(on_press));
+        let item = Item::Button(text(&self.styles.button, label), 0.0, Box::new(on_press));
         Self::push(&mut self.trailing, self.chrome.button_text_gap, item);
         self
     }
@@ -136,7 +151,7 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         label: impl Into<String>,
         on_press: impl Fn() -> Command + 'a,
     ) -> Self {
-        let item = Item::Button(text(&self.styles.dim, label), Box::new(on_press));
+        let item = Item::Button(text(&self.styles.dim, label), 0.0, Box::new(on_press));
         Self::push(&mut self.trailing, self.chrome.tab_gap, item);
         self
     }
@@ -148,7 +163,7 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         label: impl Into<String>,
         on_press: impl Fn() -> Command + 'a,
     ) -> Self {
-        let item = Item::Button(text(&self.styles.display, label), Box::new(on_press));
+        let item = Item::Button(text(&self.styles.display, label), 0.0, Box::new(on_press));
         Self::push(&mut self.trailing, self.chrome.button_text_gap, item);
         self
     }
@@ -168,14 +183,15 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
     fn group(arena: &'a Arena, items: Vec<(f32, Item<'a, Command>)>) -> imba::layout::Row<'a, Command> {
         let mut row = imba::layout::Row::new(arena);
         for (gap, item) in items {
-            let insets = imba::layout::Insets {
+            let insets = |reserve: f32| imba::layout::Insets {
                 left: gap,
+                right: reserve,
                 ..Default::default()
             };
             row = match item {
-                Item::Text(text) => row.child_by_baseline(text.pad_insets(insets)),
-                Item::Button(text, on_press) => row.child_by_baseline(
-                    text.on_click(move || on_press()).pad_insets(insets),
+                Item::Text(text) => row.child_by_baseline(text.pad_insets(insets(0.0))),
+                Item::Button(text, reserve, on_press) => row.child_by_baseline(
+                    text.on_click(move || on_press()).pad_insets(insets(reserve)),
                 ),
             };
         }

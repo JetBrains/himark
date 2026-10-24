@@ -4,9 +4,8 @@
     "base": {
       "color": "#d8d8db",
       "font_families": [
-        "SF Pro Text",
-        "Helvetica Neue",
-        "Segoe UI",
+        "Bricolage Grotesque",
+        "system-ui",
         "sans-serif"
       ],
       "font_size": 32.0,

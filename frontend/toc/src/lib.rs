@@ -26,14 +26,20 @@ use skia_safe::Size;
 
 use hikit::{
     forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
-    list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView,
-    navigation::EditorPlace, tree_item::tree_toggle, tree_item::TreeListCommand,
+    list_keyboard::ListKeyboardController, list_keyboard::ScrolledSearcher, modal::ModalRequest,
+    modal::ModalView, navigation::EditorPlace, tree_item::tree_toggle, tree_item::TreeListCommand,
 };
 use imba::list::{ActivateTrigger, ListOps};
+use imba::scroll::{ScrollCommand, ScrollView};
 
 pub(crate) const OUTLINE_CAP: usize = 2_000;
 
-pub(crate) type SearchListCommand = ListKeyCommand<TreeListCommand>;
+/// The drawer's list under the controller: the forest in its own
+/// scroll view — the column scrolls, the band over it stands.
+pub(crate) type SearchListCommand = ListKeyCommand<ScrollCommand<TreeListCommand>>;
+
+pub type TocSearch =
+    ListKeyboardController<ScrollView<ForestList<u64>>, ScrolledSearcher<ForestSearcher<u64>>>;
 
 #[derive(Clone)]
 pub enum TocCommand {
@@ -52,7 +58,7 @@ impl std::fmt::Display for TocCommand {
 
 pub struct TocView {
     context: String,
-    search: ListKeyboardController<ForestList<u64>, ForestSearcher<u64>>,
+    search: TocSearch,
 
     targets: rpds::HashTrieMapSync<u64, editor::location::ResourceLocation>,
     request: Option<ModalRequest>,
@@ -181,8 +187,8 @@ impl TocView {
                 (false, n) => format!("{n} files"),
             },
             search: ListKeyboardController::searchable(
-                forest,
-                ForestSearcher::default(),
+                ScrollView::new(forest),
+                ScrolledSearcher(ForestSearcher::default()),
                 store,
                 ui,
             )
@@ -194,20 +200,20 @@ impl TocView {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.search.inner().forest.rows()
+        self.search.inner().content().forest.rows()
     }
 
     /// The search controller — the shell's tests drive the key
     /// table through it.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn search(&self) -> &ListKeyboardController<ForestList<u64>, ForestSearcher<u64>> {
+    pub fn search(&self) -> &TocSearch {
         &self.search
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn visible_rows(&self) -> usize {
-        self.search.inner().list().len()
+        self.search.inner().content().list().len()
     }
 
     fn pick(&mut self, key: u64, store: &Store, ui: &UiCtx) {
@@ -216,7 +222,7 @@ impl TocView {
                 self.request = Some(ModalRequest::OpenLocations(vec![location.clone()]));
             }
 
-            None => self.search.inner_mut().toggle(&key, store, ui),
+            None => self.search.inner_mut().content_mut().toggle(&key, store, ui),
         }
     }
 }
@@ -254,23 +260,22 @@ impl View for TocView {
             TocCommand::List(command) => {
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
-                        return self.search.inner_mut().fold_cursor(*expand, store, ui);
+                        return self.search.inner_mut().content_mut().fold_cursor(*expand, store, ui);
                     }
-                    ListKeyCommand::Inner(inner) => {
+                    ListKeyCommand::Inner(ScrollCommand::Content(inner)) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.search.inner().list().key_at(index).copied()
+                            let Some(key) = self.search.inner().content().list().key_at(index).copied()
                             else {
                                 return;
                             };
-                            self.search.inner_mut().list_mut().select_only(key);
-                            return self.search.inner_mut().toggle(&key, store, ui);
+                            self.search.inner_mut().content_mut().list_mut().select_only(key);
+                            return self.search.inner_mut().content_mut().toggle(&key, store, ui);
                         }
                     }
                     _ => {}
                 }
-                type Search = ListKeyboardController<ForestList<u64>, ForestSearcher<u64>>;
-                if let Some((index, trigger)) = Search::activated(&command) {
-                    if let Some(key) = self.search.inner().list().key_at(index).copied() {
+                if let Some((index, trigger)) = TocSearch::activated(&command) {
+                    if let Some(key) = self.search.inner().content().list().key_at(index).copied() {
                         let searching = self.search.searching();
                         self.pick(key, store, ui);
                         match trigger {
@@ -507,8 +512,8 @@ impl std::fmt::Display for OutlineCommand {
 
 /// The outline's keyboard list: a forest of `ContentsRow`s.
 pub type OutlineSearch = ListKeyboardController<
-    ForestList<OutlineKey, ContentsRow>,
-    ForestSearcher<OutlineKey, ContentsRow>,
+    ScrollView<ForestList<OutlineKey, ContentsRow>>,
+    ScrolledSearcher<ForestSearcher<OutlineKey, ContentsRow>>,
 >;
 
 /// What a derivation was taken against: the document's stamp and
@@ -591,8 +596,8 @@ impl OutlineView {
             launched: None,
             lane: None,
             search: ListKeyboardController::searchable(
-                ForestList::wrapping(store, contents_rows(Arc::default())),
-                ForestSearcher::default(),
+                ScrollView::new(ForestList::wrapping(store, contents_rows(Arc::default()))),
+                ScrolledSearcher(ForestSearcher::default()),
                 store,
                 ui,
             )
@@ -621,6 +626,7 @@ impl OutlineView {
     pub fn entries(&self) -> Vec<ContentsEntry> {
         self.search
             .inner()
+            .content()
             .list()
             .rows()
             .map(|row| row.entry().clone())
@@ -630,17 +636,17 @@ impl OutlineView {
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn visible_rows(&self) -> usize {
-        self.search.inner().list().len()
+        self.search.inner().content().list().len()
     }
 
     pub fn match_count(&self) -> usize {
-        ListOps::match_count(self.search.inner().list())
+        ListOps::match_count(self.search.inner().content().list())
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn cursor_title(&self) -> Option<String> {
-        let key = self.search.inner().list().cursor()?;
+        let key = self.search.inner().content().list().cursor()?;
         self.rows
             .iter()
             .find(|row| (row.syntax, row.key) == *key)
@@ -746,7 +752,7 @@ impl OutlineView {
 
         // The dresser is per landing; the standing list and forest
         // move into the freshly dressed one.
-        let standing = self.search.inner_mut();
+        let standing = self.search.inner_mut().content_mut();
         let mut dressed = ForestList::wrapping(store, contents_rows(Arc::new(entries)));
         std::mem::swap(dressed.list_mut(), standing.list_mut());
         dressed.forest = standing.forest.clone();
@@ -793,22 +799,22 @@ impl View for OutlineView {
             OutlineCommand::List(command) => {
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
-                        return self.search.inner_mut().fold_cursor(*expand, store, ui);
+                        return self.search.inner_mut().content_mut().fold_cursor(*expand, store, ui);
                     }
-                    ListKeyCommand::Inner(inner) => {
+                    ListKeyCommand::Inner(ScrollCommand::Content(inner)) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.search.inner().list().key_at(index).copied()
+                            let Some(key) = self.search.inner().content().list().key_at(index).copied()
                             else {
                                 return;
                             };
-                            self.search.inner_mut().list_mut().select_only(key);
-                            return self.search.inner_mut().toggle(&key, store, ui);
+                            self.search.inner_mut().content_mut().list_mut().select_only(key);
+                            return self.search.inner_mut().content_mut().toggle(&key, store, ui);
                         }
                     }
                     _ => {}
                 }
                 if let Some((index, trigger)) = OutlineSearch::activated(&command) {
-                    if let Some(key) = self.search.inner().list().key_at(index).copied() {
+                    if let Some(key) = self.search.inner().content().list().key_at(index).copied() {
                         let searching = self.search.searching();
                         self.pick(store, key);
                         match trigger {

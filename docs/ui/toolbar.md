@@ -1,45 +1,67 @@
-# The Column Headers
+# The Toolbar Band
 
-There is no toolbar band. Every column draws its OWN header — a
-`hikit::header::ColumnHeader`, 104px tall over the ground with a
-hairline under it — and every header puts its words on ONE baseline
-(`ToolbarChrome::title_baseline`), whatever each one's largest word.
-Rank is size and weight, never a fill or an icon (docs/Design.md; the
-type ramp in [design-system.md](design-system.md)):
+One STATIC band, `ToolbarChrome::height` (104px) tall, stands over
+the whole window; the body's columns lay under it. The band has
+three sections, each a `hikit::header::ColumnHeader` — words on ONE
+baseline (`ToolbarChrome::title_baseline`) over the ground, a
+hairline under — and a vertical rule between neighbours. Rank is
+size and weight, never a fill or an icon (docs/Design.md; the type
+ramp in [design-system.md](design-system.md)):
 
-| column | leading | title (34/640) | subtitle (28, ink 3) | trailing words |
-|--------|---------|----------------|----------------------|----------------|
-| the chat | the tabs **Sessions · Chat** | the session's title (omitted while the Sessions drawer stands) | `in <folder>` (`PanelView::subtitle`) | — |
-| the tree, leftmost (no chat column) | the tabs **Sessions · Chat** | the focused file's name | its directory, ` / ` between segments | **Contents** (quiet rank); the side column's tabs, dim, while the dock is closed |
-| the tree, beside the chat | — | the focused file's name | its directory | **Contents**; the dim tabs while the dock is closed |
-| the side column (dock) | the tabs, the active one in the title rank | — | — | — |
+| section | over | leading | title (34/640) | subtitle (28, ink 3) | trailing words |
+|---------|------|---------|----------------|----------------------|----------------|
+| the chat's | the chat column | the tabs **Sessions · Chat** | the session's title (while the chat column stands and no drawer covers it) | `in <folder>` (`PanelView::subtitle`) | — |
+| the main area's | the split tree | — | the focused file's name | its directory, ` / ` between segments | **Contents** (quiet rank), when the focused panel offers a drawer (`Panel::offers_drawer`) |
+| the side column's | the dock | the tabs **Files · Changes · Find · History · Comments**, the open dock's in the title rank | — | — | — |
 
-The LEFTMOST column — the chat's, or the tree's while the chat hides —
-opens with two tabs right after the semaphore: **Sessions** (the
-drawer, `agent.toggle-agents`) and **Chat** (`chat.composer`); the
-standing one is in the title rank, the other dim, and a title that
-follows them keeps `ToolbarChrome::tabs_title_gap` off. The Sessions
-drawer has no header of its own: it covers the chat column EXACTLY,
-under that header (`Workbench::chat_column_rect`), with the Sessions
-tab active; pressing Chat rolls it away. There is no hide-chat word —
-the chat column hides by the window narrowing or `MaximizeTree`.
+Panels come and go; the band stays. A section is as wide as the
+column under it and never narrower than its own words: the chat
+section keeps the width of `Sessions · Chat` while the chat column is
+gone, the side section the width of its tabs while the dock is
+closed, and the main section takes what is left between them. The
+rules between sections stand at the SAME x as the body's splitters —
+inside the chat column's last pixels, on the dock's first — because
+the band and the body lay against the one derivation,
+`workbench::columns::Columns` (`Workbench::columns`): the dock's
+revealed width from the right, the chat's from the left, the main
+area between. The dock's slide and the chat's slide move the band's
+rules and the body's splitters together.
 
-The leftmost header insets its title past the platform semaphore
+**Sessions** opens the drawer (`agent.toggle-agents`) over the chat
+column — exactly over it, under the band (`Columns::drawer`) — and
+stands in the title rank while it does; the chat's name hides under
+it. **Chat** TOGGLES the chat column: standing, a press rolls the
+column away (`ToolbarCommand::RollAwayChat` → `MaximizeTree`, the
+dock's slide mirrored); otherwise it runs `chat.composer`, which
+fronts the chat — beside the tree when both fit, over the main area
+when the tree is vacant or the window is too narrow for both. Rolled
+away, the chat hides whatever the room.
+
+The chat section's first word starts past the platform semaphore
 (`ChromeClearance`, written by the shell) and never short of
-`ToolbarChrome::lead_inset`; the tree's text edge is
-`WindowChrome::code_text_edge`, the side column's
+`ToolbarChrome::lead_inset`; the main section's text edge is
+`WindowChrome::code_text_edge` from its rule, the side section's
 `WindowChrome::side_text_edge`.
+
+## The body
+
+Under the band, up to three columns: the chat column, the split
+tree, the dock. The chat column lays at its full width and SLIDES —
+mid-slide it stands past the window's left edge and the tree takes
+the rest from where the column shows; the dock does the same from
+the right. A draggable splitter stands between the chat and the
+tree (`ChatResize`, a share of the room left of the dock) and on the
+dock's edge (`DockCommand::Resize`); each is a hairline the band's
+rule continues.
 
 ## Registered buttons are words
 
-Features still register `ToolbarButton`s (`ToolbarButtons`), now with
-a `label`: the side `Left` names the chat column's session actions,
-`Right` the side column's TABS (History · Files · Find · Changes ·
-Comments — `ToolbarButtons::tabs`), `Well` the chat's own word. A
-press mints `WorkbenchCommand::RunCommand(id)` (the registry's run
-road) from a column header, or `DockCommand::HeaderButton(index)`
-from the dock's own header; the window-level `Toolbar` lays an empty
-strip and keeps only its request slot.
+Features register `ToolbarButton`s (`ToolbarButtons`) with a `label`:
+the side `Left` names the chat section's tabs (Sessions), `Right` the
+side column's tabs (`ToolbarButtons::tabs`), `Well` the chat's own
+word. The registry's `drawer_button` (Contents) is the main
+section's. A press mints `ToolbarCommand::Word(id)`, which the band
+files as `ToolbarRequest::Command(id)` for the shell's run road.
 
 ## There is no omnibox
 

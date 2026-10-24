@@ -1168,3 +1168,219 @@ fn new_session_without_a_host_keeps_the_current_chat() {
     );
     assert!(chat_mounted(&app), "no host: the chat panel stays");
 }
+
+/// The Chat TAB toggles the column through the real press path:
+/// standing, a click rolls it away; gone, a click brings it back.
+#[test]
+fn the_chat_tab_toggles_the_column() {
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    app.register_toolbar_button(::workbench::toolbar::composer_button());
+    app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
+        command: "agent.toggle-agents",
+        label: "Sessions",
+        order: 0.0,
+        side: ::workbench::toolbar::ToolbarSide::Left,
+        glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
+    });
+    let window = app.sole_window();
+    let (width, height) = (3200.0f32, 1000.0f32);
+    let mut wide =
+        skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
+    app.draw_window(window, wide.canvas());
+
+    struct EnterSession;
+    impl himark::commands::HimarkCommand for EnterSession {
+        fn id(&self) -> &'static str {
+            "test.enter-session"
+        }
+        fn name(&self) -> String {
+            String::new()
+        }
+        fn perform(
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            bound: &imba::focus::Bindings,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
+            let target = ahp_wire::SessionId {
+                host: ahp_wire::client::HostId::LOCAL,
+                session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+            };
+            himark::app::switch_session(store, window, target, fx)
+        }
+    }
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
+    let home = ahp_wire::SessionId {
+        host: ahp_wire::client::HostId::LOCAL,
+        session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+    };
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let panel = ahp_chat::chat::ChatPanel::new(
+        app.store(),
+        &app.ui_ctx(),
+        ahp_wire::client::HostId::LOCAL,
+        "ahp-session:/volatile",
+        chats,
+        uri.clone(),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
+    );
+    ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    settle(&mut app, &mut wide);
+    assert!(app.perform_registered(window, "chat.composer"));
+    settle(&mut app, &mut wide);
+
+    fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
+        ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+    }
+    assert!(!held(&app).workbench().chat_minimized(), "the chat stands");
+
+    // The Chat tab's center: after the Sessions tab and a tab gap,
+    // from the leftmost header's lead inset.
+    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
+    let y = chrome.title_baseline - chrome.title_size * 0.4;
+    // A tab's slot is its title-rank width whatever rank it shows
+    // in; the word sits at the slot's start.
+    let sessions = styles.tab_width("Sessions");
+    let chat_standing = styles.title.shaper.advance(&styles.title.font, "Chat");
+    let chat_dim = styles.dim.shaper.advance(&styles.dim.font, "Chat");
+    let lead = chrome.lead_inset;
+
+    let x = lead + sessions + chrome.tab_gap + chat_standing * 0.5;
+    assert!(test_driver::click(&mut app, x, y, width, height), "the standing Chat tab takes the press");
+    settle(&mut app, &mut wide);
+    assert!(
+        held(&app).workbench().chat_minimized(),
+        "the Chat tab rolls the standing column away"
+    );
+
+    // Gone, the tree is leftmost and carries the tabs from the
+    // greater of the lead inset and the code text edge.
+    let window_chrome = ::editor::env::Themes::of(app.store()).ui().window.clone();
+    let lead = chrome.lead_inset.max(window_chrome.code_text_edge);
+    let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
+    assert!(test_driver::click(&mut app, x, y, width, height), "the dim Chat tab takes the press");
+    settle(&mut app, &mut wide);
+    assert!(
+        !held(&app).workbench().chat_minimized(),
+        "the Chat tab brings the column back"
+    );
+}
+
+/// A window too narrow for both columns, a file open: the chat
+/// hides and the Chat tab brings it over the panels.
+#[test]
+fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    app.register_toolbar_button(::workbench::toolbar::composer_button());
+    app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
+        command: "agent.toggle-agents",
+        label: "Sessions",
+        order: 0.0,
+        side: ::workbench::toolbar::ToolbarSide::Left,
+        glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
+    });
+    let window = app.sole_window();
+    let (width, height) = (1600.0f32, 900.0f32);
+    let mut narrow =
+        skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
+    app.draw_window(window, narrow.canvas());
+
+    struct EnterSession;
+    impl himark::commands::HimarkCommand for EnterSession {
+        fn id(&self) -> &'static str {
+            "test.enter-session"
+        }
+        fn name(&self) -> String {
+            String::new()
+        }
+        fn perform(
+            &self,
+            store: &mut Store,
+            _ui: &imba::ui::UiCtx,
+            bound: &imba::focus::Bindings,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
+            let target = ahp_wire::SessionId {
+                host: ahp_wire::client::HostId::LOCAL,
+                session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+            };
+            himark::app::switch_session(store, window, target, fx)
+        }
+    }
+    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
+    let home = ahp_wire::SessionId {
+        host: ahp_wire::client::HostId::LOCAL,
+        session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
+    };
+    let chats =
+        ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+    let panel = ahp_chat::chat::ChatPanel::new(
+        app.store(),
+        &app.ui_ctx(),
+        ahp_wire::client::HostId::LOCAL,
+        "ahp-session:/volatile",
+        chats,
+        uri.clone(),
+        ahp_chat::chats::Chats::catalog(app.store(), chats)
+            .unwrap_or_else(ahp_chat::chats::Catalog::noop),
+    );
+    ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    settle(&mut app, &mut narrow);
+    assert!(app.perform_registered(window, "chat.composer"));
+    settle(&mut app, &mut narrow);
+
+    // A file lands in the tree: too narrow for both, the tree alone.
+    assert!(app.new_scratch(window));
+    settle(&mut app, &mut narrow);
+
+    fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
+        ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+    }
+    let window_chrome = ::editor::env::Themes::of(app.store()).ui().window.clone();
+    assert!(
+        width < window_chrome.chat_min_width + window_chrome.first_pane_width.max(window_chrome.main_min_width),
+        "the window is too narrow for both columns"
+    );
+    assert!(!held(&app).workbench().chat_fronted(), "the panel took the window");
+
+    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
+    let y = chrome.title_baseline - chrome.title_size * 0.4;
+    let sessions = styles.tab_width("Sessions");
+    let chat_dim = styles.dim.shaper.advance(&styles.dim.font, "Chat");
+    let chat_standing = styles.title.shaper.advance(&styles.title.font, "Chat");
+    let lead = chrome.lead_inset.max(window_chrome.code_text_edge);
+    let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
+    assert!(test_driver::click(&mut app, x, y, width, height), "the dim Chat tab takes the press");
+    settle(&mut app, &mut narrow);
+    assert!(
+        held(&app).workbench().chat_fronted(),
+        "the Chat tab fronts the chat over the panels"
+    );
+
+    // Standing over the panels, the tab rolls it away again.
+    let x = chrome.lead_inset + sessions + chrome.tab_gap + chat_standing * 0.5;
+    assert!(test_driver::click(&mut app, x, y, width, height), "the standing Chat tab takes the press");
+    settle(&mut app, &mut narrow);
+    assert!(!held(&app).workbench().chat_fronted(), "the tab rolls the chat away");
+    assert!(held(&app).workbench().chat_minimized(), "the roll-away lands as minimized");
+
+    let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
+    assert!(test_driver::click(&mut app, x, y, width, height));
+    settle(&mut app, &mut narrow);
+    assert!(held(&app).workbench().chat_fronted(), "and the tab brings it back once more");
+}

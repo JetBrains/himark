@@ -329,6 +329,10 @@ where
     fn drawer_view(&self, store: &Store, ui: &imba::ui::UiCtx) -> Option<Box<dyn ModalView>> {
         self.scroll.content().drawer_view(store, ui)
     }
+
+    fn offers_drawer(&self, store: &Store) -> bool {
+        self.scroll.content().offers_drawer(store)
+    }
 }
 
 /// A modal DRESSED from outside: the view inside lays its content

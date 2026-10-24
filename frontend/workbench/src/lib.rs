@@ -8,6 +8,7 @@
 //! the pane-services face; nothing here knows the app's command type
 //! or the components a pane shows.
 
+pub mod columns;
 pub mod dock;
 pub mod drawer;
 pub mod navigation;

@@ -13,6 +13,7 @@ use imba::{
 };
 use skia_safe::{Contains as _, Rect, Size};
 
+use crate::columns::{ChatSpan, ChatStance, Columns, DockSpan, Span};
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
 
 // Like every theme metric, the window chrome's widths are PHYSICAL
@@ -299,42 +300,81 @@ impl Workbench {
         self.side_open = open;
     }
 
-    /// Where the chat column stands — or would stand, while the chat
-    /// hides — UNDER its header, in a `size` window: the side drawer
-    /// covers exactly this. The same derivation the frame lays.
-    pub fn chat_column_rect(&self, store: &Store, size: Size) -> Rect {
+    pub fn side_open(&self) -> bool {
+        self.side_open
+    }
+
+    /// The window's columns at this size — the ONE derivation the
+    /// toolbar band's sections and the body's columns both lay
+    /// against (`columns::Columns`): the dock's revealed width from
+    /// the right, the chat's from the left, the main area between.
+    pub fn columns(&self, store: &Store, size: Size) -> Columns {
         let theme = ::editor::env::Themes::of(store);
         let window = theme.ui().window.clone();
-        let header_h = theme.ui().toolbar.height;
-        let full_bleed = self.root.full_bleed();
-        let geometry = match full_bleed {
-            true => WorkbenchGeometry {
-                x: 0.0,
-                top: header_h,
-                split_width: size.width,
-            },
-            false => workbench_geometry(size.width, size.height, &window),
-        };
-        let top = match full_bleed {
-            true => geometry.top,
-            false => geometry.top + header_h,
-        };
-        let engaged = chat_column_engaged(size.width, &window) && !self.chat_minimized();
-        let whole = self.root.is_vacant() || (self.chat_fronted() && !engaged);
-        let width = match (&self.chat, whole, engaged) {
-            (Some(_), true, _) => geometry.split_width,
-            (Some(chat), false, true) => {
-                chat_column_width(chat.share, size.width, &window) - window.divider_width.max(1.0)
+        let band = theme.ui().toolbar.height;
+        let dock = self.dock.as_ref().map(|dock| {
+            let revealed = dock.revealed().round().clamp(0.0, size.width);
+            DockSpan {
+                span: Span {
+                    x: size.width - revealed,
+                    width: dock.width().max(1.0),
+                },
+                revealed,
             }
-            _ => chat_column_width(CHAT_COLUMN_RATIO, size.width, &window),
+        });
+        let available = (size.width - dock.map_or(0.0, |dock| dock.revealed)).max(1.0);
+        // The chat shows WHOLE over the main area when the tree is
+        // vacant, or when the window is too narrow for both and the
+        // chat was fronted; BESIDE the tree when both fit; otherwise
+        // it hides. Rolled away, it hides whatever the room.
+        let fits_both = chat_column_engaged(available, &window);
+        let whole = self.root.is_vacant() || (self.chat_fronted() && !fits_both);
+        let column_width = |share: f32| match whole {
+            true => available,
+            false => chat_column_width(share, available, &window),
         };
-        // Whole pixels: the column's edge rule lands crisp.
-        Rect::from_xywh(
-            geometry.x,
-            top,
-            width.max(1.0).round(),
-            (size.height - top).max(1.0),
-        )
+        let chat = self
+            .chat
+            .as_ref()
+            .filter(|_| !self.chat_minimized && (whole || fits_both))
+            .map(|chat| {
+                let width = column_width(chat.share).round().max(1.0);
+                let revealed = (width * chat.revealed()).round();
+                ChatSpan {
+                    span: Span {
+                        x: revealed - width,
+                        width,
+                    },
+                    revealed,
+                    stance: match whole {
+                        true => ChatStance::Whole,
+                        false => ChatStance::Beside,
+                    },
+                }
+            });
+        let chat_revealed = chat.map_or(0.0, |chat| chat.revealed);
+        let main = Span {
+            x: chat_revealed,
+            width: (available - chat_revealed).max(0.0),
+        };
+        // The drawer covers the chat column — or where it would
+        // stand while the chat hides. Whole pixels: its edge rule
+        // lands crisp.
+        let drawer = Span {
+            x: 0.0,
+            width: match chat {
+                Some(chat) => chat.span.width,
+                None => column_width(CHAT_COLUMN_RATIO).round().max(1.0),
+            },
+        };
+        Columns {
+            size,
+            band,
+            chat,
+            main,
+            dock,
+            drawer,
+        }
     }
 
     pub(crate) fn restore_chat(&mut self) {
@@ -342,24 +382,6 @@ impl Workbench {
         if let Some(chat) = &mut self.chat {
             chat.show();
         }
-    }
-
-    /// Is the chat DISPLAYED at this width, by the layout's own
-    /// derivation? The global cluster shows the chat button exactly
-    /// when this is false.
-    pub(crate) fn chat_presented(
-        &self,
-        width: f32,
-        window: &::editor::theme::WindowChrome,
-    ) -> bool {
-        if self.chat.is_none() || self.root.full_bleed() {
-            return false;
-        }
-        if self.root.is_vacant() {
-            return true;
-        }
-        let engaged = chat_column_engaged(width, window) && !self.chat_minimized();
-        engaged || (self.chat_fronted() && !engaged)
     }
 
     pub(crate) fn front_chat_over_panels(&mut self) {
@@ -377,28 +399,6 @@ impl Workbench {
     pub(crate) fn dock_chat(&mut self, panel: Panel) {
         self.chat = Some(ChatColumn::of(panel));
         self.chat_focused = true;
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct WorkbenchGeometry {
-    pub x: f32,
-    pub top: f32,
-    pub split_width: f32,
-}
-
-/// TEST SUPPORT: no production caller outside this crate.
-#[doc(hidden)]
-pub fn workbench_geometry(
-    width: f32,
-    height: f32,
-    window: &::editor::theme::WindowChrome,
-) -> WorkbenchGeometry {
-    let margin = (width * window.margin_ratio).clamp(window.margin_min, window.margin_max);
-    WorkbenchGeometry {
-        x: margin,
-        top: (height * window.top_ratio).clamp(window.top_min, window.top_max),
-        split_width: (width - margin * 2.0).max(1.0),
     }
 }
 
@@ -513,10 +513,10 @@ impl View for Workbench {
     }
 }
 
-/// The tree column's header WORDS: the focused editor's file name
+/// The main area's header WORDS: the focused editor's file name
 /// and its directory (the location's segments, " / " between),
 /// otherwise the panel's own title and subtitle.
-fn tree_header_words(workbench: &Workbench, store: &Store) -> (String, Option<String>) {
+pub(crate) fn tree_header_words(workbench: &Workbench, store: &Store) -> (String, Option<String>) {
     let slot = workbench.root.focused_slot();
     if let Some(pane) = slot.panel.editor() {
         let (documents, document) = (pane.content().documents(), pane.content().document());
@@ -531,142 +531,10 @@ fn tree_header_words(workbench: &Workbench, store: &Store) -> (String, Option<St
     (panel.title(store), panel.subtitle(store))
 }
 
-/// The registered words a header shows at its trailing edge.
-struct HeaderWords {
-    /// The chat column's actions (Sessions) — the display rank.
-    session_actions: Vec<(&'static str, &'static str)>,
-    /// The focused file's action (Contents) — the quiet rank.
-    file_actions: Vec<(&'static str, &'static str)>,
-    /// The chat's own word, shown by the tree while the chat hides.
-    chat_word: Vec<(&'static str, &'static str)>,
-    /// The side column's tabs, shown dim while the dock is closed.
-    tabs: Vec<(&'static str, &'static str)>,
-}
-
-impl HeaderWords {
-    fn of(store: &Store, dock_open: bool) -> Self {
-        let buttons = crate::toolbar::ToolbarButtons::of(store);
-        let drawer = crate::registry::Registry::of(store)
-            .and_then(|registry| registry.drawer_button.as_ref())
-            .map(|button| (button.label, button.command));
-        let word = |button: &crate::toolbar::ToolbarButton| (button.label, button.command);
-        Self {
-            session_actions: buttons
-                .on(crate::toolbar::ToolbarSide::Left)
-                .filter(|button| drawer.is_none_or(|(_, command)| command != button.command))
-                .map(word)
-                .collect(),
-            file_actions: drawer.into_iter().collect(),
-            chat_word: buttons.on(crate::toolbar::ToolbarSide::Well).map(word).collect(),
-            tabs: match dock_open {
-                true => Vec::new(),
-                false => buttons.tabs().into_iter().map(word).collect(),
-            },
-        }
-    }
-}
-
-type Header<'a> = hikit::header::ColumnHeader<'a, WorkbenchCommand>;
-
-fn run(command: &'static str) -> impl Fn() -> WorkbenchCommand {
-    move || WorkbenchCommand::RunCommand(command)
-}
-
-/// The LEFTMOST column's tabs, right after the semaphore: Sessions
-/// (the drawer over the chat column) and Chat — the standing one in
-/// the title rank, the other dim. Whichever column is leftmost
-/// carries them: the chat's, or the tree's while the chat hides.
-fn column_tabs<'a>(
-    mut header: Header<'a>,
-    words: &HeaderWords,
-    workbench: &Workbench,
-    chat_showing: bool,
-) -> Header<'a> {
-    let side_open = workbench.side_open;
-    for (label, command) in &words.session_actions {
-        header = header.tab(*label, side_open, run(command));
-    }
-    // The Chat tab TOGGLES: standing, it rolls the column away;
-    // otherwise it fronts the chat (the registered `chat.composer`,
-    // which also rolls an open drawer away).
-    for (label, command) in &words.chat_word {
-        let command: &'static str = command;
-        let standing = chat_showing && !side_open;
-        header = header.tab(*label, standing, move || match standing {
-            true => WorkbenchCommand::MaximizeTree,
-            false => WorkbenchCommand::RunCommand(command),
-        });
-    }
-    header
-}
-
-/// The chat column's header: the tabs, then the session and where
-/// it works — unless the drawer stands over the column, when the
-/// Sessions tab says it all.
-fn chat_header<'a>(
-    arena: &'a Arena,
-    store: &'a Store,
-    ui: &'a UiCtx,
-    workbench: &Workbench,
-    chat: &ChatColumn,
-    words: &HeaderWords,
-    with_tabs: bool,
-) -> Header<'a> {
-    let header = Header::new(arena, store, ui, crate::toolbar::leading_inset(store, ui));
-    let mut header = column_tabs(header, words, workbench, true);
-    if !workbench.side_open {
-        header = header.title(chat.panel().title(store));
-        if let Some(subtitle) = chat.panel().subtitle(store) {
-            header = header.subtitle(format!("in {subtitle}"));
-        }
-    }
-    if with_tabs {
-        for (label, command) in &words.tabs {
-            header = header.dim_button(*label, run(command));
-        }
-    }
-    header
-}
-
-/// The tree column's header: the focused file, its directory, the
-/// file's actions and — while the dock is closed — the side column's
-/// tabs. LEFTMOST (no chat column standing), it insets past the
-/// semaphore and carries the Sessions · Chat tabs the chat header
-/// would.
-fn tree_header<'a>(
-    arena: &'a Arena,
-    store: &'a Store,
-    ui: &'a UiCtx,
-    workbench: &Workbench,
-    words: &HeaderWords,
-    leftmost: bool,
-) -> Header<'a> {
-    let (title, subtitle) = tree_header_words(workbench, store);
-    let window = ::editor::env::Themes::of(store).ui().window.clone();
-    let lead = match leftmost {
-        true => crate::toolbar::leading_inset(store, ui).max(window.code_text_edge),
-        false => window.code_text_edge,
-    };
-    let mut header = Header::new(arena, store, ui, lead);
-    if leftmost {
-        header = column_tabs(header, words, workbench, false);
-    }
-    header = header.title(title);
-    if let Some(subtitle) = subtitle {
-        header = header.subtitle(subtitle);
-    }
-    for (label, command) in &words.file_actions {
-        header = header.button(*label, run(command));
-    }
-    for (label, command) in &words.tabs {
-        header = header.dim_button(*label, run(command));
-    }
-    header
-}
-
-/// The workbench frame, reified: the chat column (when engaged)
-/// beside the root split, placed by the window's geometry rule over
-/// the cleared ground.
+/// The workbench BODY under the toolbar band: the chat column, the
+/// split tree and the splitter between them, laid against the
+/// window's columns (the dock is the window's own layer, at the
+/// same columns). The band itself is the window toolbar's.
 struct WorkbenchFrame<'a> {
     workbench: &'a Workbench,
     store: &'a Store,
@@ -689,48 +557,93 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let size = constraints.max;
         let theme = ::editor::env::Themes::of(store);
         let ground = theme.ui().ink.ground.0;
+        let window = theme.ui().window.clone();
+        let divider_width = window.divider_width.max(1.0);
+        let divider_color = window.divider.0;
 
-        let full_bleed = workbench.root.full_bleed();
-        let chat = workbench.chat.as_ref().filter(|_| !full_bleed);
+        let columns = workbench.columns(store, size);
+        let top = columns.body_top();
+        let height = columns.body_height();
 
-        let geometry = match full_bleed {
-            // Full-bleed covers the workbench, not the window's top
-            // band: the semaphore keeps its corner.
-            true => WorkbenchGeometry {
-                x: 0.0,
-                top: theme.ui().toolbar.height,
-                split_width: size.width,
-            },
-            false => workbench_geometry(size.width, size.height, &theme.ui().window),
-        };
-        let split_height = (size.height - geometry.top).max(1.0);
+        let mut container = imba::container::container(arena, size);
+        let mut chat_rect = Rect::default();
+        let mut root_rect = Rect::default();
 
-        // Every COLUMN draws its own header. A full-bleed root (the
-        // composer) owns the window whole.
-        let header_h = match full_bleed {
-            true => 0.0,
-            false => theme.ui().toolbar.height,
-        };
-        let dock_open = workbench
-            .dock()
-            .is_some_and(|dock| dock.target_width() > 0.0);
-        let words = HeaderWords::of(store, dock_open);
-        let header_constraints = |width: f32| {
-            Constraints::tight(Size::new(width.max(1.0), header_h.max(1.0)))
-        };
-        let page = move |container: imba::container::Container<'a, WorkbenchCommand>| {
-            imba::ThunkBox::new(
+        // The main area: the split tree, from where the chat ends to
+        // where the dock begins. A whole chat leaves it no room.
+        if columns.main.width >= 1.0 {
+            let root = imba::layout::Layout::layout(
+                workbench.root.display(arena, store, ui),
                 arena,
-                container.paint_below(move |_arena, canvas, _| {
-                    canvas.clear(ground);
-                }),
+                Constraints::tight(Size::new(columns.main.width, height)),
             )
-        };
+            .map(WorkbenchCommand::Node)
+            .focus_scope(!workbench.chat_focused());
+            container.place(columns.main.x, top, root);
+            root_rect = columns.body_rect(columns.main);
+        }
 
-        // The chat column's slide needs a clock WHEREVER the chat is
-        // held — whole, hidden or beside the tree — so a roll-away
-        // lands as minimized even when no column visibly moves.
-        let slide_clock = move |container: &mut imba::container::Container<'a, WorkbenchCommand>| {
+        if let (Some(chat), Some(column)) = (workbench.chat.as_ref(), columns.chat) {
+            // The column lays at its FULL width and slides: mid-slide
+            // it stands past the window's left edge (the dock's move,
+            // mirrored) and the tree takes the rest from where it shows.
+            let beside = column.stance == ChatStance::Beside;
+            let lays = match beside {
+                true => column.span.width - divider_width,
+                false => column.span.width,
+            }
+            .max(1.0);
+            let view = imba::layout::Layout::layout(
+                chat.node.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(lays, height)),
+            )
+            .map(WorkbenchCommand::Chat)
+            .focus_scope(workbench.chat_focused());
+            container.place(column.span.x, top, view);
+            chat_rect = Rect::from_xywh(0.0, top, column.revealed, height);
+
+            if beside {
+                // The splitter: one hairline, band to floor — the
+                // toolbar's section rule continues it — with the
+                // resize handle astride it.
+                let edge = columns.main.x;
+                container.place_boxed(
+                    edge - divider_width,
+                    top,
+                    hikit::ui::rule_v::<WorkbenchCommand>(divider_color, height)
+                        .layout(arena, Constraints::tight(Size::new(divider_width, height))),
+                );
+                let sliding = chat.sliding();
+                let resizing = chat.resizing;
+                let available = columns.main.right();
+                let handle = imba::leaf::leaf::<WorkbenchCommand>(HANDLE_REACH * 2.0, height)
+                    .event(move |_arena, event, _leaf_size| match event {
+                        Event::AnimationClock { now } if sliding => {
+                            EventResult::command(WorkbenchCommand::ChatTick(*now))
+                        }
+                        Event::MouseDown { .. } if !sliding => {
+                            EventResult::command(WorkbenchCommand::ChatBeginResize)
+                        }
+                        Event::MouseDrag { point, .. } if resizing => {
+                            let width = (point.x + (edge - HANDLE_REACH))
+                                .clamp(window.chat_min_width, chat_column_max(available, &window));
+                            // The STATE is the proportion, not the pixel.
+                            EventResult::command(WorkbenchCommand::ChatResize(width / available))
+                        }
+                        Event::MouseUp { .. } if resizing => {
+                            EventResult::command(WorkbenchCommand::ChatEndResize)
+                        }
+                        _ => EventResult::Ignored,
+                    });
+                container.place(edge - HANDLE_REACH, top, handle);
+            }
+        }
+
+        // The chat's slide needs a clock WHEREVER the chat is held —
+        // showing, sliding or hidden — so a roll-away lands as
+        // minimized even when no column visibly moves.
+        if workbench.chat.as_ref().is_some_and(ChatColumn::sliding) {
             let clock = imba::leaf::leaf::<WorkbenchCommand>(1.0, 1.0).event(
                 move |_arena, event, _size| match event {
                     Event::AnimationClock { now } => {
@@ -739,182 +652,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                     _ => EventResult::Ignored,
                 },
             );
-            container.place(0.0, geometry.top, clock);
-        };
-
-        let Some(chat) = chat else {
-            let root = imba::layout::Layout::layout(
-                workbench.root.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(
-                    geometry.split_width,
-                    (split_height - header_h).max(1.0),
-                )),
-            )
-            .map(WorkbenchCommand::Node);
-
-            let mut container = imba::container::container(arena, size);
-            if header_h > 0.0 {
-                container.place_boxed(
-                    geometry.x,
-                    geometry.top,
-                    tree_header(arena, store, ui, workbench, &words, true)
-                        .layout(arena, header_constraints(geometry.split_width)),
-                );
-            }
-            container.place(geometry.x, geometry.top + header_h, root);
-            return page(container);
-        };
-
-        // The chat slot is ALWAYS open; what shows is decided here,
-        // from the space and the tree alone:
-        //   tree vacant          -> the chat owns the whole workbench
-        //   both fit             -> chat column | split tree
-        //   too narrow for both  -> the tree alone, the chat hidden
-        let engaged =
-            chat_column_engaged(size.width, &theme.ui().window) && !workbench.chat_minimized();
-        if workbench.root.is_vacant() || (workbench.chat_fronted() && !engaged) {
-            let column = imba::layout::Layout::layout(
-                chat.node.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(
-                    geometry.split_width,
-                    (split_height - header_h).max(1.0),
-                )),
-            )
-            .map(WorkbenchCommand::Chat);
-
-            let mut container = imba::container::container(arena, size);
-            container.place_boxed(
-                geometry.x,
-                geometry.top,
-                chat_header(arena, store, ui, workbench, chat, &words, true)
-                    .layout(arena, header_constraints(geometry.split_width)),
-            );
-            container.place(geometry.x, geometry.top + header_h, column);
-            if chat.sliding() {
-                slide_clock(&mut container);
-            }
-            return page(container);
-        }
-
-        if !engaged {
-            let root = imba::layout::Layout::layout(
-                workbench.root.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(
-                    geometry.split_width,
-                    (split_height - header_h).max(1.0),
-                )),
-            )
-            .map(WorkbenchCommand::Node);
-
-            let mut container = imba::container::container(arena, size);
-            if header_h > 0.0 {
-                // The chat is hidden: its tab brings it back.
-                container.place_boxed(
-                    geometry.x,
-                    geometry.top,
-                    tree_header(arena, store, ui, workbench, &words, true)
-                        .layout(arena, header_constraints(geometry.split_width)),
-                );
-            }
-            container.place(geometry.x, geometry.top + header_h, root);
-            if chat.sliding() {
-                slide_clock(&mut container);
-            }
-            return page(container);
-        }
-
-        let column_width = chat_column_width(chat.share, size.width, &theme.ui().window);
-        let divider_width = theme.ui().window.divider_width.max(1.0);
-        let divider_color = theme.ui().window.divider.0;
-
-        // The slide (the dock's, mirrored): the column lays at its
-        // full width but stands `slide` past the window's left edge,
-        // and the tree takes the rest from where it shows.
-        let revealed = (column_width * chat.revealed()).round();
-        let slide = column_width - revealed;
-        let chat_x = geometry.x - slide;
-        let chat_rect = Rect::from_xywh(geometry.x, geometry.top, revealed, split_height);
-        let root_x = geometry.x + revealed;
-        let root_width = (geometry.split_width - revealed).max(1.0);
-        let root_rect = Rect::from_xywh(root_x, geometry.top, root_width, split_height);
-        let sliding = chat.sliding();
-
-        let column = imba::layout::Layout::layout(
-            chat.node.display(arena, store, ui),
-            arena,
-            Constraints::tight(Size::new(
-                (column_width - divider_width).max(1.0),
-                (split_height - header_h).max(1.0),
-            )),
-        )
-        .map(WorkbenchCommand::Chat)
-        .focus_scope(workbench.chat_focused());
-
-        let root = imba::layout::Layout::layout(
-            workbench.root.display(arena, store, ui),
-            arena,
-            Constraints::tight(Size::new(root_width, (split_height - header_h).max(1.0))),
-        )
-        .map(WorkbenchCommand::Node)
-        .focus_scope(!workbench.chat_focused());
-
-        let resizing = chat.resizing;
-        let surface_width = size.width;
-        let window = theme.ui().window.clone();
-        let handle = imba::leaf::leaf::<WorkbenchCommand>(HANDLE_REACH * 2.0, split_height).event(
-            move |_arena, event, _leaf_size| match event {
-                Event::AnimationClock { now } if sliding => {
-                    EventResult::command(WorkbenchCommand::ChatTick(*now))
-                }
-                Event::MouseDown { .. } if !sliding => {
-                    EventResult::command(WorkbenchCommand::ChatBeginResize)
-                }
-                Event::MouseDrag { point, .. } if resizing => {
-                    let width = (point.x + (root_x - HANDLE_REACH))
-                        .clamp(window.chat_min_width, chat_column_max(surface_width, &window));
-                    // The STATE is the proportion, not the pixel.
-                    EventResult::command(WorkbenchCommand::ChatResize(width / surface_width))
-                }
-                Event::MouseUp { .. } if resizing => {
-                    EventResult::command(WorkbenchCommand::ChatEndResize)
-                }
-                _ => EventResult::Ignored,
-            },
-        );
-
-        let mut container = imba::container::container(arena, size);
-        // Each column's OWN header: the chat names its session (the
-        // leftmost, so it insets past the semaphore), the tree names
-        // its focused file.
-        container.place_boxed(
-            chat_x,
-            geometry.top,
-            chat_header(arena, store, ui, workbench, chat, &words, false)
-                .layout(arena, header_constraints(column_width - divider_width)),
-        );
-        container.place_boxed(
-            root_x,
-            geometry.top,
-            tree_header(arena, store, ui, workbench, &words, false)
-            .layout(arena, header_constraints(root_width)),
-        );
-        container.place(chat_x, geometry.top + header_h, column);
-        // The column divider: one hairline, header to floor.
-        container.place_boxed(
-            root_x - divider_width,
-            geometry.top,
-            hikit::ui::rule_v::<WorkbenchCommand>(divider_color, split_height).layout(
-                arena,
-                Constraints::tight(Size::new(divider_width, split_height)),
-            ),
-        );
-        container.place(root_x, geometry.top + header_h, root);
-        container.place(root_x - HANDLE_REACH, geometry.top, handle);
-        if sliding {
-            slide_clock(&mut container);
+            container.place(0.0, top, clock);
         }
 
         imba::ThunkBox::new(

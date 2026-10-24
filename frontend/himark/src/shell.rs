@@ -343,7 +343,6 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
             let dock_request = entity.take_dock_request();
 
             let toolbar_request = entity.take_toolbar_request();
-            let dock_command = entity.take_dock_command();
 
             let request = entity.take_modal_request();
             match request {
@@ -614,11 +613,6 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
                     }
                 }
                 None => {}
-            }
-            if let Some(id) = dock_command {
-                if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
-                    run_app(store, ui, windowed(window, command), fx);
-                }
             }
 
             for request in crate::commands::AppRequests::drain(store) {

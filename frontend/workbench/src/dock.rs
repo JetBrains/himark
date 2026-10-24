@@ -31,14 +31,10 @@ pub(crate) const DOCK_MAX_RATIO: f32 = 0.6;
 
 pub(crate) const SLIDE_MS: f64 = 160.0;
 
-const HANDLE_REACH: f32 = 4.0;
+pub(crate) const HANDLE_REACH: f32 = 4.0;
 
 #[derive(Clone)]
 pub enum DockCommand {
-    /// The dock's OWN header buttons (the `ToolbarSide::Right`
-    /// registrations live here now).
-    HeaderButton(usize),
-
     Tick(AnimationClock),
 
     BeginResize,
@@ -54,7 +50,6 @@ impl std::fmt::Display for DockCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DockCommand::Content(command) => command.fmt(out),
-            DockCommand::HeaderButton(_) => out.write_str("dock header button"),
             DockCommand::Tick(_) => out.write_str("dock tick"),
             DockCommand::BeginResize => out.write_str("dock begin resize"),
             DockCommand::Resize(_) => out.write_str("dock resize"),
@@ -77,10 +72,6 @@ pub(crate) struct Dock {
     resizing: bool,
 
     request: Option<ModalRequest>,
-
-    /// A pressed header button's registered command id, drained by
-    /// the app loop like any toolbar request.
-    command: Option<&'static str>,
 }
 
 impl Clone for Dock {
@@ -94,7 +85,6 @@ impl Clone for Dock {
             resizing: self.resizing,
 
             request: None,
-            command: None,
         }
     }
 }
@@ -117,7 +107,6 @@ impl Dock {
             closing: false,
             resizing: false,
             request: None,
-            command: None,
         }
     }
 
@@ -146,8 +135,11 @@ impl Dock {
         std::mem::replace(&mut self.content, content)
     }
 
+    /// How much of the column stands revealed, in WHOLE pixels —
+    /// the band's rule, the body's rule and the focus edge all land
+    /// on the same one.
     pub(crate) fn revealed(&self) -> f32 {
-        self.reveal.value()
+        self.reveal.value().round()
     }
 
     pub(crate) fn target_width(&self) -> f32 {
@@ -223,19 +215,14 @@ impl View for Dock {
             DockCommand::Content(command) => fx.scope(DockCommand::Content, |fx| {
                 self.content.as_mut().perform_dyn(store, ui, command, fx)
             }),
-            DockCommand::HeaderButton(index) => {
-                if let Some(button) = crate::toolbar::ToolbarButtons::of(store).iter().nth(index) {
-                    self.command = Some(button.command);
-                }
-            }
         }
     }
 
-    /// The side column: its header is the TABS — every registered
-    /// side word, the owner's in the title rank — over the ground,
-    /// the content under it, one hairline on its left edge. The
-    /// column slides in from the right by its reveal; a handle on
-    /// that edge resizes it.
+    /// The side column's BODY: the content over the ground, one
+    /// hairline on its left edge (the toolbar's section rule
+    /// continues it — the tabs are the band's). The column slides in
+    /// from the right by its reveal; a handle on that edge resizes
+    /// it.
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -254,24 +241,6 @@ impl View for Dock {
             let ink = theme.ui().ink.clone();
             let body_width = self.width.max(1.0);
 
-            let buttons = crate::toolbar::ToolbarButtons::of(store);
-            let owner = self.owner;
-            let mut header = hikit::header::ColumnHeader::<DockCommand>::new(
-                arena,
-                store,
-                ui,
-                theme.ui().window.side_text_edge,
-            );
-            for (index, button) in buttons.iter().enumerate() {
-                if !matches!(button.side, crate::toolbar::ToolbarSide::Right) {
-                    continue;
-                }
-                header = header.tab(button.label, button.command == owner, move || {
-                    DockCommand::HeaderButton(index)
-                });
-            }
-            let header_h = header.band_height();
-
             let content = imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
                 self.content
                     .as_ref()
@@ -279,7 +248,6 @@ impl View for Dock {
                     .map(DockCommand::Content)
             });
             let body = imba::layout::Column::new(arena)
-                .child(header.height(header_h))
                 .weighted(1.0, content)
                 .sized(body_width, size.height)
                 .backdrop(hikit::ui::ground(ink.ground.0))
@@ -338,9 +306,6 @@ impl View for Dock {
 }
 
 impl Dock {
-    pub(crate) fn take_command(&mut self) -> Option<&'static str> {
-        self.command.take()
-    }
 
     pub(crate) fn take_request(&mut self) -> Option<ModalRequest> {
         if let Some(request) = self.request.take() {
