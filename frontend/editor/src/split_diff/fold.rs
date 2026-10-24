@@ -447,9 +447,9 @@ impl imba::View for FoldStrip {
     ) -> impl imba::layout::Layout<'a, FoldCommand> + imba::layout::LayoutValue + 'a {
         let theme = crate::env::Themes::of(store);
         FoldStripLayout {
-            chrome: theme.ui().diff.clone(),
-            gutter: theme.ui().editor_gutter.clone(),
-            ink: theme.ui().ink.clone(),
+            chrome: theme.part(crate::theme::DiffFoldChrome::KEY).as_ref().clone(),
+            gutter: theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone(),
+            ink: theme.part(crate::theme::InkChrome::KEY).as_ref().clone(),
             lines: self.lines,
             place: self.place,
             silent: self.silent,
@@ -467,7 +467,7 @@ impl imba::View for FoldStrip {
 /// spans the incoming width at a height the silent spacer must agree
 /// with.
 struct FoldStripLayout<'a> {
-    chrome: crate::theme::DiffChrome,
+    chrome: crate::theme::DiffFoldChrome,
     gutter: crate::theme::EditorGutterChrome,
     ink: crate::theme::InkChrome,
     lines: u32,
@@ -585,7 +585,7 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
 
 /// The strip's whole footprint — the silent spacer and the painted
 /// face MUST agree, or the split's sides drift apart at every fold.
-fn strip_height(chrome: &crate::theme::DiffChrome) -> f32 {
+fn strip_height(chrome: &crate::theme::DiffFoldChrome) -> f32 {
     chrome.fold_edge_height * 2.0
 }
 

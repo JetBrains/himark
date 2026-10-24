@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use std::ops::Range;
 
 use skia_safe::{Canvas, Color, Paint, Rect};
@@ -480,7 +481,7 @@ impl EditorViewport {
                 let standing = document.fold_matching(editor, range);
                 let spin = standing
                     .and_then(|key| document.fold_chip_at(key))
-                    .map_or(0.0, |chip| chip.spin(theme.ui().fold_chip.height));
+                    .map_or(0.0, |chip| chip.spin(theme.part(crate::theme::FoldChipChrome::KEY).height));
                 LineFoldable {
                     range: range.clone(),
                     folded: standing.is_some(),
@@ -502,7 +503,7 @@ impl EditorViewport {
                     _ => {
                         let range = overlaid
                             .styled_range_at(byte_start, |id| {
-                                theme.attributes(id).background.is_some_and(|background| {
+                                theme.styles().attributes(id).background.is_some_and(|background| {
                                     background.kind == crate::theme::BackgroundKind::Box
                                 })
                             })
@@ -576,7 +577,7 @@ impl EditorViewport {
 
         for line in &self.lines {
             if line.spacer > 0.5 {
-                paint.set_color(theme.ui().diff.spacer_fill.0);
+                paint.set_color(theme.part(crate::theme::DiffFoldChrome::KEY).spacer_fill.0);
                 canvas.draw_rect(
                     Rect::from_xywh(
                         line.x,
@@ -590,7 +591,7 @@ impl EditorViewport {
         }
 
         if let Some((top, height)) = self.tail_spacer {
-            paint.set_color(theme.ui().diff.spacer_fill.0);
+            paint.set_color(theme.part(crate::theme::DiffFoldChrome::KEY).spacer_fill.0);
             canvas.draw_rect(Rect::from_xywh(0.0, top, self.layout_width, height), &paint);
         }
 
@@ -600,9 +601,9 @@ impl EditorViewport {
                 paint.set_color(gutter);
                 canvas.draw_rect(
                     Rect::from_xywh(
-                        line.x - theme.ui().gutter.inset,
+                        line.x - theme.part(crate::theme::GutterChrome::KEY).inset,
                         line.top,
-                        theme.ui().gutter.width,
+                        theme.part(crate::theme::GutterChrome::KEY).width,
                         line.height,
                     ),
                     &paint,
@@ -612,6 +613,7 @@ impl EditorViewport {
             if resolved.rule.is_some() && !line.inlays.has_instead() {
                 paint.set_color(
                     theme
+                        .styles()
                         .attributes(crate::theme::StyleId::HorizontalLine)
                         .rule
                         .unwrap_or(Color::TRANSPARENT),
@@ -619,16 +621,16 @@ impl EditorViewport {
                 canvas.draw_rect(
                     Rect::from_xywh(
                         line.x,
-                        line.top + theme.ui().rule.offset,
+                        line.top + theme.part(crate::theme::RuleChrome::KEY).offset,
                         self.layout_width,
-                        theme.ui().rule.thickness,
+                        theme.part(crate::theme::RuleChrome::KEY).thickness,
                     ),
                     &paint,
                 );
             } else if let Some(shaped) = &line.shaped {
                 for range in self.selections_in(line.byte_start, line.byte_end) {
                     let clamped = range.start.max(line.byte_start)..range.end.min(line.byte_end);
-                    paint.set_color(theme.ui().caret.selection.0);
+                    paint.set_color(theme.part(crate::theme::CaretChrome::KEY).selection.0);
                     for rect in shaped.rects_for_range(clamped) {
                         canvas.draw_rect(
                             Rect::from_xywh(
@@ -706,8 +708,8 @@ fn paint_rectangular_backgrounds(
             )
         });
         if let Some(line_background) = rectangular {
-            let top = line.top - theme.ui().code_panel.top_offset;
-            let bottom = line.top + line.height - theme.ui().code_panel.top_offset;
+            let top = line.top - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
+            let bottom = line.top + line.height - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
             let inset = resolved.inset.unwrap_or(0.0);
 
             match &mut background {
@@ -779,8 +781,8 @@ fn draw_rectangular_background(
     paint.set_color(background.color);
     canvas.draw_round_rect(
         Rect::from_xywh(left, background.top, right - left, height),
-        theme.ui().code_panel.radius,
-        theme.ui().code_panel.radius,
+        theme.part(crate::theme::CodePanelChrome::KEY).radius,
+        theme.part(crate::theme::CodePanelChrome::KEY).radius,
         paint,
     );
 }

@@ -6,7 +6,8 @@
 //! footer. Each is a named modifier or layout value — the views
 //! compose them, nothing places pixels by hand.
 
-use editor::theme::{SheetChrome, TypeRole};
+use editor::theme::TypeRole;
+use hikit::chrome::SheetChrome;
 use hikit::modal::{ModalRequest, ModalView};
 use hikit::ui::TextStyle;
 use imba::{

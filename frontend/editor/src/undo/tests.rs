@@ -29,7 +29,7 @@ impl Pane {
             &[],
             store,
             ui,
-            &crate::theme::Theme::embedded(),
+            &crate::theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
         Self {
@@ -183,7 +183,7 @@ fn a_shared_edit_carries_the_undo_history_across_itself() {
         &foreign,
         store,
         ui,
-        &crate::theme::Theme::embedded(),
+        &crate::theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(pane.text(), ">> hello");

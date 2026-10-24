@@ -65,12 +65,12 @@ impl TextStyle {
     }
 }
 
-fn ramp(store: &Store) -> editor::theme::TypeChrome {
-    editor::env::Themes::of(store).ui().type_ramp.clone()
+fn ramp(store: &Store) -> std::sync::Arc<editor::theme::TypeChrome> {
+    editor::env::Themes::of(store).part(::editor::theme::TypeChrome::KEY)
 }
 
-fn ink(store: &Store) -> editor::theme::InkChrome {
-    editor::env::Themes::of(store).ui().ink.clone()
+fn ink(store: &Store) -> std::sync::Arc<editor::theme::InkChrome> {
+    editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY)
 }
 
 /// READING — the agent's prose, list rows' body: ink 2.
@@ -403,7 +403,7 @@ impl RowStyle {
     /// (the indent offset); only the trails keep an inset of their
     /// own.
     pub fn drawer(store: &Store, ui: &UiCtx) -> Self {
-        let tree = editor::env::Themes::of(store).ui().tree.clone();
+        let tree = editor::env::Themes::of(store).part(crate::chrome::TreeChrome::KEY);
         Self {
             inset: 0.0,
             trail_inset: space::L,
@@ -415,7 +415,7 @@ impl RowStyle {
 
     /// Group/section headers (search result groups) — bold label.
     pub fn header(store: &Store, ui: &UiCtx) -> Self {
-        let search = editor::env::Themes::of(store).ui().search.clone();
+        let search = editor::env::Themes::of(store).part(::editor::theme::SearchChrome::KEY);
         Self {
             inset: search.group_text_x,
             trail_inset: search.group_text_x,
@@ -681,7 +681,7 @@ pub fn button<'a, Command: 'a>(
     content: impl Into<String>,
     on_press: impl Fn() -> Command + 'a,
 ) -> imba::layout::Button<'a, Command, impl Fn() -> Command + 'a> {
-    let chat = editor::env::Themes::of(store).ui().chat.clone();
+    let chat = editor::env::Themes::of(store).part(crate::chrome::ChatChrome::KEY);
     let style = match role {
         ButtonRole::Primary => caps(store, ui).colored(chat.on_accent.0),
         ButtonRole::Ghost => caps(store, ui),

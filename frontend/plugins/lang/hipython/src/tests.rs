@@ -11,7 +11,7 @@ trait RunReparse {
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
         editor::reparse::ReparseHandler(editor::test_document::test_workshop(
-            editor::theme::Theme::embedded(),
+            editor::theme::embedded(),
         ))
         .reparse(self)
     }
@@ -26,7 +26,7 @@ fn languages() -> editor::reparse::SyntaxLanguages {
 fn parsed() -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
         text::text::Text::from_string_exact(SOURCE),
@@ -137,7 +137,7 @@ fn python_blocks_highlight_in_markdown() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let source = "title\n\n```python\ndef greet():\n    return \"hi\"\n```\n";
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut document = himarkdown::document_from_markdown(source, store, ui, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
     let outcome = editor::reparse::ReparseWork::capture(&document, parsers)

@@ -70,7 +70,7 @@ impl crate::document::Document {
         Some(ShapedLine::placeholder(
             text,
             state.input_style,
-            theme.ui().ink.placeholder.0,
+            theme.part(crate::theme::InkChrome::KEY).placeholder.0,
             ui,
             theme,
             state.layout.layout_width(),
@@ -90,7 +90,7 @@ impl crate::document::Document {
         let layout = &state.layout;
         let extras = self.extras_keyed(editor);
         let overlaid = crate::markup::OverlaidMarkup::new(self.markup(), &extras);
-        let caret_chrome = &theme.ui().caret;
+        let caret_chrome = &theme.part(crate::theme::CaretChrome::KEY);
         // An input's caret is the LIVE bar; a document's the code caret.
         let (caret_color, caret_width) = match state.input_style {
             Some(_) => (caret_chrome.input_color.0, caret_chrome.input_width),
@@ -496,7 +496,7 @@ mod tests {
     fn placeholder_line_exists_only_while_document_is_empty() {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        let theme = crate::theme::Theme::embedded();
+        let theme = crate::theme::embedded();
         let mut document = crate::document::Document::new(
             text::text::Text::from_string_exact(""),
             crate::markup::Markup::new(),

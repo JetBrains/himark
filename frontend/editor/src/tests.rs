@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use std::str;
 
 use operation::{op::Op, operation::Operation};
@@ -23,7 +24,7 @@ use crate::{
 };
 
 fn test_theme() -> crate::theme::Theme {
-    crate::theme::Theme::embedded()
+    crate::theme::embedded()
 }
 
 
@@ -1067,7 +1068,7 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
 
     let image = surface.image_snapshot();
     let pixmap = image.peek_pixels().expect("raster pixels");
-    let caret = theme.ui().caret.color.0;
+    let caret = theme.part(crate::theme::CaretChrome::KEY).color.0;
     let painted = (0..40).any(|y| (0..40).any(|x| pixmap.get_color((x, y)) == caret));
     assert!(painted, "the focused empty document paints its caret");
 }
@@ -1288,8 +1289,9 @@ fn a_bounded_editor_paints_only_its_fragment() {
 }
 
 mod injected_syntax {
-    use super::{test_theme};
+    use super::test_theme;
     use crate::markup::Markup;
+    use crate::theme::ThemeStyles as _;
     use crate::markup::Syntax;
     use crate::test_document::plain_document;
     use crate::theme::StyleId;
@@ -1449,6 +1451,7 @@ mod injected_syntax {
         let image = surface.image_snapshot();
         let pixmap = image.peek_pixels().expect("raster pixels");
         let target = test_theme()
+            .styles()
             .attributes(StyleId::Keyword)
             .color
             .expect("keyword entry has a color");
@@ -1610,7 +1613,7 @@ fn styled_runs_translate_across_hidden_syntax() {
 fn paired_layouts_align_retained_boundaries() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let shared_head = "shared first line\nshared second line\n";
     let shared_tail = "shared tail one\nshared tail two\nshared tail three\n";
     let left_source = format!(
@@ -1727,7 +1730,7 @@ fn popup_overlays_carry_projected_inlays() {
     // editor chain) must emit host-targeting inlays too, or a
     // deleted-code card expanded from the gutter stripes never
     // renders.
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\n";
     let mut document = crate::test_document::plain_document(source);
     let markup = crate::markup::MarkupId::mint();
@@ -1794,7 +1797,7 @@ fn popup_overlays_carry_projected_inlays() {
 fn paired_layouts_absorb_one_sided_inlays() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\n";
     let mut left = crate::test_document::plain_document(source);
 
@@ -2152,8 +2155,8 @@ fn tight_background_markers_hug_their_glyphs() {
 fn inline_marker_styles_are_tight_and_line_washes_are_not() {
     use crate::theme::{BackgroundExtent, BackgroundHeight, BackgroundKind, StyleId};
     for theme in [
-        crate::theme::Theme::embedded(),
-        crate::theme::Theme::light(),
+        crate::theme::embedded(),
+        crate::theme::light(),
     ] {
         for id in [
             StyleId::BraceMatch,
@@ -2164,6 +2167,7 @@ fn inline_marker_styles_are_tight_and_line_washes_are_not() {
             StyleId::DiffModifiedWord,
         ] {
             let background = theme
+                .styles()
                 .attributes(id)
                 .background
                 .unwrap_or_else(|| panic!("{id:?} carries a background"));
@@ -2177,6 +2181,7 @@ fn inline_marker_styles_are_tight_and_line_washes_are_not() {
             StyleId::DiffModified,
         ] {
             let background = theme
+                .styles()
                 .attributes(id)
                 .background
                 .unwrap_or_else(|| panic!("{id:?} carries a background"));
@@ -2192,6 +2197,7 @@ fn inline_marker_styles_are_tight_and_line_washes_are_not() {
             );
         }
         let fence = theme
+            .styles()
             .attributes(StyleId::CodeBlock)
             .background
             .expect("the fence panel");
@@ -3312,7 +3318,7 @@ fn viewport_build_is_band_scoped() {
 fn gutter_paints_numbers_beside_shifted_text() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let chrome_width = test_theme().ui().editor_gutter.width;
+    let chrome_width = test_theme().part(crate::theme::EditorGutterChrome::KEY).width;
     let source = "alpha\nbeta\ngamma\n";
     let mut view = crate::editor_view::EditorView::complete(
         plain_document(source),
@@ -3407,7 +3413,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
 fn gutter_numbers_share_the_text_baseline() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let chrome = test_theme().ui().editor_gutter.clone();
+    let chrome = test_theme().part(crate::theme::EditorGutterChrome::KEY);
 
     let source = "alpha\nbeta\ngamma";
     let mut view = crate::editor_view::EditorView::complete(
@@ -3820,7 +3826,7 @@ mod folding {
     fn a_gutter_click_toggles_the_fold() {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        let chrome_width = test_theme().ui().editor_gutter.width;
+        let chrome_width = test_theme().part(crate::theme::EditorGutterChrome::KEY).width;
         let mut view = crate::editor_view::EditorView::complete(
             foldable_document(SOURCE, interior()),
             400.0,
@@ -4654,7 +4660,7 @@ fn line_marks_sweep_matches_the_per_line_query() {
             lines.push(at..(at + len).min(extent));
             at += len;
         }
-        let theme = crate::theme::Theme::embedded();
+        let theme = crate::theme::embedded();
         let mut measure_store = imba::store::Store::new();
         crate::env::Themes::set(&mut measure_store, theme.clone());
         let measure_ui = crate::test_document::test_ui();
@@ -5440,7 +5446,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
     // Drive the repair lane to completion, the way the engine would.
     let workshop = std::sync::Arc::new(crate::env::Workshop::new(
         crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
-        crate::theme::Theme::embedded(),
+        crate::theme::embedded(),
     ));
     let mut rounds = 0;
     loop {
@@ -5846,7 +5852,7 @@ fn a_completion_popup_waits_for_rows() {
 fn inlay_placement_reuses_the_painted_line() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\nepsilon line\nzeta line\n";
     let mut document = crate::test_document::plain_document(source);
     let markup = crate::markup::MarkupId::mint();

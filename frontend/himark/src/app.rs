@@ -409,7 +409,7 @@ impl Himark {
         );
         let theme = ::editor::env::Themes::of(&self.store);
         self.stats
-            .paint(canvas, Rect::from_size(size), &theme.ui().stats);
+            .paint(canvas, Rect::from_size(size), &theme.part(crate::stats_chrome::StatsChrome::KEY));
 
         match result {
             EventResult::Ignored => false,

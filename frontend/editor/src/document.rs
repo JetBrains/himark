@@ -2216,7 +2216,7 @@ impl Document {
         let height = crate::shaped_line::ShapedLine::placeholder(
             &text,
             style,
-            theme.ui().ink.placeholder.0,
+            theme.part(crate::theme::InkChrome::KEY).placeholder.0,
             ui,
             theme,
             width,

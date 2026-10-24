@@ -76,7 +76,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
@@ -181,7 +181,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
@@ -275,7 +275,7 @@ fn identical_documents_settle_spacer_free() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let body = "# Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary\nprose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that\nshould soft-wrap cleanly.\n\n## Inline Texture\n\n1. First ordered item\n2. Second ordered item with `inline_code()` and **bold** content.\n3. Third ordered item with a link: [tree-sitter markdown](https://example.com).\n\n- [x] Parse a tree-sitter tree\n- [ ] Build document elements\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all.\n";
     for name in ["one.md", "two.md"] {
         assert!(app.add_document(
@@ -350,7 +350,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -429,7 +429,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     // A LONG identical middle: the first dressing folds it, and the
     // out-of-pane edit lands inside the folded run — a stale carry
     // would keep the (grown) strip covering the edit.
@@ -549,7 +549,7 @@ fn typed_insertions_paint_washes() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let body = "# Wash Probe\n\nA plain paragraph that wraps at the half width without any code in it.\n\nAnother plain paragraph to give the pane some body to align against.\n";
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
@@ -654,7 +654,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let left_body = "# Torture \u{1F680}\n\nThis paragraph wraps a couple of times at the half width so heights are not trivial.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n> A quote long enough to wrap once at the pane width, with **bold** and `code`.\n\n### Code Fence: Rust\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, long enough to wrap at the half width as well.\n";
     let right_body = left_body
         .replace(
@@ -714,7 +714,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     settle(&mut app, &mut surface, 10);
     assert_pair_aligned(&app);
 
-    let light = editor::theme::Theme::light();
+    let light = editor::theme::light();
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
@@ -763,7 +763,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let sample = include_str!("../../../plugins/demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
@@ -991,7 +991,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     let block = "## Section\n\nA steady paragraph with enough words to wrap once at the half width, followed by another sentence for body.\n\n- item one\n- item two\n\n";
     let left_body: String = (0..500)
@@ -1105,7 +1105,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let block = "## Section\n\n| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, and long lines that should soft-wrap cleanly.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n";
     let left_body: String = (0..24)
         .map(|index| {
@@ -1213,7 +1213,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    let light = editor::theme::Theme::light();
+    let light = editor::theme::light();
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
@@ -1253,7 +1253,7 @@ fn scrolling_after_a_theme_toggle_converges() {
 fn a_repair_captured_before_a_caret_move_discards_itself() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     let body: String = (0..80)
         .map(|index| {
@@ -1366,7 +1366,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -1620,7 +1620,7 @@ fn an_edited_markdown_pair_settles_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let left_body = "# Himark Render Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that should soft-wrap cleanly without making the renderer work harder than necessary.\n\n## Inline Texture\n\nThe quick brown fox edits markdown at 120 Hz while the cursor passes through Unicode: caf\u{e9}, r\u{e9}sum\u{e9}, na\u{ef}ve, and emoji clusters like \u{1F469}\u{200D}\u{1F4BB}.\n\n- [x] Parse a tree-sitter tree\n- [x] Build document elements\n- [ ] Paint real inline spans\n- [ ] Keep scrolling boringly fast\n\n> A quote should look like a quote eventually. It exercises punctuation, wrapping, and multiple inline styles with **bold claims** and `tiny identifiers`.\n\n### Code Fence: Rust\n\n```rust\nfn render_frame(viewport_y: f32) -> f32 {\n    viewport_y + 1.0\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all, so soft wrapping differences show up.\n";
 
     let right_body = left_body
@@ -1695,7 +1695,7 @@ fn document_text(app: &Himark, name: &str) -> String {
 fn dismantle_retracts_editors_and_removes_the_editorless_side() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut open = |body: &str, extra_editor: bool| {
         let mut document = himarkdown::document_from_markdown(body, &store, ui, &theme);
         let pane = extra_editor.then(|| {
@@ -1862,7 +1862,7 @@ fn policy_store() -> imba::store::Store {
 fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut middle = String::new();
     for line in 0..300u32 {
         middle.push_str(&format!("line {line}: the quiet unchanged middle\n"));
@@ -1916,7 +1916,7 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
 fn a_shared_pair_reuses_the_standing_entry() {
     let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &theme);
         documents::OpenDocuments::register(
@@ -1972,7 +1972,7 @@ fn a_settled_diff_pane_goes_quiet() {
         }),
         std::sync::Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     for (name, body) in [
         ("left.md", "# Shared\n\nleft body line\n\ntail\n"),
         (
@@ -2034,7 +2034,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     let unchanged: String = (0..30).map(|n| format!("same line {n}\n")).collect();
     assert!(app.add_document(
@@ -2164,7 +2164,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     // Aim at line 0's TEXT: the settled before-card fills its full
     // hole from birth, so the text sits `hole` below the line's top
     // (the column header above; 14 past it lands mid-glyph).
-    let header = editor::env::Themes::of(app.store()).ui().toolbar.height;
+    let header = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
     himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
     let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     {
@@ -2216,7 +2216,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     // 6000 lines, a one-line change every 150 — forty hunks.
     let mut old_body = String::new();
@@ -2311,7 +2311,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let fonts = AppFonts::embedded();
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     // 8000 lines, a one-line change every 100 — eighty hunks.
     let mut old_body = String::new();
@@ -2576,7 +2576,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
@@ -2770,7 +2770,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
@@ -2860,14 +2860,15 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     // right inset — Side by side · Open pane · Open source, the face
     // word naming the OTHER face. The working-copy canvas heads with
     // its summary strip.
-    let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
+    let chrome_top = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
     let (lead, right, gap, band, strip) = {
         let theme = editor::env::Themes::of(app.store());
-        let ui = theme.ui();
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
+        let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
         (
-            ui.window.code_text_edge,
-            1100.0 - ui.diff.band_pad_right,
-            ui.diff.band_gap,
+            window.code_text_edge,
+            1100.0 - diff.band_pad_right,
+            diff.band_gap,
             ::canvas::diff_header::file_band_height(app.store()),
             ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx()),
         )
@@ -2967,7 +2968,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     // A changed head over a long identical middle: undressed, the body
     // is ~90 lines tall; dressed, the middle folds away. Reserved,
@@ -3087,7 +3088,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     // A long identical middle so the first dressing folds it small.
     let mut body = String::from("head\n");
@@ -3240,7 +3241,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
     let location = |name: &str, kind| {
@@ -3330,7 +3331,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         "the inline face folds the 600-line run: {inline_height}"
     );
 
-    let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
+    let chrome_top = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
     let (face_x, band_y) = working_band_word(&app, 1100.0, "Side by side");
     let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
     let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
@@ -3670,7 +3671,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
     for n in 0..30 {
@@ -5169,8 +5170,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     // at all. And nothing BRIGHT ever paints left of the gutter
     // edge: the numbers' column holds no code.
     let gutter = editor::env::Themes::of(app.store())
-        .ui()
-        .editor_gutter
+        .part(::editor::theme::EditorGutterChrome::KEY)
         .width as usize;
     let continuations: Vec<(usize, usize)> = starts
         .iter()
@@ -5366,13 +5366,13 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
 /// under the summary strip and the window chrome.
 fn working_band_word(app: &Himark, width: f32, label: &str) -> (f32, f32) {
     let theme = editor::env::Themes::of(app.store());
-    let ui = theme.ui();
+    let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
     let brief = hikit::ui::brief(app.store(), &app.ui_ctx());
     let word = |label: &str| brief.shaper.advance(&brief.font, label);
-    let gap = ui.diff.band_gap;
-    let x = width - ui.diff.band_pad_right - word("Open source") - gap - word("Open pane") - gap
+    let gap = diff.band_gap;
+    let x = width - diff.band_pad_right - word("Open source") - gap - word("Open pane") - gap
         - word(label) * 0.5;
-    let y = ui.toolbar.height
+    let y = theme.part(::hikit::chrome::ToolbarChrome::KEY).height
         + ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx())
         + ::canvas::diff_header::file_band_height(app.store()) * 0.5;
     (x, y)
@@ -5440,7 +5440,7 @@ fn dump_commit_canvas_screenshot() {
     let old_body = format!("{old_body}\n{tail}");
     let new_body = format!("{new_body}\n{tail}");
 
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let _ = (&store, ui, &theme);
     let old = editor::document::Document::new(
         text::text::Text::from_string_exact(&old_body),

@@ -7,7 +7,7 @@ pub(crate) mod helpers {
     use super::super::*;
 
     pub(crate) fn theme() -> editor::theme::Theme {
-        editor::theme::Theme::embedded()
+        editor::theme::embedded()
     }
 
     pub(crate) fn languages() -> Arc<SyntaxLanguages> {

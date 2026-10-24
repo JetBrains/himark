@@ -21,6 +21,7 @@ pub mod perform;
 pub mod places;
 pub mod plugin;
 pub mod registry;
+pub mod stats_chrome;
 pub mod save;
 pub mod shell;
 pub mod startup_profile;

@@ -576,7 +576,7 @@ impl View for PeekView {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width.min(self.width).max(120.0);
             let size = Size::new(width, PEEK_HEIGHT);
-            let chrome = editor::env::Themes::of(store).ui().peeker.clone();
+            let chrome = editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY);
             let fill = chrome.background.0;
             let rule = chrome.rule.0;
             let master = (width * 0.4).max(120.0);
@@ -932,7 +932,7 @@ mod tests {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
-        let theme = editor::theme::Theme::embedded();
+        let theme = editor::theme::embedded();
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(
             600.0,
@@ -980,7 +980,7 @@ mod tests {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
-        let theme = editor::theme::Theme::embedded();
+        let theme = editor::theme::embedded();
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(
             600.0,

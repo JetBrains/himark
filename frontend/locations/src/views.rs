@@ -296,10 +296,10 @@ impl imba::View for ResultLabel {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         use imba::layout::{Layout as _, LayoutExt as _};
         let theme = editor::env::Themes::of(store);
-        let find = theme.ui().find.clone();
-        let ink = theme.ui().ink.clone();
-        let window = theme.ui().window.clone();
-        let tree = theme.ui().tree.clone();
+        let find = theme.part(crate::chrome::FindChrome::KEY);
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
+        let tree = theme.part(::hikit::chrome::TreeChrome::KEY);
         let lead = (window.side_text_edge - tree.text_x).max(0.0);
         let insets = imba::layout::Insets {
             left: lead,
@@ -465,7 +465,7 @@ pub(crate) fn files_forest<'a>(
     store: &Store,
     rows: impl IntoIterator<Item = &'a FoundLocation>,
 ) -> Vec<ForestNode<LocationKey>> {
-    let tree = editor::env::Themes::of(store).ui().tree.clone();
+    let tree = editor::env::Themes::of(store).part(::hikit::chrome::TreeChrome::KEY);
     let chip = tree.directory.0;
     let mut order: Vec<ResourceLocation> = Vec::new();
     let mut grouped: std::collections::HashMap<ResourceLocation, Vec<&FoundLocation>> =

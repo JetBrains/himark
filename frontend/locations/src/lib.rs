@@ -11,6 +11,7 @@
 //! document is fetched here and no URI parsed: locations arrive
 //! resolved.
 
+pub mod chrome;
 pub mod peek;
 pub mod search;
 pub mod views;

@@ -7,6 +7,7 @@
 //! `imba` + `editor` (theme, env, fonts): no collections, no
 //! protocol, no application.
 
+pub mod chrome;
 pub mod combo;
 pub mod fonts;
 pub mod forest;

@@ -154,9 +154,8 @@ impl View for DrawerLine {
         // (docs/ui/list-keyboard.md §2).
         imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             let themes = ::editor::env::Themes::of(store);
-            let theme = themes.ui();
-            let chrome = theme.sessions.clone();
-            let rule = theme.ink.rule.0;
+            let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
+            let rule = themes.part(::editor::theme::InkChrome::KEY).rule.0;
             // Measuring passes lay rows unbounded; the grid then
             // takes its natural width.
             let room = (constraints.max.width < f32::MAX / 2.0)
@@ -208,9 +207,8 @@ impl DrawerLine {
         room: Option<f32>,
     ) -> ThunkBox<'a, std::convert::Infallible> {
         let themes = ::editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = theme.sessions.clone();
-        let ink = theme.ink.clone();
+        let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
+        let ink = themes.part(::editor::theme::InkChrome::KEY);
         let meta = hikit::ui::brief(store, ui).sized(chrome.meta_size);
         let loose = Constraints {
             min: Size::default(),

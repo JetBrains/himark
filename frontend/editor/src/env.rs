@@ -136,21 +136,7 @@ impl Workshop {
     }
 }
 
-#[derive(Clone)]
-pub struct Themes(pub crate::theme::Theme);
-
-impl Themes {
-    pub fn set(store: &mut Store, theme: crate::theme::Theme) {
-        store.put(Themes(theme));
-    }
-
-    pub fn of(store: &Store) -> crate::theme::Theme {
-        store
-            .get::<Themes>()
-            .map(|themes| themes.0.clone())
-            .unwrap_or_else(crate::theme::Theme::embedded)
-    }
-}
+pub use imba::theme::Themes;
 
 /// The frame's focused SEAT — the semantic walk's answer, stashed
 /// into the frame store by whoever builds a tree. The editor derives

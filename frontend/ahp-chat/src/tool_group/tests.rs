@@ -11,7 +11,7 @@ fn test_ui() -> UiCtx {
 
 fn test_store() -> Store {
     let mut store = Store::new();
-    editor::env::Themes::set(&mut store, editor::theme::Theme::embedded());
+    editor::env::Themes::set(&mut store, editor::theme::embedded());
     store
 }
 

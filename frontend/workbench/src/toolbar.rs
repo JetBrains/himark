@@ -108,7 +108,7 @@ impl std::fmt::Display for ToolbarCommand {
 /// semaphore (the clearance the shell wrote) and never short of the
 /// chrome's own lead inset.
 pub(crate) fn leading_inset(store: &Store, ui: &UiCtx) -> f32 {
-    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
+    let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY);
     let clearance = ui
         .get::<crate::toolbar::ChromeClearance>()
         .map(|clearance| clearance.0)
@@ -148,7 +148,7 @@ impl Natural {
         self.count += 1;
     }
 
-    fn width(&self, chrome: &::editor::theme::ToolbarChrome) -> f32 {
+    fn width(&self, chrome: &::hikit::chrome::ToolbarChrome) -> f32 {
         self.lead
             + self.words
             + chrome.tab_gap * self.count.saturating_sub(1) as f32
@@ -186,7 +186,7 @@ impl Toolbar {
     /// The natural width of the chat section — the band keeps it
     /// while the chat column is gone.
     pub fn chat_section_width(store: &Store, ui: &UiCtx) -> f32 {
-        let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
+        let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY);
         let styles = hikit::header::HeaderStyles::of(store, ui);
         let buttons = ToolbarButtons::of(store);
         let mut natural = Natural::new(leading_inset(store, ui));
@@ -200,9 +200,9 @@ impl Toolbar {
     /// keeps it while the dock is closed.
     pub fn side_section_width(store: &Store, ui: &UiCtx) -> f32 {
         let theme = ::editor::env::Themes::of(store);
-        let chrome = theme.ui().toolbar.clone();
+        let chrome = theme.part(::hikit::chrome::ToolbarChrome::KEY);
         let styles = hikit::header::HeaderStyles::of(store, ui);
-        let mut natural = Natural::new(theme.ui().window.side_text_edge);
+        let mut natural = Natural::new(theme.part(::editor::theme::WindowChrome::KEY).side_text_edge);
         for button in ToolbarButtons::of(store).tabs() {
             natural.tab(&styles, button.label);
         }
@@ -238,8 +238,8 @@ impl Toolbar {
         type Header<'a> = hikit::header::ColumnHeader<'a, ToolbarCommand>;
 
         let theme = ::editor::env::Themes::of(store);
-        let chrome = theme.ui().toolbar.clone();
-        let window = theme.ui().window.clone();
+        let chrome = theme.part(::hikit::chrome::ToolbarChrome::KEY);
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
         let styles = hikit::header::HeaderStyles::of(store, ui);
         let buttons = ToolbarButtons::of(store);
         let drawer = crate::registry::Registry::of(store)

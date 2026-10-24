@@ -238,7 +238,7 @@ impl View for Dock {
             let mut surface = container(arena, size);
 
             let theme = ::editor::env::Themes::of(store);
-            let ink = theme.ui().ink.clone();
+            let ink = theme.part(::editor::theme::InkChrome::KEY);
             let body_width = self.width.max(1.0);
 
             let content = imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {

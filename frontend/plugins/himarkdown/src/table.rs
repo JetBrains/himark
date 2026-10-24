@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use ::editor::theme::ThemeStyles as _;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use editor::document::Document;
@@ -16,7 +17,7 @@ use skia_safe::{Canvas, Paint, Rect, Size};
 
 use crate::inline_decorations;
 
-type TableChrome = ::editor::theme::TableChrome;
+type TableChrome = crate::chrome::TableChrome;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum CellAlign {
@@ -300,7 +301,8 @@ fn cell_intrinsics(
     }
 
     let shaper = ::editor::parley_line::shaper(ui);
-    let base = theme.base();
+    let styles = theme.styles();
+    let base = styles.base();
     let families: Vec<&str> = base
         .font_families
         .as_ref()
@@ -393,7 +395,7 @@ pub struct TableEditor {
 
     relayout_token: Option<imba::effect::CancellationToken>,
     relayout_inflight: Option<f32>,
-    chrome: TableChrome,
+    chrome: std::sync::Arc<TableChrome>,
 }
 
 fn fresh_version() -> u64 {
@@ -432,7 +434,7 @@ impl TableEditor {
         theme: &editor::theme::Theme,
     ) -> Self {
         let columns = source.alignments.len();
-        let chrome = theme.ui().table.clone();
+        let chrome = theme.part(crate::chrome::TableChrome::KEY);
         let intrinsics = Self::intrinsics_from(
             source
                 .rows
@@ -1567,7 +1569,7 @@ mod hitbox {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         use editor::markup::InlayEditing;
-        let theme = editor::theme::Theme::embedded();
+        let theme = editor::theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),
@@ -1641,7 +1643,7 @@ mod hitbox {
         let ui = ::editor::test_document::test_ui();
         use editor::markup::InlayEditing;
         use imba::event::{Event, EventResult, MouseButton};
-        let theme = editor::theme::Theme::embedded();
+        let theme = editor::theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),

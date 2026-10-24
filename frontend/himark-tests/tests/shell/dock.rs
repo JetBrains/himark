@@ -267,10 +267,13 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
 
     // On the editor's first line: past the gutter, just under the
     // header band.
-    let ui = ::editor::env::Themes::of(app.store()).ui().clone();
+    let theme = ::editor::env::Themes::of(app.store());
+    let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY);
+    let window = theme.part(::editor::theme::WindowChrome::KEY);
+    let toolbar = theme.part(::hikit::chrome::ToolbarChrome::KEY);
     let (x, y) = (
-        ui.editor_gutter.width + ui.window.content_pad + 8.0,
-        ui.toolbar.height + 30.0,
+        gutter.width + window.content_pad + 8.0,
+        toolbar.height + 30.0,
     );
     assert!(test_driver::click(&mut app, x, y, 1600.0, 900.0));
     app.draw_window(app.sole_window(), surface.canvas());
@@ -354,11 +357,11 @@ fn dock_header_buttons_dispatch_their_commands() {
     // side text edge, `tab_gap` apart, every registered Right word
     // in order; the test's is the last.
     let theme = ::editor::env::Themes::of(app.store());
-    let chrome = theme.ui().toolbar.clone();
+    let chrome = theme.part(::hikit::chrome::ToolbarChrome::KEY);
     let dock_width = entity(&app).dock_target_width();
     let edge = 800.0 - dock_width;
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
-    let mut x = edge + theme.ui().window.side_text_edge;
+    let mut x = edge + theme.part(::editor::theme::WindowChrome::KEY).side_text_edge;
     for (index, tab) in ::workbench::toolbar::ToolbarButtons::of(app.store())
         .tabs()
         .iter()

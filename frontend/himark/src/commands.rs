@@ -345,8 +345,8 @@ impl HimarkCommand for ToggleTheme {
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let next = match ::editor::env::Themes::of(store).name() {
-            "light" => ::editor::theme::Theme::embedded(),
-            _ => ::editor::theme::Theme::light(),
+            "light" => ::editor::theme::embedded(),
+            _ => ::editor::theme::light(),
         };
         ::editor::env::Themes::set(store, next);
     }
@@ -381,9 +381,9 @@ impl HimarkCommand for SetTheme {
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let theme = if self.dark {
-            ::editor::theme::Theme::embedded()
+            ::editor::theme::embedded()
         } else {
-            ::editor::theme::Theme::light()
+            ::editor::theme::light()
         };
         ::editor::env::Themes::set(store, theme);
     }

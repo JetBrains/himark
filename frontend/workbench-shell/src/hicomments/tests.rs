@@ -238,7 +238,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
     );
     assert_eq!(view.text(), "looks wrong", "the card holds the comment");
 
-    let workshop = himark::test_support::test_workshop(editor::theme::Theme::embedded());
+    let workshop = himark::test_support::test_workshop(editor::theme::embedded());
     let mut pending = himark::test_support::surviving_launches(batch);
     while let Some(effect) = pending.pop() {
         let landing = himark::test_support::handle_effect(effect, &workshop);

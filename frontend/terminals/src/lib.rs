@@ -20,6 +20,7 @@ use alacritty_terminal::vte::ansi::Processor;
 
 use imba::store::Store;
 
+pub mod chrome;
 pub mod pane;
 
 /// The PTY end a session writes into — the one door to the wire,

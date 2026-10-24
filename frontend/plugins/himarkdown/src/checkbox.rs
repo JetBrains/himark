@@ -41,7 +41,7 @@ pub(crate) struct CheckboxView {
     range: Range<u32>,
 
     pending: Option<Operation>,
-    chrome: ::editor::theme::CheckboxChrome,
+    chrome: std::sync::Arc<crate::chrome::CheckboxChrome>,
 }
 
 impl CheckboxView {
@@ -50,7 +50,7 @@ impl CheckboxView {
             checked,
             range: 0..0,
             pending: None,
-            chrome: theme.ui().checkbox.clone(),
+            chrome: theme.part(crate::chrome::CheckboxChrome::KEY),
         }
     }
 }
@@ -152,7 +152,7 @@ mod tests {
     fn the_checkbox_offers_its_toggle_for_presentation() {
         use editor::markup::InlayEditing;
         use imba::View;
-        let theme = Theme::embedded();
+        let theme = ::editor::theme::embedded();
         let mut store = Store::new();
         let ui = UiCtx::dont_use_too_slow();
         let mut checkbox = CheckboxView::new(false, &theme);
@@ -178,7 +178,7 @@ mod tests {
     fn toggling_writes_the_marker_through() {
         use editor::markup::InlayEditing;
         use imba::View;
-        let theme = Theme::embedded();
+        let theme = ::editor::theme::embedded();
         let mut store = Store::new();
         let ui = UiCtx::dont_use_too_slow();
         let mut checkbox = CheckboxView::new(false, &theme);

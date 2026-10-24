@@ -858,7 +858,7 @@ impl RunReparse for editor::reparse::ReparseWork {
 }
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 
@@ -1094,7 +1094,7 @@ fn the_wall_of_text_opens_and_types() {
 fn resize_repair_matches_fresh_layout() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let (mut document, blocks) =
         himarkdown::markdown_document(&crate::SAMPLE.repeat(2), store, ui, &theme);
     crate::inlay::add_badges(&mut document, &blocks, store, ui, &theme);
@@ -1230,10 +1230,10 @@ fn tree_demo_panel_toggles_through_clicks() {
     };
     assert_eq!(row_count(&app), 100_000);
 
-    let theme = editor::theme::Theme::embedded();
-    let chrome = theme.ui();
-    let content_height = 600.0 - chrome.toolbar.height;
-    let top = chrome.toolbar.height;
+    let theme = editor::theme::embedded();
+    let toolbar = theme.part(::hikit::chrome::ToolbarChrome::KEY);
+    let content_height = 600.0 - toolbar.height;
+    let top = toolbar.height;
     let first_row = skia_safe::Point::new(30.0, top + 13.0);
 
     let started = std::time::Instant::now();

@@ -482,7 +482,7 @@ impl View for CommentsView {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        let window = editor::env::Themes::of(store).ui().window.clone();
+        let window = editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY);
         // The dock's caps line: what the list holds, and its one
         // action as a quiet word at the right — no chip.
         let caps = hikit::ui::caps(store, ui);

@@ -31,7 +31,7 @@ fn headers_align_right_center_left_by_level() {
 }
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {

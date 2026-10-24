@@ -8,7 +8,7 @@ fn functions_emit_foldables() {
     let store = &imba::store::Store::new();
     let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = "fn one() {\n    1;\n}\n\nfn tiny() { 2 }\n";
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
         text::text::Text::from_string_exact(source),

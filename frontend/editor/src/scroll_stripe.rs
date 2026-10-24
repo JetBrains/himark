@@ -7,6 +7,7 @@
 //! rope), quantized onto a fixed grid; it runs as an effect on a
 //! per-editor lane and lands as a command, strict last-wins.
 
+use crate::theme::ThemeStyles as _;
 use std::{ops::Range, sync::Arc};
 
 use imba::arena::Arena;
@@ -88,7 +89,7 @@ pub(crate) fn derive(markups: &[Markup], layout: &DocumentLayout, theme: &Theme)
     for markup in markups {
         for interval in markup.query(0..u32::MAX, Order::Ascending) {
             if let Decoration::Styled(id) = interval.value {
-                if theme.attributes(*id).stripe.is_some() {
+                if theme.styles().attributes(*id).stripe.is_some() {
                     hits.push((interval.range.clone(), *id));
                 }
             }
@@ -290,8 +291,8 @@ pub(crate) fn scroll_stripe_overlays<'a>(
         attachment: imba::overlay::Attachment::Cover,
         anchor: Rect::from_xywh(0.0, viewport.top, 1.0, viewport.height()),
         content: Box::new(move |host_size: Size, _anchor: Rect| {
-            let chrome = &theme.ui().scroll_stripe;
-            let bar = &theme.ui().scrollbar;
+            let chrome = &theme.part(crate::theme::ScrollStripeChrome::KEY);
+            let bar = &theme.part(crate::theme::ScrollbarChrome::KEY);
             let x = (host_size.width - bar.margin - chrome.inset - chrome.width).max(0.0);
             let widget = StripeWidget {
                 stripes,
@@ -316,13 +317,13 @@ impl StripeWidget {
     /// Document y ↔ track y: the whole content maps onto the knob's
     /// track band (the scrollbar's own insets).
     fn track(&self) -> (f32, f32) {
-        let inset = self.theme.ui().scrollbar.track_inset;
+        let inset = self.theme.part(crate::theme::ScrollbarChrome::KEY).track_inset;
         let height = (self.size.height - inset * 2.0).max(1.0);
         (inset, height / self.stripes.content_height.max(1.0))
     }
 
     fn mark(&self, segment: &StripeSegment, top: f32, scale: f32) -> Rect {
-        let min_height = self.theme.ui().scroll_stripe.min_height;
+        let min_height = self.theme.part(crate::theme::ScrollStripeChrome::KEY).min_height;
         let bottom = self.size.height - top;
         let y1 = (top + segment.y.end * scale)
             .max(top + segment.y.start * scale + min_height)
@@ -351,7 +352,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
                 let mut paint = skia_safe::Paint::default();
                 paint.set_anti_alias(false);
                 for segment in &self.stripes.segments {
-                    let Some(color) = self.theme.attributes(segment.style).stripe else {
+                    let Some(color) = self.theme.styles().attributes(segment.style).stripe else {
                         continue;
                     };
                     paint.set_color(color);
@@ -367,7 +368,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
             } => {
                 // Nearest mark within a slop — bounded by the GRID.
                 let (top, scale) = self.track();
-                let slop = self.theme.ui().scroll_stripe.min_height * 2.0;
+                let slop = self.theme.part(crate::theme::ScrollStripeChrome::KEY).min_height * 2.0;
                 let mut nearest: Option<(f32, u32)> = None;
                 for segment in &self.stripes.segments {
                     let mark = self.mark(segment, top, scale);

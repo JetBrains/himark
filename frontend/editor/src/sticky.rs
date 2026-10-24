@@ -379,8 +379,8 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
     ) -> EventResult<EditorCommand> {
         match event {
             Event::Paint { canvas, .. } => {
-                let window = &self.theme.ui().window;
-                let sticky_chrome = &self.theme.ui().sticky;
+                let window = &self.theme.part(crate::theme::WindowChrome::KEY);
+                let sticky_chrome = &self.theme.part(crate::theme::StickyChrome::KEY);
                 let bounds = Rect::from_size(self.size);
                 let mut paint = skia_safe::Paint::default();
                 paint.set_anti_alias(false);
@@ -417,7 +417,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 canvas.restore();
 
                 if self.gutter_width > 0.0 {
-                    let chrome = self.theme.ui().editor_gutter.clone();
+                    let chrome = self.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
                     let font = crate::editor_view::gutter_font(chrome.number_size);
                     let (_, metrics) = font.metrics();
                     let mut number_paint = skia_safe::Paint::default();

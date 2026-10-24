@@ -240,7 +240,7 @@ impl ChangesView {
     pub fn row_span(&self, store: &Store, index: usize) -> (f32, f32) {
         let band = match self.sets {
             ViewSets::History => 0.0,
-            ViewSets::WorkingCopies => editor::env::Themes::of(store).ui().history.header_top,
+            ViewSets::WorkingCopies => editor::env::Themes::of(store).part(crate::chrome::HistoryChrome::KEY).header_top,
         };
         let list = self.list.inner().list();
         let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
@@ -263,7 +263,7 @@ impl ChangesView {
 
     pub fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let mut items = rpds::HashTrieMapSync::new_sync();
-        let ink = editor::env::Themes::of(store).ui().ink.clone();
+        let ink = editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY);
         let counts = (ink.added.0, ink.removed.0);
         let history = Changes::of(store, self.changes).map(|held| held.history());
         let nodes: Vec<ForestNode<ResourceLocation>> = Changes::folders(store, self.changes)
@@ -515,11 +515,10 @@ impl View for ChangesView {
             // pane's ScrollView, a native shell's scroller.
             // The history's branch line carries its own air; the
             // working copies' first row takes the same top.
-            let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
+            let theme = editor::env::Themes::of(store);
             let band = match self.sets {
                 ViewSets::History => 0.0,
-                ViewSets::WorkingCopies => theme.history.header_top,
+                ViewSets::WorkingCopies => theme.part(crate::chrome::HistoryChrome::KEY).header_top,
             };
             let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
@@ -532,8 +531,8 @@ impl View for ChangesView {
                     crate::dock_rows::Rail {
                         list: self.list.inner().list(),
                         newest: self.newest(store),
-                        chrome: theme.history.clone(),
-                        ink: theme.ink.clone(),
+                        chrome: theme.part(crate::chrome::HistoryChrome::KEY),
+                        ink: theme.part(editor::theme::InkChrome::KEY),
                     },
                     rows,
                 ),

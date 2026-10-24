@@ -27,7 +27,7 @@ use editor::{
     markup::InlayKey, markup::InlayMode,
 };
 
-type CommentChrome = editor::theme::CommentChrome;
+type CommentChrome = crate::chrome::CommentChrome;
 
 pub(crate) const FALLBACK_WIDTH: f32 = 600.0;
 
@@ -247,7 +247,7 @@ impl CommentView {
         theme: &editor::theme::Theme,
         annotation: Option<AnnotationId>,
     ) -> Self {
-        let chrome = theme.ui().comment.clone();
+        let chrome = theme.part(crate::chrome::CommentChrome::KEY).as_ref().clone();
         let mut editor = EditorView::of_document(
             markdown_comment_document(text::text::Text::from_string_exact("")),
             (width - chrome.pad * 2.0).max(120.0),
@@ -282,7 +282,7 @@ impl CommentView {
         foreign_texts: Vec<text::text::Text>,
         thread_stamp: u64,
     ) -> Self {
-        let chrome = theme.ui().comment.clone();
+        let chrome = theme.part(crate::chrome::CommentChrome::KEY).as_ref().clone();
         let inner = (width - chrome.pad * 2.0).max(120.0);
         let editor = EditorView::of_document(
             markdown_comment_document(

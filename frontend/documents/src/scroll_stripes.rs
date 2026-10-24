@@ -105,6 +105,7 @@ mod tests {
             "doc".to_owned(),
             0,
         );
+        editor::env::Themes::set(&mut store, editor::theme::embedded());
         let theme = editor::env::Themes::of(&store);
         let ui = ::editor::test_document::test_ui();
         let mut sink = imba::effect::Batch::new();

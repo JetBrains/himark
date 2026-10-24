@@ -52,7 +52,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         &[],
         &store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
     let right_editor = document.add_editor(
@@ -62,7 +62,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         &[],
         &store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
     document.set_caret(right_editor, "shared".len() as u32);
@@ -102,7 +102,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         200.0,
         &store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
     );
     assert!(right_view.document_layout().height() > 0.0);
     assert_eq!(
@@ -314,7 +314,7 @@ fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
         200.0,
         &pane.store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
     );
     assert_eq!(view.document_layout().height(), fresh.content_height());
 }
@@ -372,7 +372,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     for effect in himark::test_support::surviving_launches(stale) {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -431,7 +431,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
     for effect in himark::test_support::surviving_launches(first) {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -450,7 +450,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
     while let Some(effect) = pending.pop() {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
@@ -468,7 +468,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         200.0,
         &pane.store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
     );
     assert!(view.document_layout().height() > 0.0);
     assert_eq!(view.document_layout().height(), fresh.content_height());
@@ -640,7 +640,7 @@ fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
         420.0,
         &pane.store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
     );
 
     let anchor = (source.len() / 2) as u32;
@@ -685,7 +685,7 @@ fn a_repair_from_before_a_resize_discards_itself() {
     for effect in himark::test_support::surviving_launches(edit_effects) {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -733,7 +733,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         200.0,
         &store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
     );
     let opened = EditorIdView::new(test_docs(), document_id, editor_id)
         .gathered(&store)
@@ -747,7 +747,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     for effect in effects {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         chain.extend({
             let mut batch = imba::effect::Batch::new();
@@ -763,7 +763,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     while let Some(effect) = chain.pop() {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         chain.extend({
             let mut batch = imba::effect::Batch::new();
@@ -949,10 +949,13 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     // At the text's start (past the gutter and the content inset),
     // under the header band.
     let (click_x, click_y) = {
-        let ui = editor::env::Themes::of(app.store()).ui().clone();
+        let theme = editor::env::Themes::of(app.store());
+        let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY);
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
+        let toolbar = theme.part(::hikit::chrome::ToolbarChrome::KEY);
         (
-            ui.editor_gutter.width + ui.window.content_pad + 8.0,
-            ui.toolbar.height + 60.0,
+            gutter.width + window.content_pad + 8.0,
+            toolbar.height + 60.0,
         )
     };
     let _ = himark::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
@@ -1060,7 +1063,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         .map(|index| format!("paragraph {index} with a handful of words in it\n"))
         .collect();
     let mut pane = TestPane::new(plain_document(&source), 420.0);
-    let light = Theme::light();
+    let light = ::editor::theme::light();
 
     let entity = pane.view;
     let total_dark = pane
@@ -1172,7 +1175,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
         })
         .collect();
     let mut pane = TestPane::new(plain_document(&source), 420.0);
-    let light = Theme::light();
+    let light = ::editor::theme::light();
     let entity = pane.view;
 
     pane.perform(EditorCommand::Viewport {
@@ -1210,7 +1213,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
     for effect in himark::test_support::surviving_launches(stale_round) {
         let command = himark::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(Theme::embedded()),
+            &himark::test_support::test_workshop(::editor::theme::embedded()),
         );
         requeued.extend({
             let mut batch = imba::effect::Batch::new();
@@ -1576,7 +1579,7 @@ fn double_and_triple_click_select_word_and_line() {
 
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
-    let theme = ::editor::theme::Theme::embedded();
+    let theme = ::editor::theme::embedded();
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();
         let (x, y, _, h) = document
@@ -1669,7 +1672,7 @@ fn drag_extends_selection_by_the_press_unit() {
     use skia_safe::Point;
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
-    let theme = ::editor::theme::Theme::embedded();
+    let theme = ::editor::theme::embedded();
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();
         let (x, y, _, h) = document

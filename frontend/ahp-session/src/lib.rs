@@ -6,5 +6,6 @@
 //! fs-effect routes' watch border — the one crate that knows the
 //! whole protocol family, sitting on top of the domain crates.
 
+pub mod chrome;
 pub mod fsroute;
 pub mod session;

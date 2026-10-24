@@ -1257,7 +1257,7 @@ impl Window {
                 // The first open takes the chrome's side width; a
                 // dragged width survives dismissals.
                 if self.dock_width <= 0.0 {
-                    self.dock_width = ::editor::env::Themes::of(store).ui().window.side_width;
+                    self.dock_width = ::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY).side_width;
                 }
                 *self.content.workbench.dock_mut() =
                     Some(crate::dock::Dock::new(panel, owner, self.dock_width));
@@ -1600,7 +1600,7 @@ impl Window {
         let pane_height = documents::OpenDocuments::document_ref(store, documents, document_id)
             .and_then(|document| document.viewport(entity.editor()))
             .map(|band| band.end - band.start);
-        let pane_width = width + ::editor::env::Themes::of(store).ui().editor_gutter.width;
+        let pane_width = width + ::editor::env::Themes::of(store).part(::editor::theme::EditorGutterChrome::KEY).width;
         let arrangement = match pane_height {
             Some(height) if pane_width < height => imba::split::Arrangement::Column,
 

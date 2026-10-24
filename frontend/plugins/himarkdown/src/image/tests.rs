@@ -7,7 +7,7 @@ use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 
 fn theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn base() -> ResourceLocation {

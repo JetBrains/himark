@@ -69,9 +69,9 @@ impl View for CommandRow {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let themes = ::editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = &theme.peeker.palette;
-        let ink = &theme.ink;
+        let peeker = themes.part(::hikit::chrome::PeekerChrome::KEY);
+        let chrome = &peeker.palette;
+        let ink = themes.part(::editor::theme::InkChrome::KEY);
         let (role, color, shortcut) = match self.selected {
             true => (
                 &chrome.selected_row,
@@ -283,8 +283,7 @@ impl PaletteView {
 fn selection_style(store: &Store) -> imba::list::SelectionStyle {
     imba::list::SelectionStyle {
         fill: ::editor::env::Themes::of(store)
-            .ui()
-            .peeker
+            .part(::hikit::chrome::PeekerChrome::KEY)
             .palette
             .selected_fill
             .0,
@@ -382,9 +381,9 @@ impl View for PaletteView {
             use imba::Thunk as _;
             let width = constraints.max.width;
             let themes = ::editor::env::Themes::of(store);
-            let theme = themes.ui();
-            let chrome = &theme.peeker.palette;
-            let ink = &theme.ink;
+            let peeker = themes.part(::hikit::chrome::PeekerChrome::KEY);
+            let chrome = &peeker.palette;
+            let ink = themes.part(::editor::theme::InkChrome::KEY);
             let loose = Constraints {
                 min: Size::default(),
                 max: Size::new(width, constraints.max.height),
@@ -529,7 +528,7 @@ pub fn build(
     ui: &UiCtx,
     window: workbench::window::WindowId,
 ) -> Box<dyn ModalView> {
-    let sheet = sheet::Sheet(::editor::env::Themes::of(store).ui().peeker.palette.sheet.clone());
+    let sheet = sheet::Sheet(::editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY).palette.sheet.clone());
     let commands = himark::commands::palette_commands(store, ui, window);
     Box::new(sheet::Sheeted::new(bare(store, ui, commands), sheet, || {
         PaletteCommand::Close

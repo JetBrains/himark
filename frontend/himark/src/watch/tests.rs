@@ -264,7 +264,7 @@ fn typed(store: &mut Store, id: documents::DocumentId, at: u32, text: &str) {
         &operation::operation::Operation::insert_in(len, at, text),
         store,
         ui,
-        &::editor::theme::Theme::embedded(),
+        &::editor::theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
     OpenDocuments::put_document(store, docs(), id, document);
@@ -1202,7 +1202,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
             &op,
             &store,
             ui,
-            &::editor::theme::Theme::embedded(),
+            &::editor::theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
         OpenDocuments::put_document(&mut store, docs(), id, document);

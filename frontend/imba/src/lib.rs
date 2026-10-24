@@ -32,6 +32,7 @@ pub mod split;
 pub mod stack;
 pub mod store;
 pub mod svg;
+pub mod theme;
 pub mod thunk_ext;
 pub mod tooltip;
 pub mod ui;

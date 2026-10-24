@@ -602,7 +602,7 @@ where
             let searching = self.searching();
 
             if let Some(lane) = self.search.as_ref().filter(|_| self.pill) {
-                let chrome = editor::env::Themes::of(store).ui().peeker.clone();
+                let chrome = editor::env::Themes::of(store).part(crate::chrome::PeekerChrome::KEY);
                 // The pill wraps the input editor's TRUE line height —
                 // the chrome never clips the text it hosts.
                 let input_height = lane.input.content_height().max(1.0);

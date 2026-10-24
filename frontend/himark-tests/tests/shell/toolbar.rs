@@ -103,7 +103,7 @@ fn a_right_button_press_dispatches_its_own_command() {
         skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
 
-    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
     let y = chrome.title_baseline - chrome.title_size * 0.4;
 
@@ -142,7 +142,7 @@ fn a_right_button_press_dispatches_its_own_command() {
 
     // The first leading tab starts at the lead inset: past the
     // semaphore clearance, never short of the code text edge.
-    let window = ::editor::env::Themes::of(app.store()).ui().window.clone();
+    let window = ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
     let lead = chrome.lead_inset.max(window.code_text_edge);
     let word_x = lead + word_width(&app, &styles.dim, "Sessions") * 0.5;
     assert!(test_driver::click(&mut app, word_x, y, width, height));

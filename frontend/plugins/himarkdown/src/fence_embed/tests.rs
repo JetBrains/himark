@@ -15,7 +15,7 @@ fn test_docs(store: &mut Store) -> imba::store::Id<documents::OpenDocuments> {
 }
 
 fn theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn languages() -> std::sync::Arc<SyntaxLanguages> {

@@ -1293,7 +1293,7 @@ impl View for SplitDiffView {
             )
             .map(SplitDiffCommand::Right);
             let height = left.size().height.max(right.size().height);
-            let divider = crate::env::Themes::of(store).ui().window.divider.0;
+            let divider = crate::env::Themes::of(store).part(crate::theme::WindowChrome::KEY).divider.0;
             let mut pair = container(arena, Size::new(width, height));
             pair.place(0.0, 0.0, left);
             pair.place(half + CENTER_GAP, 0.0, right);

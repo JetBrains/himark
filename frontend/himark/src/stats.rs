@@ -95,7 +95,7 @@ impl Stats {
     /// The HUD overlay, painted straight onto the frame AFTER the
     /// widget tree: its numbers change every frame without a command,
     /// so it must never live inside a store-derived (cacheable) tree.
-    pub(crate) fn paint(&self, canvas: &Canvas, rect: Rect, chrome: &::editor::theme::StatsChrome) {
+    pub(crate) fn paint(&self, canvas: &Canvas, rect: Rect, chrome: &crate::stats_chrome::StatsChrome) {
         let latency_ns = self.latency_ns.load(Ordering::Relaxed);
         let latency = match latency_ns {
             0 => "--.- ms".to_string(),

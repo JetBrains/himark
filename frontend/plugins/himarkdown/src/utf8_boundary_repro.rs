@@ -15,7 +15,7 @@ fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
 }
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
@@ -34,9 +34,9 @@ fn the_search_design_doc_lays_out_completely() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let document = document_from_markdown(source, store, ui, &theme);
-    let width = theme.ui().window.first_pane_width;
+    let width = theme.part(::editor::theme::WindowChrome::KEY).first_pane_width;
     let view =
         editor::editor_view::EditorView::complete(document, width, store, ui, &theme);
     assert!(
@@ -210,9 +210,9 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut document = document_from_markdown(source, store, ui, &theme);
-    let width = theme.ui().window.first_pane_width;
+    let width = theme.part(::editor::theme::WindowChrome::KEY).first_pane_width;
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         width,

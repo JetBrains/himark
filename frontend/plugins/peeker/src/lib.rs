@@ -195,9 +195,9 @@ impl View for FileRow {
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let themes = ::editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = &theme.peeker.jump;
-        let ink = &theme.ink;
+        let peeker = themes.part(::hikit::chrome::PeekerChrome::KEY);
+        let chrome = &peeker.jump;
+        let ink = themes.part(::editor::theme::InkChrome::KEY);
         let (role, color, dir_color, height) = match (self.selected, self.note) {
             (true, _) => (
                 &chrome.selected_name,
@@ -281,7 +281,7 @@ impl Peeker {
             .iter()
             .map(|(_, widget)| widget.title(store))
             .collect();
-        let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
+        let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY);
         let mut input =
             editor::editor_view::EditorView::input_styled(
                 600.0,
@@ -620,7 +620,7 @@ impl Peeker {
         let documents = self.documents;
         let width = EditorIdView::editor_width(
             self.preview_width,
-            &::editor::env::Themes::of(store).ui().window,
+            &::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY),
         );
 
         if let Some(index) = self.widget_at(self.selected()) {
@@ -908,9 +908,9 @@ impl View for Peeker {
             use imba::Thunk as _;
             let size = constraints.max;
             let themes = ::editor::env::Themes::of(store);
-            let theme = themes.ui();
-            let chrome = &theme.peeker.jump;
-            let ink = &theme.ink;
+            let peeker = themes.part(::hikit::chrome::PeekerChrome::KEY);
+            let chrome = &peeker.jump;
+            let ink = themes.part(::editor::theme::InkChrome::KEY);
             let sheet = sheet::Sheet(chrome.sheet.clone());
             let dialog = match self.floored {
                 true => sheet.rect_in(
@@ -1100,9 +1100,9 @@ impl Peeker {
         width: f32,
     ) -> imba::ThunkBox<'a, PeekerCommand> {
         let themes = ::editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = &theme.peeker.jump;
-        let ink = &theme.ink;
+        let peeker = themes.part(::hikit::chrome::PeekerChrome::KEY);
+        let chrome = &peeker.jump;
+        let ink = themes.part(::editor::theme::InkChrome::KEY);
         let title = sheet::styled(ui, &chrome.preview_title, ink.ink_bright.0);
         let path = |color| sheet::mono(ui, chrome.path_size, color);
         let selected = self.selected();
@@ -1181,8 +1181,7 @@ fn subsequence_match(candidate: &str, query: &str) -> bool {
 fn selection_style(store: &Store) -> imba::list::SelectionStyle {
     imba::list::SelectionStyle {
         fill: ::editor::env::Themes::of(store)
-            .ui()
-            .peeker
+            .part(::hikit::chrome::PeekerChrome::KEY)
             .jump
             .selected_fill
             .0,
@@ -1203,13 +1202,13 @@ fn shown_path(segments: &[String]) -> String {
 
 /// The matches column's width in a dialog `width` wide — the
 /// chrome's, short of crowding the preview out.
-fn list_width(width: f32, chrome: &::editor::theme::JumpSheetChrome) -> f32 {
+fn list_width(width: f32, chrome: &::hikit::chrome::JumpSheetChrome) -> f32 {
     chrome.list_width.min(width * 0.5).max(1.0)
 }
 
 /// The preview's width in a dialog `width` wide: what the matches
 /// column and its hairline leave.
-fn preview_width(width: f32, chrome: &::editor::theme::JumpSheetChrome) -> f32 {
+fn preview_width(width: f32, chrome: &::hikit::chrome::JumpSheetChrome) -> f32 {
     (width - list_width(width, chrome) - 1.0).max(160.0)
 }
 

@@ -163,9 +163,9 @@ impl View for ContentsRow {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        let theme = editor::env::Themes::of(store).ui().clone();
-        let chrome = theme.contents.clone();
-        let ink = theme.ink.clone();
+        let theme = editor::env::Themes::of(store);
+        let chrome = theme.part(crate::contents_chrome::ContentsChrome::KEY);
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
         let entry = &self.entry;
         let current = entry.current;
         let body: imba::layout::LayoutBox<'a, Self::Command> = match entry.place {

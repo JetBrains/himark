@@ -6,7 +6,7 @@ use crate::document::Document;
 use crate::test_document::{plain_document};
 
 fn theme() -> Theme {
-    Theme::embedded()
+    crate::theme::embedded()
 }
 
 fn hundred_lines() -> String {

@@ -101,7 +101,7 @@ impl View for CommentsRow {
         // The column's text edge stands past the tree frame's own
         // inset (the Files tab's lead).
         let theme = editor::env::Themes::of(store);
-        let lead = (theme.ui().window.side_text_edge - theme.ui().tree.text_x).max(0.0);
+        let lead = (theme.part(::editor::theme::WindowChrome::KEY).side_text_edge - theme.part(::hikit::chrome::TreeChrome::KEY).text_x).max(0.0);
         row.pad_insets(imba::layout::Insets {
             left: lead,
             ..Default::default()
@@ -134,8 +134,8 @@ impl View for CommentLine {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        let theme = editor::env::Themes::of(store).ui().clone();
-        let size = theme.tree.font_size;
+        let theme = editor::env::Themes::of(store);
+        let size = theme.part(::hikit::chrome::TreeChrome::KEY).font_size;
         let quote_style = match self.facts.resolved {
             true => hikit::ui::brief(store, ui).sized(size),
             false => hikit::ui::reading(store, ui).sized(size),
@@ -159,7 +159,7 @@ impl View for CommentLine {
         }
         .pad_insets(imba::layout::Insets {
             top: hikit::ui::space::S,
-            right: theme.window.side_trailing,
+            right: theme.part(::editor::theme::WindowChrome::KEY).side_trailing,
             bottom: hikit::ui::space::S,
             ..Default::default()
         })

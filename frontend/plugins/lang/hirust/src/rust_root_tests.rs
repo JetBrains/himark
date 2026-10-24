@@ -1,11 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use ::editor::theme::ThemeStyles as _;
 use super::*;
 use editor::theme::StyleId;
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 #[test]
@@ -337,10 +338,13 @@ fn declaration_names_carry_the_header_style() {
     );
 
     let theme = test_theme();
-    let attributes = theme.attributes(StyleId::DeclarationName);
+    let styles = theme.styles();
     assert!(
-        attributes.font_size.unwrap_or(0.0)
-            > theme
+        styles
+            .attributes(StyleId::DeclarationName)
+            .font_size
+            .unwrap_or(0.0)
+            > styles
                 .attributes(StyleId::SourceCode)
                 .font_size
                 .unwrap_or(f32::MAX),

@@ -356,7 +356,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
     ) -> EventResult<EditorCommand> {
         match event {
             Event::Paint { canvas, focused: _ } => {
-                let chrome = self.shared.theme.ui().editor_gutter.clone();
+                let chrome = self.shared.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
                 let data = self.shared.viewport(viewport.top..viewport.bottom);
                 let font = gutter_font(chrome.number_size);
                 let (_, metrics) = font.metrics();
@@ -441,7 +441,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                 point,
                 ..
             } => {
-                let chrome = self.shared.theme.ui().editor_gutter.clone();
+                let chrome = self.shared.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
                 let band = viewport.top..viewport.bottom;
                 if self.shared.stripes.is_some()
                     && point.x <= chrome.stripe_inset + chrome.stripe_width * 2.0
@@ -589,7 +589,7 @@ impl EditorView {
             width,
             store,
             ui,
-            &crate::theme::Theme::embedded(),
+            &crate::theme::embedded(),
         );
         view.document.mark_input(view.editor, style);
         view

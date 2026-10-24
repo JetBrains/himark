@@ -9,6 +9,8 @@
 //! injected closures; the shell's dock glue lives in himark
 //! (`hifiles`).
 
+pub mod chrome;
+
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
@@ -84,7 +86,7 @@ impl View for EdgeLabel {
 /// What the column's text edge stands past the tree frame's inset.
 fn edge_lead(store: &Store) -> f32 {
     let theme = editor::env::Themes::of(store);
-    (theme.ui().window.side_text_edge - theme.ui().tree.text_x).max(0.0)
+    (theme.part(::editor::theme::WindowChrome::KEY).side_text_edge - theme.part(::hikit::chrome::TreeChrome::KEY).text_x).max(0.0)
 }
 
 type TreeRow = TreeItemView<EdgeLabel>;
@@ -634,7 +636,7 @@ impl SessionTreeView {
     /// the list measured them. Mirrors `display`.
     #[doc(hidden)]
     pub fn row_span(&self, store: &Store, ui: &UiCtx, _width: f32, index: usize) -> (f32, f32) {
-        let rows_top = editor::env::Themes::of(store).ui().files.tree_top;
+        let rows_top = editor::env::Themes::of(store).part(crate::chrome::FilesChrome::KEY).tree_top;
         let list = self.tree.list.inner();
         let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
         (rows_top + above, list.height_at(index).unwrap_or(0.0))
@@ -1019,7 +1021,7 @@ fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view:
         600.0,
         store,
         ui,
-        &editor::theme::Theme::embedded(),
+        &editor::theme::embedded(),
     );
     input.document.mark_input(input.editor, editor::theme::StyleId::Field);
     input.set_caret(text.len() as u32);
@@ -1357,7 +1359,7 @@ impl View for SessionTreeView {
             // ride the regular result chain to whichever it is.
             let width = constraints.max.width.max(1.0);
             let theme = editor::env::Themes::of(store);
-            let files = theme.ui().files.clone();
+            let files = theme.part(crate::chrome::FilesChrome::KEY);
             let rows_top = files.tree_top;
             let rows = imba::layout::Layout::layout(
                 self.tree.list.display(arena, store, ui),
@@ -1434,7 +1436,7 @@ impl View for SessionTreeView {
             if let Some(edit) = &self.edit {
                 if let Some(range) = self.tree.list.inner().row_range(edit.row_key()) {
                     if let Some((top, height)) = self.tree.list.inner().row_span(range.start) {
-                        let window = theme.ui().window.clone();
+                        let window = theme.part(::editor::theme::WindowChrome::KEY);
                         let depth = self.tree.list.inner().depth_at(range.start) as f32;
                         let x = text_x(store, depth);
                         let field_width = (size.width - x - window.side_trailing).max(1.0);
@@ -1519,8 +1521,8 @@ fn role_style(
 /// (never short of the tree frame's own inset), one indent per level.
 fn text_x(store: &Store, depth: f32) -> f32 {
     let theme = editor::env::Themes::of(store);
-    let tree = &theme.ui().tree;
-    theme.ui().window.side_text_edge.max(tree.text_x) + depth * tree.indent
+    let tree = &theme.part(::hikit::chrome::TreeChrome::KEY);
+    theme.part(::editor::theme::WindowChrome::KEY).side_text_edge.max(tree.text_x) + depth * tree.indent
 }
 
 /// The cursor's row restated over the selection wash: the name in
@@ -1536,9 +1538,9 @@ struct CurrentRow {
 impl CurrentRow {
     fn new(store: &Store, ui: &UiCtx, location: &ResourceLocation, depth: f32) -> Self {
         let theme = editor::env::Themes::of(store);
-        let files = theme.ui().files.clone();
-        let ink = theme.ui().ink.clone();
-        let tree = theme.ui().tree.clone();
+        let files = theme.part(crate::chrome::FilesChrome::KEY);
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
+        let tree = theme.part(::hikit::chrome::TreeChrome::KEY);
         let row = hikit::ui::row(store, ui).sized(tree.font_size);
         Self {
             name: hikit::ui::text(

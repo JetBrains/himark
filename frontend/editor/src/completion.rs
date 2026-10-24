@@ -226,7 +226,7 @@ impl View for CompletionRow {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let theme = crate::env::Themes::of(store);
-                let chrome = theme.ui().peeker.clone();
+                let chrome = theme.part(crate::theme::PopupChrome::KEY).as_ref().clone();
                 let height = chrome.row_height.max(1.0);
                 let width = constraints.max.width.max(1.0);
                 let font = popup_font(ui, chrome.row_size);
@@ -285,11 +285,12 @@ fn popup_font(ui: &UiCtx, size: f32) -> skia_safe::Font {
 }
 
 fn selection_style(theme: &crate::theme::Theme) -> SelectionStyle {
-    let ui = theme.ui();
+    let tree = theme.part(crate::theme::TreeWell::KEY);
+    let peeker = theme.part(crate::theme::PopupChrome::KEY);
     SelectionStyle {
-        fill: ui.tree.highlight.0,
-        accent: ui.peeker.accent.0,
-        accent_width: ui.peeker.accent_width,
+        fill: tree.highlight.0,
+        accent: peeker.accent.0,
+        accent_width: peeker.accent_width,
         accent_inset: 0.0,
         ..SelectionStyle::default()
     }
@@ -324,7 +325,7 @@ impl View for CompletionPopupView {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let theme = crate::env::Themes::of(store);
-                let chrome = theme.ui().peeker.clone();
+                let chrome = theme.part(crate::theme::PopupChrome::KEY).as_ref().clone();
                 let row_height = chrome.row_height.max(1.0);
                 let visible = self.rows.min(VISIBLE_ROWS).max(1);
                 let width = POPUP_WIDTH.min(constraints.max.width.max(1.0));
@@ -896,7 +897,7 @@ impl Completer {
             }
         }
         let theme = crate::env::Themes::of(store);
-        let row_height = theme.ui().peeker.row_height.max(1.0);
+        let row_height = theme.part(crate::theme::PopupChrome::KEY).row_height.max(1.0);
         let selected = self
             .selected()
             .min(self.source.row_count().saturating_sub(1));

@@ -4,7 +4,7 @@
 use super::*;
 
 fn plain_shaped(text: &str) -> ParleyLine {
-    let resolved = BlockStyle::default().resolved(&crate::theme::Theme::embedded());
+    let resolved = BlockStyle::default().resolved(&crate::theme::embedded());
     let display = DisplayText::build_segments(
         false,
         &[(text.to_owned(), 0)],
@@ -12,7 +12,7 @@ fn plain_shaped(text: &str) -> ParleyLine {
         true,
         text.len(),
     );
-    shape_inputs(&resolved, &display, &[], &crate::theme::Theme::embedded())
+    shape_inputs(&resolved, &display, &[], &crate::theme::embedded())
         .shape(crate::test_document::test_ui(), None)
 }
 
@@ -39,7 +39,7 @@ fn caret_x_includes_whitespace_after_emoji() {
 
 #[test]
 fn placeholder_geometry_is_identical_to_typed_text() {
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let source = "Message the agent";
     let text = text::text::Text::from_string_exact(source);
     let markup = crate::markup::Markup::new();
@@ -63,7 +63,7 @@ fn placeholder_geometry_is_identical_to_typed_text() {
     let placeholder = ShapedLine::placeholder(
         source,
         None,
-        theme.ui().peeker.dim_text.0,
+        theme.part(crate::theme::PopupChrome::KEY).dim_text.0,
         crate::test_document::test_ui(),
         &theme,
         500.0,
@@ -84,7 +84,7 @@ fn placeholder_geometry_is_identical_to_typed_text() {
 
 #[test]
 fn rows_partition_the_text_at_breaks_and_wraps() {
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let resolved = BlockStyle::default().resolved(&theme);
     let samples = [
         "plain line without any break",
@@ -135,7 +135,7 @@ fn rows_partition_the_text_at_breaks_and_wraps() {
 
 #[test]
 fn paint_is_deterministic_and_inked() {
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     // Mixed scripts and an emoji: several fonts, several runs.
     let source = "fn main() выход 🚀 done";
     let text = text::text::Text::from_string_exact(source);
@@ -184,12 +184,12 @@ fn paint_is_deterministic_and_inked() {
 /// mapping.)
 #[test]
 fn selection_edges_sit_on_the_caret() {
-    let theme = crate::theme::Theme::embedded();
+    let theme = crate::theme::embedded();
     let source = "The quick brown fox jumps over the lazy dog";
     let shaped = ShapedLine::placeholder(
         source,
         None,
-        theme.ui().peeker.dim_text.0,
+        theme.part(crate::theme::PopupChrome::KEY).dim_text.0,
         crate::test_document::test_ui(),
         &theme,
         900.0,

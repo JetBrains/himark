@@ -13,7 +13,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     ))
     .expect("document.rs");
     assert!(source.len() > 50_000, "the gate wants a BIG file");
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
         text::text::Text::from_string_exact(&source),

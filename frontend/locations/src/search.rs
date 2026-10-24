@@ -424,9 +424,9 @@ impl View for SearchView {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let theme = editor::env::Themes::of(store);
-            let find = theme.ui().find.clone();
-            let window = theme.ui().window.clone();
-            let ink = theme.ui().ink.clone();
+            let find = theme.part(crate::chrome::FindChrome::KEY);
+            let window = theme.part(::editor::theme::WindowChrome::KEY);
+            let ink = theme.part(::editor::theme::InkChrome::KEY);
 
             let feed = self.feed(store);
             let row = feed.and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
@@ -706,7 +706,7 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) ->
         600.0,
         store,
         ui,
-        &editor::theme::Theme::embedded(),
+        &editor::theme::embedded(),
     );
     input.document.mark_input(input.editor, editor::theme::StyleId::QuerySmall);
     input.set_caret(text.len() as u32);

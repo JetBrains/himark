@@ -4,7 +4,7 @@
 use super::*;
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 use editor::markup::MarkupBuilder;

@@ -799,7 +799,7 @@ impl View for WorkbenchNode {
                 Self::Split(split) => {
                     let divider = split.divider_rect(constraints.max);
                     let theme = ::editor::env::Themes::of(store);
-                    let window = &theme.ui().window;
+                    let window = &theme.part(::editor::theme::WindowChrome::KEY);
                     let color = window.divider.0;
                     let inset = window.divider_inset;
                     imba::ThunkBox::new(

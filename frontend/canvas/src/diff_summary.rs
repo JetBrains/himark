@@ -45,15 +45,15 @@ pub struct SummaryLine {
 /// stands it, the same box `SummaryLine::strip_height` answers. The
 /// canvas pads its list down by this much; the click tests mirror it.
 pub fn strip_height(store: &Store, ui: &UiCtx) -> f32 {
-    let pad = env::Themes::of(store).ui().diff.summary_pad;
+    let pad = env::Themes::of(store).part(::hikit::chrome::DiffChrome::KEY).summary_pad;
     pad * 2.0 + hikit::ui::brief(store, ui).line_height()
 }
 
 impl SummaryLine {
     pub fn new(store: &Store, ui: &UiCtx, spec: SummarySpec) -> Self {
         let theme = env::Themes::of(store);
-        let ink = theme.ui().ink.clone();
-        let diff = theme.ui().diff.clone();
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
+        let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
         let totals = spec.totals;
         let files = match totals.files {
             1 => "1 file".to_owned(),
@@ -71,7 +71,7 @@ impl SummaryLine {
             state_color: ink.ink_2.0,
             gap: diff.summary_gap,
             pad: diff.summary_pad,
-            lead: theme.ui().window.code_text_edge,
+            lead: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
             added: (totals.added > 0).then(|| format!("+{}", totals.added)),
             removed: (totals.removed > 0).then(|| format!("−{}", totals.removed)),
             files,

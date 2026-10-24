@@ -1244,7 +1244,7 @@ fn the_chat_tab_toggles_the_column() {
 
     // The Chat tab's center: after the Sessions tab and a tab gap,
     // from the leftmost header's lead inset.
-    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
     let y = chrome.title_baseline - chrome.title_size * 0.4;
     // A tab's slot is its title-rank width whatever rank it shows
@@ -1264,7 +1264,7 @@ fn the_chat_tab_toggles_the_column() {
 
     // Gone, the tree is leftmost and carries the tabs from the
     // greater of the lead inset and the code text edge.
-    let window_chrome = ::editor::env::Themes::of(app.store()).ui().window.clone();
+    let window_chrome = ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
     let lead = chrome.lead_inset.max(window_chrome.code_text_edge);
     let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
     assert!(test_driver::click(&mut app, x, y, width, height), "the dim Chat tab takes the press");
@@ -1350,14 +1350,14 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
     fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
-    let window_chrome = ::editor::env::Themes::of(app.store()).ui().window.clone();
+    let window_chrome = ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
     assert!(
         width < window_chrome.chat_min_width + window_chrome.first_pane_width.max(window_chrome.main_min_width),
         "the window is too narrow for both columns"
     );
     assert!(!held(&app).workbench().chat_fronted(), "the panel took the window");
 
-    let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
+    let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
     let y = chrome.title_baseline - chrome.title_size * 0.4;
     let sessions = styles.tab_width("Sessions");

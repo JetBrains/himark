@@ -10,6 +10,7 @@
 //! trigger supersedes the in-flight run), and a landing replaces its
 //! layer wholesale against the CURRENT text through `replace_markup`.
 
+use ::editor::theme::ThemeStyles as _;
 use std::sync::Arc;
 
 use ahp_wire::client::{LspClient, ResourceUri, SessionUri};
@@ -813,7 +814,7 @@ impl imba::View for HintView {
             .as_deref()
             .map(<[String]>::to_vec)
             .unwrap_or_default();
-        let size = look.font_size.or(theme.base().font_size).unwrap_or(32.0) * HINT_SCALE;
+        let size = look.font_size.or(theme.styles().base().font_size).unwrap_or(32.0) * HINT_SCALE;
         // The code face, resolved ONCE per ui context: a font-collection
         // search per chip per measure was the retheme stall (every
         // inlay re-measures; hundreds of chips, a cold worker ctx).

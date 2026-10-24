@@ -317,8 +317,8 @@ impl Workbench {
     /// the right, the chat's from the left, the main area between.
     pub fn columns(&self, store: &Store, size: Size) -> Columns {
         let theme = ::editor::env::Themes::of(store);
-        let window = theme.ui().window.clone();
-        let band = theme.ui().toolbar.height;
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
+        let band = theme.part(::hikit::chrome::ToolbarChrome::KEY).height;
         let dock = self.dock.as_ref().map(|dock| {
             let revealed = dock.revealed().round().clamp(0.0, size.width);
             DockSpan {
@@ -572,8 +572,8 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         } = self;
         let size = constraints.max;
         let theme = ::editor::env::Themes::of(store);
-        let ground = theme.ui().ink.ground.0;
-        let window = theme.ui().window.clone();
+        let ground = theme.part(::editor::theme::InkChrome::KEY).ground.0;
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
         let divider_width = window.divider_width.max(1.0);
         let divider_color = window.divider.0;
 
@@ -803,6 +803,7 @@ pub fn panel_width(store: &Store, panel: &Panel) -> Option<f32> {
 
 pub fn fallback_pane_editor_width(store: &Store) -> f32 {
     let theme = ::editor::env::Themes::of(store);
-    let ui = theme.ui();
-    (ui.window.first_pane_width - ui.editor_gutter.width).max(ui.window.min_editor_width)
+    let window = theme.part(::editor::theme::WindowChrome::KEY);
+    let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
+    (window.first_pane_width - gutter).max(window.min_editor_width)
 }

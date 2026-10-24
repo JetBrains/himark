@@ -89,7 +89,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
@@ -186,7 +186,7 @@ fn probe_pair(left: String, right: String) {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     eprintln!("[probe] sides: {} / {} bytes", left.len(), right.len());
 
     let started = Instant::now();
@@ -466,7 +466,7 @@ fn scroll_soak_for_profiling() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let (left, right) = monster_pair(1409);
     let ui = &app.ui_ctx();
     let (mut ldoc, lblocks) =
@@ -553,7 +553,7 @@ fn canvas_landing_breakdown_probe() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     eprintln!("[landing] sides: {} / {} bytes", left.len(), right.len());
 
     let documents = himark::workspace::session_state(app.store(), app.sole_window())

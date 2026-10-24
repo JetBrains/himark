@@ -3,7 +3,8 @@
 himark's chrome is TYPOGRAPHIC. No glass, no pills, no boxes; a word
 before an icon; rank by size and weight, never by fill; hairlines
 separate, whitespace groups. Everything a surface draws comes from
-two tables in the theme (`UiTheme::ink`, `UiTheme::type_ramp` —
+two tables in the theme (the `ink` and `type_ramp` parts —
+`theme.part(InkChrome::KEY)` / `theme.part(TypeChrome::KEY)`,
 frontend/editor/src/theme.rs, values in
 frontend/editor/assets/theme.json and theme-light.json) through the
 roles in `hikit::ui`; a bare number or color in a view is a smell.

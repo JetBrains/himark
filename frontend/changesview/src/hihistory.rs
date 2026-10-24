@@ -643,8 +643,8 @@ impl imba::View for CommitTip {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 let theme = editor::env::Themes::of(store);
-                let chrome = theme.ui().combo.clone();
-                let colors = theme.ui().peeker.clone();
+                let chrome = theme.part(::hikit::chrome::ComboChrome::KEY);
+                let colors = theme.part(::hikit::chrome::PeekerChrome::KEY);
                 let font = hikit::fonts::ui_text_font(ui, chrome.value_size);
                 let shaper = imba::layout::TextShaper::of(ui);
                 let pad = 14.0f32;

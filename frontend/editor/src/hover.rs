@@ -284,7 +284,7 @@ impl imba::View for HoverView {
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 let theme = crate::env::Themes::of(store);
-                let fill = theme.ui().combo.menu_fill.0;
+                let fill = theme.part(crate::theme::HoverSheet::KEY).menu_fill.0;
                 let document = &self.view.document;
 
                 let inner_width = document.max_width(self.view.editor).clamp(60.0, CARD_WIDTH);

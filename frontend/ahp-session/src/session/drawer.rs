@@ -89,7 +89,7 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
 impl AgentsPanel {
     /// What the add-host field takes off the lines' height.
     fn adding_height(&self, store: &Store) -> f32 {
-        let chrome = ::editor::env::Themes::of(store).ui().sessions.clone();
+        let chrome = ::editor::env::Themes::of(store).part(crate::chrome::SessionsChrome::KEY);
         match &self.adding {
             Some(input) => input.content_height() + 2.0 * chrome.row_pad,
             None => 0.0,
@@ -691,9 +691,8 @@ impl AgentsPanel {
         width: f32,
     ) -> imba::ThunkBox<'a, AgentsCommand> {
         let themes = ::editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = theme.sessions.clone();
-        let rule = theme.ink.rule_strong.0;
+        let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
+        let rule = themes.part(::editor::theme::InkChrome::KEY).rule_strong.0;
         let field_width = (width - 2.0 * chrome.inset).max(1.0);
         let height = input.content_height();
         let mut field = imba::layout::ZBox::new(arena);

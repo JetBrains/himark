@@ -1,11 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use super::*;
 
 #[test]
 fn the_embedded_theme_parses_and_covers_the_styles() {
-    let theme = Theme::embedded();
+    let theme = crate::theme::embedded();
 
     let all = [
         StyleId::Emphasis,
@@ -37,18 +38,18 @@ fn the_embedded_theme_parses_and_covers_the_styles() {
     ];
     for id in all {
         assert_ne!(
-            theme.attributes(id),
+            theme.styles().attributes(id),
             &TextAttributes::default(),
             "theme entry missing for {id:?}"
         );
     }
-    assert!(theme.base().color.is_some(), "base text has a color");
+    assert!(theme.styles().base().color.is_some(), "base text has a color");
 }
 
 #[test]
 fn the_light_theme_parses_covers_and_matches_dark_geometry() {
-    let dark = Theme::embedded();
-    let light = Theme::light();
+    let dark = crate::theme::embedded();
+    let light = crate::theme::light();
     assert_eq!(dark.name(), "dark");
     assert_eq!(light.name(), "light");
     for id in StyleId::all_slots() {
@@ -61,61 +62,34 @@ fn the_light_theme_parses_covers_and_matches_dark_geometry() {
             continue;
         }
         assert_ne!(
-            light.attributes(id),
+            light.styles().attributes(id),
             &TextAttributes::default(),
             "light theme entry missing for {id:?}"
         );
     }
 
     assert_eq!(
-        light.base().font_size.unwrap(),
-        dark.base().font_size.unwrap(),
+        light.styles().base().font_size.unwrap(),
+        dark.styles().base().font_size.unwrap(),
         "light body type matches dark"
     );
     assert!(
-        light.attributes(StyleId::Header(1)).font_size.unwrap()
-            == dark.attributes(StyleId::Header(1)).font_size.unwrap()
+        light.styles().attributes(StyleId::Header(1)).font_size.unwrap()
+            == dark.styles().attributes(StyleId::Header(1)).font_size.unwrap()
     );
 
-    let light_combo = &light.ui().combo;
-    let dark_combo = &dark.ui().combo;
-    assert_eq!(light_combo.pad, dark_combo.pad, "combo geometry matches");
-    assert_eq!(
-        light_combo.menu_row_height, dark_combo.menu_row_height,
-        "menu geometry matches"
-    );
-    // The redesign draws a combo as a bare WORD: its ink is the light
-    // theme's own secondary ink, its menu the light sheet.
-    assert_eq!(
-        light_combo.value_color.0,
-        light.ui().ink.ink_2.0,
-        "closed values use the secondary ink"
-    );
-    assert_eq!(
-        light_combo.menu_fill.0,
-        light.ui().ink.sheet.0,
-        "expanded menus use the sheet surface"
-    );
-    assert_eq!(
-        light_combo.menu_border.0,
-        light.ui().ink.sheet_border.0,
-        "expanded menus have the sheet's edge"
-    );
-    assert_eq!(
-        light_combo.menu_text.0,
-        light.ui().ink.ink.0,
-        "expanded menu labels use primary ink"
-    );
 }
+// The combo chrome's light/dark geometry and ink assertions moved to
+// hikit::chrome::tests with the ComboChrome struct.
 
 #[test]
 fn merging_layers_inline_over_block() {
-    let theme = Theme::embedded();
+    let theme = crate::theme::embedded();
     let merged = theme.resolve([StyleId::CodeBlock, StyleId::Keyword]);
     assert!(merged.font_families.is_some(), "code face survives");
     assert_eq!(
         merged.color,
-        theme.attributes(StyleId::Keyword).color,
+        theme.styles().attributes(StyleId::Keyword).color,
         "token color wins over the block's"
     );
 }

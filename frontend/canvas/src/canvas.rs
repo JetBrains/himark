@@ -189,12 +189,12 @@ const PREFETCH_UNKNOWN_LINES: i64 = 400;
 fn sticky_style() -> imba::list::StickySource {
     std::sync::Arc::new(|store: &Store| {
         let theme = env::Themes::of(store);
-        let window = theme.ui().window.clone();
-        let ink = theme.ui().ink.clone();
+        let window = theme.part(::editor::theme::WindowChrome::KEY);
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
         StickyStyle {
             // The planted band wears the FILE BAND's own fold ground
             // (`FileBand`), ruled off from the scrolling code.
-            background: theme.ui().diff.fold_background.0,
+            background: theme.part(::hikit::chrome::DiffChrome::KEY).fold_background.0,
             divider: ink.rule.0,
             divider_width: window.divider_width,
         }
@@ -1319,7 +1319,7 @@ impl Canvas {
         // leaks a tracked pair + editors (docs/editor/diff-canvas.md §7).
         self.teardown_row(store, &key);
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         let route = key.clone();
         let built_width = prep.width;
         let (body, body_height) = match prep.failed {
@@ -1650,7 +1650,7 @@ fn mounted(
     fx: &mut Effects<'_, RowCommand>,
 ) -> Option<(crate::diff_pane::PairPane, f32)> {
     let theme = env::Themes::of(store);
-    let gutter = theme.ui().editor_gutter.width;
+    let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
     let editor_width = (prep.width - gutter).max(120.0);
 
     let documents = Changes::of(store, changes)?.documents();
@@ -1775,7 +1775,7 @@ impl Canvas {
         let _ = arena;
         imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             use imba::layout::LayoutExt as _;
-            let ground = env::Themes::of(store).ui().ink.ground.0;
+            let ground = env::Themes::of(store).part(::editor::theme::InkChrome::KEY).ground.0;
             match &self.note {
                 // The note (pending, empty, failed listing): one brief
                 // line centered on the ground.
@@ -2767,7 +2767,7 @@ fn trace_wrap() -> bool {
 
 /// The file band's height — the insets around the name's line box.
 fn header_band(theme: &editor::theme::Theme) -> f32 {
-    crate::diff_header::file_band_height_of(&theme.ui().diff)
+    crate::diff_header::file_band_height_of(&theme.part(::hikit::chrome::DiffChrome::KEY))
 }
 
 /// The composer banner's height — the CHAT COMPOSER's whole footprint
@@ -2779,13 +2779,13 @@ fn composer_band(
     theme: &editor::theme::Theme,
     message: Option<&editor::editor_view::EditorView>,
 ) -> f32 {
-    let chat = theme.ui().chat.clone();
+    let chat = theme.part(::hikit::chrome::ChatChrome::KEY);
     let one_line = chat.title_size * 1.6;
     let grown = message
         .map(|editor| editor.content_height())
         .unwrap_or(one_line)
         .max(one_line);
-    grown + chat.pad * 1.5 + theme.ui().toolbar.height
+    grown + chat.pad * 1.5 + theme.part(::hikit::chrome::ToolbarChrome::KEY).height
 }
 
 /// A fresh commit box — the CHAT composer's input recipe
@@ -2870,8 +2870,8 @@ fn commit_band(
     body: Option<&editor::editor_view::EditorView>,
 ) -> f32 {
     let _ = block;
-    let diff = theme.ui().diff.clone();
-    let ramp = theme.ui().type_ramp.clone();
+    let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
+    let ramp = theme.part(::editor::theme::TypeChrome::KEY);
     let byline = ramp.brief.size * ramp.brief.line_height;
     let headline = ramp.headline.size * ramp.headline.line_height;
     let body = body
@@ -2881,7 +2881,7 @@ fn commit_band(
 }
 
 fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
-    let chrome = theme.ui().chat.clone();
+    let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
     let line = chrome.title_size * 1.5;
     let known = file.added.is_some() || file.removed.is_some();
     let est = match known {
@@ -2899,7 +2899,7 @@ fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
 /// writer of a diff row's height adds it: the reserved estimate, the
 /// landing, the resize, and the painted row.
 fn body_air(theme: &editor::theme::Theme) -> f32 {
-    theme.ui().diff.band_air
+    theme.part(::hikit::chrome::DiffChrome::KEY).band_air
 }
 
 fn open_commands(location: &ResourceLocation) -> Vec<imba::PresentableCommand<RowCommand>> {
@@ -3125,10 +3125,10 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
         use imba::layout::LayoutExt as _;
         let RowFrame { row, store, ui } = self;
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         let width = constraints.max.width.max(1.0);
-        let gutter = theme.ui().editor_gutter.width;
-        let ground = theme.ui().ink.ground.0;
+        let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
+        let ground = theme.part(::editor::theme::InkChrome::KEY).ground.0;
 
         match row {
             CanvasRow::Banner(BannerRow::Commit {
@@ -3143,10 +3143,9 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 // markdown box (the chat cell's dress), a real editor
                 // that focuses on click.
                 use imba::layout::{Column, Insets, Row};
-                let ui_theme = theme.ui();
-                let diff = ui_theme.diff.clone();
-                let ink = ui_theme.ink.clone();
-                let lead = ui_theme.window.code_text_edge;
+                let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
+                let ink = theme.part(::editor::theme::InkChrome::KEY);
+                let lead = theme.part(::editor::theme::WindowChrome::KEY).code_text_edge;
                 let measure = (width - lead - diff.commit_pad_right).max(1.0);
                 let brief = hikit::ui::brief(store, ui);
                 let totals = block.totals;
@@ -3179,7 +3178,8 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 // box the rung's line height (CSS's 1.08), the glyphs
                 // centered in it by their own metrics.
                 let headline_style = hikit::ui::headline(store, ui);
-                let line = (ui_theme.type_ramp.headline.size * ui_theme.type_ramp.headline.line_height).ceil();
+                let type_ramp = theme.part(::editor::theme::TypeChrome::KEY);
+                let line = (type_ramp.headline.size * type_ramp.headline.line_height).ceil();
                 let glyphs = headline_style.line_height();
                 let half_leading = ((line - glyphs) * 0.5).floor();
                 let mut headline = Column::new(arena);
@@ -3246,13 +3246,14 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 let band = composer_band(&theme, Some(message));
                 let pad = chrome.pad;
                 let box_pad = pad * 0.75;
-                let ui_theme = theme.ui();
-                let toolbar_h = ui_theme.toolbar.height;
+                let toolbar = theme.part(::hikit::chrome::ToolbarChrome::KEY);
+                let toolbar_h = toolbar.height;
                 let editor_h = band - toolbar_h - box_pad * 2.0;
 
-                let combo = ui_theme.combo.clone();
+                let combo = theme.part(::hikit::chrome::ComboChrome::KEY);
+                let peeker = theme.part(::hikit::chrome::PeekerChrome::KEY);
                 let caps_font = hikit::fonts::ui_font(ui, combo.label_size * 1.1);
-                let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                let key_font = hikit::fonts::ui_text_font(ui, peeker.hint_size * 0.95);
                 let label = "COMMIT";
                 let cell_width = label
                     .chars()
@@ -3264,7 +3265,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 let sendable = message.document.text().byte_count() > 0;
                 let accent = chrome.accent.0;
                 let on_accent = chrome.on_accent.0;
-                let accent_soft = ui_theme.peeker.dim_text.0;
+                let accent_soft = peeker.dim_text.0;
                 let cell_h = toolbar_h - 1.0;
                 let mid = cell_h * 0.5;
                 let caps_ascent = -caps_font.metrics().1.ascent;
@@ -3354,7 +3355,7 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 // The toolbar row: ruled off above, the COMMIT cell
                 // flush right — the chat footer's shape, awaiting its
                 // cells.
-                let rule = ui_theme.toolbar.rule.0;
+                let rule = toolbar.rule.0;
                 face.place(
                     0.0,
                     input_band,
@@ -3414,15 +3415,14 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 RowBody::Failed(error) => {
                     // The failure in the brief rung at the code text
                     // edge, the band's air around it.
-                    let ui_theme = theme.ui();
-                    let diff_chrome = ui_theme.diff.clone();
+                    let diff_chrome = theme.part(::hikit::chrome::DiffChrome::KEY);
                     imba::layout::Layout::layout(
                         hikit::ui::text(
                             &hikit::ui::brief(store, ui),
                             format!("{} — {error}", diff.file.title),
                         )
                         .pad_insets(imba::layout::Insets {
-                            left: ui_theme.window.code_text_edge,
+                            left: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
                             top: diff_chrome.band_pad_top,
                             right: diff_chrome.band_pad_right,
                             bottom: diff_chrome.band_pad_bottom + diff_chrome.band_air,
@@ -3535,7 +3535,7 @@ fn skeleton_layout<'a>(
     width: f32,
     height: f32,
 ) -> imba::ThunkBox<'a, RowCommand> {
-    let chrome = theme.ui().chat.clone();
+    let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
     let line = chrome.title_size * 1.5;
     let added = file.added.unwrap_or(0).max(0) as f32;
     let removed = file.removed.unwrap_or(0).max(0) as f32;
@@ -3548,8 +3548,8 @@ fn skeleton_layout<'a>(
     let (added_color, removed_color) = (tint(chrome.added_color.0), tint(chrome.removed_color.0));
     // The bars start at the code text edge, where the diff's text
     // will.
-    let inset = theme.ui().window.code_text_edge;
-    let trailing = theme.ui().diff.band_pad_right;
+    let inset = theme.part(::editor::theme::WindowChrome::KEY).code_text_edge;
+    let trailing = theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right;
     let thunk =
         imba::leaf::leaf::<RowCommand>(width, height).paint_instead(move |_arena, canvas, rect| {
             let mut paint = Paint::default();

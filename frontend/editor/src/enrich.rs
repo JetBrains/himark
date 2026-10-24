@@ -298,7 +298,7 @@ mod tests {
     use imba::effect::EffectHandler;
 
     fn theme() -> crate::theme::Theme {
-        crate::theme::Theme::embedded()
+        crate::theme::embedded()
     }
 
     fn workshop() -> Arc<crate::env::Workshop> {

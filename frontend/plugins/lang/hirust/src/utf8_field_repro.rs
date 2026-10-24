@@ -8,7 +8,7 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let source = include_str!("../../../himarkdown/fixtures/utf8-repro.md");
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut document = himarkdown::document_from_markdown(source, store, ui, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
 
@@ -36,7 +36,7 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
 
     let view = editor::editor_view::EditorView::complete(
         document,
-        theme.ui().window.first_pane_width,
+        theme.part(::editor::theme::WindowChrome::KEY).first_pane_width,
         store,
         ui,
         &theme,

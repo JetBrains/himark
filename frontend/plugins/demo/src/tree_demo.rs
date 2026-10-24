@@ -110,7 +110,7 @@ impl View for TreeDemoRow {
             let theme = ::editor::env::Themes::of(store);
             imba::eager(TreeDemoRowWidget {
                 row: self,
-                color: theme
+                color: ::editor::theme::ThemeStyles::styles(&theme)
                     .base()
                     .color
                     .unwrap_or(skia_safe::Color::from_argb(0xFF, 0x80, 0x80, 0x80)),

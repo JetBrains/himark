@@ -146,9 +146,10 @@ impl DockRow {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl Layout<'a, TreeItemCommand<TreeLabelCommand>> + 'a {
-        let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = &theme.history;
+        let theme = editor::env::Themes::of(store);
+        let chrome = theme.part(crate::chrome::HistoryChrome::KEY);
+        let ink = theme.part(editor::theme::InkChrome::KEY);
+        let window = theme.part(editor::theme::WindowChrome::KEY);
         let folder = folder_of(&self.key);
         let branch = Changes::of(store, self.changes)
             .and_then(|held| History::folder(store, held.history(), &folder))
@@ -160,17 +161,17 @@ impl DockRow {
         Row::new(arena)
             .gap(chrome.header_gap)
             .child_by_baseline(hikit::ui::text(
-                &styled(ui, &chrome.branch, theme.ink.ink.0),
+                &styled(ui, &chrome.branch, ink.ink.0),
                 lead,
             ))
             .child_by_baseline(hikit::ui::text(
-                &styled(ui, &chrome.folder, theme.ink.ink_3.0),
+                &styled(ui, &chrome.folder, ink.ink_3.0),
                 note,
             ))
             .pad_insets(Insets {
-                left: theme.window.side_text_edge,
+                left: window.side_text_edge,
                 top: chrome.header_top,
-                right: theme.window.side_trailing,
+                right: window.side_trailing,
                 bottom: chrome.header_bottom,
             })
             .on_event(quiet_press)
@@ -185,10 +186,10 @@ impl DockRow {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl Layout<'a, TreeItemCommand<TreeLabelCommand>> + 'a {
-        let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = &theme.history;
-        let window = &theme.window;
+        let theme = editor::env::Themes::of(store);
+        let chrome = theme.part(crate::chrome::HistoryChrome::KEY);
+        let ink = theme.part(editor::theme::InkChrome::KEY);
+        let window = theme.part(editor::theme::WindowChrome::KEY);
         let folder = folder_of(&self.key);
         let id = self.key.name();
         // The OPEN commit is the one the tree stands EXPANDED — not
@@ -206,7 +207,7 @@ impl DockRow {
                 (style, lines)
             }
             false => (
-                styled(ui, &chrome.commit, theme.ink.ink_2.0),
+                styled(ui, &chrome.commit, ink.ink_2.0),
                 vec![title.to_owned()],
             ),
         };
@@ -222,9 +223,9 @@ impl DockRow {
             let removed: i64 = files.files.iter().filter_map(|entry| entry.removed).sum();
             let count = files.files.len();
             let noun = if count == 1 { "file" } else { "files" };
-            let meta = styled(ui, &chrome.meta, theme.ink.ink_3.0);
+            let meta = styled(ui, &chrome.meta, ink.ink_3.0);
             let tally = |sign: &str, value: i64, color: skia_safe::Color| {
-                let color = if value == 0 { theme.ink.ink_4.0 } else { color };
+                let color = if value == 0 { ink.ink_4.0 } else { color };
                 hikit::ui::text(&meta.clone().colored(color), format!("{sign}{value}"))
             };
             let space = meta.shaper.advance(&meta.font, " ");
@@ -232,8 +233,8 @@ impl DockRow {
                 Row::new(arena)
                     .gap(space)
                     .child_by_baseline(hikit::ui::text(&meta, format!("{count} {noun} ·")))
-                    .child_by_baseline(tally("+", added, theme.ink.added.0))
-                    .child_by_baseline(tally("−", removed, theme.ink.removed.0))
+                    .child_by_baseline(tally("+", added, ink.added.0))
+                    .child_by_baseline(tally("−", removed, ink.removed.0))
                     .pad_insets(Insets {
                         top: chrome.meta_gap,
                         ..Insets::default()
@@ -264,17 +265,17 @@ impl DockRow {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl Layout<'a, TreeItemCommand<TreeLabelCommand>> + 'a {
-        let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let tree = &theme.tree;
+        let theme = editor::env::Themes::of(store);
+        let tree = theme.part(::hikit::chrome::TreeChrome::KEY);
+        let window = theme.part(editor::theme::WindowChrome::KEY);
         let depth = f32::from(self.row.depth());
         let below = f32::from(self.row.depth().saturating_sub(self.hang));
-        let wanted = theme.window.side_text_edge + tree.indent * below;
+        let wanted = window.side_text_edge + tree.indent * below;
         let framed = tree.text_x + tree.indent * depth;
         let trail_inset = hikit::ui::RowStyle::drawer(store, ui).trail_inset;
         self.row.display(arena, store, ui).pad_insets(Insets {
             left: wanted - framed,
-            right: (theme.window.side_trailing - trail_inset).max(0.0),
+            right: (window.side_trailing - trail_inset).max(0.0),
             ..Insets::default()
         })
     }
@@ -325,8 +326,8 @@ pub(crate) struct Rail<'a> {
     pub list: &'a imba::list::ListView<crate::changes_view::HistoryRow, ResourceLocation>,
     /// Each folder's newest commit row.
     pub newest: Vec<ResourceLocation>,
-    pub chrome: editor::theme::HistoryChrome,
-    pub ink: editor::theme::InkChrome,
+    pub chrome: std::sync::Arc<crate::chrome::HistoryChrome>,
+    pub ink: std::sync::Arc<editor::theme::InkChrome>,
 }
 
 /// A row key hangs under a commit when the commit's key is its

@@ -19,7 +19,7 @@ use skia_safe::{Rect, Size};
 
 use crate::cell::document_text;
 
-type ChatChrome = editor::theme::ChatChrome;
+type ChatChrome = ::hikit::chrome::ChatChrome;
 
 #[derive(Clone)]
 pub enum ComposerCommand {
@@ -87,7 +87,7 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &theme);
     // The LIVE mark at the input's start is the editor's own caret
     // in the input dress (the Find query's), not a painted bar.
@@ -201,7 +201,7 @@ impl Composer {
 
     /// One line of the prompt register — the input's line box.
     fn prompt_line(store: &Store) -> f32 {
-        let prompt = env::Themes::of(store).ui().type_ramp.prompt;
+        let prompt = env::Themes::of(store).part(::editor::theme::TypeChrome::KEY).prompt;
         (prompt.size * prompt.line_height).round()
     }
 
@@ -244,8 +244,8 @@ impl Composer {
         props: ComposerProps,
     ) -> impl imba::Thunk<'a, ComposerCommand> + 'a {
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
-        let ink = theme.ui().ink.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
         let grid = crate::cell::Grid::of(store, width, false);
         let band_h = self.band_height(store, &chrome, panel_height);
         let editor_h = self.editor_height(store, &chrome, panel_height);
@@ -439,7 +439,7 @@ impl ComposerBand {
         nominal_height: f32,
     ) -> (f32, f32, f32) {
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         (
             self.composer.band_height(store, &chrome, nominal_height),
             stack.height(store, &chrome),
@@ -471,8 +471,8 @@ impl ComposerBand {
                 let (band_h, stack_h, toolbar_h) =
                     self.heights(store, props.stack, props.nominal_height);
                 let theme = env::Themes::of(store);
-                let chrome = theme.ui().chat.clone();
-                let ink = theme.ui().ink.clone();
+                let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
+                let ink = theme.part(::editor::theme::InkChrome::KEY);
                 let size = Size::new(constraints.max.width.max(1.0), band_h + stack_h + toolbar_h);
                 let grid = crate::cell::Grid::of(store, size.width, false);
                 let mut panel = imba::container::container(arena, size);
@@ -520,7 +520,7 @@ impl ComposerBand {
                 // value; everything else meets it there).
                 let row_y = size.height - toolbar_h + chrome.options_top;
                 let row_h = chrome.options_line;
-                let baseline = row_h * 0.5 + theme.ui().combo.value_size * 0.35;
+                let baseline = row_h * 0.5 + theme.part(::hikit::chrome::ComboChrome::KEY).value_size * 0.35;
                 let on_baseline = |style: &hikit::ui::TextStyle, label: String| {
                     let ascent = -style.font.metrics().1.ascent;
                     hikit::ui::text(style, label).pad_insets(imba::layout::Insets {

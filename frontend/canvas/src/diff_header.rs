@@ -85,7 +85,7 @@ pub struct DiffHeaderFace {
 impl DiffHeaderFace {
     pub fn new(store: &Store, ui: &UiCtx, spec: DiffHeaderSpec, band: f32, width: f32) -> Self {
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         let mut title_font = hikit::fonts::ui_text_font(ui, spec.title_size);
         if spec.bold {
             title_font.set_embolden(true);
@@ -369,7 +369,7 @@ pub struct FileBand<'a, Command> {
     /// The trailing word buttons, left to right.
     words: Vec<(&'static str, Box<dyn Fn() -> Command + 'a>)>,
     styles: FileBandStyles,
-    chrome: editor::theme::DiffChrome,
+    chrome: std::sync::Arc<::hikit::chrome::DiffChrome>,
     lead: f32,
     rule: skia_safe::Color,
     ground: skia_safe::Color,
@@ -391,11 +391,11 @@ struct FileBandStyles {
 /// for a header row before it lays out: the insets around the name's
 /// line box.
 pub fn file_band_height(store: &Store) -> f32 {
-    let chrome = env::Themes::of(store).ui().diff.clone();
+    let chrome = env::Themes::of(store).part(::hikit::chrome::DiffChrome::KEY);
     file_band_height_of(&chrome)
 }
 
-pub fn file_band_height_of(chrome: &editor::theme::DiffChrome) -> f32 {
+pub fn file_band_height_of(chrome: &::hikit::chrome::DiffChrome) -> f32 {
     chrome.band_pad_top
         + (chrome.file_name.size * chrome.file_name.line_height).ceil()
         + chrome.band_pad_bottom
@@ -404,8 +404,8 @@ pub fn file_band_height_of(chrome: &editor::theme::DiffChrome) -> f32 {
 impl<'a, Command: 'a> FileBand<'a, Command> {
     pub fn new(store: &Store, ui: &UiCtx, title: &str) -> Self {
         let theme = env::Themes::of(store);
-        let ink = theme.ui().ink.clone();
-        let chrome = theme.ui().diff.clone();
+        let ink = theme.part(::editor::theme::InkChrome::KEY);
+        let chrome = theme.part(::hikit::chrome::DiffChrome::KEY);
         let brief = hikit::ui::brief(store, ui);
         let name = hikit::ui::TextStyle {
             font: hikit::fonts::role_font(ui, &chrome.file_name),
@@ -429,7 +429,7 @@ impl<'a, Command: 'a> FileBand<'a, Command> {
                 ordinal: brief.clone().sized(chrome.ordinal_size),
                 word: brief,
             },
-            lead: theme.ui().window.code_text_edge,
+            lead: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
             rule: ink.rule.0,
             ground: chrome.fold_background.0,
             chrome,

@@ -16,7 +16,7 @@ use imba::{
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
 use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
-use ::editor::theme::ComboChrome;
+use crate::chrome::ComboChrome;
 use imba::list::{ActivateTrigger, ListOps};
 
 const MENU_MAX_ROWS: usize = 9;
@@ -312,8 +312,7 @@ where
         height: f32,
     ) -> impl Thunk<'a, ComboCommand<T::Command>> + 'a {
         let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let chrome = theme.combo.clone();
+        let chrome = themes.part(ComboChrome::KEY);
 
         let rule = chrome.menu_border.0;
         let width = self.cell_width(ui, &chrome);
@@ -560,7 +559,7 @@ where
     menu: &'a ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
     store: &'a Store,
     ui: &'a UiCtx,
-    chrome: ComboChrome,
+    chrome: std::sync::Arc<ComboChrome>,
     widest: f32,
     rows: usize,
     searching: bool,
@@ -725,12 +724,12 @@ mod tests {
     fn opening_recolors_the_selected_row_for_the_current_theme() {
         let mut store = Store::new();
         let ui = test_ui();
-        editor::env::Themes::set(&mut store, editor::theme::Theme::embedded());
+        editor::env::Themes::set(&mut store, editor::theme::embedded());
         let mut combo = stacked(&store, &ui, 3);
         let dark = crate::rows::selection_style(&store);
         assert_eq!(combo.list().selection_style().unwrap().fill, dark.fill);
 
-        editor::env::Themes::set(&mut store, editor::theme::Theme::light());
+        editor::env::Themes::set(&mut store, editor::theme::light());
         let light = crate::rows::selection_style(&store);
         assert_ne!(dark.fill, light.fill);
         drive(&mut combo, &mut store, &ui, ComboCommand::Open);

@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 alacritty_terminal = { version = "0.26.0", default-features = false }
 editor = { path = "../editor" }
 hikit = { path = "../hikit" }

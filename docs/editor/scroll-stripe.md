@@ -364,7 +364,8 @@ data is there; the commands are a small later rider).
 
 ## 7. Chrome
 
-`ui.scroll_stripe` in `UiTheme` (`#[serde(default)]`, physical px,
+The `scroll_stripe` theme part (`ScrollStripeChrome::KEY`,
+`#[serde(default)]`, physical px,
 both theme files): `width`, `inset` (the lane's gap left of the
 scrollbar's own lane), `min_height`. Style-level `stripe` colors per
 §1. No constant in code.

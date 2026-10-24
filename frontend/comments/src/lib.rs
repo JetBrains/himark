@@ -15,6 +15,7 @@ use editor::{location::ResourceLocation, markup::InlayKey};
 use imba::store::Store;
 use text::text::Text;
 
+pub mod chrome;
 pub mod cards;
 pub mod panel;
 pub mod rows;

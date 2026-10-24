@@ -12,7 +12,7 @@ use imba::{
 };
 use skia_safe::Size;
 
-type ChatChrome = editor::theme::ChatChrome;
+type ChatChrome = ::hikit::chrome::ChatChrome;
 
 #[derive(Clone)]
 pub enum StackCommand {

@@ -108,12 +108,12 @@ pub fn label_slice(
 }
 
 pub fn selection_style(store: &Store) -> SelectionStyle {
-    let ui = editor::env::Themes::of(store).ui().clone();
+    let ink = editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY);
     // The typographic design: the current row is a flat WASH across
     // the whole column — no well, no hairline, no accent bar
     // (docs/Design.md, "no glass, no pills, no boxes").
     SelectionStyle {
-        fill: ui.ink.selected.0,
+        fill: ink.selected.0,
         accent: skia_safe::Color::TRANSPARENT,
         accent_width: 0.0,
         accent_inset: 0.0,

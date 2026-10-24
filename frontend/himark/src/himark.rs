@@ -234,15 +234,15 @@ impl Himark {
         let total_started = crate::startup_profile::start();
         let mut store = Store::new();
 
-        let theme = ::editor::theme::Theme::embedded();
+        let theme = ::editor::theme::embedded();
         store.put(::editor::env::Themes(theme.clone()));
 
         let ui = std::rc::Rc::new(UiCtx::dont_use_too_slow());
         // The one world, into the ctx that paints.
         ui.set(fonts.world());
-        ui.set(theme.ui().scrollbar.style());
+        ui.set(theme.part(::editor::theme::ScrollbarChrome::KEY).style());
 
-        let overlay_font = hikit::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
+        let overlay_font = hikit::fonts::ui_text_font(&ui, theme.part(crate::stats_chrome::StatsChrome::KEY).font_size);
 
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
@@ -1295,10 +1295,10 @@ impl Himark {
     }
 
     pub(crate) fn refresh_chrome(&mut self, theme: &::editor::theme::Theme) {
-        self.ui.set(theme.ui().scrollbar.style());
+        self.ui.set(theme.part(::editor::theme::ScrollbarChrome::KEY).style());
         self.stats.set_font(hikit::fonts::ui_text_font(
             &self.ui,
-            theme.ui().stats.font_size,
+            theme.part(crate::stats_chrome::StatsChrome::KEY).font_size,
         ));
     }
 }

@@ -222,6 +222,7 @@ dependencies = [
  "locations",
  "recents",
  "rpds",
+ "serde",
  "serde_json",
  "skia-safe",
  "terminals",
@@ -722,6 +723,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
 ]
 
@@ -794,6 +796,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
  "text",
 ]
@@ -1404,6 +1407,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
  "text",
 ]
@@ -2271,6 +2275,7 @@ dependencies = [
  "editor",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
 ]
 
@@ -2430,6 +2435,7 @@ dependencies = [
  "imba",
  "mdparser",
  "operation",
+ "serde",
  "skia-safe",
  "text",
  "tree-sitter",
@@ -3087,6 +3093,8 @@ dependencies = [
  "resvg",
  "rope",
  "rpds",
+ "serde",
+ "serde_json",
  "skia-safe",
  "skrifa",
 ]
@@ -3416,6 +3424,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
  "text",
 ]
@@ -5510,6 +5519,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
 ]
 
@@ -5699,6 +5709,7 @@ dependencies = [
  "hikit",
  "imba",
  "rpds",
+ "serde",
  "skia-safe",
 ]
 

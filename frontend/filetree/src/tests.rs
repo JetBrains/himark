@@ -957,7 +957,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         None,
         &mut imba::effect::Batch::new().effects(),
     );
-    let dark = editor::env::Themes::of(&store).ui().tree.highlight.0;
+    let dark = editor::env::Themes::of(&store).part(::hikit::chrome::TreeChrome::KEY).highlight.0;
     assert_eq!(
         view.tree
             .list
@@ -968,8 +968,8 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         "born with the current theme's wash"
     );
 
-    editor::env::Themes::set(&mut store, ::editor::theme::Theme::light());
-    let light = editor::env::Themes::of(&store).ui().tree.highlight.0;
+    editor::env::Themes::set(&mut store, ::editor::theme::light());
+    let light = editor::env::Themes::of(&store).part(::hikit::chrome::TreeChrome::KEY).highlight.0;
     assert_ne!(dark, light, "the themes disagree, or this test is vacuous");
 
     let commands = {

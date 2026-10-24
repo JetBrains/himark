@@ -6,7 +6,7 @@ use editor::theme::StyleId;
 use std::ops::Range;
 
 fn test_theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn spans_on(document: &editor::document::Document, line: Range<u32>) -> Vec<(Range<u32>, StyleId)> {

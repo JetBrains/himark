@@ -18,7 +18,7 @@ use imba::{
 };
 use skia_safe::{Rect, Size};
 
-type ChatChrome = editor::theme::ChatChrome;
+type ChatChrome = ::hikit::chrome::ChatChrome;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CellKind {
@@ -191,8 +191,6 @@ pub(crate) struct Grid {
 
 impl Grid {
     pub(crate) fn of(store: &Store, width: f32, bare: bool) -> Self {
-        let theme = env::Themes::of(store);
-        let ui = theme.ui();
         if bare {
             return Self {
                 edge: 0.0,
@@ -200,11 +198,13 @@ impl Grid {
                 gap: 0.0,
             };
         }
-        let edge = ui.window.chat_text_edge;
+        let theme = env::Themes::of(store);
+        let chat = theme.part(::hikit::chrome::ChatChrome::KEY);
+        let edge = theme.part(::editor::theme::WindowChrome::KEY).chat_text_edge;
         Self {
             edge,
-            column: (width - edge - ui.chat.text_trailing).max(120.0),
-            gap: ui.chat.row_gap,
+            column: (width - edge - chat.text_trailing).max(120.0),
+            gap: chat.row_gap,
         }
     }
 }
@@ -306,7 +306,7 @@ impl Cell {
         markdown: &str,
         content_width: f32,
     ) -> (Self, f32) {
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         let grid = Grid::of(store, content_width, false);
         let lines = markdown.lines().count().clamp(1, 40) as f32;
         let estimate = (lines * chrome.min_cell_height).max(chrome.min_cell_height);
@@ -369,7 +369,7 @@ impl Cell {
     ) -> (Self, f32) {
         note_mount();
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         let grid = Grid::of(store, content_width, bare);
         let mut document = markdown_document(text, kind);
         let editor = document.add_editor(
@@ -408,7 +408,7 @@ impl Cell {
         header: DiffHeader,
         content_width: f32,
     ) -> (Self, f32) {
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         let height = Self::header_band(&chrome) + Grid::of(store, content_width, false).gap;
         (
             Self {
@@ -461,8 +461,9 @@ impl Cell {
     /// text column, so a call's name lands ON the column's edge.
     fn tools_lead(store: &Store, grid: Grid) -> f32 {
         let theme = env::Themes::of(store);
-        let ui = theme.ui();
-        (grid.edge - ui.chat.chevron_hang - ui.tree.text_x).max(0.0)
+        let hang = theme.part(::hikit::chrome::ChatChrome::KEY).chevron_hang;
+        let text_x = theme.part(::hikit::chrome::TreeChrome::KEY).text_x;
+        (grid.edge - hang - text_x).max(0.0)
     }
 
     fn tools_width(store: &Store, grid: Grid) -> f32 {
@@ -484,7 +485,7 @@ impl Cell {
     /// landing that changed content re-splices its lists with this,
     /// and the list's paint report stays a belt, not the mechanism.
     pub(crate) fn measured_height(&self, store: &Store) -> f32 {
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         // The gap is width-free: only the column depends on the width.
         let gap = Grid::of(store, 1000.0, self.bare).gap;
         let content = match &self.body {
@@ -618,7 +619,7 @@ impl Cell {
                     prepared,
                 } = built;
 
-                let gutter = theme.ui().editor_gutter.width;
+                let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
                 // Diff bodies run edge-to-edge — the fold strips and
                 // washes bump the chat's edges exactly.
                 let editor_width = (width - gutter).max(120.0);
@@ -1005,7 +1006,7 @@ impl View for Cell {
 }
 
 fn chrome_gutter(store: &Store) -> f32 {
-    env::Themes::of(store).ui().editor_gutter.width
+    env::Themes::of(store).part(::editor::theme::EditorGutterChrome::KEY).width
 }
 
 struct CellWidget<Inner> {
@@ -1068,7 +1069,7 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
         use imba::layout::LayoutExt as _;
         let CardFrame { cell, store, ui } = self;
         let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
+        let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
         let width = constraints.max.width.max(1.0);
         let grid = Grid::of(store, width, cell.bare);
         let under = imba::layout::Insets {
@@ -1255,8 +1256,8 @@ fn diff_header<'a>(
 ) -> impl imba::layout::Layout<'a, CellCommand> + imba::layout::LayoutValue + 'a {
     use imba::layout::LayoutExt as _;
     let theme = env::Themes::of(store);
-    let ink = theme.ui().ink.clone();
-    let chrome = theme.ui().chat.clone();
+    let ink = theme.part(::editor::theme::InkChrome::KEY);
+    let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
     let name = hikit::ui::row(store, ui).colored(ink.ink.0);
     let brief = hikit::ui::brief(store, ui);
     let mut words = imba::layout::Row::new(arena)

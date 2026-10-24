@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use std::{ops::Range, str};
 
 use skia_safe::{Canvas, Rect};
@@ -411,10 +412,11 @@ pub(crate) fn shape_inputs(
                 strikethrough: false,
                 squiggle: None,
             };
+            let styles = theme.styles();
             for decoration in decorations {
                 let range = decoration.range.start as usize..decoration.range.end as usize;
                 if range.start <= start && range.end >= end {
-                    let attributes = theme.attributes(decoration.id);
+                    let attributes = styles.attributes(decoration.id);
                     if attributes.bold {
                         run.bold = true;
                     }
@@ -589,6 +591,7 @@ impl ShapedLine {
             .iter()
             .filter(|decoration| {
                 theme
+                    .styles()
                     .attributes(decoration.id)
                     .background
                     .is_some_and(|background| background.kind == crate::theme::BackgroundKind::Text)
@@ -631,7 +634,7 @@ impl ShapedLine {
         let backgrounds: Vec<Band> = band_styled
             .iter()
             .filter_map(|decoration| {
-                let background = theme.attributes(decoration.id).background?;
+                let background = theme.styles().attributes(decoration.id).background?;
                 let start = shape_byte_of(
                     &inputs.excisions,
                     display.display_byte_at_raw(decoration.range.start),
@@ -812,7 +815,7 @@ impl ShapedLine {
             .first()
             .map(|row| (row.bottom - row.top).ceil().max(1.0))
             .unwrap_or(0.0);
-        text_height + block_gap(theme.base())
+        text_height + block_gap(theme.styles().base())
     }
 
     fn shape_byte_at_raw(&self, local: u32) -> usize {
@@ -1119,9 +1122,10 @@ pub(crate) fn rows_share_metrics(
     placeholders: &[ParagraphPlaceholder],
     theme: &crate::theme::Theme,
 ) -> bool {
+    let styles = theme.styles();
     placeholders.is_empty()
         && decorations.iter().all(|decoration| {
-            let attributes = theme.attributes(decoration.id);
+            let attributes = styles.attributes(decoration.id);
             !attributes.bold
                 && !attributes.italic
                 && attributes.font_families.is_none()

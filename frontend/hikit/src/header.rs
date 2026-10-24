@@ -52,7 +52,7 @@ impl HeaderStyles {
     }
 
     pub fn of(store: &Store, ui: &UiCtx) -> Self {
-        let chrome = editor::env::Themes::of(store).ui().toolbar.clone();
+        let chrome = editor::env::Themes::of(store).part(crate::chrome::ToolbarChrome::KEY);
         Self {
             title: crate::ui::title(store, ui).colored(chrome.title_color.0),
             subtitle: crate::ui::subtitle(store, ui),
@@ -64,7 +64,7 @@ impl HeaderStyles {
 }
 
 pub struct ColumnHeader<'a, Command> {
-    chrome: editor::theme::ToolbarChrome,
+    chrome: std::sync::Arc<crate::chrome::ToolbarChrome>,
     ground: skia_safe::Color,
     styles: HeaderStyles,
     /// The first word's x — the column's text edge.
@@ -81,8 +81,8 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         let theme = editor::env::Themes::of(store);
         let _ = arena;
         Self {
-            chrome: theme.ui().toolbar.clone(),
-            ground: theme.ui().ink.ground.0,
+            chrome: theme.part(crate::chrome::ToolbarChrome::KEY),
+            ground: theme.part(::editor::theme::InkChrome::KEY).ground.0,
             styles: HeaderStyles::of(store, ui),
             lead,
             leading: Vec::new(),
@@ -276,7 +276,7 @@ pub fn tabs_width(store: &Store, ui: &UiCtx, labels: &[&str]) -> f32 {
     if labels.is_empty() {
         return 0.0;
     }
-    let chrome = editor::env::Themes::of(store).ui().toolbar.clone();
+    let chrome = editor::env::Themes::of(store).part(crate::chrome::ToolbarChrome::KEY);
     let style = HeaderStyles::of(store, ui).dim;
     let words: f32 = labels
         .iter()

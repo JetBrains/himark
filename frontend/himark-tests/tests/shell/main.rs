@@ -63,7 +63,7 @@ impl TestPane {
             &[],
             &store,
             ui,
-            &::editor::theme::Theme::embedded(),
+            &::editor::theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
         let inlay_markup = document.add_markup();
@@ -101,7 +101,7 @@ impl TestPane {
             anchor,
             &self.store,
             ui,
-            &::editor::theme::Theme::embedded(),
+            &::editor::theme::embedded(),
             &mut batch.effects(),
         );
         documents::OpenDocuments::put_document(
@@ -129,7 +129,7 @@ impl TestPane {
         while let Some(effect) = pending.pop() {
             let command = himark::test_support::handle_effect(
                 effect,
-                &himark::test_support::test_workshop(::editor::theme::Theme::embedded()),
+                &himark::test_support::test_workshop(::editor::theme::embedded()),
             );
             let mut batch = imba::effect::Batch::new();
             self.view.perform(
@@ -182,7 +182,7 @@ impl TestPane {
             inlay,
             &self.store,
             ui,
-            &::editor::theme::Theme::embedded(),
+            &::editor::theme::embedded(),
             &mut batch.effects(),
         );
         documents::OpenDocuments::put_document(

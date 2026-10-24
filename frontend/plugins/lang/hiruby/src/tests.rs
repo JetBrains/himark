@@ -11,7 +11,7 @@ trait RunReparse {
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
         editor::reparse::ReparseHandler(editor::test_document::test_workshop(
-            editor::theme::Theme::embedded(),
+            editor::theme::embedded(),
         ))
         .reparse(self)
     }
@@ -26,7 +26,7 @@ fn languages() -> editor::reparse::SyntaxLanguages {
 fn parsed() -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::document::Document::from_language(
         text::text::Text::from_string_exact(SOURCE),

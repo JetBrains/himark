@@ -333,7 +333,7 @@ impl FindBar {
         ui: &'a UiCtx,
         width: f32,
     ) -> impl Thunk<'a, FindCommand> + 'a {
-        let chrome = crate::env::Themes::of(store).ui().search.clone();
+        let chrome = crate::env::Themes::of(store).part(crate::theme::SearchChrome::KEY);
         let height = chrome.input_height + chrome.pad;
         let pad = chrome.pad;
         let inner_height = (chrome.input_height - chrome.input_pad_y * 2.0).max(1.0);

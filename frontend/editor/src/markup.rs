@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use crate::theme::{StyleId, TextAttributes};
 
 use std::{ops::Range, sync::Arc};
@@ -269,17 +270,18 @@ impl BlockStyle {
     }
 
     pub fn resolved(&self, theme: &crate::theme::Theme) -> TextAttributes {
-        let mut merged = theme.base().clone();
+        let styles = theme.styles();
+        let mut merged = styles.base().clone();
         for id in &self.ids {
             match id {
                 StyleId::Indent(level) => {
-                    let entry = theme.attributes(StyleId::Indent(0));
+                    let entry = styles.attributes(StyleId::Indent(0));
                     if let Some(inset) = entry.inset {
                         merged.inset =
                             Some(merged.inset.unwrap_or(0.0) + inset * f32::from(*level));
                     }
                 }
-                id => merged.merge(theme.attributes(*id)),
+                id => merged.merge(styles.attributes(*id)),
             }
         }
         if self.alignment.is_some() {

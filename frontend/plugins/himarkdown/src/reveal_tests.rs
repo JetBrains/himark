@@ -7,7 +7,7 @@ use super::*;
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut document = document_from_markdown(
         "# Title\n\nsome **bold** words\n",
         store,

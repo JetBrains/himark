@@ -179,7 +179,7 @@ impl Document {
             // The fragment renders its own gutter — the BASE
             // document's line numbers, aligned with the host's
             // columns (cards only exist where the host shows one).
-            gutter_width: theme.ui().editor_gutter.width,
+            gutter_width: theme.part(crate::theme::EditorGutterChrome::KEY).width,
             base: None,
         };
         card.blur();

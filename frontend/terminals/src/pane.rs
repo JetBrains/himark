@@ -172,7 +172,7 @@ impl View for TerminalView {
                 );
                 return blank;
             };
-            let chrome = editor::env::Themes::of(store).ui().terminal.clone();
+            let chrome = editor::env::Themes::of(store).part(crate::chrome::TerminalChrome::KEY);
             let font = grid_font(ui, &chrome);
             let cell = cell_metrics(&font);
             let fallbacks = ui.env(|| FallbackFaces {
@@ -299,7 +299,7 @@ impl FallbackFaces {
     }
 }
 
-fn grid_font(ui: &UiCtx, chrome: &editor::theme::TerminalChrome) -> Font {
+fn grid_font(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> Font {
     let states = chrome.font_families.clone();
     let typeface = ui.env(|| {
         let face = editor::env::ui_typeface(ui, &states, skia_safe::FontStyle::normal())
@@ -321,7 +321,7 @@ fn cell_metrics(font: &Font) -> (f32, f32, f32) {
 struct TerminalWidget<'a> {
     session: &'a Session,
     size: Size,
-    chrome: editor::theme::TerminalChrome,
+    chrome: std::sync::Arc<crate::chrome::TerminalChrome>,
     font: Font,
     cell: (f32, f32, f32),
     fallbacks: &'a FallbackFaces,

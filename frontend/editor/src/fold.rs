@@ -56,7 +56,7 @@ impl Document {
         };
         let chip = Inlay::new(
             InlayMode::Instead(InsteadKind::Inline),
-            FoldChip::appearing(born, theme.ui().fold_chip.height),
+            FoldChip::appearing(born, theme.part(crate::theme::FoldChipChrome::KEY).height),
         );
         self.push_inlay(id, range, chip, store, ui, theme, fx);
     }
@@ -104,7 +104,7 @@ impl Document {
         };
         match departing {
             true => chip.depart(),
-            false => chip.revive(theme.ui().fold_chip.height),
+            false => chip.revive(theme.part(crate::theme::FoldChipChrome::KEY).height),
         }
         if chip.departed() {
             return self.remove_inlay(key, store, ui, theme, fx);
@@ -224,7 +224,7 @@ impl imba::View for FoldChip {
                 use imba::event::{Event, EventResult, MouseButton};
                 use imba::thunk_ext::ThunkExt;
 
-                let chrome = crate::env::Themes::of(store).ui().fold_chip.clone();
+                let chrome = crate::env::Themes::of(store).part(crate::theme::FoldChipChrome::KEY);
                 let animating = self.height.running();
                 let height = match animating || self.departing {
                     true => self.height.value(),

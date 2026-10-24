@@ -137,7 +137,7 @@ impl View for TreeLabel {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let mut style = crate::ui::RowStyle::drawer(store, ui);
         style.air = crate::ui::space::S;
-        let tree = editor::env::Themes::of(store).ui().tree.clone();
+        let tree = editor::env::Themes::of(store).part(crate::chrome::TreeChrome::KEY);
         // State is TYPOGRAPHIC (docs/Design.md): a directory is its
         // name in the strong row rank with a dim "/" glued on; a
         // file is the plain row rank; a note is dim.
@@ -348,8 +348,8 @@ where
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, TreeItemCommand<V::Command>> {
         let TreeItemChrome { view, store, ui } = self;
-        let tree = editor::env::Themes::of(store).ui().tree.clone();
-        let colors = editor::env::Themes::of(store).ui().peeker.clone();
+        let tree = editor::env::Themes::of(store).part(crate::chrome::TreeChrome::KEY);
+        let colors = editor::env::Themes::of(store).part(crate::chrome::PeekerChrome::KEY);
         let inset = f32::from(view.depth) * tree.indent;
         let width = constraints.max.width.max(1.0);
         let offset = inset + tree.text_x;

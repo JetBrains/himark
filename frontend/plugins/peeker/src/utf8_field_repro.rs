@@ -23,7 +23,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }),
         Arc::new(|| {}),
     );
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     for (name, source) in [
         (
             "search.md",

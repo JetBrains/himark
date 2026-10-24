@@ -14,7 +14,7 @@ use crate::TsTree;
 
 
 fn theme() -> editor::theme::Theme {
-    editor::theme::Theme::embedded()
+    editor::theme::embedded()
 }
 
 fn rust_tree(source: &str) -> tree_sitter::Tree {

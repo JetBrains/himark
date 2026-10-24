@@ -624,7 +624,7 @@ pub fn install_opened_pair(
     let new_id = register_or_reuse(store, documents, pair.new);
     let half_width = match embedded {
         true => {
-            let gutter = editor::env::Themes::of(store).ui().editor_gutter.width;
+            let gutter = editor::env::Themes::of(store).part(::editor::theme::EditorGutterChrome::KEY).width;
             (pair.width - gutter).max(120.0)
         }
         false => OPEN_HALF_WIDTH,

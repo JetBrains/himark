@@ -700,9 +700,9 @@ fn canvas_pane_button_x(engine: &HimarkEngine, width: f32) -> f32 {
     let theme = editor::env::Themes::of(engine.app.store());
     let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
     let word = |label: &str| brief.shaper.advance(&brief.font, label);
-    let gap = theme.ui().diff.band_gap;
+    let gap = theme.part(::hikit::chrome::DiffChrome::KEY).band_gap;
     width - workbench::dock::DOCK_WIDTH
-        - theme.ui().diff.band_pad_right
+        - theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right
         - word("Open source")
         - gap
         - word("Open pane") * 0.5
@@ -714,7 +714,7 @@ fn canvas_source_button_x(engine: &HimarkEngine, width: f32) -> f32 {
     let theme = editor::env::Themes::of(engine.app.store());
     let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
     let word = brief.shaper.advance(&brief.font, "Open source");
-    width - workbench::dock::DOCK_WIDTH - theme.ui().diff.band_pad_right - word * 0.5
+    width - workbench::dock::DOCK_WIDTH - theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right - word * 0.5
 }
 
 /// The center of the root row's REFRESH chip in the dock's changes
@@ -727,7 +727,7 @@ fn changes_refresh_x(engine: &HimarkEngine, width: f32) -> f32 {
     let theme = editor::env::Themes::of(store);
     let style = hikit::ui::RowStyle::drawer(store, &ui);
     let word = style.trail.shaper.advance(&style.trail.font, "refresh");
-    let hang = (theme.ui().window.side_trailing - style.trail_inset).max(0.0);
+    let hang = (theme.part(::editor::theme::WindowChrome::KEY).side_trailing - style.trail_inset).max(0.0);
     width - hang - hikit::ui::space::M - hikit::ui::space::S - word * 0.5
 }
 
@@ -748,7 +748,7 @@ fn sole_entity(engine: &HimarkEngine) -> &workbench::window::Window {
 /// rows above) — read off the view, not re-derived.
 fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
     let store = engine.app.store();
-    let band = editor::env::Themes::of(store).ui().toolbar.height;
+    let band = editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height;
     let (top, height) = sole_entity(engine)
         .dock_panel()
         .and_then(|side| side.as_any().downcast_ref::<filetree::SessionTreeView>())
@@ -761,7 +761,7 @@ fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
 /// the same view wearing either set — under the dock's tabs band.
 fn changes_row_y(engine: &HimarkEngine, index: usize) -> f32 {
     let store = engine.app.store();
-    let band = editor::env::Themes::of(store).ui().toolbar.height;
+    let band = editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height;
     let pane = sole_entity(engine)
         .dock_panel()
         .and_then(|side| {
@@ -791,7 +791,7 @@ fn canvas_composer_band(engine: &HimarkEngine) -> f32 {
 /// half the band.
 fn canvas_band_y(engine: &HimarkEngine) -> f32 {
     let store = engine.app.store();
-    editor::env::Themes::of(store).ui().toolbar.height
+    editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height
         + canvas_pill_strip(engine)
         + canvas_composer_band(engine)
         + ::canvas::diff_header::file_band_height(store) * 0.5
@@ -6472,8 +6472,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     let edits_cell = seeded.cells[2];
 
     let window_chrome = editor::env::Themes::of(engine.app.store())
-        .ui()
-        .toolbar
+        .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     let (strip_x, strip_y) = (seeded.origin.0, seeded.origin.1 + window_chrome);
     assert!(himark::test_driver::click(
@@ -6486,8 +6485,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     assert!(toolbar(&engine).edits.open, "the EDITS menu stands");
 
     let row_h = editor::env::Themes::of(engine.app.store())
-        .ui()
-        .combo
+        .part(::hikit::chrome::ComboChrome::KEY)
         .menu_row_height;
     assert!(himark::test_driver::click(
         &mut engine.app,
@@ -6935,8 +6933,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             shot
         };
         let chrome_top = editor::env::Themes::of(engine.app.store())
-            .ui()
-            .toolbar
+            .part(::hikit::chrome::ToolbarChrome::KEY)
             .height;
         assert!(himark::test_driver::click(
             &mut engine.app,
@@ -7068,8 +7065,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     });
 
     let chrome_top = editor::env::Themes::of(engine.app.store())
-        .ui()
-        .toolbar
+        .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     // The canvas sits in a split half here, so the COMMIT cell eats
     // the right side of the band — click well inside the editor zone.
@@ -8424,7 +8420,7 @@ fn published_diagnostics_squiggle_the_open_document() {
         // outside the tree's determinism — and a draw-time blip must
         // not fake the clear-vs-squiggled difference either.
         let theme = editor::env::Themes::of(engine.app.store());
-        let chrome = &theme.ui().stats;
+        let chrome = &theme.part(::himark::stats_chrome::StatsChrome::KEY);
         let mut mask = skia_safe::Paint::default();
         mask.set_color(skia_safe::Color::BLACK);
         surface.canvas().draw_rect(

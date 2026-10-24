@@ -41,7 +41,7 @@ fn a_parsed_document_costs_what_it_costs() {
     let languages = crate::languages();
     let store = imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
 
     // A real source file, parsed exactly the way a chat diff cell
     // parses each side of an edit.

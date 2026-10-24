@@ -305,17 +305,17 @@ impl SessionToolbar {
     ) -> f32 {
         use imba::layout::{Layout as _, LayoutExt as _};
         let themes = editor::env::Themes::of(store);
-        let theme = themes.ui();
-        let gap = theme.chat.options_gap;
+        let chrome = themes.part(::hikit::chrome::ComboChrome::KEY);
+        let gap = themes.part(::hikit::chrome::ChatChrome::KEY).options_gap;
         let dot = hikit::ui::brief(store, ui)
-            .sized(theme.combo.value_size)
-            .colored(theme.ink.ink_4.0);
+            .sized(chrome.value_size)
+            .colored(themes.part(editor::theme::InkChrome::KEY).ink_4.0);
         let dot_ascent = -dot.font.metrics().1.ascent;
-        let dot_top = (height * 0.5 + theme.combo.value_size * 0.35 - dot_ascent).max(0.0);
+        let dot_top = (height * 0.5 + chrome.value_size * 0.35 - dot_ascent).max(0.0);
         let dot_w = imba::layout::text_advance(ui, &dot.font, "\u{00B7}");
         // The combo cell keeps a trailing gap (and a chevron slot the
         // theme zeroes) after its word; the dot measures from the word.
-        let tail = theme.combo.gap + theme.combo.chevron + theme.combo.pad;
+        let tail = chrome.gap + chrome.chevron + chrome.pad;
         let mut x = left;
         let combos: [(&Combo, fn(ComboCommand) -> ToolbarCommand); 4] = [
             (&self.model, ToolbarCommand::Model),
@@ -340,7 +340,7 @@ impl SessionToolbar {
                 span(index, x, 0.0);
                 continue;
             }
-            let width = combo.cell_width(ui, &theme.combo);
+            let width = combo.cell_width(ui, &chrome);
             let lead = match first {
                 true => 0.0,
                 false => gap + dot_w + gap,

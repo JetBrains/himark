@@ -128,7 +128,7 @@ impl View for MenuView {
         use imba::layout::LayoutExt as _;
         imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: Constraints| {
-                let chrome = editor::env::Themes::of(store).ui().combo.clone();
+                let chrome = editor::env::Themes::of(store).part(crate::chrome::ComboChrome::KEY);
                 let width = self
                     .widest(store, ui)
                     .max(chrome.menu_min_width)

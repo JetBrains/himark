@@ -16,7 +16,7 @@ fn theme() -> editor::theme::Theme {
 fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let theme = editor::theme::Theme::embedded();
+    let theme = editor::theme::embedded();
     let mut document =
         editor::document::Document::new(Text::from_string_exact(""), editor::markup::Markup::new())
             .with_syntax(
@@ -145,7 +145,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
 fn test_cx_for_probe() -> std::sync::Arc<editor::env::Workshop> {
     std::sync::Arc::new(editor::env::Workshop::new(
         editor::parley_line::world(),
-        editor::theme::Theme::embedded(),
+        editor::theme::embedded(),
     ))
 }
 

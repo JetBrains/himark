@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 mod chrome;
+pub mod contents_chrome;
 mod entry;
 
 pub use entry::{ContentsEntry, ContentsRow, Place};
@@ -888,13 +889,14 @@ fn contents_column<'a, Command: 'a, Keys>(
 where
     Keys: imba::layout::EventHandler<Command> + 'a,
 {
-    let theme = editor::env::Themes::of(store).ui().clone();
+    let theme = editor::env::Themes::of(store);
+    let window = theme.part(::editor::theme::WindowChrome::KEY);
     chrome::ContentsColumn {
         content,
-        width: theme.window.side_width,
-        top_gap: theme.contents.top_gap,
-        ground: theme.ink.ground.0,
-        rule: theme.window.divider.0,
+        width: window.side_width,
+        top_gap: theme.part(crate::contents_chrome::ContentsChrome::KEY).top_gap,
+        ground: theme.part(::editor::theme::InkChrome::KEY).ground.0,
+        rule: window.divider.0,
         keys,
     }
 }

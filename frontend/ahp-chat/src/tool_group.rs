@@ -669,7 +669,7 @@ impl ToolGroup {
     }
 
     fn body_width(&self, store: &Store) -> f32 {
-        let tree = env::Themes::of(store).ui().tree.clone();
+        let tree = env::Themes::of(store).part(::hikit::chrome::TreeChrome::KEY);
         let offset = f32::from(self.depth() + 1) * tree.indent + tree.text_x;
         (self.width - offset).max(120.0)
     }
@@ -716,8 +716,8 @@ fn face_row<'a>(
     width: f32,
 ) -> impl imba::layout::Layout<'a, ToolRowCommand> + imba::layout::LayoutValue + 'a {
     let theme = env::Themes::of(store);
-    let chat = theme.ui().chat.clone();
-    let ink = theme.ui().ink.clone();
+    let chat = theme.part(::hikit::chrome::ChatChrome::KEY);
+    let ink = theme.part(::editor::theme::InkChrome::KEY);
     let shaper = imba::layout::TextShaper::of(ui);
     let style = |font: skia_safe::Font, color: skia_safe::Color| hikit::ui::TextStyle {
         font,

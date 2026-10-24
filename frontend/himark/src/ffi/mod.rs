@@ -824,8 +824,7 @@ impl HimarkEngine {
 
     pub fn toolbar_height(&self) -> f32 {
         editor::env::Themes::of(self.app.store())
-            .ui()
-            .toolbar
+            .part(::hikit::chrome::ToolbarChrome::KEY)
             .height
     }
 

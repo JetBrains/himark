@@ -30,7 +30,7 @@ trait RunReparse {
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
         editor::reparse::ReparseHandler(editor::test_document::test_workshop(
-            editor::theme::Theme::embedded(),
+            editor::theme::embedded(),
         ))
         .reparse(self)
     }

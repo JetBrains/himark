@@ -232,7 +232,7 @@ impl View for ChatRow {
             move |_arena: &'a Arena, constraints: Constraints| match self {
                 ChatRow::Loader { armed } => {
                     use imba::layout::Layout as _;
-                    let chrome = env::Themes::of(store).ui().chat.clone();
+                    let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
                     let width = constraints.max.width.max(1.0);
                     let text = if *armed {
                         "older turns above"

@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::ThemeStyles as _;
 use super::*;
 
 /// The spike's parity meter: both roads shape the SAME bytes
@@ -16,8 +17,9 @@ fn shaper() -> std::rc::Rc<crate::parley_line::Shaper> {
 #[test]
 fn parley_shapes_paints_and_answers_geometry() {
     let text = "fn main() { простой текст } -> done";
-    let theme = crate::theme::Theme::embedded();
-    let base = theme.base();
+    let theme = crate::theme::embedded();
+    let styles = theme.styles();
+    let base = styles.base();
     let size = base.font_size.expect("theme carries a base size");
     let color = base.color.expect("theme carries a base ink");
 

@@ -141,9 +141,8 @@
     },
     "comment": {
       "font_families": [
-        "SF Pro Text",
-        "Helvetica Neue",
-        "Segoe UI",
+        "Bricolage Grotesque",
+        "system-ui",
         "sans-serif"
       ],
       "color": "#5d68a0"

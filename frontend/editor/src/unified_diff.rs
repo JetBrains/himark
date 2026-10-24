@@ -99,7 +99,7 @@ impl UnifiedDiffView {
             reports_geometry: true,
             location: self.split.right.location.clone(),
 
-            gutter_width: crate::env::Themes::of(store).ui().editor_gutter.width,
+            gutter_width: crate::env::Themes::of(store).part(crate::theme::EditorGutterChrome::KEY).width,
             base: Some((self.split.left.document.clone(), self.split.state.diff_id())),
         })
     }

@@ -319,7 +319,7 @@ const EAGER_TAIL: usize = 12;
 /// A sleeping row's reserved band — a line-count estimate off the
 /// SPECS. Wrong is fine: the wake's correction lands above the
 /// anchor and rides the settle pulse.
-fn sleeping_height(turn: &model::Turn, chrome: &editor::theme::ChatChrome) -> f32 {
+fn sleeping_height(turn: &model::Turn, chrome: &::hikit::chrome::ChatChrome) -> f32 {
     let line = chrome.title_size * 1.5;
     let body: f32 = crate::turn::dress(turn)
         .iter()
@@ -520,7 +520,7 @@ impl ChatPanel {
     }
 
     pub(crate) fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         let band = self
             .first_view()
             .map(|view| view.band.composer.band_height(store, &chrome, nominal_height))
@@ -1757,7 +1757,7 @@ impl ChatPanel {
             move |_arena: &'a Arena, constraints: Constraints| {
                 let size = constraints.max;
                 let theme = env::Themes::of(store);
-                let chrome = theme.ui().chat.clone();
+                let chrome = theme.part(::hikit::chrome::ChatChrome::KEY);
                 view.panel_width
                     .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
 
@@ -1967,7 +1967,7 @@ impl ChatView {
         eager: usize,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> ListSlice<ChatRow, ahp_wire::client::TurnId> {
-        let chrome = env::Themes::of(store).ui().chat.clone();
+        let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         let mut slice = ListSlice::new();
         if lead_loader {
             slice.push_sized(ChatRow::Loader { armed: true }, chrome.loader_height);
@@ -2015,7 +2015,7 @@ impl ChatView {
         if !self.has_loader {
             return;
         }
-        let height = env::Themes::of(store).ui().chat.loader_height;
+        let height = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY).loader_height;
         self.rows
             .content_mut()
             .splice(0..1, [(ChatRow::Loader { armed }, height)]);

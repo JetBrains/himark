@@ -241,7 +241,7 @@ impl Himark {
                     return;
                 }
                 let width = document.layout_width(entity.editor());
-                let theme = ::editor::theme::Theme::embedded();
+                let theme = ::editor::theme::embedded();
                 let mut reference = editor::editor_view::EditorView::complete(
                     document.clone(),
                     width,
@@ -301,7 +301,7 @@ impl Himark {
 
         let ui = ::editor::env::Themes::of(self.store());
         Some((
-            columns.main.x + ui.ui().window.content_pad + ui.ui().editor_gutter.width + 24.0,
+            columns.main.x + ui.part(::editor::theme::WindowChrome::KEY).content_pad + ui.part(::editor::theme::EditorGutterChrome::KEY).width + 24.0,
             columns.body_top() + y_in_document - pane.scroll_y() + 20.0,
         ))
     }

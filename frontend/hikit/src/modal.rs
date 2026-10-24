@@ -500,7 +500,7 @@ impl<V: View> View for Paneled<V> {
             use imba::layout::Layout as _;
             use imba::layout::LayoutExt as _;
             let size = constraints.max;
-            let ink = ::editor::env::Themes::of(store).ui().ink.clone();
+            let ink = ::editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY);
             let width = size.width.max(1.0);
             let column = self
                 .inner
