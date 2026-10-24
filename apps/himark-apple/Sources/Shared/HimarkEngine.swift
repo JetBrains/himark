@@ -60,6 +60,11 @@ final class EngineFrameClock {
 }
 
 final class HimarkEngine {
+    // Read once: the environment getter rebuilds the whole dictionary
+    // per call, and drainReveal runs on the tick road.
+    private static let traceReveal =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil
+
     private let engine: OpaquePointer
 
     var raw: OpaquePointer { engine }
@@ -99,7 +104,7 @@ final class HimarkEngine {
             var x: Float = 0, y: Float = 0, w: Float = 0, h: Float = 0
             var placement: UInt32 = 0
             guard himark_take_reveal(engine, &owner, &x, &y, &w, &h, &placement) else { return }
-            if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+            if Self.traceReveal {
                 NSLog("[reveal] drain: owner \(owner) placement \(placement) handler? \(revealHandlers[owner] != nil)")
             }
             guard let handler = revealHandlers[owner] else {
@@ -288,7 +293,7 @@ final class HimarkEngine {
         guard place.raw != 0 else { return HimarkBridge(raw: 0) }
         defer { himark_place_release(engine, place) }
         let bridge = himark_bridge_mint(engine, place)
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+        if Self.traceReveal {
             NSLog("[reveal] mint: \(kind) -> bridge \(bridge.raw)")
         }
         return bridge
@@ -301,7 +306,7 @@ final class HimarkEngine {
     /// is up and releases when the screen pops.
     func mint(place: HimarkPlace) -> HimarkBridge {
         let bridge = himark_bridge_mint(engine, place)
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+        if Self.traceReveal {
             NSLog("[reveal] mint(place) -> bridge \(bridge.raw)")
         }
         return bridge

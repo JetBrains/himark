@@ -81,6 +81,12 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     // with where the scroller has already moved the clip view.
     private static let traceSync =
         ProcessInfo.processInfo.environment["HIMARK_TRACE_SYNC"] != nil
+    // Read once: the environment getter rebuilds the whole dictionary
+    // per call, and these guards sit on the wheel/band hot paths.
+    private static let traceScroll =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil
+    private static let traceBand =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_BAND"] != nil
     private var presents = 0
     private var driftPresents = 0
     private var rolledBack = 0
@@ -510,7 +516,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
 
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_BAND"] != nil {
+        if Self.traceBand {
             NSLog("band bridge \(bridgeId.raw) bounds \(bounds.size) visible \(visible) content \(ch / Float(scale))")
         }
         let offsetY = Float(max(visible.minY, 0) * scale)
@@ -881,7 +887,7 @@ class HimarkBridgeView: NSView, NSTextInputClient {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+        if Self.traceScroll {
             NSLog("wheel reached bridge \(bridgeId.raw) dy \(event.scrollingDeltaY) embedded \(scrollEmbedded)")
         }
         if scrollEmbedded {

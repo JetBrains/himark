@@ -885,10 +885,6 @@ struct StyleKey {
     /// unwrapped shape. Rounding bounds the memo's churn while a
     /// column resizes.
     clip: u32,
-    /// The variable axes the font's typeface stands at (wght, wdth)
-    /// — an instanced chrome face shapes at its instance.
-    weight: u32,
-    width: u32,
 }
 
 /// The (weight, width) a typeface is INSTANCED at, read off its
@@ -997,7 +993,11 @@ impl TextShaper {
     ) -> std::rc::Rc<ShapedLabel> {
         let clock = self.clock.get() + 1;
         self.clock.set(clock);
-        let (weight, width) = typeface_axes(&font.typeface());
+        // The typeface's id STANDS FOR its variation position: an
+        // instanced chrome face is its own typeface object, so the
+        // (wght, wdth) it shapes at never needs reading here — the
+        // CoreText query behind `typeface_axes` stays off the hit
+        // path and runs once per shape, in `shape_clipped`.
         let style = StyleKey {
             typeface: font.typeface().unique_id(),
             size: font.size().to_bits(),
@@ -1005,8 +1005,6 @@ impl TextShaper {
             argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
             embolden: font.is_embolden(),
             clip: clip.map_or(0, |width| width.round().max(1.0) as u32),
-            weight: weight.map_or(0, f32::to_bits),
-            width: width.map_or(0, f32::to_bits),
         };
         if let Some(entry) = self
             .labels

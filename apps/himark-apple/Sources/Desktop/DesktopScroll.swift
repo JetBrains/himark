@@ -51,6 +51,14 @@ final class WheelRouter {
 /// document view IS the embedded bridge; the engine measures, the
 /// scroller owns the physics, reveals land here.
 final class DesktopScrollHost: NSView {
+    // Read once: the environment getter rebuilds the whole dictionary
+    // per call, and these guards sit on per-event paths (routed
+    // wheels, bounds changes, measures, reveals).
+    private static let traceScroll =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil
+    private static let traceReveal =
+        ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil
+
     private let host: DesktopHost
     private let minter: () -> HimarkBridge
     private(set) var bridge = HimarkBridge(raw: 0)
@@ -103,7 +111,7 @@ final class DesktopScrollHost: NSView {
             // A standing overlay (completion popup) takes the wheel
             // before the scroller's physics do.
             if self.content?.offerWheel(event) == true { return }
-            if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+            if Self.traceScroll {
                 let before = self.scroll.contentView.bounds.origin.y
                 self.scroll.scrollWheel(with: event)
                 let after = self.scroll.contentView.bounds.origin.y
@@ -195,7 +203,7 @@ final class DesktopScrollHost: NSView {
         }
         content = view
         needsLayout = true
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+        if Self.traceScroll {
             NSLog("minted bridge \(bridge.raw): flipped \(view.isFlipped) embedded \(view.scrollEmbedded)")
         }
         // DEBUG harness: HIMARK_DEBUG_CLICK="x,y,delay" clicks this
@@ -319,7 +327,7 @@ final class DesktopScrollHost: NSView {
 
     private func contentMeasured(_ size: CGSize) {
         if size.height.isFinite { measured = size.height }
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+        if Self.traceScroll {
             NSLog("measured bridge \(bridge.raw): content \(Int(size.height)) clip \(Int(scroll.contentSize.height)) doc \(Int(content?.frame.height ?? -1))")
         }
         guard let content, size.height.isFinite else { return }
@@ -345,7 +353,7 @@ final class DesktopScrollHost: NSView {
 
     private var dumpedJump = false
     @objc private func boundsChanged() {
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_SCROLL"] != nil {
+        if Self.traceScroll {
             let y = scroll.contentView.bounds.origin.y
             let doc = content?.frame.height ?? -1
             let clip = scroll.contentSize.height
@@ -384,7 +392,7 @@ final class DesktopScrollHost: NSView {
         if Date().timeIntervalSince(lastUserScroll) < 0.3 {
             return
         }
-        if ProcessInfo.processInfo.environment["HIMARK_TRACE_REVEAL"] != nil {
+        if Self.traceReveal {
             NSLog("[reveal] host scrolls bridge \(bridge.raw) to \(rect) \(placement) doc \(Int(content?.frame.height ?? -1)) clip \(Int(scroll.contentSize.height)) at \(scroll.contentView.bounds.origin.y)")
         }
         switch placement {
