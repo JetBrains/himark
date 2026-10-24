@@ -9,6 +9,14 @@
 
 use skia_safe::{Rect, Size};
 
+/// Which edge a drawer rolls in from: the LEFT one covers the chat
+/// column (Sessions), the RIGHT one the side column (Contents).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DrawerSide {
+    Left,
+    Right,
+}
+
 /// A horizontal span: where a column starts and how wide it lays.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Span {
@@ -70,6 +78,11 @@ pub struct Columns {
     /// Where the Sessions drawer stands: over the chat column, or
     /// where the column would stand while the chat hides.
     pub drawer: Span,
+
+    /// Where the Contents drawer stands: over the side column, or
+    /// where it would stand while the dock is closed — the left
+    /// drawer's mirror.
+    pub right_drawer: Span,
 }
 
 impl Columns {
@@ -89,6 +102,14 @@ impl Columns {
     /// The dock's revealed pixels from the right edge.
     pub fn dock_revealed(&self) -> f32 {
         self.dock.map_or(0.0, |dock| dock.revealed)
+    }
+
+    /// A drawer's span, by the edge it rolls in from.
+    pub fn drawer_span(&self, side: DrawerSide) -> Span {
+        match side {
+            DrawerSide::Left => self.drawer,
+            DrawerSide::Right => self.right_drawer,
+        }
     }
 
     /// The body rect of a span: under the band, to the floor.

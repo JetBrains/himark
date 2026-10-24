@@ -796,6 +796,9 @@ fn dump_contents_drawer_screenshot() {
         let documents = app.sole_documents();
         documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
     }
+    // Over an open side column: the drawer stands on the dock.
+    super::dock::show_dock(&mut app, "files", "test.files");
+    super::dock::settle(&mut app, &mut surface);
     assert!(app.perform_registered(window, "toc.toggle"));
     let landed = land_drawer_outline(&mut app);
     super::dock::settle(&mut app, &mut surface);
@@ -857,7 +860,14 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
             let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
             fx.scope(
                 move |command| himark::shell::content(window, command),
-                |fx| entity.show_side_panel(store, Box::new(self.0.clone()), fx),
+                |fx| {
+                    entity.show_side_panel(
+                        store,
+                        Box::new(self.0.clone()),
+                        ::workbench::columns::DrawerSide::Right,
+                        fx,
+                    )
+                },
             );
             ::workbench::window::Windows::put(store, window, entity);
         }

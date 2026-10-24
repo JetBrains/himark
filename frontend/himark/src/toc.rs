@@ -121,7 +121,7 @@ impl crate::commands::HimarkCommand for ToggleToc {
         );
         fx.scope(
             move |command| crate::shell::content(window, command),
-            |fx| entity.show_side_panel(store, panel, fx),
+            |fx| entity.show_side_panel(store, panel, ::workbench::columns::DrawerSide::Right, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
     }

@@ -321,7 +321,11 @@ impl Toolbar {
                 }
                 if let Some((label, command)) = drawer {
                     if workbench.root.focused_pane().offers_drawer(store) {
-                        main_section = main_section.button(label, word(command));
+                        main_section = main_section.trailing_tab(
+                            label,
+                            workbench.contents_open(),
+                            word(command),
+                        );
                     }
                 }
             }

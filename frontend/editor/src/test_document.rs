@@ -23,8 +23,15 @@ use crate::{document::Document, markup::Markup};
 /// production code is handed the real ctx and must thread it.
 pub fn test_ui() -> &'static imba::ui::UiCtx {
     thread_local! {
-        static UI: &'static imba::ui::UiCtx =
-            Box::leak(Box::new(imba::ui::UiCtx::dont_use_too_slow()));
+        static UI: &'static imba::ui::UiCtx = {
+            let ui = Box::leak(Box::new(imba::ui::UiCtx::dont_use_too_slow()));
+            // Seeded with the editor's embedded faces, like the edge
+            // seeds the app's ctx: a layout measured here shapes with
+            // the SAME faces the app lays — the chrome face among
+            // them, which no system scan would find.
+            ui.set(crate::parley_line::world());
+            ui
+        };
     }
     UI.with(|ui| *ui)
 }

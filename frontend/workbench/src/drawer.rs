@@ -17,6 +17,8 @@ use imba::{
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 
+use crate::columns::DrawerSide;
+
 const SLIDE_MS: f64 = 160.0;
 
 #[derive(Clone)]
@@ -41,6 +43,9 @@ pub(crate) struct Drawer {
     /// The panel's width — how far it rolls.
     width: f32,
 
+    /// The edge it rolls in from.
+    side: DrawerSide,
+
     offset: Animation<f32>,
 
     closing: bool,
@@ -53,6 +58,7 @@ impl Clone for Drawer {
         Self {
             content: self.content.clone(),
             width: self.width,
+            side: self.side,
             offset: self.offset,
             closing: self.closing,
 
@@ -62,9 +68,9 @@ impl Clone for Drawer {
 }
 
 impl Drawer {
-    pub fn new(content: Box<dyn ModalView>, width: f32) -> Self {
+    pub fn new(content: Box<dyn ModalView>, width: f32, side: DrawerSide) -> Self {
         let mut offset = Animation::done(
-            -width,
+            Self::away(width, side),
             Motion::Ease {
                 duration_ms: SLIDE_MS,
                 easing: Easing::EaseOut,
@@ -74,10 +80,23 @@ impl Drawer {
         Self {
             content,
             width,
+            side,
             offset,
             closing: false,
             request: None,
         }
+    }
+
+    /// Where the panel stands rolled AWAY: its width past its edge.
+    fn away(width: f32, side: DrawerSide) -> f32 {
+        match side {
+            DrawerSide::Left => -width,
+            DrawerSide::Right => width,
+        }
+    }
+
+    pub(crate) fn side(&self) -> DrawerSide {
+        self.side
     }
 
     pub(crate) fn content(&self) -> &dyn ModalView {
@@ -93,7 +112,7 @@ impl Drawer {
             return;
         }
         self.closing = true;
-        self.offset.set(-self.width);
+        self.offset.set(Self::away(self.width, self.side));
     }
 }
 

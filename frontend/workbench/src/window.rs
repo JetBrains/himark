@@ -568,12 +568,8 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
                     .handle_event(arena, &scoped(self.focus == LayerFocus::Toolbar), viewport)
                     .map(WindowCommand::Toolbar),
             );
-            if let Some(side) = &self.side {
-                result = result.merge(
-                    side.handle_event(arena, &scoped(self.focus != LayerFocus::Toolbar), viewport)
-                        .map(WindowCommand::Side),
-                );
-            }
+            // The dock under the drawers: a right drawer stands OVER the
+            // side column, so it paints after it.
             if let Some(dock) = &self.dock {
                 result = result.merge(
                     dock.handle_event(
@@ -582,6 +578,12 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
                         viewport,
                     )
                     .map(WindowCommand::Dock),
+                );
+            }
+            if let Some(side) = &self.side {
+                result = result.merge(
+                    side.handle_event(arena, &scoped(self.focus != LayerFocus::Toolbar), viewport)
+                        .map(WindowCommand::Side),
                 );
             }
             if let Some(modal) = &self.modal {
@@ -598,9 +600,16 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
             Event::MouseDown { point, .. } => {
                 // The handle straddles the edge: a press on its left
                 // half is the dock's too.
-                let in_dock = self.dock_edge.is_some_and(|(edge, band)| {
-                    point.x >= edge - crate::dock::HANDLE_REACH && point.y >= band
-                });
+                // A press the standing drawer claims is the drawer's,
+                // even over the dock's column.
+                let on_drawer = self
+                    .side
+                    .as_ref()
+                    .is_some_and(|side| side.blocks_pointer(*point));
+                let in_dock = !on_drawer
+                    && self.dock_edge.is_some_and(|(edge, band)| {
+                        point.x >= edge - crate::dock::HANDLE_REACH && point.y >= band
+                    });
                 let target = if in_dock {
                     LayerFocus::Dock
                 } else {
@@ -1090,26 +1099,34 @@ impl Window {
         self.content.modal.is_some()
     }
 
+    /// A drawer over one of the side columns: from the LEFT it covers
+    /// the chat column (Sessions), from the RIGHT the side column
+    /// (Contents) — each exactly as wide as the column it covers.
     pub fn show_side_panel(
         &mut self,
         store: &mut Store,
         panel: Box<dyn ModalView>,
+        side: crate::columns::DrawerSide,
         fx: &mut Effects<'_, WindowCommand>,
     ) {
         self.dismiss_side_panel(store, fx);
-        // The drawer rolls in over the chat column — as wide as it.
         let width = self
             .content
             .workbench
             .columns(store, self.viewport_size())
-            .drawer
+            .drawer_span(side)
             .width;
-        self.content.side = Some(crate::drawer::Drawer::new(panel, width));
-        self.workbench_mut().set_side_open(true);
+        self.content.side = Some(crate::drawer::Drawer::new(panel, width, side));
+        self.workbench_mut().set_drawer(Some(side));
+    }
+
+    /// Which edge the standing drawer rolled in from, if one stands.
+    pub fn side_panel_side(&self) -> Option<crate::columns::DrawerSide> {
+        self.content.side.as_ref().map(|drawer| drawer.side())
     }
 
     pub fn dismiss_side_panel(&mut self, store: &mut Store, fx: &mut Effects<'_, WindowCommand>) {
-        self.workbench_mut().set_side_open(false);
+        self.workbench_mut().set_drawer(None);
         let released = self
             .content
             .side
@@ -1147,9 +1164,12 @@ impl Window {
         if self.has_modal() {
             return;
         }
-        // The Chat tab over an open drawer: the drawer rolls away and
-        // the chat it covered stands.
-        self.roll_away_side_panel();
+        // The Chat tab over an open Sessions drawer: the drawer rolls
+        // away and the chat it covered stands. A Contents drawer over
+        // the dock is nobody's business here.
+        if self.side_panel_side() == Some(crate::columns::DrawerSide::Left) {
+            self.roll_away_side_panel();
+        }
         if self.workbench().chat().is_none() {
             let Some(pane) = self.workspace.front_chat_pane(store) else {
                 return;
@@ -2056,7 +2076,6 @@ impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
             let full = Constraints::tight(size);
             let body_top = columns.body_top();
             let body = Constraints::tight(Size::new(size.width.max(1.0), columns.body_height()));
-            let drawer = columns.body_rect(columns.drawer);
 
             LayersWidget {
                 focus: layers.focus,
@@ -2079,6 +2098,7 @@ impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     .toolbar
                     .layout(arena, store, ui, &layers.workbench, &columns),
                 side: layers.side.as_ref().map(|side| {
+                    let drawer = columns.body_rect(columns.drawer_span(side.side()));
                     below_layer(
                         arena,
                         size,

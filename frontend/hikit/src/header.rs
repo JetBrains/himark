@@ -137,6 +137,26 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         self
     }
 
+    /// A trailing TAB: the title rank while it stands, the quiet
+    /// rank otherwise, in a slot the title rank sizes.
+    pub fn trailing_tab(
+        mut self,
+        label: impl Into<String>,
+        active: bool,
+        on_press: impl Fn() -> Command + 'a,
+    ) -> Self {
+        let label = label.into();
+        let style = match active {
+            true => &self.styles.title,
+            false => &self.styles.button,
+        };
+        let slot = self.styles.tab_width(&label);
+        let reserve = (slot - style.shaper.advance(&style.font, &label)).max(0.0);
+        let item = Item::Button(text(style, label), reserve, Box::new(on_press));
+        Self::push(&mut self.trailing, self.chrome.button_text_gap, item);
+        self
+    }
+
     /// A trailing text button in the quiet rank.
     pub fn button(mut self, label: impl Into<String>, on_press: impl Fn() -> Command + 'a) -> Self {
         let item = Item::Button(text(&self.styles.button, label), 0.0, Box::new(on_press));

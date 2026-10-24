@@ -442,6 +442,7 @@ fn the_dock_and_the_floating_drawer_coexist() {
         entity.show_side_panel(
             &mut store,
             Box::new(DockStub::new("drawer")),
+            ::workbench::columns::DrawerSide::Left,
             &mut batch.effects(),
         );
         ::workbench::window::Windows::put(&mut app.store_mut(), window, entity);

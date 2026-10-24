@@ -311,10 +311,7 @@ impl View for TocView {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let searching = self.search.searching();
         contents_column(
-            arena,
             store,
-            ui,
-            self.context.clone(),
             imba::layout::LayoutBox::new(
                 arena,
                 self.search
@@ -862,10 +859,7 @@ impl View for OutlineView {
             });
         let searching = self.search.searching();
         contents_column(
-            arena,
             store,
-            ui,
-            self.location.name().to_owned(),
             imba::layout::LayoutBox::new(
                 arena,
                 self.search
@@ -884,12 +878,10 @@ impl View for OutlineView {
     }
 }
 
-/// The drawer's column around a list: "Contents" over its subject.
+/// The drawer's column around a list — headerless: the band's
+/// Contents word names it.
 fn contents_column<'a, Command: 'a, Keys>(
-    arena: &'a Arena,
     store: &'a Store,
-    ui: &'a UiCtx,
-    subject: String,
     content: imba::layout::LayoutBox<'a, Command>,
     keys: Keys,
 ) -> chrome::ContentsColumn<'a, Command, Keys>
@@ -897,11 +889,7 @@ where
     Keys: imba::layout::EventHandler<Command> + 'a,
 {
     let theme = editor::env::Themes::of(store).ui().clone();
-    let header = hikit::header::ColumnHeader::new(arena, store, ui, theme.contents.text_edge)
-        .title("Contents")
-        .subtitle(subject);
     chrome::ContentsColumn {
-        header,
         content,
         width: theme.window.side_width,
         top_gap: theme.contents.top_gap,

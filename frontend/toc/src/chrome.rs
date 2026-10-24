@@ -21,11 +21,12 @@ fn bounded(extent: f32) -> Option<f32> {
 
 /// The drawer's side COLUMN (docs/Design.md, "a column, not a
 /// sheet"): the window's side width on the ground, a hairline on its
-/// open edge, the column header over the content. A full-size key
-/// surface lies underneath — it answers the drawer's own keys and
-/// the paint-time probes wherever the pointer is.
+/// open edge, the content under the band's own words (the band says
+/// Contents; the column has no header of its own, like the Sessions
+/// drawer). A full-size key surface lies underneath — it answers the
+/// drawer's own keys and the paint-time probes wherever the pointer
+/// is.
 pub(crate) struct ContentsColumn<'a, Command, Keys> {
-    pub header: hikit::header::ColumnHeader<'a, Command>,
     pub content: imba::layout::LayoutBox<'a, Command>,
     pub width: f32,
     pub top_gap: f32,
@@ -42,7 +43,6 @@ where
 {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, Command> {
         let ContentsColumn {
-            header,
             content,
             width,
             top_gap,
@@ -52,7 +52,6 @@ where
         } = self;
         let height = constraints.max.height;
         let column = imba::layout::Column::new(arena)
-            .child(header)
             .weighted(
                 1.0,
                 content.pad_insets(imba::layout::Insets {
@@ -62,10 +61,11 @@ where
             )
             .shield()
             .layout(arena, Constraints::tight(Size::new(width, height)));
-        // The rule rides the column's open edge; the ground goes
-        // under both.
+        // The rule rides the column's open edge — its LEFT: the
+        // column stands over the side column, from the right, like
+        // the dock whose rule it mirrors. The ground goes under both.
         let column = hikit::ui::Hairline::new(rule)
-            .right()
+            .left()
             .wrap(column)
             .paint_below(hikit::ui::ground(ground));
         imba::layout::ZBox::new(arena)

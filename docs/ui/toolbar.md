@@ -11,7 +11,7 @@ ramp in [design-system.md](design-system.md)):
 | section | over | leading | title (34/640) | subtitle (28, ink 3) | trailing words |
 |---------|------|---------|----------------|----------------------|----------------|
 | the chat's | the chat column | the tabs **Sessions · Chat** | the session's title (while the chat column stands and no drawer covers it) | `in <folder>` (`PanelView::subtitle`) | — |
-| the main area's | the split tree | — | the focused file's name | its directory, ` / ` between segments | **Contents** (quiet rank), when the focused panel offers a drawer (`Panel::offers_drawer`) |
+| the main area's | the split tree | — | the focused file's name | its directory, ` / ` between segments | **Contents**, when the focused panel offers a drawer (`Panel::offers_drawer`): quiet rank, the title rank while its drawer stands |
 | the side column's | the dock | the tabs **Files · Changes · Find · History · Comments**, the open dock's in the title rank | — | — | — |
 
 Panels come and go; the band stays. A section is as wide as the
@@ -28,9 +28,12 @@ area between. The dock's slide and the chat's slide move the band's
 rules and the body's splitters together.
 
 **Sessions** opens the drawer (`agent.toggle-agents`) over the chat
-column — exactly over it, under the band (`Columns::drawer`) — and
-stands in the title rank while it does; the chat's name hides under
-it. **Chat** TOGGLES the chat column: standing, a press rolls the
+column — exactly over it, under the band (`Columns::drawer`,
+`DrawerSide::Left`) — and stands in the title rank while it does; the
+chat's name hides under it. **Contents** (`toc.toggle`) is its mirror:
+the outline drawer rolls in from the right over the side column
+(`Columns::right_drawer`, `DrawerSide::Right`), as wide as the dock or
+as the dock would be. **Chat** TOGGLES the chat column: standing, a press rolls the
 column away (`ToolbarCommand::RollAwayChat` → `MaximizeTree`, the
 dock's slide mirrored); otherwise it runs `chat.composer`, which
 fronts the chat — beside the tree when both fit, over the main area

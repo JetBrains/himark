@@ -13,7 +13,7 @@ use imba::{
 };
 use skia_safe::{Contains as _, Rect, Size};
 
-use crate::columns::{ChatSpan, ChatStance, Columns, DockSpan, Span};
+use crate::columns::{ChatSpan, ChatStance, Columns, DockSpan, DrawerSide, Span};
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
 
 // Like every theme metric, the window chrome's widths are PHYSICAL
@@ -215,8 +215,9 @@ pub struct Workbench {
     /// Cmd-I or the minimize button bring it back; the vacant tree
     /// shows the chat regardless (there is nothing else to show).
     chat_minimized: bool,
-    /// The window's side drawer stands over the chat column.
-    side_open: bool,
+    /// The window's drawer, if one stands: over the chat column
+    /// (Sessions) or over the side column (Contents).
+    drawer: Option<DrawerSide>,
 
     dock: Option<crate::dock::Dock>,
 }
@@ -229,7 +230,7 @@ impl Workbench {
             chat_focused: false,
             chat_fronted: false,
             chat_minimized: false,
-            side_open: false,
+            drawer: None,
             dock: None,
         }
     }
@@ -294,14 +295,20 @@ impl Workbench {
         self.chat_minimized && self.chat.is_some()
     }
 
-    /// The window's side drawer (Sessions) opened or closed over the
-    /// chat column — the leftmost header's tabs read it.
-    pub fn set_side_open(&mut self, open: bool) {
-        self.side_open = open;
+    /// The window's drawer opened (on its side) or closed — the
+    /// band's words read it.
+    pub fn set_drawer(&mut self, drawer: Option<DrawerSide>) {
+        self.drawer = drawer;
     }
 
+    /// The Sessions drawer stands over the chat column.
     pub fn side_open(&self) -> bool {
-        self.side_open
+        self.drawer == Some(DrawerSide::Left)
+    }
+
+    /// The Contents drawer stands over the side column.
+    pub fn contents_open(&self) -> bool {
+        self.drawer == Some(DrawerSide::Right)
     }
 
     /// The window's columns at this size — the ONE derivation the
@@ -367,6 +374,14 @@ impl Workbench {
                 None => column_width(CHAT_COLUMN_RATIO).round().max(1.0),
             },
         };
+        let right_width = dock
+            .map_or(window.side_width, |dock| dock.span.width)
+            .round()
+            .max(1.0);
+        let right_drawer = Span {
+            x: size.width - right_width,
+            width: right_width,
+        };
         Columns {
             size,
             band,
@@ -374,6 +389,7 @@ impl Workbench {
             main,
             dock,
             drawer,
+            right_drawer,
         }
     }
 

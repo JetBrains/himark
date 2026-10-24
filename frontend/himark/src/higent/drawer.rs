@@ -101,7 +101,7 @@ impl crate::commands::HimarkCommand for ToggleAgentsView {
         };
         let mut entity =
             ::workbench::window::Windows::window(store, window).expect("the window entity");
-        if entity.has_side_panel() {
+        if entity.side_panel_side() == Some(::workbench::columns::DrawerSide::Left) {
             entity.roll_away_side_panel();
             ::workbench::window::Windows::put(store, window, entity);
             return;
@@ -119,7 +119,14 @@ impl crate::commands::HimarkCommand for ToggleAgentsView {
         let panel = AgentsPanel::open(store, ui, drawer_asks(window)).paneled();
         fx.scope(
             move |command| crate::shell::content(window, command),
-            |fx| entity.show_side_panel(store, Box::new(panel), fx),
+            |fx| {
+                entity.show_side_panel(
+                    store,
+                    Box::new(panel),
+                    ::workbench::columns::DrawerSide::Left,
+                    fx,
+                )
+            },
         );
         ::workbench::window::Windows::put(store, window, entity);
     }
