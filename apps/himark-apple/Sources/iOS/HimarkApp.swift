@@ -161,6 +161,11 @@ final class AppHost: NSObject, ObservableObject {
 
     func register(_ view: HimarkBridgeView) {
         redraws[ObjectIdentifier(view)] = { [weak view] in view?.request() }
+        // The fan-out rides down to the overlay layers the view
+        // spawns (and theirs): an unadopted layer paints once and
+        // then freezes through every store change.
+        view.adoptIntoRedraws = { [weak self] content in self?.register(content) }
+        view.orphanFromRedraws = { [weak self] content in self?.unregister(content) }
     }
 
     func unregister(_ view: HimarkBridgeView) {

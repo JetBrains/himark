@@ -15,6 +15,9 @@ import QuartzCore
 class HimarkBridgeView: UIView {
     let engine: HimarkEngine
     let bridgeId: HimarkBridge
+    /// Kept for the overlay layers this view spawns — each hosts
+    /// a full bridge view of its own (recursion is normal).
+    private let device: MTLDevice
 
     /// Embedded as a SCROLL VIEW's content: the view spans the whole
     /// content, its coordinates ARE content coordinates, and only the
@@ -54,6 +57,7 @@ class HimarkBridgeView: UIView {
     ) {
         self.engine = engine
         self.bridgeId = bridge
+        self.device = device
         self.scrollEmbedded = scrollEmbedded
         super.init(frame: frame)
         metalLayer.device = device
@@ -65,7 +69,11 @@ class HimarkBridgeView: UIView {
 
         surface = SkiaMetalSurface(layer: metalLayer, device: device)
 
-        let link = CADisplayLink(target: self, selector: #selector(tick))
+        // The engine clock's fan-out: a tick that moved ANY state
+        // owes every view a frame, not just the view whose link
+        // happened to fire first.
+        engine.frameClock.adopt(self) { [weak self] in self?.request() }
+        let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         link.add(to: .main, forMode: .common)
         self.link = link
 
@@ -113,7 +121,18 @@ class HimarkBridgeView: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-    deinit { link?.invalidate() }
+    deinit {
+        engine.frameClock.orphan(self)
+        link?.invalidate()
+    }
+
+    /// Leaving the window folds every promoted layer with the view.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            overlaysHost?.closeAll(for: self)
+        }
+    }
 
     // ─── the event road: mint, dispatch, release ───
 
@@ -145,9 +164,19 @@ class HimarkBridgeView: UIView {
 
     // ─── the frame loop ───
 
-    @objc private func tick() {
-        let animating = engine.tick(nowMs: CACurrentMediaTime() * 1000.0)
+    @objc private func tick(_ link: CADisplayLink) {
+        // ONE engine tick per display frame, whoever's link fires
+        // first — the clock caches the verdict for same-frame
+        // followers and requests every other view when it moved.
+        // The driver's own estimate of when THIS frame reaches
+        // glass: animations advance to where they will be SEEN.
+        let animating = engine.frameClock.tick(
+            nowMs: link.targetTimestamp * 1000.0, from: self)
         drainReveal()
+        if warmupTicks > 0 {
+            warmupTicks -= 1
+            needsRedraw = true
+        }
 
         // The hand-rolled momentum: imba's scroller owns the physics
         // for now, so the flick decays here. This retires when the
@@ -170,6 +199,10 @@ class HimarkBridgeView: UIView {
             needsRedraw = false
             render()
         }
+        // AFTER the render: the exported anchors now speak THIS
+        // tick's viewport, so the layers reconcile against the
+        // truth, not last frame's.
+        reconcileOverlays()
     }
 
     override func layoutSubviews() {
@@ -177,29 +210,63 @@ class HimarkBridgeView: UIView {
         render()
     }
 
+    /// The visible band: the part of this view its superview shows —
+    /// the whole bounds when full-bleed, the scrolled window when
+    /// this view IS a scroller's content. The overlay host reads it
+    /// too, to re-anchor a sticky band to the live viewport.
+    func visibleContentRect() -> CGRect {
+        guard let sv = superview else { return bounds }
+        return convert(sv.bounds, from: sv).intersection(bounds)
+    }
+
     private func render() {
         guard surface != nil, UIApplication.shared.applicationState == .active else { return }
+        // SwiftUI's platform host can hand a NaN/infinite frame
+        // mid-layout — converting that to a drawable size traps.
+        guard bounds.width.isFinite, bounds.height.isFinite else { return }
         let scale = window?.screen.scale ?? UIScreen.main.scale
         metalLayer.contentsScale = scale
 
-        // The VISIBLE band: the part of this view its superview
-        // shows — the whole bounds when full-bleed, the scrolled
-        // window when this view IS a scroller's content.
-        var visible = bounds
-        if let sv = superview {
-            visible = convert(sv.bounds, from: sv).intersection(bounds)
+        if scrollEmbedded {
+            // POSITION FIRST, PIXELS SECOND — a parked reveal moves
+            // the scroller NOW, so the band realized below is the
+            // one that will rest on screen (the macOS band law).
+            engine.drainReveal()
         }
-        guard visible.width > 0.5, visible.height > 0.5 else { return }
+        let visible = visibleContentRect()
+        guard visible.width > 0.5, visible.height > 0.5,
+              visible.minY.isFinite
+        else { return }
+        let w = Int32(visible.width * scale)
+        let h = Int32(visible.height * scale)
+        // Metal's texture ceiling is 16384 — a layer this size is a
+        // geometry bug upstream, and asking for the drawable ABORTS
+        // the app. Refuse loudly instead.
+        guard w > 0, h > 0, w <= 16384, h <= 16384 else {
+            NSLog("[render] bridge \(bridgeId.raw) REFUSED: \(w)x\(h) exceeds the texture ceiling")
+            return
+        }
+
+        // GEOMETRY AND PIXELS MOVE TOGETHER OR NOT AT ALL: one
+        // transaction holds the layer's new position AND the present
+        // that fills it, so CoreAnimation commits both in the same
+        // frame (the flicker law).
+        let wasAt = metalLayer.frame
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         metalLayer.frame = visible
-        CATransaction.commit()
-        let w = Int32(visible.width * scale)
-        let h = Int32(visible.height * scale)
         metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
 
         if scrollEmbedded {
-            renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h)
+            if !renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h) {
+                // No drawable, nothing painted: a moved band showing
+                // its old contents is the very artifact this exists
+                // to prevent. Put it back and ask for another pass.
+                metalLayer.frame = wasAt
+                needsRedraw = true
+            }
+        } else if let origin = overlayOrigin {
+            renderOverlaySlice(origin, scale: scale, pixelWidth: w, pixelHeight: h)
         } else {
             switch engine.renderBridge(bridge: bridgeId, into: surface,
                                        pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
@@ -211,16 +278,58 @@ class HimarkBridgeView: UIView {
                 break
             }
         }
+        CATransaction.commit()
+        if scrollEmbedded {
+            // A reveal can be BORN at the paint (a canvas revealing
+            // its row right after populate) — drain it this pass,
+            // or the scroll waits for the next event.
+            engine.drainReveal()
+        }
+    }
+
+    /// The OVERLAY road: the overlay frame shares the parent's
+    /// coordinates; this paints exactly the content slice at
+    /// `origin`, sized to this view.
+    private func renderOverlaySlice(
+        _ origin: CGPoint, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
+    ) {
+        let raw = engine.raw
+        let layout = himark_bridge_layout(
+            raw, bridgeId, Float(bounds.width * scale), Float(bounds.height * scale))
+        guard layout.raw != 0 else { return }
+        let ox = Float(origin.x * scale)
+        let oy = Float(origin.y * scale)
+        let frame = himark_layout_realize(
+            raw, layout, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
+        guard frame.raw != 0 else { return }
+        if let canvas = surface.begin(pixelWidth: w, pixelHeight: h) {
+            let changed = himark_frame_paint(
+                raw, frame, canvas, ox, oy,
+                Float(bounds.width * scale), Float(bounds.height * scale))
+            surface.end()
+            if OverlayHostView.traceOverlay {
+                NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) changed \(changed)")
+            }
+            if changed { needsRedraw = true }
+            himark_frame_release(raw, frame)
+        } else {
+            // Starved — nothing painted, retry owed.
+            himark_frame_release(raw, frame)
+            needsRedraw = true
+        }
     }
 
     /// The stage road: layout at (width, ∞), content size off the
     /// sized stage, realize + paint the visible band. The stages
     /// are ONE-PASS values — a paint that changed state means the
     /// engine quiesced them, and the next tick re-derives.
-    private func renderBand(_ visible: CGRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32) {
+    @discardableResult
+    private func renderBand(
+        _ visible: CGRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
+    ) -> Bool {
         let raw = engine.raw
         let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return }
+        guard layout.raw != 0 else { return false }
         var cw: Float = 0
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
@@ -228,11 +337,10 @@ class HimarkBridgeView: UIView {
         let offsetY = Float(max(visible.minY, 0) * scale)
         let frame = himark_layout_realize(
             raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        guard frame.raw != 0 else { return }
+        guard frame.raw != 0 else { return false }
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else {
             himark_frame_release(raw, frame)
-            needsRedraw = true
-            return
+            return false
         }
         let changed = himark_frame_paint(
             raw, frame, canvas, 0, offsetY,
@@ -251,9 +359,87 @@ class HimarkBridgeView: UIView {
         if ch.isFinite {
             onContentMeasured?(CGSize(width: bounds.width, height: CGFloat(ch) / scale))
         }
+        return true
     }
 
     func request() { needsRedraw = true }
+
+    // ─── overlay promotion: in-window layers, reconciled per frame ───
+    //
+    // The RECONCILE logic lives in `OverlayHostView` — the one view
+    // the layers hang in, standing at any level: the nearest
+    // wrapping host up the superview chain, else one installed over
+    // the window once. This view keeps only its side of the
+    // contract: the per-tick delegation, the content minting, and
+    // the state an overlay CONTENT view carries.
+
+    /// The host's redraw fan-out, handed down at minting so overlay
+    /// content views (and THEIR overlays) hear store dirt too — an
+    /// unadopted view paints once and then freezes.
+    var adoptIntoRedraws: ((HimarkBridgeView) -> Void)?
+    var orphanFromRedraws: ((HimarkBridgeView) -> Void)?
+
+    /// Set on an OVERLAY's content view: the content slice's origin
+    /// in the PARENT'S coordinates (points). The overlay frame
+    /// shares the parent's coordinate space — events offset by
+    /// this on the way in, the paint realizes this viewport.
+    var overlayOrigin: CGPoint?
+
+    /// A fresh layer's first presents can land before its layer is
+    /// composited; a short warmup repaints across the appearance.
+    var warmupTicks = 0
+
+    /// The standing host, resolved on first use: the nearest
+    /// WRAPPING host up the superview chain wins, else a host
+    /// installed over the window once — layers float over the whole
+    /// app there, above the SwiftUI chrome.
+    private weak var overlaysHost: OverlayHostView?
+
+    private func resolveOverlaysHost() -> OverlayHostView? {
+        if let host = overlaysHost, host.window === window { return host }
+        var resolved: OverlayHostView?
+        var walk = superview
+        while let view = walk {
+            if let host = view as? OverlayHostView {
+                resolved = host
+                break
+            }
+            walk = view.superview
+        }
+        if resolved == nil, let window {
+            resolved = OverlayHostView.find(in: window) ?? {
+                let host = OverlayHostView(frame: window.bounds)
+                host.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                window.addSubview(host)
+                return host
+            }()
+        }
+        overlaysHost = resolved
+        return resolved
+    }
+
+    private func reconcileOverlays() {
+        resolveOverlaysHost()?.reconcile(for: self)
+    }
+
+    /// Mint one overlay's CONTENT view for the host — the device
+    /// and the redraw fan-out are this view's to hand down.
+    func mintOverlayContent(_ bridge: HimarkBridge) -> HimarkBridgeView {
+        let content = HimarkBridgeView(
+            frame: CGRect(origin: .zero, size: CGSize(width: 40, height: 20)),
+            engine: engine, bridge: bridge, device: device)
+        // Whatever the content leaves unpainted shows what lies
+        // beneath — an opaque layer would show it black.
+        content.metalLayer.isOpaque = false
+        content.adoptIntoRedraws = adoptIntoRedraws
+        content.orphanFromRedraws = orphanFromRedraws
+        adoptIntoRedraws?(content)
+        // Hidden until its first geometry lands: a seed-sized
+        // layer at the window's origin is a flash.
+        content.isHidden = true
+        content.warmupTicks = 3
+        return content
+    }
 
     /// The embedding scroller moved the viewport: repaint the band
     /// NOW, in the same runloop turn — waiting for the display link
@@ -271,7 +457,8 @@ class HimarkBridgeView: UIView {
 
     private func devicePoint(_ p: CGPoint) -> (Float, Float) {
         let s = Float(metalLayer.contentsScale)
-        return (Float(p.x) * s, Float(p.y) * s)
+        let o = overlayOrigin ?? .zero
+        return (Float(p.x + o.x) * s, Float(p.y + o.y) * s)
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -281,6 +468,29 @@ class HimarkBridgeView: UIView {
     @objc private func onTap(_ gesture: UITapGestureRecognizer) {
         let point = gesture.location(in: self)
         let (x, y) = devicePoint(point)
+        // While overlays stand, the ENGINE'S SCRIM owns this pane's
+        // taps — the overlay frame shares this pane's coordinates,
+        // so the point travels untranslated; the scrim turns it into
+        // the dismissal the widget wired, the epoch moves, reconcile
+        // closes the layer (the macOS routeMouseDown road).
+        let scrims = overlaysHost?.popoverBridges(for: self) ?? []
+        if !scrims.isEmpty {
+            var consumed = false
+            for bridge in scrims {
+                let down = himark_event_mouse_down(x, y, 0, 1)
+                consumed = engine.bridgeEvent(bridge: bridge, event: down).changed || consumed
+                himark_event_release(down)
+                let up = himark_event_mouse_up(x, y)
+                _ = engine.bridgeEvent(bridge: bridge, event: up)
+                himark_event_release(up)
+            }
+            drainReveal()
+            request()
+            // A SCRIM took it: the tap was the dismissal, spent.
+            // Nothing took it (a completion popup carries no scrim):
+            // the tap is the PANE'S, fall through.
+            if consumed { return }
+        }
         inputDelegate?.selectionWillChange(self)
         send(himark_event_mouse_down(x, y, 0, 1))
         // A tap is a CLICK: rows, buttons and tree chevrons complete
