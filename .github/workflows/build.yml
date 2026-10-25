@@ -234,7 +234,10 @@ jobs:
       - name: Build
         run: |
           rustup target add ${{ matrix.target }}
-          cargo build --release --locked -p windows --target ${{ matrix.target }}
+          # windows@0.1.0 is OUR shell crate — the bare name is
+          # ambiguous against the Microsoft `windows` crate in the
+          # dependency graph.
+          cargo build --release --locked -p windows@0.1.0 --target ${{ matrix.target }}
 
       - name: Package
         shell: pwsh
