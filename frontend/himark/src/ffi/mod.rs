@@ -3,7 +3,10 @@
 
 // The C surface never compiles for the web shell — the inner gate
 // keeps cbindgen reading the items while rustc skips them on wasm.
-#![cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
+// ALL of wasm: the threaded (atomics) web build is still the web
+// shell, with its own emscripten entry — and the runtime here rides
+// tokio's net driver, which has no wasm port (mio).
+#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};

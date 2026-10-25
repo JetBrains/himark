@@ -47,7 +47,10 @@ impl himark::plugin::Plugin for DemoPlugin {
         app.register_command(std::sync::Arc::new(OpenMonsterDemo));
         app.register_command(std::sync::Arc::new(OpenWallOfTextDemo));
         // The FFI door's lookups — the debug harness opens these by
-        // name through `himark_open_demo`.
+        // name through `himark_open_demo`. The web shell has no C
+        // surface (ffi is gated off wasm): the registration folds
+        // with the door.
+        #[cfg(not(target_arch = "wasm32"))]
         app.setup(|store| {
             himark::ffi::DemoDocs::register(
                 store,

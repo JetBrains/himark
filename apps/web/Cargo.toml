@@ -16,6 +16,7 @@ ahp-types = "0.9"
 demo = { path = "../../frontend/plugins/demo" }
 palette = { path = "../../frontend/plugins/palette" }
 peeker = { path = "../../frontend/plugins/peeker" }
+workbench-shell = { path = "../../frontend/workbench-shell" }
 myersdiff = { path = "../../frontend/myersdiff" }
 hirust = { path = "../../frontend/plugins/lang/hirust" }
 hipython = { path = "../../frontend/plugins/lang/hipython" }

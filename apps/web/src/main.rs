@@ -319,22 +319,22 @@ mod app {
             state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
 
             comments::install(&mut state.store_mut());
-            state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
-            state.register_toolbar_button(himark::hicomments::toolbar_button());
+            state.register_command(std::sync::Arc::new(workbench_shell::hicomments::ToggleCommentsView));
+            state.register_toolbar_button(workbench_shell::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(
                 himark::higent::drawer::ToggleAgentsView,
             ));
             state.register_command(std::sync::Arc::new(himark::higent::new_chat::NewChat));
             state.register_toolbar_button(himark::higent::drawer::toolbar_button());
-            state.register_command(std::sync::Arc::new(himark::hichanges::ToggleChangesView));
+            state.register_command(std::sync::Arc::new(workbench_shell::hichanges::ToggleChangesView));
             state.register_command(std::sync::Arc::new(
                 himark::hichanges::RefetchChanges::default(),
             ));
-            state.register_toolbar_button(himark::hichanges::toolbar_button());
-            state.register_command(std::sync::Arc::new(himark::hihistory::ToggleHistoryView));
-            state.register_toolbar_button(himark::hihistory::toolbar_button());
-            state.register_command(std::sync::Arc::new(himark::hifiles::ToggleSessionTree));
-            state.register_toolbar_button(himark::hifiles::toolbar_button());
+            state.register_toolbar_button(workbench_shell::hichanges::toolbar_button());
+            state.register_command(std::sync::Arc::new(workbench_shell::hihistory::ToggleHistoryView));
+            state.register_toolbar_button(workbench_shell::hihistory::toolbar_button());
+            state.register_command(std::sync::Arc::new(workbench_shell::hifiles::ToggleSessionTree));
+            state.register_toolbar_button(workbench_shell::hifiles::toolbar_button());
 
             #[cfg(target_feature = "atomics")]
             let (posted, arriving) = std::sync::mpsc::channel();
@@ -481,9 +481,9 @@ mod app {
                             directory: Arc::clone(&clients),
                         },
                     );
-                    state.register_command(Arc::new(himark::hisearch::ToggleSearchView));
-                    state.register_command(Arc::new(himark::hisearch::FocusSearchView));
-                    state.register_toolbar_button(himark::hisearch::toolbar_button());
+                    state.register_command(Arc::new(workbench_shell::hisearch::ToggleSearchView));
+                    state.register_command(Arc::new(workbench_shell::hisearch::FocusSearchView));
+                    state.register_toolbar_button(workbench_shell::hisearch::toolbar_button());
                     state.register_handler::<ahp_locations::LspLocationsEffect>(
                         ahp_locations::routes::RouteLspLocations {
                             directory: Arc::clone(&clients),

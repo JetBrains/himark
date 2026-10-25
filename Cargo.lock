@@ -7000,6 +7000,7 @@ dependencies = [
  "tokio",
  "tracing",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
