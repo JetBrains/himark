@@ -36,8 +36,4 @@ impl<'a, Command> Widget<'a, Command> for Leaf<'a, Command> {
     ) -> EventResult<Command> {
         EventResult::Ignored
     }
-
-    fn blocks_pointer(&self, _point: skia_safe::Point) -> bool {
-        false
-    }
 }

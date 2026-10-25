@@ -596,34 +596,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
             return result;
         }
 
-        let flip = match event {
-            Event::MouseDown { point, .. } => {
-                // The handle straddles the edge: a press on its left
-                // half is the dock's too.
-                // A press the standing drawer claims is the drawer's,
-                // even over the dock's column.
-                let on_drawer = self
-                    .side
-                    .as_ref()
-                    .is_some_and(|side| side.blocks_pointer(*point));
-                let in_dock = !on_drawer
-                    && self.dock_edge.is_some_and(|(edge, band)| {
-                        point.x >= edge - crate::dock::HANDLE_REACH && point.y >= band
-                    });
-                let target = if in_dock {
-                    LayerFocus::Dock
-                } else {
-                    LayerFocus::Content
-                };
-                (target != self.focus).then_some(WindowCommand::Focus(target))
-            }
-            _ => None,
-        };
-        let result = self.route(arena, event, viewport);
-        match flip {
-            Some(flip) => result.merge(EventResult::command(flip)),
-            None => result,
-        }
+        self.route(arena, event, viewport)
     }
 }
 
@@ -635,55 +608,45 @@ impl<'a> RealizedLayers<'a> {
         viewport: skia_safe::Rect,
     ) -> EventResult<WindowCommand> {
         if let Event::HitTest { point, miss, mods } = event {
+            // Top-down, and the OUTCOME is the hit test: the first
+            // layer whose dispatch answers an unclaimed ask owns the
+            // pointer; everything beneath hears the miss (and still
+            // gets the event — standing hovers let go on it). The
+            // band's words claim their asks; bare ground falls
+            // through, exactly where a press would.
             let mut claimed = *miss;
-            let tick = |claimed: &mut bool, blocks: bool| {
-                let hit = !*claimed && blocks;
-                if hit {
-                    *claimed = true;
-                }
-                Event::HitTest {
-                    point: *point,
-                    miss: !hit,
-                    mods: *mods,
-                }
+            let ask = |claimed: bool| Event::HitTest {
+                point: *point,
+                miss: claimed,
+                mods: *mods,
             };
             let mut merged: EventResult<WindowCommand> = EventResult::Ignored;
             if let Some(modal) = &self.modal {
-                let event = tick(&mut claimed, modal.blocks_pointer(*point));
                 merged = merged.merge(
                     modal
-                        .handle_event(arena, &event, viewport)
+                        .handle_event(arena, &ask(claimed), viewport)
                         .map(WindowCommand::Modal),
                 );
-
+                // The modal SCRIMS the window whole: claimed no
+                // matter what stood under the pointer.
                 claimed = true;
             }
             if let Some(side) = &self.side {
-                let event = tick(&mut claimed, side.blocks_pointer(*point));
-                merged = merged.merge(
-                    side.handle_event(arena, &event, viewport)
-                        .map(WindowCommand::Side),
-                );
+                let result = side.handle_event(arena, &ask(claimed), viewport);
+                claimed = claimed || !matches!(result, EventResult::Ignored);
+                merged = merged.merge(result.map(WindowCommand::Side));
             }
             if let Some(dock) = &self.dock {
-                let event = tick(&mut claimed, dock.blocks_pointer(*point));
-                merged = merged.merge(
-                    dock.handle_event(arena, &event, viewport)
-                        .map(WindowCommand::Dock),
-                );
+                let result = dock.handle_event(arena, &ask(claimed), viewport);
+                claimed = claimed || !matches!(result, EventResult::Ignored);
+                merged = merged.merge(result.map(WindowCommand::Dock));
             }
-            // The band's words claim their presses; its bare ground
-            // falls through to the body and, past that, the window.
-            let event = tick(&mut claimed, self.toolbar.blocks_pointer(*point));
-            merged = merged.merge(
-                self.toolbar
-                    .handle_event(arena, &event, viewport)
-                    .map(WindowCommand::Toolbar),
-            );
-            let event = tick(&mut claimed, true);
+            let result = self.toolbar.handle_event(arena, &ask(claimed), viewport);
+            claimed = claimed || !matches!(result, EventResult::Ignored);
+            merged = merged.merge(result.map(WindowCommand::Toolbar));
             merged = merged.merge(
                 self.base
-                    .handle_event(arena, &event, viewport)
+                    .handle_event(arena, &ask(claimed), viewport)
                     .map(WindowCommand::Base),
             );
             return merged;
@@ -708,16 +671,53 @@ impl<'a> RealizedLayers<'a> {
                         Event::KeyDown { .. } => !matches!(below, EventResult::Ignored),
                         _ => false,
                     };
+                    let below = self.flip_down(below, event);
                     return match focus_moved {
                         true => below.merge(EventResult::command(WindowCommand::SideFocusLost)),
                         false => below,
                     };
                 }
-                result => return result.map(WindowCommand::Side),
+                // The drawer CLAIMED the press — the OUTCOME names the
+                // layer, no probe: the window flips off the dock.
+                result => {
+                    let result = result.map(WindowCommand::Side);
+                    return match event {
+                        Event::MouseDown { .. } if self.focus != LayerFocus::Content => result
+                            .merge(EventResult::command(WindowCommand::Focus(
+                                LayerFocus::Content,
+                            ))),
+                        _ => result,
+                    };
+                }
             }
         }
 
-        self.below_side(arena, event, viewport)
+        self.flip_down(self.below_side(arena, event, viewport), event)
+    }
+
+    /// The layer-focus flip a press carries once it fell PAST the
+    /// drawer, by geometry: the handle straddles the edge — a press
+    /// on its left half is the dock's too.
+    fn flip_down(
+        &self,
+        result: EventResult<WindowCommand>,
+        event: &Event<'_>,
+    ) -> EventResult<WindowCommand> {
+        let Event::MouseDown { point, .. } = event else {
+            return result;
+        };
+        let in_dock = self.dock_edge.is_some_and(|(edge, band)| {
+            point.x >= edge - crate::dock::HANDLE_REACH && point.y >= band
+        });
+        let target = if in_dock {
+            LayerFocus::Dock
+        } else {
+            LayerFocus::Content
+        };
+        match target != self.focus {
+            true => result.merge(EventResult::command(WindowCommand::Focus(target))),
+            false => result,
+        }
     }
 
     fn below_side(

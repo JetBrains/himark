@@ -174,12 +174,6 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
         std::mem::take(&mut self.overlays)
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.children
-            .iter()
-            .any(|child| child.blocks_pointer_at(point))
-    }
-
     fn layout_data<'w>(
         &'w mut self,
         target: crate::focus::SeatKey,
@@ -219,21 +213,25 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
             }
 
             Event::HitTest { point, miss, mods } => {
-                let hit = match miss {
-                    true => None,
-                    false => self
-                        .children
-                        .iter()
-                        .rposition(|child| child.blocks_pointer_at(*point)),
-                };
+                // Top-down, and the OUTCOME is the hit test: the
+                // first child whose dispatch answers a contained ask
+                // owns the pointer; everything after it (and every
+                // child the point lies outside) hears the miss. No
+                // parallel probe — the hover road falls through
+                // exactly where the click road does.
+                let mut claimed = *miss;
                 let mut merged = EventResult::Ignored;
-                for (index, child) in self.children.iter().enumerate() {
+                for child in self.children.iter().rev() {
+                    let asked = !claimed && child.rect.contains(*point);
                     let event = Event::HitTest {
                         point: *point,
-                        miss: Some(index) != hit,
+                        miss: !asked,
                         mods: *mods,
                     };
-                    merged = merged.merge(child.handle_event(arena, &event, viewport));
+                    let result = child.handle_event(arena, &event, viewport);
+                    claimed = claimed
+                        || (asked && !matches!(result, EventResult::Ignored));
+                    merged = merged.merge(result);
                 }
                 merged
             }
@@ -252,14 +250,6 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
 }
 
 impl<Command> Child<'_, Command> {
-    fn blocks_pointer_at(&self, point: skia_safe::Point) -> bool {
-        self.rect.contains(point)
-            && self.widget.blocks_pointer(skia_safe::Point::new(
-                point.x - self.rect.left,
-                point.y - self.rect.top,
-            ))
-    }
-
     fn handle_event(
         &self,
         arena: &Arena,

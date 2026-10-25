@@ -40,7 +40,7 @@ pub mod with_overlay;
 
 use arena::Arena;
 use event::{Event, EventResult};
-use skia_safe::{Point, Rect, Size};
+use skia_safe::{Rect, Size};
 
 pub struct PresentableCommand<Command> {
     pub id: &'static str,
@@ -229,10 +229,6 @@ impl<'a, Command: 'a> Widget<'a, Command> for WidgetBox<'a, Command> {
         self.0.overlays()
     }
 
-    fn blocks_pointer(&self, point: Point) -> bool {
-        self.0.blocks_pointer(point)
-    }
-
     fn layout_data<'w>(&'w mut self, target: focus::SeatKey) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
@@ -265,10 +261,6 @@ impl<'a, Command: 'a, W: Widget<'a, Command>> Widget<'a, Command> for Eager<W> {
         self.0.overlays()
     }
 
-    fn blocks_pointer(&self, point: Point) -> bool {
-        self.0.blocks_pointer(point)
-    }
-
     fn layout_data<'w>(&'w mut self, target: focus::SeatKey) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
@@ -296,11 +288,6 @@ pub trait Widget<'a, Command> {
         event: &Event<'_>,
         viewport: Rect,
     ) -> EventResult<Command>;
-
-    fn blocks_pointer(&self, point: Point) -> bool {
-        let _ = point;
-        true
-    }
 
     fn overlays(&mut self) -> Vec<overlay::Overlay<'a, Command>> {
         Vec::new()

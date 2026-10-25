@@ -186,10 +186,6 @@ where
         map_overlays(self.inner.overlays(), &self.map)
     }
 
-    fn blocks_pointer(&self, point: Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn layout_data<'w>(
         &'w mut self,
         target: crate::focus::SeatKey,
@@ -265,10 +261,6 @@ impl<'a, Command: 'a> Widget<'a, Command> for OverlayHostWidget<'a, Command> {
 
     fn overlays(&mut self) -> Vec<Overlay<'a, Command>> {
         std::mem::take(&mut self.bubbling)
-    }
-
-    fn blocks_pointer(&self, point: Point) -> bool {
-        self.stacked.blocks_pointer(point)
     }
 
     fn layout_data<'w>(

@@ -82,14 +82,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
         }
     }
 
-    fn hit_opaque(self) -> impl Thunk<'a, Command> + 'a
-    where
-        Self: 'a,
-        Command: 'a,
-    {
-        HitOpaqueThunk { inner: self }
-    }
-
     fn focus_scope(self, focused: bool) -> impl Thunk<'a, Command> + 'a
     where
         Self: 'a,
@@ -355,10 +347,6 @@ where
         self.inner.overlays()
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn handle_event(
         &self,
         arena: &Arena,
@@ -470,10 +458,6 @@ where
         self.inner.overlays()
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn layout_data<'w>(
         &'w mut self,
         target: crate::focus::SeatKey,
@@ -537,10 +521,6 @@ where
         self.inner.overlays()
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn layout_data<'w>(
         &'w mut self,
         target: crate::focus::SeatKey,
@@ -564,65 +544,3 @@ where
     }
 }
 
-struct HitOpaqueThunk<Inner> {
-    inner: Inner,
-}
-
-impl<'a, Command: 'a, Inner> Thunk<'a, Command> for HitOpaqueThunk<Inner>
-where
-    Inner: Thunk<'a, Command> + 'a,
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn first_baseline(&self) -> Option<f32> {
-        self.inner.first_baseline()
-    }
-
-    fn realize(self, arena: &'a Arena, viewport: Rect) -> WidgetBox<'a, Command> {
-        WidgetBox::new(
-            arena,
-            HitOpaqueWidget {
-                inner: self.inner.realize(arena, viewport),
-            },
-        )
-    }
-}
-
-struct HitOpaqueWidget<'a, Command> {
-    inner: WidgetBox<'a, Command>,
-}
-
-impl<'a, Command: 'a> Widget<'a, Command> for HitOpaqueWidget<'a, Command> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<Command> {
-        self.inner.handle_event(arena, event, viewport)
-    }
-
-    fn overlays(&mut self) -> Vec<Overlay<'a, Command>> {
-        self.inner.overlays()
-    }
-
-    fn blocks_pointer(&self, _point: skia_safe::Point) -> bool {
-        true
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: crate::focus::SeatKey,
-    ) -> crate::focus::LayoutData<'w, Command>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}

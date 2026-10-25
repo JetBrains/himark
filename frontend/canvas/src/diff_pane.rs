@@ -354,12 +354,6 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
             .unwrap_or_default()
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner
-            .as_ref()
-            .is_some_and(|inner| inner.blocks_pointer(point))
-    }
-
     fn handle_event(
         &self,
         arena: &Arena,

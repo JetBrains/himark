@@ -406,10 +406,6 @@ impl<'a> Widget<'a, EditorCommand> for RealizedGatheredPane<'a> {
         overlays
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn handle_event(
         &self,
         arena: &Arena,

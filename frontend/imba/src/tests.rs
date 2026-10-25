@@ -137,6 +137,8 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
     widget.place(10.0, 12.0, crate::eager(HitBox::new("top", 40.0, 40.0)));
     let widget = widget.realize(&arena, root_viewport());
 
+    // Topmost first — the DISPATCH is the probe: the top child's
+    // answer claims the pointer, so the covered one hears the miss.
     let result = widget.handle_event(
         &arena,
         &Event::HitTest {
@@ -148,7 +150,7 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
     );
     assert_eq!(
         result_commands(result),
-        vec![Command::Probe("bottom", false), Command::Probe("top", true)]
+        vec![Command::Probe("top", true), Command::Probe("bottom", false)]
     );
 
     let result = widget.handle_event(
@@ -163,8 +165,8 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
     assert_eq!(
         result_commands(result),
         vec![
-            Command::Probe("bottom", false),
-            Command::Probe("top", false)
+            Command::Probe("top", false),
+            Command::Probe("bottom", false)
         ]
     );
 
@@ -180,8 +182,8 @@ fn hit_test_hits_the_topmost_child_and_misses_the_covered_one() {
     assert_eq!(
         result_commands(result),
         vec![
-            Command::Probe("bottom", false),
-            Command::Probe("top", false)
+            Command::Probe("top", false),
+            Command::Probe("bottom", false)
         ]
     );
 }

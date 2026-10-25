@@ -542,10 +542,6 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
         self.inner.handle_event(arena, event, viewport)
     }
 
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
     fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
         // The projections (fold strips) for the pane that hosts
         // them, and the window-hosted popups (completion, hover) —
