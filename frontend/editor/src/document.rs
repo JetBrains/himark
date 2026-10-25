@@ -479,58 +479,60 @@ impl Document {
         );
         self.text = self.text.edit(operation);
 
-        if let Some(syntax) = &self.syntax {
-            let mut entry = syntax.clone();
+        self.syntax = self.syntax.take().map(|mut syntax| {
             let mut view = self.text.view();
-            entry.markup.edit(operation, &mut view, 0);
-            entry.folds.edit(crate::markup::interval_steps(operation));
-            entry.outline.edit(crate::markup::interval_steps(operation));
-            if let Some(tree) = &mut entry.tree {
+            syntax.markup.edit(operation, &mut view, 0);
+            syntax.folds.edit(crate::markup::interval_steps(operation));
+            syntax.outline.edit(crate::markup::interval_steps(operation));
+            if let Some(tree) = &mut syntax.tree {
                 tree.edit(operation, &mut view, 0);
             }
-            self.syntax = Some(entry);
-        }
-        let ids: Vec<MarkupId> = self.markups.keys().copied().collect();
-        for id in ids {
-            if let Some(markup) = self.markups.get(&id) {
-                let mut markup = markup.clone();
-                markup.edit(operation, &mut self.text.view(), 0);
-                self.markups.insert_mut(id, markup);
-            }
-        }
+            syntax
+        });
 
-        let sets: Vec<FragmentSetId> = self.fragments.keys().copied().collect();
-        for set in sets {
-            if let Some(tree) = self.fragments.get(&set) {
+        let mut view = self.text.view();
+        self.markups = self
+            .markups
+            .iter()
+            .map(|(id, markup)| {
+                let mut markup = markup.clone();
+                markup.edit(operation, &mut view, 0);
+                (*id, markup)
+            })
+            .collect();
+        drop(view);
+
+        self.fragments = self
+            .fragments
+            .iter()
+            .map(|(set, tree)| {
                 let mut tree = tree.clone();
                 tree.edit(crate::markup::interval_steps(operation));
-                self.fragments.insert_mut(set, tree);
-            }
-        }
+                (*set, tree)
+            })
+            .collect();
 
-        if !self.diffs.is_empty() {
-            // The door (`edit_with`) admits only operations that cover
-            // the text exactly — no padding here, ever. A diff that
-            // still disagrees was installed poisoned; it must not take
-            // the EDIT down with it — skip, leave it for the normalize
-            // lane to rebuild.
-            let ids: Vec<crate::diff::DiffId> = self.diffs.keys().copied().collect();
-            for id in ids {
-                if let Some(diff) = self.diffs.get(&id) {
-                    if diff.operation.new_len() != operation.old_len() {
-                        debug_assert!(false, "a live diff must cover the text its edit rewrites");
-                        continue;
-                    }
-                    let mut diff = diff.clone();
-
+        self.diffs = self
+            .diffs
+            .iter()
+            .map(|(id, diff)| {
+                let mut diff = diff.clone();
+                // The door (`edit_with`) admits only operations that
+                // cover the text exactly — no padding here, ever. A
+                // diff that still disagrees was installed poisoned; it
+                // must not take the EDIT down with it — skip, leave it
+                // for the normalize lane to rebuild.
+                if diff.operation.new_len() != operation.old_len() {
+                    debug_assert!(false, "a live diff must cover the text its edit rewrites");
+                } else {
                     // The operation rebases through this target-side
                     // edit; the fold bans do NOT — they live in BASE
                     // coordinates and only `apply_base_edits` moves them.
                     diff.operation = diff.operation.splice_compose(operation);
-                    self.diffs.insert_mut(id, diff);
                 }
-            }
-        }
+                (*id, diff)
+            })
+            .collect();
         self.log.record_as(identity, operation, old_len);
         match provenance {
             Provenance::Ours => {
