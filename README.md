@@ -16,11 +16,11 @@ coding agents (Claude Code and Codex).
 </p>
 <p align="center">
   <img src="readme-screenshots/diff.png" width="49%" alt="Inline diff" />
-  <img src="readme-screenshots/split.png" width="49%" alt="Split diff" />
+  <img src="readme-screenshots/history.png" width="49%" alt="Commit history" />
 </p>
 <p align="center">
   <img src="readme-screenshots/find.png" width="49%" alt="Search" />
-  <img src="readme-screenshots/tables.png" width="49%" alt="Tables" />
+  <img src="readme-screenshots/code.png" width="49%" alt="Code editing" />
 </p>
 
 ## Philosophy
