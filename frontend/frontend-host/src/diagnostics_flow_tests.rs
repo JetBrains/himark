@@ -968,11 +968,10 @@ fn live_canvas_face_serves_completion_and_hover() {
         if started.elapsed() > std::time::Duration::from_secs(30) {
             let view = canvas(&engine);
             panic!(
-                "no row built: canvas {:?} rows {:?} note {:?} banner {:?}",
+                "no row built: canvas {:?} rows {:?} note {:?}",
                 view.is_some(),
                 view.as_ref().map(|v| v.probe_rows(engine.app.store())),
                 view.as_ref().map(|v| v.probe_note(engine.app.store())),
-                view.as_ref().map(|v| v.probe_banner(engine.app.store())),
             );
         }
         std::thread::sleep(std::time::Duration::from_millis(5));

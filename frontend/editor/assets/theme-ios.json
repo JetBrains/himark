@@ -244,6 +244,18 @@
       "block_gap": 36.0,
       "font_weight": 520.0
     },
+    "headline": {
+      "font_families": [
+        "Bricolage Grotesque",
+        "system-ui",
+        "sans-serif"
+      ],
+      "font_size": 66.0,
+      "font_weight": 560.0,
+      "font_width": 88.0,
+      "line_height": 1.27,
+      "color": "#f2f0eb"
+    },
     "query": {
       "font_families": [
         "Bricolage Grotesque",
@@ -299,6 +311,24 @@
       "byline_gap": 24.0,
       "headline_gap": 24.0,
       "headline_max_width": 1002.0,
+      "commit_subject_gap": 24.0,
+      "commit_count_inset": 66.0,
+      "commit_count_line": 72.0,
+      "commit_subject_min_lines": 2,
+      "commit_body_gap": 36.0,
+      "commit_body_max_width": 1620.0,
+      "commit_body_min_lines": 2,
+      "commit_action_gap": 18.0,
+      "commit_action_pad": 30.0,
+      "commit_action": {
+        "size": 45.0,
+        "weight": 680.0,
+        "width": 100.0,
+        "tracking": 0.0,
+        "line_height": 1.0
+      },
+      "commit_key_gap": 12.0,
+      "commit_form_pad_bottom": 108.0,
       "band_pad_top": 30.0,
       "band_pad_right": 60.0,
       "band_pad_bottom": 30.0,

@@ -1,17 +1,24 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The diff FACES: the embedded split-diff pane, the diff canvas
-//! (rows, header, banner, the canvases' At router) and their
-//! navigation places and session rows. Built over the changesview
+//! The diff FACES: the embedded split-diff pane, the diff canvas — a
+//! bare list of diffs (rows, header, the canvases' At router) — and
+//! the two faces that stand a head over it (the working copy's commit
+//! control, a commit's block), with their navigation places and
+//! session rows. Built over the changesview
 //! collection, the documents diff machinery and the kit — no window,
 //! no session, no wire.
 
 pub mod canvas;
+pub mod canvases;
+pub mod changes_face;
+pub mod commit_face;
 pub mod diff_canvas;
 pub mod diff_header;
 pub mod diff_pane;
 pub mod diff_summary;
+pub mod faces;
+pub mod rows;
 
 /// A tracked diff pair's row: the documents collection and the view.
 #[derive(Clone, PartialEq)]

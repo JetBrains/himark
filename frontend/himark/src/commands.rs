@@ -518,7 +518,7 @@ pub(crate) fn register_builtins(store: &mut Store) {
     // BUILTIN, so every windowed shell (the tests' included) seats
     // a canvas that can scroll; the bare navigator is the mounted
     // road's (docs/mounted-parity.md).
-    ::workbench::navigation::Navigators::register(store, ::canvas::canvas::ScrolledCanvasNavigator);
+    ::workbench::navigation::Navigators::register(store, ::canvas::faces::ScrolledCanvasNavigator);
     ::workbench::rows::RowMinters::register(store, ::terminals::pane::terminal_row_minter());
 
     Commands::register(

@@ -95,6 +95,12 @@ pub enum StyleId {
     /// A FIELD input in a column (a filter, an inline rename): the
     /// chrome face at the field size.
     Field,
+
+    /// The commit SUBJECT being written (the working-copy canvas's
+    /// composer): the HEADLINE register — the type the line wears once
+    /// committed — so the message is typed where its headline will
+    /// stand, at its size and width.
+    Headline,
 }
 
 impl StyleId {
@@ -163,10 +169,11 @@ impl StyleId {
             Self::Query => 47,
             Self::QuerySmall => 48,
             Self::Field => 49,
+            Self::Headline => 50,
         }
     }
 
-    const SLOTS: usize = 50;
+    const SLOTS: usize = 51;
 
     fn all_slots() -> [StyleId; Self::SLOTS] {
         [
@@ -220,6 +227,7 @@ impl StyleId {
             Self::Query,
             Self::QuerySmall,
             Self::Field,
+            Self::Headline,
         ]
     }
 
@@ -272,6 +280,7 @@ impl StyleId {
             Self::Query => "query",
             Self::QuerySmall => "query_small",
             Self::Field => "field",
+            Self::Headline => "headline",
             Self::Quote => "quote",
             Self::HorizontalLine => "horizontal_line",
             Self::Indent(_) => "indent",
@@ -337,6 +346,11 @@ pub struct TextAttributes {
     /// chrome face) instances its axis to it; `bold` stays the static
     /// cut's switch.
     pub font_weight: Option<f32>,
+
+    /// A width on the CSS `font-stretch` scale (percent): a variable
+    /// family instances its `wdth` axis to it — the headline's
+    /// condensed cut.
+    pub font_width: Option<f32>,
 
     pub line_height: Option<f32>,
 
@@ -504,6 +518,9 @@ impl TextAttributes {
         if over.font_weight.is_some() {
             self.font_weight = over.font_weight;
         }
+        if over.font_width.is_some() {
+            self.font_width = over.font_width;
+        }
         if over.line_height.is_some() {
             self.line_height = over.line_height;
         }
@@ -554,6 +571,7 @@ struct RawEntry {
     font_families: Option<Vec<String>>,
     font_size: Option<f32>,
     font_weight: Option<f32>,
+    font_width: Option<f32>,
     line_height: Option<f32>,
     gutter: Option<String>,
     rule: Option<String>,
@@ -604,6 +622,7 @@ impl RawEntry {
             font_families: self.font_families.map(Into::into),
             font_size: self.font_size,
             font_weight: self.font_weight,
+            font_width: self.font_width,
             line_height: self.line_height,
             gutter: self.gutter.as_deref().map(parse_color).transpose()?,
             rule: self.rule.as_deref().map(parse_color).transpose()?,

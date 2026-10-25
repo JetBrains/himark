@@ -22,12 +22,44 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
 }
 
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
+use ::canvas::changes_face::ChangesFace;
+use ::canvas::commit_face::CommitFace;
 use ::canvas::diff_pane::*;
+use changesview::hichanges::CanvasSource;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app_ext::AppExt;
 use himark::diff_pane::*;
 use std::sync::{mpsc, Arc};
+
+/// The panel a test opens over a seeded canvas: its source's face,
+/// under the workbench's scroller — the navigator's answer.
+fn face_panel(app: &mut Himark, canvas: DiffCanvasView) -> Box<dyn hikit::panel::DynPanelView> {
+    let ui = app.ui_handle();
+    let mut store = app.store_mut();
+    match canvas.source() {
+        CanvasSource::WorkingCopy { .. } => Box::new(hikit::modal::Scrolled::new(
+            ChangesFace::over(&mut store, &ui, canvas),
+        )),
+        CanvasSource::Commit { .. } => Box::new(hikit::modal::Scrolled::new(CommitFace::over(
+            &store, canvas,
+        ))),
+    }
+}
+
+/// A commit face over a seeded canvas, its block as a test says it.
+fn commit_panel(
+    app: &mut Himark,
+    canvas: DiffCanvasView,
+    message: &str,
+    author: &str,
+) -> Box<dyn hikit::panel::DynPanelView> {
+    let ui = app.ui_handle();
+    let store = app.store_mut();
+    Box::new(hikit::modal::Scrolled::new(
+        CommitFace::over(&store, canvas).with_block_for_tests(&store, &ui, message, author),
+    ))
+}
 
 fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
@@ -2381,10 +2413,8 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -2512,10 +2542,8 @@ fn folded_squash_paint_cost_is_size_independent() {
                 built,
             )
         };
-        assert!(app.open_panel(
-            app.sole_window(),
-            Box::new(hikit::modal::Scrolled::new(canvas)),
-        ));
+        let panel = face_panel(&mut app, canvas);
+        assert!(app.open_panel(app.sole_window(), panel));
 
         let size = skia_safe::Size::new(1100.0, 800.0);
         let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -2609,10 +2637,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     // The diff is dressed by the normalize lane, not at birth
     // (docs/no-diff-on-ui-thread) — the before-cards and host text land
@@ -2624,8 +2650,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         }),
         Arc::new(|| {}),
     );
-    let size = skia_safe::Size::new(1100.0, 800.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     for _ in 0..40 {
         let _ =
             himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
@@ -2646,7 +2672,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = canvas
                     .probe_focus(store)
                     .into_iter()
@@ -2657,7 +2683,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         shot.expect("the built row")
     };
     let full_click = |app: &mut Himark, y: f32| {
-        let _ = himark::test_driver::click(app, 550.0, y, 1100.0, 800.0);
+        let _ = himark::test_driver::click(app, 550.0, y, 1100.0, 1500.0);
         let _ = himark::test_driver::mouse_up(app, 550.0, y);
     };
 
@@ -2701,7 +2727,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let inline_of = |app: &Himark| {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 let _app_docs = app.sole_documents();
                 let app_docs = app.sole_documents();
                 let store = app.store();
@@ -2801,13 +2827,11 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
@@ -2828,7 +2852,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = Some((
                     canvas.probe_rows(store),
                     canvas.probe_layouts(store),
@@ -2839,7 +2863,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         shot.expect("the canvas panel")
     };
     let click = |app: &mut Himark, x: f32, y: f32| {
-        let _ = himark::test_driver::click(app, x, y, 1100.0, 800.0);
+        let _ = himark::test_driver::click(app, x, y, 1100.0, 1500.0);
         let _ = himark::test_driver::mouse_up(app, x, y);
     };
 
@@ -2869,7 +2893,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             1100.0 - diff.band_pad_right,
             diff.band_gap,
             ::canvas::diff_header::file_band_height(app.store()),
-            ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx()),
+            ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx())
+                + ::canvas::changes_face::composer_band_height(app.store(), &app.ui_ctx()),
         )
     };
     let word = {
@@ -2921,7 +2946,9 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     // Scroll the header behind the top edge: the list PLANTS it, and
     // the planted chevron folds the file exactly like the real one.
-    let _ = himark::test_driver::scroll(&mut app, 400.0);
+    // Past the commit control above the list, then 400 more.
+    let past_head = ::canvas::changes_face::composer_band_height(app.store(), &app.ui_ctx());
+    let _ = himark::test_driver::scroll(&mut app, 400.0 + past_head);
     settle(&mut app);
     let (_, _, scrolled) = probe(&app);
     assert!(scrolled > 0.0, "the canvas scrolled: {scrolled}");
@@ -3011,15 +3038,13 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let row_height = |app: &Himark| -> f32 {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = canvas.probe_rows(app.store()).first().map(|row| row.2);
             }
         });
@@ -3032,8 +3057,8 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
          not the undressed body: {reserved}"
     );
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut trace: Vec<f32> = vec![reserved];
     for _ in 0..40 {
         let _ =
@@ -3121,10 +3146,8 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -3151,7 +3174,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let row_height = |app: &Himark| -> f32 {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = canvas.probe_rows(app.store()).first().map(|row| row.2);
             }
         });
@@ -3254,10 +3277,8 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     // The diff is dressed by the normalize lane, not at birth
     // (docs/no-diff-on-ui-thread) — the folds appear once it lands.
@@ -3286,7 +3307,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = Some((canvas.probe_rows(store), canvas.probe_layouts(store)));
             }
         });
@@ -3296,7 +3317,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = Some(canvas.probe_half_heights(store));
             }
         });
@@ -3695,10 +3716,8 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -3715,7 +3734,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let stale_now = |app: &Himark| -> bool {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
-            let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() else {
+            let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) else {
                 return;
             };
             let app_docs = app.sole_documents();
@@ -3923,7 +3942,6 @@ fn a_committed_change_set_empties_the_canvas() {
     // The commit: the host clears the set — READY and empty.
     view.adopt_for_tests(
         &mut app.store_mut(),
-        ::editor::test_document::test_ui(),
         7,
         ::canvas::diff_canvas::CanvasListing::Empty("no changes".to_owned()),
     );
@@ -3946,7 +3964,6 @@ fn a_committed_change_set_empties_the_canvas() {
     // A transient computing state must NOT clear anything…
     view.adopt_for_tests(
         &mut app.store_mut(),
-        ::editor::test_document::test_ui(),
         8,
         ::canvas::diff_canvas::CanvasListing::Ready(vec![canvas_file(&key, 3)]),
     );
@@ -3957,7 +3974,6 @@ fn a_committed_change_set_empties_the_canvas() {
     );
     view.adopt_for_tests(
         &mut app.store_mut(),
-        ::editor::test_document::test_ui(),
         9,
         ::canvas::diff_canvas::CanvasListing::Pending("computing…".to_owned()),
     );
@@ -4045,12 +4061,12 @@ fn releasing_the_last_view_frees_the_rows_documents() {
     // A second view on the same source shares the canvas: releasing it
     // releases ONE ref, the rows stay.
     let mut second = DiffCanvasView::over(&mut app.store_mut(), changes, commit.clone());
-    hikit::panel::PanelView::displaced(&mut second, &mut app.store_mut());
+    second.release(&mut app.store_mut());
     assert!(registered(&app), "one view still stands — nothing retires");
 
     // The LAST view goes (a navigation away, not a close): every row
     // tears down and both side documents leave the collection.
-    hikit::panel::PanelView::displaced(&mut first, &mut app.store_mut());
+    first.release(&mut app.store_mut());
     assert!(
         !registered(&app),
         "the last release frees the rows' documents"
@@ -4075,7 +4091,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
             built(&wc_file),
         )
     };
-    hikit::panel::PanelView::dismantle(&mut working, &mut app.store_mut());
+    working.release(&mut app.store_mut());
     assert!(
         documents::OpenDocuments::by_location(&app.store(), documents, &wc_file.new).is_some(),
         "the working-copy canvas keeps its rows for the next open"
@@ -4408,7 +4424,6 @@ fn membership_follows_every_adopted_listing() {
     let mut generation: u64 = 1;
     let mut seen: Option<u64> = None;
     let mut expected: Option<Vec<String>> = None; // None = never populated
-    let ui = ::editor::test_document::test_ui();
 
     for step in 0..400 {
         let roll = rand() % 10;
@@ -4453,7 +4468,7 @@ fn membership_follows_every_adopted_listing() {
                 );
             }
         }
-        view.adopt_for_tests(&mut app.store_mut(), &ui, generation, listing);
+        view.adopt_for_tests(&mut app.store_mut(), generation, listing);
 
         let rows: Vec<String> = view
             .probe_row_keys(&app.store())
@@ -4494,7 +4509,6 @@ fn membership_minimal_repro() {
         let changes = canvas_changes(&store);
         DiffCanvasView::over(&mut store, changes, source)
     };
-    let ui = ::editor::test_document::test_ui();
     let ready = |names: &[&str], gen: u64| {
         ::canvas::diff_canvas::CanvasListing::Ready(
             names
@@ -4504,19 +4518,18 @@ fn membership_minimal_repro() {
         )
     };
 
-    view.adopt_for_tests(&mut app.store_mut(), &ui, 1, ready(&["f0.md", "f1.md"], 1));
+    view.adopt_for_tests(&mut app.store_mut(), 1, ready(&["f0.md", "f1.md"], 1));
     eprintln!("after populate: {:?}", view.probe_row_keys(&app.store()));
 
-    view.adopt_for_tests(&mut app.store_mut(), &ui, 2, ready(&["f6.md"], 2));
+    view.adopt_for_tests(&mut app.store_mut(), 2, ready(&["f6.md"], 2));
     eprintln!("after swap to f6: {:?}", view.probe_row_keys(&app.store()));
 
-    view.adopt_for_tests(&mut app.store_mut(), &ui, 3, ready(&["f0.md", "f6.md"], 3));
+    view.adopt_for_tests(&mut app.store_mut(), 3, ready(&["f0.md", "f6.md"], 3));
     let keys = view.probe_row_keys(&app.store());
     eprintln!("after f0+f6: {keys:?}");
     assert_eq!(
         keys,
         vec![
-            "Banner".to_owned(),
             "File:f0.md".to_owned(),
             "Diff:f0.md".to_owned(),
             "File:f6.md".to_owned(),
@@ -4649,10 +4662,8 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         view.land_for_tests(&mut store, &ui, file_b.new.clone(), built_b);
         view
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
@@ -4672,7 +4683,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     let canvas_view = |app: &Himark| -> DiffCanvasView {
         let mut found = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(view) = ::canvas::faces::canvas_of(panel.as_any()) {
                 found = Some(view.clone());
             }
         });
@@ -4873,12 +4884,10 @@ fn completion_serves_a_canvas_diff_face() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
-    let size = skia_safe::Size::new(1100.0, 800.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
+    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
@@ -4895,7 +4904,7 @@ fn completion_serves_a_canvas_diff_face() {
     let pair = {
         let mut found = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(view) = ::canvas::faces::canvas_of(panel.as_any()) {
                 found = view.probe_pair(app.store(), &file.new);
             }
         });
@@ -4924,7 +4933,7 @@ fn completion_serves_a_canvas_diff_face() {
     let face_y = working_band_word(&app, 1100.0, "Side by side").1
         + ::canvas::diff_header::file_band_height(app.store()) * 0.5
         + 90.0;
-    let _ = himark::test_driver::click(&mut app, 900.0, face_y, 1100.0, 800.0);
+    let _ = himark::test_driver::click(&mut app, 900.0, face_y, 1100.0, 1500.0);
     let _ = himark::test_driver::mouse_up(&mut app, 900.0, face_y);
     settle(&mut app, &mut surface);
     let focus = OpenDocuments::document_ref(app.store(), documents, right)
@@ -4946,12 +4955,12 @@ fn completion_serves_a_canvas_diff_face() {
     };
     let frame = |surface: &mut skia_safe::Surface| -> Vec<u8> {
         let info = skia_safe::ImageInfo::new(
-            (1100, 800),
+            (1100, 1500),
             skia_safe::ColorType::RGBA8888,
             skia_safe::AlphaType::Unpremul,
             None,
         );
-        let mut pixels = vec![0u8; 1100 * 800 * 4];
+        let mut pixels = vec![0u8; 1100 * 1500 * 4];
         assert!(surface.read_pixels(&info, &mut pixels, 1100 * 4, (0, 0)));
         pixels
     };
@@ -4975,7 +4984,7 @@ fn completion_serves_a_canvas_diff_face() {
             std::fs::write("/tmp/test-completion.png", data.as_bytes()).unwrap();
         }
     }
-    let changed_below = (250..800)
+    let changed_below = (250..1500)
         .flat_map(|y| (0..1100).map(move |x| (y * 1100 + x) * 4))
         .filter(|&at| quiet[at..at + 3] != popped[at..at + 3])
         .count();
@@ -5082,10 +5091,8 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
     let size = skia_safe::Size::new(430.0, 600.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
@@ -5229,15 +5236,13 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
             built,
         )
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
     let documents = app.sole_documents();
     let pair = {
         let mut found = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(view) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+            if let Some(view) = ::canvas::faces::canvas_of(panel.as_any()) {
                 found = view.probe_pair(app.store(), &file.new);
             }
         });
@@ -5350,6 +5355,7 @@ fn working_band_word(app: &Himark, width: f32, label: &str) -> (f32, f32) {
         - word(label) * 0.5;
     let y = theme.part(::hikit::chrome::ToolbarChrome::KEY).height
         + ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx())
+        + ::canvas::changes_face::composer_band_height(app.store(), &app.ui_ctx())
         + ::canvas::diff_header::file_band_height(app.store()) * 0.5;
     (x, y)
 }
@@ -5466,18 +5472,15 @@ fn dump_commit_canvas_screenshot() {
             file,
             built,
         );
-        view.head_with_commit_for_tests(
-            &mut store,
-            &ui,
-            "the document feed is an ordered lane — the servers hear edits in mirror order",
-            "Andrey Zaytsev",
-        );
         view
     };
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(canvas)),
-    ));
+    let panel = commit_panel(
+        &mut app,
+        canvas,
+        "the document feed is an ordered lane — the servers hear edits in mirror order",
+        "Andrey Zaytsev",
+    );
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
@@ -5582,12 +5585,6 @@ fn dump_multi_file_commit_canvas_screenshot() {
             server.clone(),
             pair(&server, server_old, server_new),
         );
-        view.head_with_commit_for_tests(
-            &mut store,
-            &ui,
-            "the document feed is an ordered lane — the servers hear edits in mirror order",
-            "Andrey Zaytsev",
-        );
         view
     };
     let _ = view.reconcile_for_tests(
@@ -5610,10 +5607,13 @@ fn dump_multi_file_commit_canvas_screenshot() {
             pair(&order, order_old, order_new),
         );
     }
-    assert!(app.open_panel(
-        app.sole_window(),
-        Box::new(hikit::modal::Scrolled::new(view)),
-    ));
+    let panel = commit_panel(
+        &mut app,
+        view.clone(),
+        "the document feed is an ordered lane — the servers hear edits in mirror order",
+        "Andrey Zaytsev",
+    );
+    assert!(app.open_panel(app.sole_window(), panel));
 
     let size = skia_safe::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
@@ -5653,4 +5653,130 @@ fn dump_multi_file_commit_canvas_screenshot() {
         data.as_bytes(),
     )
     .expect("write");
+}
+
+/// The working-copy canvas's COMMIT CONTROL over one changed file,
+/// 2880×1800, empty, then with a subject and a body typed, then in the
+/// light theme —
+/// `HIMARK_SHOT=<dir> cargo test -p himark-tests --test shell dump_commit_control_screenshots -- --ignored`
+#[test]
+#[ignore]
+fn dump_commit_control_screenshots() {
+    let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+        return;
+    };
+    let store = &imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+
+    let mut old_body = String::new();
+    let mut new_body = String::new();
+    for n in 0..3 {
+        let line = format!("17929601{n},d9c3d562a,debug,editor-scroll,build_p95_ms,0.129{n}\n");
+        old_body.push_str(&line);
+        new_body.push_str(&line);
+    }
+    for (n, probe) in ["diff-open,open_ms,102.6311", "diff-typing,p50_ms,1.5243"]
+        .into_iter()
+        .enumerate()
+    {
+        new_body.push_str(&format!("17929607{n},1ebddc2f8,debug,{probe}\n"));
+    }
+
+    himarkdown::register_handlers(&mut app);
+    let theme = editor::theme::embedded();
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &theme);
+    let location = |name: &str, kind| {
+        editor::location::ResourceLocation::new(
+            kind,
+            editor::location::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "perf.csv".to_owned(),
+        old: location("perf.csv.old", editor::location::ResourceType::document()),
+        new: location("perf.csv", editor::location::ResourceType::document()),
+        added: Some(2),
+        removed: None,
+        updated: 0,
+    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 2880.0);
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            changesview::hichanges::CanvasSource::WorkingCopy {
+                folder: location("proj", editor::location::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
+
+    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+        for _ in 0..12 {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        }
+    };
+    let dump = |surface: &mut skia_safe::Surface, name: &str| {
+        let data = surface
+            .image_snapshot()
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png");
+        std::fs::write(format!("{dir}/{name}.png"), data.as_bytes()).expect("write");
+    };
+    settle(&mut app, &mut surface);
+    dump(&mut surface, "commit-control-empty");
+
+    // A press beside the byline (under the header and the summary
+    // strip) hands the subject the keyboard.
+    assert!(himark::test_driver::click(
+        &mut app, 1200.0, 245.0, 2880.0, 1800.0
+    ));
+    assert!(himark::test_driver::type_text(
+        &mut app,
+        "perf: record diff-open, typing and resize timings"
+    ));
+    settle(&mut app, &mut surface);
+    dump(&mut surface, "commit-control-subject");
+
+    // Enter leaves the subject for the body.
+    let _ = himark::test_driver::key(
+        &mut app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers::default(),
+    );
+    assert!(himark::test_driver::type_text(
+        &mut app,
+        "The csv gains the three diff probes the perf campaign reads."
+    ));
+    settle(&mut app, &mut surface);
+    dump(&mut surface, "commit-control-body");
+
+    assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
+    settle(&mut app, &mut surface);
+    dump(&mut surface, "commit-control-light");
 }

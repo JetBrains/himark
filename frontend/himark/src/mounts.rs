@@ -859,7 +859,7 @@ fn mount_place_inner(
             // road a workbench pane rides.
             let panel = fx.scope(crate::perform::AppCommand::Verb, |fx| {
                 hikit::navigation::Navigator::navigate(
-                    &::canvas::canvas::CanvasNavigator,
+                    &::canvas::faces::CanvasNavigator,
                     store,
                     ui,
                     &place,

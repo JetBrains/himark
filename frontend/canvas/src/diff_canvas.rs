@@ -43,55 +43,20 @@ pub enum CanvasListing {
     Ready(Vec<CanvasFile>),
 }
 
-/// What the canvas's FIRST row shows, per source: a commit canvas
-/// heads with the commit's message and author; the working-copy
-/// canvas heads with the commit composer (the box that used to sit in
-/// the changes dock).
-#[derive(Clone, PartialEq, Debug)]
-pub(crate) enum CanvasBanner {
-    Composer {
-        folder: ResourceLocation,
-    },
-    Commit {
-        /// The full message when the host sent one, the summary
-        /// otherwise.
-        message: String,
-        /// The author as the probes read it: `Name <email>`.
-        author: String,
-        /// The name alone — what the byline shows.
-        author_name: String,
-    },
+/// The canvas's sums: files, added and removed lines.
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub struct Totals {
+    pub files: usize,
+    pub added: i64,
+    pub removed: i64,
 }
 
-pub(crate) fn canvas_banner(
-    store: &Store,
-    changes: imba::store::Id<Changes>,
-    source: &CanvasSource,
-) -> Option<CanvasBanner> {
-    match source {
-        CanvasSource::WorkingCopy { folder } => Some(CanvasBanner::Composer {
-            folder: folder.clone(),
-        }),
-        CanvasSource::Commit { folder, id } => {
-            let history = Changes::of(store, changes)?.history();
-            let held = changesview::hihistory::History::folder(store, history, folder)?;
-            let commit = held
-                .commits
-                .iter()
-                .find(|commit| commit.id == id.as_str())?;
-            Some(CanvasBanner::Commit {
-                message: commit
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| commit.summary.clone()),
-                author: match &commit.author.email {
-                    Some(email) => format!("{} <{}>", commit.author.name, email),
-                    None => commit.author.name.clone(),
-                },
-                author_name: commit.author.name.clone(),
-            })
-        }
-    }
+pub fn totals_of<'f>(files: impl Iterator<Item = &'f CanvasFile>) -> Totals {
+    files.fold(Totals::default(), |sum, file| Totals {
+        files: sum.files + 1,
+        added: sum.added + file.added.unwrap_or(0).max(0),
+        removed: sum.removed + file.removed.unwrap_or(0).max(0),
+    })
 }
 
 /// The per-frame staleness probe — O(1), no listing built. The panel

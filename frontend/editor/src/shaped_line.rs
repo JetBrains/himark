@@ -343,6 +343,7 @@ struct RunStyle {
     color: skia_safe::Color,
     bold: bool,
     weight: Option<f32>,
+    width: Option<f32>,
     italic: bool,
     size: f32,
     families: Option<Vec<String>>,
@@ -368,6 +369,7 @@ pub(crate) fn shape_inputs(
         .unwrap_or_default();
     let base_height = resolved.line_height;
     let base_weight = resolved.font_weight;
+    let base_width = resolved.font_width;
 
     // ─── spans + ink over the DISPLAY text ───
     let mut spans: Vec<SpanStyle> = Vec::new();
@@ -375,6 +377,7 @@ pub(crate) fn shape_inputs(
     if decorations.is_empty() {
         spans.push(SpanStyle {
             weight: base_weight,
+            width: base_width,
             ..SpanStyle::plain(base_color)
         });
     } else {
@@ -404,6 +407,7 @@ pub(crate) fn shape_inputs(
                 color: base_color,
                 bold: false,
                 weight: base_weight,
+                width: base_width,
                 italic: false,
                 size: base_size,
                 families: None,
@@ -422,6 +426,9 @@ pub(crate) fn shape_inputs(
                     }
                     if let Some(weight) = attributes.font_weight {
                         run.weight = Some(weight);
+                    }
+                    if let Some(width) = attributes.font_width {
+                        run.width = Some(width);
                     }
                     if attributes.italic {
                         run.italic = true;
@@ -463,7 +470,7 @@ pub(crate) fn shape_inputs(
                     .line_height
                     .filter(|height| base_height.map_or(true, |base| (height - base).abs() > 1e-3)),
                 weight: run.weight,
-                width: None,
+                width: run.width,
             });
             if run.underline || run.strikethrough || run.squiggle.is_some() {
                 ink.push(DecorationSpec {

@@ -483,7 +483,7 @@ impl Himark {
                 // by the one lane that reads it.
                 let dressed = documents::OpenDocuments::take_dressed(&mut store, documents);
                 fx.scope(AppCommand::Verb, |fx| {
-                    canvas::canvas::sync_canvases(
+                    canvas::canvases::sync_canvases(
                         &mut store,
                         state.canvas_router(),
                         &self.ui_ctx(),

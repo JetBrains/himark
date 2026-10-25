@@ -797,7 +797,7 @@ fn history_row_y(engine: &HimarkEngine, index: usize) -> f32 {
 /// the commit composer over an empty message box, as the canvas
 /// lays it.
 fn canvas_composer_band(engine: &HimarkEngine) -> f32 {
-    ::canvas::canvas::composer_band_height(engine.app.store(), &engine.app.ui_ctx())
+    ::canvas::changes_face::composer_band_height(engine.app.store(), &engine.app.ui_ctx())
 }
 
 /// The vertical center of a working-copy canvas's FIRST file band:
@@ -1327,10 +1327,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     let canvas_probe = |engine: &HimarkEngine| {
         let mut shot = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel
-                .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
-            {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 shot = Some(canvas.probe_rows(engine.app.store()));
             }
         });
@@ -2998,10 +2995,7 @@ fn a_one_sided_diff_goes_quiet() {
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel
-                .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
-            {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built = canvas
                     .probe_rows(engine.app.store())
                     .iter()
@@ -3059,10 +3053,7 @@ fn a_one_sided_diff_goes_quiet() {
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel
-                .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
-            {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built |= canvas
                     .probe_rows(engine.app.store())
                     .iter()
@@ -3368,6 +3359,14 @@ fn chat_transcript(engine: &HimarkEngine) -> Option<Vec<(String, Vec<(String, St
 }
 
 fn pick_drawer_row(engine: &mut HimarkEngine, index: usize) {
+    // Home first: a fresh drawer has NO cursor (nothing seeds it),
+    // and a walk counted from nowhere lands one row short — Home
+    // pins row 0, the Downs count from there.
+    let _ = himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Home,
+        imba::event::Modifiers::default(),
+    );
     for _ in 0..index {
         let _ = himark::test_driver::key(
             &mut engine.app,
@@ -3752,14 +3751,22 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     )]));
 
     let mut rows = Vec::new();
+    let clock = std::cell::Cell::new(0.0f64);
     for _ in 0..400 {
+        clock.set(clock.get() + 8.33);
+        let _ = engine.animation_tick(clock.get());
         let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         rows = drawer_rows(&engine).expect("the AddHost reopen leaves the drawer up");
-        let connected = rows
-            .iter()
-            .position(|(label, depth)| *depth == 0 && label == ws.trim())
-            .is_some_and(|index| rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)));
+        // A CONNECTED host paints no head row of its own — its name
+        // rides the repo column of its "+ New Session…" affordance;
+        // only disconnected hosts stand in the foot by name.
+        let connected = drawer_panel(&engine).is_some_and(|panel| {
+            panel
+                .lines()
+                .iter()
+                .any(|(repo, word, _)| repo == ws.trim() && word == "+ New Session…")
+        });
         if connected {
             drop(spawned);
             drop(host);
@@ -4430,8 +4437,11 @@ fn the_drawer_connects_to_the_himark_host() {
 
     assert!(engine.perform_command(window, "agent.toggle-agents"));
     let mut rows = Vec::new();
+    let clock = std::cell::Cell::new(0.0f64);
     for _ in 0..30 {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(&mut engine);
         }
@@ -4476,8 +4486,15 @@ fn dump_chat_pane_snapshot() {
         }),
     );
 
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(engine);
         }
@@ -4623,8 +4640,15 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         }),
     );
 
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(engine);
         }
@@ -4817,8 +4841,15 @@ fn the_chat_runs_through_the_himark_host() {
         }),
     );
 
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(engine);
         }
@@ -5164,8 +5195,15 @@ fn real_claude_answers_through_the_himark_host() {
         }),
     );
 
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(engine);
         }
@@ -5260,8 +5298,15 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         }),
     );
 
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
             settle(engine);
         }
@@ -6666,8 +6711,15 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             })
         }),
     );
+    // A draw is a FRAME: the shells tick the animation clock once
+    // per display frame, and the drawer's content slides in on those
+    // ticks — an untipped clock leaves it parked off-screen, unpainted,
+    // and its paint-side Boot never builds the rows.
+    let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
+            clock.set(clock.get() + 8.33);
+            let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             settle(engine);
         }
@@ -6891,10 +6943,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel
-                .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
-            {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built = matches!(
                     canvas.source(),
                     changesview::hichanges::CanvasSource::Commit { .. }
@@ -6914,14 +6963,9 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
                 .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
+                .downcast_ref::<::canvas::commit_face::CommitFace>()
             {
-                if matches!(
-                    canvas.source(),
-                    changesview::hichanges::CanvasSource::Commit { .. }
-                ) {
-                    banner = canvas.probe_banner(engine.app.store());
-                }
+                banner = canvas.probe_block();
             }
         });
         let (message, author) = banner.expect("the commit banner heads the canvas");
@@ -6943,14 +6987,9 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             engine.app.for_each_plugin_panel(&mut |panel| {
                 if let Some(canvas) = panel
                     .as_any()
-                    .downcast_ref::<::canvas::canvas::DiffCanvasView>()
+                    .downcast_ref::<::canvas::commit_face::CommitFace>()
                 {
-                    if matches!(
-                        canvas.source(),
-                        changesview::hichanges::CanvasSource::Commit { .. }
-                    ) {
-                        shot = canvas.probe_banner(engine.app.store());
-                    }
+                    shot = canvas.probe_block();
                 }
             });
             shot
@@ -7069,14 +7108,9 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
                 .as_any()
-                .downcast_ref::<::canvas::canvas::DiffCanvasView>()
+                .downcast_ref::<::canvas::changes_face::ChangesFace>()
             {
-                if matches!(
-                    canvas.source(),
-                    changesview::hichanges::CanvasSource::WorkingCopy { .. }
-                ) {
-                    shot = canvas.probe_composer(engine.app.store());
-                }
+                shot = Some(canvas.probe_composer());
             }
         });
         shot

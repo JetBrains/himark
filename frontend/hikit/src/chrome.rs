@@ -393,6 +393,31 @@ pub struct DiffChrome {
     pub headline_gap: f32,
     pub headline_max_width: f32,
 
+    /// The COMMIT CONTROL heading the working-copy canvas
+    /// (Commit.dc.html): the message is typed where the commit's
+    /// headline will stand, at its size and width, under the same
+    /// byline. The air from the byline to the subject box; the
+    /// subject's length stands in the line-number margin, its right
+    /// edge this far before the text edge, centered in a line box this
+    /// tall at the subject's top; the subject and body boxes keep
+    /// room for this many lines before they grow; the air above the
+    /// body and its measure; then the ACTION row — the air above its
+    /// hairline, from the hairline to its words, the Commit word's
+    /// rung, the gap before its key hint — and the air under the whole
+    /// control before the first file band.
+    pub commit_subject_gap: f32,
+    pub commit_count_inset: f32,
+    pub commit_count_line: f32,
+    pub commit_subject_min_lines: u32,
+    pub commit_body_gap: f32,
+    pub commit_body_max_width: f32,
+    pub commit_body_min_lines: u32,
+    pub commit_action_gap: f32,
+    pub commit_action_pad: f32,
+    pub commit_action: TypeRole,
+    pub commit_key_gap: f32,
+    pub commit_form_pad_bottom: f32,
+
     /// The FILE BAND: one hairline-topped row of words per file over
     /// the ground — no card. Its insets (left is the code text edge),
     /// the AIR under every file's diff before the next band's hairline
@@ -453,6 +478,24 @@ impl Default for DiffChrome {
             byline_gap: 16.0,
             headline_gap: 16.0,
             headline_max_width: 1152.0,
+            commit_subject_gap: 16.0,
+            commit_count_inset: 44.0,
+            commit_count_line: 48.0,
+            commit_subject_min_lines: 2,
+            commit_body_gap: 24.0,
+            commit_body_max_width: 1080.0,
+            commit_body_min_lines: 2,
+            commit_action_gap: 12.0,
+            commit_action_pad: 20.0,
+            commit_action: TypeRole {
+                size: 30.0,
+                weight: 680.0,
+                width: 100.0,
+                tracking: 0.0,
+                line_height: 1.0,
+            },
+            commit_key_gap: 8.0,
+            commit_form_pad_bottom: 72.0,
             band_pad_top: 24.0,
             band_pad_right: 48.0,
             band_pad_bottom: 20.0,

@@ -59,7 +59,7 @@ pub struct SessionState {
 
     pub changes_wire: Id<ahp_changes::changes::ChangesWire>,
 
-    pub canvas_router: Id<canvas::canvas::CanvasRouter>,
+    pub canvas_router: Id<canvas::canvases::CanvasRouter>,
 
     pub history_wire: Id<ahp_changes::history::HistoryWire>,
 
@@ -105,7 +105,7 @@ impl SessionState {
         self.changes_wire
     }
 
-    pub fn canvas_router(&self) -> Id<canvas::canvas::CanvasRouter> {
+    pub fn canvas_router(&self) -> Id<canvas::canvases::CanvasRouter> {
         self.canvas_router
     }
 
@@ -539,7 +539,7 @@ impl Hosts {
         );
         store.put_entity(
             state.canvas_router,
-            canvas::canvas::CanvasRouter::wired(state.changes),
+            canvas::canvases::CanvasRouter::wired(state.changes),
         );
         store.put_entity(
             state.changes_wire,

@@ -228,14 +228,14 @@ fn navigate(
     let landing = workbench::window::Windows::window_ref(store, window).and_then(|entity| {
         match entity.workbench().root.focused_pane() {
             workbench::workbench_node::Panel::Plugin(view) => {
-                canvas::canvas::diff_landing(store, view.as_any(), documents, &target.location)
+                canvas::canvases::diff_landing(store, view.as_any(), documents, &target.location)
             }
             workbench::workbench_node::Panel::Editor(_) => None,
         }
     });
     if let Some(landing) = landing {
         if let Some((changes, canvas, key)) = landing.reveal {
-            canvas::canvas::Canvases::set_reveal(store, changes, canvas, key);
+            canvas::canvases::Canvases::set_reveal(store, changes, canvas, key);
         }
         if let Some(pair) = landing.pair {
             let byte = OpenDocuments::diff_view_ref(store, documents, pair)

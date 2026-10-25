@@ -20,7 +20,7 @@ use editor::env;
 
 /// What the canvas asks the line to show.
 pub struct SummarySpec {
-    pub totals: crate::canvas::Totals,
+    pub totals: crate::diff_canvas::Totals,
     /// Of the files, how many stand collapsed.
     pub collapsed: usize,
 }

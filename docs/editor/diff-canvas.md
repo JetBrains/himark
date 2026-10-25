@@ -2,11 +2,16 @@
 
 Selecting a **revision** (history view) or the **session folder root**
 (changes view) opens the **diff canvas**: one workbench panel holding
-one huge scrollable list — a **banner** first (the commit's message
-and author on a commit canvas; the **commit composer** — message box,
-COMMIT button, ⌘⏎ — on the working-copy canvas), then per changed
-file a large right-aligned header styled exactly like markdown
-Header 1, and under it that file's diff. Diffs are **lazy**: a row entering the viewport arms on its
+one huge scrollable list of diffs: per changed file a header band
+and under it that file's diff. The canvas is ONLY that list. What
+heads it is a **face**'s (`canvas::faces`): a commit canvas stands
+under the **commit block** — the byline, the message's first line in
+the headline rung, its body — and the working-copy canvas under the
+**commit control** — the byline, a subject box in the headline
+register with its length counted in the margin, a body box, and a
+ruled action row with the Commit word and ⌘⏎. A face is one Column,
+head over canvas, under the shell's one scroller; the canvas knows
+neither head nor scroll. Diffs are **lazy**: a row entering the viewport arms on its
 first paint, fetches its sides, builds the diff off-thread, and lands
 **atomically** into the list. Selecting a **particular file** in
 either view does not open a separate pane — it **reveals** that file's
