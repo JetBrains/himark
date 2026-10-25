@@ -38,10 +38,17 @@ pub enum SearchArea {
     Results,
 }
 
+/// The results tree with its key table — the half of the tab that
+/// SCROLLS; the head (query, counts) stands still above it.
+type ResultTree = ListKeyboardController<
+    ForestList<LocationKey, ResultRow>,
+    ForestSearcher<LocationKey, ResultRow>,
+>;
+
 #[derive(Clone)]
 pub enum SearchCommand {
     Input(EditorCommand),
-    List(ListKeyCommand<TreeListCommand>),
+    List(imba::scroll::ScrollCommand<ListKeyCommand<TreeListCommand>>),
     /// A click landed: move the keyboard to the clicked area, then
     /// forward the click itself.
     Focus(SearchArea, Option<Box<SearchCommand>>),
@@ -73,10 +80,10 @@ pub struct SearchView {
     /// model and NOTES asks; the wire lane does the rest.
     lists: imba::store::Id<LocationLists>,
     input: EditorView,
-    search: ListKeyboardController<
-        ForestList<LocationKey, ResultRow>,
-        ForestSearcher<LocationKey, ResultRow>,
-    >,
+    /// The tree in its OWN scroller: the head above it never scrolls,
+    /// and the tree's reveals (cursor steps, door corrections) land
+    /// here instead of dragging the whole panel.
+    search: imba::scroll::ScrollView<ResultTree>,
     focus: SearchArea,
     last_query: String,
 
@@ -123,13 +130,15 @@ impl SearchView {
         let mut view = Self {
             lists,
             input: seeded_input(store, ui, &row.query),
-            search: ListKeyboardController::searchable(
-                ForestList::wrapping(store, result_row(lists)),
-                ForestSearcher::default(),
-                store,
-                ui,
-            )
-            .with_folds(),
+            search: imba::scroll::ScrollView::new(
+                ListKeyboardController::searchable(
+                    ForestList::wrapping(store, result_row(lists)),
+                    ForestSearcher::default(),
+                    store,
+                    ui,
+                )
+                .with_folds(),
+            ),
             focus: SearchArea::Input,
             last_query: row.query.clone(),
             targets: rpds::HashTrieMapSync::new_sync(),
@@ -154,6 +163,14 @@ impl SearchView {
 
     fn feed(&self, store: &Store) -> Option<FeedId> {
         LocationLists::search(store, self.lists)
+    }
+
+    fn tree(&self) -> &ResultTree {
+        self.search.content()
+    }
+
+    fn tree_mut(&mut self) -> &mut ResultTree {
+        self.search.content_mut()
     }
 
     fn row(&self, store: &Store) -> LocationsFeedRow {
@@ -185,11 +202,14 @@ impl SearchView {
         self.files = files;
         self.shown = feed.map(|feed| (feed, row.generation));
 
-        let cursor = self.search.inner().list().cursor().cloned();
-        self.search.inner_mut().set(&forest, store, ui);
+        let cursor = self.tree().inner().list().cursor().cloned();
+        self.tree_mut().inner_mut().set(&forest, store, ui);
         if let Some(cursor) = cursor {
-            if self.search.inner().forest.contains(&cursor) {
-                self.search.inner_mut().list_mut().select_only(cursor);
+            if self.tree().inner().forest.contains(&cursor) {
+                // QUIETLY: a rebuild re-asserts, it never scrolls —
+                // landing batches teleported the tree to the cursor's
+                // row on every landing when this revealed.
+                self.tree_mut().inner_mut().list_mut().reselect_quiet(cursor);
             }
         }
     }
@@ -223,6 +243,14 @@ impl SearchView {
         // model's own folders (an unlaunchable query resolves the
         // row cut-off there).
         LocationLists::ask(store, self.lists, LocationsAsk::Search { feed, query });
+        // A NEW result set: the old cursor, door anchor and scroll
+        // mean nothing against it — preserving them re-aimed the tree
+        // at whatever row shared an old key. The tree starts at the
+        // top; the first landing re-seeds the cursor, quietly.
+        self.tree_mut().inner_mut().list_mut().clear_selection();
+        self.tree_mut().inner_mut().list_mut().reset_viewport();
+        self.search.set_scroll_y(0.0);
+        self.navigated = None;
         self.rebuild(store, ui);
     }
 
@@ -276,7 +304,7 @@ impl SearchView {
     /// keyboard stays in the dock (nothing moves the layer focus).
     /// Directories only fold; standing still is deduped.
     fn navigate_selection(&mut self, store: &mut Store) {
-        let Some(key) = self.search.inner().list().cursor().cloned() else {
+        let Some(key) = self.tree().inner().list().cursor().cloned() else {
             return;
         };
         if matches!(&key, LocationKey::Node(location) if location.kind().is_directory()) {
@@ -299,8 +327,8 @@ impl View for SearchView {
     ) -> imba::focus::FocusData<'w, SearchCommand> {
         use imba::focus::FocusData;
         let focus = self.focus;
-        let searching = self.focus == SearchArea::Results && self.search.searching();
-        let rows = self.search.inner().list().len();
+        let searching = self.focus == SearchArea::Results && self.tree().searching();
+        let rows = self.tree().inner().list().len();
         // Area moves are the surface's; the movement keys inside the
         // results area are the controller's table.
         let own = FocusData {
@@ -344,43 +372,45 @@ impl View for SearchView {
                 self.requery(store, ui, query, fx);
             }
             SearchCommand::List(command) => {
-                type Search = ListKeyboardController<
-                    ForestList<LocationKey, ResultRow>,
-                    ForestSearcher<LocationKey, ResultRow>,
-                >;
-                match &command {
-                    ListKeyCommand::Fold { expand, .. } => {
-                        self.search.inner_mut().fold_cursor(*expand, store, ui);
-                        return self.navigate_selection(store);
+                let mut selected = false;
+                // The tree's own commands ride inside the scroller's;
+                // the scroll commands themselves just pass through.
+                if let imba::scroll::ScrollCommand::Content(list_command) = &command {
+                    match list_command {
+                        ListKeyCommand::Fold { expand, .. } => {
+                            self.tree_mut().inner_mut().fold_cursor(*expand, store, ui);
+                            return self.navigate_selection(store);
+                        }
+                        ListKeyCommand::Inner(inner) => {
+                            if let Some(index) = tree_toggle(inner) {
+                                let Some(key) =
+                                    self.tree().inner().list().key_at(index).cloned()
+                                else {
+                                    return;
+                                };
+                                self.tree_mut().inner_mut().list_mut().select_only(key.clone());
+                                return self.tree_mut().inner_mut().toggle(&key, store, ui);
+                            }
+                        }
+                        _ => {}
                     }
-                    ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.search.inner().list().key_at(index).cloned()
-                            else {
-                                return;
-                            };
-                            self.search.inner_mut().list_mut().select_only(key.clone());
-                            return self.search.inner_mut().toggle(&key, store, ui);
+                    if let Some((index, trigger)) = ResultTree::activated(list_command) {
+                        if let Some(key) = self.tree().inner().list().key_at(index).cloned() {
+                            let branch = matches!(&key, LocationKey::Node(location)
+                                if location.kind().is_directory());
+                            match (trigger, branch) {
+                                (_, true) => self.tree_mut().inner_mut().toggle(&key, store, ui),
+                                // Enter is the deliberate jump — the
+                                // keyboard moves to the editor; a click
+                                // browses, the keyboard stays here.
+                                (ActivateTrigger::Enter, false) => self.pick(store, key, true),
+                                (ActivateTrigger::Click, false) => self.pick(store, key, false),
+                            }
+                            return;
                         }
                     }
-                    _ => {}
+                    selected = ResultTree::selected_index(list_command).is_some();
                 }
-                if let Some((index, trigger)) = Search::activated(&command) {
-                    if let Some(key) = self.search.inner().list().key_at(index).cloned() {
-                        let branch = matches!(&key, LocationKey::Node(location)
-                            if location.kind().is_directory());
-                        match (trigger, branch) {
-                            (_, true) => self.search.inner_mut().toggle(&key, store, ui),
-                            // Enter is the deliberate jump — the
-                            // keyboard moves to the editor; a click
-                            // browses, the keyboard stays here.
-                            (ActivateTrigger::Enter, false) => self.pick(store, key, true),
-                            (ActivateTrigger::Click, false) => self.pick(store, key, false),
-                        }
-                        return;
-                    }
-                }
-                let selected = Search::selected_index(&command).is_some();
                 fx.scope(SearchCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
@@ -550,15 +580,31 @@ impl View for SearchView {
                 })
                 .layout(arena, head);
             let tree_top = input_bottom + imba::Thunk::size(&band).height + find.results_top;
+            // The head is STATIC; only the tree scrolls, in its own
+            // band under the counts. The dock lays the panel TIGHT
+            // (dock.rs), so the band is the remainder; an unbounded
+            // probe gets the tree's own extent and the scroll idles.
+            let open = constraints.reserve(Size::new(0.0, tree_top)).max;
+            let band_size = Size::new(
+                match open.width.is_finite() {
+                    true => open.width,
+                    false => self.tree().inner().list().laid_width().max(1.0),
+                },
+                match open.height.is_finite() {
+                    true => open.height,
+                    false => self.tree().inner().list().total_height(),
+                },
+            );
             let tree = imba::layout::Layout::layout(
                 self.search.display(arena, store, ui),
                 arena,
-                constraints.reserve(Size::new(0.0, tree_top)),
+                Constraints::tight(band_size),
             )
             .map(SearchCommand::List)
+            // The sticky bands plant on the tree's own scroll (the
+            // parity law the dock's wrapper kept before).
+            .overlay_host(imba::list::STICKY_HOST)
             .focus_scope(self.focus == SearchArea::Results);
-            // The panel's width is the one the TREE answered, never the
-            // ceiling's — that ceiling can be open on either axis.
             let laid = imba::Thunk::size(&tree);
             let size = constraints.constrain(Size::new(laid.width, tree_top + laid.height));
             let mut panel = imba::container::container(arena, size);
@@ -784,7 +830,7 @@ mod tests {
             false,
         );
         let mut view = view(&mut store, &ui, lists);
-        let rows = view.search.inner().forest.rows();
+        let rows = view.tree().inner().forest.rows();
         assert_eq!(
             rows.iter()
                 .map(|(depth, label, _)| (*depth, label.as_str()))
@@ -802,8 +848,8 @@ mod tests {
         // survive the rebuild by key — the Refresh the paint-driven
         // shell files when the feed's generation moves.
         let a = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
-        view.search.inner_mut().toggle(&a, &store, &ui);
-        view.search.inner_mut().list_mut().select_only(a.clone());
+        view.tree_mut().inner_mut().toggle(&a, &store, &ui);
+        view.tree_mut().inner_mut().list_mut().select_only(a.clone());
         let shown = view.shown;
         feed(
             &mut store,
@@ -822,8 +868,8 @@ mod tests {
             "the shell would see the staleness"
         );
         view.rebuild(&store, &ui);
-        assert!(view.search.inner().forest.is_collapsed(&a), "fold kept");
-        assert_eq!(view.search.inner().list().cursor(), Some(&a), "cursor kept");
+        assert!(view.tree().inner().forest.is_collapsed(&a), "fold kept");
+        assert_eq!(view.tree().inner().list().cursor(), Some(&a), "cursor kept");
         assert_eq!(view.files, 2);
 
         // Zero fetches anywhere: nothing above registered a document.
@@ -972,8 +1018,8 @@ mod tests {
 
         // Down onto the hit under a.rs: a fresh key, a fresh open —
         // through the same Select command the key table emits.
-        let step = view.search.step_index(1).expect("a next row");
-        let select = SearchCommand::List(view.search.select_command(step));
+        let step = view.tree().step_index(1).expect("a next row");
+        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().select_command(step)));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
@@ -994,8 +1040,8 @@ mod tests {
         );
 
         // Down again onto b.rs: navigates too.
-        let step = view.search.step_index(1).expect("a next row");
-        let select = SearchCommand::List(view.search.select_command(step));
+        let step = view.tree().step_index(1).expect("a next row");
+        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().select_command(step)));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
@@ -1004,12 +1050,197 @@ mod tests {
 
         // Enter on the same row still opens (the deliberate, focusing
         // jump — dedup never swallows an explicit pick).
-        let at = view.search.cursor_index().expect("a cursor row");
-        let pick = SearchCommand::List(view.search.activate_command(at, ActivateTrigger::Enter));
+        let at = view.tree().cursor_index().expect("a cursor row");
+        let pick = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().activate_command(at, ActivateTrigger::Enter)));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
             "an explicit pick always opens"
+        );
+    }
+
+    /// A tall feed: a directory, `count` files, a hit in each — rows
+    /// enough that the tree outgrows a 400px band.
+    fn tall_feed(store: &mut Store, lists: imba::store::Id<LocationLists>, count: usize, done: bool) {
+        let rows: Vec<FoundLocation> = (0..count)
+            .map(|index| {
+                let name = format!("f{index:02}.rs");
+                found(&["work", &name], 1, 0, "line")
+            })
+            .collect();
+        feed(store, lists, &rows, done);
+    }
+
+    /// Every command a broadcast event shakes out of the panel.
+    fn pump(view: &SearchView, store: &Store, ui: &UiCtx, event: &Event<'_>) -> Vec<SearchCommand> {
+        let arena = Arena::default();
+        let widget = imba::Thunk::realize(
+            imba::layout::Layout::layout(
+                view.display(&arena, store, ui),
+                &arena,
+                Constraints::tight(Size::new(400.0, 400.0)),
+            ),
+            &arena,
+            skia_safe::Rect::from_wh(400.0, 400.0),
+        );
+        imba::Widget::handle_event(&widget, &arena, event, skia_safe::Rect::from_wh(400.0, 400.0))
+            .into_commands()
+    }
+
+    fn scroll_move(command: &SearchCommand) -> bool {
+        use imba::scroll::ScrollCommand as S;
+        matches!(
+            command,
+            SearchCommand::List(S::JumpTo(_) | S::GlideTo(_) | S::SetScrollY(_))
+        )
+    }
+
+    /// NEW RESULTS NEVER MOVE THE TREE. While a stream lands, each
+    /// batch rebuilds the forest; the rebuild re-asserts the cursor
+    /// and splices the rows — and both used to scroll: the re-assert
+    /// armed the cursor reveal, the splice resolved the door anchor,
+    /// and every landing teleported the viewport to wherever those
+    /// keys now sat. A landing keeps the scroll and the cursor
+    /// exactly where the user left them.
+    #[test]
+    fn a_landing_batch_keeps_the_tree_still() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let lists = lists(&mut store);
+        tall_feed(&mut store, lists, 12, false);
+        let mut view = view(&mut store, &ui, lists);
+        let mut batch = imba::effect::Batch::new();
+
+        // The user acts: the cursor lands on the first file, then the
+        // hand scrolls the tree well past it.
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Focus(SearchArea::Results, None),
+            &mut batch.effects(),
+        );
+        let _ = hikit::modal::ModalView::take_request(&mut view);
+        let cursor = view.tree().inner().list().cursor().cloned();
+        assert!(cursor.is_some(), "entering seeded a cursor");
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::List(imba::scroll::ScrollCommand::SetScrollY(300.0)),
+            &mut batch.effects(),
+        );
+        assert_eq!(view.search.scroll_y(), 300.0);
+
+        // More results land: the face refreshes.
+        tall_feed(&mut store, lists, 20, false);
+        view.perform(&mut store, &ui, SearchCommand::Refresh, &mut batch.effects());
+
+        assert_eq!(view.search.scroll_y(), 300.0, "the landing kept the scroll");
+        assert_eq!(
+            view.tree().inner().list().cursor().cloned(),
+            cursor,
+            "the landing kept the cursor"
+        );
+        // Nothing armed a reveal: the clock shakes no scroll move out.
+        let now = imba::anim::AnimationClock::from_millis(16.0);
+        let commands = pump(&view, &store, &ui, &Event::AnimationClock { now });
+        assert!(
+            !commands.iter().any(scroll_move),
+            "no reveal rides a landing: {}",
+            commands
+                .iter()
+                .map(|command| command.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        assert!(
+            hikit::modal::ModalView::take_request(&mut view).is_none(),
+            "the landing never re-navigates"
+        );
+    }
+
+    /// A NEW QUERY IS A NEW TREE. The old cursor and the old scroll
+    /// belong to the old result set — carrying them over re-aimed the
+    /// tree at whatever row happened to share an old key. Typing
+    /// starts the new set at the top with no selection.
+    #[test]
+    fn a_new_query_starts_the_tree_at_the_top() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let lists = lists(&mut store);
+        tall_feed(&mut store, lists, 12, true);
+        let mut view = view(&mut store, &ui, lists);
+        let mut batch = imba::effect::Batch::new();
+
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Focus(SearchArea::Results, None),
+            &mut batch.effects(),
+        );
+        let _ = hikit::modal::ModalView::take_request(&mut view);
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::List(imba::scroll::ScrollCommand::SetScrollY(300.0)),
+            &mut batch.effects(),
+        );
+
+        // Typing re-queries: a fresh feed fronts.
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Input(EditorCommand::InsertText {
+                text: "x".to_owned(),
+            }),
+            &mut batch.effects(),
+        );
+
+        assert_eq!(view.search.scroll_y(), 0.0, "the new set starts at the top");
+        assert_eq!(
+            view.tree().inner().list().cursor(),
+            None,
+            "no cursor carries into a result set it never saw"
+        );
+        assert_eq!(view.navigated, None, "the navigation dedup resets too");
+    }
+
+    /// THE HEAD STANDS STILL. The query input and the counts sit
+    /// above the tree's own scroller: scrolling the results never
+    /// moves them, and a press at the panel's top is the input's.
+    #[test]
+    fn the_head_stands_while_the_tree_scrolls() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let lists = lists(&mut store);
+        tall_feed(&mut store, lists, 12, true);
+        let mut view = view(&mut store, &ui, lists);
+        let mut batch = imba::effect::Batch::new();
+
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::List(imba::scroll::ScrollCommand::SetScrollY(300.0)),
+            &mut batch.effects(),
+        );
+        assert_eq!(view.search.scroll_y(), 300.0, "the TREE scrolled");
+
+        let commands = pump(
+            &view,
+            &store,
+            &ui,
+            &Event::MouseDown {
+                point: skia_safe::Point::new(200.0, 10.0),
+                button: imba::event::MouseButton::Left,
+                mods: imba::event::Modifiers::default(),
+                count: 1,
+            },
+        );
+        assert!(
+            matches!(
+                commands.first(),
+                Some(SearchCommand::Focus(SearchArea::Input, _))
+            ),
+            "the head stayed put: a top press is the input's"
         );
     }
 }

@@ -399,7 +399,9 @@ where
         self.list.splice_slice(0..len, slice);
         if self.list.cursor().is_none() {
             if let Some(first) = self.first_pickable(nodes) {
-                self.list.select_only(first);
+                // The landing's own pick is bookkeeping, not a user
+                // move: it must not scroll a browsing viewport.
+                self.list.reselect_quiet(first);
             }
         }
     }

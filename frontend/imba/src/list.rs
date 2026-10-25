@@ -641,6 +641,32 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         selection.reveal = true;
     }
 
+    /// `select_only` WITHOUT arming the reveal: a content rebuild
+    /// re-asserting the selection it preserved by key is bookkeeping,
+    /// not a user move — only the user's own step may scroll. Find's
+    /// streaming batches re-selected the cursor per landing and
+    /// teleported the dock to the cursor's row every time.
+    pub fn reselect_quiet(&mut self, key: K) {
+        let reveal = self
+            .selection
+            .as_ref()
+            .is_some_and(|selection| selection.reveal);
+        self.select_only(key);
+        if let Some(selection) = &mut self.selection {
+            selection.reveal = reveal;
+        }
+    }
+
+    /// Forget the retained viewport and any pending door correction:
+    /// the owner replaced the content WHOLESALE (a fresh result set)
+    /// and reset its scroller to the top. Resolving the old door
+    /// against the new rows would re-aim the scroll at whatever row
+    /// happens to share the old anchor's key.
+    pub fn reset_viewport(&mut self) {
+        self.viewport_top = 0.0;
+        self.settle_to = None;
+    }
+
     pub fn toggle_selected(&mut self, key: K) {
         let Some(range) = self.own_row(&key) else {
             return;
