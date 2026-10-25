@@ -26,23 +26,29 @@ title is `34.0` in the theme.
 
 ## The ramp (`type_ramp`, each a `TypeRole { size, weight, width, tracking, line_height }`)
 
+Seven sizes in the chrome face — 88 · 68 · 44 · 34 · 30 · 26 · 22 —
+and two in the mono face, 26 and 22. Size marks rank between
+levels; weight and ink mark state within a level, so siblings
+share a size (the active tab, the open session, the selected jump
+row are their neighbours' size, heavier and brighter).
+
 | role | px / wght | where |
 |------|-----------|-------|
 | `query` | 88 / 300 | the palette's and the jump sheet's input |
-| `query_small` | 60 / 300 | the Find tab's input |
+| `query_small` | 88 / 300 | the Find tab's input — the query size, in the column |
 | `headline` | 64 / 560, wdth 88 | the commit you're reading |
 | `display` | 48 / 560 | a header's display-rank word (`ColumnHeader::display_button`) — no default caller since the tabs replaced the Sessions action |
 | `prompt` | 44 / 520 | your messages; the composer |
-| `title` | 34 / 640 | the file, the session, the active tab |
-| `subtitle` | 28 / 400 | the title's quiet companion |
+| `title` | 34 / 640 | the file, the session |
+| `subtitle` | 30 / 400 | the title's quiet companion; every tab (`hikit::ui::tab_active` is this size in the title's weight and ink) |
 | `reading` | 30 / 400, lh 1.6 | the agent's prose, lists |
-| `row` / `row_strong` | 28 / 400 · 560 | tree and list rows; a directory |
+| `row` / `row_strong` | 30 / 400 · 560 | tree and list rows; a directory |
 | `brief` | 26 / 400 | paths, metadata, counts |
 | `label` | 22 / 600, +2.2 tracking, CAPS | group heads, field labels |
 | `margin` | 22 mono | tool calls, keys, line numbers |
 
 `hikit::ui::{query, query_small, headline, display, prompt, title,
-subtitle, reading, row, row_strong, brief, caps, margin}` resolve a
+subtitle, tab_active, reading, row, row_strong, brief, caps, margin}` resolve a
 role to a `TextStyle` (font, ink, tracking); `hikit::ui::text(&style, …)`
 makes the label.
 

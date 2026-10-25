@@ -69,10 +69,10 @@ impl Default for SessionsChrome {
             column_gap: 20.0,
             row_line: 40.0,
             row_pad: 10.0,
-            meta_size: 24.0,
+            meta_size: 26.0,
             title_color: Rgba(Color::new(0xffd9d6d0)),
-            here_title: TypeRole { size: 36.0, weight: 620.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
-            here_line: 48.0,
+            here_title: TypeRole { size: 30.0, weight: 640.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
+            here_line: 40.0,
             here_pad_top: 16.0,
             here_pad_bottom: 12.0,
             oblique_skew: -0.2,
@@ -82,7 +82,7 @@ impl Default for SessionsChrome {
             host_name: TypeRole { size: 34.0, weight: 520.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
             host_status_size: 26.0,
             host_word_gap: 20.0,
-            error_size: 23.0,
+            error_size: 22.0,
             error_gap: 8.0,
         }
     }

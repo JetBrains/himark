@@ -5762,8 +5762,8 @@ fn editor_resize_bench() {
 /// a query too short to search. Between those two moments the popup
 /// has nothing to paint, and on the apple shells painting it means
 /// minting a native popover: typing jerked once per keystroke for a
-/// box with no rows in it. `open` still arms the walk keys; only
-/// `has_rows` earns the overlay.
+/// box with no rows in it. `open` still arms Escape; only `has_rows`
+/// earns the overlay and the walk keys.
 #[test]
 fn a_completion_popup_waits_for_rows() {
     use crate::location::{Authority, ResourceLocation, ResourceType};
@@ -5836,6 +5836,103 @@ fn a_completion_popup_waits_for_rows() {
         document.completion(editor).has_rows(),
         "recents fill the popup on the very first keystroke: {:?}",
         document.completion(editor).row_labels()
+    );
+}
+
+/// THE WALK KEYS BELONG TO WHAT THE USER CAN SEE. A word's first
+/// letter opens a completion session before any rows land, and when
+/// no answer comes (no server, an empty answer) the session stands
+/// with nothing to paint — yet it owned Up/Down/Enter: one keystroke
+/// and the arrows went dead until Escape. A rowless session keeps
+/// only Escape; the walk keys fall through to the caret's bindings.
+#[test]
+fn a_rowless_completion_session_leaves_the_walk_keys_to_the_caret() {
+    use crate::editor_view::{EditorCommand, Motion};
+    use crate::location::{Authority, ResourceLocation, ResourceType};
+    use imba::event::{EventResult, Key, Modifiers};
+    use imba::View as _;
+
+    let mut store = imba::store::Store::new();
+    crate::env::Themes::set(&mut store, test_theme());
+    let ui = crate::test_document::test_ui();
+    let (document, editor) = ime_doc("alpha \nbeta\n");
+    let mut view = EditorView {
+        document,
+        editor,
+        reports_geometry: false,
+        location: Some(ResourceLocation::new(
+            ResourceType::new("file"),
+            Authority::new("local"),
+            vec!["main.rs".to_owned()],
+        )),
+        gutter_width: 0.0,
+        base: None,
+    };
+    view.focus_text();
+    view.set_caret(6);
+
+    // Type a word's first letter at the end of the line, the way the
+    // shell delivers it. The ask launches; no answer ever lands.
+    let mut batch = imba::effect::Batch::new();
+    view.perform(
+        &mut store,
+        ui,
+        EditorCommand::InsertText { text: "x".into() },
+        &mut batch.effects(),
+    );
+    assert_eq!(text_of(&view.document), "alpha x\nbeta\n");
+    assert_eq!(view.caret_byte(), 7);
+    assert!(
+        view.document.completion(editor).open(),
+        "the letter opened a session"
+    );
+    assert!(
+        !view.document.completion(editor).has_rows(),
+        "no answer landed: nothing to show"
+    );
+
+    // The shell's road for a key: the focused surface answers first,
+    // the move binding fires only for a key nobody claimed.
+    let mut press = |view: &mut EditorView, store: &mut imba::store::Store, key, motion| {
+        let result = view.focus_data(store, ui).key(key, Modifiers::default());
+        let command = match result {
+            EventResult::Ignored => EditorCommand::Move {
+                motion,
+                select: false,
+            },
+            claimed => claimed.into_command().expect("a claimed key commands"),
+        };
+        let mut batch = imba::effect::Batch::new();
+        view.perform(store, ui, command, &mut batch.effects());
+    };
+
+    // Escape still closes what typing opened — but check it without
+    // performing, the session must stand for the arrow press below.
+    assert!(
+        view.focus_data(&store, ui)
+            .key(Key::Escape, Modifiers::default())
+            .into_command()
+            .is_some(),
+        "Escape stays armed on a rowless session"
+    );
+
+    press(&mut view, &mut store, Key::Down, Motion::Down);
+    assert!(
+        view.caret_byte() >= 8,
+        "Down after typing walks the caret to the second line, not an \
+         invisible popup; caret at {}",
+        view.caret_byte()
+    );
+    assert!(
+        !view.document.completion(editor).open(),
+        "the caret left the query: the session drops"
+    );
+
+    press(&mut view, &mut store, Key::Up, Motion::Up);
+    assert!(
+        view.caret_byte() <= 7,
+        "Up walks back to the first line; caret at {}",
+        view.caret_byte()
     );
 }
 

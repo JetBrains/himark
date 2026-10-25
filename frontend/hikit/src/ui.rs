@@ -103,6 +103,17 @@ pub fn subtitle(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle::of(ui, &ramp(store).subtitle, ink(store).ink_3.0)
 }
 
+/// TAB, standing — the active tab: the subtitle's size in the
+/// title's weight and ink, so a row of tabs never jumps on a switch.
+pub fn tab_active(store: &Store, ui: &UiCtx) -> TextStyle {
+    let ramp = ramp(store);
+    let role = editor::theme::TypeRole {
+        weight: ramp.title.weight,
+        ..ramp.subtitle
+    };
+    TextStyle::of(ui, &role, ink(store).ink.0)
+}
+
 /// DISPLAY — the column's one big action (Sessions).
 pub fn display(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle::of(ui, &ramp(store).display, ink(store).ink.0)

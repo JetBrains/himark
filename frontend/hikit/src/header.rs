@@ -29,9 +29,10 @@ enum Item<'a, Command> {
     Button(imba::layout::Text, f32, Box<dyn Fn() -> Command + 'a>),
 }
 
-/// The header's RANKS: the title (the file, the session, the active
-/// tab), its subtitle, the display action (Sessions), the quiet
-/// buttons and the dimmed tabs.
+/// The header's RANKS: the title (the file, the session), its
+/// subtitle, the display action (Sessions), the quiet buttons, the
+/// dimmed tabs and the STANDING tab — the tabs' own size in the
+/// title's weight and ink, so switching tabs moves no word.
 #[derive(Clone)]
 pub struct HeaderStyles {
     pub title: TextStyle,
@@ -39,16 +40,16 @@ pub struct HeaderStyles {
     pub display: TextStyle,
     pub button: TextStyle,
     pub dim: TextStyle,
+    pub tab_active: TextStyle,
 }
 
 impl HeaderStyles {
     /// A tab's SLOT: the word's width in whichever rank is wider —
-    /// the title rank's, standing or not — so a tab's size never
-    /// follows its selection.
+    /// standing or dim — so a tab's size never follows its selection.
     pub fn tab_width(&self, label: &str) -> f32 {
-        let title = self.title.shaper.advance(&self.title.font, label);
+        let standing = self.tab_active.shaper.advance(&self.tab_active.font, label);
         let dim = self.dim.shaper.advance(&self.dim.font, label);
-        title.max(dim)
+        standing.max(dim)
     }
 
     pub fn of(store: &Store, ui: &UiCtx) -> Self {
@@ -59,6 +60,7 @@ impl HeaderStyles {
             display: crate::ui::display(store, ui),
             button: crate::ui::subtitle(store, ui).colored(chrome.button_text_color.0),
             dim: crate::ui::subtitle(store, ui).colored(chrome.dim_text_color.0),
+            tab_active: crate::ui::tab_active(store, ui).colored(chrome.title_color.0),
         }
     }
 }
@@ -117,8 +119,9 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         self
     }
 
-    /// A tab: the active one stands in the title rank, the rest in
-    /// the dim one; a press mints its command.
+    /// A tab: the active one stands in the tabs' size with the
+    /// title's weight, the rest in the dim rank; a press mints its
+    /// command.
     pub fn tab(
         mut self,
         label: impl Into<String>,
@@ -127,7 +130,7 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
     ) -> Self {
         let label = label.into();
         let style = match active {
-            true => &self.styles.title,
+            true => &self.styles.tab_active,
             false => &self.styles.dim,
         };
         let slot = self.styles.tab_width(&label);
@@ -137,8 +140,8 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         self
     }
 
-    /// A trailing TAB: the title rank while it stands, the quiet
-    /// rank otherwise, in a slot the title rank sizes.
+    /// A trailing TAB: the standing rank while it stands, the quiet
+    /// rank otherwise, in a slot the standing rank sizes.
     pub fn trailing_tab(
         mut self,
         label: impl Into<String>,
@@ -147,7 +150,7 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
     ) -> Self {
         let label = label.into();
         let style = match active {
-            true => &self.styles.title,
+            true => &self.styles.tab_active,
             false => &self.styles.button,
         };
         let slot = self.styles.tab_width(&label);

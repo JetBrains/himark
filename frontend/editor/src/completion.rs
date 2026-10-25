@@ -399,9 +399,11 @@ impl Default for Completer {
 }
 
 impl Completer {
-    /// The session is LIVE: an anchor stands in the text and the
-    /// popup owns the walk keys. True from the trigger onward, rows
-    /// or no rows — Escape must still close what typing opened.
+    /// The session is LIVE: an anchor stands in the text. True from
+    /// the trigger onward, rows or no rows — Escape must still close
+    /// what typing opened. Only `has_rows` arms the walk keys: a
+    /// rowless session paints nothing, and an invisible popup must
+    /// not eat the caret's Up/Down.
     pub fn open(&self) -> bool {
         self.cover.is_some()
     }

@@ -970,25 +970,38 @@ impl View for EditorView {
         let inner = inner.merge_under(FocusData::of_commands(self.dynamic_surface(store)));
         // The editor's own assists answer before the text: a standing
         // completion popup takes the walk keys, a focused find input
-        // takes the typing.
-        let inner = match self.document.completion(self.editor).open() {
-            true => FocusData {
-                on_key: Some(Box::new(|key, _mods| {
-                    use crate::completion::CompletionCommand as C;
-                    use imba::event::Key;
-                    match key {
-                        Key::Up => EventResult::command(EditorCommand::Completion(C::Select(-1))),
-                        Key::Down => EventResult::command(EditorCommand::Completion(C::Select(1))),
-                        Key::Enter | Key::Tab => {
-                            EventResult::command(EditorCommand::Completion(C::PickCursor))
+        // takes the typing. The walk and pick keys belong to a popup
+        // with ROWS; a live session still waiting on its answer paints
+        // nothing, and an invisible popup must not eat the caret keys
+        // — only Escape stays armed, to close what typing opened.
+        let completion = self.document.completion(self.editor);
+        let inner = match completion.open() {
+            true => {
+                let rows = completion.has_rows();
+                FocusData {
+                    on_key: Some(Box::new(move |key, _mods| {
+                        use crate::completion::CompletionCommand as C;
+                        use imba::event::Key;
+                        match key {
+                            Key::Up if rows => {
+                                EventResult::command(EditorCommand::Completion(C::Select(-1)))
+                            }
+                            Key::Down if rows => {
+                                EventResult::command(EditorCommand::Completion(C::Select(1)))
+                            }
+                            Key::Enter | Key::Tab if rows => {
+                                EventResult::command(EditorCommand::Completion(C::PickCursor))
+                            }
+                            Key::Escape => {
+                                EventResult::command(EditorCommand::Completion(C::Close))
+                            }
+                            _ => EventResult::Ignored,
                         }
-                        Key::Escape => EventResult::command(EditorCommand::Completion(C::Close)),
-                        _ => EventResult::Ignored,
-                    }
-                })),
-                ..FocusData::default()
+                    })),
+                    ..FocusData::default()
+                }
+                .merge_under(inner)
             }
-            .merge_under(inner),
             false => inner,
         };
         match self.document.find(self.editor) {

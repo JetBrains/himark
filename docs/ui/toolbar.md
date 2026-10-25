@@ -8,11 +8,11 @@ hairline under — and a vertical rule between neighbours. Rank is
 size and weight, never a fill or an icon (docs/Design.md; the type
 ramp in [design-system.md](design-system.md)):
 
-| section | over | leading | title (34/640) | subtitle (28, ink 3) | trailing words |
+| section | over | leading | title (34/640) | subtitle (30, ink 3) | trailing words |
 |---------|------|---------|----------------|----------------------|----------------|
 | the chat's | the chat column | the tabs **Sessions · Chat** | the session's title (while the chat column stands and no drawer covers it) | `in <folder>` (`PanelView::subtitle`) | — |
-| the main area's | the split tree | — | the focused file's name | its directory, ` / ` between segments | **Contents**, when the focused panel offers a drawer (`Panel::offers_drawer`): quiet rank, the title rank while its drawer stands |
-| the side column's | the dock | the tabs **Files · Changes · Find · History · Comments**, the open dock's in the title rank | — | — | — |
+| the main area's | the split tree | — | the focused file's name | its directory, ` / ` between segments | **Contents**, when the focused panel offers a drawer (`Panel::offers_drawer`): quiet rank, standing while its drawer stands |
+| the side column's | the dock | the tabs **Files · Changes · Find · History · Comments**, the open dock's standing | — | — | — |
 
 Panels come and go; the band stays. A section is as wide as the
 column under it and never narrower than its own words: the chat
@@ -29,7 +29,7 @@ rules and the body's splitters together.
 
 **Sessions** opens the drawer (`agent.toggle-agents`) over the chat
 column — exactly over it, under the band (`Columns::drawer`,
-`DrawerSide::Left`) — and stands in the title rank while it does; the
+`DrawerSide::Left`) — and stands while it does; the
 chat's name hides under it. **Contents** (`toc.toggle`) is its mirror:
 the outline drawer rolls in from the right over the side column
 (`Columns::right_drawer`, `DrawerSide::Right`), as wide as the dock or

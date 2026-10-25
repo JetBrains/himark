@@ -30,7 +30,7 @@ impl Default for FilesChrome {
         Self {
             field_rule: Rgba(Color::new(0xff2a2a2f)),
             tree_top: 16.0,
-            current: TypeRole { size: 28.0, weight: 640.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
+            current: TypeRole { size: 30.0, weight: 640.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
         }
     }
 }

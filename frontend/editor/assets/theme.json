@@ -261,9 +261,9 @@
         "system-ui",
         "sans-serif"
       ],
-      "font_size": 60.0,
+      "font_size": 88.0,
       "font_weight": 300.0,
-      "line_height": 1.2,
+      "line_height": 1.18,
       "color": "#f2f0eb"
     },
     "field": {
@@ -291,7 +291,7 @@
       "plaque_margin": 0.0,
       "plaque_radius": 0.0,
       "fold_height": 88.0,
-      "fold_text_size": 25.0,
+      "fold_text_size": 26.0,
       "fold_button_size": 44.0,
       "commit_pad_top": 52.0,
       "commit_pad_right": 64.0,
@@ -306,13 +306,13 @@
       "band_gap": 20.0,
       "band_name_gap": 8.0,
       "file_name": {
-        "size": 40.0,
+        "size": 44.0,
         "weight": 680.0,
         "width": 100.0,
-        "tracking": -0.4,
+        "tracking": -0.44,
         "line_height": 1.0
       },
-      "ordinal_size": 24.0,
+      "ordinal_size": 26.0,
       "summary_pad": 20.0,
       "summary_gap": 16.0,
       "fold_edge_height": 44.0,
@@ -442,9 +442,9 @@
       "input_inset_y": 8.0,
       "input_pad": 0.0,
       "input_shrink": 0.0,
-      "title_size": 80.0,
+      "title_size": 88.0,
       "row_size": 30.0,
-      "hint_size": 24.0,
+      "hint_size": 26.0,
       "no_preview_offset": 48.0,
       "list_ratio": 0.344,
       "list_min": 880.0,
@@ -468,7 +468,24 @@
           "bottom": 144.0
         },
         "rule": "#26262a",
-        "selected_fill": "#1f1f24"
+        "selected_fill": "#1f1f24",
+        "row": {
+          "size": 34.0,
+          "weight": 500.0,
+          "width": 100.0,
+          "tracking": 0.0,
+          "line_height": 1.41
+        },
+        "selected_row": {
+          "size": 44.0,
+          "weight": 600.0,
+          "width": 100.0,
+          "tracking": -0.66,
+          "line_height": 1.27
+        },
+        "shortcut_size": 22.0,
+        "selected_shortcut_size": 22.0,
+        "footer_size": 26.0
       },
       "jump": {
         "sheet": {
@@ -484,7 +501,24 @@
           "bottom": 80.0
         },
         "name_color": "#d9d6d0",
-        "selected_fill": "#1c1c21"
+        "selected_fill": "#1c1c21",
+        "selected_name": {
+          "size": 30.0,
+          "weight": 640.0,
+          "width": 100.0,
+          "tracking": -0.3,
+          "line_height": 1.0
+        },
+        "preview_title": {
+          "size": 44.0,
+          "weight": 680.0,
+          "width": 100.0,
+          "tracking": -0.44,
+          "line_height": 1.0
+        },
+        "path_size": 26.0,
+        "meta_size": 26.0,
+        "footer_size": 26.0
       }
     },
     "search": {
@@ -498,7 +532,7 @@
       "group_fill": "#00000000",
       "group_text": "#eceae4",
       "group_text_x": 100.0,
-      "group_font_size": 28.0,
+      "group_font_size": 30.0,
       "group_separator": "#00000000",
       "group_separator_thickness": 0.0,
       "row_separator": "#00000000",
@@ -598,7 +632,7 @@
       "commit_air": 14.0,
       "commit_line": 40.0,
       "commit": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 400.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -613,7 +647,7 @@
       },
       "open_title": "#d9d6d0",
       "meta": {
-        "size": 24.0,
+        "size": 26.0,
         "weight": 400.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -640,7 +674,7 @@
       "header_gap": 16.0
     },
     "tree": {
-      "font_size": 28.0,
+      "font_size": 30.0,
       "indent": 36.0,
       "text_x": 36.0,
       "highlight": "#1a1a1f",
@@ -651,7 +685,7 @@
       "field_rule": "#2a2a2f",
       "tree_top": 16.0,
       "current": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 640.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -661,7 +695,7 @@
     "find": {
       "head_top": 32.0,
       "query_gap": 4.0,
-      "query_band": 72.0,
+      "query_band": 104.0,
       "query_pad_bottom": 20.0,
       "query_rule": "#2e2e33",
       "options_top": 20.0,
@@ -676,13 +710,13 @@
       "results_top": 16.0,
       "group_gap": 12.0,
       "file": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 600.0,
         "width": 100.0,
         "tracking": 0.0,
         "line_height": 1.0
       },
-      "hit_size": 24.0,
+      "hit_size": 26.0,
       "hit": "#a9a6a0",
       "match_weight": 700.0,
       "underline": 3.0,
@@ -718,17 +752,17 @@
         "tracking": 0.0,
         "line_height": 1.0
       },
-      "tool_detail_size": 24.0,
+      "tool_detail_size": 26.0,
       "tool_gap": 16.0,
       "chevron_size": 24.0,
       "chevron_hang": 44.0,
       "chevron_stroke": 2.5,
       "chevron_color": "#6e6b66",
-      "tool_error_size": 23.0,
+      "tool_error_size": 22.0,
       "tool_error_line": 36.0,
       "tool_error_gap": 4.0,
-      "notice_size": 28.0,
-      "usage_size": 24.0,
+      "notice_size": 30.0,
+      "usage_size": 26.0,
       "usage_line": 48.0,
       "footer_top": 36.0,
       "footer_bottom": 28.0,
@@ -739,7 +773,7 @@
       "options_line": 32.0,
       "options_gap": 16.0,
       "send": {
-        "size": 32.0,
+        "size": 30.0,
         "weight": 680.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -777,16 +811,16 @@
       "column_gap": 20.0,
       "row_line": 40.0,
       "row_pad": 10.0,
-      "meta_size": 24.0,
+      "meta_size": 26.0,
       "title_color": "#d9d6d0",
       "here_title": {
-        "size": 36.0,
-        "weight": 620.0,
+        "size": 30.0,
+        "weight": 640.0,
         "width": 100.0,
         "tracking": 0.0,
         "line_height": 1.0
       },
-      "here_line": 48.0,
+      "here_line": 40.0,
       "here_pad_top": 16.0,
       "here_pad_bottom": 12.0,
       "oblique_skew": -0.2,
@@ -802,7 +836,7 @@
       },
       "host_status_size": 26.0,
       "host_word_gap": 20.0,
-      "error_size": 23.0,
+      "error_size": 22.0,
       "error_gap": 8.0
     },
     "type_ramp": {
@@ -814,11 +848,11 @@
         "line_height": 1.18
       },
       "query_small": {
-        "size": 60.0,
+        "size": 88.0,
         "weight": 300.0,
         "width": 100.0,
-        "tracking": -1.2,
-        "line_height": 1.2
+        "tracking": -1.76,
+        "line_height": 1.18
       },
       "headline": {
         "size": 64.0,
@@ -849,7 +883,7 @@
         "line_height": 1.0
       },
       "subtitle": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 400.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -863,7 +897,7 @@
         "line_height": 1.6
       },
       "row": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 400.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -892,7 +926,7 @@
       },
       "mono_family": "JetBrains Mono",
       "row_strong": {
-        "size": 28.0,
+        "size": 30.0,
         "weight": 560.0,
         "width": 100.0,
         "tracking": 0.0,
@@ -907,12 +941,12 @@
       "kind_size": 22.0,
       "kind_slant": 0.2,
       "gap": 12.0,
-      "name_size": 25.0,
+      "name_size": 26.0,
       "name_color": "#d9d6d0",
-      "type_size": 28.0,
+      "type_size": 30.0,
       "member_color": "#a9a6a0",
       "member_indent": 36.0,
-      "number_size": 24.0,
+      "number_size": 26.0,
       "number_min_width": 56.0,
       "leader_color": "#3a3a40",
       "leader_min": 32.0,
@@ -920,7 +954,7 @@
       "leader_rise": 8.0,
       "row_height": 48.0,
       "current_row_height": 60.0,
-      "current_name_size": 32.0,
+      "current_name_size": 30.0,
       "group_gap": 28.0,
       "group_after": 12.0
     },
