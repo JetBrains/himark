@@ -51,7 +51,7 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
     fn seek_metric(&mut self, metric_id: MetricId, metric_value: u32, mode: SeekMode) -> bool {
         loop {
             self.move_to_first_sibling();
-            if self.metric_is_before_sibling_set(metric_id, metric_value) {
+            if self.metric_is_before_sibling_set(metric_id, metric_value, mode) {
                 if !self.zipper.move_up() {
                     break self.zipper.metrics().length != 0;
                 }
@@ -171,8 +171,26 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
         }
     }
 
-    fn metric_is_before_sibling_set(&self, metric_id: MetricId, metric_value: u32) -> bool {
-        metric_value < M::metric_at(&self.zipper.location().metrics, metric_id)
+    /// Whether the answer lies BEFORE the sibling set the cursor
+    /// starts in — i.e. the seek has to climb before it walks. The
+    /// mode decides the boundary: `Before` lands on the element that
+    /// ENDS at the target, so a sibling set that starts exactly there
+    /// is already too far (the element ending at its start sits in an
+    /// earlier set — or an earlier, since-emptied leaf would be the
+    /// landing and has no element to land on). `After` lands on the
+    /// element that CONTAINS the target, which a set starting there
+    /// does. A set at the rope's very start has nothing before it.
+    fn metric_is_before_sibling_set(
+        &self,
+        metric_id: MetricId,
+        metric_value: u32,
+        mode: SeekMode,
+    ) -> bool {
+        let location = M::metric_at(&self.zipper.location().metrics, metric_id);
+        match mode {
+            SeekMode::Before => location != 0 && metric_value <= location,
+            SeekMode::After => metric_value < location,
+        }
     }
 
     fn index_is_before_or_at(&self, index: u32) -> bool {

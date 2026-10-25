@@ -1094,3 +1094,52 @@ fn insert_taller_rope_into_small_one() {
         ]),
     );
 }
+
+/// The layout's edit loop deletes one element at a time, each
+/// behind its own seek. Deleting the tail that way empties the last
+/// leaf, and the cursor is left standing in it; a `Before` seek to
+/// the rope's end must then still find the element that ends there
+/// (it sits in the previous leaf) rather than report the empty leaf
+/// as "no element" — that report was an abort in the app
+/// (2026-10-25, `layout edit byte offset must be seekable`).
+#[test]
+fn before_seek_to_the_end_lands_after_the_tail_leaf_is_emptied_one_by_one() {
+    for n in [65usize, 100, 2000] {
+        let rope = rope_from_iter(std::iter::repeat('a').take(n));
+        let kept = (n / 2) as u32;
+        let mut cursor = rope.cursor();
+        for _ in kept..n as u32 {
+            assert!(cursor.seek(MetricId(0), kept, SeekMode::After));
+            cursor.delete(1u32);
+        }
+        assert!(
+            cursor.seek(MetricId(0), kept, SeekMode::Before),
+            "n={n}: the element ending at {kept} is seekable"
+        );
+        assert_eq!(cursor.position().metric_at(MetricId(0)), kept - 1);
+        let rope = rope_from_cursor(cursor);
+        assert_eq!(rope.metrics().metric_at(MetricId(0)), kept);
+    }
+}
+
+/// A `Before` seek answers the same element whether it starts from
+/// the root or from a cursor already standing on the boundary: the
+/// element that ENDS at the target, not the one that starts there.
+#[test]
+fn before_seek_at_a_leaf_boundary_agrees_with_the_root_seek() {
+    let n = 200usize;
+    let rope = rope_from_iter((0..n).map(|i| char::from(b'a' + (i % 26) as u8)));
+    for target in 1..n as u32 {
+        let mut from_root = rope.cursor();
+        assert!(from_root.seek(MetricId(0), target, SeekMode::Before));
+        let mut standing = rope.cursor();
+        assert!(standing.seek(MetricId(0), target, SeekMode::After));
+        assert!(standing.seek(MetricId(0), target, SeekMode::Before));
+        assert_eq!(
+            standing.position().metric_at(MetricId(0)),
+            from_root.position().metric_at(MetricId(0)),
+            "target {target}"
+        );
+        assert_eq!(from_root.position().metric_at(MetricId(0)), target - 1);
+    }
+}

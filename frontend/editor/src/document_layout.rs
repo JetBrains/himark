@@ -1634,3 +1634,61 @@ mod delete_accounting_tests {
         assert_eq!(layout.element_byte_ranges(), vec![0..10, 10..10, 10..18]);
     }
 }
+
+#[cfg(test)]
+mod tail_replacement_tests {
+    use super::*;
+
+    fn element(byte_size: u32) -> LayoutElement {
+        LayoutElement {
+            safepoint: true,
+            byte_size,
+            height: 20.0,
+            width: 0.0,
+            spacer_above: 0.0,
+        }
+    }
+
+    fn layout_of(count: usize) -> DocumentLayout {
+        let mut layout = DocumentLayout::new();
+        layout.rope = Rope::from_iter((0..count).map(|_| element(1)));
+        layout
+    }
+
+    /// A replacement that reaches the end of the text — delete the
+    /// tail, insert new text there — crossing a leaf boundary of the
+    /// layout rope. The deletes empty the last leaf one element at a
+    /// time; the insert then seeks the rope's end and must land on
+    /// the element that ends there. This was the 2026-10-25 abort
+    /// (`layout edit byte offset must be seekable`) on an 82 KB
+    /// docsync offer.
+    #[test]
+    fn replacing_the_tail_across_a_leaf_boundary_keeps_byte_accounting() {
+        for count in [65usize, 100, 200, 1000] {
+            let kept = (count / 2) as u32;
+            let mut layout = layout_of(count);
+            layout.edit(&Operation::from_ops([
+                Op::Retain(kept),
+                Op::Delete("x".repeat(count - kept as usize)),
+                Op::Insert("yyy".to_owned()),
+            ]));
+            assert_eq!(layout.byte_size(), kept + 3, "count {count}");
+        }
+    }
+
+    /// The same shape with the insert spelled before the delete, as
+    /// a diff producer may order it.
+    #[test]
+    fn inserting_before_deleting_the_tail_keeps_byte_accounting() {
+        for count in [65usize, 200] {
+            let kept = (count / 2) as u32;
+            let mut layout = layout_of(count);
+            layout.edit(&Operation::from_ops([
+                Op::Retain(kept),
+                Op::Insert("yyy".to_owned()),
+                Op::Delete("x".repeat(count - kept as usize)),
+            ]));
+            assert_eq!(layout.byte_size(), kept + 3, "count {count}");
+        }
+    }
+}
