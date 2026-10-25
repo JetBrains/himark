@@ -1,0 +1,13 @@
+# cargo-audit's config — CI runs `cargo audit --deny warnings`
+# (.github/workflows/tests.yml), so every ignore here carries its
+# justification.
+
+[advisories]
+ignore = [
+    # ttf-parser is unmaintained (no fix released). Transitive only:
+    # ttf-parser <- owned_ttf_parser <- ab_glyph <- sctk-adwaita —
+    # winit's Wayland client-side decorations on Linux. It parses no
+    # untrusted input there (the system title-bar font); drop this
+    # when sctk-adwaita moves off ab_glyph or winit drops the dep.
+    "RUSTSEC-2026-0192",
+]
