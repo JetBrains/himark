@@ -410,9 +410,9 @@ impl RowStyle {
     }
 
     /// Drawer/tree rows — sized by the text, per the tree chrome's
-    /// FONT SIZE. The label's left inset is the TREE FRAME's business
-    /// (the indent offset); only the trails keep an inset of their
-    /// own.
+    /// FONT SIZE and AIR. The label's left inset is the TREE FRAME's
+    /// business (the indent offset); only the trails keep an inset of
+    /// their own.
     pub fn drawer(store: &Store, ui: &UiCtx) -> Self {
         let tree = editor::env::Themes::of(store).part(crate::chrome::TreeChrome::KEY);
         Self {
@@ -420,7 +420,7 @@ impl RowStyle {
             trail_inset: space::L,
             label: label(store, ui).sized(tree.font_size),
             trail: caption(store, ui).sized(tree.font_size),
-            air: space::S,
+            air: tree.row_air,
         }
     }
 

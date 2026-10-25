@@ -53,6 +53,20 @@ pub struct HistoryChrome {
     pub header_top: f32,
     pub header_bottom: f32,
     pub header_gap: f32,
+
+    /// The column's text edge for the branch line and the commits,
+    /// when the rail needs more room than the window's side edge
+    /// leaves it (the phone: a 24pt rail inside a 48pt edge, where
+    /// the Files tab reads at 20pt). Absent, the window's.
+    pub text_edge: Option<f32>,
+}
+
+impl HistoryChrome {
+    /// Where the history's words start: its own edge, else the
+    /// window's side edge.
+    pub fn text_edge(&self, window: &editor::theme::WindowChrome) -> f32 {
+        self.text_edge.unwrap_or(window.side_text_edge)
+    }
 }
 
 impl Default for HistoryChrome {
@@ -77,6 +91,7 @@ impl Default for HistoryChrome {
             header_top: 32.0,
             header_bottom: 20.0,
             header_gap: 16.0,
+            text_edge: None,
         }
     }
 }

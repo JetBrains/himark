@@ -24,7 +24,8 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     init(host: AppHost, bridge: HimarkBridge) {
         self.host = host
         super.init(frame: .zero)
-        backgroundColor = .black
+        // The ground is the theme's, painted by SwiftUI beneath.
+        backgroundColor = .clear
         self.bridge = bridge
 
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -150,7 +151,7 @@ final class MintedScrollHost: UIView {
         self.host = host
         self.kind = kind
         super.init(frame: .zero)
-        backgroundColor = .black
+        backgroundColor = .clear
         sync()
     }
 
@@ -210,7 +211,7 @@ final class ComposerHost: UIView {
     init(host: AppHost) {
         self.host = host
         super.init(frame: .zero)
-        backgroundColor = .black
+        backgroundColor = .clear
         host.registerRedraw(self) { [weak self] in
             self?.child?.request()
             self?.measure()
@@ -251,6 +252,11 @@ final class ComposerHost: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_COMPOSER"] != nil {
+            let onScreen = convert(bounds, to: nil)
+            NSLog("[composer] host frame on screen y %.0f..%.0f (window %.0f tall)",
+                  onScreen.minY, onScreen.maxY, window?.bounds.height ?? -1)
+        }
         measure()
     }
 
@@ -266,6 +272,9 @@ final class ComposerHost: UIView {
         var ch: Float = 0
         _ = himark_layout_size(raw, layout, &cw, &ch)
         himark_layout_release(raw, layout)
+        if ProcessInfo.processInfo.environment["HIMARK_TRACE_COMPOSER"] != nil {
+            NSLog("[composer] measured %.1fx%.1f px at width %.0f pt (frame %.0f pt)", cw, ch, bounds.width, bounds.height)
+        }
         guard ch.isFinite else { return }
         let height = CGFloat(ch) / scale
         if abs(height - measured) > 0.5 {

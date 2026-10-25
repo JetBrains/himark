@@ -172,6 +172,13 @@ final class HimarkEngine {
         himark_set_chrome_clearance(engine, width)
     }
 
+    /// The shell's form, once at boot: the phone's theme pair or the
+    /// desktop's — the appearance commands pick from it from then on.
+    @discardableResult
+    func setForm(phone: Bool) -> Bool {
+        himark_set_form(engine, UInt32(phone ? HIMARK_FORM_PHONE : HIMARK_FORM_DESKTOP))
+    }
+
     @discardableResult
     func drain() -> Bool { himark_drain(engine) }
 

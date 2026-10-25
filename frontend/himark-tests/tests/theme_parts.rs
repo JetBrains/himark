@@ -58,3 +58,46 @@ fn every_part_of_the_dark_theme_parses() {
 fn every_part_of_the_light_theme_parses() {
     force_every_part(&::editor::theme::light());
 }
+
+#[test]
+fn every_part_of_the_ios_theme_parses() {
+    force_every_part(&::editor::theme::ios());
+}
+
+#[test]
+fn every_part_of_the_ios_light_theme_parses() {
+    force_every_part(&::editor::theme::ios_light());
+}
+
+/// The phone pair is the desktop pair's SHAPE — every section and
+/// key the desktop theme names, the phone theme names too; a metric
+/// added to one must be set on the other.
+#[test]
+fn the_ios_pair_mirrors_the_desktop_pairs_keys() {
+    fn keys(value: &serde_json::Value, at: &str, out: &mut Vec<String>) {
+        if let serde_json::Value::Object(map) = value {
+            for (key, inner) in map {
+                let path = format!("{at}/{key}");
+                keys(inner, &path, out);
+                out.push(path);
+            }
+        }
+    }
+    let shape = |json: &str| {
+        let value: serde_json::Value = serde_json::from_str(json).expect("the theme is JSON");
+        let mut out = Vec::new();
+        keys(&value, "", &mut out);
+        out.sort();
+        out
+    };
+    for (desktop, phone) in [
+        ("../editor/assets/theme.json", "../editor/assets/theme-ios.json"),
+        ("../editor/assets/theme-light.json", "../editor/assets/theme-ios-light.json"),
+    ] {
+        let desktop_keys = shape(&std::fs::read_to_string(desktop).expect(desktop));
+        let phone_keys = shape(&std::fs::read_to_string(phone).expect(phone));
+        let missing: Vec<&String> =
+            desktop_keys.iter().filter(|key| !phone_keys.contains(key)).collect();
+        assert!(missing.is_empty(), "{phone} lacks {missing:?}");
+    }
+}

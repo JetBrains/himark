@@ -178,6 +178,10 @@ pub struct ChatChrome {
     pub send: TypeRole,
     pub send_key_size: f32,
     pub send_key_gap: f32,
+    /// Whether the VOICE stands in the gutter at all — "YOU" over
+    /// your message and the input. A phone has no gutter to speak
+    /// in: there the speakers are told apart by size alone.
+    pub voice_gutter: bool,
 }
 
 impl Default for ChatChrome {
@@ -229,6 +233,7 @@ impl Default for ChatChrome {
             send: TypeRole { size: 30.0, weight: 680.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
             send_key_size: 22.0,
             send_key_gap: 8.0,
+            voice_gutter: true,
         }
     }
 }
@@ -309,6 +314,11 @@ pub struct TreeChrome {
     pub directory: Rgba,
     /// File labels.
     pub file: Rgba,
+
+    /// The air above and below a row's text — a row is its text plus
+    /// twice this. A phone's rows are tap targets: the air grows
+    /// until a row stands 44pt.
+    pub row_air: f32,
 }
 
 impl Default for TreeChrome {
@@ -321,6 +331,7 @@ impl Default for TreeChrome {
             highlight: Rgba(Color::new(0xff1a1a1f)),
             directory: Rgba(Color::new(0xffd9d6d0)),
             file: Rgba(Color::new(0xffb5b2ab)),
+            row_air: 8.0,
         }
     }
 }

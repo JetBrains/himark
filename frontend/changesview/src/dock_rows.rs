@@ -169,7 +169,7 @@ impl DockRow {
                 note,
             ))
             .pad_insets(Insets {
-                left: window.side_text_edge,
+                left: chrome.text_edge(&window),
                 top: chrome.header_top,
                 right: window.side_trailing,
                 bottom: chrome.header_bottom,
@@ -202,7 +202,7 @@ impl DockRow {
         let (style, lines) = match open {
             true => {
                 let style = styled(ui, &chrome.open_commit, chrome.open_title.0);
-                let measure = window.side_width - window.side_text_edge - window.side_trailing;
+                let measure = window.side_width - chrome.text_edge(&window) - window.side_trailing;
                 let lines = broken(&style, title, measure);
                 (style, lines)
             }
@@ -243,7 +243,7 @@ impl DockRow {
         }
         block
             .pad_insets(Insets {
-                left: window.side_text_edge,
+                left: chrome.text_edge(&window),
                 top: chrome.commit_air,
                 right: window.side_trailing,
                 bottom: match files.is_some() {
@@ -268,9 +268,10 @@ impl DockRow {
         let theme = editor::env::Themes::of(store);
         let tree = theme.part(::hikit::chrome::TreeChrome::KEY);
         let window = theme.part(editor::theme::WindowChrome::KEY);
+        let chrome = theme.part(crate::chrome::HistoryChrome::KEY);
         let depth = f32::from(self.row.depth());
         let below = f32::from(self.row.depth().saturating_sub(self.hang));
-        let wanted = window.side_text_edge + tree.indent * below;
+        let wanted = chrome.text_edge(&window) + tree.indent * below;
         let framed = tree.text_x + tree.indent * depth;
         let trail_inset = hikit::ui::RowStyle::drawer(store, ui).trail_inset;
         self.row.display(arena, store, ui).pad_insets(Insets {

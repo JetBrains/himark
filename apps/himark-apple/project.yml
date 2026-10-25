@@ -70,7 +70,20 @@ targets:
   himark-iOS:
     type: application
     platform: iOS
-    sources: [Sources/Shared, Sources/iOS]
+    sources:
+      - Sources/Shared
+      - Sources/iOS
+      # The chrome face and the mono face, for the native words
+      # (Info-iOS.plist's UIAppFonts), and the phone's theme pair the
+      # native chrome reads its ink and ramp from.
+      - path: ../../frontend/editor/assets/BricolageGrotesque-Variable.ttf
+        buildPhase: resources
+      - path: ../../frontend/editor/assets/JetBrainsMono-Regular.ttf
+        buildPhase: resources
+      - path: ../../frontend/editor/assets/theme-ios.json
+        buildPhase: resources
+      - path: ../../frontend/editor/assets/theme-ios-light.json
+        buildPhase: resources
     configFiles: { Release: Generated-iOS.xcconfig, Debug: Generated-iOS.xcconfig }
     settings:
       base:

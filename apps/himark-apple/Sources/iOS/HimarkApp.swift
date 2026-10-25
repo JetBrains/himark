@@ -52,6 +52,10 @@ final class AppHost: NSObject, ObservableObject {
     /// The pending push per TAB — the navigate callback routes by
     /// the origin bridge's tab.
     @Published var pushes: [HimarkEngine.SessionViewKind: Push] = [:]
+    /// The native chrome's theme — the iOS pair's half for the
+    /// standing appearance, re-read when the system switches.
+    @Published var shell = ShellTheme.load(dark: true)
+    private var dark: Bool?
 
     private var epoch: UInt64 = 0
     private var redraws: [ObjectIdentifier: () -> Void] = [:]
@@ -72,10 +76,17 @@ final class AppHost: NSObject, ObservableObject {
             guard let self else { return }
             self.executor.async { [weak self] in self?.engine.runPending() }
         }
+        // A PHONE runs the phone's theme pair (3x metrics, rows that
+        // are tap targets); a pad keeps the desktop pair, whose 2x
+        // metrics are its own. Declared before the first paint.
+        engine.setForm(phone: UIDevice.current.userInterfaceIdiom == .phone)
         // The navigate callback: fired mid-batch on the main thread —
-        // record the push and return; the screen mints later.
+        // record the push and return; the screen mints later. A
+        // document, a diff, or a commit's canvas each ride the native
+        // stage scroller.
         engine.seat.onNavigate = { [weak self] origin, place, kind, title, _ in
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
+                || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
             guard let self else { return false }
             let push = Push(place: place, kind: kind, title: title, origin: origin.raw)
@@ -101,6 +112,19 @@ final class AppHost: NSObject, ObservableObject {
             pushes[tab] = nil
         }
         engine.release(place: push.place)
+    }
+
+    /// The system appearance drives BOTH halves: the engine's theme
+    /// (the pair's `theme.dark`/`theme.light` commands, so the usual
+    /// theme-change propagation runs) and the native words' theme.
+    func follow(appearance scheme: ColorScheme) {
+        let dark = scheme == .dark
+        guard self.dark != dark else { return }
+        self.dark = dark
+        shell = ShellTheme.load(dark: dark)
+        if engine.perform(bridge: HimarkBridge(raw: 0), command: dark ? "theme.dark" : "theme.light") {
+            for redraw in redraws.values { redraw() }
+        }
     }
 
     /// Boot: install the platform services and run the first batch

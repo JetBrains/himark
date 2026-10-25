@@ -274,20 +274,22 @@ impl Composer {
         );
         {
             use imba::layout::Layout as _;
-            band.place_boxed(
-                0.0,
-                chrome.footer_top,
-                crate::cell::voice::<ComposerCommand>(
-                    arena,
-                    store,
-                    ui,
-                    &chrome,
-                    grid,
-                    Self::prompt_line(store),
-                    "YOU",
-                )
-                .layout(arena, Constraints::tight(Size::new(grid.edge, editor_h)).loosen()),
-            );
+            if chrome.voice_gutter {
+                band.place_boxed(
+                    0.0,
+                    chrome.footer_top,
+                    crate::cell::voice::<ComposerCommand>(
+                        arena,
+                        store,
+                        ui,
+                        &chrome,
+                        grid,
+                        Self::prompt_line(store),
+                        "YOU",
+                    )
+                    .layout(arena, Constraints::tight(Size::new(grid.edge, editor_h)).loosen()),
+                );
+            }
             band.place_boxed(
                 grid.edge,
                 chrome.footer_top + editor_h + chrome.input_rule_gap,

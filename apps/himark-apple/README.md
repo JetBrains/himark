@@ -68,6 +68,23 @@ platform without hardcoding.
 > **First iOS build is slow:** `cargo build --target aarch64-apple-ios`
 > builds/downloads iOS skia the first time.
 
+## The iOS shell's chrome
+
+The phone (the iPhone artboards of the typographic redesign) draws
+WORDS and HAIRLINES: a 44pt bar only where it says something (the
+session and New over the chat; the way back over a pushed screen),
+four section words along the bottom — Chat · Changes · History ·
+Files — and the engine's content between. Every piece of
+content is a Rust view in the phone's own theme pair
+(`frontend/editor/assets/theme-ios.json`, `theme-ios-light.json`:
+3x metrics, tap-target rows, the phone's insets), picked by the engine
+once the shell declares `himark_set_form(HIMARK_FORM_PHONE)`; a pad
+keeps the desktop pair. The native words read the same files
+(`Sources/iOS/ShellTheme.swift`: the `ink` and the Swift-only `shell`
+section) and set in the bundled Bricolage Grotesque, so nothing in
+`RootView.swift` names a size or a color. The system appearance drives
+both halves (`AppHost.follow(appearance:)`).
+
 ## Status of the iOS target
 
 The macOS app is the complete reference (full IME via `NSTextInputClient`,

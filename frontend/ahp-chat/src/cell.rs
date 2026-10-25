@@ -1184,7 +1184,7 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
                 ..Default::default()
             }));
         }
-        if matches!(cell.kind, CellKind::User) && !cell.bare {
+        if matches!(cell.kind, CellKind::User) && !cell.bare && chrome.voice_gutter {
             row = row.child(voice(arena, store, ui, &chrome, grid, chrome.gutter_line, "YOU"));
         }
         if let Some((header, pending)) = header {

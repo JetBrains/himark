@@ -19,6 +19,11 @@
     </array>
     <key>UIApplicationSceneManifest</key>
     <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+    <key>UIAppFonts</key>
+    <array>
+        <string>BricolageGrotesque-Variable.ttf</string>
+        <string>JetBrainsMono-Regular.ttf</string>
+    </array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>himark connects to your agent host over the local network.</string>
 </dict>

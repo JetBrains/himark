@@ -384,6 +384,29 @@ pub fn light() -> Theme {
         .clone()
 }
 
+/// The embedded iOS dark theme — the same inks, the PHONE's metrics:
+/// physical pixels for a 3x screen, rows that are tap targets, the
+/// phone's insets (assets/README.md, "The iOS pair").
+pub fn ios() -> Theme {
+    static IOS: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
+    IOS.get_or_init(|| {
+        Theme::from_json(include_str!("../assets/theme-ios.json"))
+            .expect("the embedded iOS theme parses")
+    })
+    .clone()
+}
+
+/// The embedded iOS light theme.
+pub fn ios_light() -> Theme {
+    static IOS_LIGHT: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
+    IOS_LIGHT
+        .get_or_init(|| {
+            Theme::from_json(include_str!("../assets/theme-ios-light.json"))
+                .expect("the embedded iOS light theme parses")
+        })
+        .clone()
+}
+
 /// The text styles: the editor's section of the open theme — the
 /// `StyleId` slots plus the base every resolve starts from. Other
 /// crates reach it through [`ThemeStyles::styles`]; nothing outside

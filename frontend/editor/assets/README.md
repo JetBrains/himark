@@ -27,3 +27,17 @@ text stacks at startup like the code font. SIL Open Font License 1.1.
 
 Source:
 https://github.com/google/fonts/tree/main/ofl/bricolagegrotesque
+
+# The iOS pair
+
+`theme-ios.json` / `theme-ios-light.json` are the phone's themes:
+the desktop pair's inks and sections, with the PHONE's metrics —
+physical pixels for a 3x iPhone screen (a 17pt title is `51.0`, a
+44pt row `132.0`), rows that are tap targets, the phone artboards'
+insets (no voice gutter in the chat, a 20pt text edge, a 36pt
+line-number margin). The engine picks the pair when the shell
+declares the phone form (`himark_set_form`, `HIMARK_FORM_PHONE`);
+the SwiftUI chrome reads the same files' `ink` and its own `shell`
+section, which no Rust part reads, so the native words share the
+engine's ramp. A key added to the desktop pair must be added here
+too — himark-tests/tests/theme_parts.rs holds the pair to that.

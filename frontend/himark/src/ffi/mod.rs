@@ -1152,6 +1152,28 @@ impl HimarkEngine {
         self.app.set_chrome_clearance(width);
     }
 
+    /// The shell's form, set once at boot (`HIMARK_FORM_*`): the
+    /// appearance commands pick the form's theme pair from here on,
+    /// and the standing appearance re-applies in the new pair — through
+    /// the registered command, so the change propagates like any
+    /// theme switch. Answers whether the form was known.
+    pub fn set_form(&mut self, form: u32) -> bool {
+        let form = match form {
+            HIMARK_FORM_DESKTOP => crate::commands::Form::Desktop,
+            HIMARK_FORM_PHONE => crate::commands::Form::Phone,
+            other => {
+                eprintln!("[ffi] form {other} is not one this engine knows — refused");
+                return false;
+            }
+        };
+        if crate::commands::Form::of(self.app.store()) == form {
+            return true;
+        }
+        self.app.setup(|store| crate::commands::Form::set(store, form));
+        let dark = crate::commands::theme_is_dark(self.app.store());
+        self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
+    }
+
     pub fn install_agent_host_filesystem(&mut self, capabilities: AgentHostFilesystemCapabilities) {
         let installed = self.agent_host_filesystem;
 
@@ -1669,6 +1691,23 @@ pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, 
     if let Some(engine) = engine.as_mut() {
         engine.set_chrome_clearance(width);
     }
+}
+
+/// The desktop form: the workbench's theme pair (theme.json,
+/// theme-light.json) — the engine's own default.
+pub const HIMARK_FORM_DESKTOP: u32 = 0;
+/// The phone form: the iOS pair (theme-ios.json, theme-ios-light.json)
+/// — 3x metrics, rows that are tap targets, the phone's insets.
+pub const HIMARK_FORM_PHONE: u32 = 1;
+
+/// Tell the engine what it runs in — once, at boot, before the first
+/// paint. The appearance commands (`theme.dark`, `theme.light`,
+/// `theme.toggle`) pick the form's pair from then on; the standing
+/// appearance re-applies in the new pair at once. Answers false for
+/// an unknown form.
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
+    engine.as_mut().map_or(false, |engine| engine.set_form(form))
 }
 
 #[no_mangle]

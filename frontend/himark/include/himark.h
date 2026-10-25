@@ -72,6 +72,18 @@
 #define HIMARK_SCROLL_PHASE_MOMENTUM_ENDED 7
 
 /**
+ * The desktop form: the workbench's theme pair (theme.json,
+ * theme-light.json) — the engine's own default.
+ */
+#define HIMARK_FORM_DESKTOP 0
+
+/**
+ * The phone form: the iOS pair (theme-ios.json, theme-ios-light.json)
+ * — 3x metrics, rows that are tap targets, the phone's insets.
+ */
+#define HIMARK_FORM_PHONE 1
+
+/**
  * Which string `himark_catalog_session_string` reads.
  */
 #define HIMARK_SESSION_URI 0
@@ -263,6 +275,15 @@ bool himark_animation_tick(HimarkEngine *engine, double now_ms);
 bool himark_perform_command(HimarkEngine *engine, HimarkBridge bridge, const char *id);
 
 void himark_set_chrome_clearance(HimarkEngine *engine, float width);
+
+/**
+ * Tell the engine what it runs in — once, at boot, before the first
+ * paint. The appearance commands (`theme.dark`, `theme.light`,
+ * `theme.toggle`) pick the form's pair from then on; the standing
+ * appearance re-applies in the new pair at once. Answers false for
+ * an unknown form.
+ */
+bool himark_set_form(HimarkEngine *engine, uint32_t form);
 
 void himark_set_host(HimarkEngine *engine, HimarkHostCallbacks callbacks);
 
