@@ -93,12 +93,7 @@ fn editor_over(source: &str) -> TableEditor {
     let ui = ::editor::test_document::test_ui();
     use editor::markup::InlayEditing;
     let theme = editor::theme::embedded();
-    let mut editor = TableEditor::new(
-        parse_table(source).expect("a table"),
-        store,
-        ui,
-        &theme,
-    );
+    let mut editor = TableEditor::new(parse_table(source).expect("a table"), store, ui, &theme);
     editor.set_range(0..source.len() as u32);
     editor
 }

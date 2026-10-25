@@ -1003,8 +1003,7 @@ fn mount_place_inner(
             // registry's session commands work from the native
             // palette exactly as from a window's.
             let mut bound = imba::focus::Bindings::new().bind(id);
-            if let Some(state) =
-                ahp_session::session::state::Hosts::state(store, &session).cloned()
+            if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned()
             {
                 bound = bound.bind(state);
             }

@@ -194,7 +194,10 @@ fn sticky_style() -> imba::list::StickySource {
         StickyStyle {
             // The planted band wears the FILE BAND's own fold ground
             // (`FileBand`), ruled off from the scrolling code.
-            background: theme.part(::hikit::chrome::DiffChrome::KEY).fold_background.0,
+            background: theme
+                .part(::hikit::chrome::DiffChrome::KEY)
+                .fold_background
+                .0,
             divider: ink.rule.0,
             divider_width: window.divider_width,
         }
@@ -916,7 +919,10 @@ impl Canvas {
         let count = keys.len();
         for (at, key) in keys.iter().enumerate() {
             let ordinal = (at + 1, count);
-            if self.header_at(key).is_some_and(|header| header.ordinal != ordinal) {
+            if self
+                .header_at(key)
+                .is_some_and(|header| header.ordinal != ordinal)
+            {
                 self.resplice_header(key, |header| header.ordinal = ordinal);
             }
         }
@@ -1479,9 +1485,11 @@ impl Canvas {
     /// views stay alive, placeholders park) holds file by file.
     fn toggle_all(&mut self, fx: &mut Effects<'_, CanvasCommand>) {
         let keys: Vec<ResourceLocation> = self.files.keys().cloned().collect();
-        let any_open = keys
-            .iter()
-            .any(|key| (&self.rows).row_range(&CanvasKey::Diff(key.clone())).is_some());
+        let any_open = keys.iter().any(|key| {
+            (&self.rows)
+                .row_range(&CanvasKey::Diff(key.clone()))
+                .is_some()
+        });
         for key in keys {
             let open = (&self.rows)
                 .row_range(&CanvasKey::Diff(key.clone()))
@@ -1533,7 +1541,9 @@ impl Canvas {
                 // one the pane now wears.
                 let split = self
                     .row_pane(key)
-                    .and_then(|pane| crate::diff_pane::gathered_view(store, pane.documents(), pane.id()))
+                    .and_then(|pane| {
+                        crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                    })
                     .map(|view| view.layout == editor::unified_diff::DiffLayout::Split);
                 if let Some(split) = split {
                     self.resplice_header(key, |header| header.split = split);
@@ -1775,7 +1785,10 @@ impl Canvas {
         let _ = arena;
         imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             use imba::layout::LayoutExt as _;
-            let ground = env::Themes::of(store).part(::editor::theme::InkChrome::KEY).ground.0;
+            let ground = env::Themes::of(store)
+                .part(::editor::theme::InkChrome::KEY)
+                .ground
+                .0;
             match &self.note {
                 // The note (pending, empty, failed listing): one brief
                 // line centered on the ground.
@@ -1813,7 +1826,10 @@ impl Canvas {
                         self.rows.display(arena, store, ui),
                         arena,
                         Constraints {
-                            min: Size::new(constraints.min.width, (constraints.min.height - strip).max(0.0)),
+                            min: Size::new(
+                                constraints.min.width,
+                                (constraints.min.height - strip).max(0.0),
+                            ),
                             max: Size::new(constraints.max.width, (height - strip).max(0.0)),
                         },
                     )
@@ -1835,7 +1851,8 @@ impl Canvas {
                             imba::layout::Layout::layout(
                                 summary.on_press(|| CanvasCommand::ToggleAll),
                                 arena,
-                                Constraints::tight(Size::new((width - lead).max(1.0), strip)).loosen(),
+                                Constraints::tight(Size::new((width - lead).max(1.0), strip))
+                                    .loosen(),
                             ),
                         );
                     }
@@ -2707,7 +2724,11 @@ fn split_message(message: &str) -> (String, Option<String>) {
 /// Greedy word wrap at `width`: the headline's lines. A word wider
 /// than the measure stands alone on its line (the label ellipsizes).
 fn wrap_words(style: &hikit::ui::TextStyle, content: &str, width: f32) -> Vec<String> {
-    let measure = |line: &str| style.shaper.tracked_advance(&style.font, line, style.tracking);
+    let measure = |line: &str| {
+        style
+            .shaper
+            .tracked_advance(&style.font, line, style.tracking)
+    };
     let mut lines: Vec<String> = Vec::new();
     let mut line = String::new();
     for word in content.split_whitespace() {
@@ -2810,8 +2831,7 @@ fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_vie
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    let mut view =
-        editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &theme);
+    let mut view = editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &theme);
     view.set_placeholder("Commit message", ui, &theme);
     view
 }
@@ -3145,14 +3165,19 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 use imba::layout::{Column, Insets, Row};
                 let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
                 let ink = theme.part(::editor::theme::InkChrome::KEY);
-                let lead = theme.part(::editor::theme::WindowChrome::KEY).code_text_edge;
+                let lead = theme
+                    .part(::editor::theme::WindowChrome::KEY)
+                    .code_text_edge;
                 let measure = (width - lead - diff.commit_pad_right).max(1.0);
                 let brief = hikit::ui::brief(store, ui);
                 let totals = block.totals;
                 let mut byline = Row::new(arena).gap(diff.byline_gap);
                 if !block.author_name.is_empty() {
                     byline = byline
-                        .child_by_baseline(hikit::ui::text(&brief.clone().colored(ink.ink_2.0), &block.author_name))
+                        .child_by_baseline(hikit::ui::text(
+                            &brief.clone().colored(ink.ink_2.0),
+                            &block.author_name,
+                        ))
                         .child_by_baseline(hikit::ui::text(&brief, "·"));
                 }
                 byline = byline.child_by_baseline(hikit::ui::text(
@@ -3183,7 +3208,11 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                 let glyphs = headline_style.line_height();
                 let half_leading = ((line - glyphs) * 0.5).floor();
                 let mut headline = Column::new(arena);
-                for text in wrap_words(&headline_style, &block.headline, measure.min(diff.headline_max_width)) {
+                for text in wrap_words(
+                    &headline_style,
+                    &block.headline,
+                    measure.min(diff.headline_max_width),
+                ) {
                     headline = headline.child(
                         hikit::ui::text(&headline_style, text)
                             .pad_insets(Insets {
@@ -3193,10 +3222,13 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             .height(line),
                     );
                 }
-                let mut column = Column::new(arena).child(byline).child(headline.pad_insets(Insets {
-                    top: diff.headline_gap,
-                    ..Default::default()
-                }));
+                let mut column =
+                    Column::new(arena)
+                        .child(byline)
+                        .child(headline.pad_insets(Insets {
+                            top: diff.headline_gap,
+                            ..Default::default()
+                        }));
                 let rewrap = body.as_ref().and_then(|body| {
                     ((body.layout_width() - measure).abs() > 1.0).then_some(measure)
                 });
@@ -3232,7 +3264,10 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                     );
                 imba::ThunkBox::new(
                     arena,
-                    imba::thunk_ext::ThunkExt::wrap(laid, move |inner| RewrapOnPaint { inner, rewrap }),
+                    imba::thunk_ext::ThunkExt::wrap(laid, move |inner| RewrapOnPaint {
+                        inner,
+                        rewrap,
+                    }),
                 )
             }
             CanvasRow::Banner(BannerRow::Composer { message, focused }) => {
@@ -3422,7 +3457,9 @@ impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
                             format!("{} — {error}", diff.file.title),
                         )
                         .pad_insets(imba::layout::Insets {
-                            left: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
+                            left: theme
+                                .part(::editor::theme::WindowChrome::KEY)
+                                .code_text_edge,
                             top: diff_chrome.band_pad_top,
                             right: diff_chrome.band_pad_right,
                             bottom: diff_chrome.band_pad_bottom + diff_chrome.band_air,
@@ -3548,7 +3585,9 @@ fn skeleton_layout<'a>(
     let (added_color, removed_color) = (tint(chrome.added_color.0), tint(chrome.removed_color.0));
     // The bars start at the code text edge, where the diff's text
     // will.
-    let inset = theme.part(::editor::theme::WindowChrome::KEY).code_text_edge;
+    let inset = theme
+        .part(::editor::theme::WindowChrome::KEY)
+        .code_text_edge;
     let trailing = theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right;
     let thunk =
         imba::leaf::leaf::<RowCommand>(width, height).paint_instead(move |_arena, canvas, rect| {
@@ -3758,7 +3797,9 @@ impl hikit::panel::PanelView for DiffCanvasView {
             CanvasSource::Commit { folder, id } => {
                 let short: String = id.as_str().chars().take(8).collect();
                 let branch = Changes::of(store, self.changes)
-                    .and_then(|held| changesview::hihistory::History::folder(store, held.history(), folder))
+                    .and_then(|held| {
+                        changesview::hihistory::History::folder(store, held.history(), folder)
+                    })
                     .and_then(|held| {
                         held.commits
                             .iter()

@@ -294,7 +294,10 @@ pub(crate) fn dress_tail(turn: &crate::chat::model::Turn) -> DressedCells {
         )),
     }
     if let Some(spent) = &turn.usage {
-        cells.push_back_mut((CellKey::Usage, CellSpec::Line(LineRole::Usage, spent.clone())));
+        cells.push_back_mut((
+            CellKey::Usage,
+            CellSpec::Line(LineRole::Usage, spent.clone()),
+        ));
     }
     cells
 }

@@ -254,7 +254,10 @@ impl ToolGroup {
     fn counts(&self) -> Vec<(String, usize)> {
         let mut counts: Vec<(String, usize)> = Vec::new();
         for call in self.calls.iter() {
-            match counts.iter_mut().find(|(name, _)| *name == call.display_name) {
+            match counts
+                .iter_mut()
+                .find(|(name, _)| *name == call.display_name)
+            {
                 Some((_, count)) => *count += 1,
                 None => counts.push((call.display_name.clone(), 1)),
             }
@@ -589,8 +592,12 @@ impl ToolGroup {
 
     fn face_row(&self, store: &Store, ui: &UiCtx, id: &str) -> TreeItemView<ToolRowView> {
         let call = self.call(id);
-        let name = call.map(|call| call.display_name.clone()).unwrap_or_default();
-        let detail = call.map(|call| call.face.detail.clone()).unwrap_or_default();
+        let name = call
+            .map(|call| call.display_name.clone())
+            .unwrap_or_default();
+        let detail = call
+            .map(|call| call.face.detail.clone())
+            .unwrap_or_default();
         let error = call.and_then(|call| call.face.error.clone());
         let failed = call.map(|call| call.face.failed).unwrap_or(false);
         let live = call.map(|call| call.face.live).unwrap_or(false);
@@ -731,8 +738,14 @@ fn face_row<'a>(
         (false, false) => (ink.ink_2.0, ink.ink_3.0, ink.ink_3.0),
     };
     let name = style(hikit::fonts::role_font(ui, &chat.tool_name), name_ink);
-    let word = style(hikit::fonts::ui_text_font(ui, chat.tool_name.size), word_ink);
-    let detail = style(hikit::fonts::mono_font(ui, chat.tool_detail_size), detail_ink);
+    let word = style(
+        hikit::fonts::ui_text_font(ui, chat.tool_name.size),
+        word_ink,
+    );
+    let detail = style(
+        hikit::fonts::mono_font(ui, chat.tool_detail_size),
+        detail_ink,
+    );
     let chevron = Disclosure {
         open: face.open,
         color: match face.failed {
@@ -810,35 +823,37 @@ impl Disclosure {
     ) -> impl imba::layout::Layout<'a, Command> + imba::layout::LayoutValue + 'a {
         imba::layout::Fill::<Command>::new()
             .sized(width, height)
-            .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                // The mock's 16-unit glyph: M6 3 l5 5 -5 5 closed,
-                // M3 6 l5 5 5 -5 open.
-                let unit = self.size / 16.0;
-                let left = rect.left;
-                let top = rect.top + (rect.height() - self.size) * 0.5;
-                let at = |x: f32, y: f32| (left + x * unit, top + y * unit);
-                let mut path = skia_safe::PathBuilder::new();
-                match self.open {
-                    false => {
-                        path.move_to(at(6.0, 3.0));
-                        path.line_to(at(11.0, 8.0));
-                        path.line_to(at(6.0, 13.0));
+            .backdrop(
+                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                    // The mock's 16-unit glyph: M6 3 l5 5 -5 5 closed,
+                    // M3 6 l5 5 5 -5 open.
+                    let unit = self.size / 16.0;
+                    let left = rect.left;
+                    let top = rect.top + (rect.height() - self.size) * 0.5;
+                    let at = |x: f32, y: f32| (left + x * unit, top + y * unit);
+                    let mut path = skia_safe::PathBuilder::new();
+                    match self.open {
+                        false => {
+                            path.move_to(at(6.0, 3.0));
+                            path.line_to(at(11.0, 8.0));
+                            path.line_to(at(6.0, 13.0));
+                        }
+                        true => {
+                            path.move_to(at(3.0, 6.0));
+                            path.line_to(at(8.0, 11.0));
+                            path.line_to(at(13.0, 6.0));
+                        }
                     }
-                    true => {
-                        path.move_to(at(3.0, 6.0));
-                        path.line_to(at(8.0, 11.0));
-                        path.line_to(at(13.0, 6.0));
-                    }
-                }
-                let mut paint = skia_safe::Paint::default();
-                paint.set_anti_alias(true);
-                paint.set_stroke(true);
-                paint.set_stroke_width(self.stroke);
-                paint.set_stroke_cap(skia_safe::PaintCap::Round);
-                paint.set_stroke_join(skia_safe::PaintJoin::Round);
-                paint.set_color(self.color);
-                canvas.draw_path(&path.detach(), &paint);
-            })
+                    let mut paint = skia_safe::Paint::default();
+                    paint.set_anti_alias(true);
+                    paint.set_stroke(true);
+                    paint.set_stroke_width(self.stroke);
+                    paint.set_stroke_cap(skia_safe::PaintCap::Round);
+                    paint.set_stroke_join(skia_safe::PaintJoin::Round);
+                    paint.set_color(self.color);
+                    canvas.draw_path(&path.detach(), &paint);
+                },
+            )
     }
 }
 

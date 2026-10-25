@@ -64,7 +64,6 @@ fn seed_complete(
     mut document: Document,
     width: f32,
 ) -> (documents::DocumentId, EditorIdView, EditorId) {
-
     store.put(::editor::env::Enrichers(std::sync::Arc::new(
         markdown_enrichers(editor::enrich::Enrichers::new()),
     )));
@@ -143,13 +142,7 @@ fn apply_outcome(store: &mut Store, document_id: documents::DocumentId, outcome:
     let mut document =
         documents::OpenDocuments::document(store, test_docs(), document_id).expect("document");
     let mut batch = imba::effect::Batch::new();
-    document.apply_reparse_outcome(
-        outcome,
-        store,
-        ui,
-        &test_theme(),
-        &mut batch.effects(),
-    );
+    document.apply_reparse_outcome(outcome, store, ui, &test_theme(), &mut batch.effects());
     documents::OpenDocuments::put_document(store, test_docs(), document_id, document);
 
     let Some(editor) = documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
@@ -346,12 +339,7 @@ fn resize_repair_timing_probe() {
 fn content_only_edits_rebuild_inline_markup() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    let document = document_from_markdown(
-        "some **bold** words\n",
-        &store,
-        ui,
-        &test_theme(),
-    );
+    let document = document_from_markdown("some **bold** words\n", &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
 
     let strong_spans = |store: &Store| {
@@ -588,11 +576,7 @@ fn inlay_commands_route_by_layer() {
         0..1,
         editor::markup::Inlay::new(
             editor::markup::InlayMode::Above,
-            editor::editor_view::EditorView::input(
-                100.0,
-                store,
-                ui,
-            ),
+            editor::editor_view::EditorView::input(100.0, store, ui),
         ),
         store,
         ui,
@@ -1131,8 +1115,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
     );
 
     let mut store = Store::new();
-    let document =
-        document_from_markdown("alpha\n\nbeta", &store, ui, &test_theme());
+    let document = document_from_markdown("alpha\n\nbeta", &store, ui, &test_theme());
     let (document_id, _, editor) = seed_complete(&mut store, &ui, document, 700.0);
     {
         let mut document =
@@ -1716,12 +1699,7 @@ fn a_markdown_table_becomes_an_instead_inlay() {
     assert!(inlay.range.start >= table_start.saturating_sub(1));
     assert!(inlay.range.end > inlay.range.start);
 
-    let plain = document_from_markdown(
-        "a | b | c\njust prose\n",
-        store,
-        ui,
-        &test_theme(),
-    );
+    let plain = document_from_markdown("a | b | c\njust prose\n", store, ui, &test_theme());
     let count = plain.all_inlays_in(0..64).len();
     assert_eq!(count, 0);
 }
@@ -1730,12 +1708,7 @@ fn a_markdown_table_becomes_an_instead_inlay() {
 fn late_reparse_outcomes_rebase_over_typing() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    let document = document_from_markdown(
-        "plain words here\n",
-        &store,
-        ui,
-        &test_theme(),
-    );
+    let document = document_from_markdown("plain words here\n", &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
 
     let mut view = editor;
@@ -1898,13 +1871,8 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         "install_parse must apply the syntax markup"
     );
 
-    let styled_reference = editor::editor_view::EditorView::complete(
-        styled.clone(),
-        600.0,
-        &store,
-        ui,
-        &test_theme(),
-    );
+    let styled_reference =
+        editor::editor_view::EditorView::complete(styled.clone(), 600.0, &store, ui, &test_theme());
     let cx = test_cx();
     let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(parse_batch)
         .into_iter()
@@ -2186,8 +2154,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
 fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    let document =
-        document_from_markdown("hello\n\nworld", &store, ui, &test_theme());
+    let document = document_from_markdown("hello\n\nworld", &store, ui, &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
 
     let mut view = editor;
@@ -2250,13 +2217,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
         .expect("document")
         .clone();
     let mut idle_batch = imba::effect::Batch::new();
-    document.apply_reparse_outcome(
-        idle,
-        &store,
-        ui,
-        &test_theme(),
-        &mut idle_batch.effects(),
-    );
+    document.apply_reparse_outcome(idle, &store, ui, &test_theme(), &mut idle_batch.effects());
     assert!(
         idle_batch.is_empty(),
         "an idle reparse must not write anything"
@@ -2457,12 +2418,8 @@ fn document_from_markdown_populates_the_full_outline() {
     );
 
     let languages = test_languages();
-    let mut document = document_from_markdown(
-        "# One\n\n## Two\n\n### Three\n",
-        store,
-        ui,
-        &test_theme(),
-    );
+    let mut document =
+        document_from_markdown("# One\n\n## Two\n\n### Three\n", store, ui, &test_theme());
     let outcome = editor::reparse::ReparseWork::capture(&document, languages)
         .expect("reparse")
         .run_reparse();

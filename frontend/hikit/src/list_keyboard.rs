@@ -338,11 +338,7 @@ where
         let Some(lane) = &mut self.search else {
             return;
         };
-        lane.input = EditorView::input(
-            PILL_INPUT_WIDTH,
-            store,
-            ui,
-        );
+        lane.input = EditorView::input(PILL_INPUT_WIDTH, store, ui);
         lane.input.focus_text();
         lane.launched = None;
         if let Some(token) = lane.lane.take() {

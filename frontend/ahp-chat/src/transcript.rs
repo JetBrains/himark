@@ -253,7 +253,10 @@ impl View for ChatRow {
                                 },
                             ),
                         )
-                        .layout(arena, Constraints::tight(Size::new(width, chrome.loader_height)));
+                        .layout(
+                            arena,
+                            Constraints::tight(Size::new(width, chrome.loader_height)),
+                        );
                     let armed = *armed;
                     Either::Loader(band.wrap(move |inner| ArmedLoader { inner, armed }))
                 }

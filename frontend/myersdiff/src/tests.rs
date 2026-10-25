@@ -165,7 +165,10 @@ fn inner_whitespaces() {
     check(("<< x >>", "y<<x>>y"), ("  - -  ", "-     -"));
     check(("x .. z", "x y .. z"), ("      ", " --     "));
     check(("  x..z", "x..y  "), ("--   -", "   ---"));
-    check((" x y x _ x z x ", "x x_x x"), ("- --  - - --  -", "       "));
+    check(
+        (" x y x _ x z x ", "x x_x x"),
+        ("- --  - - --  -", "       "),
+    );
 }
 
 #[test]
@@ -196,10 +199,16 @@ fn trailing_punctuation() {
 
 #[test]
 fn legacy_cases_from_by_word_test() {
-    check(("abc def, 123", "ab def, 12"), ("---      ---", "--      --"));
+    check(
+        ("abc def, 123", "ab def, 12"),
+        ("---      ---", "--      --"),
+    );
     check((" a[xy]+1", ",a[]+1"), ("-  --   ", "-     "));
     check(("0987_  a.g();_", "yyyy_"), ("------------- ", "---- "));
-    check(("  abc_2222_", "    x = abc_zzzz_"), ("      ---- ", " ------     ---- "));
+    check(
+        ("  abc_2222_", "    x = abc_zzzz_"),
+        ("      ---- ", " ------     ---- "),
+    );
     check(
         (
             "   if (eventMerger!=null && !dataSelection.getValueIsAdjusting()) {",
@@ -239,7 +248,10 @@ fn astral_codepoints_are_chunks_of_their_own() {
 
 #[test]
 fn a_letter_change_marks_the_whole_word() {
-    check(("the color of it", "the colour of it"), ("    -----      ", "    ------      "));
+    check(
+        ("the color of it", "the colour of it"),
+        ("    -----      ", "    ------      "),
+    );
     check(("getValue(x)", "getVale(x)"), ("--------   ", "-------   "));
 }
 
@@ -277,4 +289,3 @@ fn a_lone_brace_does_not_anchor_a_match() {
         ]
     );
 }
-

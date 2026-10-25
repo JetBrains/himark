@@ -24,7 +24,9 @@ fn located(
     editor::location::ResourceLocation::new(
         kind,
         editor::location::Authority::new("local"),
-        path.iter().map(|segment| segment.to_string()).collect::<Vec<String>>(),
+        path.iter()
+            .map(|segment| segment.to_string())
+            .collect::<Vec<String>>(),
     )
 }
 
@@ -72,7 +74,10 @@ const TITLES: [&str; 17] = [
 ];
 
 /// A commit's files as the digest would land them: (path, +, −).
-fn landed(folder: &editor::location::ResourceLocation, files: &[(&[&str], i64, i64)]) -> DigestedChangeset {
+fn landed(
+    folder: &editor::location::ResourceLocation,
+    files: &[(&[&str], i64, i64)],
+) -> DigestedChangeset {
     let entries = files
         .iter()
         .map(|(rel, added, removed)| {
@@ -173,7 +178,11 @@ impl himark::commands::HimarkCommand for ShowHistory {
             &Ok(landed(
                 &folder,
                 &[
-                    (&["frontend", "frontend-host", "src", "chat_flow_tests.rs"], 98, 0),
+                    (
+                        &["frontend", "frontend-host", "src", "chat_flow_tests.rs"],
+                        98,
+                        0,
+                    ),
                     (&["frontend", "himark", "src", "app.rs"], 1, 0),
                     (&["frontend", "himark", "src", "himark.rs"], 13, 0),
                     (&["perf.csv"], 32, 0),

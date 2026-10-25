@@ -203,7 +203,10 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
         self.chrome.height
     }
 
-    fn group(arena: &'a Arena, items: Vec<(f32, Item<'a, Command>)>) -> imba::layout::Row<'a, Command> {
+    fn group(
+        arena: &'a Arena,
+        items: Vec<(f32, Item<'a, Command>)>,
+    ) -> imba::layout::Row<'a, Command> {
         let mut row = imba::layout::Row::new(arena);
         for (gap, item) in items {
             let insets = |reserve: f32| imba::layout::Insets {
@@ -214,7 +217,8 @@ impl<'a, Command: 'a> ColumnHeader<'a, Command> {
             row = match item {
                 Item::Text(text) => row.child_by_baseline(text.pad_insets(insets(0.0))),
                 Item::Button(text, reserve, on_press) => row.child_by_baseline(
-                    text.on_click(move || on_press()).pad_insets(insets(reserve)),
+                    text.on_click(move || on_press())
+                        .pad_insets(insets(reserve)),
                 ),
             };
         }

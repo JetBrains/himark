@@ -91,13 +91,21 @@ fn the_ios_pair_mirrors_the_desktop_pairs_keys() {
         out
     };
     for (desktop, phone) in [
-        ("../editor/assets/theme.json", "../editor/assets/theme-ios.json"),
-        ("../editor/assets/theme-light.json", "../editor/assets/theme-ios-light.json"),
+        (
+            "../editor/assets/theme.json",
+            "../editor/assets/theme-ios.json",
+        ),
+        (
+            "../editor/assets/theme-light.json",
+            "../editor/assets/theme-ios-light.json",
+        ),
     ] {
         let desktop_keys = shape(&std::fs::read_to_string(desktop).expect(desktop));
         let phone_keys = shape(&std::fs::read_to_string(phone).expect(phone));
-        let missing: Vec<&String> =
-            desktop_keys.iter().filter(|key| !phone_keys.contains(key)).collect();
+        let missing: Vec<&String> = desktop_keys
+            .iter()
+            .filter(|key| !phone_keys.contains(key))
+            .collect();
         assert!(missing.is_empty(), "{phone} lacks {missing:?}");
     }
 }

@@ -185,16 +185,9 @@ impl Document {
         theme: &crate::theme::Theme,
     ) -> Self {
         let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
-        let Some((root, _, sites)) = languages.parse_syntax(
-            language,
-            &text,
-            0..byte_count,
-            None,
-            &[],
-            store,
-            ui,
-            theme,
-        ) else {
+        let Some((root, _, sites)) =
+            languages.parse_syntax(language, &text, 0..byte_count, None, &[], store, ui, theme)
+        else {
             return Self::new(text, Markup::new());
         };
         let mut markup = Markup::new();
@@ -483,7 +476,9 @@ impl Document {
             let mut view = self.text.view();
             syntax.markup.edit(operation, &mut view, 0);
             syntax.folds.edit(crate::markup::interval_steps(operation));
-            syntax.outline.edit(crate::markup::interval_steps(operation));
+            syntax
+                .outline
+                .edit(crate::markup::interval_steps(operation));
             if let Some(tree) = &mut syntax.tree {
                 tree.edit(operation, &mut view, 0);
             }
@@ -800,15 +795,7 @@ impl Document {
         outcome
             .enricher
             .install(store, ui, &mut replacement, &changed, theme);
-        self.replace_markup(
-            slot.markup,
-            replacement,
-            &changed,
-            store,
-            ui,
-            theme,
-            fx,
-        );
+        self.replace_markup(slot.markup, replacement, &changed, store, ui, theme, fx);
     }
 
     pub fn release_enrichment(&mut self, store: &mut Store) {
@@ -885,13 +872,7 @@ impl Document {
             )));
             if let Some(outcome) = outcome {
                 let mut batch = imba::effect::Batch::new();
-                self.apply_enrichment(
-                    outcome,
-                    &mut landing,
-                    ui,
-                    theme,
-                    &mut batch.effects(),
-                );
+                self.apply_enrichment(outcome, &mut landing, ui, theme, &mut batch.effects());
             }
         }
     }
@@ -1447,14 +1428,7 @@ impl Document {
                 if self.marked_of(editor).is_none()
                     && !self.assist_at_carets(store, editor, kind, ui, theme, fx)
                 {
-                    self.insert(
-                        editor,
-                        crate::assist::INDENT_UNIT,
-                        store,
-                        ui,
-                        theme,
-                        fx,
-                    );
+                    self.insert(editor, crate::assist::INDENT_UNIT, store, ui, theme, fx);
                 }
             }
             EditorCommand::Outdent => {
@@ -1475,14 +1449,10 @@ impl Document {
             EditorCommand::DeleteWordForward => {
                 self.delete_at_carets(editor, Motion::WordRight, store, ui, theme, fx)
             }
-            EditorCommand::DeleteSelections => {
-                self.delete_selections(editor, store, ui, theme, fx)
-            }
+            EditorCommand::DeleteSelections => self.delete_selections(editor, store, ui, theme, fx),
             EditorCommand::Undo => self.undo(editor, store, ui, theme, fx),
             EditorCommand::Redo => self.redo(editor, store, ui, theme, fx),
-            EditorCommand::Paste { text } => {
-                self.insert(editor, &text, store, ui, theme, fx)
-            }
+            EditorCommand::Paste { text } => self.insert(editor, &text, store, ui, theme, fx),
             EditorCommand::Move { motion, select } => {
                 self.move_carets(editor, motion, select, store, ui, theme);
             }
@@ -1503,17 +1473,13 @@ impl Document {
                 }
             }
 
-            EditorCommand::RevealAt { byte } => {
-                self.reveal_at(editor, byte, store, ui, theme, fx)
-            }
+            EditorCommand::RevealAt { byte } => self.reveal_at(editor, byte, store, ui, theme, fx),
             EditorCommand::Click { point, kind } => {
                 self.click_carets(editor, point, kind, store, ui, theme);
 
                 self.set_focus(editor, EditorFocus::Text);
             }
-            EditorCommand::Drag { point } => {
-                self.drag_carets(editor, point, store, ui, theme)
-            }
+            EditorCommand::Drag { point } => self.drag_carets(editor, point, store, ui, theme),
             EditorCommand::DragEnd => {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.drag = None;
@@ -1631,16 +1597,7 @@ impl Document {
                 let repl = view.utf16_to_byte(replacement.0)
                     ..view.utf16_to_byte(replacement.0.saturating_add(replacement.1));
                 let end = text.len().min(u32::MAX as usize) as u32;
-                self.set_marked_text(
-                    editor,
-                    &text,
-                    end..end,
-                    Some(repl),
-                    store,
-                    ui,
-                    theme,
-                    fx,
-                );
+                self.set_marked_text(editor, &text, end..end, Some(repl), store, ui, theme, fx);
                 self.unmark_text(editor);
             }
             EditorCommand::SetMarkedText {
@@ -1745,16 +1702,7 @@ impl Document {
         let Some(range) = range else {
             return;
         };
-        self.replace_marked(
-            editor,
-            store,
-            ui,
-            theme,
-            range,
-            text,
-            Some(selected),
-            fx,
-        )
+        self.replace_marked(editor, store, ui, theme, range, text, Some(selected), fx)
     }
 
     pub fn unmark_text(&mut self, editor: EditorId) {
@@ -1919,15 +1867,7 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_with(
-            identity,
-            Provenance::Ours,
-            operation,
-            store,
-            ui,
-            theme,
-            fx,
-        )
+        self.edit_with(identity, Provenance::Ours, operation, store, ui, theme, fx)
     }
 
     pub fn edit_shared(
@@ -2214,7 +2154,10 @@ impl Document {
         else {
             return;
         };
-        let style = self.editors.get(&editor).and_then(|editor| editor.input_style);
+        let style = self
+            .editors
+            .get(&editor)
+            .and_then(|editor| editor.input_style);
         let height = crate::shaped_line::ShapedLine::placeholder(
             &text,
             style,

@@ -131,13 +131,8 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     }
 
     let live = document.element_heights(editor);
-    let fresh_view = editor::editor_view::EditorView::complete(
-        document.clone(),
-        700.0,
-        store,
-        ui,
-        &theme(),
-    );
+    let fresh_view =
+        editor::editor_view::EditorView::complete(document.clone(), 700.0, store, ui, &theme());
     let fresh = fresh_view.element_heights();
     assert_eq!(live, fresh, "incremental layout diverged from from-scratch");
 }

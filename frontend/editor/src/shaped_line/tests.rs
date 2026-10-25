@@ -5,13 +5,8 @@ use super::*;
 
 fn plain_shaped(text: &str) -> ParleyLine {
     let resolved = BlockStyle::default().resolved(&crate::theme::embedded());
-    let display = DisplayText::build_segments(
-        false,
-        &[(text.to_owned(), 0)],
-        &[],
-        true,
-        text.len(),
-    );
+    let display =
+        DisplayText::build_segments(false, &[(text.to_owned(), 0)], &[], true, text.len());
     shape_inputs(&resolved, &display, &[], &crate::theme::embedded())
         .shape(crate::test_document::test_ui(), None)
 }
@@ -107,7 +102,8 @@ fn rows_partition_the_text_at_breaks_and_wraps() {
             false,
             sample.len(),
         );
-        let line = shape_inputs(&resolved, &display, &[], &theme).shape(crate::test_document::test_ui(), Some(220.0));
+        let line = shape_inputs(&resolved, &display, &[], &theme)
+            .shape(crate::test_document::test_ui(), Some(220.0));
         let rows = line.rows();
         if sample.is_empty() {
             // The empty layout's synthetic row has no text to cover.
@@ -195,7 +191,12 @@ fn selection_edges_sit_on_the_caret() {
         900.0,
         0.0,
     );
-    for (from, to) in [(0usize, 9usize), (4, 15), (10, source.len()), (0, source.len())] {
+    for (from, to) in [
+        (0usize, 9usize),
+        (4, 15),
+        (10, source.len()),
+        (0, source.len()),
+    ] {
         let rects = shaped.rects_for_range(from as u32..to as u32);
         assert!(!rects.is_empty(), "no band for {from}..{to}");
         let left = rects.iter().map(|r| r.left).fold(f32::MAX, f32::min);

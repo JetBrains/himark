@@ -240,7 +240,11 @@ impl ChangesView {
     pub fn row_span(&self, store: &Store, index: usize) -> (f32, f32) {
         let band = match self.sets {
             ViewSets::History => 0.0,
-            ViewSets::WorkingCopies => editor::env::Themes::of(store).part(crate::chrome::HistoryChrome::KEY).header_top,
+            ViewSets::WorkingCopies => {
+                editor::env::Themes::of(store)
+                    .part(crate::chrome::HistoryChrome::KEY)
+                    .header_top
+            }
         };
         let list = self.list.inner().list();
         let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();

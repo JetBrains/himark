@@ -254,10 +254,7 @@ impl crate::commands::HimarkCommand for SessionFoldersPicked {
                     ),
                 })
                 .map(move |result| {
-                    crate::shell::bound(
-                        imba::focus::Bindings::new(),
-                        Arc::new(GrantAck { result }),
-                    )
+                    crate::shell::bound(imba::focus::Bindings::new(), Arc::new(GrantAck { result }))
                 }),
             );
         }

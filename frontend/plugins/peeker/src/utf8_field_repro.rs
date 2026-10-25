@@ -40,12 +40,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     ] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(
-                source,
-                app.store(),
-                &app.ui_ctx(),
-                &theme,
-            ),
+            himarkdown::document_from_markdown(source, app.store(), &app.ui_ctx(), &theme,),
             name.to_owned(),
             false,
         ));

@@ -148,14 +148,21 @@ impl MatchMark {
                 bottom: foot,
                 ..Default::default()
             })
-            .backdrop(move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-            let mut paint = Paint::default();
-            paint.set_color(color);
-            canvas.draw_rect(
-                Rect::from_xywh(rect.left, rect.top + ascent + offset, rect.width(), thickness),
-                &paint,
-            );
-        })
+            .backdrop(
+                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                    let mut paint = Paint::default();
+                    paint.set_color(color);
+                    canvas.draw_rect(
+                        Rect::from_xywh(
+                            rect.left,
+                            rect.top + ascent + offset,
+                            rect.width(),
+                            thickness,
+                        ),
+                        &paint,
+                    );
+                },
+            )
     }
 }
 
@@ -241,7 +248,13 @@ mod tests {
     fn runs_merge_adjacent_letters_and_fold_case() {
         assert_eq!(match_runs("Select All", "sel"), vec![0..3]);
         assert_eq!(match_runs("Select All", "sa"), vec![0..1, 7..8]);
-        assert_eq!(match_runs("Select All", "xyz"), Vec::<std::ops::Range<usize>>::new());
-        assert_eq!(match_runs("Select All", ""), Vec::<std::ops::Range<usize>>::new());
+        assert_eq!(
+            match_runs("Select All", "xyz"),
+            Vec::<std::ops::Range<usize>>::new()
+        );
+        assert_eq!(
+            match_runs("Select All", ""),
+            Vec::<std::ops::Range<usize>>::new()
+        );
     }
 }

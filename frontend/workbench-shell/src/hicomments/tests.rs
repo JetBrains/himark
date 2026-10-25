@@ -12,14 +12,14 @@ use imba::ui::UiCtx;
 
 use std::ops::Range;
 
+use ::editor::test_document::plain_document;
+use editor::caret::Caret;
+use editor::caret::MultiCaret;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app::OpenedDocument;
 use himark::app_ext::AppExt;
-use ::editor::test_document::plain_document;
-use editor::caret::Caret;
-use editor::caret::MultiCaret;
 
 fn document_location(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(

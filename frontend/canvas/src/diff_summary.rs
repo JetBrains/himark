@@ -45,7 +45,9 @@ pub struct SummaryLine {
 /// stands it, the same box `SummaryLine::strip_height` answers. The
 /// canvas pads its list down by this much; the click tests mirror it.
 pub fn strip_height(store: &Store, ui: &UiCtx) -> f32 {
-    let pad = env::Themes::of(store).part(::hikit::chrome::DiffChrome::KEY).summary_pad;
+    let pad = env::Themes::of(store)
+        .part(::hikit::chrome::DiffChrome::KEY)
+        .summary_pad;
     pad * 2.0 + hikit::ui::brief(store, ui).line_height()
 }
 
@@ -59,7 +61,10 @@ impl SummaryLine {
             1 => "1 file".to_owned(),
             n => format!("{n} files"),
         };
-        let state = match (spec.collapsed, totals.files - spec.collapsed.min(totals.files)) {
+        let state = match (
+            spec.collapsed,
+            totals.files - spec.collapsed.min(totals.files),
+        ) {
             (0, _) => "All expanded".to_owned(),
             (_, 0) => "All collapsed".to_owned(),
             (_, open) => format!("{open} expanded"),
@@ -71,7 +76,9 @@ impl SummaryLine {
             state_color: ink.ink_2.0,
             gap: diff.summary_gap,
             pad: diff.summary_pad,
-            lead: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
+            lead: theme
+                .part(::editor::theme::WindowChrome::KEY)
+                .code_text_edge,
             added: (totals.added > 0).then(|| format!("+{}", totals.added)),
             removed: (totals.removed > 0).then(|| format!("−{}", totals.removed)),
             files,

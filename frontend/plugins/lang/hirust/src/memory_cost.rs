@@ -57,9 +57,8 @@ fn a_parsed_document_costs_what_it_costs() {
     ] {
         let text = text::text::Text::from_string_exact(source);
         let before = LIVE.load(Ordering::Relaxed);
-        let document = editor::document::Document::from_language(
-            text, "rust", &languages, &store, ui, &theme,
-        );
+        let document =
+            editor::document::Document::from_language(text, "rust", &languages, &store, ui, &theme);
         let held = LIVE.load(Ordering::Relaxed) - before;
         let spans = document.markup().query_count();
         let (lane, styled, runs) = document.markup().probe_span_stats();

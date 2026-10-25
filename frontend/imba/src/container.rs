@@ -229,8 +229,7 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
                         mods: *mods,
                     };
                     let result = child.handle_event(arena, &event, viewport);
-                    claimed = claimed
-                        || (asked && !matches!(result, EventResult::Ignored));
+                    claimed = claimed || (asked && !matches!(result, EventResult::Ignored));
                     merged = merged.merge(result);
                 }
                 merged

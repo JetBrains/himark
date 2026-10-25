@@ -356,7 +356,12 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
     ) -> EventResult<EditorCommand> {
         match event {
             Event::Paint { canvas, focused: _ } => {
-                let chrome = self.shared.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
+                let chrome = self
+                    .shared
+                    .theme
+                    .part(crate::theme::EditorGutterChrome::KEY)
+                    .as_ref()
+                    .clone();
                 let data = self.shared.viewport(viewport.top..viewport.bottom);
                 let font = gutter_font(chrome.number_size);
                 let (_, metrics) = font.metrics();
@@ -441,7 +446,12 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                 point,
                 ..
             } => {
-                let chrome = self.shared.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
+                let chrome = self
+                    .shared
+                    .theme
+                    .part(crate::theme::EditorGutterChrome::KEY)
+                    .as_ref()
+                    .clone();
                 let band = viewport.top..viewport.bottom;
                 if self.shared.stripes.is_some()
                     && point.x <= chrome.stripe_inset + chrome.stripe_width * 2.0
@@ -562,11 +572,7 @@ impl EditorView {
         }
     }
 
-    pub fn input(
-        width: f32,
-        store: &imba::store::Store,
-        ui: &imba::ui::UiCtx,
-    ) -> Self {
+    pub fn input(width: f32, store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
         Self::input_styled(width, store, ui, crate::theme::StyleId::Input)
     }
 
@@ -656,8 +662,7 @@ impl EditorView {
         theme: &crate::theme::Theme,
     ) {
         self.document.set_caret(self.editor, byte);
-        self.document
-            .refresh_unhide(self.editor, store, ui, theme);
+        self.document.refresh_unhide(self.editor, store, ui, theme);
     }
 
     pub fn find_misaligned_boundary(&self) -> Option<u32> {
@@ -1095,14 +1100,8 @@ impl View for EditorView {
 
         if let EditorCommand::ApplyReparse(outcome) = command {
             let theme = crate::env::Themes::of(store);
-            self.document.land_reparse(
-                outcome,
-                self.location.clone(),
-                store,
-                ui,
-                &theme,
-                fx,
-            );
+            self.document
+                .land_reparse(outcome, self.location.clone(), store, ui, &theme, fx);
             return;
         }
         let base_revision = self.document.revision();
@@ -1256,8 +1255,7 @@ impl View for EditorView {
                 }
 
                 let popup_origin = skia_safe::Point::new(gutter - scroll_x, 0.0);
-                let mut popups =
-                    self.assist_overlays(arena, store, ui, popup_origin);
+                let mut popups = self.assist_overlays(arena, store, ui, popup_origin);
                 popups.extend(crate::popup::projected_overlays(
                     &document,
                     editor_id,
@@ -2040,13 +2038,9 @@ impl imba::ime::ImeClient for EditorImeClient<'_> {
 
     fn first_rect(&self, start: u32, _len: u32) -> Option<(f32, f32, f32, f32)> {
         let byte = self.document.text().view().utf16_to_byte(start);
-        let (x, y, w, h) = self.document.caret_content_rect(
-            self.editor,
-            byte,
-            self.store,
-            self.ui,
-            self.theme,
-        )?;
+        let (x, y, w, h) =
+            self.document
+                .caret_content_rect(self.editor, byte, self.store, self.ui, self.theme)?;
         Some((x - self.origin.x, y - self.origin.y, w, h))
     }
 
@@ -2059,13 +2053,7 @@ impl imba::ime::ImeClient for EditorImeClient<'_> {
             )
         };
         self.document
-            .selection_content_rects(
-                self.editor,
-                from..to,
-                self.store,
-                self.ui,
-                self.theme,
-            )
+            .selection_content_rects(self.editor, from..to, self.store, self.ui, self.theme)
             .into_iter()
             .map(|(x, y, w, h)| (x - self.origin.x, y - self.origin.y, w, h))
             .collect()
@@ -2093,17 +2081,14 @@ impl imba::ime::ImeClient for EditorImeClient<'_> {
             return None;
         }
 
-        let byte = match self.document.byte_at_point(
-            self.editor,
-            cx,
-            cy,
-            self.store,
-            self.ui,
-            self.theme,
-        ) {
-            Some(byte) => byte,
-            None => self.document.text().byte_count().min(u32::MAX as usize) as u32,
-        };
+        let byte =
+            match self
+                .document
+                .byte_at_point(self.editor, cx, cy, self.store, self.ui, self.theme)
+            {
+                Some(byte) => byte,
+                None => self.document.text().byte_count().min(u32::MAX as usize) as u32,
+            };
         Some(self.document.text().view().byte_to_utf16(byte))
     }
 

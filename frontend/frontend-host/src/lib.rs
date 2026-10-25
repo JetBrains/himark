@@ -152,7 +152,6 @@ fn autostart_himark_host() -> Option<String> {
     None
 }
 
-
 /// The PRODUCTION engine: the shared boot plus what belongs to the
 /// shipping entry alone — the outward hosts are dialed here, never
 /// in a test's engine (a test engine that registered the discovered
@@ -218,9 +217,6 @@ pub extern "C" fn himark_create(callbacks: HimarkEngineCallbacks) -> *mut Himark
     Box::into_raw(Box::new(production_engine(Some(callbacks))))
 }
 
-
-#[cfg(test)]
-mod tests;
 #[cfg(test)]
 mod chat_flow_tests;
 #[cfg(test)]
@@ -229,3 +225,5 @@ mod diagnostics_flow_tests;
 mod findroute_tests;
 #[cfg(test)]
 mod reconnect_tests;
+#[cfg(test)]
+mod tests;

@@ -832,9 +832,9 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let state = himark::workspace::session_state(store, window).expect("a state");
             let key = himark::workspace::window_session(store, window).expect("a session");
             let location = ResourceLocation::new(
@@ -862,17 +862,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
                         documents::DocumentsCommand::Editor(id, command),
                     ))
                 },
-                |fx| {
-                    document.replace_markup(
-                        markup,
-                        replacement,
-                        &changed,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    )
-                },
+                |fx| document.replace_markup(markup, replacement, &changed, store, ui, &theme, fx),
             );
             documents::OpenDocuments::put_document(store, documents, id, document);
         }

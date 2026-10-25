@@ -459,9 +459,9 @@ pub(crate) fn shape_inputs(
                     .families
                     .clone()
                     .filter(|families| *families != base_families),
-                line_height: run.line_height.filter(|height| {
-                    base_height.map_or(true, |base| (height - base).abs() > 1e-3)
-                }),
+                line_height: run
+                    .line_height
+                    .filter(|height| base_height.map_or(true, |base| (height - base).abs() > 1e-3)),
                 weight: run.weight,
                 width: None,
             });
@@ -516,8 +516,8 @@ pub(crate) fn shape_inputs(
     }
     spans.dedup_by(|b, a| a.start == b.start);
     for decoration in &mut ink {
-        decoration.range =
-            shape_byte_of(&excisions, decoration.range.start)..shape_byte_of(&excisions, decoration.range.end);
+        decoration.range = shape_byte_of(&excisions, decoration.range.start)
+            ..shape_byte_of(&excisions, decoration.range.end);
     }
     ink.retain(|decoration| decoration.range.start < decoration.range.end);
 
@@ -946,17 +946,18 @@ impl ShapedLine {
     /// Band rects for a SHAPE-BYTE range. `Line` height takes the
     /// full line box; `Tight` hugs the content (the caret rect's
     /// vertical at the range start).
-    fn band_rects(
-        &self,
-        range: Range<usize>,
-        height: crate::theme::BackgroundHeight,
-    ) -> Vec<Rect> {
+    fn band_rects(&self, range: Range<usize>, height: crate::theme::BackgroundHeight) -> Vec<Rect> {
         let rects = self.line.rects(range.clone());
         match height {
             crate::theme::BackgroundHeight::Line => rects
                 .into_iter()
                 .map(|rect| {
-                    Rect::from_ltrb(self.x + rect.left, rect.top, self.x + rect.right, rect.bottom)
+                    Rect::from_ltrb(
+                        self.x + rect.left,
+                        rect.top,
+                        self.x + rect.right,
+                        rect.bottom,
+                    )
                 })
                 .collect(),
             crate::theme::BackgroundHeight::Tight => self
@@ -964,7 +965,12 @@ impl ShapedLine {
                 .content_rects(range)
                 .into_iter()
                 .map(|rect| {
-                    Rect::from_ltrb(self.x + rect.left, rect.top, self.x + rect.right, rect.bottom)
+                    Rect::from_ltrb(
+                        self.x + rect.left,
+                        rect.top,
+                        self.x + rect.right,
+                        rect.bottom,
+                    )
                 })
                 .collect(),
         }

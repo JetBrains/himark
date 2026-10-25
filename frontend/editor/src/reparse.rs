@@ -356,8 +356,7 @@ impl imba::effect::EffectHandler<ReparseEffect> for ReparseHandler {
 impl ReparseHandler {
     pub fn reparse(&self, work: ReparseWork) -> ReparseOutcome {
         let theme = self.0.theme();
-        self.0
-            .with_ctx(|store, ui| work.run(store, ui, &theme))
+        self.0.with_ctx(|store, ui| work.run(store, ui, &theme))
     }
 }
 

@@ -49,9 +49,27 @@ const KINDS: &[&str] = &[
 /// Words that may stand before the keyword and say nothing about
 /// what is declared.
 const MODIFIERS: &[&str] = &[
-    "pub", "async", "const", "unsafe", "extern", "default", "static", "export", "public",
-    "private", "protected", "internal", "open", "abstract", "final", "override", "sealed",
-    "inline", "suspend", "virtual", "data",
+    "pub",
+    "async",
+    "const",
+    "unsafe",
+    "extern",
+    "default",
+    "static",
+    "export",
+    "public",
+    "private",
+    "protected",
+    "internal",
+    "open",
+    "abstract",
+    "final",
+    "override",
+    "sealed",
+    "inline",
+    "suspend",
+    "virtual",
+    "data",
 ];
 
 /// Kinds that name a TYPE — their names stand a rank up.
@@ -85,7 +103,8 @@ pub(crate) fn split_kind(title: &str) -> (Option<&str>, &str) {
         if KINDS.contains(&word) {
             return (Some(word), tail);
         }
-        let modifier = MODIFIERS.contains(&word) || word.starts_with("pub(") || word.starts_with('"');
+        let modifier =
+            MODIFIERS.contains(&word) || word.starts_with("pub(") || word.starts_with('"');
         if !modifier {
             return (None, title.trim());
         }
@@ -195,12 +214,13 @@ impl View for ContentsRow {
                 // The margin word: the kind, in the label ink (live
                 // when current). Members leave it blank — their
                 // holder already said it.
-                let kind_style = hikit::ui::brief(store, ui)
-                    .sized(chrome.kind_size)
-                    .colored(match current {
-                        true => ink.live.0,
-                        false => ink.ink_3.0,
-                    });
+                let kind_style =
+                    hikit::ui::brief(store, ui)
+                        .sized(chrome.kind_size)
+                        .colored(match current {
+                            true => ink.live.0,
+                            false => ink.ink_3.0,
+                        });
                 let kind_word = match member {
                     true => String::new(),
                     false => entry.kind.clone().unwrap_or_default(),
@@ -228,16 +248,12 @@ impl View for ContentsRow {
                     false => {
                         let mut style = hikit::ui::margin(store, ui);
                         let (size, color, bold) = match (current, strong, member) {
-                            (true, _, _) => {
-                                (chrome.current_name_size, ink.declaration.0, true)
-                            }
+                            (true, _, _) => (chrome.current_name_size, ink.declaration.0, true),
                             (false, true, _) => (chrome.type_size, chrome.name_color.0, true),
                             (false, false, true) => {
                                 (chrome.name_size, chrome.member_color.0, false)
                             }
-                            (false, false, false) => {
-                                (chrome.name_size, chrome.name_color.0, false)
-                            }
+                            (false, false, false) => (chrome.name_size, chrome.name_color.0, false),
                         };
                         style.font.set_embolden(bold);
                         style.sized(size).colored(color)
@@ -304,8 +320,14 @@ mod tests {
 
     #[test]
     fn titles_split_into_kind_and_name() {
-        assert_eq!(split_kind("pub fn annotations_session"), (Some("fn"), "annotations_session"));
-        assert_eq!(split_kind("pub(crate) struct HostConfig"), (Some("struct"), "HostConfig"));
+        assert_eq!(
+            split_kind("pub fn annotations_session"),
+            (Some("fn"), "annotations_session")
+        );
+        assert_eq!(
+            split_kind("pub(crate) struct HostConfig"),
+            (Some("struct"), "HostConfig")
+        );
         assert_eq!(
             split_kind("impl Default for HostConfig"),
             (Some("impl"), "Default for HostConfig")

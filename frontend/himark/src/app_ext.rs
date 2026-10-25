@@ -31,11 +31,7 @@ pub trait AppExt {
         name: String,
         primary: bool,
         location: Option<editor::location::ResourceLocation>,
-        build: impl FnOnce(
-                &imba::store::Store,
-                &imba::ui::UiCtx,
-                &::editor::theme::Theme,
-            ) -> Document
+        build: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx, &::editor::theme::Theme) -> Document
             + Send
             + Sync
             + 'static,
@@ -130,11 +126,7 @@ impl AppExt for Himark {
         name: String,
         primary: bool,
         location: Option<editor::location::ResourceLocation>,
-        build: impl FnOnce(
-                &imba::store::Store,
-                &imba::ui::UiCtx,
-                &::editor::theme::Theme,
-            ) -> Document
+        build: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx, &::editor::theme::Theme) -> Document
             + Send
             + Sync
             + 'static,

@@ -317,13 +317,19 @@ impl StripeWidget {
     /// Document y ↔ track y: the whole content maps onto the knob's
     /// track band (the scrollbar's own insets).
     fn track(&self) -> (f32, f32) {
-        let inset = self.theme.part(crate::theme::ScrollbarChrome::KEY).track_inset;
+        let inset = self
+            .theme
+            .part(crate::theme::ScrollbarChrome::KEY)
+            .track_inset;
         let height = (self.size.height - inset * 2.0).max(1.0);
         (inset, height / self.stripes.content_height.max(1.0))
     }
 
     fn mark(&self, segment: &StripeSegment, top: f32, scale: f32) -> Rect {
-        let min_height = self.theme.part(crate::theme::ScrollStripeChrome::KEY).min_height;
+        let min_height = self
+            .theme
+            .part(crate::theme::ScrollStripeChrome::KEY)
+            .min_height;
         let bottom = self.size.height - top;
         let y1 = (top + segment.y.end * scale)
             .max(top + segment.y.start * scale + min_height)
@@ -368,7 +374,11 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
             } => {
                 // Nearest mark within a slop — bounded by the GRID.
                 let (top, scale) = self.track();
-                let slop = self.theme.part(crate::theme::ScrollStripeChrome::KEY).min_height * 2.0;
+                let slop = self
+                    .theme
+                    .part(crate::theme::ScrollStripeChrome::KEY)
+                    .min_height
+                    * 2.0;
                 let mut nearest: Option<(f32, u32)> = None;
                 for segment in &self.stripes.segments {
                     let mark = self.mark(segment, top, scale);

@@ -519,8 +519,7 @@ impl View for CommentsView {
                     } if !searching => EventResult::command(CommentsViewCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
-            )
-            ;
+            );
         Reconciled { panel, stale }
     }
 }

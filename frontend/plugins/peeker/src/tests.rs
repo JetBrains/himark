@@ -211,7 +211,9 @@ fn dump_jump_screenshot() {
         let location = editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
             editor::location::Authority::new("test"),
-            path.iter().map(|segment| segment.to_string()).collect::<Vec<_>>(),
+            path.iter()
+                .map(|segment| segment.to_string())
+                .collect::<Vec<_>>(),
         );
         assert!(app.perform_command(himark::app::opened(
             app.sole_window(),

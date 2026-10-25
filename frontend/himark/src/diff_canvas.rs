@@ -67,9 +67,7 @@ impl crate::commands::HimarkCommand for OpenDiffCanvas {
             )
         });
     }
-
 }
-
 
 /// Open a canvas file's live side in an ordinary pane — the header's
 /// click (and `workbench.open-in-full` on a focused row).
@@ -116,4 +114,3 @@ impl crate::commands::HimarkCommand for OpenCanvasFile {
         });
     }
 }
-

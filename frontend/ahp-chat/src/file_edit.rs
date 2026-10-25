@@ -117,16 +117,9 @@ pub(crate) fn build_file_edit(
     let before_text = text::text::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
     let after_text = text::text::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    let mut before = crate::cell::side_document(
-        before_text.clone(),
-        &extension,
-        parsers,
-        store,
-        ui,
-        theme,
-    );
-    let mut after =
-        crate::cell::side_document(after_text, &extension, parsers, store, ui, theme);
+    let mut before =
+        crate::cell::side_document(before_text.clone(), &extension, parsers, store, ui, theme);
+    let mut after = crate::cell::side_document(after_text, &extension, parsers, store, ui, theme);
 
     let operation = differ.diff(&before_text, after.text(), None);
     let prepared = ::editor::split_diff::prepare_marks(&operation, before.text());

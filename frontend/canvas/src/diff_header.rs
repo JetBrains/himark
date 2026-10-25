@@ -429,7 +429,9 @@ impl<'a, Command: 'a> FileBand<'a, Command> {
                 ordinal: brief.clone().sized(chrome.ordinal_size),
                 word: brief,
             },
-            lead: theme.part(::editor::theme::WindowChrome::KEY).code_text_edge,
+            lead: theme
+                .part(::editor::theme::WindowChrome::KEY)
+                .code_text_edge,
             rule: ink.rule.0,
             ground: chrome.fold_background.0,
             chrome,
@@ -475,8 +477,8 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command
         arena: &'a Arena,
         constraints: imba::constraints::Constraints,
     ) -> imba::ThunkBox<'a, Command> {
-        use imba::layout::{Insets, LayoutExt as _, Row};
         use hikit::ui::text;
+        use imba::layout::{Insets, LayoutExt as _, Row};
         let FileBand {
             title,
             added,
@@ -517,8 +519,9 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command
         let space = styles.added.shaper.advance(&styles.added.font, " ");
         let mut lead_gap = chrome.band_gap;
         if let Some(added) = added {
-            heading = heading
-                .child_by_baseline(text(&styles.added, format!("+{added}")).pad_insets(gap(lead_gap)));
+            heading = heading.child_by_baseline(
+                text(&styles.added, format!("+{added}")).pad_insets(gap(lead_gap)),
+            );
             lead_gap = space;
         }
         if let Some(removed) = removed {
@@ -533,7 +536,8 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for FileBand<'a, Command
 
         let mut trailing = Row::new(arena);
         if let Some((at, of)) = ordinal {
-            trailing = trailing.child_by_baseline(text(&styles.ordinal, format!("file {at} of {of}")));
+            trailing =
+                trailing.child_by_baseline(text(&styles.ordinal, format!("file {at} of {of}")));
         }
         for (label, press) in words {
             trailing = trailing.child_by_baseline(

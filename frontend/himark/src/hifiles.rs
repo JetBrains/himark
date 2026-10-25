@@ -72,4 +72,3 @@ fn remove_from_session(
         )
     })
 }
-

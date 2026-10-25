@@ -148,7 +148,6 @@ pub struct FeedPlace {
 
 impl Place for FeedPlace {}
 
-
 impl Place for DismissPlace {}
 
 /// A session's FILE tree.

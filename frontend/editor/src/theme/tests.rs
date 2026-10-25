@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::theme::ThemeStyles as _;
 use super::*;
+use crate::theme::ThemeStyles as _;
 
 #[test]
 fn the_embedded_theme_parses_and_covers_the_styles() {
@@ -43,7 +43,10 @@ fn the_embedded_theme_parses_and_covers_the_styles() {
             "theme entry missing for {id:?}"
         );
     }
-    assert!(theme.styles().base().color.is_some(), "base text has a color");
+    assert!(
+        theme.styles().base().color.is_some(),
+        "base text has a color"
+    );
 }
 
 #[test]
@@ -74,10 +77,17 @@ fn the_light_theme_parses_covers_and_matches_dark_geometry() {
         "light body type matches dark"
     );
     assert!(
-        light.styles().attributes(StyleId::Header(1)).font_size.unwrap()
-            == dark.styles().attributes(StyleId::Header(1)).font_size.unwrap()
+        light
+            .styles()
+            .attributes(StyleId::Header(1))
+            .font_size
+            .unwrap()
+            == dark
+                .styles()
+                .attributes(StyleId::Header(1))
+                .font_size
+                .unwrap()
     );
-
 }
 // The combo chrome's light/dark geometry and ink assertions moved to
 // hikit::chrome::tests with the ComboChrome struct.

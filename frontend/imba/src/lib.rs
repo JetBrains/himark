@@ -5,7 +5,6 @@ use layout::{Layout, LayoutValue};
 use store::Store;
 use ui::UiCtx;
 
-pub mod shape;
 pub mod anim;
 pub mod arena;
 mod r#box;
@@ -27,6 +26,7 @@ pub mod list;
 pub mod overlay;
 pub mod perf;
 pub mod scroll;
+pub mod shape;
 pub mod slot;
 pub mod split;
 pub mod stack;

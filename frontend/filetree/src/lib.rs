@@ -86,7 +86,11 @@ impl View for EdgeLabel {
 /// What the column's text edge stands past the tree frame's inset.
 fn edge_lead(store: &Store) -> f32 {
     let theme = editor::env::Themes::of(store);
-    (theme.part(::editor::theme::WindowChrome::KEY).side_text_edge - theme.part(::hikit::chrome::TreeChrome::KEY).text_x).max(0.0)
+    (theme
+        .part(::editor::theme::WindowChrome::KEY)
+        .side_text_edge
+        - theme.part(::hikit::chrome::TreeChrome::KEY).text_x)
+        .max(0.0)
 }
 
 type TreeRow = TreeItemView<EdgeLabel>;
@@ -636,7 +640,9 @@ impl SessionTreeView {
     /// the list measured them. Mirrors `display`.
     #[doc(hidden)]
     pub fn row_span(&self, store: &Store, ui: &UiCtx, _width: f32, index: usize) -> (f32, f32) {
-        let rows_top = editor::env::Themes::of(store).part(crate::chrome::FilesChrome::KEY).tree_top;
+        let rows_top = editor::env::Themes::of(store)
+            .part(crate::chrome::FilesChrome::KEY)
+            .tree_top;
         let list = self.tree.list.inner();
         let above: f32 = (0..index).filter_map(|at| list.height_at(at)).sum();
         (rows_top + above, list.height_at(index).unwrap_or(0.0))
@@ -1023,7 +1029,9 @@ fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view:
         ui,
         &editor::theme::embedded(),
     );
-    input.document.mark_input(input.editor, editor::theme::StyleId::Field);
+    input
+        .document
+        .mark_input(input.editor, editor::theme::StyleId::Field);
     input.set_caret(text.len() as u32);
     input.focus_text();
     input
@@ -1522,7 +1530,11 @@ fn role_style(
 fn text_x(store: &Store, depth: f32) -> f32 {
     let theme = editor::env::Themes::of(store);
     let tree = &theme.part(::hikit::chrome::TreeChrome::KEY);
-    theme.part(::editor::theme::WindowChrome::KEY).side_text_edge.max(tree.text_x) + depth * tree.indent
+    theme
+        .part(::editor::theme::WindowChrome::KEY)
+        .side_text_edge
+        .max(tree.text_x)
+        + depth * tree.indent
 }
 
 /// The cursor's row restated over the selection wash: the name in

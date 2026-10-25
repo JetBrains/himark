@@ -28,8 +28,11 @@ pub(crate) struct Mounted {
     /// anchors in content coordinates, an epoch that moves when the
     /// set changes. The shell reconciles native layers against
     /// this; the bridge composites none of them.
-    pub(crate) overlay_anchors:
-        Vec<(imba::overlay::Attachment, imba::overlay::OverlayHost, skia_safe::Rect)>,
+    pub(crate) overlay_anchors: Vec<(
+        imba::overlay::Attachment,
+        imba::overlay::OverlayHost,
+        skia_safe::Rect,
+    )>,
     pub(crate) overlay_epoch: u64,
 
     /// Set on a POPOVER's slot: the bridge whose overlay this view
@@ -242,7 +245,10 @@ impl Himark {
         ui.set(fonts.world());
         ui.set(theme.part(::editor::theme::ScrollbarChrome::KEY).style());
 
-        let overlay_font = hikit::fonts::ui_text_font(&ui, theme.part(crate::stats_chrome::StatsChrome::KEY).font_size);
+        let overlay_font = hikit::fonts::ui_text_font(
+            &ui,
+            theme.part(crate::stats_chrome::StatsChrome::KEY).font_size,
+        );
 
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
@@ -730,9 +736,8 @@ impl Himark {
         // "animating" that kept every view awake at 60fps. Keyed on
         // the revision, an idle engine stands (no batches, no
         // rebuilds) and each batch buys ONE rebuild at the next tick.
-        let fresh = slot.frame.is_some()
-            && slot.revision == revision
-            && (standing || slot.size == size);
+        let fresh =
+            slot.frame.is_some() && slot.revision == revision && (standing || slot.size == size);
         if !fresh {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());
@@ -861,7 +866,11 @@ impl Himark {
         id: ViewBridgeId,
     ) -> Option<(
         u64,
-        Vec<(imba::overlay::Attachment, imba::overlay::OverlayHost, skia_safe::Rect)>,
+        Vec<(
+            imba::overlay::Attachment,
+            imba::overlay::OverlayHost,
+            skia_safe::Rect,
+        )>,
     )> {
         let slot = self.bridges.get(&id)?;
         Some((slot.overlay_epoch, slot.overlay_anchors.clone()))
@@ -1295,7 +1304,8 @@ impl Himark {
     }
 
     pub(crate) fn refresh_chrome(&mut self, theme: &::editor::theme::Theme) {
-        self.ui.set(theme.part(::editor::theme::ScrollbarChrome::KEY).style());
+        self.ui
+            .set(theme.part(::editor::theme::ScrollbarChrome::KEY).style());
         self.stats.set_font(hikit::fonts::ui_text_font(
             &self.ui,
             theme.part(crate::stats_chrome::StatsChrome::KEY).font_size,

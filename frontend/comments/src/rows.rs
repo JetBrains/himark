@@ -57,15 +57,17 @@ impl CommentsRow {
 pub(crate) fn dress(
     comments: Arc<std::collections::HashMap<ResourceLocation, CommentFacts>>,
 ) -> hikit::forest::Wrap<ResourceLocation, CommentsRow> {
-    Arc::new(move |row: TreeRow, key: &ResourceLocation| match comments.get(key) {
-        Some(facts) => CommentsRow::Comment(TreeItemView::leaf(
-            CommentLine {
-                facts: facts.clone(),
-            },
-            row.depth(),
-        )),
-        None => CommentsRow::Tree(row),
-    })
+    Arc::new(
+        move |row: TreeRow, key: &ResourceLocation| match comments.get(key) {
+            Some(facts) => CommentsRow::Comment(TreeItemView::leaf(
+                CommentLine {
+                    facts: facts.clone(),
+                },
+                row.depth(),
+            )),
+            None => CommentsRow::Tree(row),
+        },
+    )
 }
 
 impl View for CommentsRow {
@@ -101,7 +103,11 @@ impl View for CommentsRow {
         // The column's text edge stands past the tree frame's own
         // inset (the Files tab's lead).
         let theme = editor::env::Themes::of(store);
-        let lead = (theme.part(::editor::theme::WindowChrome::KEY).side_text_edge - theme.part(::hikit::chrome::TreeChrome::KEY).text_x).max(0.0);
+        let lead = (theme
+            .part(::editor::theme::WindowChrome::KEY)
+            .side_text_edge
+            - theme.part(::hikit::chrome::TreeChrome::KEY).text_x)
+            .max(0.0);
         row.pad_insets(imba::layout::Insets {
             left: lead,
             ..Default::default()
@@ -144,10 +150,8 @@ impl View for CommentLine {
         let margin = hikit::ui::margin(store, ui);
         let mut trail = imba::layout::Row::new(arena).gap(hikit::ui::space::S);
         if self.facts.replies > 0 {
-            trail = trail.child_by_baseline(hikit::ui::text(
-                &brief,
-                format!("+{}", self.facts.replies),
-            ));
+            trail = trail
+                .child_by_baseline(hikit::ui::text(&brief, format!("+{}", self.facts.replies)));
         }
         if let Some(line) = self.facts.line {
             trail = trail.child_by_baseline(hikit::ui::text(&margin, line.to_string()));

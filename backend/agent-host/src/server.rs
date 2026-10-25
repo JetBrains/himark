@@ -4385,11 +4385,21 @@ impl Host {
     /// The feeder thread's half of the ORDER LAW (`DocumentFeed`).
     fn apply_document_feed(&self, item: DocumentFeed) {
         match item {
-            DocumentFeed::Open { dirs, uri, text, uid } => {
+            DocumentFeed::Open {
+                dirs,
+                uri,
+                text,
+                uid,
+            } => {
                 self.lsp_feed_open(&dirs, &uri, &text, uid);
                 self.fsp_feed_open(&uri, &text);
             }
-            DocumentFeed::Change { dirs, uri, operation, uid } => {
+            DocumentFeed::Change {
+                dirs,
+                uri,
+                operation,
+                uid,
+            } => {
                 self.lsp_feed_change(&dirs, &uri, &operation, uid);
                 self.fsp_feed_change(&uri, &operation);
             }

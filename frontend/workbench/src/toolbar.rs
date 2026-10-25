@@ -202,7 +202,11 @@ impl Toolbar {
         let theme = ::editor::env::Themes::of(store);
         let chrome = theme.part(::hikit::chrome::ToolbarChrome::KEY);
         let styles = hikit::header::HeaderStyles::of(store, ui);
-        let mut natural = Natural::new(theme.part(::editor::theme::WindowChrome::KEY).side_text_edge);
+        let mut natural = Natural::new(
+            theme
+                .part(::editor::theme::WindowChrome::KEY)
+                .side_text_edge,
+        );
         for button in ToolbarButtons::of(store).tabs() {
             natural.tab(&styles, button.label);
         }
@@ -268,12 +272,10 @@ impl Toolbar {
             };
             natural.tab(&styles, button.label);
             chat_section = match button.side {
-                ToolbarSide::Well => {
-                    chat_section.tab(button.label, active, move || match active {
-                        true => ToolbarCommand::RollAwayChat,
-                        false => ToolbarCommand::Word(command),
-                    })
-                }
+                ToolbarSide::Well => chat_section.tab(button.label, active, move || match active {
+                    true => ToolbarCommand::RollAwayChat,
+                    false => ToolbarCommand::Word(command),
+                }),
                 _ => chat_section.tab(button.label, active, word(command)),
             };
         }
@@ -329,9 +331,17 @@ impl Toolbar {
                     }
                 }
             }
-            surface.place_boxed(main_left, 0.0, main_section.layout(arena, tight(main_width)));
+            surface.place_boxed(
+                main_left,
+                0.0,
+                main_section.layout(arena, tight(main_width)),
+            );
         }
-        surface.place_boxed(side_left, 0.0, side_section.layout(arena, tight(side_width)));
+        surface.place_boxed(
+            side_left,
+            0.0,
+            side_section.layout(arena, tight(side_width)),
+        );
         // The rules between sections stand where the body's
         // splitters do: inside the chat column's last pixels, on the
         // dock's first.

@@ -27,7 +27,6 @@ fn test_theme() -> crate::theme::Theme {
     crate::theme::embedded()
 }
 
-
 #[test]
 fn document_layout_wraps_more_at_narrow_width() {
     let heading = "# Title\n";
@@ -412,25 +411,12 @@ fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
     // app comes from the painted glyphs).
     let (x, _, _, _) = view
         .document
-        .caret_content_rect(
-            view.editor,
-            "a😀".len() as u32,
-            store,
-            ui,
-            &test_theme(),
-        )
+        .caret_content_rect(view.editor, "a😀".len() as u32, store, ui, &test_theme())
         .expect("caret rect");
 
     let byte = view
         .document
-        .byte_at_point(
-            view.editor,
-            x + 0.1,
-            10.0,
-            store,
-            ui,
-            &test_theme(),
-        )
+        .byte_at_point(view.editor, x + 0.1, 10.0, store, ui, &test_theme())
         .expect("caret hit");
 
     assert_eq!(byte, "a😀".len() as u32);
@@ -444,25 +430,12 @@ fn caret_hit_testing_moves_inside_visible_whitespace() {
     let view = view_of(plain_document(source), 800.0);
     let (x, _, _, _) = view
         .document
-        .caret_content_rect(
-            view.editor,
-            "a  ".len() as u32,
-            store,
-            ui,
-            &test_theme(),
-        )
+        .caret_content_rect(view.editor, "a  ".len() as u32, store, ui, &test_theme())
         .expect("caret rect");
 
     let byte = view
         .document
-        .byte_at_point(
-            view.editor,
-            x + 0.1,
-            10.0,
-            store,
-            ui,
-            &test_theme(),
-        )
+        .byte_at_point(view.editor, x + 0.1, 10.0, store, ui, &test_theme())
         .expect("caret hit");
 
     assert_eq!(byte, "a  ".len() as u32);
@@ -534,7 +507,6 @@ fn assert_layout_ranges_are_utf8(document: &Document, layout: &DocumentLayout) {
 
     assert_eq!(byte_start as usize, document.text().byte_count());
 }
-
 
 #[test]
 fn misaligned_boundary_detector_fires() {
@@ -642,13 +614,7 @@ fn repairs_preserve_the_trailing_empty_line() {
     for damage_at in [0u32, 2, 4, 5] {
         let mut layout = fresh.clone();
         let start = layout.mark_modified(damage_at);
-        layout.repair_layout_slow(
-            document.text(),
-            markup,
-            600.0,
-            &test_theme(),
-            start,
-        );
+        layout.repair_layout_slow(document.text(), markup, 600.0, &test_theme(), start);
         assert_eq!(
             layout.element_heights(),
             heights,
@@ -858,16 +824,7 @@ fn composing_then_committing_marked_text() {
     let (mut document, editor) = ime_doc("ab");
     document.set_caret(editor, 1);
 
-    document.set_marked_text(
-        editor,
-        "k",
-        1..1,
-        None,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.set_marked_text(editor, "k", 1..1, None, store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "akb");
     assert_eq!(document.marked_range(editor), Some(1..2));
     assert_eq!(document.caret_byte(editor), 2);
@@ -885,14 +842,7 @@ fn composing_then_committing_marked_text() {
     assert_eq!(text_of(&document), "a\u{304B}\u{3093}b");
     assert_eq!(document.marked_range(editor), Some(1..7));
 
-    document.insert(
-        editor,
-        "\u{611F}",
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.insert(editor, "\u{611F}", store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "a\u{611F}b");
     assert!(!document.marked_range(editor).is_some());
     assert_eq!(document.caret_byte(editor), 1 + "\u{611F}".len() as u32);
@@ -946,28 +896,12 @@ fn a_marked_range_shifts_when_a_sibling_editor_edits() {
     );
 
     document.set_caret(composing, "hello world".len() as u32);
-    document.set_marked_text(
-        composing,
-        "xy",
-        2..2,
-        None,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.set_marked_text(composing, "xy", 2..2, None, store, ui, &test_theme(), fx!());
     let marked = document.marked_range(composing).expect("composing");
 
     document.set_caret(sibling, 0);
     let inserted = "PREFIX ";
-    document.insert(
-        sibling,
-        inserted,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.insert(sibling, inserted, store, ui, &test_theme(), fx!());
     assert_eq!(
         document.marked_range(composing),
         Some(marked.start + inserted.len() as u32..marked.end + inserted.len() as u32),
@@ -1196,14 +1130,7 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
     assert!((document.content_height(bounded) - before).abs() < 0.5);
 
     document.set_caret(bounded, 9);
-    let _ = document.insert(
-        bounded,
-        "\n",
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    let _ = document.insert(bounded, "\n", store, ui, &test_theme(), fx!());
     let reference = crate::editor_view::EditorView::complete(
         plain_document("b\nXravo\ncharlie"),
         400.0,
@@ -1291,10 +1218,10 @@ fn a_bounded_editor_paints_only_its_fragment() {
 mod injected_syntax {
     use super::test_theme;
     use crate::markup::Markup;
-    use crate::theme::ThemeStyles as _;
     use crate::markup::Syntax;
     use crate::test_document::plain_document;
     use crate::theme::StyleId;
+    use crate::theme::ThemeStyles as _;
     use operation::operation::Operation;
 
     fn payload(tokens: &[(std::ops::Range<u32>, StyleId)]) -> Syntax {
@@ -1920,7 +1847,7 @@ fn alignment_markers_place_the_covered_lines() {
             &marks,
             &inline,
             &hidden,
-                        &theme,
+            &theme,
             crate::markup::InlayMeasure {
                 width: width,
                 store,
@@ -1968,7 +1895,7 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
             &marks,
             &inline,
             &hidden,
-                        &theme,
+            &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -2030,7 +1957,7 @@ fn a_through_end_wash_fills_the_block_gap_below() {
             &marks,
             &inline,
             &hidden,
-                        &theme,
+            &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -2107,7 +2034,7 @@ fn tight_background_markers_hug_their_glyphs() {
             &marks,
             &inline,
             &hidden,
-                        &theme,
+            &theme,
             crate::markup::InlayMeasure {
                 width: 400.0,
                 store,
@@ -2154,10 +2081,7 @@ fn tight_background_markers_hug_their_glyphs() {
 #[test]
 fn inline_marker_styles_are_tight_and_line_washes_are_not() {
     use crate::theme::{BackgroundExtent, BackgroundHeight, BackgroundKind, StyleId};
-    for theme in [
-        crate::theme::embedded(),
-        crate::theme::light(),
-    ] {
+    for theme in [crate::theme::embedded(), crate::theme::light()] {
         for id in [
             StyleId::BraceMatch,
             StyleId::Occurrence,
@@ -2428,16 +2352,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     languages.register(&["broken"], Arc::new(Unusable));
     assert!(
         languages
-            .parse_syntax(
-                "broken",
-                &text,
-                0..len,
-                None,
-                &[],
-                store,
-                ui,
-                &theme
-            )
+            .parse_syntax("broken", &text, 0..len, None, &[], store, ui, &theme)
             .is_none(),
         "None keeps meaning unusable"
     );
@@ -2634,14 +2549,7 @@ fn multicaret_backspace_deletes_at_every_caret() {
         editor,
         MultiCaret::normalized(vec![Caret::at(2), Caret::at(5), Caret::at(8)], 0),
     );
-    document.delete_at_carets(
-        editor,
-        Motion::Left,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.delete_at_carets(editor, Motion::Left, store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "a b c");
     let offsets: Vec<u32> = document
         .carets(editor)
@@ -2661,14 +2569,7 @@ fn multicaret_delete_forward_eats_selections_first() {
         editor,
         MultiCaret::normalized(vec![Caret::selecting(1, 3), Caret::at(4)], 0),
     );
-    document.delete_at_carets(
-        editor,
-        Motion::Right,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.delete_at_carets(editor, Motion::Right, store, ui, &test_theme(), fx!());
     assert_eq!(
         text_of(&document),
         "adf",
@@ -2682,27 +2583,13 @@ fn word_delete_spans_the_word_motion() {
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("alpha beta gamma");
     document.set_carets(editor, MultiCaret::normalized(vec![Caret::at(10)], 0));
-    document.delete_at_carets(
-        editor,
-        Motion::WordLeft,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.delete_at_carets(editor, Motion::WordLeft, store, ui, &test_theme(), fx!());
     assert_eq!(
         text_of(&document),
         "alpha  gamma",
         "alt-backspace ate the word behind"
     );
-    document.delete_at_carets(
-        editor,
-        Motion::WordRight,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.delete_at_carets(editor, Motion::WordRight, store, ui, &test_theme(), fx!());
     assert_eq!(
         text_of(&document),
         "alpha ",
@@ -2713,14 +2600,7 @@ fn word_delete_spans_the_word_motion() {
         editor,
         MultiCaret::normalized(vec![Caret::selecting(0, 2)], 0),
     );
-    document.delete_at_carets(
-        editor,
-        Motion::WordLeft,
-        store,
-        ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.delete_at_carets(editor, Motion::WordLeft, store, ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "pha ");
 }
 
@@ -2755,71 +2635,22 @@ fn word_and_line_motions() {
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("alpha beta\ngamma delta");
     document.set_caret(editor, 0);
-    document.move_carets(
-        editor,
-        Motion::WordRight,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::WordRight, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 5, "end of alpha");
-    document.move_carets(
-        editor,
-        Motion::WordRight,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::WordRight, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 10, "end of beta");
-    document.move_carets(
-        editor,
-        Motion::LineEnd,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::LineEnd, false, store, ui, &test_theme());
     assert_eq!(
         document.caret_byte(editor),
         10,
         "line end stays before the newline"
     );
-    document.move_carets(
-        editor,
-        Motion::Right,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
-    document.move_carets(
-        editor,
-        Motion::LineEnd,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Right, false, store, ui, &test_theme());
+    document.move_carets(editor, Motion::LineEnd, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 22, "second line end");
-    document.move_carets(
-        editor,
-        Motion::LineStart,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::LineStart, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 11, "second line start");
-    document.move_carets(
-        editor,
-        Motion::WordLeft,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::WordLeft, false, store, ui, &test_theme());
     assert_eq!(
         document.caret_byte(editor),
         6,
@@ -2833,34 +2664,13 @@ fn selecting_motion_grows_from_the_anchor() {
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("abc def");
     document.set_caret(editor, 3);
-    document.move_carets(
-        editor,
-        Motion::WordRight,
-        true,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::WordRight, true, store, ui, &test_theme());
     let primary = document.carets(editor).primary();
     assert_eq!(primary.selection(), 3..7);
-    document.move_carets(
-        editor,
-        Motion::Left,
-        true,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Left, true, store, ui, &test_theme());
     assert_eq!(document.carets(editor).primary().selection(), 3..6);
 
-    document.move_carets(
-        editor,
-        Motion::Right,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Right, false, store, ui, &test_theme());
     let collapsed = document.carets(editor).primary();
     assert!(!collapsed.has_selection());
     assert_eq!(collapsed.offset(), 6);
@@ -2873,48 +2683,20 @@ fn vertical_motion_keeps_the_goal_column() {
     let (mut document, editor) = ime_doc("a long first line\nab\nanother long third line");
 
     document.set_caret(editor, 12);
-    document.move_carets(
-        editor,
-        Motion::Down,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Down, false, store, ui, &test_theme());
     let on_short = document.caret_byte(editor);
     assert!(
         (18..=20).contains(&on_short),
         "clamped into the short line (got {on_short})"
     );
-    document.move_carets(
-        editor,
-        Motion::Down,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Down, false, store, ui, &test_theme());
     let on_third = document.caret_byte(editor);
     assert!(
         on_third > 21 + 5,
         "goal column carries past the short line (got {on_third})"
     );
-    document.move_carets(
-        editor,
-        Motion::Up,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
-    document.move_carets(
-        editor,
-        Motion::Up,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Up, false, store, ui, &test_theme());
+    document.move_carets(editor, Motion::Up, false, store, ui, &test_theme());
     assert_eq!(
         document.caret_byte(editor),
         12,
@@ -2928,24 +2710,10 @@ fn vertical_motion_off_the_edges_goes_to_document_ends() {
     let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("first\nlast");
     document.set_caret(editor, 2);
-    document.move_carets(
-        editor,
-        Motion::Up,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Up, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 0);
     document.set_caret(editor, 8);
-    document.move_carets(
-        editor,
-        Motion::Down,
-        false,
-        store,
-        ui,
-        &test_theme(),
-    );
+    document.move_carets(editor, Motion::Down, false, store, ui, &test_theme());
     assert_eq!(document.caret_byte(editor), 10);
 }
 
@@ -3056,14 +2824,7 @@ fn typing_after_select_all_occurrences_rewrites_every_match() {
     let (mut document, editor) = ime_doc("cat dog cat");
     document.set_caret(editor, 0);
     document.select_all_occurrences(editor);
-    document.insert(
-        editor,
-        "bird",
-        &store,
-        &ui,
-        &test_theme(),
-        fx!(),
-    );
+    document.insert(editor, "bird", &store, &ui, &test_theme(), fx!());
     assert_eq!(text_of(&document), "bird dog bird");
 }
 
@@ -3097,13 +2858,8 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let document = plain_document("foo bar foo");
-    let mut view = crate::editor_view::EditorView::complete(
-        document,
-        600.0,
-        store,
-        ui,
-        &test_theme(),
-    );
+    let mut view =
+        crate::editor_view::EditorView::complete(document, 600.0, store, ui, &test_theme());
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
 
@@ -3318,7 +3074,9 @@ fn viewport_build_is_band_scoped() {
 fn gutter_paints_numbers_beside_shifted_text() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let chrome_width = test_theme().part(crate::theme::EditorGutterChrome::KEY).width;
+    let chrome_width = test_theme()
+        .part(crate::theme::EditorGutterChrome::KEY)
+        .width;
     let source = "alpha\nbeta\ngamma\n";
     let mut view = crate::editor_view::EditorView::complete(
         plain_document(source),
@@ -3473,7 +3231,7 @@ fn gutter_numbers_share_the_text_baseline() {
 }
 
 mod folding {
-    use super::{test_theme};
+    use super::test_theme;
     use crate::document::Document;
     use crate::markup::{Markup, Syntax};
     use crate::viewport::EditorViewport;
@@ -3576,14 +3334,7 @@ mod folding {
         assert!(!offer[0].folded);
         assert_eq!(offer[0].spin, 0.0, "open: chevron down");
 
-        document.toggle_fold(
-            editor,
-            interior(),
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(editor, interior(), store, ui, &test_theme(), fx!());
         assert!(document.fold_matching(editor, &interior()).is_some());
         let ranges = document.element_byte_ranges(editor);
         assert_eq!(
@@ -3632,14 +3383,7 @@ mod folding {
             .collect();
         assert_eq!(numbers, vec![1, 2, 5, 6]);
 
-        document.toggle_fold(
-            editor,
-            interior(),
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(editor, interior(), store, ui, &test_theme(), fx!());
         let key = document
             .fold_matching(editor, &interior())
             .expect("departing, not yet removed");
@@ -3666,14 +3410,7 @@ mod folding {
             &test_theme(),
             fx!(),
         );
-        document.toggle_fold(
-            editor,
-            interior(),
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(editor, interior(), store, ui, &test_theme(), fx!());
 
         document.edit(
             &Operation::insert_in(
@@ -3729,14 +3466,7 @@ mod folding {
         );
         let other_open = document.element_heights(other);
 
-        document.toggle_fold(
-            folder,
-            interior(),
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(folder, interior(), store, ui, &test_theme(), fx!());
         assert!(document.fold_matching(folder, &interior()).is_some());
         assert!(
             document.fold_matching(other, &interior()).is_none(),
@@ -3791,14 +3521,7 @@ mod folding {
             fx!(),
         );
         let open_heights = document.element_heights(editor);
-        document.toggle_fold(
-            editor,
-            interior(),
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(editor, interior(), store, ui, &test_theme(), fx!());
         let key = document.fold_matching(editor, &interior()).expect("folded");
 
         let mut store = imba::store::Store::new();
@@ -3826,7 +3549,9 @@ mod folding {
     fn a_gutter_click_toggles_the_fold() {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        let chrome_width = test_theme().part(crate::theme::EditorGutterChrome::KEY).width;
+        let chrome_width = test_theme()
+            .part(crate::theme::EditorGutterChrome::KEY)
+            .width;
         let mut view = crate::editor_view::EditorView::complete(
             foldable_document(SOURCE, interior()),
             400.0,
@@ -3871,14 +3596,8 @@ mod folding {
         };
         assert_eq!(range, interior());
         drop(widget);
-        view.document.toggle_fold(
-            editor,
-            range,
-            &store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        view.document
+            .toggle_fold(editor, range, &store, ui, &test_theme(), fx!());
         assert!(view.document.fold_matching(editor, &interior()).is_some());
     }
 
@@ -3902,14 +3621,7 @@ mod folding {
             fx!(),
         );
         let started = std::time::Instant::now();
-        document.toggle_fold(
-            editor,
-            start..end,
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.toggle_fold(editor, start..end, store, ui, &test_theme(), fx!());
         let folded_in = started.elapsed();
 
         assert!(
@@ -4499,30 +4211,14 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
         document.show_markup(editor, token);
         let mut marks = crate::markup::Markup::new();
         marks.push_styled(0..6, crate::theme::StyleId::Keyword);
-        document.replace_markup(
-            token,
-            marks,
-            &[0..6],
-            store,
-            ui,
-            &test_theme(),
-            fx!(),
-        );
+        document.replace_markup(token, marks, &[0..6], store, ui, &test_theme(), fx!());
 
         if with_tint {
             let tint = document.add_markup();
             document.show_markup(editor, tint);
             let mut marks = crate::markup::Markup::new();
             marks.push_styled(0..6, crate::theme::StyleId::Match);
-            document.replace_markup(
-                tint,
-                marks,
-                &[0..6],
-                store,
-                ui,
-                &test_theme(),
-                fx!(),
-            );
+            document.replace_markup(tint, marks, &[0..6], store, ui, &test_theme(), fx!());
         }
         let mut surface = skia_safe::surfaces::raster_n32_premul((400, 40)).expect("surface");
         surface.canvas().clear(skia_safe::Color::BLACK);
@@ -4727,8 +4423,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         crate::markup::Markup::new(),
     )
     .with_syntax(syntax, &[]);
-    let mut view =
-        crate::editor_view::EditorView::complete(document, 400.0, store, ui, &theme);
+    let mut view = crate::editor_view::EditorView::complete(document, 400.0, store, ui, &theme);
 
     view.gutter_width = 100.0;
     let editor = view.editor;
@@ -4952,13 +4647,8 @@ fn selection_rects_cover_the_range_row_by_row() {
         "the rect sits on the caret's line"
     );
 
-    let many = document.selection_content_rects(
-        editor,
-        line_start(2)..line_start(5),
-        store,
-        ui,
-        &theme,
-    );
+    let many =
+        document.selection_content_rects(editor, line_start(2)..line_start(5), store, ui, &theme);
     assert_eq!(many.len(), 3, "one rect per covered row, got {many:?}");
     for pair in many.windows(2) {
         assert!(
@@ -5002,7 +4692,7 @@ fn the_first_baseline_is_cached_at_shape_time() {
             &marks,
             &inline,
             &hidden,
-                        &theme,
+            &theme,
             crate::markup::InlayMeasure {
                 width: 200.0,
                 store,
@@ -5445,7 +5135,9 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
 
     // Drive the repair lane to completion, the way the engine would.
     let workshop = std::sync::Arc::new(crate::env::Workshop::new(
-        crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
+        crate::parley_line::shaper(crate::test_document::test_ui())
+            .world()
+            .clone(),
         crate::theme::embedded(),
     ));
     let mut rounds = 0;
@@ -5727,7 +5419,15 @@ fn editor_resize_bench() {
     );
     let lines_in_band = {
         let viewport = crate::viewport::EditorViewport::build(
-            &document, editor, 0.0..band, true, true, None, store, ui, &theme,
+            &document,
+            editor,
+            0.0..band,
+            true,
+            true,
+            None,
+            store,
+            ui,
+            &theme,
         );
         std::hint::black_box(&viewport);
         (band / 20.0) as usize
@@ -5743,7 +5443,15 @@ fn editor_resize_bench() {
 
         let started = Instant::now();
         let viewport = crate::viewport::EditorViewport::build(
-            &document, editor, 0.0..band, true, true, None, store, ui, &theme,
+            &document,
+            editor,
+            0.0..band,
+            true,
+            true,
+            None,
+            store,
+            ui,
+            &theme,
         );
         std::hint::black_box(&viewport);
         let built = started.elapsed();

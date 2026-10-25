@@ -523,7 +523,11 @@ impl ChatPanel {
         let chrome = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY);
         let band = self
             .first_view()
-            .map(|view| view.band.composer.band_height(store, &chrome, nominal_height))
+            .map(|view| {
+                view.band
+                    .composer
+                    .band_height(store, &chrome, nominal_height)
+            })
             .unwrap_or(0.0);
         band + self.stack.height(store, &chrome)
             + crate::composer::ComposerBand::options_height(&chrome)
@@ -2015,7 +2019,9 @@ impl ChatView {
         if !self.has_loader {
             return;
         }
-        let height = env::Themes::of(store).part(::hikit::chrome::ChatChrome::KEY).loader_height;
+        let height = env::Themes::of(store)
+            .part(::hikit::chrome::ChatChrome::KEY)
+            .loader_height;
         self.rows
             .content_mut()
             .splice(0..1, [(ChatRow::Loader { armed }, height)]);
@@ -2140,10 +2146,9 @@ impl ChatView {
         let Some(cell_index) = row.cell_at(key) else {
             return;
         };
-        let (Some(stored), Some(cell)) = (
-            row.cell_height_at(cell_index),
-            row.cell_view(cell_index),
-        ) else {
+        let (Some(stored), Some(cell)) =
+            (row.cell_height_at(cell_index), row.cell_view(cell_index))
+        else {
             return;
         };
         let measured = cell.measured_height(store);

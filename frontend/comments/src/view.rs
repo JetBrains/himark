@@ -81,15 +81,7 @@ impl documents::dynamic::DocumentCommand for AddComment {
             crate::Comments::created(store, comments, location, range, String::new())
         });
 
-        let view = CommentView::new(
-            comments,
-            host,
-            width,
-            store,
-            ui,
-            &theme,
-            annotation.clone(),
-        );
+        let view = CommentView::new(comments, host, width, store, ui, &theme, annotation.clone());
         let markup = comments_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -247,7 +239,10 @@ impl CommentView {
         theme: &editor::theme::Theme,
         annotation: Option<AnnotationId>,
     ) -> Self {
-        let chrome = theme.part(crate::chrome::CommentChrome::KEY).as_ref().clone();
+        let chrome = theme
+            .part(crate::chrome::CommentChrome::KEY)
+            .as_ref()
+            .clone();
         let mut editor = EditorView::of_document(
             markdown_comment_document(text::text::Text::from_string_exact("")),
             (width - chrome.pad * 2.0).max(120.0),
@@ -282,7 +277,10 @@ impl CommentView {
         foreign_texts: Vec<text::text::Text>,
         thread_stamp: u64,
     ) -> Self {
-        let chrome = theme.part(crate::chrome::CommentChrome::KEY).as_ref().clone();
+        let chrome = theme
+            .part(crate::chrome::CommentChrome::KEY)
+            .as_ref()
+            .clone();
         let inner = (width - chrome.pad * 2.0).max(120.0);
         let editor = EditorView::of_document(
             markdown_comment_document(
@@ -296,13 +294,7 @@ impl CommentView {
         let foreign = foreign_texts
             .into_iter()
             .map(|text| {
-                EditorView::of_document(
-                    markdown_comment_document(text),
-                    inner,
-                    store,
-                    ui,
-                    theme,
-                )
+                EditorView::of_document(markdown_comment_document(text), inner, store, ui, theme)
             })
             .collect();
         let reported_revision = editor.document.revision();
@@ -495,15 +487,9 @@ impl View for CommentView {
             CommentCommand::Rewrap(width) => {
                 let theme = editor::env::Themes::of(store);
                 fx.scope(CommentCommand::Editor, |fx| {
-                    self.editor.document.resize(
-                        self.editor.editor,
-                        width,
-                        0,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    )
+                    self.editor
+                        .document
+                        .resize(self.editor.editor, width, 0, store, ui, &theme, fx)
                 });
             }
             CommentCommand::Remove => {

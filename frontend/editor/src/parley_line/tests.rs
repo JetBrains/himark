@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::theme::ThemeStyles as _;
 use super::*;
+use crate::theme::ThemeStyles as _;
 
 /// The spike's parity meter: both roads shape the SAME bytes
 /// (the embedded face), paint through skia, and the diff metric

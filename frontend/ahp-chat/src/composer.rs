@@ -81,12 +81,11 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
     // is greedy, so everything typed wears it.
     let mut markup = editor::markup::Markup::new();
     markup.push_styled_covering(0..0, editor::theme::StyleId::ChatPrompt);
-    let document =
-        editor::document::Document::new(text::text::Text::from_string_exact(""), markup)
-    .with_syntax(
-        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
-        &[],
-    );
+    let document = editor::document::Document::new(text::text::Text::from_string_exact(""), markup)
+        .with_syntax(
+            editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
+            &[],
+        );
     let theme = editor::theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &theme);
     // The LIVE mark at the input's start is the editor's own caret
@@ -201,7 +200,9 @@ impl Composer {
 
     /// One line of the prompt register — the input's line box.
     fn prompt_line(store: &Store) -> f32 {
-        let prompt = env::Themes::of(store).part(::editor::theme::TypeChrome::KEY).prompt;
+        let prompt = env::Themes::of(store)
+            .part(::editor::theme::TypeChrome::KEY)
+            .prompt;
         (prompt.size * prompt.line_height).round()
     }
 
@@ -211,7 +212,9 @@ impl Composer {
         if self.blurred {
             return line;
         }
-        let grown = self.content_height().clamp(rest, chrome.input_max_height.max(rest));
+        let grown = self
+            .content_height()
+            .clamp(rest, chrome.input_max_height.max(rest));
         let full = (panel_height - Self::chrome_height(chrome)).max(rest);
         grown + (full - grown) * self.band.value()
     }
@@ -287,7 +290,10 @@ impl Composer {
                         Self::prompt_line(store),
                         "YOU",
                     )
-                    .layout(arena, Constraints::tight(Size::new(grid.edge, editor_h)).loosen()),
+                    .layout(
+                        arena,
+                        Constraints::tight(Size::new(grid.edge, editor_h)).loosen(),
+                    ),
                 );
             }
             band.place_boxed(
@@ -522,7 +528,8 @@ impl ComposerBand {
                 // value; everything else meets it there).
                 let row_y = size.height - toolbar_h + chrome.options_top;
                 let row_h = chrome.options_line;
-                let baseline = row_h * 0.5 + theme.part(::hikit::chrome::ComboChrome::KEY).value_size * 0.35;
+                let baseline =
+                    row_h * 0.5 + theme.part(::hikit::chrome::ComboChrome::KEY).value_size * 0.35;
                 let on_baseline = |style: &hikit::ui::TextStyle, label: String| {
                     let ascent = -style.font.metrics().1.ascent;
                     hikit::ui::text(style, label).pad_insets(imba::layout::Insets {
@@ -569,7 +576,10 @@ impl ComposerBand {
                             false => ComposerCommand::Submit,
                         })
                     })
-                    .layout(arena, Constraints::tight(Size::new(size.width, row_h)).loosen());
+                    .layout(
+                        arena,
+                        Constraints::tight(Size::new(size.width, row_h)).loosen(),
+                    );
                 let send_w = send.size().width;
                 let send_x = grid.edge + grid.column - send_w;
 
@@ -599,8 +609,10 @@ impl ComposerBand {
                     panel.place_boxed(
                         legend_x,
                         row_y,
-                        on_baseline(&brief, legend)
-                            .layout(arena, Constraints::tight(Size::new(legend_w, row_h)).loosen()),
+                        on_baseline(&brief, legend).layout(
+                            arena,
+                            Constraints::tight(Size::new(legend_w, row_h)).loosen(),
+                        ),
                     );
                 }
                 panel

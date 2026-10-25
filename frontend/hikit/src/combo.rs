@@ -15,8 +15,8 @@ use imba::{
 };
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
-use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
 use crate::chrome::ComboChrome;
+use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
 use imba::list::{ActivateTrigger, ListOps};
 
 const MENU_MAX_ROWS: usize = 9;

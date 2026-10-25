@@ -291,11 +291,7 @@ fn cell_view(
     view
 }
 
-fn cell_intrinsics(
-    text: &str,
-    ui: &UiCtx,
-    theme: &editor::theme::Theme,
-) -> ColumnIntrinsics {
+fn cell_intrinsics(text: &str, ui: &UiCtx, theme: &editor::theme::Theme) -> ColumnIntrinsics {
     if text.is_empty() {
         return ColumnIntrinsics { min: 0.0, max: 0.0 };
     }
@@ -1271,12 +1267,8 @@ impl View for TableEditor {
                 match structural {
                     TableCommand::InsertRow(at) => self.insert_row(at, store, ui, &theme),
                     TableCommand::RemoveRow(at) => self.remove_row(at, store, ui, &theme),
-                    TableCommand::InsertColumn(at) => {
-                        self.insert_column(at, store, ui, &theme)
-                    }
-                    TableCommand::RemoveColumn(at) => {
-                        self.remove_column(at, store, ui, &theme)
-                    }
+                    TableCommand::InsertColumn(at) => self.insert_column(at, store, ui, &theme),
+                    TableCommand::RemoveColumn(at) => self.remove_column(at, store, ui, &theme),
                     TableCommand::Cell { .. }
                     | TableCommand::Relayout { .. }
                     | TableCommand::Relaid(_) => unreachable!(),
@@ -1571,12 +1563,7 @@ mod hitbox {
         use editor::markup::InlayEditing;
         let theme = editor::theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
-        let mut editor = TableEditor::new(
-            parse_table(source).expect("a table"),
-            store,
-            ui,
-            &theme,
-        );
+        let mut editor = TableEditor::new(parse_table(source).expect("a table"), store, ui, &theme);
         editor.set_range(0..source.len() as u32);
         editor.relay_all(600.0, store, ui, &theme);
         editor.insert_row(2, store, ui, &theme);
@@ -1645,12 +1632,7 @@ mod hitbox {
         use imba::event::{Event, EventResult, MouseButton};
         let theme = editor::theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
-        let mut editor = TableEditor::new(
-            parse_table(source).expect("a table"),
-            store,
-            ui,
-            &theme,
-        );
+        let mut editor = TableEditor::new(parse_table(source).expect("a table"), store, ui, &theme);
         editor.set_range(0..source.len() as u32);
         editor.relay_all(600.0, store, ui, &theme);
 

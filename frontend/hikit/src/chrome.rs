@@ -209,7 +209,13 @@ impl Default for ChatChrome {
             text_trailing: 56.0,
             row_gap: 36.0,
             tool_row_height: 48.0,
-            tool_name: TypeRole { size: 26.0, weight: 600.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
+            tool_name: TypeRole {
+                size: 26.0,
+                weight: 600.0,
+                width: 100.0,
+                tracking: 0.0,
+                line_height: 1.0,
+            },
             tool_detail_size: 26.0,
             tool_gap: 16.0,
             chevron_size: 24.0,
@@ -230,7 +236,13 @@ impl Default for ChatChrome {
             options_top: 20.0,
             options_line: 32.0,
             options_gap: 16.0,
-            send: TypeRole { size: 30.0, weight: 680.0, width: 100.0, tracking: 0.0, line_height: 1.0 },
+            send: TypeRole {
+                size: 30.0,
+                weight: 680.0,
+                width: 100.0,
+                tracking: 0.0,
+                line_height: 1.0,
+            },
             send_key_size: 22.0,
             send_key_gap: 8.0,
             voice_gutter: true,
@@ -447,7 +459,13 @@ impl Default for DiffChrome {
             band_air: 96.0,
             band_gap: 20.0,
             band_name_gap: 8.0,
-            file_name: TypeRole { size: 44.0, weight: 680.0, width: 100.0, tracking: -0.44, line_height: 1.0 },
+            file_name: TypeRole {
+                size: 44.0,
+                weight: 680.0,
+                width: 100.0,
+                tracking: -0.44,
+                line_height: 1.0,
+            },
             ordinal_size: 26.0,
             summary_pad: 20.0,
             summary_gap: 16.0,
@@ -831,23 +849,19 @@ mod tests {
         );
         let ink = light.part(::editor::theme::InkChrome::KEY);
         assert_eq!(
-            light_combo.value_color.0,
-            ink.ink_2.0,
+            light_combo.value_color.0, ink.ink_2.0,
             "closed values use the secondary ink"
         );
         assert_eq!(
-            light_combo.menu_fill.0,
-            ink.sheet.0,
+            light_combo.menu_fill.0, ink.sheet.0,
             "expanded menus use the sheet surface"
         );
         assert_eq!(
-            light_combo.menu_border.0,
-            ink.sheet_border.0,
+            light_combo.menu_border.0, ink.sheet_border.0,
             "expanded menus have the sheet's edge"
         );
         assert_eq!(
-            light_combo.menu_text.0,
-            ink.ink.0,
+            light_combo.menu_text.0, ink.ink.0,
             "expanded menu labels use primary ink"
         );
     }

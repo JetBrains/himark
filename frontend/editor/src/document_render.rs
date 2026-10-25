@@ -146,15 +146,7 @@ impl crate::document::Document {
             if shaped_line.as_ref().map(|(start, _)| *start) != Some(byte_start) {
                 shaped_line = Some((
                     byte_start,
-                    self.shape_line(
-                        editor,
-                        byte_start..byte_end,
-                        0.0,
-                        true,
-                        store,
-                        ui,
-                        theme,
-                    ),
+                    self.shape_line(editor, byte_start..byte_end, 0.0, true, store, ui, theme),
                 ));
             }
 
@@ -207,16 +199,8 @@ impl crate::document::Document {
         let item = cursor.element();
         let byte_end = byte_start.saturating_add(item.byte_size);
         let x = goal_x.unwrap_or_else(|| {
-            self.shape_line(
-                editor,
-                byte_start..byte_end,
-                0.0,
-                true,
-                store,
-                ui,
-                theme,
-            )
-            .x_at_byte(offset)
+            self.shape_line(editor, byte_start..byte_end, 0.0, true, store, ui, theme)
+                .x_at_byte(offset)
         });
 
         let y = match down {
@@ -237,8 +221,7 @@ impl crate::document::Document {
         if target_start == byte_start {
             return None;
         }
-        let target =
-            self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, theme)?;
+        let target = self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, theme)?;
         Some((target, x))
     }
 
@@ -279,15 +262,7 @@ impl crate::document::Document {
             return None;
         }
         let text_top = document_y + item.spacer_above + inlays.above_height;
-        let shaped = self.shape_line(
-            editor,
-            byte_start..byte_end,
-            0.0,
-            true,
-            store,
-            ui,
-            theme,
-        );
+        let shaped = self.shape_line(editor, byte_start..byte_end, 0.0, true, store, ui, theme);
 
         let (x, top, height) = shaped.caret_geometry(byte);
         Some((x, text_top + top, 2.0, height.max(18.0)))
@@ -352,8 +327,7 @@ impl crate::document::Document {
                     let line = byte_start..byte_end.min(text_len);
                     let clamped = line.start.max(start)..line.end.min(end);
                     if clamped.start < clamped.end {
-                        let shaped =
-                            self.shape_line(editor, line, 0.0, true, store, ui, theme);
+                        let shaped = self.shape_line(editor, line, 0.0, true, store, ui, theme);
                         for rect in shaped.rects_for_range(clamped) {
                             rects.push((
                                 rect.left,

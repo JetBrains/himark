@@ -321,7 +321,8 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
         &mut batch.effects(),
     );
 
-    let line = |repo: &str, word: &str, age: &str| (repo.to_owned(), word.to_owned(), age.to_owned());
+    let line =
+        |repo: &str, word: &str, age: &str| (repo.to_owned(), word.to_owned(), age.to_owned());
     assert_eq!(
         panel.lines(),
         vec![
@@ -584,7 +585,9 @@ fn dump_sessions_drawer_screenshot() {
         Agents::set_status(
             store,
             offline,
-            HostStatus::Failed("agent host unreachable at ws://127.0.0.1:8123/?tkn=4f1c".to_owned()),
+            HostStatus::Failed(
+                "agent host unreachable at ws://127.0.0.1:8123/?tkn=4f1c".to_owned(),
+            ),
         );
     };
     seed(&mut app.store_mut());
@@ -599,10 +602,25 @@ fn dump_sessions_drawer_screenshot() {
             summary_at("hey", &[JB], &days(4), 33),
             summary_at("scroll-bar marks on the panel edge", &[KIT], &days(6), 33),
             summary_at("how do I run from xcode in release?", &[JB], &days(6), 33),
-            summary_at("ok, what is possible with claude mods, and what is not yet", &[JB], &days(9), 33),
-            summary_at("Screenshot 2026-10-09 at 16.05.00.png", &[JB], &days(14), 33),
+            summary_at(
+                "ok, what is possible with claude mods, and what is not yet",
+                &[JB],
+                &days(9),
+                33,
+            ),
+            summary_at(
+                "Screenshot 2026-10-09 at 16.05.00.png",
+                &[JB],
+                &days(14),
+                33,
+            ),
             summary_at("/statusline", &[JB], &days(14), 33),
-            summary_at("diagnostics are still not reported, no squiggles anywhere", &[KIT], &days(15), 33),
+            summary_at(
+                "diagnostics are still not reported, no squiggles anywhere",
+                &[KIT],
+                &days(15),
+                33,
+            ),
             summary_at("just testing, say hi", &[JB], &days(20), 33),
             summary_at("hey, you here?", &[JB], &days(21), 33),
         ]
@@ -626,7 +644,10 @@ fn dump_sessions_drawer_screenshot() {
         let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
         let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &open);
-        let _ = entity.switch_to(himark::workspace::SessionWorkspace::boxed(open.clone(), state));
+        let _ = entity.switch_to(himark::workspace::SessionWorkspace::boxed(
+            open.clone(),
+            state,
+        ));
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
     assert!(app.perform_command(himark::app::windowed(

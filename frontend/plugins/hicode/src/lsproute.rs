@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
+use crate::{CodeTarget, FindDefinitionEffect};
 use ahp_wire::fs::ClientDirectory;
 use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
-use crate::{CodeTarget, FindDefinitionEffect};
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
 

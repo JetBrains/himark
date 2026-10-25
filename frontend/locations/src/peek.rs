@@ -353,15 +353,7 @@ impl PeekView {
         tints.push_styled(target.clone(), editor::theme::StyleId::Match);
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
-            document.replace_markup(
-                markup,
-                tints,
-                &[target.clone()],
-                store,
-                ui,
-                &theme,
-                fx,
-            )
+            document.replace_markup(markup, tints, &[target.clone()], store, ui, &theme, fx)
         });
 
         let detail = (self.width * 0.6 - 1.0).max(120.0);

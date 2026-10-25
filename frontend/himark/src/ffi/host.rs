@@ -7,12 +7,12 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use editor::location::ResourceLocation;
-use editor::location::ResourceType;
 use crate::app::AppCommand;
 use crate::app::AppFx;
 use crate::commands::HimarkCommand;
 use crate::workspace::open_locations;
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
 

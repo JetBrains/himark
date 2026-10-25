@@ -447,8 +447,14 @@ impl imba::View for FoldStrip {
     ) -> impl imba::layout::Layout<'a, FoldCommand> + imba::layout::LayoutValue + 'a {
         let theme = crate::env::Themes::of(store);
         FoldStripLayout {
-            chrome: theme.part(crate::theme::DiffFoldChrome::KEY).as_ref().clone(),
-            gutter: theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone(),
+            chrome: theme
+                .part(crate::theme::DiffFoldChrome::KEY)
+                .as_ref()
+                .clone(),
+            gutter: theme
+                .part(crate::theme::EditorGutterChrome::KEY)
+                .as_ref()
+                .clone(),
             ink: theme.part(crate::theme::InkChrome::KEY).as_ref().clone(),
             lines: self.lines,
             place: self.place,
@@ -519,7 +525,12 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
             Row::new(arena)
                 .align_items(imba::layout::CrossAlign::Center)
                 .weighted(1.0, Fill::new().height(0.0))
-                .child(imba::layout::text(ui, number, number_font.clone(), number_ink))
+                .child(imba::layout::text(
+                    ui,
+                    number,
+                    number_font.clone(),
+                    number_ink,
+                ))
                 .child(chevron.pad_insets(Insets {
                     left: chrome.fold_number_gap,
                     ..Default::default()
@@ -532,7 +543,11 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
             None => "end".to_owned(),
         };
         let edges = Column::new(arena)
-            .child(edge(place.first_line.to_string(), true, FoldCommand::RevealTop))
+            .child(edge(
+                place.first_line.to_string(),
+                true,
+                FoldCommand::RevealTop,
+            ))
             .child(edge(last, false, FoldCommand::RevealBottom));
 
         // The summary at the text edge, riding the band's middle.
@@ -568,11 +583,13 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
                 }),
             )
             .sized(width, height)
-            .backdrop(move |_arena: &imba::arena::Arena, canvas: &skia_safe::Canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
-                paint.set_color(background);
-                canvas.draw_rect(rect, &paint);
-            })
+            .backdrop(
+                move |_arena: &imba::arena::Arena, canvas: &skia_safe::Canvas, rect| {
+                    let mut paint = skia_safe::Paint::default();
+                    paint.set_color(background);
+                    canvas.draw_rect(rect, &paint);
+                },
+            )
             // A press anywhere else on the band is swallowed so it
             // never reaches the document underneath.
             .shield();

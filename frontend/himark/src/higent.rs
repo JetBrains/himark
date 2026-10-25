@@ -38,9 +38,7 @@ impl crate::plugin::Plugin for SessionsPlugin {
                     })
                 }),
                 new_session: Arc::new(move |_store, server| {
-                    imba::command::Verb::once(open_session::CreateHeadless {
-                        host: Some(server),
-                    })
+                    imba::command::Verb::once(open_session::CreateHeadless { host: Some(server) })
                 }),
                 add_host: Arc::new(move |url| {
                     crate::app::shell_verb(crate::shell::windowed(

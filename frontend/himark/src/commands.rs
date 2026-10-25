@@ -64,7 +64,9 @@ pub fn bound_window(
 ) -> Option<::workbench::window::WindowId> {
     let window = bound.bound::<::workbench::window::WindowId>().copied();
     if window.is_none() {
-        eprintln!("[shell] a window-taking command landed with no window bound — dropped: {command}");
+        eprintln!(
+            "[shell] a window-taking command landed with no window bound — dropped: {command}"
+        );
     }
     window
 }

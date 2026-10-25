@@ -36,7 +36,9 @@ fn the_search_design_doc_cold_reparses_with_the_full_registry() {
 
     let view = editor::editor_view::EditorView::complete(
         document,
-        theme.part(::editor::theme::WindowChrome::KEY).first_pane_width,
+        theme
+            .part(::editor::theme::WindowChrome::KEY)
+            .first_pane_width,
         store,
         ui,
         &theme,

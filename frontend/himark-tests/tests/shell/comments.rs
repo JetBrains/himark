@@ -12,7 +12,9 @@ fn at(path: &[&str]) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
         editor::location::Authority::new("local"),
-        path.iter().map(|segment| segment.to_string()).collect::<Vec<_>>(),
+        path.iter()
+            .map(|segment| segment.to_string())
+            .collect::<Vec<_>>(),
     )
 }
 

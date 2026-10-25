@@ -215,10 +215,7 @@ pub fn content(window: WindowId, command: ::workbench::window::WindowCommand) ->
     shell(ShellCommand::Content(window, command))
 }
 
-pub fn windowed(
-    window: WindowId,
-    command: Arc<dyn crate::commands::HimarkCommand>,
-) -> AppCommand {
+pub fn windowed(window: WindowId, command: Arc<dyn crate::commands::HimarkCommand>) -> AppCommand {
     shell(ShellCommand::Windowed(window, command))
 }
 
@@ -231,10 +228,7 @@ pub fn bound(
 
 /// The window-origin bindings, resolved from the entity: what the
 /// focus walk would have bound — the window and its session.
-pub fn window_bindings(
-    store: &imba::store::Store,
-    window: WindowId,
-) -> imba::focus::Bindings {
+pub fn window_bindings(store: &imba::store::Store, window: WindowId) -> imba::focus::Bindings {
     let mut bound = imba::focus::Bindings::new().bind(window);
     if let Some(entity) = ::workbench::window::Windows::window_ref(store, window) {
         bound = bound.bind(crate::workspace::entity_session(entity));
@@ -625,7 +619,12 @@ fn run(store: &mut Store, ui: &UiCtx, command: ShellCommand, fx: &mut AppFx<'_>)
         ShellCommand::Bound(bound, command) => {
             command.perform(store, ui, &bound, fx);
             for request in crate::commands::AppRequests::drain(store) {
-                run_app(store, ui, shell(ShellCommand::Bound(bound.clone(), request)), fx);
+                run_app(
+                    store,
+                    ui,
+                    shell(ShellCommand::Bound(bound.clone(), request)),
+                    fx,
+                );
             }
             for request in imba::command::Requests::drain(store) {
                 run_app(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);

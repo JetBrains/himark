@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::document::Document;
-use crate::test_document::{plain_document};
+use crate::test_document::plain_document;
 
 fn theme() -> Theme {
     crate::theme::embedded()

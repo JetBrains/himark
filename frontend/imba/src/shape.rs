@@ -86,12 +86,10 @@ impl FontWorld {
     /// release); do it once, at boot, and clone the handle.
     pub fn new() -> Self {
         let mut fonts = FontContext {
-            collection: parley::fontique::Collection::new(
-                parley::fontique::CollectionOptions {
-                    shared: true,
-                    ..Default::default()
-                },
-            ),
+            collection: parley::fontique::Collection::new(parley::fontique::CollectionOptions {
+                shared: true,
+                ..Default::default()
+            }),
             source_cache: parley::fontique::SourceCache::new(
                 parley::fontique::SourceCacheOptions { shared: true },
             ),
@@ -129,7 +127,11 @@ impl FontWorld {
     }
 
     fn fallback_family(&self) -> Option<String> {
-        self.0.fallback.lock().expect("the world's fallback").clone()
+        self.0
+            .fallback
+            .lock()
+            .expect("the world's fallback")
+            .clone()
     }
 
     /// How many faces the bridge has crossed. Test support.
@@ -464,7 +466,6 @@ impl Shaper {
 }
 
 impl ShaperState {
-
     /// Catch up with [`register_font`] — additive, cheap when
     /// nothing changed, and never a second font world.
     fn sync(&mut self, world: &FontWorld) {
@@ -585,12 +586,12 @@ impl ShaperState {
             let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> =
                 position
                     .iter()
-                    .map(|(tag, value)| {
-                        skia_safe::font_arguments::variation_position::Coordinate {
+                    .map(
+                        |(tag, value)| skia_safe::font_arguments::variation_position::Coordinate {
                             axis: skia_safe::FourByteTag::from(*tag),
                             value: *value,
-                        }
-                    })
+                        },
+                    )
                     .collect();
             let arguments = skia_safe::FontArguments::new().set_variation_design_position(
                 skia_safe::font_arguments::VariationPosition {
@@ -901,11 +902,7 @@ impl ParleyLine {
         let cursor =
             parley::Cursor::from_byte_index(&self.layout, byte, parley::Affinity::Downstream);
         let rect = cursor.geometry(&self.layout, 1.0);
-        (
-            rect.x0 as f32,
-            rect.y0 as f32,
-            (rect.y1 - rect.y0) as f32,
-        )
+        (rect.x0 as f32, rect.y0 as f32, (rect.y1 - rect.y0) as f32)
     }
 
     /// The content band at a byte: row baseline minus the anchor
@@ -969,7 +966,10 @@ impl ParleyLine {
     }
 
     fn hit(&self, x: f32, y: f32, clamp_content: bool) -> usize {
-        let y = match (clamp_content, self.layout.get(0).map(|line| *line.metrics())) {
+        let y = match (
+            clamp_content,
+            self.layout.get(0).map(|line| *line.metrics()),
+        ) {
             (true, Some(first)) => {
                 // Into the CONTENT rows: below the last text-bearing
                 // row lies only the phantom row a trailing newline
@@ -1061,7 +1061,6 @@ impl ParleyLine {
             }
         }
     }
-
 }
 
 impl Shaper {
@@ -1154,9 +1153,11 @@ impl Shaper {
                     .iter()
                     .map(|(tag, value)| (u32::from_be_bytes(tag.to_be_bytes()), *value))
                     .collect();
-                let Some(typeface) =
-                    ctx.typeface(&self.world, run.run().font(), synthesis.variation_settings())
-                else {
+                let Some(typeface) = ctx.typeface(
+                    &self.world,
+                    run.run().font(),
+                    synthesis.variation_settings(),
+                ) else {
                     continue;
                 };
                 let name = typeface.post_script_name();
@@ -1207,10 +1208,7 @@ fn collect_boxes(layout: &parley::Layout<Brush>) -> Vec<(u64, skia_safe::Rect)> 
 /// Decorations → paintable geometry: horizontal extents from the
 /// selection geometry of the range, vertical from the anchor run's
 /// own scaled metrics (underline/strikethrough offset and size).
-fn build_ink(
-    layout: &parley::Layout<Brush>,
-    decorations: &[DecorationSpec],
-) -> Vec<Ink> {
+fn build_ink(layout: &parley::Layout<Brush>, decorations: &[DecorationSpec]) -> Vec<Ink> {
     if decorations.is_empty() {
         return Vec::new();
     }
@@ -1302,7 +1300,8 @@ fn build_blobs(
                 continue;
             }
             let synthesis = run.run().synthesis();
-            let Some(typeface) = ctx.typeface(world, run.run().font(), synthesis.variation_settings())
+            let Some(typeface) =
+                ctx.typeface(world, run.run().font(), synthesis.variation_settings())
             else {
                 continue;
             };
@@ -1426,7 +1425,12 @@ mod tests {
         let world = world();
         let shape = |world: &FontWorld| {
             let shaper = Shaper::in_world(world.clone());
-            let line = shaper.shape("the workers meet the same faces", "Noto Sans", 14.0, &plain());
+            let line = shaper.shape(
+                "the workers meet the same faces",
+                "Noto Sans",
+                14.0,
+                &plain(),
+            );
             assert!(!line.blobs().is_empty(), "the line reaches the blob road");
         };
 
@@ -1440,15 +1444,22 @@ mod tests {
                 std::thread::spawn(move || {
                     let started = std::time::Instant::now();
                     let shaper = Shaper::in_world(world);
-                    let line =
-                        shaper.shape("the workers meet the same faces", "Noto Sans", 14.0, &plain());
+                    let line = shaper.shape(
+                        "the workers meet the same faces",
+                        "Noto Sans",
+                        14.0,
+                        &plain(),
+                    );
                     assert!(!line.blobs().is_empty());
                     started.elapsed()
                 })
             })
             .collect();
         for (worker, handle) in workers.into_iter().enumerate() {
-            eprintln!("[threads] worker {worker} shaped in {:?}", handle.join().expect("worker"));
+            eprintln!(
+                "[threads] worker {worker} shaped in {:?}",
+                handle.join().expect("worker")
+            );
         }
 
         assert_eq!(

@@ -243,14 +243,7 @@ impl DocumentLayout {
                 store: &seeded,
                 ui: &ui,
             };
-            self.repair_layout_bounded(
-                text,
-                markup,
-                measure,
-                theme,
-                byte_start,
-                height_budget,
-            )
+            self.repair_layout_bounded(text, markup, measure, theme, byte_start, height_budget)
         }
     }
 
@@ -429,14 +422,7 @@ impl DocumentLayout {
         byte_start: u32,
         height_budget: f32,
     ) {
-        self.repair_region(
-            text,
-            markup,
-            measure,
-            theme,
-            byte_start,
-            height_budget,
-        );
+        self.repair_region(text, markup, measure, theme, byte_start, height_budget);
     }
 
     /// TEST SUPPORT: no production caller outside this crate.

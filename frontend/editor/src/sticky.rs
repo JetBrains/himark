@@ -183,9 +183,8 @@ impl StickyViewport {
                 return (row.number, Rc::clone(&row.shaped));
             }
             let number = view.line_at(line_start as usize).0 as u32 + 1;
-            let shaped = Rc::new(
-                document.shape_line(editor, line, origin_x, false, store, ui, theme),
-            );
+            let shaped =
+                Rc::new(document.shape_line(editor, line, origin_x, false, store, ui, theme));
             (number, shaped)
         };
         let rows = sticky_rows(document, editor, store, ui, viewport, &mut row_for);
@@ -221,9 +220,7 @@ pub(crate) fn sticky_overlays<'a>(
     if viewport.top <= 0.0 || viewport.height() <= 0.0 {
         return Vec::new();
     }
-    let sticky = StickyViewport::shared(
-        document, editor, viewport, origin_x, store, ui, theme,
-    );
+    let sticky = StickyViewport::shared(document, editor, viewport, origin_x, store, ui, theme);
     if sticky.rows.is_empty() {
         return Vec::new();
     }
@@ -417,7 +414,11 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 canvas.restore();
 
                 if self.gutter_width > 0.0 {
-                    let chrome = self.theme.part(crate::theme::EditorGutterChrome::KEY).as_ref().clone();
+                    let chrome = self
+                        .theme
+                        .part(crate::theme::EditorGutterChrome::KEY)
+                        .as_ref()
+                        .clone();
                     let font = crate::editor_view::gutter_font(chrome.number_size);
                     let (_, metrics) = font.metrics();
                     let mut number_paint = skia_safe::Paint::default();

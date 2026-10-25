@@ -121,7 +121,11 @@ impl EditorIdView {
             location: crate::OpenDocuments::location(store, self.documents, self.document),
 
             gutter_width: match self.gutter {
-                true => ::editor::env::Themes::of(store).part(::editor::theme::EditorGutterChrome::KEY).width,
+                true => {
+                    ::editor::env::Themes::of(store)
+                        .part(::editor::theme::EditorGutterChrome::KEY)
+                        .width
+                }
                 false => 0.0,
             },
 
@@ -320,7 +324,9 @@ impl View for EditorIdView {
                     store,
                     arena,
                     constraints,
-                    content_pad: ::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY).content_pad,
+                    content_pad: ::editor::env::Themes::of(store)
+                        .part(::editor::theme::WindowChrome::KEY)
+                        .content_pad,
                 },
                 ::editor::markup::INLAY_HOST,
             )

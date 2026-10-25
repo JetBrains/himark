@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use ::editor::theme::ThemeStyles as _;
 use super::*;
+use ::editor::theme::ThemeStyles as _;
 use editor::theme::StyleId;
 
 fn test_theme() -> editor::theme::Theme {

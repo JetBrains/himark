@@ -1123,8 +1123,8 @@ pub unsafe extern "C" fn himark_place_session_view(
     uri: *const c_char,
     len: usize,
 ) -> HimarkPlace {
-    use hikit::navigation::NavigationLocation;
     use crate::places::*;
+    use hikit::navigation::NavigationLocation;
     let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
         HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),
         HIMARK_PLACE_CHAT_TRANSCRIPT => |s| NavigationLocation::new(ChatTranscriptPlace(s)),

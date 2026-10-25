@@ -109,15 +109,7 @@ impl Document {
         if chip.departed() {
             return self.remove_inlay(key, store, ui, theme, fx);
         }
-        self.replace_inlay(
-            key,
-            range,
-            Inlay::new(mode, chip),
-            store,
-            ui,
-            theme,
-            fx,
-        );
+        self.replace_inlay(key, range, Inlay::new(mode, chip), store, ui, theme, fx);
     }
 
     fn fold_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {

@@ -40,7 +40,10 @@ pub(crate) fn is_punctuation(c: char) -> bool {
     if b == 95 {
         return false;
     }
-    (33..=47).contains(&b) || (58..=64).contains(&b) || (91..=96).contains(&b) || (123..=126).contains(&b)
+    (33..=47).contains(&b)
+        || (58..=64).contains(&b)
+        || (91..=96).contains(&b)
+        || (123..=126).contains(&b)
 }
 
 fn is_alpha(c: char) -> bool {
@@ -255,7 +258,11 @@ struct EqualBuilder {
 
 impl EqualBuilder {
     fn mark(&mut self, start1: usize, start2: usize, end1: usize, end2: usize) {
-        debug_assert_eq!(end1 - start1, end2 - start2, "an equal range is as long on both sides");
+        debug_assert_eq!(
+            end1 - start1,
+            end2 - start2,
+            "an equal range is as long on both sides"
+        );
         if let Some(last) = self.ranges.last() {
             debug_assert!(
                 start1 >= last.end1 && start2 >= last.end2,
@@ -309,8 +316,14 @@ impl<'a> PunctuationMatcher<'a> {
         let start2 = index2.map_or(0, |index| self.chunks2[index].end);
         let next1 = index1.map_or(0, |index| index + 1);
         let next2 = index2.map_or(0, |index| index + 1);
-        let end1 = self.chunks1.get(next1).map_or(self.text1.len(), |chunk| chunk.start);
-        let end2 = self.chunks2.get(next2).map_or(self.text2.len(), |chunk| chunk.start);
+        let end1 = self
+            .chunks1
+            .get(next1)
+            .map_or(self.text1.len(), |chunk| chunk.start);
+        let end2 = self
+            .chunks2
+            .get(next2)
+            .map_or(self.text2.len(), |chunk| chunk.start);
         Range::new(start1, end1, start2, end2)
     }
 
@@ -323,8 +336,14 @@ impl<'a> PunctuationMatcher<'a> {
             0 => 0,
             index => self.chunks2[index - 1].end,
         };
-        let end1 = self.chunks1.get(index1).map_or(self.text1.len(), |chunk| chunk.start);
-        let end2 = self.chunks2.get(index2).map_or(self.text2.len(), |chunk| chunk.start);
+        let end1 = self
+            .chunks1
+            .get(index1)
+            .map_or(self.text1.len(), |chunk| chunk.start);
+        let end2 = self
+            .chunks2
+            .get(index2)
+            .map_or(self.text2.len(), |chunk| chunk.start);
         Range::new(start1, end1, start2, end2)
     }
 
@@ -348,9 +367,25 @@ impl<'a> PunctuationMatcher<'a> {
         } else if last.start1 == gap.start1 && last.end1 == gap.end1 {
             // Unmatched words between on the second side only
             // ("A B" - "A Y B"): the first side's one gap against both.
-            self.match_split(Side::First, gap.start1, gap.end1, last.start2, last.end2, gap.start2, gap.end2);
+            self.match_split(
+                Side::First,
+                gap.start1,
+                gap.end1,
+                last.start2,
+                last.end2,
+                gap.start2,
+                gap.end2,
+            );
         } else if last.start2 == gap.start2 && last.end2 == gap.end2 {
-            self.match_split(Side::Second, gap.start2, gap.end2, last.start1, last.end1, gap.start1, gap.end1);
+            self.match_split(
+                Side::Second,
+                gap.start2,
+                gap.end2,
+                last.start1,
+                last.end1,
+                gap.start1,
+                gap.end1,
+            );
         }
     }
 
@@ -383,10 +418,8 @@ impl<'a> PunctuationMatcher<'a> {
         second_start: usize,
         second_end: usize,
     ) {
-        let (text_whole, text_split) = whole.pick(
-            (self.text1, self.text2),
-            (self.text2, self.text1),
-        );
+        let (text_whole, text_split) =
+            whole.pick((self.text1, self.text2), (self.text2, self.text1));
         let seq = &text_whole[start..end];
         let first = &text_split[first_start..first_end];
         let second = &text_split[second_start..second_end];
@@ -421,8 +454,12 @@ impl<'a> PunctuationMatcher<'a> {
                 let split_start = split_base + piece.start2 - split_offset;
                 let split_end = split_base + piece.end2 - split_offset;
                 match whole {
-                    Side::First => self.equal.mark(whole_start, split_start, whole_end, split_end),
-                    Side::Second => self.equal.mark(split_start, whole_start, split_end, whole_end),
+                    Side::First => self
+                        .equal
+                        .mark(whole_start, split_start, whole_end, split_end),
+                    Side::Second => self
+                        .equal
+                        .mark(split_start, whole_start, split_end, whole_end),
                 }
             }
         }
@@ -484,7 +521,12 @@ fn give_back_whitespace(text1: &str, text2: &str, changes: Vec<Range>) -> Vec<Ra
         {
             start_cut += 1;
         }
-        let trimmed = Range::new(change.start1 + start_cut, end1, change.start2 + start_cut, end2);
+        let trimmed = Range::new(
+            change.start1 + start_cut,
+            end1,
+            change.start2 + start_cut,
+            end2,
+        );
         if !trimmed.is_empty() {
             kept.push(trimmed);
         }

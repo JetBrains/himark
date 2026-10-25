@@ -115,8 +115,14 @@ mod tests {
             shaper.advance(&title, text),
             shaper.advance(&narrow, text),
         );
-        assert!(bold > thin + 4.0, "title weight is heavier: {thin} vs {bold}");
-        assert!(condensed < thin - 4.0, "wdth 88 is narrower: {thin} vs {condensed}");
+        assert!(
+            bold > thin + 4.0,
+            "title weight is heavier: {thin} vs {bold}"
+        );
+        assert!(
+            condensed < thin - 4.0,
+            "wdth 88 is narrower: {thin} vs {condensed}"
+        );
         // Stable identity: the same rung answers the same typeface.
         assert_eq!(
             ui_font(&ui, 34.0).typeface().unique_id(),

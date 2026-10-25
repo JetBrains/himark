@@ -481,7 +481,9 @@ impl EditorViewport {
                 let standing = document.fold_matching(editor, range);
                 let spin = standing
                     .and_then(|key| document.fold_chip_at(key))
-                    .map_or(0.0, |chip| chip.spin(theme.part(crate::theme::FoldChipChrome::KEY).height));
+                    .map_or(0.0, |chip| {
+                        chip.spin(theme.part(crate::theme::FoldChipChrome::KEY).height)
+                    });
                 LineFoldable {
                     range: range.clone(),
                     folded: standing.is_some(),
@@ -501,13 +503,16 @@ impl EditorViewport {
                 .map(|_| match &box_cache {
                     Some((range, extent)) if range.contains(&byte_start) => *extent,
                     _ => {
-                        let range = overlaid
-                            .styled_range_at(byte_start, |id| {
-                                theme.styles().attributes(id).background.is_some_and(|background| {
-                                    background.kind == crate::theme::BackgroundKind::Box
+                        let range =
+                            overlaid
+                                .styled_range_at(byte_start, |id| {
+                                    theme.styles().attributes(id).background.is_some_and(
+                                        |background| {
+                                            background.kind == crate::theme::BackgroundKind::Box
+                                        },
+                                    )
                                 })
-                            })
-                            .unwrap_or(byte_start..byte_end);
+                                .unwrap_or(byte_start..byte_end);
                         let extent = layout.max_width_in(range.clone());
                         box_cache = Some((range, extent));
                         extent
@@ -709,7 +714,8 @@ fn paint_rectangular_backgrounds(
         });
         if let Some(line_background) = rectangular {
             let top = line.top - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
-            let bottom = line.top + line.height - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
+            let bottom =
+                line.top + line.height - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
             let inset = resolved.inset.unwrap_or(0.0);
 
             match &mut background {

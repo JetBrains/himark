@@ -18,8 +18,8 @@ use ahp_session::fsroute;
 pub mod bridges;
 pub mod host;
 use crate::app::AppFonts;
-pub use host::{HimarkHostCallbacks, HimarkLocation};
 use ahp_wire::uris;
+pub use host::{HimarkHostCallbacks, HimarkLocation};
 
 use crate::app::AppCommand;
 use crate::app::Himark;
@@ -172,11 +172,7 @@ fn register_agent_server(
     let id = app.register_client(client.clone());
     ahp_session::session::agents::Agents::seed(&mut app.store, id, name);
 
-    ahp_session::session::state::Hosts::install_uris(
-        &mut app.store,
-        id,
-        Arc::new(uris::FileUris),
-    );
+    ahp_session::session::state::Hosts::install_uris(&mut app.store, id, Arc::new(uris::FileUris));
     clients.record(id, client);
     id
 }
@@ -459,7 +455,6 @@ impl HimarkEngine {
         // The composer button is WORKBENCH furniture, not a feature's
         // — it stays the shell's own registration.
         app.register_toolbar_button(workbench::toolbar::composer_button());
-
 
         {
             let clients = clients.clone();
@@ -1172,7 +1167,8 @@ impl HimarkEngine {
         if crate::commands::Form::of(self.app.store()) == form {
             return true;
         }
-        self.app.setup(|store| crate::commands::Form::set(store, form));
+        self.app
+            .setup(|store| crate::commands::Form::set(store, form));
         let dark = crate::commands::theme_is_dark(self.app.store());
         self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
     }
@@ -1207,7 +1203,6 @@ impl HimarkEngine {
                         uris: Arc::clone(&self.resource_uris),
                     },
                 );
-
         }
         if capabilities.list_directory && !installed.list_directory {
             self.app
@@ -1337,18 +1332,12 @@ impl HimarkEngine {
         let source = source.into();
         let document_name = name.clone();
         let languages = Arc::clone(&self.languages);
-        self.app.open_async(
-            wid(window),
-            name,
-            primary,
-            None,
-            move |store, ui, theme| {
+        self.app
+            .open_async(wid(window), name, primary, None, move |store, ui, theme| {
                 ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
-            },
-        );
+            });
         true
     }
-
 
     pub fn has_text_focus(&mut self, window: u64) -> bool {
         self.app.with_ime_client(wid(window), |_| ()).is_some()
@@ -1710,7 +1699,9 @@ pub const HIMARK_FORM_PHONE: u32 = 1;
 /// an unknown form.
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
-    engine.as_mut().map_or(false, |engine| engine.set_form(form))
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.set_form(form))
 }
 
 #[no_mangle]
@@ -2089,11 +2080,7 @@ pub unsafe fn str_from<'a>(utf8: *const c_char, len: usize) -> Option<&'a str> {
     std::str::from_utf8(bytes).ok()
 }
 
-pub unsafe fn copy_optional_utf8(
-    text: Option<String>,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
+pub unsafe fn copy_optional_utf8(text: Option<String>, out: *mut c_char, cap: usize) -> usize {
     let Some(text) = text else {
         return 0;
     };
@@ -2115,5 +2102,3 @@ unsafe fn write_optional_out<T: Copy>(value: Option<T>, out: *mut T) -> bool {
     *out = value;
     true
 }
-
-

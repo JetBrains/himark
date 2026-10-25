@@ -250,12 +250,7 @@ impl Himark {
                     &theme,
                 );
 
-                reference.reveal_caret(
-                    document.caret_byte(entity.editor()),
-                    store,
-                    ui,
-                    &theme,
-                );
+                reference.reveal_caret(document.caret_byte(entity.editor()), store, ui, &theme);
                 let actual = document.content_height(entity.editor());
                 let expected = reference.content_height();
                 if (actual - expected).abs() > 0.5 {
@@ -301,7 +296,10 @@ impl Himark {
 
         let ui = ::editor::env::Themes::of(self.store());
         Some((
-            columns.main.x + ui.part(::editor::theme::WindowChrome::KEY).content_pad + ui.part(::editor::theme::EditorGutterChrome::KEY).width + 24.0,
+            columns.main.x
+                + ui.part(::editor::theme::WindowChrome::KEY).content_pad
+                + ui.part(::editor::theme::EditorGutterChrome::KEY).width
+                + 24.0,
             columns.body_top() + y_in_document - pane.scroll_y() + 20.0,
         ))
     }

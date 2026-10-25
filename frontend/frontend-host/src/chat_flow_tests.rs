@@ -1200,11 +1200,7 @@ fn a_scroll_tick_builds_one_tree() {
 
     ticks.sort();
     let ms = |at: usize| ticks[at].as_secs_f64() * 1000.0;
-    let (p50, p95, worst) = (
-        ms(TICKS / 2),
-        ms(TICKS * 95 / 100),
-        ms(TICKS - 1),
-    );
+    let (p50, p95, worst) = (ms(TICKS / 2), ms(TICKS * 95 / 100), ms(TICKS - 1));
     eprintln!(
         "chat-scroll: ticks={TICKS}, trees={trees}, tick p50={p50:.3}ms p95={p95:.3}ms max={worst:.3}ms"
     );

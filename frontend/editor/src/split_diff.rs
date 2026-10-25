@@ -706,8 +706,7 @@ impl SplitDiffView {
                 .ban_fold(self.state.id, left_range.clone(), 0..0);
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
-                left.document
-                    .remove_inlay(left_key, store, ui, &theme, fx)
+                left.document.remove_inlay(left_key, store, ui, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
@@ -807,33 +806,19 @@ impl SplitDiffView {
             let right_range = right_start..right_start + (end - start);
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
-                left.document.replace_inlay(
-                    left_key,
-                    start..end,
-                    spacer,
-                    store,
-                    ui,
-                    &theme,
-                    fx,
-                )
+                left.document
+                    .replace_inlay(left_key, start..end, spacer, store, ui, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
-                right.document.replace_inlay(
-                    right_key,
-                    right_range,
-                    strip,
-                    store,
-                    ui,
-                    &theme,
-                    fx,
-                )
+                right
+                    .document
+                    .replace_inlay(right_key, right_range, strip, store, ui, &theme, fx)
             });
         } else {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
-                left.document
-                    .remove_inlay(left_key, store, ui, &theme, fx)
+                left.document.remove_inlay(left_key, store, ui, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
@@ -1111,14 +1096,9 @@ impl View for SplitDiffView {
                 Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
                     right.set_caret(byte);
                     right.focus_text();
-                    right.document.reveal_at_instant(
-                        right.editor,
-                        byte,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    );
+                    right
+                        .document
+                        .reveal_at_instant(right.editor, byte, store, ui, &theme, fx);
                 });
                 self.settle_after(None, None);
                 self.pair_lane(fx)
@@ -1293,7 +1273,10 @@ impl View for SplitDiffView {
             )
             .map(SplitDiffCommand::Right);
             let height = left.size().height.max(right.size().height);
-            let divider = crate::env::Themes::of(store).part(crate::theme::WindowChrome::KEY).divider.0;
+            let divider = crate::env::Themes::of(store)
+                .part(crate::theme::WindowChrome::KEY)
+                .divider
+                .0;
             let mut pair = container(arena, Size::new(width, height));
             pair.place(0.0, 0.0, left);
             pair.place(half + CENTER_GAP, 0.0, right);

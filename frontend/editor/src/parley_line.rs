@@ -7,7 +7,7 @@
 //! font.
 
 pub use imba::shape::{
-    BoxAlign, DecorationSpec, FontWorld, InlineBoxSpec, ParleyLine, ShapeSpec, Shaper, ShapedRow,
+    BoxAlign, DecorationSpec, FontWorld, InlineBoxSpec, ParleyLine, ShapeSpec, ShapedRow, Shaper,
     SpanStyle,
 };
 

@@ -379,7 +379,10 @@ impl<'a> Rail<'a> {
             .cloned()
     }
 
-    pub fn wrap<Command: 'a>(self, rows: impl Thunk<'a, Command> + 'a) -> impl Thunk<'a, Command> + 'a {
+    pub fn wrap<Command: 'a>(
+        self,
+        rows: impl Thunk<'a, Command> + 'a,
+    ) -> impl Thunk<'a, Command> + 'a {
         let Rail {
             list,
             newest,

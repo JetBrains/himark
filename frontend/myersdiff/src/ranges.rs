@@ -103,31 +103,39 @@ pub(crate) fn unchanged_two_step<T: Eq + Hash>(
 
     let mut equal = Vec::new();
     let (mut last1, mut last2) = (0, 0);
-    let match_gap = |equal: &mut Vec<Range>, start1: usize, end1: usize, start2: usize, end2: usize| {
-        let forward = expand_forward(data1, data2, start1, start2, end1, end2);
-        let backward = expand_backward(data1, data2, start1 + forward, start2 + forward, end1, end2);
-        let inner1 = start1 + forward..end1 - backward;
-        let inner2 = start2 + forward..end2 - backward;
-        push_unchanged(equal, Range::new(start1, inner1.start, start2, inner2.start));
-        for range in unchanged(&data1[inner1.clone()], &data2[inner2.clone()], deadline) {
+    let match_gap =
+        |equal: &mut Vec<Range>, start1: usize, end1: usize, start2: usize, end2: usize| {
+            let forward = expand_forward(data1, data2, start1, start2, end1, end2);
+            let backward =
+                expand_backward(data1, data2, start1 + forward, start2 + forward, end1, end2);
+            let inner1 = start1 + forward..end1 - backward;
+            let inner2 = start2 + forward..end2 - backward;
             push_unchanged(
                 equal,
-                Range::new(
-                    inner1.start + range.start1,
-                    inner1.start + range.end1,
-                    inner2.start + range.start2,
-                    inner2.start + range.end2,
-                ),
+                Range::new(start1, inner1.start, start2, inner2.start),
             );
-        }
-        push_unchanged(equal, Range::new(inner1.end, end1, inner2.end, end2));
-    };
+            for range in unchanged(&data1[inner1.clone()], &data2[inner2.clone()], deadline) {
+                push_unchanged(
+                    equal,
+                    Range::new(
+                        inner1.start + range.start1,
+                        inner1.start + range.end1,
+                        inner2.start + range.start2,
+                        inner2.start + range.end2,
+                    ),
+                );
+            }
+            push_unchanged(equal, Range::new(inner1.end, end1, inner2.end, end2));
+        };
     for range in big_matched {
         for i in 0..range.end1 - range.start1 {
             let index1 = indexes1[range.start1 + i];
             let index2 = indexes2[range.start2 + i];
             match_gap(&mut equal, last1, index1, last2, index2);
-            push_unchanged(&mut equal, Range::new(index1, index1 + 1, index2, index2 + 1));
+            push_unchanged(
+                &mut equal,
+                Range::new(index1, index1 + 1, index2, index2 + 1),
+            );
             last1 = index1 + 1;
             last2 = index2 + 1;
         }

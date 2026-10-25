@@ -361,7 +361,10 @@ fn dock_header_buttons_dispatch_their_commands() {
     let dock_width = entity(&app).dock_target_width();
     let edge = 800.0 - dock_width;
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
-    let mut x = edge + theme.part(::editor::theme::WindowChrome::KEY).side_text_edge;
+    let mut x = edge
+        + theme
+            .part(::editor::theme::WindowChrome::KEY)
+            .side_text_edge;
     for (index, tab) in ::workbench::toolbar::ToolbarButtons::of(app.store())
         .tabs()
         .iter()
@@ -502,9 +505,9 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = match self.0.lock().unwrap().clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),

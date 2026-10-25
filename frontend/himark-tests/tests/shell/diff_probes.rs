@@ -92,23 +92,13 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let theme = editor::theme::embedded();
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(
-            &left,
-            app.store(),
-            &app.ui_ctx(),
-            &theme
-        ),
+        himarkdown::document_from_markdown(&left, app.store(), &app.ui_ctx(), &theme),
         "left.md".to_owned(),
         false
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(
-            &right,
-            app.store(),
-            &app.ui_ctx(),
-            &theme
-        ),
+        himarkdown::document_from_markdown(&right, app.store(), &app.ui_ctx(), &theme),
         "right.md".to_owned(),
         false
     ));
@@ -192,23 +182,13 @@ fn probe_pair(left: String, right: String) {
     let started = Instant::now();
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(
-            &left,
-            app.store(),
-            &app.ui_ctx(),
-            &theme
-        ),
+        himarkdown::document_from_markdown(&left, app.store(), &app.ui_ctx(), &theme),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(
-            &right,
-            app.store(),
-            &app.ui_ctx(),
-            &theme
-        ),
+        himarkdown::document_from_markdown(&right, app.store(), &app.ui_ctx(), &theme),
         "right.md".to_owned(),
         false,
     ));
@@ -469,24 +449,10 @@ fn scroll_soak_for_profiling() {
     let theme = editor::theme::embedded();
     let (left, right) = monster_pair(1409);
     let ui = &app.ui_ctx();
-    let (mut ldoc, lblocks) =
-        himarkdown::markdown_document(&left, app.store(), ui, &theme);
-    demo::inlay::add_badges(
-        &mut ldoc,
-        &lblocks,
-        app.store(),
-        ui,
-        &theme,
-    );
-    let (mut rdoc, rblocks) =
-        himarkdown::markdown_document(&right, app.store(), ui, &theme);
-    demo::inlay::add_badges(
-        &mut rdoc,
-        &rblocks,
-        app.store(),
-        ui,
-        &theme,
-    );
+    let (mut ldoc, lblocks) = himarkdown::markdown_document(&left, app.store(), ui, &theme);
+    demo::inlay::add_badges(&mut ldoc, &lblocks, app.store(), ui, &theme);
+    let (mut rdoc, rblocks) = himarkdown::markdown_document(&right, app.store(), ui, &theme);
+    demo::inlay::add_badges(&mut rdoc, &rblocks, app.store(), ui, &theme);
     assert!(app.add_document(app.sole_window(), ldoc, "left.md".to_owned(), false));
     assert!(app.add_document(app.sole_window(), rdoc, "right.md".to_owned(), false));
 
@@ -568,18 +534,8 @@ fn canvas_landing_breakdown_probe() {
     };
 
     let started = Instant::now();
-    let old_doc = himarkdown::document_from_markdown(
-        &left,
-        app.store(),
-        &app.ui_ctx(),
-        &theme,
-    );
-    let new_doc = himarkdown::document_from_markdown(
-        &right,
-        app.store(),
-        &app.ui_ctx(),
-        &theme,
-    );
+    let old_doc = himarkdown::document_from_markdown(&left, app.store(), &app.ui_ctx(), &theme);
+    let new_doc = himarkdown::document_from_markdown(&right, app.store(), &app.ui_ctx(), &theme);
     eprintln!(
         "[landing] build documents (the open effect's WORKER half): {:?}",
         started.elapsed()

@@ -319,21 +319,29 @@ mod app {
             state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
 
             comments::install(&mut state.store_mut());
-            state.register_command(std::sync::Arc::new(workbench_shell::hicomments::ToggleCommentsView));
+            state.register_command(std::sync::Arc::new(
+                workbench_shell::hicomments::ToggleCommentsView,
+            ));
             state.register_toolbar_button(workbench_shell::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(
                 himark::higent::drawer::ToggleAgentsView,
             ));
             state.register_command(std::sync::Arc::new(himark::higent::new_chat::NewChat));
             state.register_toolbar_button(himark::higent::drawer::toolbar_button());
-            state.register_command(std::sync::Arc::new(workbench_shell::hichanges::ToggleChangesView));
+            state.register_command(std::sync::Arc::new(
+                workbench_shell::hichanges::ToggleChangesView,
+            ));
             state.register_command(std::sync::Arc::new(
                 himark::hichanges::RefetchChanges::default(),
             ));
             state.register_toolbar_button(workbench_shell::hichanges::toolbar_button());
-            state.register_command(std::sync::Arc::new(workbench_shell::hihistory::ToggleHistoryView));
+            state.register_command(std::sync::Arc::new(
+                workbench_shell::hihistory::ToggleHistoryView,
+            ));
             state.register_toolbar_button(workbench_shell::hihistory::toolbar_button());
-            state.register_command(std::sync::Arc::new(workbench_shell::hifiles::ToggleSessionTree));
+            state.register_command(std::sync::Arc::new(
+                workbench_shell::hifiles::ToggleSessionTree,
+            ));
             state.register_toolbar_button(workbench_shell::hifiles::toolbar_button());
 
             #[cfg(target_feature = "atomics")]
@@ -730,9 +738,7 @@ mod app {
                         name.clone(),
                         true,
                         None,
-                        move |store, ui, theme| {
-                            web_document(&name, &source, store, ui, theme)
-                        },
+                        move |store, ui, theme| web_document(&name, &source, store, ui, theme),
                     );
                 }
                 "search" => {

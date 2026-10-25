@@ -36,9 +36,10 @@ fn the_search_design_doc_lays_out_completely() {
     let source = include_str!("../fixtures/utf8-repro.md");
     let theme = editor::theme::embedded();
     let document = document_from_markdown(source, store, ui, &theme);
-    let width = theme.part(::editor::theme::WindowChrome::KEY).first_pane_width;
-    let view =
-        editor::editor_view::EditorView::complete(document, width, store, ui, &theme);
+    let width = theme
+        .part(::editor::theme::WindowChrome::KEY)
+        .first_pane_width;
+    let view = editor::editor_view::EditorView::complete(document, width, store, ui, &theme);
     assert!(
         view.find_misaligned_boundary().is_none(),
         "the layout tiles the text on char boundaries"
@@ -212,7 +213,9 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     let source = include_str!("../fixtures/utf8-repro.md");
     let theme = editor::theme::embedded();
     let mut document = document_from_markdown(source, store, ui, &theme);
-    let width = theme.part(::editor::theme::WindowChrome::KEY).first_pane_width;
+    let width = theme
+        .part(::editor::theme::WindowChrome::KEY)
+        .first_pane_width;
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         width,

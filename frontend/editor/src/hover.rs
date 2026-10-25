@@ -239,26 +239,17 @@ pub struct HoverView {
 }
 
 impl HoverView {
-    fn build(
-        store: &Store,
-        markdown: &str,
-        ui: &UiCtx,
-        theme: &crate::theme::Theme,
-    ) -> Self {
+    fn build(store: &Store, markdown: &str, ui: &UiCtx, theme: &crate::theme::Theme) -> Self {
         let text = text::text::Text::from_string_exact(markdown);
         let document = match crate::env::Parsers::of(store) {
-            Some(parsers) => {
-                Document::from_language(text, "markdown", &parsers, store, ui, theme)
-            }
+            Some(parsers) => Document::from_language(text, "markdown", &parsers, store, ui, theme),
             None => Document::new(text, crate::markup::Markup::new()).with_syntax(
                 crate::markup::Syntax::new("markdown", None, crate::markup::Markup::new()),
                 &[],
             ),
         };
         Self {
-            view: crate::editor_view::EditorView::complete(
-                document, CARD_WIDTH, store, ui, theme,
-            ),
+            view: crate::editor_view::EditorView::complete(document, CARD_WIDTH, store, ui, theme),
         }
     }
 }

@@ -64,15 +64,8 @@ pub struct OpenedDocument {
     pub focus: bool,
 }
 
-pub(crate) type DocumentBuild = Box<
-    dyn FnOnce(
-            &imba::store::Store,
-            &UiCtx,
-            &::editor::theme::Theme,
-        ) -> Document
-        + Send
-        + Sync,
->;
+pub(crate) type DocumentBuild =
+    Box<dyn FnOnce(&imba::store::Store, &UiCtx, &::editor::theme::Theme) -> Document + Send + Sync>;
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
@@ -408,8 +401,11 @@ impl Himark {
             Rect::from_size(size),
         );
         let theme = ::editor::env::Themes::of(&self.store);
-        self.stats
-            .paint(canvas, Rect::from_size(size), &theme.part(crate::stats_chrome::StatsChrome::KEY));
+        self.stats.paint(
+            canvas,
+            Rect::from_size(size),
+            &theme.part(crate::stats_chrome::StatsChrome::KEY),
+        );
 
         match result {
             EventResult::Ignored => false,
@@ -561,14 +557,10 @@ impl Himark {
                                     crate::commands::Commands::of(&store)
                                         .find(binding.as_ref())
                                         .map(|command| match &bound {
-                                            Some(bound) => crate::shell::bound(
-                                                bound.clone(),
-                                                command.clone(),
-                                            ),
-                                            None => crate::shell::windowed(
-                                                window,
-                                                command.clone(),
-                                            ),
+                                            Some(bound) => {
+                                                crate::shell::bound(bound.clone(), command.clone())
+                                            }
+                                            None => crate::shell::windowed(window, command.clone()),
                                         })
                                 })
                         })
@@ -1098,12 +1090,8 @@ impl crate::himark::Shell for WorkbenchFrontend {
                 return false;
             };
             let panel = ::canvas::diff_pane::DiffPanelView::over(place.documents, place.view);
-            let opened = entity.open_panel(
-                store,
-                ui,
-                Box::new(hikit::modal::Scrolled::new(panel)),
-                fx,
-            );
+            let opened =
+                entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
             ::workbench::window::Windows::put(store, window, entity);
             return opened;
         }

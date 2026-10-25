@@ -39,7 +39,9 @@ fn run_effect(
 
 fn test_workshop() -> std::sync::Arc<crate::env::Workshop> {
     std::sync::Arc::new(crate::env::Workshop::new(
-        crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
+        crate::parley_line::shaper(crate::test_document::test_ui())
+            .world()
+            .clone(),
         crate::theme::embedded(),
     ))
 }

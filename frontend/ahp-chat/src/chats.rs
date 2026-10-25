@@ -521,7 +521,8 @@ impl hikit::panel::PanelView for ChatPane {
     }
 
     fn subtitle(&self, store: &Store) -> Option<String> {
-        Chats::chat_ref(store, self.seat.chats, &self.seat.chat).and_then(|panel| panel.folder_name())
+        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
+            .and_then(|panel| panel.folder_name())
     }
 
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {

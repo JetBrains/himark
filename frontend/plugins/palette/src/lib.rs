@@ -405,12 +405,12 @@ impl View for PaletteView {
                     top: chrome.label_gap,
                     ..Default::default()
                 }))
-                .child(hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(
-                    Insets {
+                .child(
+                    hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(Insets {
                         top: chrome.count_gap,
                         ..Default::default()
-                    },
-                ))
+                    }),
+                )
                 .pad_insets(Insets {
                     left: chrome.pad_x,
                     right: chrome.pad_x,
@@ -437,7 +437,8 @@ impl View for PaletteView {
 
             // The rows take what the bands leave, up to the cap.
             let pads = chrome.list_pad_top + chrome.list_pad_bottom;
-            let room = constraints.max.height - head.size().height - foot.size().height - 2.0 - pads;
+            let room =
+                constraints.max.height - head.size().height - foot.size().height - 2.0 - pads;
             let rows: imba::ThunkBox<'a, PaletteCommand> = match self.matches.is_empty() {
                 true => imba::layout::Layout::layout(
                     hikit::ui::text(
@@ -455,7 +456,10 @@ impl View for PaletteView {
                 ),
                 false => {
                     let total = self.list.inner().content().total_height();
-                    let height = total.min(chrome.list_max_height).min(room).max(chrome.row_height);
+                    let height = total
+                        .min(chrome.list_max_height)
+                        .min(room)
+                        .max(chrome.row_height);
                     imba::ThunkBox::new(
                         arena,
                         imba::layout::Layout::layout(
@@ -528,11 +532,19 @@ pub fn build(
     ui: &UiCtx,
     window: workbench::window::WindowId,
 ) -> Box<dyn ModalView> {
-    let sheet = sheet::Sheet(::editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY).palette.sheet.clone());
+    let sheet = sheet::Sheet(
+        ::editor::env::Themes::of(store)
+            .part(::hikit::chrome::PeekerChrome::KEY)
+            .palette
+            .sheet
+            .clone(),
+    );
     let commands = himark::commands::palette_commands(store, ui, window);
-    Box::new(sheet::Sheeted::new(bare(store, ui, commands), sheet, || {
-        PaletteCommand::Close
-    }))
+    Box::new(sheet::Sheeted::new(
+        bare(store, ui, commands),
+        sheet,
+        || PaletteCommand::Close,
+    ))
 }
 
 /// The palette UNDRESSED, over commands someone else walked: the

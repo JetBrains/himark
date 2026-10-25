@@ -129,7 +129,10 @@ fn a_right_button_press_dispatches_its_own_command() {
     for (index, tab) in buttons.tabs().iter().enumerate().rev() {
         let slot = styles.tab_width(tab.label);
         let left = right_edge - slot;
-        centers.insert(tab.command, left + word_width(&app, &styles.dim, tab.label) * 0.5);
+        centers.insert(
+            tab.command,
+            left + word_width(&app, &styles.dim, tab.label) * 0.5,
+        );
         right_edge = left - if index > 0 { chrome.tab_gap } else { 0.0 };
     }
     let tab_x = centers["test.right-mark"];

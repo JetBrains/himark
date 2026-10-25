@@ -900,8 +900,7 @@ fn typeface_axes(typeface: &skia_safe::Typeface) -> (Option<f32>, Option<f32>) {
     for coordinate in position {
         if coordinate.axis == skia_safe::font_arguments::variation_position::Coordinate::wght {
             weight = Some(coordinate.value);
-        } else if coordinate.axis
-            == skia_safe::font_arguments::variation_position::Coordinate::wdth
+        } else if coordinate.axis == skia_safe::font_arguments::variation_position::Coordinate::wdth
         {
             width = Some(coordinate.value);
         }

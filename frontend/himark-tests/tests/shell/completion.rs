@@ -220,9 +220,9 @@ fn the_at_completion_serves_markdown_panes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             himark::app::switch_session(store, window, self.0.clone(), fx)
         }
     }

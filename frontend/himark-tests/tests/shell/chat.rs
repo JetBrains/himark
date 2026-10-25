@@ -40,9 +40,9 @@ fn switching_workspaces_stashes_the_chat_panel() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -146,9 +146,9 @@ fn the_composer_command_fronts_the_chat_panel() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -293,9 +293,9 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -375,9 +375,9 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -437,9 +437,9 @@ fn dump_chat_narrow_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -485,9 +485,9 @@ fn dump_chat_narrow_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let state = himark::workspace::session_state(store, window).expect("state");
             let document = himark::app::markdown_scratch();
             let id = documents::OpenDocuments::register(
@@ -553,9 +553,9 @@ fn dump_chat_column_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -695,7 +695,8 @@ fn dump_chat_transcript_screenshot() {
             }
         })
     };
-    let said = |id: &str, text: &str| serde_json::json!({ "kind": "markdown", "id": id, "content": text });
+    let said =
+        |id: &str, text: &str| serde_json::json!({ "kind": "markdown", "id": id, "content": text });
     let user = |text: &str| serde_json::json!({ "text": text, "origin": { "kind": "user" } });
     let mut write = bash(
         "w1",
@@ -794,9 +795,9 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -852,9 +853,9 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let state = himark::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
@@ -935,9 +936,9 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -1092,9 +1093,9 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
@@ -1255,7 +1256,10 @@ fn the_chat_tab_toggles_the_column() {
     let lead = chrome.lead_inset;
 
     let x = lead + sessions + chrome.tab_gap + chat_standing * 0.5;
-    assert!(test_driver::click(&mut app, x, y, width, height), "the standing Chat tab takes the press");
+    assert!(
+        test_driver::click(&mut app, x, y, width, height),
+        "the standing Chat tab takes the press"
+    );
     settle(&mut app, &mut wide);
     assert!(
         held(&app).workbench().chat_minimized(),
@@ -1264,10 +1268,14 @@ fn the_chat_tab_toggles_the_column() {
 
     // Gone, the tree is leftmost and carries the tabs from the
     // greater of the lead inset and the code text edge.
-    let window_chrome = ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
+    let window_chrome =
+        ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
     let lead = chrome.lead_inset.max(window_chrome.code_text_edge);
     let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
-    assert!(test_driver::click(&mut app, x, y, width, height), "the dim Chat tab takes the press");
+    assert!(
+        test_driver::click(&mut app, x, y, width, height),
+        "the dim Chat tab takes the press"
+    );
     settle(&mut app, &mut wide);
     assert!(
         !held(&app).workbench().chat_minimized(),
@@ -1350,12 +1358,20 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
     fn held(app: &himark::app::Himark) -> &::workbench::window::Window {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
-    let window_chrome = ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
+    let window_chrome =
+        ::editor::env::Themes::of(app.store()).part(::editor::theme::WindowChrome::KEY);
     assert!(
-        width < window_chrome.chat_min_width + window_chrome.first_pane_width.max(window_chrome.main_min_width),
+        width
+            < window_chrome.chat_min_width
+                + window_chrome
+                    .first_pane_width
+                    .max(window_chrome.main_min_width),
         "the window is too narrow for both columns"
     );
-    assert!(!held(&app).workbench().chat_fronted(), "the panel took the window");
+    assert!(
+        !held(&app).workbench().chat_fronted(),
+        "the panel took the window"
+    );
 
     let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());
@@ -1365,7 +1381,10 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
     let chat_standing = styles.title.shaper.advance(&styles.title.font, "Chat");
     let lead = chrome.lead_inset.max(window_chrome.code_text_edge);
     let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
-    assert!(test_driver::click(&mut app, x, y, width, height), "the dim Chat tab takes the press");
+    assert!(
+        test_driver::click(&mut app, x, y, width, height),
+        "the dim Chat tab takes the press"
+    );
     settle(&mut app, &mut narrow);
     assert!(
         held(&app).workbench().chat_fronted(),
@@ -1374,13 +1393,25 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
 
     // Standing over the panels, the tab rolls it away again.
     let x = chrome.lead_inset + sessions + chrome.tab_gap + chat_standing * 0.5;
-    assert!(test_driver::click(&mut app, x, y, width, height), "the standing Chat tab takes the press");
+    assert!(
+        test_driver::click(&mut app, x, y, width, height),
+        "the standing Chat tab takes the press"
+    );
     settle(&mut app, &mut narrow);
-    assert!(!held(&app).workbench().chat_fronted(), "the tab rolls the chat away");
-    assert!(held(&app).workbench().chat_minimized(), "the roll-away lands as minimized");
+    assert!(
+        !held(&app).workbench().chat_fronted(),
+        "the tab rolls the chat away"
+    );
+    assert!(
+        held(&app).workbench().chat_minimized(),
+        "the roll-away lands as minimized"
+    );
 
     let x = lead + sessions + chrome.tab_gap + chat_dim * 0.5;
     assert!(test_driver::click(&mut app, x, y, width, height));
     settle(&mut app, &mut narrow);
-    assert!(held(&app).workbench().chat_fronted(), "and the tab brings it back once more");
+    assert!(
+        held(&app).workbench().chat_fronted(),
+        "and the tab brings it back once more"
+    );
 }

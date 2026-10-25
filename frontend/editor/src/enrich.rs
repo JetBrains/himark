@@ -303,7 +303,9 @@ mod tests {
 
     fn workshop() -> Arc<crate::env::Workshop> {
         Arc::new(crate::env::Workshop::new(
-        crate::parley_line::shaper(crate::test_document::test_ui()).world().clone(),
+            crate::parley_line::shaper(crate::test_document::test_ui())
+                .world()
+                .clone(),
             theme(),
         ))
     }
@@ -441,13 +443,7 @@ mod tests {
         {
             let mut store = imba::store::Store::new();
             let ui = crate::test_document::test_ui();
-            document.apply_enrichment(
-                outcome,
-                &mut store,
-                ui,
-                &theme(),
-                &mut batch.effects(),
-            );
+            document.apply_enrichment(outcome, &mut store, ui, &theme(), &mut batch.effects());
         };
     }
 
@@ -549,13 +545,7 @@ mod tests {
         {
             let mut store = imba::store::Store::new();
             let ui = crate::test_document::test_ui();
-            document.apply_enrichment(
-                outcome,
-                &mut store,
-                ui,
-                &theme(),
-                &mut batch.effects(),
-            );
+            document.apply_enrichment(outcome, &mut store, ui, &theme(), &mut batch.effects());
         };
         batch
     }
@@ -653,14 +643,9 @@ mod tests {
             "the subject's element grew by the badge height: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::editor_view::EditorView::complete(
-            document.clone(),
-            400.0,
-            store,
-            ui,
-            &theme(),
-        )
-        .element_heights();
+        let reference =
+            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &theme())
+                .element_heights();
         assert_eq!(
             live, reference,
             "the landed layout equals a from-scratch layout over the enriched document"
@@ -723,14 +708,9 @@ mod tests {
             "the drained repairs laid the deep badge in: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::editor_view::EditorView::complete(
-            document.clone(),
-            400.0,
-            store,
-            ui,
-            &theme(),
-        )
-        .element_heights();
+        let reference =
+            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &theme())
+                .element_heights();
         assert_eq!(
             live, reference,
             "the repaired layout equals the from-scratch reference"

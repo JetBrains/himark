@@ -223,7 +223,11 @@ impl TocView {
                 self.request = Some(ModalRequest::OpenLocations(vec![location.clone()]));
             }
 
-            None => self.search.inner_mut().content_mut().toggle(&key, store, ui),
+            None => self
+                .search
+                .inner_mut()
+                .content_mut()
+                .toggle(&key, store, ui),
         }
     }
 }
@@ -261,16 +265,29 @@ impl View for TocView {
             TocCommand::List(command) => {
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
-                        return self.search.inner_mut().content_mut().fold_cursor(*expand, store, ui);
+                        return self
+                            .search
+                            .inner_mut()
+                            .content_mut()
+                            .fold_cursor(*expand, store, ui);
                     }
                     ListKeyCommand::Inner(ScrollCommand::Content(inner)) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.search.inner().content().list().key_at(index).copied()
+                            let Some(key) =
+                                self.search.inner().content().list().key_at(index).copied()
                             else {
                                 return;
                             };
-                            self.search.inner_mut().content_mut().list_mut().select_only(key);
-                            return self.search.inner_mut().content_mut().toggle(&key, store, ui);
+                            self.search
+                                .inner_mut()
+                                .content_mut()
+                                .list_mut()
+                                .select_only(key);
+                            return self
+                                .search
+                                .inner_mut()
+                                .content_mut()
+                                .toggle(&key, store, ui);
                         }
                     }
                     _ => {}
@@ -444,7 +461,11 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
 /// and name, top-level containers turned group heads, nesting into
 /// member indent. Prose outlines (or titles that never name a kind)
 /// are all name.
-fn read_entries(rows: &[OutlineRow], prose: bool, current: Option<OutlineKey>) -> Vec<ContentsEntry> {
+fn read_entries(
+    rows: &[OutlineRow],
+    prose: bool,
+    current: Option<OutlineKey>,
+) -> Vec<ContentsEntry> {
     let split: Vec<(Option<&str>, &str)> = rows
         .iter()
         .map(|row| match prose {
@@ -659,10 +680,7 @@ impl OutlineView {
             .editor_ids()
             .next()
             .map(|editor| document.caret_byte(editor));
-        (
-            (document.revision(), document.markup_generation()),
-            caret,
-        )
+        ((document.revision(), document.markup_generation()), caret)
     }
 
     fn relaunch(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, OutlineCommand>) {
@@ -797,16 +815,29 @@ impl View for OutlineView {
             OutlineCommand::List(command) => {
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
-                        return self.search.inner_mut().content_mut().fold_cursor(*expand, store, ui);
+                        return self
+                            .search
+                            .inner_mut()
+                            .content_mut()
+                            .fold_cursor(*expand, store, ui);
                     }
                     ListKeyCommand::Inner(ScrollCommand::Content(inner)) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.search.inner().content().list().key_at(index).copied()
+                            let Some(key) =
+                                self.search.inner().content().list().key_at(index).copied()
                             else {
                                 return;
                             };
-                            self.search.inner_mut().content_mut().list_mut().select_only(key);
-                            return self.search.inner_mut().content_mut().toggle(&key, store, ui);
+                            self.search
+                                .inner_mut()
+                                .content_mut()
+                                .list_mut()
+                                .select_only(key);
+                            return self
+                                .search
+                                .inner_mut()
+                                .content_mut()
+                                .toggle(&key, store, ui);
                         }
                     }
                     _ => {}
@@ -894,7 +925,9 @@ where
     chrome::ContentsColumn {
         content,
         width: window.side_width,
-        top_gap: theme.part(crate::contents_chrome::ContentsChrome::KEY).top_gap,
+        top_gap: theme
+            .part(crate::contents_chrome::ContentsChrome::KEY)
+            .top_gap,
         ground: theme.part(::editor::theme::InkChrome::KEY).ground.0,
         rule: window.divider.0,
         keys,

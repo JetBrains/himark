@@ -40,7 +40,9 @@ pub(crate) struct Block {
 }
 
 fn split_lines(text: &str) -> Vec<Line<'_>> {
-    text.split_inclusive('\n').map(|text| Line { text }).collect()
+    text.split_inclusive('\n')
+        .map(|text| Line { text })
+        .collect()
 }
 
 /// The texts aligned line by line, as byte blocks in order.
@@ -96,7 +98,12 @@ pub(crate) fn blocks(text1: &str, text2: &str, deadline: Option<Instant>) -> Vec
 struct LineShift;
 
 impl LineShift {
-    fn next_unimportant(lines: &[Line<'_>], offset: usize, count: usize, threshold: usize) -> isize {
+    fn next_unimportant(
+        lines: &[Line<'_>],
+        offset: usize,
+        count: usize,
+        threshold: usize,
+    ) -> isize {
         for i in 0..count {
             match lines.get(offset + i) {
                 Some(line) if line.non_space() <= threshold => return i as isize,
@@ -107,7 +114,12 @@ impl LineShift {
         -1
     }
 
-    fn prev_unimportant(lines: &[Line<'_>], offset: usize, count: usize, threshold: usize) -> isize {
+    fn prev_unimportant(
+        lines: &[Line<'_>],
+        offset: usize,
+        count: usize,
+        threshold: usize,
+    ) -> isize {
         for i in 0..count {
             match offset.checked_sub(i).and_then(|at| lines.get(at)) {
                 Some(line) if line.non_space() <= threshold => return i as isize,
@@ -186,9 +198,15 @@ impl<'a> Shift<Line<'a>> for LineShift {
         range2: &Range,
     ) -> isize {
         for threshold in [0, UNIMPORTANT_LINE_CHARS] {
-            if let Some(shift) =
-                Self::unchanged_boundary(lines1, lines2, touch, equal_forward, equal_backward, range2, threshold)
-            {
+            if let Some(shift) = Self::unchanged_boundary(
+                lines1,
+                lines2,
+                touch,
+                equal_forward,
+                equal_backward,
+                range2,
+                threshold,
+            ) {
                 return shift;
             }
             if let Some(shift) = Self::changed_boundary(

@@ -260,8 +260,8 @@ impl Document {
                     .unwrap_or(true)
             })
             .filter_map(|(anchor, base_span)| {
-                let inlay = self
-                    .built_before_card(editor, base, base_span, false, store, ui, theme)?;
+                let inlay =
+                    self.built_before_card(editor, base, base_span, false, store, ui, theme)?;
                 Some((anchor, inlay))
             })
             .collect();
@@ -535,15 +535,9 @@ impl imba::View for BeforeInlay {
             BeforeCommand::Rewrap(width) => {
                 let theme = crate::env::Themes::of(store);
                 fx.scope(BeforeCommand::Editor, |fx| {
-                    self.view.document.resize(
-                        self.view.editor,
-                        width,
-                        0,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    )
+                    self.view
+                        .document
+                        .resize(self.view.editor, width, 0, store, ui, &theme, fx)
                 });
             }
             BeforeCommand::Tick(now) => self.grow.advance(now),

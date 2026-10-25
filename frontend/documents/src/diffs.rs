@@ -784,9 +784,7 @@ pub(crate) fn land_diff_markup(
     let Some(mut document) = OpenDocuments::document(store, documents, record.target) else {
         return;
     };
-    document.install_diff_markup(
-        id, markup, changed, derived_at, store, ui, &theme, fx,
-    );
+    document.install_diff_markup(id, markup, changed, derived_at, store, ui, &theme, fx);
     OpenDocuments::put_document(store, documents, record.target, document);
 }
 

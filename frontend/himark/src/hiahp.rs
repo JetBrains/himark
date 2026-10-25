@@ -29,11 +29,7 @@ pub struct AhpPlugin;
 impl crate::plugin::Plugin for AhpPlugin {
     fn install(&self, app: &mut crate::app::Himark, cx: &crate::plugin::PluginContext) {
         register_all(app);
-        install_build_handler(
-            app,
-            Arc::clone(&cx.languages),
-            Arc::clone(&cx.diff_policy),
-        );
+        install_build_handler(app, Arc::clone(&cx.languages), Arc::clone(&cx.diff_policy));
         app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
         app.setup(|store| {
             ::editor::change_sink::InstalledChangeSink::install(

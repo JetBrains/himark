@@ -12,7 +12,6 @@ use text::text::Text;
 use super::{BraceMatchPass, OccurrencePass};
 use crate::TsTree;
 
-
 fn theme() -> editor::theme::Theme {
     editor::theme::embedded()
 }

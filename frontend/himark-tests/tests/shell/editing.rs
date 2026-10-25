@@ -1119,8 +1119,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         "the reshape is BOUNDED: work past the viewport stays pending"
     );
 
-    let fresh_light =
-        EditorView::complete(document.clone(), 420.0, &pane.store, ui, &light);
+    let fresh_light = EditorView::complete(document.clone(), 420.0, &pane.store, ui, &light);
     let switched_band = band(document.document_layout(entity.editor()).unwrap(), &visible);
     let fresh_band = band(fresh_light.document_layout(), &visible);
     assert!(
@@ -1254,13 +1253,8 @@ fn a_stale_theme_repair_landing_discards_itself() {
     let layout = converged.document_layout(entity.editor()).unwrap();
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
-    let fresh = ::editor::editor_view::EditorView::complete(
-        converged.clone(),
-        420.0,
-        &store,
-        ui,
-        &light,
-    );
+    let fresh =
+        ::editor::editor_view::EditorView::complete(converged.clone(), 420.0, &store, ui, &light);
     assert!(
         (layout.height() - fresh.document_layout().height()).abs() < 0.5,
         "the repaired document IS the fresh light layout: {} vs {}",

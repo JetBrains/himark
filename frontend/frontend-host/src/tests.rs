@@ -701,7 +701,8 @@ fn canvas_pane_button_x(engine: &HimarkEngine, width: f32) -> f32 {
     let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
     let word = |label: &str| brief.shaper.advance(&brief.font, label);
     let gap = theme.part(::hikit::chrome::DiffChrome::KEY).band_gap;
-    width - workbench::dock::DOCK_WIDTH
+    width
+        - workbench::dock::DOCK_WIDTH
         - theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right
         - word("Open source")
         - gap
@@ -714,7 +715,10 @@ fn canvas_source_button_x(engine: &HimarkEngine, width: f32) -> f32 {
     let theme = editor::env::Themes::of(engine.app.store());
     let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
     let word = brief.shaper.advance(&brief.font, "Open source");
-    width - workbench::dock::DOCK_WIDTH - theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right - word * 0.5
+    width
+        - workbench::dock::DOCK_WIDTH
+        - theme.part(::hikit::chrome::DiffChrome::KEY).band_pad_right
+        - word * 0.5
 }
 
 /// The center of the root row's REFRESH chip in the dock's changes
@@ -727,7 +731,8 @@ fn changes_refresh_x(engine: &HimarkEngine, width: f32) -> f32 {
     let theme = editor::env::Themes::of(store);
     let style = hikit::ui::RowStyle::drawer(store, &ui);
     let word = style.trail.shaper.advance(&style.trail.font, "refresh");
-    let hang = (theme.part(::editor::theme::WindowChrome::KEY).side_trailing - style.trail_inset).max(0.0);
+    let hang =
+        (theme.part(::editor::theme::WindowChrome::KEY).side_trailing - style.trail_inset).max(0.0);
     width - hang - hikit::ui::space::M - hikit::ui::space::S - word * 0.5
 }
 
@@ -748,12 +753,19 @@ fn sole_entity(engine: &HimarkEngine) -> &workbench::window::Window {
 /// rows above) — read off the view, not re-derived.
 fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
     let store = engine.app.store();
-    let band = editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height;
+    let band = editor::env::Themes::of(store)
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height;
     let (top, height) = sole_entity(engine)
         .dock_panel()
         .and_then(|side| side.as_any().downcast_ref::<filetree::SessionTreeView>())
         .expect("the files tab is up")
-        .row_span(store, &engine.app.ui_ctx(), workbench::dock::DOCK_WIDTH, index);
+        .row_span(
+            store,
+            &engine.app.ui_ctx(),
+            workbench::dock::DOCK_WIDTH,
+            index,
+        );
     band + top + height * 0.5
 }
 
@@ -761,7 +773,9 @@ fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
 /// the same view wearing either set — under the dock's tabs band.
 fn changes_row_y(engine: &HimarkEngine, index: usize) -> f32 {
     let store = engine.app.store();
-    let band = editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height;
+    let band = editor::env::Themes::of(store)
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height;
     let pane = sole_entity(engine)
         .dock_panel()
         .and_then(|side| {
@@ -791,7 +805,9 @@ fn canvas_composer_band(engine: &HimarkEngine) -> f32 {
 /// half the band.
 fn canvas_band_y(engine: &HimarkEngine) -> f32 {
     let store = engine.app.store();
-    editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY).height
+    editor::env::Themes::of(store)
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height
         + canvas_pill_strip(engine)
         + canvas_composer_band(engine)
         + ::canvas::diff_header::file_band_height(store) * 0.5
@@ -956,8 +972,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     settle(&mut engine);
 
     let row_y = tree_row_y(&engine, 0);
-    let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
 
     settle_until(&mut engine, "the root listing landed", |engine| {
@@ -981,8 +996,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     settle(&mut engine);
 
     let row_y = tree_row_y(&engine, 2);
-    let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the document row took the click");
     settle(&mut engine);
     let entity =
@@ -1055,8 +1069,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     );
     settle(&mut engine);
     let row_y = tree_row_y(&engine, 0);
-    let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row collapses");
     settle(&mut engine);
     {
@@ -1112,9 +1125,9 @@ fn the_docked_tree_follows_the_focused_document() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -1236,7 +1249,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     assert!(engine.perform_command(window, "changes.view"));
     settle(&mut engine);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+    let mut surface =
+        skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+            .expect("surface");
     let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     for ms in [0.0, 1_000.0] {
         let _ = himark::test_driver::animate(
@@ -1264,7 +1279,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
             })
     };
     settle_until(&mut engine, "the changed file landed", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         rows(engine).is_some_and(|rows| {
             rows.iter()
@@ -1320,7 +1337,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         shot
     };
     settle_until(&mut engine, "the canvas row built its diff", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         canvas_probe(engine).is_some_and(|rows| {
             rows.iter().any(|(title, phase, _)| {
@@ -1346,7 +1365,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     let mut halves = None;
     settle_until(&mut engine, "the diff pane mounted", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel
@@ -2924,7 +2945,9 @@ fn a_one_sided_diff_goes_quiet() {
 
     assert!(engine.perform_command(window, "changes.view"));
     settle(&mut engine);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+    let mut surface =
+        skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+            .expect("surface");
     let _ = engine.draw(window, surface.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
     for ms in [0.0, 1_000.0] {
         let _ = himark::test_driver::animate(
@@ -2969,7 +2992,9 @@ fn a_one_sided_diff_goes_quiet() {
     // The file row reveals into the canvas; the one-sided build
     // (empty old side) must land like any other.
     settle_until(&mut engine, "the one-sided canvas row built", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
@@ -3001,7 +3026,9 @@ fn a_one_sided_diff_goes_quiet() {
         SPLIT_HEIGHT,
     ));
     settle_until(&mut engine, "the header click opened the file", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         engine
             .substring(
@@ -3026,7 +3053,9 @@ fn a_one_sided_diff_goes_quiet() {
         SPLIT_HEIGHT
     ));
     {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
@@ -3057,7 +3086,9 @@ fn a_one_sided_diff_goes_quiet() {
         SPLIT_HEIGHT,
     ));
     settle_until(&mut engine, "the one-sided diff pane mounted", |engine| {
-        let mut paint = skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32)).expect("surface");
+        let mut paint =
+            skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
+                .expect("surface");
         let _ = engine.draw(window, paint.canvas(), SPLIT_WIDTH, SPLIT_HEIGHT, 1.0);
         let mut mounted = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
@@ -4471,8 +4502,7 @@ fn dump_chat_pane_snapshot() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        host_plus_row(engine)
-            .filter(|_| settled)
+        host_plus_row(engine).filter(|_| settled)
     };
     wait_for(&mut engine, &mut surface, "host row", &mut |engine| {
         plus_row(engine).is_some()
@@ -4620,8 +4650,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        host_plus_row(engine)
-            .filter(|_| settled)
+        host_plus_row(engine).filter(|_| settled)
     };
     wait_for(
         &mut engine,
@@ -4817,8 +4846,7 @@ fn the_chat_runs_through_the_himark_host() {
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        host_plus_row(engine)
-            .filter(|_| settled)
+        host_plus_row(engine).filter(|_| settled)
     };
     wait_for(
         &mut engine,
@@ -4933,9 +4961,9 @@ fn the_chat_runs_through_the_himark_host() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let workspace = himark::workspace::entity_session(
                 workbench::window::Windows::window_ref(store, window).expect("the window entity"),
             );
@@ -5148,8 +5176,7 @@ fn real_claude_answers_through_the_himark_host() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = host_plus_row(&engine)
-            .filter(|_| settled);
+        plus = host_plus_row(&engine).filter(|_| settled);
         if plus.is_some() {
             break;
         }
@@ -5245,8 +5272,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = host_plus_row(&engine)
-            .filter(|_| settled);
+        plus = host_plus_row(&engine).filter(|_| settled);
         if plus.is_some() {
             break;
         }
@@ -5324,8 +5350,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     );
     pump(&mut engine, &mut surface);
     let row_y = tree_row_y(&engine, 0);
-    let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
     pump(&mut engine, &mut surface);
     let _ = himark::test_driver::animate(
@@ -5369,8 +5394,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     }
 
     let row_y = tree_row_y(&engine, 1);
-    let clicked =
-        himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = himark::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the file row took the click");
     let file = editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
@@ -6663,8 +6687,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         pump(&mut engine, &mut surface);
         let rows = drawer_rows(&engine).expect("the agents drawer is up");
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
-        plus = host_plus_row(&engine)
-            .filter(|_| settled);
+        plus = host_plus_row(&engine).filter(|_| settled);
         if plus.is_some() {
             break;
         }
@@ -6696,9 +6719,9 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let target = ahp_wire::SessionId::mint_scratch(store);
             himark::app::switch_session(store, window, target, fx);
         }
@@ -7866,9 +7889,9 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let documents = himark::workspace::session_state(store, window)
                 .expect("the test diff opens from a window with a session")
                 .documents();
@@ -8009,9 +8032,9 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -8113,12 +8136,12 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     let window = engine.add_window();
     // The capability gate normally registers these when the seat
     // serves searchLocations; the KEY ROAD under test is the same.
-    engine
-        .app
-        .register_command(std::sync::Arc::new(workbench_shell::hisearch::ToggleSearchView));
-    engine
-        .app
-        .register_command(std::sync::Arc::new(workbench_shell::hisearch::FocusSearchView));
+    engine.app.register_command(std::sync::Arc::new(
+        workbench_shell::hisearch::ToggleSearchView,
+    ));
+    engine.app.register_command(std::sync::Arc::new(
+        workbench_shell::hisearch::FocusSearchView,
+    ));
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
@@ -8345,9 +8368,9 @@ fn published_diagnostics_squiggle_the_open_document() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
-            return;
-        };
+            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+                return;
+            };
             let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
@@ -8483,15 +8506,7 @@ fn published_diagnostics_squiggle_the_open_document() {
                     ))
                 },
                 |fx| {
-                    document.replace_markup(
-                        markup,
-                        replacement,
-                        &changed,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    );
+                    document.replace_markup(markup, replacement, &changed, store, ui, &theme, fx);
                 },
             );
             documents::OpenDocuments::put_document(store, documents_id, document_id, document);
@@ -8714,7 +8729,11 @@ fn a_late_files_tree_stands_on_the_followed_file() {
 
 #[test]
 fn a_mermaid_document_diagrams_through_the_engine() {
-    mermaid_probe("diagram.md", "```mermaid\nflowchart TD\n    Start --> Finish\n```\n", 200..700);
+    mermaid_probe(
+        "diagram.md",
+        "```mermaid\nflowchart TD\n    Start --> Finish\n```\n",
+        200..700,
+    );
 }
 
 /// The HOSTED road: the sample opened from disk through the host
@@ -8724,14 +8743,7 @@ fn a_mermaid_document_diagrams_through_the_engine() {
 fn a_hosted_sample_file_diagrams() {
     let (host, mut engine, window, fs) = hosted_engine();
     let source = include_str!("../../plugins/demo/sample.md");
-    open_picked(
-        &mut engine,
-        &host.seat,
-        window,
-        &fs,
-        &["sample.md"],
-        source,
-    );
+    open_picked(&mut engine, &host.seat, window, &fs, &["sample.md"], source);
     let mermaid_state = |engine: &mut HimarkEngine| -> Option<(bool, usize)> {
         let documents = engine.app.sole_documents();
         for (id, _open) in documents::OpenDocuments::list(engine.app.store(), documents) {
@@ -8743,21 +8755,22 @@ fn a_hosted_sample_file_diagrams() {
             let len = document.text().byte_count() as u32;
             for interval in document.all_inlays_in(0..len) {
                 if let Some(view) = interval.inlay.view_as::<himermaid::MermaidView>() {
-                    return Some((
-                        view.svg().is_some(),
-                        view.svg().map(str::len).unwrap_or(0),
-                    ));
+                    return Some((view.svg().is_some(), view.svg().map(str::len).unwrap_or(0)));
                 }
             }
         }
         None
     };
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
-    settle_until(&mut engine, "the hosted fence births a RENDERED diagram", |engine| {
-        surface.canvas().clear(skia_safe::Color::WHITE);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
-        matches!(mermaid_state(engine), Some((true, _)))
-    });
+    settle_until(
+        &mut engine,
+        "the hosted fence births a RENDERED diagram",
+        |engine| {
+            surface.canvas().clear(skia_safe::Color::WHITE);
+            let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+            matches!(mermaid_state(engine), Some((true, _)))
+        },
+    );
     eprintln!(
         "[mermaid-hosted] inlay state {:?}",
         mermaid_state(&mut engine)
@@ -8770,7 +8783,9 @@ fn a_hosted_sample_file_diagrams() {
 #[test]
 fn the_demo_sample_diagrams_through_the_engine() {
     let source = include_str!("../../plugins/demo/sample.md");
-    let at = source.find("```mermaid").expect("the sample carries a fence");
+    let at = source
+        .find("```mermaid")
+        .expect("the sample carries a fence");
     assert!(at > 0);
     mermaid_probe("sample.md", source, 60..860);
 }
@@ -8798,10 +8813,7 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
             let len = document.text().byte_count() as u32;
             for interval in document.all_inlays_in(0..len) {
                 if let Some(view) = interval.inlay.view_as::<himermaid::MermaidView>() {
-                    return Some((
-                        view.svg().is_some(),
-                        view.svg().map(str::len).unwrap_or(0),
-                    ));
+                    return Some((view.svg().is_some(), view.svg().map(str::len).unwrap_or(0)));
                 }
             }
         }
@@ -8809,11 +8821,15 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
     };
 
     let mut surface = surface;
-    settle_until(&mut engine, "the fence births a RENDERED diagram inlay", |engine| {
-        surface.canvas().clear(skia_safe::Color::WHITE);
-        let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
-        matches!(mermaid_state(engine), Some((true, _)))
-    });
+    settle_until(
+        &mut engine,
+        "the fence births a RENDERED diagram inlay",
+        |engine| {
+            surface.canvas().clear(skia_safe::Color::WHITE);
+            let _ = engine.draw(window, surface.canvas(), 900.0, 900.0, 1.0);
+            matches!(mermaid_state(engine), Some((true, _)))
+        },
+    );
     let state = mermaid_state(&mut engine);
     eprintln!("[mermaid-engine] {name}: inlay state {state:?}");
 }
@@ -8833,7 +8849,13 @@ fn engine_resize_shape_meter() {
     settle_until(&mut engine, "the document shows", |engine| {
         let _ = engine.draw(window, surface.canvas(), 1200.0, 900.0, 1.0);
         engine
-            .substring(window, HimarkRange { start: 0, length: 64 })
+            .substring(
+                window,
+                HimarkRange {
+                    start: 0,
+                    length: 64,
+                },
+            )
             .is_some_and(|text| text.contains("line 0"))
     });
 
@@ -8849,4 +8871,3 @@ fn engine_resize_shape_meter() {
         );
     }
 }
-

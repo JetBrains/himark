@@ -22,4 +22,3 @@ impl crate::plugin::Plugin for CommentsPlugin {
         app.setup(|store| ::comments::install(store));
     }
 }
-

@@ -603,9 +603,15 @@ impl imba::command::DynamicCommand for TokensLanded {
                 self.document
             )
         });
-        apply(store, ui, self.wire, self.document, self.revision, fx, |document| {
-            semantic_markup(document, spans)
-        });
+        apply(
+            store,
+            ui,
+            self.wire,
+            self.document,
+            self.revision,
+            fx,
+            |document| semantic_markup(document, spans),
+        );
     }
 }
 
@@ -647,9 +653,15 @@ impl imba::command::DynamicCommand for HintsLanded {
                 self.document
             )
         });
-        apply(store, ui, self.wire, self.document, self.revision, fx, |document| {
-            hints_markup(document, hints)
-        });
+        apply(
+            store,
+            ui,
+            self.wire,
+            self.document,
+            self.revision,
+            fx,
+            |document| hints_markup(document, hints),
+        );
     }
 }
 
@@ -814,7 +826,11 @@ impl imba::View for HintView {
             .as_deref()
             .map(<[String]>::to_vec)
             .unwrap_or_default();
-        let size = look.font_size.or(theme.styles().base().font_size).unwrap_or(32.0) * HINT_SCALE;
+        let size = look
+            .font_size
+            .or(theme.styles().base().font_size)
+            .unwrap_or(32.0)
+            * HINT_SCALE;
         // The code face, resolved ONCE per ui context: a font-collection
         // search per chip per measure was the retheme stall (every
         // inlay re-measures; hundreds of chips, a cold worker ctx).

@@ -324,8 +324,7 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) {
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme)
-        else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme) else {
             return;
         };
         let window = self.window(editor);
@@ -391,8 +390,7 @@ impl Document {
         else {
             return;
         };
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme)
-        else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, theme) else {
             return;
         };
         let window = self.window(editor);

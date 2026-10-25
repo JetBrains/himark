@@ -285,16 +285,7 @@ impl Panel {
                             documents::DocumentsCommand::Editor(target, command),
                         )
                     },
-                    |fx| {
-                        document.reveal_at(
-                            view.editor(),
-                            place.caret,
-                            store,
-                            ui,
-                            &theme,
-                            fx,
-                        )
-                    },
+                    |fx| document.reveal_at(view.editor(), place.caret, store, ui, &theme, fx),
                 );
                 documents::OpenDocuments::put_document(
                     store,
@@ -443,8 +434,7 @@ pub enum WorkbenchNode {
     Split(Box<SplitView<WorkbenchNode, WorkbenchNode>>),
 }
 
-impl WorkbenchNode {
-}
+impl WorkbenchNode {}
 
 /// A workbench-minted identity for the panel occupying a leaf. Effects a
 /// panel launches are routed by leaf PATH, so an async result can land

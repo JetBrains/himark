@@ -732,11 +732,7 @@ fn server_outline() -> (editor::document::Document, u32) {
     }
     let source = lines.join("\n") + "\n";
     let starts: Vec<u32> = std::iter::once(0)
-        .chain(
-            source
-                .match_indices('\n')
-                .map(|(at, _)| at as u32 + 1),
-        )
+        .chain(source.match_indices('\n').map(|(at, _)| at as u32 + 1))
         .collect();
     let mut syntax = editor::markup::Syntax::new("rust", None, editor::markup::Markup::new());
     for (_, title, first, last) in items {
@@ -794,7 +790,12 @@ fn dump_contents_drawer_screenshot() {
             ::editor::caret::MultiCaret::one(::editor::caret::Caret::at(caret)),
         );
         let documents = app.sole_documents();
-        documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
+        documents::OpenDocuments::put_document(
+            &mut app.store_mut(),
+            documents,
+            document_id,
+            document,
+        );
     }
     // Over an open side column: the drawer stands on the dock.
     super::dock::show_dock(&mut app, "files", "test.files");
@@ -909,15 +910,28 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
             ::editor::caret::MultiCaret::one(::editor::caret::Caret::at(caret)),
         );
         let documents = app.sole_documents();
-        documents::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
+        documents::OpenDocuments::put_document(
+            &mut app.store_mut(),
+            documents,
+            document_id,
+            document,
+        );
     }
     assert!(app.perform_registered(window, "toc.toggle"));
     let view = land_drawer_outline(&mut app);
     let entries = view.entries();
-    assert_eq!(entries[0].place, ::toc::Place::Group { first: true }, "a top-level mod heads a group");
+    assert_eq!(
+        entries[0].place,
+        ::toc::Place::Group { first: true },
+        "a top-level mod heads a group"
+    );
     assert_eq!(entries[0].name, "annotations");
     assert_eq!(
-        (entries[1].kind.as_deref(), entries[1].name.as_str(), entries[1].line),
+        (
+            entries[1].kind.as_deref(),
+            entries[1].name.as_str(),
+            entries[1].line
+        ),
         (Some("fn"), "annotations_session", 39),
         "the keyword is the kind, the rest the name"
     );
@@ -926,8 +940,25 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
         .filter(|entry| entry.current)
         .map(|entry| entry.name.as_str())
         .collect();
-    assert_eq!(current, vec!["DocumentFeed"], "the innermost entry holding the caret");
-    assert_eq!(view.cursor_title().as_deref(), Some("pub enum DocumentFeed"), "the cursor opens on it");
-    let member = entries.iter().find(|entry| entry.name == "default").expect("the member");
-    assert_eq!(member.place, ::toc::Place::Entry { strong: false, indent: 1 });
+    assert_eq!(
+        current,
+        vec!["DocumentFeed"],
+        "the innermost entry holding the caret"
+    );
+    assert_eq!(
+        view.cursor_title().as_deref(),
+        Some("pub enum DocumentFeed"),
+        "the cursor opens on it"
+    );
+    let member = entries
+        .iter()
+        .find(|entry| entry.name == "default")
+        .expect("the member");
+    assert_eq!(
+        member.place,
+        ::toc::Place::Entry {
+            strong: false,
+            indent: 1
+        }
+    );
 }

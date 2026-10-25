@@ -107,7 +107,6 @@ impl crate::commands::HimarkCommand for RefetchChanges {
     }
 }
 
-
 #[cfg(test)]
 mod tests;
 

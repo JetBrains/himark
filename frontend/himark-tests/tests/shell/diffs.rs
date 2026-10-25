@@ -353,8 +353,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let theme = editor::theme::embedded();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
-        let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &theme);
+        let (mut document, blocks) = himarkdown::markdown_document(body, &store, ui, &theme);
         demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_owned(), false,));
     }
@@ -663,8 +662,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         )
         .replace("- [ ] Paint real inline spans\n", "");
     for (name, body) in [("left.md", left_body), ("right.md", right_body.as_str())] {
-        let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &theme);
+        let (mut document, blocks) = himarkdown::markdown_document(body, &store, ui, &theme);
         demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
@@ -771,8 +769,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         ("left.md", left_body.as_str()),
         ("right.md", right_body.as_str()),
     ] {
-        let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &theme);
+        let (mut document, blocks) = himarkdown::markdown_document(body, &store, ui, &theme);
         demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false));
     }
@@ -1123,8 +1120,7 @@ fn scrolling_after_a_theme_toggle_converges() {
 ",
     );
     for (name, body) in [("left.md", &left_body), ("right.md", &right_body)] {
-        let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &theme);
+        let (mut document, blocks) = himarkdown::markdown_document(body, &store, ui, &theme);
         demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
@@ -1369,8 +1365,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let theme = editor::theme::embedded();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
-        let (mut document, blocks) =
-            himarkdown::markdown_document(body, &store, ui, &theme);
+        let (mut document, blocks) = himarkdown::markdown_document(body, &store, ui, &theme);
         demo::inlay::add_badges(&mut document, &blocks, &store, ui, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
@@ -2164,7 +2159,9 @@ fn the_unified_view_switches_between_split_and_inline() {
     // Aim at line 0's TEXT: the settled before-card fills its full
     // hole from birth, so the text sits `hole` below the line's top
     // (the column header above; 14 past it lands mid-glyph).
-    let header = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
+    let header = editor::env::Themes::of(app.store())
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height;
     himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
     let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     {
@@ -2860,7 +2857,9 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     // right inset — Side by side · Open pane · Open source, the face
     // word naming the OTHER face. The working-copy canvas heads with
     // its summary strip.
-    let chrome_top = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
+    let chrome_top = editor::env::Themes::of(app.store())
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height;
     let (lead, right, gap, band, strip) = {
         let theme = editor::env::Themes::of(app.store());
         let window = theme.part(::editor::theme::WindowChrome::KEY);
@@ -2979,18 +2978,8 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         body.push_str(&format!("same line {n}\n"));
     }
     body.push_str("tail\n");
-    let old = himarkdown::document_from_markdown(
-        &format!("old head\n{body}"),
-        &store,
-        ui,
-        &theme,
-    );
-    let new = himarkdown::document_from_markdown(
-        &format!("new head\n{body}"),
-        &store,
-        ui,
-        &theme,
-    );
+    let old = himarkdown::document_from_markdown(&format!("old head\n{body}"), &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&format!("new head\n{body}"), &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -3098,18 +3087,8 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     body.push_str("tail\n");
     // Sides differ at the head: a real diff stands, and its long
     // identical middle folds — so the row opens SHORT (folded).
-    let old = himarkdown::document_from_markdown(
-        &format!("old head\n{body}"),
-        &store,
-        ui,
-        &theme,
-    );
-    let new = himarkdown::document_from_markdown(
-        &format!("new head\n{body}"),
-        &store,
-        ui,
-        &theme,
-    );
+    let old = himarkdown::document_from_markdown(&format!("old head\n{body}"), &store, ui, &theme);
+    let new = himarkdown::document_from_markdown(&format!("new head\n{body}"), &store, ui, &theme);
     let location = |name: &str, kind| {
         editor::location::ResourceLocation::new(
             kind,
@@ -3331,7 +3310,9 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         "the inline face folds the 600-line run: {inline_height}"
     );
 
-    let chrome_top = editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY).height;
+    let chrome_top = editor::env::Themes::of(app.store())
+        .part(::hikit::chrome::ToolbarChrome::KEY)
+        .height;
     let (face_x, band_y) = working_band_word(&app, 1100.0, "Side by side");
     let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
     let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
@@ -5309,17 +5290,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
                         documents::DocumentsCommand::Editor(id, command),
                     ))
                 },
-                |fx| {
-                    document.replace_markup(
-                        markup,
-                        replacement,
-                        &changed,
-                        store,
-                        ui,
-                        &theme,
-                        fx,
-                    )
-                },
+                |fx| document.replace_markup(markup, replacement, &changed, store, ui, &theme, fx),
             );
             OpenDocuments::put_document(store, documents, id, document);
         }
@@ -5370,7 +5341,12 @@ fn working_band_word(app: &Himark, width: f32, label: &str) -> (f32, f32) {
     let brief = hikit::ui::brief(app.store(), &app.ui_ctx());
     let word = |label: &str| brief.shaper.advance(&brief.font, label);
     let gap = diff.band_gap;
-    let x = width - diff.band_pad_right - word("Open source") - gap - word("Open pane") - gap
+    let x = width
+        - diff.band_pad_right
+        - word("Open source")
+        - gap
+        - word("Open pane")
+        - gap
         - word(label) * 0.5;
     let y = theme.part(::hikit::chrome::ToolbarChrome::KEY).height
         + ::canvas::diff_summary::strip_height(app.store(), &app.ui_ctx())
@@ -5454,7 +5430,12 @@ fn dump_commit_canvas_screenshot() {
         editor::location::ResourceLocation::new(
             kind,
             editor::location::Authority::new("test"),
-            vec!["backend".to_owned(), "agent-host".to_owned(), "src".to_owned(), name.to_owned()],
+            vec![
+                "backend".to_owned(),
+                "agent-host".to_owned(),
+                "src".to_owned(),
+                name.to_owned(),
+            ],
         )
     };
     let file = ::canvas::diff_canvas::CanvasFile {
@@ -5501,7 +5482,8 @@ fn dump_commit_canvas_screenshot() {
     let size = skia_safe::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
-        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5539,7 +5521,10 @@ fn dump_multi_file_commit_canvas_screenshot() {
         editor::location::ResourceLocation::new(
             kind,
             editor::location::Authority::new("test"),
-            segments.iter().map(|s| (*s).to_owned()).collect::<Vec<String>>(),
+            segments
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect::<Vec<String>>(),
         )
     };
     let document = |body: &str| {
@@ -5548,22 +5533,24 @@ fn dump_multi_file_commit_canvas_screenshot() {
             editor::markup::Markup::new(),
         )
     };
-    let file = |dir: &str, name: &str, added: i64, removed: i64| ::canvas::diff_canvas::CanvasFile {
-        title: format!("{dir}/{name}"),
-        old: location(
-            &[dir, &format!("{name}.old")],
-            editor::location::ResourceType::document(),
-        ),
-        new: location(&[dir, name], editor::location::ResourceType::document()),
-        added: Some(added),
-        removed: Some(removed),
-        updated: 0,
-    };
+    let file =
+        |dir: &str, name: &str, added: i64, removed: i64| ::canvas::diff_canvas::CanvasFile {
+            title: format!("{dir}/{name}"),
+            old: location(
+                &[dir, &format!("{name}.old")],
+                editor::location::ResourceType::document(),
+            ),
+            new: location(&[dir, name], editor::location::ResourceType::document()),
+            added: Some(added),
+            removed: Some(removed),
+            updated: 0,
+        };
     let server = file("backend/agent-host/src", "server.rs", 118, 35);
     let bridge = file("backend/agent-host/src", "lsp_bridge.rs", 19, 6);
     let order = file("backend/agent-host/tests", "feed_order.rs", 6, 0);
 
-    let server_old = "enum DocumentFeed {\n    Open { uri: String },\n    Close { uri: String },\n}\n";
+    let server_old =
+        "enum DocumentFeed {\n    Open { uri: String },\n    Close { uri: String },\n}\n";
     let server_new = "enum DocumentFeed {\n    Open {\n        dirs: Vec<String>,\n        uri: String,\n    },\n    Close {\n        dirs: Vec<String>,\n        uri: String,\n    },\n}\n";
     let bridge_old = "impl Bridge {\n    pub fn send(&self, msg: Message) {\n        self.conn.send(msg);\n    }\n}\n";
     let bridge_new = "impl Bridge {\n    pub fn send(&self, msg: Message) {\n        // fed by the ordered lane — never called outside it\n        debug_assert!(FEED_THREAD.is_set());\n        self.conn.send(msg);\n    }\n}\n";
@@ -5610,8 +5597,18 @@ fn dump_multi_file_commit_canvas_screenshot() {
     {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        view.land_for_tests(&mut store, &ui, bridge.new.clone(), pair(&bridge, bridge_old, bridge_new));
-        view.land_for_tests(&mut store, &ui, order.new.clone(), pair(&order, order_old, order_new));
+        view.land_for_tests(
+            &mut store,
+            &ui,
+            bridge.new.clone(),
+            pair(&bridge, bridge_old, bridge_new),
+        );
+        view.land_for_tests(
+            &mut store,
+            &ui,
+            order.new.clone(),
+            pair(&order, order_old, order_new),
+        );
     }
     assert!(app.open_panel(
         app.sole_window(),
@@ -5621,7 +5618,8 @@ fn dump_multi_file_commit_canvas_screenshot() {
     let size = skia_safe::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
-        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5638,7 +5636,8 @@ fn dump_multi_file_commit_canvas_screenshot() {
     // bare — its air is the diff row's tail, not the band's head.
     let _ = himark::test_driver::scroll_at(&mut app, 1440.0, 900.0, 700.0);
     for _ in 0..12 {
-        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5649,5 +5648,9 @@ fn dump_multi_file_commit_canvas_screenshot() {
         .image_snapshot()
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
-    std::fs::write(format!("{dir}/multi-file-canvas-scrolled.png"), data.as_bytes()).expect("write");
+    std::fs::write(
+        format!("{dir}/multi-file-canvas-scrolled.png"),
+        data.as_bytes(),
+    )
+    .expect("write");
 }

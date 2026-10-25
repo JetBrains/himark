@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::location::ResourceType;
 use crate::FindDefinitionEffect;
+use editor::location::ResourceType;
 
 fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("backend home");

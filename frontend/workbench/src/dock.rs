@@ -255,7 +255,10 @@ impl View for Dock {
             surface.place_boxed(
                 edge,
                 0.0,
-                body.layout(arena, Constraints::tight(Size::new(body_width, size.height))),
+                body.layout(
+                    arena,
+                    Constraints::tight(Size::new(body_width, size.height)),
+                ),
             );
             // The column's edge rule stands OVER its ground — the
             // split tree's mirror of the chat divider.
@@ -306,7 +309,6 @@ impl View for Dock {
 }
 
 impl Dock {
-
     pub(crate) fn take_request(&mut self) -> Option<ModalRequest> {
         if let Some(request) = self.request.take() {
             return Some(request);

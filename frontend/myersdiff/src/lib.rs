@@ -99,7 +99,11 @@ pub fn refine(ops: &mut Vec<Op>, old: &str, new: &str) {
     }
     let (mut at1, mut at2) = (0usize, 0usize);
     for change in words::changes(old, new, None) {
-        debug_assert_eq!(change.start1 - at1, change.start2 - at2, "the stretch between changes is equal");
+        debug_assert_eq!(
+            change.start1 - at1,
+            change.start2 - at2,
+            "the stretch between changes is equal"
+        );
         push_retain(ops, change.start1 - at1);
         push_delete(ops, &old[change.start1..change.end1]);
         push_insert(ops, &new[change.start2..change.end2]);

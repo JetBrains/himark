@@ -11,6 +11,7 @@ use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::panel::WidgetOrigin;
 use himark::app::Himark;
+use imba::layout::{Insets, LayoutExt as _};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -23,7 +24,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use imba::layout::{Insets, LayoutExt as _};
 use skia_safe::Size;
 use workbench::workbench_node::EditorPane;
 
@@ -205,7 +205,12 @@ impl View for FileRow {
                 ink.ink_2.0,
                 chrome.selected_row_height,
             ),
-            (false, false) => (&chrome.name, chrome.name_color.0, ink.ink_3.0, chrome.row_height),
+            (false, false) => (
+                &chrome.name,
+                chrome.name_color.0,
+                ink.ink_3.0,
+                chrome.row_height,
+            ),
             (false, true) => (&chrome.name, ink.ink_3.0, ink.ink_3.0, chrome.row_height),
         };
         let plain = sheet::styled(ui, role, color);
@@ -235,12 +240,15 @@ impl View for FileRow {
             // Measured after the name, against what it leaves: a
             // long directory ellipsizes, the name never does.
             row = row.child_by_baseline(
-                hikit::ui::text(&hikit::ui::brief(store, ui).colored(dir_color), self.dir.clone())
-                    .pad_insets(Insets {
-                        left: chrome.dir_gap,
-                        right: chrome.pad_x,
-                        ..Default::default()
-                    }),
+                hikit::ui::text(
+                    &hikit::ui::brief(store, ui).colored(dir_color),
+                    self.dir.clone(),
+                )
+                .pad_insets(Insets {
+                    left: chrome.dir_gap,
+                    right: chrome.pad_x,
+                    ..Default::default()
+                }),
             );
         }
         // A press on the row is the LIST's: `Select`, then
@@ -282,13 +290,12 @@ impl Peeker {
             .map(|(_, widget)| widget.title(store))
             .collect();
         let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY);
-        let mut input =
-            editor::editor_view::EditorView::input_styled(
-                600.0,
-                store,
-                ui,
-                editor::theme::StyleId::Query,
-            );
+        let mut input = editor::editor_view::EditorView::input_styled(
+            600.0,
+            store,
+            ui,
+            editor::theme::StyleId::Query,
+        );
         input.focus_text();
 
         let mut peeker = Self {
@@ -436,7 +443,8 @@ impl Peeker {
             slice.push(note, store, ui);
         }
         let scroll_y = self.list.inner().scroll_y();
-        let mut list = imba::list::ListView::from_slice(slice).with_selection(selection_style(store));
+        let mut list =
+            imba::list::ListView::from_slice(slice).with_selection(selection_style(store));
         if !self.labels.is_empty() {
             list.select_only(selected);
         }
@@ -943,12 +951,12 @@ impl View for Peeker {
                     top: chrome.label_gap,
                     ..Default::default()
                 }))
-                .child(hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(
-                    Insets {
+                .child(
+                    hikit::ui::text(&hikit::ui::brief(store, ui), count).pad_insets(Insets {
                         top: chrome.count_gap,
                         ..Default::default()
-                    },
-                ))
+                    }),
+                )
                 .pad_insets(Insets {
                     left: chrome.pad_x,
                     right: chrome.pad_x,
@@ -1115,12 +1123,12 @@ impl Peeker {
             };
             row = row
                 .child_by_baseline(hikit::ui::text(&title, location.name()))
-                .child_by_baseline(hikit::ui::text(&path(ink.ink_4.0), folder).pad_insets(
-                    Insets {
+                .child_by_baseline(
+                    hikit::ui::text(&path(ink.ink_4.0), folder).pad_insets(Insets {
                         left: chrome.preview_gap,
                         ..Default::default()
-                    },
-                ))
+                    }),
+                )
                 .child_by_baseline(hikit::ui::text(&path(ink.ink_3.0), dir))
                 .child_by_baseline(hikit::ui::text(&path(ink.ink.0), location.name()));
         } else if let Some(index) = self.widget_at(selected) {
@@ -1166,7 +1174,10 @@ impl Peeker {
                     max: Size::new(width, f32::MAX),
                 },
             );
-        imba::ThunkBox::new(arena, hikit::ui::Hairline::new(ink.rule.0).bottom().wrap(laid))
+        imba::ThunkBox::new(
+            arena,
+            hikit::ui::Hairline::new(ink.rule.0).bottom().wrap(laid),
+        )
     }
 }
 

@@ -139,15 +139,8 @@ fn markdown_demo_inlays_do_not_replace_headers() {
     let source = "# Demo header\n\n---\n\nplain text";
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let (mut document, blocks) =
-        himarkdown::markdown_document(source, store, ui, &test_theme());
-    crate::inlay::add_badges(
-        &mut document,
-        &blocks,
-        store,
-        ui,
-        &test_theme(),
-    );
+    let (mut document, blocks) = himarkdown::markdown_document(source, store, ui, &test_theme());
+    crate::inlay::add_badges(&mut document, &blocks, store, ui, &test_theme());
     let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
     let mut counts = [0; 5];
     let heading_end = source.find('\n').expect("heading newline") as u32;
@@ -861,7 +854,6 @@ fn test_theme() -> editor::theme::Theme {
     editor::theme::embedded()
 }
 
-
 fn app_fonts() -> AppFonts {
     AppFonts::embedded()
 }
@@ -1109,15 +1101,7 @@ fn resize_repair_matches_fresh_layout() {
         &mut imba::effect::Batch::new().effects(),
     );
     let mut batch = imba::effect::Batch::new();
-    document.resize(
-        editor,
-        1128.0,
-        0,
-        store,
-        ui,
-        &theme,
-        &mut batch.effects(),
-    );
+    document.resize(editor, 1128.0, 0, store, ui, &theme, &mut batch.effects());
     let workshop = himark::test_support::test_workshop(theme.clone());
     for effect in himark::test_support::surviving_launches(batch) {
         if let editor::editor_view::EditorCommand::ApplyRepair(items) =
@@ -1130,14 +1114,9 @@ fn resize_repair_matches_fresh_layout() {
     }
 
     let live = document.element_heights(editor);
-    let fresh = editor::editor_view::EditorView::complete(
-        document.clone(),
-        1128.0,
-        store,
-        ui,
-        &theme,
-    )
-    .element_heights();
+    let fresh =
+        editor::editor_view::EditorView::complete(document.clone(), 1128.0, store, ui, &theme)
+            .element_heights();
     for (index, (a, b)) in live.iter().zip(fresh.iter()).enumerate() {
         assert_eq!(a, b, "element {index} diverged (live vs fresh)");
     }

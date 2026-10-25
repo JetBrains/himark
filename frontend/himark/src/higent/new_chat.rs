@@ -51,7 +51,10 @@ impl HimarkCommand for NewChat {
             .map({
                 let bound = bound.clone();
                 move |created| {
-                    crate::shell::bound(bound.clone(), Arc::new(OpenCreatedChat { server, created }))
+                    crate::shell::bound(
+                        bound.clone(),
+                        Arc::new(OpenCreatedChat { server, created }),
+                    )
                 }
             }),
         );

@@ -99,7 +99,9 @@ impl UnifiedDiffView {
             reports_geometry: true,
             location: self.split.right.location.clone(),
 
-            gutter_width: crate::env::Themes::of(store).part(crate::theme::EditorGutterChrome::KEY).width,
+            gutter_width: crate::env::Themes::of(store)
+                .part(crate::theme::EditorGutterChrome::KEY)
+                .width,
             base: Some((self.split.left.document.clone(), self.split.state.diff_id())),
         })
     }
@@ -358,14 +360,8 @@ impl imba::View for UnifiedDiffView {
                     fx.scope(UnifiedDiffCommand::Inline, |fx| {
                         view.set_caret(byte);
                         view.focus_text();
-                        view.document.reveal_at_instant(
-                            view.editor,
-                            byte,
-                            store,
-                            ui,
-                            &theme,
-                            fx,
-                        );
+                        view.document
+                            .reveal_at_instant(view.editor, byte, store, ui, &theme, fx);
                     });
                     self.split.right.document = view.document;
                     fx.scope(UnifiedDiffCommand::Split, |fx| {

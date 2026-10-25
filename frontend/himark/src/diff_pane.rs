@@ -3,7 +3,6 @@
 //! The shell half of the split-diff pane: the palette's "diff two
 //! recent documents" command. The faces live in the `canvas` crate.
 
-
 use imba::store::Store;
 
 use documents::OpenDocuments;

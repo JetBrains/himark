@@ -218,10 +218,12 @@ impl<'a, Command: 'a> Layout<'a, Command> for LeaderLine<'a, Command> {
                 dot,
                 rise,
             })
-            .child_by_baseline(imba::layout::fixed(number).pad_insets(imba::layout::Insets {
-                left: slot - number_width,
-                ..Default::default()
-            }))
+            .child_by_baseline(
+                imba::layout::fixed(number).pad_insets(imba::layout::Insets {
+                    left: slot - number_width,
+                    ..Default::default()
+                }),
+            )
             .layout(arena, loose)
     }
 }

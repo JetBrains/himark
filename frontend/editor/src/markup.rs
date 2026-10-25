@@ -667,8 +667,7 @@ where
         theme: &crate::theme::Theme,
     ) {
         if let Some(previous) = previous.downcast_ref::<V>() {
-            self.carry_live =
-                InlayEditing::adopt_from(&mut self.view, previous, store, ui, theme);
+            self.carry_live = InlayEditing::adopt_from(&mut self.view, previous, store, ui, theme);
         }
     }
 

@@ -884,7 +884,10 @@ impl Completer {
             }
         }
         let theme = crate::env::Themes::of(store);
-        let row_height = theme.part(crate::theme::PopupChrome::KEY).row_height.max(1.0);
+        let row_height = theme
+            .part(crate::theme::PopupChrome::KEY)
+            .row_height
+            .max(1.0);
         let selected = self
             .selected()
             .min(self.source.row_count().saturating_sub(1));

@@ -144,7 +144,10 @@ enum CellBody {
 
     /// One quiet line of the turn's own (how it ended, what it
     /// spent): a label in its role, not a document.
-    Line { text: String, role: LineRole },
+    Line {
+        text: String,
+        role: LineRole,
+    },
 }
 
 /// The roles a turn's own lines speak in.
@@ -200,7 +203,9 @@ impl Grid {
         }
         let theme = env::Themes::of(store);
         let chat = theme.part(::hikit::chrome::ChatChrome::KEY);
-        let edge = theme.part(::editor::theme::WindowChrome::KEY).chat_text_edge;
+        let edge = theme
+            .part(::editor::theme::WindowChrome::KEY)
+            .chat_text_edge;
         Self {
             edge,
             column: (width - edge - chat.text_trailing).max(120.0),
@@ -430,8 +435,7 @@ impl Cell {
         content_width: f32,
     ) -> (Self, f32) {
         let grid = Grid::of(store, content_width, false);
-        let (group, rows_height) =
-            ToolGroup::new(store, ui, specs, Self::tools_width(store, grid));
+        let (group, rows_height) = ToolGroup::new(store, ui, specs, Self::tools_width(store, grid));
         (
             Self {
                 kind: CellKind::Tool,
@@ -834,9 +838,7 @@ impl View for Cell {
                 let operation = myersdiff::diff(editor.document.text(), &text);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor
-                        .document
-                        .edit(&operation, store, ui, &theme, fx);
+                    editor.document.edit(&operation, store, ui, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }
@@ -930,9 +932,7 @@ impl View for Cell {
                 };
                 let id = editor.editor;
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor
-                        .document
-                        .resize(id, width, 0, store, ui, &theme, fx);
+                    editor.document.resize(id, width, 0, store, ui, &theme, fx);
                 });
             }
             CellCommand::Append(chunk) => {
@@ -955,9 +955,7 @@ impl View for Cell {
                 let operation = operation::operation::Operation::insert_at(end, chunk);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor
-                        .document
-                        .edit(&operation, store, ui, &theme, fx);
+                    editor.document.edit(&operation, store, ui, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }
@@ -1006,7 +1004,9 @@ impl View for Cell {
 }
 
 fn chrome_gutter(store: &Store) -> f32 {
-    env::Themes::of(store).part(::editor::theme::EditorGutterChrome::KEY).width
+    env::Themes::of(store)
+        .part(::editor::theme::EditorGutterChrome::KEY)
+        .width
 }
 
 struct CellWidget<Inner> {
@@ -1105,7 +1105,10 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
                 LineRole::Usage => hikit::ui::brief(store, ui).sized(chrome.usage_size),
             };
             return imba::layout::ZBox::new(arena)
-                .child(imba::layout::spacer(grid.column, Cell::line_height(&chrome)))
+                .child(imba::layout::spacer(
+                    grid.column,
+                    Cell::line_height(&chrome),
+                ))
                 .child_aligned(
                     imba::layout::Alignment::CenterStart,
                     hikit::ui::text(&style, text.clone()),
@@ -1178,14 +1181,24 @@ impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
             .map(|thunk| imba::ThunkBox::new(arena, thunk))
             .or(diff_thunk.map(|thunk| imba::ThunkBox::new(arena, thunk)));
         if let Some(content) = content {
-            row = row.child(imba::layout::fixed(content).pad_insets(imba::layout::Insets {
-                left: body_x,
-                top: header_h,
-                ..Default::default()
-            }));
+            row = row.child(
+                imba::layout::fixed(content).pad_insets(imba::layout::Insets {
+                    left: body_x,
+                    top: header_h,
+                    ..Default::default()
+                }),
+            );
         }
         if matches!(cell.kind, CellKind::User) && !cell.bare && chrome.voice_gutter {
-            row = row.child(voice(arena, store, ui, &chrome, grid, chrome.gutter_line, "YOU"));
+            row = row.child(voice(
+                arena,
+                store,
+                ui,
+                &chrome,
+                grid,
+                chrome.gutter_line,
+                "YOU",
+            ));
         }
         if let Some((header, pending)) = header {
             row = row.child(
@@ -1282,10 +1295,12 @@ fn diff_header<'a>(
     imba::layout::ZBox::new(arena)
         .child(imba::layout::spacer(0.0, height))
         .child_aligned(imba::layout::Alignment::CenterStart, words)
-        .on_event(move |_arena: &Arena, event: &Event<'_>, _size: Size| match (event, uri.clone()) {
-            (Event::MouseDown { .. }, Some(uri)) => {
-                EventResult::command(CellCommand::OpenFile(uri))
+        .on_event(move |_arena: &Arena, event: &Event<'_>, _size: Size| {
+            match (event, uri.clone()) {
+                (Event::MouseDown { .. }, Some(uri)) => {
+                    EventResult::command(CellCommand::OpenFile(uri))
+                }
+                _ => EventResult::Ignored,
             }
-            _ => EventResult::Ignored,
         })
 }

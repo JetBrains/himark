@@ -3,9 +3,9 @@
 
 use std::ops::Range;
 
-pub mod chrome;
 mod assist;
 mod checkbox;
+pub mod chrome;
 pub mod fence_embed;
 pub mod image;
 pub mod table;
@@ -92,12 +92,7 @@ impl editor::enrich::Enricher for TableEnricher {
                                     editor::markup::InsteadKind::FullLine,
                                 ),
                                 cx.measure.with_ctx(|store, ui| {
-                                    table::TableEditor::new(
-                                        source.clone(),
-                                        store,
-                                        ui,
-                                        cx.theme,
-                                    )
+                                    table::TableEditor::new(source.clone(), store, ui, cx.theme)
                                 }),
                             ),
                         );
@@ -341,11 +336,7 @@ pub(crate) fn parse_markdown(text: &Text) -> Tree {
     mdparser::block_tree(&source)
 }
 
-pub(crate) fn markup_from_tree(
-    text: &Text,
-    tree: &Tree,
-    theme: &editor::theme::Theme,
-) -> Markup {
+pub(crate) fn markup_from_tree(text: &Text, tree: &Tree, theme: &editor::theme::Theme) -> Markup {
     markup_builder_from_tree(text, tree, theme).finish()
 }
 

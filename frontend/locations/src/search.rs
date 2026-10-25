@@ -209,7 +209,10 @@ impl SearchView {
                 // QUIETLY: a rebuild re-asserts, it never scrolls —
                 // landing batches teleported the tree to the cursor's
                 // row on every landing when this revealed.
-                self.tree_mut().inner_mut().list_mut().reselect_quiet(cursor);
+                self.tree_mut()
+                    .inner_mut()
+                    .list_mut()
+                    .reselect_quiet(cursor);
             }
         }
     }
@@ -383,12 +386,14 @@ impl View for SearchView {
                         }
                         ListKeyCommand::Inner(inner) => {
                             if let Some(index) = tree_toggle(inner) {
-                                let Some(key) =
-                                    self.tree().inner().list().key_at(index).cloned()
+                                let Some(key) = self.tree().inner().list().key_at(index).cloned()
                                 else {
                                     return;
                                 };
-                                self.tree_mut().inner_mut().list_mut().select_only(key.clone());
+                                self.tree_mut()
+                                    .inner_mut()
+                                    .list_mut()
+                                    .select_only(key.clone());
                                 return self.tree_mut().inner_mut().toggle(&key, store, ui);
                             }
                         }
@@ -747,14 +752,10 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) ->
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::QuerySmall);
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
-    let mut input = EditorView::of_document(
-        document,
-        600.0,
-        store,
-        ui,
-        &editor::theme::embedded(),
-    );
-    input.document.mark_input(input.editor, editor::theme::StyleId::QuerySmall);
+    let mut input = EditorView::of_document(document, 600.0, store, ui, &editor::theme::embedded());
+    input
+        .document
+        .mark_input(input.editor, editor::theme::StyleId::QuerySmall);
     input.set_caret(text.len() as u32);
     input.focus_text();
     input
@@ -849,7 +850,10 @@ mod tests {
         // shell files when the feed's generation moves.
         let a = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
         view.tree_mut().inner_mut().toggle(&a, &store, &ui);
-        view.tree_mut().inner_mut().list_mut().select_only(a.clone());
+        view.tree_mut()
+            .inner_mut()
+            .list_mut()
+            .select_only(a.clone());
         let shown = view.shown;
         feed(
             &mut store,
@@ -1019,7 +1023,9 @@ mod tests {
         // Down onto the hit under a.rs: a fresh key, a fresh open —
         // through the same Select command the key table emits.
         let step = view.tree().step_index(1).expect("a next row");
-        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().select_command(step)));
+        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(
+            view.tree().select_command(step),
+        ));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
@@ -1041,7 +1047,9 @@ mod tests {
 
         // Down again onto b.rs: navigates too.
         let step = view.tree().step_index(1).expect("a next row");
-        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().select_command(step)));
+        let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(
+            view.tree().select_command(step),
+        ));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
@@ -1051,7 +1059,9 @@ mod tests {
         // Enter on the same row still opens (the deliberate, focusing
         // jump — dedup never swallows an explicit pick).
         let at = view.tree().cursor_index().expect("a cursor row");
-        let pick = SearchCommand::List(imba::scroll::ScrollCommand::Content(view.tree().activate_command(at, ActivateTrigger::Enter)));
+        let pick = SearchCommand::List(imba::scroll::ScrollCommand::Content(
+            view.tree().activate_command(at, ActivateTrigger::Enter),
+        ));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
             hikit::modal::ModalView::take_request(&mut view).is_some(),
@@ -1061,7 +1071,12 @@ mod tests {
 
     /// A tall feed: a directory, `count` files, a hit in each — rows
     /// enough that the tree outgrows a 400px band.
-    fn tall_feed(store: &mut Store, lists: imba::store::Id<LocationLists>, count: usize, done: bool) {
+    fn tall_feed(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        count: usize,
+        done: bool,
+    ) {
         let rows: Vec<FoundLocation> = (0..count)
             .map(|index| {
                 let name = format!("f{index:02}.rs");
@@ -1083,8 +1098,13 @@ mod tests {
             &arena,
             skia_safe::Rect::from_wh(400.0, 400.0),
         );
-        imba::Widget::handle_event(&widget, &arena, event, skia_safe::Rect::from_wh(400.0, 400.0))
-            .into_commands()
+        imba::Widget::handle_event(
+            &widget,
+            &arena,
+            event,
+            skia_safe::Rect::from_wh(400.0, 400.0),
+        )
+        .into_commands()
     }
 
     fn scroll_move(command: &SearchCommand) -> bool {
@@ -1132,7 +1152,12 @@ mod tests {
 
         // More results land: the face refreshes.
         tall_feed(&mut store, lists, 20, false);
-        view.perform(&mut store, &ui, SearchCommand::Refresh, &mut batch.effects());
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Refresh,
+            &mut batch.effects(),
+        );
 
         assert_eq!(view.search.scroll_y(), 300.0, "the landing kept the scroll");
         assert_eq!(

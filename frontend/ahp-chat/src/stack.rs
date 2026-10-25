@@ -251,7 +251,10 @@ impl WidgetStack {
             stack.place_boxed(
                 grid.edge,
                 y,
-                lined(hikit::ui::text(&caps, ask.title.to_uppercase()), grid.column),
+                lined(
+                    hikit::ui::text(&caps, ask.title.to_uppercase()),
+                    grid.column,
+                ),
             );
             y += line;
             let invocation = ask.invocation.lines().next().unwrap_or("").to_owned();
@@ -283,7 +286,10 @@ impl WidgetStack {
                         hikit::ui::text(&row, option.label.clone()),
                     )
                     .on_click(move || StackCommand::Answer(index))
-                    .layout(arena, Constraints::tight(Size::new(grid.column, line)).loosen());
+                    .layout(
+                        arena,
+                        Constraints::tight(Size::new(grid.column, line)).loosen(),
+                    );
                 stack.place_boxed(grid.edge, y, pick);
                 y += line;
             }
@@ -299,7 +305,10 @@ impl WidgetStack {
                     hikit::ui::text(&caps, head),
                 )
                 .on_click(|| StackCommand::ToggleQueue)
-                .layout(arena, Constraints::tight(Size::new(grid.column, line)).loosen());
+                .layout(
+                    arena,
+                    Constraints::tight(Size::new(grid.column, line)).loosen(),
+                );
             stack.place_boxed(grid.edge, y, toggle);
             y += line;
             if !self.collapsed {
@@ -316,7 +325,10 @@ impl WidgetStack {
                             hikit::ui::text(&brief, "remove"),
                         )
                         .on_click(move || StackCommand::RemoveQueued(id.clone()))
-                        .layout(arena, Constraints::tight(Size::new(remove_w, line)).loosen());
+                        .layout(
+                            arena,
+                            Constraints::tight(Size::new(remove_w, line)).loosen(),
+                        );
                     stack.place_boxed(grid.edge + grid.column - remove_w, y, remove);
                     y += line;
                 }

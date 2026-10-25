@@ -25,9 +25,9 @@ pub fn document_for(
     };
     let text = text::text::Text::from_string_exact(source);
     let mut document = match language {
-        Some(language) => editor::document::Document::from_language(
-            text, language, languages, store, ui, theme,
-        ),
+        Some(language) => {
+            editor::document::Document::from_language(text, language, languages, store, ui, theme)
+        }
         None => editor::document::Document::plain_text(text),
     };
     if let Some(enrichers) = ::editor::env::Enrichers::of(store) {
