@@ -22,7 +22,6 @@ use crate::editor::EditorId;
 use crate::editor_view::EditorCommand;
 use crate::linecol::LineCol;
 use crate::location::ResourceLocation;
-use crate::markup::{IntervalId, MarkupId};
 
 /// A server's completion at a position: its items, and whether a
 /// longer query should ask again rather than filter these.
@@ -372,7 +371,7 @@ impl View for CompletionPopupView {
 pub struct Completer {
     /// The anchor: a styled interval in a markup of the editor's,
     /// moving with the text.
-    cover: Option<(MarkupId, IntervalId)>,
+    cover: Option<crate::document::FragmentKey>,
     query: String,
 
     anchor_offset: u32,
@@ -446,10 +445,8 @@ impl Completer {
 
     /// Where the anchor stands now.
     pub(crate) fn anchor_start(&self, document: &Document) -> Option<u32> {
-        let (markup, key) = self.cover?;
         document
-            .feature_markup(markup)?
-            .styled_range_of(key)
+            .fragment_range(self.cover?)
             .map(|range| range.start)
     }
 
@@ -511,7 +508,7 @@ impl Completer {
             rows: Arc::new(Vec::new()),
         };
         self.query = String::new();
-        self.open_cover(store, ui, document, editor, at, 1, fx);
+        self.open_cover(store, ui, document, at, 1);
     }
 
     fn launch_path(&mut self, fx: &mut Effects<'_, EditorCommand>) {
@@ -622,7 +619,7 @@ impl Completer {
         };
         let mut view = document.text().view();
         self.query = view.substring(cover + offset..caret);
-        self.open_cover(store, ui, document, editor, cover, offset, fx);
+        self.open_cover(store, ui, document, cover, offset);
         self.launch_items(document, editor, location, fx);
     }
 
@@ -654,32 +651,20 @@ impl Completer {
         fx.relaunch_erased(&mut self.lane, effect);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// The cover is POSITIONAL — a fragment rides the edits so the
+    /// session knows where it stands, and paints nothing. It was a
+    /// `Match`-styled markup span once, which lit one character
+    /// under every fresh popup.
     fn open_cover(
         &mut self,
         store: &Store,
         ui: &UiCtx,
         document: &mut Document,
-        editor: EditorId,
         cover: u32,
         anchor_offset: u32,
-        fx: &mut Effects<'_, EditorCommand>,
     ) {
-        let markup = document.add_markup();
-        document.show_markup(editor, markup);
-        let theme = crate::env::Themes::of(store);
-        let mut tints = crate::markup::Markup::new();
-        let key = tints.push_styled_keyed(cover..cover + 1, crate::theme::StyleId::Match);
-        document.replace_markup(
-            markup,
-            tints,
-            &[cover..cover + 1],
-            store,
-            ui,
-            &theme,
-            fx,
-        );
-        self.cover = Some((markup, key));
+        let set = document.add_fragment_set();
+        self.cover = Some(document.add_fragment(set, cover..cover + 1));
         self.anchor_offset = anchor_offset;
         self.refresh(store, ui);
     }
@@ -835,9 +820,9 @@ impl Completer {
         if let Some(token) = self.lane.take() {
             fx.cancel(token);
         }
-        if let Some((markup, _)) = self.cover.take() {
-            let theme = crate::env::Themes::of(store);
-            document.remove_markup(markup, &[], store, ui, &theme, fx);
+        let _ = (store, ui);
+        if let Some(key) = self.cover.take() {
+            document.remove_fragment_set(key.set);
         }
         *self = Self::default();
     }

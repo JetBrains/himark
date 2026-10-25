@@ -876,11 +876,6 @@ impl Markup {
     pub(crate) fn has_inlays(&self) -> bool {
         self.has_inlays
     }
-
-    /// The range a styled interval of this markup covers now.
-    pub(crate) fn styled_range_of(&self, key: IntervalId) -> Option<Range<u32>> {
-        self.shape.find_by_id(&key).map(|interval| interval.range)
-    }
 }
 
 impl Decoration {
@@ -1453,26 +1448,6 @@ impl Markup {
             key,
             value: Decoration::Styled(id),
         }]);
-    }
-
-    /// A styled span the CALLER will look up again by key — today
-    /// only the completion's anchor. It goes in the STRUCTURE lane,
-    /// not the bulk one: the bulk lane is a syntax highlighter's tens
-    /// of thousands of spans, and carrying a key index for all of
-    /// them to serve this one span is most of what a span costs
-    /// (`intervals::tests::cost`). Shape consumers all match on their
-    /// own `Decoration` variants, so a styled span is inert there,
-    /// and `merged_query` paints both lanes alike.
-    pub(crate) fn push_styled_keyed(&mut self, range: Range<u32>, id: StyleId) -> IntervalId {
-        let key = self.mint();
-        self.shape.insert([intervals::Interval {
-            range,
-            greedy_left: false,
-            greedy_right: false,
-            key,
-            value: Decoration::Styled(id),
-        }]);
-        key
     }
 
     pub(crate) fn set_unhide(&mut self, range: Range<u32>) -> Option<Range<u32>> {
