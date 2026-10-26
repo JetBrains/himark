@@ -9,3 +9,6 @@ pub mod text_view;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proptests;

@@ -10,3 +10,6 @@ pub mod reader;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod proptests;

@@ -9,3 +9,6 @@ rope = { path = "../rope" }
 
 [lib]
 path = "src/lib.rs"
+
+[dev-dependencies]
+proptest = "1.12"
