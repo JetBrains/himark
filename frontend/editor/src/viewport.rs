@@ -703,8 +703,14 @@ fn paint_rectangular_backgrounds(
     theme: &crate::theme::Theme,
 ) {
     let mut background: Option<RectangularBackground> = None;
+    // A block cut by the band's edge has no corner there: it goes on
+    // above the first line or below the last, so its box reaches past
+    // the band by more than a corner radius and the edge paints
+    // straight, as the whole-document paint has it (the 2026-10-26
+    // property finding: a band showed rounded corners at its edges).
+    let bleed = theme.part(crate::theme::CodePanelChrome::KEY).radius * 2.0 + 1.0;
 
-    for line in lines {
+    for (index, line) in lines.iter().enumerate() {
         let resolved = line.marks.resolved(theme);
         let rectangular = resolved.background.filter(|background| {
             matches!(
@@ -713,9 +719,15 @@ fn paint_rectangular_backgrounds(
             )
         });
         if let Some(line_background) = rectangular {
-            let top = line.top - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
-            let bottom =
+            let mut top = line.top - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
+            let mut bottom =
                 line.top + line.height - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
+            if index == 0 && line.marks.continues_before() {
+                top -= bleed;
+            }
+            if index + 1 == lines.len() && line.marks.continues_past() {
+                bottom += bleed;
+            }
             let inset = resolved.inset.unwrap_or(0.0);
 
             match &mut background {

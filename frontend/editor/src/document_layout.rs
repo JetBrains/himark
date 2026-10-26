@@ -326,10 +326,19 @@ impl DocumentLayout {
         let mut repair_start = None;
 
         let mut damaged = Vec::new();
+        // The element a deletion ends in lost its head; it begins
+        // again where the deletion landed, pushed right by any
+        // insert at the same spot. It needs damage of its own, or a
+        // repair resumes on it as if it were untouched (the
+        // 2026-10-26 property finding: a cross-line delete kept the
+        // second line's stale row, wrong width and all).
+        let mut landing: Option<u32> = None;
+        let mut landings: Vec<u32> = Vec::new();
 
         for op in operation.iter() {
             match op {
                 Op::Retain(len) => {
+                    landings.extend(landing.take());
                     offset = offset.saturating_add(len);
                 }
                 Op::Insert(text) => {
@@ -340,13 +349,38 @@ impl DocumentLayout {
                         Some(repair_start.map_or(start, |existing: u32| existing.min(start)));
                     byte_count = byte_count.saturating_add(len);
                     offset = offset.saturating_add(len);
+                    if landing.is_some() {
+                        landing = Some(offset);
+                    }
                 }
                 Op::Delete(text) => {
                     let len = text.len().min(u32::MAX as usize) as u32;
                     let start = Self::delete_bytes(&mut cursor, offset, len, &mut byte_count);
                     damaged.push(start);
+                    landing = Some(offset);
                     repair_start =
                         Some(repair_start.map_or(start, |existing: u32| existing.min(start)));
+                }
+            }
+        }
+        landings.extend(landing);
+        damaged.extend(landings.iter().copied());
+        for landing in landings.into_iter().filter(|landing| *landing < byte_count) {
+            // Whether a hard line starts where the deletion landed is
+            // the text's to say, not the old element's: a joined line
+            // leaves the next line's first row flagged as a start it
+            // no longer is, and the repair would lay the join as a
+            // line start. Clear it; the repair backs up to the real
+            // start and the producer re-flags what it lays.
+            if cursor.seek(BYTES, landing, SeekMode::After) {
+                while cursor.element().byte_size == 0 && cursor.advance() {}
+                if LayoutMeasure::metric_at(&cursor.position(), BYTES) == landing
+                    && cursor.element().safepoint
+                {
+                    let mut element = cursor.element().clone();
+                    element.safepoint = false;
+                    cursor.delete(1);
+                    cursor.insert(Rope::from_iter([element]));
                 }
             }
         }
@@ -540,6 +574,39 @@ impl DocumentLayout {
         self.rope = cursor.rope();
 
         let stop = LayoutMeasure::metric_at(&report.location, BYTES);
+        if !report.stopped && stop >= text_count && stop < self.byte_size() {
+            // The text ran out under the producer and the old layout
+            // still goes on: whatever follows describes bytes that no
+            // longer exist. Drop it rather than re-arm damage on it
+            // forever — a pass can never reach it.
+            let old_size = self.byte_size();
+            let mut cursor = self.rope.cursor();
+            if cursor.seek(BYTES, stop, SeekMode::After) {
+                let (head, _) = cursor.split();
+                self.rope = head;
+                self.widths
+                    .replace_bytes(u64::from(stop)..u64::from(old_size), Vec::new());
+            }
+        }
+        if !report.stopped && stop < text_count && stop < self.byte_size() {
+            // The budget ran out before a hard line start at `stop`,
+            // so a hard line starts there in the text as it stands.
+            // The old element standing there may still say otherwise
+            // — a continuation row whose head a deletion took — and
+            // every pass would then back up before it and run out of
+            // budget before reaching it again. Promote it.
+            let mut cursor = self.rope.cursor();
+            if cursor.seek(BYTES, stop, SeekMode::After)
+                && LayoutMeasure::metric_at(&cursor.position(), BYTES) == stop
+                && !cursor.element().safepoint
+            {
+                let mut element = cursor.element().clone();
+                element.safepoint = true;
+                cursor.delete(1);
+                cursor.insert(Rope::from_iter([element]));
+                self.rope = cursor.rope();
+            }
+        }
         if crate::env_flags::trace_resize() {
             eprintln!(
                 "[repair] start={repair_start} stop={stop} span={} budget={height_budget}",
@@ -1194,7 +1261,13 @@ impl Iterator for BudgetedItems<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining <= 0.0 || self.remaining_items == 0 {
-            if self.inner.peek()?.byte_size != 0 {
+            // Spent: the pass ends at the next hard line, never
+            // inside one. A line's rows are laid together (only its
+            // first row is a safepoint), so a cut mid-line would make
+            // the next pass start the line over, and a budget below
+            // one row's height would never get past it.
+            let next = self.inner.peek()?;
+            if next.byte_size != 0 && next.safepoint {
                 return None;
             }
             return self.inner.next();
@@ -1351,20 +1424,36 @@ fn append_paragraph(
     let byte_size = unit_end.saturating_sub(absolute_start) as usize;
     let resolved = marks.resolved(theme);
     let item = LayoutElement::new(byte_size, resolved.block_height.unwrap_or(0.0));
-    items.extend(visual_lines(
-        item,
-        marks,
-        segments,
-        inlay_hits,
-        absolute_start,
-        unit_end,
-        final_unit,
-        measure,
-        theme,
-        markup,
-        inline,
-        hidden,
-    ));
+    // Only the line's FIRST row is a safepoint. A soft-wrapped row
+    // breaks where it does because the next row's first word did
+    // not fit; shorten that word and the row above takes it back.
+    // So a repair for an edit in row k starts at the line's first
+    // row — the one start the row producer lays as a line start —
+    // and re-lays to the next line (the 2026-10-26 property
+    // finding: a deletion in row two left row one wrapped early).
+    let mut first = true;
+    items.extend(
+        visual_lines(
+            item,
+            marks,
+            segments,
+            inlay_hits,
+            absolute_start,
+            unit_end,
+            final_unit,
+            measure,
+            theme,
+            markup,
+            inline,
+            hidden,
+        )
+        .map(move |mut row| {
+            // The trailing empty line after a final newline is a row
+            // of the line before it too: it takes that line's height.
+            row.safepoint = std::mem::replace(&mut first, false);
+            row
+        }),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]

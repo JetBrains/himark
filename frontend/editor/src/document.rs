@@ -1929,6 +1929,14 @@ impl Document {
         let byte_count = crate::text_cursor::byte_count(&self.text);
 
         for id in self.editors.keys().copied().collect::<Vec<_>>() {
+            // A bounded editor's carets stay inside its window — the
+            // fragment moves with the edit, a caret transformed with
+            // a left bias at the window's start does not (the
+            // 2026-10-26 property finding).
+            let window = match self.editors.get(&id) {
+                Some(state) => self.editor_window(state),
+                None => continue,
+            };
             let Some(editor) = self.editors.get_mut(&id) else {
                 continue;
             };
@@ -1946,10 +1954,7 @@ impl Document {
                     })
                 });
             let repair_start = editor.layout.edit(&operation);
-            editor.carets = editor
-                .carets
-                .transformed(&operation)
-                .clamped(&(0..byte_count));
+            editor.carets = editor.carets.transformed(&operation).clamped(&window);
 
             editor.marked = editor
                 .marked
@@ -1993,6 +1998,15 @@ impl Document {
                     fx.settle();
                 }
             }
+        }
+
+        // The unhide overlay follows the caret's hard line, and the
+        // edit moved both. Caret commands refresh it themselves; a
+        // raw edit (docsync, undo, a sibling editor) must too — the
+        // 2026-10-26 property finding: newlines landing inside the
+        // caret's line left the neighbours' syntax revealed.
+        for id in self.editors.keys().copied().collect::<Vec<_>>() {
+            self.refresh_unhide(id, store, ui, theme);
         }
 
         self.pending_repairs(fx)

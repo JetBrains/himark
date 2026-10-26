@@ -238,6 +238,7 @@ pub(crate) enum Decoration {
 pub struct BlockStyle {
     ids: Vec<StyleId>,
 
+    continues_before: bool,
     continues_past: bool,
 
     alignment: Option<crate::theme::TextAlignment>,
@@ -259,6 +260,11 @@ impl BlockStyle {
 
     pub(crate) fn continues_past(&self) -> bool {
         self.continues_past
+    }
+
+    /// The block began on an earlier line.
+    pub(crate) fn continues_before(&self) -> bool {
+        self.continues_before
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1150,6 +1156,9 @@ fn classify_line_marks<'a, 'm>(
                     marks.add(*id);
                     if hit_range.end > range.end {
                         marks.continues_past = true;
+                    }
+                    if hit_range.start < range.start {
+                        marks.continues_before = true;
                     }
                 }
                 Decoration::Hidden => {

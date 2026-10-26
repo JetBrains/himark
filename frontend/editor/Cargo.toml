@@ -29,3 +29,4 @@ test-support = []
 
 [dev-dependencies]
 myersdiff = { path = "../myersdiff" }
+proptest = "1.12"

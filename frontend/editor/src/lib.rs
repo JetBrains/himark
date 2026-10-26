@@ -47,5 +47,7 @@ pub(crate) mod width_tree;
 pub mod test_document;
 
 #[cfg(test)]
+mod properties;
+#[cfg(test)]
 #[cfg(test)]
 mod tests;
