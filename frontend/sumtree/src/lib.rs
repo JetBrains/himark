@@ -6,4 +6,6 @@ pub mod summary;
 pub mod tree;
 
 #[cfg(test)]
+mod proptests;
+#[cfg(test)]
 mod tests;

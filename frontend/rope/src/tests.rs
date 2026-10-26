@@ -3,7 +3,7 @@
 
 use crate::{cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope};
 
-struct TextMeasure;
+pub(crate) struct TextMeasure;
 
 const LARGE_TEXT_FIXTURE: &str = include_str!("../testdata/large_fixture.txt");
 const GROWTH_TEXT_FIXTURE: &str = include_str!("../testdata/growth_fixture.txt");
@@ -32,7 +32,7 @@ impl Measure<char> for TextMeasure {
     }
 }
 
-fn rope_to_string(rope: &Rope<char, TextMeasure>) -> String {
+pub(crate) fn rope_to_string(rope: &Rope<char, TextMeasure>) -> String {
     rope.assert_well_balanced();
 
     if rope.is_empty() {
@@ -48,7 +48,7 @@ fn rope_to_string(rope: &Rope<char, TextMeasure>) -> String {
     out
 }
 
-fn assert_cursor_well_balanced(cursor: &crate::cursor::Cursor<char, TextMeasure>) {
+pub(crate) fn assert_cursor_well_balanced(cursor: &crate::cursor::Cursor<char, TextMeasure>) {
     cursor.clone().rope().assert_well_balanced();
 }
 
@@ -58,13 +58,13 @@ fn empty_rope() -> Rope<char, TextMeasure> {
     rope
 }
 
-fn rope_from_iter(elements: impl IntoIterator<Item = char>) -> Rope<char, TextMeasure> {
+pub(crate) fn rope_from_iter(elements: impl IntoIterator<Item = char>) -> Rope<char, TextMeasure> {
     let rope = Rope::<char, TextMeasure>::from_iter(elements);
     rope.assert_well_balanced();
     rope
 }
 
-fn rope_from_iter_with_branching(
+pub(crate) fn rope_from_iter_with_branching(
     elements: impl IntoIterator<Item = char>,
     leaf_capacity: usize,
     branching_factor: usize,
@@ -109,7 +109,11 @@ where
     model.splice(index.min(model.len())..index.min(model.len()), replacement);
 }
 
-fn model_seek(chars: &[char], metric_id: MetricId, value: u32) -> Option<(usize, Metrics<2>)> {
+pub(crate) fn model_seek(
+    chars: &[char],
+    metric_id: MetricId,
+    value: u32,
+) -> Option<(usize, Metrics<2>)> {
     if chars.is_empty() {
         return None;
     }
@@ -132,7 +136,7 @@ fn model_seek(chars: &[char], metric_id: MetricId, value: u32) -> Option<(usize,
     None
 }
 
-fn model_seek_before(
+pub(crate) fn model_seek_before(
     chars: &[char],
     metric_id: MetricId,
     value: u32,

@@ -205,35 +205,39 @@ impl<T: Clone, M: Measure<T>> Rope<T, M> {
         }
     }
 
+    /// One level up: the layer's nodes grouped into parents of at
+    /// most `branching_factor`, the groups as EVEN as possible rather
+    /// than greedy — a greedy cut of 33 nodes is 32 + 1, and the
+    /// lone child, under another lone child a level up, is the
+    /// single-child chain the balance invariant forbids (at 65,600
+    /// elements with the production constants).
     fn parent_layer(layer: Vec<BuildNode<T, M>>, branching_factor: usize) -> Vec<BuildNode<T, M>> {
-        let mut next = Vec::with_capacity(layer.len().div_ceil(branching_factor));
+        let groups = layer.len().div_ceil(branching_factor).max(1);
+        let base = layer.len() / groups;
+        let extra = layer.len() % groups;
+        let mut next = Vec::with_capacity(groups);
         let mut nodes = layer.into_iter();
 
-        loop {
+        for group in 0..groups {
+            let size = base + usize::from(group < extra);
             let mut length = 0;
             let mut metrics = M::zero();
-            let mut children = Vec::with_capacity(branching_factor);
+            let mut children = Vec::with_capacity(size);
 
-            while children.len() < branching_factor {
-                match nodes.next() {
-                    Some(child) => {
-                        length += child.metrics.length;
-                        M::add_assign(&mut metrics, child.metrics.metrics);
-                        children.push(Child {
-                            metrics: child.metrics,
-                            node: Arc::new(child.node),
-                        });
-                    }
-                    None => break,
-                }
+            for child in nodes.by_ref().take(size) {
+                length += child.metrics.length;
+                M::add_assign(&mut metrics, child.metrics.metrics);
+                children.push(Child {
+                    metrics: child.metrics,
+                    node: Arc::new(child.node),
+                });
             }
 
-            match children.is_empty() {
-                true => break,
-                false => next.push(BuildNode {
+            if !children.is_empty() {
+                next.push(BuildNode {
                     metrics: MetricsWithLength { length, metrics },
                     node: Node::Internal(children),
-                }),
+                });
             }
         }
 

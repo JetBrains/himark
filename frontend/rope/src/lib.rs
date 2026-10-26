@@ -9,4 +9,6 @@ pub mod siblings;
 pub mod zipper;
 
 #[cfg(test)]
+mod proptests;
+#[cfg(test)]
 mod tests;

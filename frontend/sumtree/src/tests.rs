@@ -10,16 +10,16 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-struct Span {
-    width: u32,
-    bytes: u32,
+pub(crate) struct Span {
+    pub(crate) width: u32,
+    pub(crate) bytes: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct SpanSummary {
-    count: usize,
-    bytes: u64,
-    max_width: u32,
+pub(crate) struct SpanSummary {
+    pub(crate) count: usize,
+    pub(crate) bytes: u64,
+    pub(crate) max_width: u32,
 }
 
 impl Summary for SpanSummary {
@@ -51,7 +51,7 @@ impl Item for Span {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
-struct Bytes(u64);
+pub(crate) struct Bytes(pub(crate) u64);
 
 impl Dimension<SpanSummary> for Bytes {
     fn from_summary(summary: &SpanSummary) -> Self {
@@ -92,7 +92,7 @@ fn spans(rng: &mut Rng, count: usize) -> Vec<Span> {
         .collect()
 }
 
-fn naive_summary(model: &[Span]) -> SpanSummary {
+pub(crate) fn naive_summary(model: &[Span]) -> SpanSummary {
     let mut out = SpanSummary::empty();
     for span in model {
         out.add(&span.summary());
@@ -100,7 +100,7 @@ fn naive_summary(model: &[Span]) -> SpanSummary {
     out
 }
 
-fn assert_matches_model(tree: &SumTree<Span>, model: &[Span]) {
+pub(crate) fn assert_matches_model(tree: &SumTree<Span>, model: &[Span]) {
     assert_eq!(tree.len(), model.len());
     let collected: Vec<Span> = tree.iter().cloned().collect();
     assert_eq!(collected, model);
@@ -108,7 +108,7 @@ fn assert_matches_model(tree: &SumTree<Span>, model: &[Span]) {
     assert_invariants(tree);
 }
 
-fn assert_invariants(tree: &SumTree<Span>) {
+pub(crate) fn assert_invariants(tree: &SumTree<Span>) {
     fn check(node: &Node<Span>, is_root: bool) -> (usize, SpanSummary, u8) {
         match node {
             Node::Leaf(items) => {
@@ -340,7 +340,7 @@ fn random_splices(rng: &mut Rng, len: usize, count: usize) -> Vec<Splice<Span>> 
     edits
 }
 
-fn apply_to_model(model: &[Span], edits: &[Splice<Span>]) -> Vec<Span> {
+pub(crate) fn apply_to_model(model: &[Span], edits: &[Splice<Span>]) -> Vec<Span> {
     let mut out = Vec::new();
     let mut cursor = 0;
     for edit in edits {

@@ -51,7 +51,7 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
     fn seek_metric(&mut self, metric_id: MetricId, metric_value: u32, mode: SeekMode) -> bool {
         loop {
             self.move_to_first_sibling();
-            if self.metric_is_before_sibling_set(metric_id, metric_value, mode) {
+            if self.metric_is_before_sibling_set(metric_id, metric_value) {
                 if !self.zipper.move_up() {
                     break self.zipper.metrics().length != 0;
                 }
@@ -171,26 +171,19 @@ impl<T: Clone, M: Measure<T>> Cursor<T, M> {
         }
     }
 
-    /// Whether the answer lies BEFORE the sibling set the cursor
-    /// starts in — i.e. the seek has to climb before it walks. The
-    /// mode decides the boundary: `Before` lands on the element that
-    /// ENDS at the target, so a sibling set that starts exactly there
-    /// is already too far (the element ending at its start sits in an
-    /// earlier set — or an earlier, since-emptied leaf would be the
-    /// landing and has no element to land on). `After` lands on the
-    /// element that CONTAINS the target, which a set starting there
-    /// does. A set at the rope's very start has nothing before it.
-    fn metric_is_before_sibling_set(
-        &self,
-        metric_id: MetricId,
-        metric_value: u32,
-        mode: SeekMode,
-    ) -> bool {
-        let location = M::metric_at(&self.zipper.location().metrics, metric_id);
-        match mode {
-            SeekMode::Before => location != 0 && metric_value <= location,
-            SeekMode::After => metric_value < location,
-        }
+    /// Whether the answer may lie BEFORE the sibling set the cursor
+    /// starts in — then the seek climbs before it walks. A set that
+    /// starts exactly at the target is already too far in either
+    /// mode: `Before` wants the element that ENDS at the target,
+    /// which sits in an earlier set, and `After` wants the FIRST
+    /// element standing at the target, which in a metric the
+    /// elements have zero width in (lines, for letters) may be many
+    /// elements and leaves earlier. Only a set with no elements
+    /// before it has nothing to climb for — counted in elements, not
+    /// in the metric, which can read zero deep into the rope.
+    fn metric_is_before_sibling_set(&self, metric_id: MetricId, metric_value: u32) -> bool {
+        let location = self.zipper.location();
+        location.length != 0 && metric_value <= M::metric_at(&location.metrics, metric_id)
     }
 
     fn index_is_before_or_at(&self, index: u32) -> bool {

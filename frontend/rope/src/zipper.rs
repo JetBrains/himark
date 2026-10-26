@@ -525,72 +525,104 @@ impl<T: Clone, M: Measure<T>> Zipper<T, M> {
     }
 
     pub(crate) fn delete(&mut self, mut length: u32) {
-        match length {
-            0 => {}
-            _ => {
-                match self.frame.siblings.make_owned() {
-                    Node::Internal(_) => panic!("cursor frame cannot be a branch"),
-                    Node::Leaf(elements) => {
-                        let index = (self.frame.sibling_index as usize).min(elements.len());
-                        let deleted = (length as usize).min(elements.len().saturating_sub(index));
-                        elements.drain(index..index + deleted);
-                        length -= deleted as u32;
-                    }
-                }
-
-                let mut child = self.frame.siblings.arc_clone();
-
-                for frame in self.frames.iter_mut().rev() {
-                    let index = frame.sibling_index as usize;
-
-                    match frame.siblings.make_owned() {
-                        Node::Internal(children) => {
-                            let index = index.min(children.len());
-
-                            match index < children.len() {
-                                true => {
-                                    children[index] = Child {
-                                        metrics: child.metrics(),
-                                        node: Arc::clone(&child),
-                                    };
-                                }
-                                false => {}
-                            }
-
-                            let delete_index = index.saturating_add(1).min(children.len());
-
-                            while 0 < length && delete_index < children.len() {
-                                match children[delete_index].metrics.length <= length {
-                                    true => {
-                                        length -= children[delete_index].metrics.length;
-                                        children.remove(delete_index);
-                                    }
-                                    false => {
-                                        let deleted =
-                                            Arc::make_mut(&mut children[delete_index].node)
-                                                .delete_prefix(length);
-                                        children[delete_index].metrics =
-                                            children[delete_index].node.metrics();
-                                        length -= deleted;
-                                    }
-                                }
-                            }
-                        }
-                        Node::Leaf(_) => panic!("parent frame cannot be a leaf"),
-                    }
-
-                    child = frame.siblings.arc_clone();
-                }
-
-                if self.is_leaf() {
-                    let size = self.frame.siblings.size();
-                    if size == 0 {
-                        self.frame.sibling_index = 0;
-                        self.move_next_leaf();
-                    }
-                }
+        if length == 0 {
+            return;
+        }
+        match self.frame.siblings.make_owned() {
+            Node::Internal(_) => panic!("cursor frame cannot be a branch"),
+            Node::Leaf(elements) => {
+                let index = (self.frame.sibling_index as usize).min(elements.len());
+                let deleted = (length as usize).min(elements.len().saturating_sub(index));
+                elements.drain(index..index + deleted);
+                length -= deleted as u32;
             }
         }
+
+        // A leaf the delete emptied leaves the tree on the way up —
+        // its parent drops it instead of re-keying it — and so does
+        // any ancestor emptied by that. The invariant is the rope's
+        // own: no non-root node is empty. An empty leaf left in place
+        // was a hole every walk had to know about (a seek standing in
+        // it reported "no element" for a rope full of them).
+        let mut pruned = self.frame.siblings.size() == 0 && !self.frames.is_empty();
+        let mut child = self.frame.siblings.arc_clone();
+
+        for frame in self.frames.iter_mut().rev() {
+            let index = frame.sibling_index as usize;
+
+            match frame.siblings.make_owned() {
+                Node::Internal(children) => {
+                    let index = index.min(children.len());
+                    let mut delete_index = match pruned {
+                        true => {
+                            if index < children.len() {
+                                children.remove(index);
+                            }
+                            index.min(children.len())
+                        }
+                        false => {
+                            if index < children.len() {
+                                children[index] = Child {
+                                    metrics: child.metrics(),
+                                    node: Arc::clone(&child),
+                                };
+                            }
+                            index.saturating_add(1).min(children.len())
+                        }
+                    };
+
+                    while 0 < length && delete_index < children.len() {
+                        match children[delete_index].metrics.length <= length {
+                            true => {
+                                length -= children[delete_index].metrics.length;
+                                children.remove(delete_index);
+                            }
+                            false => {
+                                let deleted = Arc::make_mut(&mut children[delete_index].node)
+                                    .delete_prefix(length);
+                                children[delete_index].metrics =
+                                    children[delete_index].node.metrics();
+                                length -= deleted;
+                            }
+                        }
+                    }
+                    pruned = children.is_empty();
+                }
+                Node::Leaf(_) => panic!("parent frame cannot be a leaf"),
+            }
+
+            child = frame.siblings.arc_clone();
+        }
+
+        if self.frame.siblings.size() == 0 && !self.frames.is_empty() {
+            self.stand_after_pruning();
+        }
+    }
+
+    /// The cursor's leaf (and maybe ancestors) were dropped from the
+    /// tree; stand where the deleted run was: on the element that
+    /// followed it, or past the end of the one before it.
+    fn stand_after_pruning(&mut self) {
+        while self.frame.siblings.size() == 0 {
+            let Some(parent) = self.frames.pop() else {
+                *self = Self::new(Arc::new(Node::empty()));
+                return;
+            };
+            self.frame = parent;
+        }
+
+        if (self.frame.sibling_index as usize) < self.frame.siblings.size() {
+            while self.move_down() {}
+            return;
+        }
+
+        let moved = self.move_left();
+        debug_assert!(moved, "a non-empty frame has a last child");
+        while self.move_down_last() {}
+        let metrics = self.metrics();
+        self.frame.location.length += metrics.length;
+        M::add_assign(&mut self.frame.location.metrics, metrics.metrics);
+        self.frame.sibling_index += 1;
     }
 
     pub(crate) fn rope(mut self) -> Rope<T, M> {
