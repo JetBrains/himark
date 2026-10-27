@@ -23,35 +23,6 @@ coding agents (Claude Code and Codex).
   <img src="readme-screenshots/code.png" width="49%" alt="Code editing" />
 </p>
 
-## Philosophy
-
-- **Performance above everything.** Any frame — not just a cached
-  one — must render inside the budget: everything the UI thread asks
-  is answered in logarithmic time by measured persistent trees, so a
-  gigabyte document, a million-row list, and a working tree full of
-  diffs all scroll and type at the same latency. The discipline and
-  the data structures behind it are the core of the design
-  ([Design.md](docs/Design.md)).
-- **Optimized for reading.** Most editor time is spent reading —
-  code, diffs, documentation, specs — so the reading surface comes
-  first: markdown and rich text render typographically, as documents,
-  not as syntax-highlighted source. And it is ONE editor: code and
-  markdown share the same engine with the exact same capabilities —
-  multiple carets, diffs (mixed side-by-side and inline), search,
-  folding, history — whether the buffer is a Rust file or a design
-  doc, with code presented brightly inside prose and prose inside
-  code.
-- **Chat is an input, not the destination.** The chat floats over the
-  surface; the real collaboration with an agent happens in markdown —
-  plans and designs go in, walkthroughs and a persistent paper trail
-  of changes come out, as documents you keep.
-- **An absent interface.** Completely flat, TUI-like but beautiful:
-  thin hairlines, almost no backgrounds, the pixels spent on text and
-  typography instead of chrome.
-- **Code from anywhere.** The same engine runs on a phone, a tablet,
-  a laptop, a large display, and in the browser, and the layout
-  adapts to the surface instead of assuming a desktop window.
-
 ## Repository layout
 
 ```
