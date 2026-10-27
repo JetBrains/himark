@@ -20,6 +20,8 @@
 //! fontique collection enumerates installed fonts as well.
 
 use std::cell::RefCell;
+
+pub use parley::BaseDirection;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -255,6 +257,11 @@ pub struct ShapeSpec<'a> {
     pub spans: &'a [SpanStyle],
     pub boxes: &'a [InlineBoxSpec],
     pub decorations: &'a [DecorationSpec],
+    /// The paragraph's base direction. `Auto` reads it off the first
+    /// strong character of `text`; a caller shaping a TAIL of a
+    /// paragraph passes the whole paragraph's, or the tail's rows
+    /// would lay under the other direction and measure differently.
+    pub base_direction: BaseDirection,
 }
 
 impl<'a> ShapeSpec<'a> {
@@ -269,6 +276,7 @@ impl<'a> ShapeSpec<'a> {
             spans: &[],
             boxes: &[],
             decorations: &[],
+            base_direction: BaseDirection::Auto,
         }
     }
 }
@@ -281,6 +289,9 @@ pub struct ShapedRow {
     pub top: f32,
     pub bottom: f32,
     pub advance: f32,
+    /// The row's extent less hanging whitespace — the measure the
+    /// layout's `width()` is the maximum of over its rows.
+    pub width: f32,
 }
 
 /// A decoration baked to paintable geometry at shape time.
@@ -329,6 +340,12 @@ impl ShapeKey {
         spec.size.to_bits().hash(&mut hasher);
         spec.line_height.map(f32::to_bits).hash(&mut hasher);
         spec.letter_spacing.to_bits().hash(&mut hasher);
+        match spec.base_direction {
+            BaseDirection::Auto => 0u8,
+            BaseDirection::Ltr => 1u8,
+            BaseDirection::Rtl => 2u8,
+        }
+        .hash(&mut hasher);
         for span in spec.spans {
             span.start.hash(&mut hasher);
             brush_of(span.color).hash(&mut hasher);
@@ -671,6 +688,7 @@ impl Shaper {
             let mut builder = ctx
                 .layouts
                 .ranged_builder(&mut ctx.fonts, spec.text, 1.0, true);
+            builder.set_base_direction(spec.base_direction);
             if let Some(family) = &family {
                 builder.push_default(parley::StyleProperty::FontFamily(
                     parley::FontFamily::named(family),
@@ -876,6 +894,8 @@ impl ParleyLine {
                     top: metrics.block_min_coord,
                     bottom: metrics.block_max_coord,
                     advance: metrics.advance,
+                    width: metrics.inline_min_coord + metrics.advance + metrics.indent.max(0.0)
+                        - metrics.hanging_advance,
                 }
             })
             .collect()

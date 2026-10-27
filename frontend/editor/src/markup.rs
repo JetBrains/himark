@@ -234,11 +234,24 @@ pub(crate) enum Decoration {
     Syntax(SyntaxId),
 }
 
+impl Decoration {
+    /// Whether the decoration shapes more than the bytes it covers:
+    /// a line's block style, alignment, inlay heights and a nested
+    /// syntax's markup are read over the whole line, so a deletion
+    /// that takes one restyles bytes it never touched.
+    fn reaches_past_its_bytes(&self) -> bool {
+        match self {
+            Self::Styled(id) => id.is_block(),
+            Self::Hidden | Self::Unhide => false,
+            Self::Inlay(_) | Self::Alignment(_) | Self::Syntax(_) => true,
+        }
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct BlockStyle {
     ids: Vec<StyleId>,
 
-    continues_before: bool,
     continues_past: bool,
 
     alignment: Option<crate::theme::TextAlignment>,
@@ -260,11 +273,6 @@ impl BlockStyle {
 
     pub(crate) fn continues_past(&self) -> bool {
         self.continues_past
-    }
-
-    /// The block began on an earlier line.
-    pub(crate) fn continues_before(&self) -> bool {
-        self.continues_before
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1157,9 +1165,6 @@ fn classify_line_marks<'a, 'm>(
                     if hit_range.end > range.end {
                         marks.continues_past = true;
                     }
-                    if hit_range.start < range.start {
-                        marks.continues_before = true;
-                    }
                 }
                 Decoration::Hidden => {
                     if start < end {
@@ -1757,59 +1762,83 @@ impl Markup {
         (Some((range, mode)), edit)
     }
 
+    /// Moves the markup with the edit. Returns the offsets, in the
+    /// edited text and in ascending order, where a deletion cut a
+    /// decoration whose effect reaches past its own bytes — a block
+    /// style, an alignment, an inlay, a nested syntax — so the lines
+    /// there no longer wear what they were laid under: the line a
+    /// taken decoration collapsed into, and for a shortened one the
+    /// lines on both sides of the cut, since the end now standing
+    /// there decides the line before it (a block's last row carries
+    /// its gap only where the block ends — the 2026-10-27 finding).
+    /// The owner damages those lines as it would any other markup
+    /// change; the bytes a deletion kept are damaged by the edit
+    /// itself.
     pub(crate) fn edit(
         &mut self,
         operation: &Operation,
         view: &mut text::text_view::TextView,
         base: u32,
-    ) {
+    ) -> Vec<u32> {
+        let mut restyled: Vec<u32> = Vec::new();
         if !self.syntaxes.is_empty() {
-            let Some(affected) = affected_span(operation) else {
-                self.shape.edit(interval_steps(operation));
-                self.styles.edit(interval_steps(operation));
-                return;
-            };
-            let mut touched: Vec<(SyntaxId, Option<(Operation, u32)>)> = Vec::new();
-            for interval in self.shape.query(affected, Order::Ascending) {
-                if let Decoration::Syntax(key) = interval.value {
-                    match rebase_into(
-                        operation,
-                        &interval.range,
-                        interval.greedy_left,
-                        interval.greedy_right,
-                    ) {
-                        Rebase::Outside => {}
-                        Rebase::Inside(inner) => {
-                            touched.push((*key, Some((inner, interval.range.start))));
+            if let Some(affected) = affected_span(operation) {
+                let mut touched: Vec<(SyntaxId, Option<(Operation, u32)>)> = Vec::new();
+                for interval in self.shape.query(affected, Order::Ascending) {
+                    if let Decoration::Syntax(key) = interval.value {
+                        match rebase_into(
+                            operation,
+                            &interval.range,
+                            interval.greedy_left,
+                            interval.greedy_right,
+                        ) {
+                            Rebase::Outside => {}
+                            Rebase::Inside(inner) => {
+                                touched.push((*key, Some((inner, interval.range.start))));
+                            }
+                            Rebase::Boundary => touched.push((*key, None)),
                         }
-                        Rebase::Boundary => touched.push((*key, None)),
                     }
                 }
-            }
-            for (key, inner) in touched {
-                match inner {
-                    Some((inner, start)) => {
-                        if let Some(entry) = self.syntaxes.get(&key) {
-                            let mut entry = entry.clone();
-                            let entry_base = base + start;
-                            entry.markup.edit(&inner, view, entry_base);
+                for (key, inner) in touched {
+                    match inner {
+                        Some((inner, start)) => {
+                            if let Some(entry) = self.syntaxes.get(&key) {
+                                let mut entry = entry.clone();
+                                let entry_base = base + start;
+                                let nested = entry.markup.edit(&inner, view, entry_base);
+                                restyled
+                                    .extend(nested.into_iter().map(|at| at.saturating_add(start)));
 
-                            entry.folds.edit(interval_steps(&inner));
-                            entry.outline.edit(interval_steps(&inner));
-                            if let Some(tree) = &mut entry.tree {
-                                tree.edit(&inner, view, entry_base);
+                                entry.folds.edit(interval_steps(&inner));
+                                entry.outline.edit(interval_steps(&inner));
+                                if let Some(tree) = &mut entry.tree {
+                                    tree.edit(&inner, view, entry_base);
+                                }
+                                self.syntaxes.insert_mut(key, entry);
                             }
-                            self.syntaxes.insert_mut(key, entry);
                         }
-                    }
-                    None => {
-                        self.syntaxes.remove_mut(&key);
+                        None => {
+                            self.syntaxes.remove_mut(&key);
+                        }
                     }
                 }
             }
         }
-        self.shape.edit(interval_steps(operation));
-        self.styles.edit(interval_steps(operation));
+        let cuts = self
+            .shape
+            .edit(interval_steps(operation))
+            .into_iter()
+            .chain(self.styles.edit(interval_steps(operation)));
+        for cut in cuts.filter(|cut| cut.value.reaches_past_its_bytes()) {
+            restyled.push(cut.at);
+            if !cut.whole && cut.at > 0 {
+                restyled.push(cut.at - 1);
+            }
+        }
+        restyled.sort_unstable();
+        restyled.dedup();
+        restyled
     }
 
     pub(crate) fn carry_live_views_in(&mut self, live: &Markup, ranges: &[Range<u32>]) {

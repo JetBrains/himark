@@ -321,6 +321,7 @@ pub(crate) struct ShapeInputs {
     pub(crate) ink: Vec<DecorationSpec>,
     pub(crate) boxes: Vec<InlineBoxSpec>,
     pub(crate) excisions: Vec<Excision>,
+    pub(crate) base_direction: imba::shape::BaseDirection,
 }
 
 impl ShapeInputs {
@@ -332,6 +333,7 @@ impl ShapeInputs {
         spec.spans = &self.spans;
         spec.boxes = &self.boxes;
         spec.decorations = &self.ink;
+        spec.base_direction = self.base_direction;
         crate::parley_line::shaper(ui).shape_spec(&spec)
     }
 }
@@ -529,6 +531,7 @@ pub(crate) fn shape_inputs(
     ink.retain(|decoration| decoration.range.start < decoration.range.end);
 
     ShapeInputs {
+        base_direction: imba::shape::BaseDirection::Auto,
         text: shape_text,
         families: base_families,
         size: base_size,

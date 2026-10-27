@@ -455,12 +455,16 @@ impl Document {
         key
     }
 
+    /// Applies the operation to the text, the markup and the log.
+    /// Returns the hard lines a deletion restyled by taking a
+    /// decoration with its bytes (`Markup::edit`), for the editors'
+    /// layouts to damage once they have taken the edit themselves.
     fn edit_substance(
         &mut self,
         operation: &Operation,
         identity: crate::edit_log::EditIdentity,
         provenance: Provenance,
-    ) {
+    ) -> Vec<Range<u32>> {
         let old_len = self.text.view().byte_count().min(u32::MAX as usize) as u32;
         // The door (`edit_with`) is the reject point; this is the
         // belt at the mutation itself — `Text::edit` clamps, so a
@@ -472,9 +476,10 @@ impl Document {
         );
         self.text = self.text.edit(operation);
 
+        let mut restyled: Vec<u32> = Vec::new();
         self.syntax = self.syntax.take().map(|mut syntax| {
             let mut view = self.text.view();
-            syntax.markup.edit(operation, &mut view, 0);
+            restyled.extend(syntax.markup.edit(operation, &mut view, 0));
             syntax.folds.edit(crate::markup::interval_steps(operation));
             syntax
                 .outline
@@ -491,11 +496,12 @@ impl Document {
             .iter()
             .map(|(id, markup)| {
                 let mut markup = markup.clone();
-                markup.edit(operation, &mut view, 0);
+                restyled.extend(markup.edit(operation, &mut view, 0));
                 (*id, markup)
             })
             .collect();
         drop(view);
+        let restyled = lines_holding(&self.text, restyled);
 
         self.fragments = self
             .fragments
@@ -537,6 +543,7 @@ impl Document {
 
             Provenance::Shared => self.undo.carry_across(operation, old_len),
         }
+        restyled
     }
 
     pub fn edited_since_parse(&self) -> Vec<Range<u32>> {
@@ -936,7 +943,8 @@ impl Document {
                 *range = EditLog::transform_range(range.clone(), &since);
             }
             let mut view = self.text.view();
-            root.markup.edit(&since, &mut view, 0);
+            let restyled = root.markup.edit(&since, &mut view, 0);
+            invalidated.extend(lines_holding(&self.text, restyled));
             root.folds.edit(crate::markup::interval_steps(&since));
             root.outline.edit(crate::markup::interval_steps(&since));
             if let Some(tree) = &mut root.tree {
@@ -1047,7 +1055,28 @@ impl Document {
         self.fragments.remove_mut(&set);
     }
 
+    /// A fragment that follows the text: an insert at either edge
+    /// falls outside it, so a positional marker (a completion's
+    /// cover) keeps pointing at the byte it was put on.
     pub fn add_fragment(&mut self, set: FragmentSetId, range: Range<u32>) -> FragmentKey {
+        self.insert_fragment(set, range, false)
+    }
+
+    /// A fragment that is an EDITING WINDOW — a bounded editor's
+    /// bounds: typing at its first byte or at its end grows it, so
+    /// what the window's own editor types never lands outside what
+    /// it shows (the 2026-10-26 property finding: a character typed
+    /// at a fence embed's first line pushed the window right).
+    pub fn add_editing_window(&mut self, set: FragmentSetId, range: Range<u32>) -> FragmentKey {
+        self.insert_fragment(set, range, true)
+    }
+
+    fn insert_fragment(
+        &mut self,
+        set: FragmentSetId,
+        range: Range<u32>,
+        greedy: bool,
+    ) -> FragmentKey {
         let Some(tree) = self.fragments.get(&set) else {
             debug_assert!(false, "add_fragment into a set that was never allocated");
             return FragmentKey {
@@ -1065,8 +1094,8 @@ impl Document {
         let key = crate::markup::IntervalId(next);
         tree.insert([intervals::Interval {
             range,
-            greedy_left: false,
-            greedy_right: false,
+            greedy_left: greedy,
+            greedy_right: greedy,
             key,
             value: (),
         }]);
@@ -1840,6 +1869,11 @@ impl Document {
         self.undo.reset();
     }
 
+    /// Applies the operation. Returns the hard lines whose style the
+    /// edit's deletions changed by cutting a decoration (see
+    /// `Markup::edit`): the document's own editors have them damaged
+    /// already; a caller keeping a layout of its own damages them
+    /// itself.
     pub fn edit(
         &mut self,
         operation: &Operation,
@@ -1847,7 +1881,7 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
-    ) {
+    ) -> Vec<Range<u32>> {
         self.edit_as(
             crate::edit_log::EditIdentity::mint(),
             operation,
@@ -1866,7 +1900,7 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
-    ) {
+    ) -> Vec<Range<u32>> {
         self.edit_with(identity, Provenance::Ours, operation, store, ui, theme, fx)
     }
 
@@ -1878,7 +1912,7 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
-    ) {
+    ) -> Vec<Range<u32>> {
         self.edit_with(
             identity,
             Provenance::Shared,
@@ -1899,7 +1933,7 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
-    ) {
+    ) -> Vec<Range<u32>> {
         // THE applicability contract: an operation covers this text
         // EXACTLY or it does not apply. `Text::edit` clamps, so a
         // mismatched operation would not crash here — it would
@@ -1908,7 +1942,7 @@ impl Document {
         // no padding at this door. An EMPTY operation is the explicit
         // no-op and applies nowhere.
         if operation.is_empty() {
-            return;
+            return Vec::new();
         }
         let byte_count = crate::text_cursor::byte_count(&self.text);
         if operation.old_len() != byte_count {
@@ -1923,9 +1957,9 @@ impl Document {
                 operation.old_len(),
                 byte_count,
             );
-            return;
+            return Vec::new();
         }
-        self.edit_substance(operation, identity, provenance);
+        let restyled = self.edit_substance(operation, identity, provenance);
         let byte_count = crate::text_cursor::byte_count(&self.text);
 
         for id in self.editors.keys().copied().collect::<Vec<_>>() {
@@ -1953,7 +1987,10 @@ impl Document {
                         (byte, top - editor.layout.height_before(byte), top)
                     })
                 });
-            let repair_start = editor.layout.edit(&operation);
+            let mut repair_start = editor.layout.edit(&operation);
+            for line in &restyled {
+                repair_start = repair_start.min(editor.layout.mark_modified_in(line.clone()));
+            }
             editor.carets = editor.carets.transformed(&operation).clamped(&window);
 
             editor.marked = editor
@@ -1973,7 +2010,9 @@ impl Document {
                     .and_then(|tree| tree.find_by_id(&key.key))
                     .map(|entry| entry.range.clone())
                     .unwrap_or(0..0);
-                editor.layout.set_window(Some(window));
+                if let Some(from) = editor.layout.set_window(Some(window)) {
+                    repair_start = repair_start.min(from);
+                }
             }
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
@@ -2009,7 +2048,8 @@ impl Document {
             self.refresh_unhide(id, store, ui, theme);
         }
 
-        self.pending_repairs(fx)
+        self.pending_repairs(fx);
+        restyled
     }
 
     fn clamped_carets(&self, editor: EditorId) -> Option<crate::caret::MultiCaret> {
@@ -3315,6 +3355,27 @@ impl Document {
         }
         self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, theme)
     }
+}
+
+/// The hard lines holding `offsets` (ascending), each with its
+/// newline, as damage ranges; the lines are distinct.
+fn lines_holding(text: &Text, offsets: Vec<u32>) -> Vec<Range<u32>> {
+    let mut view = text.view();
+    let byte_count = view.byte_count();
+    let mut lines: Vec<Range<u32>> = Vec::new();
+    for at in offsets {
+        let at = (at as usize).min(byte_count);
+        if lines.last().is_some_and(|line| at < line.end as usize) {
+            continue;
+        }
+        let line = view.line_at(at);
+        let start = view.line_start_offset(line).min(u32::MAX as usize) as u32;
+        let end = view.line_end_offset(line).min(u32::MAX as usize) as u32;
+        // The trailing empty line is a range of no bytes; damaged
+        // empty, it is reached from the byte before it.
+        lines.push(start..end);
+    }
+    lines
 }
 
 fn syntax_markup(syntax: &Option<Syntax>) -> &Markup {

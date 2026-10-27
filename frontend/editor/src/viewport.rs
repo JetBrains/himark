@@ -24,7 +24,13 @@ pub(crate) struct ViewportLine {
     pub(crate) x: f32,
     pub(crate) marks: BlockStyle,
 
-    pub(crate) box_extent: Option<f32>,
+    /// For a content-hugging box: the styled interval the box is,
+    /// and how far its content reaches. A box is ITS interval's: two
+    /// boxes standing next to each other stay two boxes, each as
+    /// wide as its own lines (the 2026-10-26 property finding: a band
+    /// painted a code block as wide as its rows, the whole paint as
+    /// wide as the block after it).
+    pub(crate) box_extent: Option<(Range<u32>, f32)>,
     pub(crate) inlays: InlayMetrics,
 
     #[allow(dead_code)]
@@ -41,6 +47,12 @@ pub(crate) struct ViewportLine {
     pub(crate) baseline: Option<f32>,
 
     pub(crate) diff: Option<DiffLineKind>,
+
+    /// For the band's first and last line only: the neighbouring
+    /// hard line outside the band carries the same rectangular
+    /// background, so the box is cut by the band's edge, not ended.
+    pub(crate) box_continues_above: bool,
+    pub(crate) box_continues_below: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -320,7 +332,12 @@ impl EditorViewport {
             let item_top = document_y + item.spacer_above;
             document_y += item.height + item.spacer_above;
 
-            if item_top > band.end {
+            // A line's box paints from `top_offset` above its top, so a
+            // line starting just past the band still paints into it:
+            // the band takes it in (the 2026-10-26 property finding:
+            // a code block's top edge missing from a band's last rows).
+            let reach = theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
+            if item_top - reach > band.end {
                 let spacer = item.spacer_above + carried_spacer;
                 if spacer > 0.5 && item_top - spacer < band.end {
                     viewport.tail_spacer = Some((item_top - spacer, spacer));
@@ -501,7 +518,9 @@ impl EditorViewport {
                 .background
                 .filter(|background| background.kind == crate::theme::BackgroundKind::Box)
                 .map(|_| match &box_cache {
-                    Some((range, extent)) if range.contains(&byte_start) => *extent,
+                    Some((range, extent)) if range.contains(&byte_start) => {
+                        (range.clone(), *extent)
+                    }
                     _ => {
                         let range =
                             overlaid
@@ -514,8 +533,8 @@ impl EditorViewport {
                                 })
                                 .unwrap_or(byte_start..byte_end);
                         let extent = layout.max_width_in(range.clone());
-                        box_cache = Some((range, extent));
-                        extent
+                        box_cache = Some((range.clone(), extent));
+                        (range, extent)
                     }
                 });
             viewport.lines.push(ViewportLine {
@@ -536,12 +555,95 @@ impl EditorViewport {
                 foldable,
                 baseline,
                 diff,
+                box_continues_above: false,
+                box_continues_below: false,
             });
 
             if !cursor.advance() {
                 break;
             }
             byte_start = byte_end;
+        }
+
+        // The band's edges: does the box of the first or last line go
+        // on past the band? A run merges on colour and x, so that is
+        // what the neighbouring hard line is asked.
+        {
+            let rectangular = |resolved: &crate::theme::TextAttributes| {
+                resolved
+                    .background
+                    .filter(|background| {
+                        matches!(
+                            background.kind,
+                            crate::theme::BackgroundKind::Block | crate::theme::BackgroundKind::Box
+                        )
+                    })
+                    .map(|background| (background.color, line_text_x(0.0, resolved)))
+            };
+            let text_count = view.byte_count().min(u32::MAX as usize) as u32;
+            // The neighbouring hard line's background and, for a box
+            // that hugs its content, which box it is.
+            let mut neighbour = |byte: u32| -> Option<(Color, f32, Option<(Range<u32>, f32)>)> {
+                let line = view.line_at(byte as usize);
+                let start = view.line_start_offset(line).min(u32::MAX as usize) as u32;
+                let end = view.line_end_offset(line).min(u32::MAX as usize) as u32;
+                let mut inline = Vec::new();
+                let mut hidden = Vec::new();
+                let marks = overlaid.marks_inline_hidden_in(
+                    start..end.max(start + 1),
+                    &mut inline,
+                    &mut hidden,
+                );
+                let resolved = marks.resolved(theme);
+                let (color, x) = rectangular(&resolved)?;
+                let extent = resolved
+                    .background
+                    .filter(|background| background.kind == crate::theme::BackgroundKind::Box)
+                    .map(|_| {
+                        let range =
+                            overlaid
+                                .styled_range_at(start, |id| {
+                                    theme.styles().attributes(id).background.is_some_and(
+                                        |background| {
+                                            background.kind == crate::theme::BackgroundKind::Box
+                                        },
+                                    )
+                                })
+                                .unwrap_or(start..end);
+                        (range.clone(), layout.max_width_in(range))
+                    });
+                Some((color, x, extent))
+            };
+            // The same run: colour, x, and the same box or no box.
+            let same =
+                |line: &ViewportLine, other: &Option<(Color, f32, Option<(Range<u32>, f32)>)>| {
+                    match (rectangular(&line.marks.resolved(theme)), other) {
+                        (Some((color, x)), Some((other_color, other_x, other_box))) => {
+                            color == *other_color
+                                && (x - other_x).abs() < 0.1
+                                && line.box_extent.as_ref().map(|(range, _)| range)
+                                    == other_box.as_ref().map(|(range, _)| range)
+                        }
+                        _ => false,
+                    }
+                };
+            if let Some(first) = viewport.lines.first() {
+                let other = (first.byte_start > 0)
+                    .then(|| neighbour(first.byte_start - 1))
+                    .flatten();
+                if same(first, &other) {
+                    viewport.lines[0].box_continues_above = true;
+                }
+            }
+            if let Some(last) = viewport.lines.last() {
+                let other = (last.byte_end < text_count)
+                    .then(|| neighbour(last.byte_end))
+                    .flatten();
+                if same(last, &other) {
+                    let index = viewport.lines.len() - 1;
+                    viewport.lines[index].box_continues_below = true;
+                }
+            }
         }
 
         crate::viewport_cache::store(memo_stamp, &viewport.lines);
@@ -691,7 +793,7 @@ struct RectangularBackground {
     color: Color,
     inset: f32,
 
-    extent: Option<f32>,
+    extent: Option<(Range<u32>, f32)>,
 }
 
 fn paint_rectangular_backgrounds(
@@ -722,10 +824,10 @@ fn paint_rectangular_backgrounds(
             let mut top = line.top - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
             let mut bottom =
                 line.top + line.height - theme.part(crate::theme::CodePanelChrome::KEY).top_offset;
-            if index == 0 && line.marks.continues_before() {
+            if index == 0 && line.box_continues_above {
                 top -= bleed;
             }
-            if index + 1 == lines.len() && line.marks.continues_past() {
+            if index + 1 == lines.len() && line.box_continues_below {
                 bottom += bleed;
             }
             let inset = resolved.inset.unwrap_or(0.0);
@@ -734,13 +836,9 @@ fn paint_rectangular_backgrounds(
                 Some(background)
                     if (background.x - line.x).abs() < 0.1
                         && background.color == line_background.color
-                        && background.extent.is_some() == line.box_extent.is_some() =>
+                        && background.extent == line.box_extent =>
                 {
                     background.bottom = background.bottom.max(bottom);
-                    background.extent = match (background.extent, line.box_extent) {
-                        (Some(run), Some(line)) => Some(run.max(line)),
-                        _ => background.extent,
-                    };
                 }
                 _ => {
                     draw_rectangular_background(
@@ -757,7 +855,7 @@ fn paint_rectangular_backgrounds(
                         bottom,
                         color: line_background.color,
                         inset,
-                        extent: line.box_extent,
+                        extent: line.box_extent.clone(),
                     });
                 }
             }
@@ -791,8 +889,8 @@ fn draw_rectangular_background(
 
     let left = (background.x - background.inset).max(document_x);
 
-    let right = match background.extent {
-        Some(extent) => (document_x + extent).max(left + 1.0),
+    let right = match &background.extent {
+        Some((_, extent)) => (document_x + extent).max(left + 1.0),
         None => (document_x + layout_width).max(left + 1.0),
     };
 

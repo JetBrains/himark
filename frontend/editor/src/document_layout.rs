@@ -18,12 +18,21 @@ use crate::{
 
 const DOCUMENT_RANK: usize = 3;
 const VERTICAL_PX: MetricId = MetricId(0);
-const SAFEPOINTS: MetricId = MetricId(1);
+const LINE_STARTS: MetricId = MetricId(1);
 pub(crate) const BYTES: MetricId = MetricId(2);
 
 #[derive(Clone)]
 pub(crate) struct LayoutElement {
+    /// A repair may resume here: the rows after an aligned,
+    /// undamaged row come out the same however the line was entered.
     pub(crate) safepoint: bool,
+    /// The first row of a hard line: where an edit that changes line
+    /// structure stops mattering.
+    pub(crate) line_start: bool,
+    /// The row's hard line holds right-to-left text. Such a line is
+    /// always laid whole: shaped as a suffix its rows measure a
+    /// shade differently, even under the line's base direction.
+    pub(crate) bidi: bool,
     pub(crate) byte_size: u32,
     pub(crate) height: f32,
 
@@ -168,6 +177,8 @@ impl DocumentLayout {
             }
             elements.push(LayoutElement {
                 safepoint: true,
+                line_start: true,
+                bidi: false,
                 byte_size: byte_count - covered,
                 height: 0.0,
                 width: 0.0,
@@ -311,8 +322,29 @@ impl DocumentLayout {
         self.window.is_some()
     }
 
-    pub(crate) fn set_window(&mut self, window: Option<Range<u32>>) {
+    /// The window to lay out, after the text has been edited. The
+    /// trailing empty line after a final newline is a whole-text
+    /// affair — a window over the whole text has one, a proper
+    /// window has not — so when the window's extent flips between
+    /// the two, the last hard line is damaged and its start comes
+    /// back for the repair to begin at (the 2026-10-26 property
+    /// finding: a deletion before an editing window pulled it to
+    /// the text's start, and the trailing line never appeared).
+    pub(crate) fn set_window(&mut self, window: Option<Range<u32>>) -> Option<u32> {
+        let byte_size = self.byte_size();
+        let whole = |window: &Option<Range<u32>>| {
+            window
+                .as_ref()
+                .is_none_or(|window| window.start == 0 && window.end >= byte_size)
+        };
+        let flipped = whole(&self.window) != whole(&window);
         self.window = window;
+        if !flipped || byte_size == 0 {
+            return None;
+        }
+        let from = self.line_start_at_or_before(byte_size - 1);
+        self.damage.add(from..byte_size);
+        Some(from)
     }
 
     pub fn layout_width(&self) -> f32 {
@@ -332,8 +364,23 @@ impl DocumentLayout {
         // repair resumes on it as if it were untouched (the
         // 2026-10-26 property finding: a cross-line delete kept the
         // second line's stale row, wrong width and all).
-        let mut landing: Option<u32> = None;
-        let mut landings: Vec<u32> = Vec::new();
+        // A deletion's landing: (where it lands, whether a newline
+        // went with it, whether it began at a line's first byte). The
+        // landing moves right under an insert at the same spot.
+        let mut landing: Option<(u32, bool, bool)> = None;
+        let mut landings: Vec<(u32, bool, bool)> = Vec::new();
+        // Where a newline came or went: the rows after it up to the
+        // next hard line start changed line, and a line's facts —
+        // its block style, its alignment, its last row's gap — sit on
+        // every row of it. Those rows re-lay; nothing past the next
+        // line start does.
+        let mut reshaped_lines: Vec<u32> = Vec::new();
+        // Positions an inserted newline now precedes: the element
+        // standing there starts a line, whatever it used to be.
+        let mut starts_now: Vec<u32> = Vec::new();
+        let reshapes = |text: &str| {
+            text.contains('\n') || text.chars().any(|ch| strong_direction(ch) == Some(true))
+        };
 
         for op in operation.iter() {
             match op {
@@ -348,41 +395,73 @@ impl DocumentLayout {
                     repair_start =
                         Some(repair_start.map_or(start, |existing: u32| existing.min(start)));
                     byte_count = byte_count.saturating_add(len);
+                    let from = offset;
                     offset = offset.saturating_add(len);
-                    if landing.is_some() {
-                        landing = Some(offset);
+                    if let Some((_, newline, line_head)) = landing {
+                        landing = Some((offset, newline, line_head));
+                    }
+                    if reshapes(&text) {
+                        // The line the insert starts in and the one
+                        // it ends in: with a newline inside, the two
+                        // halves of the old line are lines of their
+                        // own now, each styled over its own bytes.
+                        reshaped_lines.push(from);
+                        reshaped_lines.push(offset);
+                    }
+                    if text.ends_with('\n') {
+                        starts_now.push(offset);
                     }
                 }
                 Op::Delete(text) => {
                     let len = text.len().min(u32::MAX as usize) as u32;
-                    let start = Self::delete_bytes(&mut cursor, offset, len, &mut byte_count);
+                    let (start, line_head) =
+                        Self::delete_bytes(&mut cursor, offset, len, &mut byte_count);
                     damaged.push(start);
-                    landing = Some(offset);
+                    let newline = reshapes(&text) || landing.is_some_and(|(_, newline, _)| newline);
+                    let line_head = line_head || landing.is_some_and(|(_, _, head)| head);
+                    landing = Some((offset, newline, line_head));
                     repair_start =
                         Some(repair_start.map_or(start, |existing: u32| existing.min(start)));
                 }
             }
         }
         landings.extend(landing);
-        damaged.extend(landings.iter().copied());
-        for landing in landings.into_iter().filter(|landing| *landing < byte_count) {
-            // Whether a hard line starts where the deletion landed is
-            // the text's to say, not the old element's: a joined line
-            // leaves the next line's first row flagged as a start it
-            // no longer is, and the repair would lay the join as a
-            // line start. Clear it; the repair backs up to the real
-            // start and the producer re-flags what it lays.
-            if cursor.seek(BYTES, landing, SeekMode::After) {
-                while cursor.element().byte_size == 0 && cursor.advance() {}
-                if LayoutMeasure::metric_at(&cursor.position(), BYTES) == landing
-                    && cursor.element().safepoint
-                {
-                    let mut element = cursor.element().clone();
-                    element.safepoint = false;
-                    cursor.delete(1);
-                    cursor.insert(Rope::from_iter([element]));
+        let flag_line_start =
+            |cursor: &mut Cursor<LayoutElement, LayoutMeasure>, at: u32, starts: bool| {
+                if at < byte_count && cursor.seek(BYTES, at, SeekMode::After) {
+                    while cursor.element().byte_size == 0 && cursor.advance() {}
+                    if LayoutMeasure::metric_at(&cursor.position(), BYTES) == at
+                        && cursor.element().line_start != starts
+                    {
+                        let mut element = cursor.element().clone();
+                        element.line_start = starts;
+                        cursor.delete(1);
+                        cursor.insert(Rope::from_iter([element]));
+                    }
                 }
+            };
+        for (at, newline, line_head) in landings {
+            damaged.push(at);
+            if newline {
+                reshaped_lines.push(at);
             }
+            if newline || line_head {
+                // The element standing at the landing starts a line
+                // exactly when what precedes it does: an inserted
+                // newline, or the newline (or text start) that
+                // preceded the line whose head the deletion took. A
+                // deleted newline alone makes it a continuation. The
+                // flag must be true to the text — a bidi line's rows
+                // are laid from the line start the flags give, and a
+                // first row flagged as a continuation sends the
+                // repair to the previous line, where it converges
+                // before it ever reaches the damage (the 2026-10-27
+                // property finding: a never-settling worker).
+                flag_line_start(&mut cursor, at, starts_now.contains(&at) || line_head);
+            }
+        }
+        for at in starts_now {
+            flag_line_start(&mut cursor, at, true);
         }
 
         self.rope = cursor.rope();
@@ -398,7 +477,123 @@ impl DocumentLayout {
             let start = start.min(self.byte_size().saturating_sub(1));
             self.damage.add(start..start.saturating_add(1));
         }
-        repair_start.unwrap_or(offset)
+        // One cursor for the restart and every reshaped line: the
+        // seeks are near each other, and a cursor climbs only as far
+        // as the next target needs, where a fresh one descends from
+        // the root every time.
+        let byte_size = self.byte_size();
+        let mut cursor = self.rope.cursor();
+        let mut restart =
+            Self::restart_before_on(&mut cursor, byte_size, repair_start.unwrap_or(offset));
+        for at in reshaped_lines {
+            // The hard line the newline edit lands in is a different
+            // line now — joined with its neighbour or cut from its
+            // tail — and its block style, resolved over the whole
+            // line, may have changed for every row of it, the ones
+            // before the edit included.
+            let from = Self::line_start_at_or_before_on(&mut cursor, byte_size, at);
+            let to = Self::next_line_start_after_on(&mut cursor, byte_size, at);
+            if to > from {
+                self.damage.add(from..to);
+            }
+            restart = restart.min(from);
+        }
+        restart
+    }
+
+    /// The start of the hard line holding `byte`: the nearest
+    /// line-start element at or before it, or 0.
+    fn line_start_at_or_before(&self, byte: u32) -> u32 {
+        if self.rope.is_empty() {
+            return 0;
+        }
+        Self::line_start_at_or_before_on(&mut self.rope.cursor(), self.byte_size(), byte)
+    }
+
+    /// `line_start_at_or_before` on a caller's cursor, which may stand
+    /// anywhere in a non-empty layout of `byte_size` bytes.
+    fn line_start_at_or_before_on(
+        cursor: &mut Cursor<LayoutElement, LayoutMeasure>,
+        byte_size: u32,
+        byte: u32,
+    ) -> u32 {
+        let byte = byte.min(byte_size.saturating_sub(1));
+        if !cursor.seek(BYTES, byte, SeekMode::After) {
+            return 0;
+        }
+        if cursor.element().line_start {
+            return LayoutMeasure::metric_at(&cursor.position(), BYTES);
+        }
+        let starts_before = LayoutMeasure::metric_at(&cursor.position(), LINE_STARTS);
+        if starts_before == 0 || !cursor.seek(LINE_STARTS, starts_before, SeekMode::Before) {
+            return 0;
+        }
+        LayoutMeasure::metric_at(&cursor.position(), BYTES)
+    }
+
+    /// The start of the first hard line beginning after `byte`, or
+    /// the layout's end.
+    fn next_line_start_after(&self, byte: u32) -> u32 {
+        if self.rope.is_empty() {
+            return self.byte_size();
+        }
+        Self::next_line_start_after_on(&mut self.rope.cursor(), self.byte_size(), byte)
+    }
+
+    /// `next_line_start_after` on a caller's cursor, which may stand
+    /// anywhere in a non-empty layout of `byte_size` bytes.
+    fn next_line_start_after_on(
+        cursor: &mut Cursor<LayoutElement, LayoutMeasure>,
+        byte_size: u32,
+        byte: u32,
+    ) -> u32 {
+        if byte >= byte_size || !cursor.seek(BYTES, byte, SeekMode::After) {
+            return byte_size;
+        }
+        loop {
+            let at = LayoutMeasure::metric_at(&cursor.position(), BYTES);
+            if at > byte && cursor.element().line_start {
+                return at;
+            }
+            if !cursor.advance() {
+                return byte_size;
+            }
+        }
+    }
+
+    /// Where a repair of a change at `byte` starts: the row BEFORE
+    /// the one holding it. A greedy break ends a row where the next
+    /// row's first word stopped fitting, so a change to that word —
+    /// and nothing further down — can pull text back up a row. One
+    /// row of context is exact; the whole hard line would be paid
+    /// for nothing (the 2026-10-26 property finding: a deletion in
+    /// row two left row one wrapped early).
+    fn restart_before(&self, byte: u32) -> u32 {
+        if self.rope.is_empty() {
+            return 0;
+        }
+        Self::restart_before_on(&mut self.rope.cursor(), self.byte_size(), byte)
+    }
+
+    /// `restart_before` on a caller's cursor, which may stand anywhere
+    /// in a non-empty layout of `byte_size` bytes.
+    fn restart_before_on(
+        cursor: &mut Cursor<LayoutElement, LayoutMeasure>,
+        byte_size: u32,
+        byte: u32,
+    ) -> u32 {
+        let byte = byte.min(byte_size.saturating_sub(1));
+        if !cursor.seek(BYTES, byte, SeekMode::After) {
+            return 0;
+        }
+        if cursor.element().bidi {
+            return Self::line_start_at_or_before_on(cursor, byte_size, byte);
+        }
+        let row = LayoutMeasure::metric_at(&cursor.position(), BYTES);
+        if row == 0 || !cursor.seek(BYTES, row, SeekMode::Before) {
+            return row;
+        }
+        LayoutMeasure::metric_at(&cursor.position(), BYTES)
     }
 
     pub(crate) fn mark_modified(&mut self, byte_start: u32) -> u32 {
@@ -407,7 +602,7 @@ impl DocumentLayout {
         }
         let byte_start = byte_start.min(self.byte_size().saturating_sub(1));
         self.damage.add(byte_start..byte_start.saturating_add(1));
-        byte_start
+        self.restart_before(byte_start)
     }
 
     pub(crate) fn mark_modified_in(&mut self, range: Range<u32>) -> u32 {
@@ -421,7 +616,7 @@ impl DocumentLayout {
             return self.mark_modified(range.start);
         }
         self.damage.add(range.clone());
-        range.start
+        self.restart_before(range.start)
     }
 
     pub fn repair_layout(
@@ -520,15 +715,27 @@ impl DocumentLayout {
         self.layout_width = width;
         self.shaped_theme = theme.name_shared();
 
-        let mut cursor = self.rope.cursor();
-        let repair_start = match self.rope.is_empty() {
-            true => 0,
-            false => Self::seek_repair_start(&mut cursor, byte_start.min(self.byte_size())),
-        };
         let text_count = text.view().byte_count().min(u32::MAX as usize) as u32;
         let window = match &self.window {
             Some(range) => range.start.min(text_count)..range.end.min(text_count),
             None => 0..text_count,
+        };
+        let mut cursor = self.rope.cursor();
+        let repair_start = match self.rope.is_empty() {
+            true => 0,
+            false => {
+                let mut start =
+                    Self::seek_repair_start(&mut cursor, byte_start.min(self.byte_size()));
+                // A bidi line is laid whole. The text says whether the
+                // line is one — an old row's flag may outlive the
+                // right-to-left text that earned it.
+                if !cursor.element().line_start && line_has_rtl(text, start) {
+                    start = self.line_start_at_or_before(start);
+                    cursor = self.rope.cursor();
+                    start = Self::seek_repair_start(&mut cursor, start);
+                }
+                start
+            }
         };
 
         #[cfg(debug_assertions)]
@@ -560,6 +767,7 @@ impl DocumentLayout {
             remaining: height_budget,
 
             remaining_items: 512,
+            in_bidi_line: false,
         };
 
         let report = rewrite(
@@ -574,6 +782,30 @@ impl DocumentLayout {
         self.rope = cursor.rope();
 
         let stop = LayoutMeasure::metric_at(&report.location, BYTES);
+        if !report.stopped && stop > 0 && stop < text_count && stop < self.byte_size() {
+            // The budget ended the pass before a token starting at
+            // `stop`; the old element left standing there — often a
+            // cut remnant, which `cut` flags as no line start — begins
+            // where that token begins. The text knows whether a hard
+            // line starts there: the byte before is a newline.
+            let mut before = Vec::new();
+            text.view()
+                .byte_range_into(stop as usize - 1, stop as usize, &mut before);
+            let starts_line = before.first() == Some(&b'\n');
+            let mut cursor = self.rope.cursor();
+            if cursor.seek(BYTES, stop, SeekMode::After) {
+                while cursor.element().byte_size == 0 && cursor.advance() {}
+                if LayoutMeasure::metric_at(&cursor.position(), BYTES) == stop
+                    && cursor.element().line_start != starts_line
+                {
+                    let mut element = cursor.element().clone();
+                    element.line_start = starts_line;
+                    cursor.delete(1);
+                    cursor.insert(Rope::from_iter([element]));
+                    self.rope = cursor.rope();
+                }
+            }
+        }
         if !report.stopped && stop >= text_count && stop < self.byte_size() {
             // The text ran out under the producer and the old layout
             // still goes on: whatever follows describes bytes that no
@@ -586,25 +818,6 @@ impl DocumentLayout {
                 self.rope = head;
                 self.widths
                     .replace_bytes(u64::from(stop)..u64::from(old_size), Vec::new());
-            }
-        }
-        if !report.stopped && stop < text_count && stop < self.byte_size() {
-            // The budget ran out before a hard line start at `stop`,
-            // so a hard line starts there in the text as it stands.
-            // The old element standing there may still say otherwise
-            // — a continuation row whose head a deletion took — and
-            // every pass would then back up before it and run out of
-            // budget before reaching it again. Promote it.
-            let mut cursor = self.rope.cursor();
-            if cursor.seek(BYTES, stop, SeekMode::After)
-                && LayoutMeasure::metric_at(&cursor.position(), BYTES) == stop
-                && !cursor.element().safepoint
-            {
-                let mut element = cursor.element().clone();
-                element.safepoint = true;
-                cursor.delete(1);
-                cursor.insert(Rope::from_iter([element]));
-                self.rope = cursor.rope();
             }
         }
         if crate::env_flags::trace_resize() {
@@ -718,7 +931,7 @@ impl DocumentLayout {
             "width mirror byte coverage diverged from the layout"
         );
         let metrics = self.metrics();
-        debug_assert!(LayoutMeasure::metric_at(&metrics, SAFEPOINTS) <= self.len() as u32);
+        debug_assert!(LayoutMeasure::metric_at(&metrics, LINE_STARTS) <= self.len() as u32);
         let _byte_size = LayoutMeasure::metric_at(&metrics, BYTES);
     }
 
@@ -889,6 +1102,10 @@ impl DocumentLayout {
         LayoutMeasure::metric_at(&self.metrics(), BYTES)
     }
 
+    /// The element holding `byte_start`, past any zero-byte ones
+    /// there. A repair starts exactly where asked: an edit's own start
+    /// already stands a row early (`restart_before`), a budget stop
+    /// resumes where it stopped.
     fn seek_repair_start(
         cursor: &mut Cursor<LayoutElement, LayoutMeasure>,
         byte_start: u32,
@@ -897,22 +1114,6 @@ impl DocumentLayout {
             cursor.seek(BYTES, byte_start, SeekMode::After),
             "layout repair byte offset must be seekable"
         );
-
-        if !cursor.element().safepoint {
-            let safepoints = LayoutMeasure::metric_at(&cursor.position(), SAFEPOINTS);
-            if safepoints == 0 {
-                assert!(
-                    cursor.seek(BYTES, 0, SeekMode::After),
-                    "layout start must be seekable"
-                );
-            } else {
-                assert!(
-                    cursor.seek(SAFEPOINTS, safepoints, SeekMode::Before),
-                    "previous layout safepoint must be seekable"
-                );
-            }
-        }
-
         while cursor.element().byte_size == 0 && cursor.advance() {}
 
         LayoutMeasure::metric_at(&cursor.position(), BYTES)
@@ -931,6 +1132,8 @@ impl DocumentLayout {
         if byte_count == 0 {
             cursor.insert(Rope::from_iter([LayoutElement {
                 safepoint: true,
+                line_start: true,
+                bidi: false,
                 byte_size: len,
                 height: 0.0,
                 width: 0.0,
@@ -952,17 +1155,24 @@ impl DocumentLayout {
         start
     }
 
+    /// Removes `len` bytes at `offset` from the elements holding them.
+    /// Returns the start of the first element touched and whether the
+    /// deletion began at a line's first byte — the element standing
+    /// at `offset` afterwards is then that line's first row, whatever
+    /// its own flag says.
     fn delete_bytes(
         cursor: &mut Cursor<LayoutElement, LayoutMeasure>,
         offset: u32,
         mut len: u32,
         byte_count: &mut u32,
-    ) -> u32 {
+    ) -> (u32, bool) {
         if len == 0 || *byte_count == 0 {
-            return offset;
+            return (offset, false);
         }
 
         let mut repair_start = offset;
+        let mut line_head = false;
+        let mut first = true;
         len = len.min(byte_count.saturating_sub(offset));
 
         while len != 0 && *byte_count != 0 {
@@ -980,13 +1190,17 @@ impl DocumentLayout {
                 == 0
             {
                 if !cursor.advance() {
-                    return repair_start;
+                    return (repair_start, line_head);
                 }
                 start = LayoutMeasure::metric_at(&cursor.position(), BYTES);
             }
             repair_start = repair_start.min(start);
             let mut element = cursor.element().clone();
             let local = target.saturating_sub(start);
+            if first {
+                line_head = local == 0 && element.line_start;
+                first = false;
+            }
             let available = element.byte_size.saturating_sub(local);
             let removed = len.min(available);
             if removed == 0 {
@@ -1002,7 +1216,7 @@ impl DocumentLayout {
             len -= removed;
         }
 
-        repair_start
+        (repair_start, line_head)
     }
 }
 
@@ -1010,6 +1224,8 @@ impl LayoutElement {
     fn new(byte_size: usize, height: f32) -> Self {
         Self {
             safepoint: true,
+            line_start: true,
+            bidi: false,
             byte_size: byte_size.min(u32::MAX as usize) as u32,
             height,
             width: 0.0,
@@ -1042,7 +1258,7 @@ impl Measure<LayoutElement> for LayoutMeasure {
             (item.height + item.spacer_above)
                 .ceil()
                 .min(u32::MAX as f32) as u32,
-            u32::from(item.safepoint),
+            u32::from(item.line_start),
             item.byte_size,
         ])
     }
@@ -1054,6 +1270,10 @@ struct LayoutSafepoints<'a> {
 
 impl Safepoint<LayoutElement> for LayoutSafepoints<'_> {
     fn can_resume(&self, element: &LayoutElement, alignment: u32) -> bool {
+        // A bidi line is laid whole: no resuming on its inner rows.
+        if element.bidi && !element.line_start {
+            return false;
+        }
         let start = match element.byte_size {
             0 => alignment.saturating_sub(1),
             _ => alignment,
@@ -1070,6 +1290,7 @@ impl Safepoint<LayoutElement> for LayoutSafepoints<'_> {
     fn cut(&self, mut element: LayoutElement, offset: u32) -> LayoutElement {
         element.byte_size = element.byte_size.saturating_sub(offset);
         element.safepoint = true;
+        element.line_start = false;
         element
     }
 }
@@ -1117,6 +1338,8 @@ impl<'a> WindowedItems<'a> {
     fn placeholder(byte_size: u32) -> LayoutElement {
         LayoutElement {
             safepoint: true,
+            line_start: true,
+            bidi: false,
             byte_size,
             height: 0.0,
             width: 0.0,
@@ -1254,6 +1477,9 @@ struct BudgetedItems<'a> {
     remaining: f32,
 
     remaining_items: u32,
+    /// The last row handed out was of a bidi line, which is laid
+    /// whole: a spent budget runs on to the line's end.
+    in_bidi_line: bool,
 }
 
 impl Iterator for BudgetedItems<'_> {
@@ -1261,18 +1487,16 @@ impl Iterator for BudgetedItems<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining <= 0.0 || self.remaining_items == 0 {
-            // Spent: the pass ends at the next hard line, never
-            // inside one. A line's rows are laid together (only its
-            // first row is a safepoint), so a cut mid-line would make
-            // the next pass start the line over, and a budget below
-            // one row's height would never get past it.
             let next = self.inner.peek()?;
-            if next.byte_size != 0 && next.safepoint {
+            if next.byte_size != 0 && !(self.in_bidi_line && !next.line_start) {
                 return None;
             }
-            return self.inner.next();
+            let item = self.inner.next()?;
+            self.in_bidi_line = item.bidi;
+            return Some(item);
         }
         let item = self.inner.next()?;
+        self.in_bidi_line = item.bidi;
         self.remaining -= item.height;
         self.remaining_items = self.remaining_items.saturating_sub(1);
         Some(item)
@@ -1326,6 +1550,7 @@ impl Iterator for LayoutItems<'_> {
             }
 
             let (raw, absolute_start) = next_plain_paragraph(&mut self.view, &mut self.run)?;
+            let mut bidi = raw.chars().any(|ch| strong_direction(ch) == Some(true));
             let mut unit_end =
                 absolute_start.saturating_add(raw.len().min(u32::MAX as usize) as u32);
             let mut segments: Vec<(String, u32)> = vec![(raw, 0)];
@@ -1363,17 +1588,56 @@ impl Iterator for LayoutItems<'_> {
 
             let mut inline = Vec::new();
             let mut hidden = Vec::new();
-            let marks = self.markup.marks_inline_hidden_in(
+            let mut marks = self.markup.marks_inline_hidden_in(
                 absolute_start..unit_end,
                 &mut inline,
                 &mut hidden,
             );
+            // A unit entered mid-line — a repair resuming a row in, or
+            // a chunk of a giant line — still wears its HARD LINE's
+            // block style: the style is the line's, whichever of its
+            // bytes the interval touches, and a fresh build lays the
+            // whole line under it.
+            let line_start = {
+                let line = self.view.line_at(absolute_start as usize);
+                self.view.line_start_offset(line).min(u32::MAX as usize) as u32
+            };
+            // ...and is shaped under the hard line's base direction,
+            // read off the line's first strong character when that
+            // character lies before the unit; else the unit's own
+            // first strong character is the line's too.
+            let mut base_direction = imba::shape::BaseDirection::Auto;
+            if line_start < absolute_start {
+                let mut scratch_inline = Vec::new();
+                let mut scratch_hidden = Vec::new();
+                marks = self.markup.marks_inline_hidden_in(
+                    line_start..unit_end,
+                    &mut scratch_inline,
+                    &mut scratch_hidden,
+                );
+                let mut prefix = Vec::new();
+                self.view.byte_range_into(
+                    line_start as usize,
+                    absolute_start as usize,
+                    &mut prefix,
+                );
+                let prefix = String::from_utf8_lossy(&prefix);
+                base_direction = match prefix.chars().find_map(strong_direction) {
+                    Some(true) => imba::shape::BaseDirection::Rtl,
+                    Some(false) => imba::shape::BaseDirection::Ltr,
+                    None => imba::shape::BaseDirection::Auto,
+                };
+                bidi |= prefix.chars().any(|ch| strong_direction(ch) == Some(true));
+            }
             let mut items = Vec::new();
             append_paragraph(
                 segments,
                 inlay_hits,
                 absolute_start,
                 unit_end,
+                line_start == absolute_start,
+                base_direction,
+                bidi,
                 self.trailing_line && unit_end == self.run.end,
                 marks,
                 &inline,
@@ -1386,6 +1650,37 @@ impl Iterator for LayoutItems<'_> {
             self.pending = items.into_iter();
         }
     }
+}
+
+/// Whether the hard line holding `byte` has right-to-left text.
+fn line_has_rtl(text: &Text, byte: u32) -> bool {
+    let mut view = text.view();
+    let count = view.byte_count();
+    if count == 0 || byte as usize >= count {
+        return false;
+    }
+    let line = view.line_at(byte as usize);
+    let start = view.line_start_offset(line);
+    let end = view.line_end_offset(line).min(count);
+    let mut bytes = Vec::new();
+    view.byte_range_into(start, end, &mut bytes);
+    String::from_utf8_lossy(&bytes)
+        .chars()
+        .any(|ch| strong_direction(ch) == Some(true))
+}
+
+/// `Some(true)` for a strongly right-to-left character, `Some(false)`
+/// for a strongly left-to-right one, `None` for a neutral.
+fn strong_direction(ch: char) -> Option<bool> {
+    let code = u32::from(ch);
+    let rtl = matches!(
+        code,
+        0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF
+    );
+    if rtl {
+        return Some(true);
+    }
+    ch.is_alphabetic().then_some(false)
 }
 
 fn read_line_tail(view: &mut TextView, at: u32, limit: u32) -> (String, u32) {
@@ -1412,6 +1707,9 @@ fn append_paragraph(
     inlay_hits: Vec<crate::markup::InlayInterval<'_>>,
     absolute_start: u32,
     unit_end: u32,
+    starts_line: bool,
+    base_direction: imba::shape::BaseDirection,
+    bidi: bool,
     final_unit: bool,
     marks: BlockStyle,
     inline: &[TextDecorationInterval],
@@ -1424,14 +1722,14 @@ fn append_paragraph(
     let byte_size = unit_end.saturating_sub(absolute_start) as usize;
     let resolved = marks.resolved(theme);
     let item = LayoutElement::new(byte_size, resolved.block_height.unwrap_or(0.0));
-    // Only the line's FIRST row is a safepoint. A soft-wrapped row
-    // breaks where it does because the next row's first word did
-    // not fit; shorten that word and the row above takes it back.
-    // So a repair for an edit in row k starts at the line's first
-    // row — the one start the row producer lays as a line start —
-    // and re-lays to the next line (the 2026-10-26 property
-    // finding: a deletion in row two left row one wrapped early).
-    let mut first = true;
+    // Every row resumes a repair: a row boundary is a break
+    // opportunity, and the rows after one come out the same whether
+    // the line was laid from its start or from there. The one
+    // exception is the trailing empty line after a final newline:
+    // its height is its line's, so it is laid with its line and never
+    // resumed on its own.
+    let unit_len = unit_end.saturating_sub(absolute_start);
+    let mut at = 0u32;
     items.extend(
         visual_lines(
             item,
@@ -1441,6 +1739,7 @@ fn append_paragraph(
             absolute_start,
             unit_end,
             final_unit,
+            base_direction,
             measure,
             theme,
             markup,
@@ -1448,9 +1747,12 @@ fn append_paragraph(
             hidden,
         )
         .map(move |mut row| {
-            // The trailing empty line after a final newline is a row
-            // of the line before it too: it takes that line's height.
-            row.safepoint = std::mem::replace(&mut first, false);
+            // A unit entered mid-line (a repair resuming a row in, a
+            // chunk of a giant line) starts no hard line.
+            row.line_start = at == 0 && starts_line;
+            row.bidi = bidi;
+            row.safepoint = !(row.byte_size == 0 && at == unit_len);
+            at = at.saturating_add(row.byte_size);
             row
         }),
     );
@@ -1465,6 +1767,7 @@ fn visual_lines<'a>(
     absolute_start: u32,
     unit_end: u32,
     final_unit: bool,
+    base_direction: imba::shape::BaseDirection,
     measure: crate::markup::InlayMeasure<'a>,
     theme: &'a crate::theme::Theme,
     markup: crate::markup::OverlaidMarkup<'a, 'a>,
@@ -1533,13 +1836,15 @@ fn visual_lines<'a>(
     let inline = text.map_decorations(inline);
     let rows_share_metrics =
         crate::shaped_line::rows_share_metrics(&inline, text.placeholders(), theme);
-    let inputs = crate::shaped_line::shape_inputs(&resolved, &text, &inline, theme);
+    let mut inputs = crate::shaped_line::shape_inputs(&resolved, &text, &inline, theme);
+    inputs.base_direction = base_direction;
     let line = inputs.shape(
         measure.ui,
         Some((width - resolved.inset.unwrap_or(0.0) * 2.0).max(60.0)),
     );
 
-    item.width = line.width() + resolved.inset.unwrap_or(0.0) * 2.0;
+    let inset = resolved.inset.unwrap_or(0.0);
+    item.width = line.width() + inset * 2.0;
     let rows = line.rows();
     let excisions = inputs.excisions;
     let mut line_count = rows.len();
@@ -1560,6 +1865,7 @@ fn visual_lines<'a>(
         rows,
         excisions,
         end_gap,
+        inset,
         gap_before_trailing_empty: trailing_empty_line,
         line_index: 0,
         line_count,
@@ -1606,6 +1912,7 @@ struct LineSplit<'a> {
     excisions: Vec<Excision>,
 
     end_gap: f32,
+    inset: f32,
 
     gap_before_trailing_empty: bool,
     line_index: usize,
@@ -1661,6 +1968,12 @@ impl Iterator for LineSplit<'_> {
 
         let mut item = self.item.clone();
         item.byte_size = byte_size.min(u32::MAX as usize) as u32;
+        // The row's OWN width, not the line's widest: a repair that
+        // enters a line mid-way re-lays only rows, and a per-line
+        // figure stamped on every row would go stale on the rest.
+        if let Some(row) = self.rows.get(line_index) {
+            item.width = row.width + self.inset * 2.0;
+        }
         let mut text_height = self.text_height(line_index)?;
         let is_before_trailing_empty =
             self.gap_before_trailing_empty && line_index + 2 == self.line_count;
@@ -1688,6 +2001,8 @@ mod delete_accounting_tests {
     fn element(byte_size: u32, height: f32) -> LayoutElement {
         LayoutElement {
             safepoint: true,
+            line_start: true,
+            bidi: false,
             byte_size,
             height,
             width: 0.0,
@@ -1731,6 +2046,8 @@ mod tail_replacement_tests {
     fn element(byte_size: u32) -> LayoutElement {
         LayoutElement {
             safepoint: true,
+            line_start: true,
+            bidi: false,
             byte_size,
             height: 20.0,
             width: 0.0,

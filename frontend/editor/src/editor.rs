@@ -179,7 +179,7 @@ impl Editor {
 
             crate::document::EditorBuild::Prebuilt(prebuilt) => {
                 let mut layout = prebuilt;
-                layout.set_window(window);
+                let _ = layout.set_window(window);
                 layout
             }
         };

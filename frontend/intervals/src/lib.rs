@@ -31,6 +31,20 @@ pub struct Interval<K, V> {
     pub value: V,
 }
 
+/// An interval a deletion cut: the key and value it carries, the
+/// post-edit offset the deleted span collapsed to — where whatever
+/// stood on either side of it now meets — and whether the deletion
+/// took it whole (it is gone) or only shortened it (an end of it now
+/// stands at `at`). Only the tree knows which intervals a deletion
+/// reached, so `edit` reports them.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Cut<K, V> {
+    pub key: K,
+    pub value: V,
+    pub at: Offset,
+    pub whole: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct IntervalRef<'a, K, V> {
     pub range: Range<Offset>,
@@ -472,7 +486,11 @@ where
     K: Clone + Eq + Hash,
     V: Clone,
 {
-    pub fn edit(&mut self, steps: impl IntoIterator<Item = EditStep>) {
+    /// Moves every interval with the edit and returns the ones its
+    /// deletions cut, whole or shortened, each at the offset the
+    /// deleted span collapsed to.
+    pub fn edit(&mut self, steps: impl IntoIterator<Item = EditStep>) -> Vec<Cut<K, V>> {
+        let mut dropped = Vec::new();
         let mut offset: Offset = 0;
         for step in steps {
             match step {
@@ -484,10 +502,11 @@ where
                     offset = offset.saturating_add(len);
                 }
                 EditStep::Delete(len) => {
-                    self.collapse(offset, len);
+                    self.collapse(offset, len, &mut dropped);
                 }
             }
         }
+        dropped
     }
 
     pub fn insert(&mut self, intervals: impl IntoIterator<Item = Interval<K, V>>) {
@@ -587,8 +606,8 @@ where
         tree::expand(Arc::make_mut(&mut self.closed_root), offset, len);
     }
 
-    fn collapse(&mut self, offset: Offset, len: Offset) {
-        let mut dropped = Vec::new();
+    fn collapse(&mut self, offset: Offset, len: Offset, cuts: &mut Vec<Cut<K, V>>) {
+        let mut taken: Vec<(K, V, bool)> = Vec::new();
         tree::collapse(
             Arc::make_mut(&mut self.open_root),
             OPEN_ROOT_ID,
@@ -596,7 +615,7 @@ where
             len,
             &mut self.index,
             self.drop_empty,
-            &mut dropped,
+            &mut taken,
         );
         tree::collapse(
             Arc::make_mut(&mut self.closed_root),
@@ -605,11 +624,19 @@ where
             len,
             &mut self.index,
             self.drop_empty,
-            &mut dropped,
+            &mut taken,
         );
-        self.len -= dropped.len().min(self.len);
-        for key in dropped {
-            self.index.forget(&key);
+        for (key, value, whole) in taken {
+            if whole {
+                self.len -= usize::from(self.len > 0);
+                self.index.forget(&key);
+            }
+            cuts.push(Cut {
+                key,
+                value,
+                at: offset,
+                whole,
+            });
         }
     }
 

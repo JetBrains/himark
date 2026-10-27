@@ -99,12 +99,57 @@ fn assert_same_pixels(
     // not a different picture; a glyph or a fill out of place is
     // tens of units.
     const NOISE: u8 = 2;
+    // And where the band's edge cuts THROUGH a corner's arc, Skia
+    // chops the curve at the clip before flattening it, so the arc's
+    // partially covered pixels land a fraction of a pixel away: the
+    // paints are exact when the edge misses every arc, and off by a
+    // few units on the arc's own pixels when it does not (measured
+    // 2026-10-26 at every band top across a corner: three at most,
+    // and the bound stays under this theme's box-to-page contrast,
+    // or a corner painted straight would pass). Within a radius of
+    // the band's edges, a pixel that sits on an edge in BOTH paints
+    // — on a gradient between its neighbours across or along the
+    // row — may differ by that much; a pixel that is fully inside
+    // or outside a shape in either paint may not. "Between" allows
+    // the noise too: the chopped arc's coverage can undershoot the
+    // page colour by a level, which is still the edge, not a plateau
+    // (the 2026-10-27 finding at a code box's bottom-right corner).
+    const CHOP: u8 = NOISE + 2;
+    let radius = theme()
+        .part(crate::theme::CodePanelChrome::KEY)
+        .radius
+        .ceil() as usize;
+    let height = a_bytes.len() / row.max(1);
     let same = |x: &[u8], y: &[u8]| x.iter().zip(y).all(|(x, y)| x.abs_diff(*y) <= NOISE);
+    let level = |pixel: &[u8]| pixel[..3].iter().map(|&v| u32::from(v)).sum::<u32>();
+    let columns = row / 4;
+    let on_edge = |bytes: &[u8], index: usize| {
+        let (line, column) = (index / columns, index % columns);
+        let at = |index: usize| level(&bytes[index * 4..index * 4 + 4]);
+        let own = at(index);
+        let slack = u32::from(NOISE) * 3;
+        let between = |a: u32, b: u32| {
+            a != b && a.min(b).saturating_sub(slack) <= own && own <= a.max(b) + slack
+        };
+        let across = column > 0 && column + 1 < columns && between(at(index - 1), at(index + 1));
+        let along =
+            line > 0 && line + 1 < height && between(at(index - columns), at(index + columns));
+        across || along
+    };
+    let forgiven = |index: usize, x: &[u8], y: &[u8]| {
+        let line = (index * 4) / row;
+        (line < radius || line + radius >= height)
+            && x.iter().zip(y).all(|(x, y)| x.abs_diff(*y) <= CHOP)
+            && on_edge(a_bytes, index)
+            && on_edge(b_bytes, index)
+    };
+    let same = |index: usize, x: &[u8], y: &[u8]| same(x, y) || forgiven(index, x, y);
     if a_bytes.len() == b_bytes.len()
         && a_bytes
             .chunks(4)
             .zip(b_bytes.chunks(4))
-            .all(|(x, y)| same(x, y))
+            .enumerate()
+            .all(|(index, (x, y))| same(index, x, y))
     {
         return Ok(());
     }
@@ -119,7 +164,7 @@ fn assert_same_pixels(
         .chunks(4)
         .zip(b_bytes.chunks(4))
         .enumerate()
-        .filter(|(_, (x, y))| !same(x, y))
+        .filter(|(index, (x, y))| !same(*index, x, y))
         .collect();
     let sample: Vec<String> = differing
         .iter()
@@ -231,7 +276,7 @@ fn band_matches_whole(spec: &Spec, width: i32, top: f32, band: i32) -> Result<()
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 24, .. ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: 24, failure_persistence: None, .. ProptestConfig::default() })]
 
     #[test]
     fn a_settled_editor_paints_the_pixels_of_a_fresh_editor(
@@ -375,6 +420,133 @@ mod shrunk {
             295,
             0.30660635,
             26,
+        );
+        if let Err(failure) = result {
+            panic!("{failure}");
+        }
+    }
+
+    /// The next line started a few pixels past the band's end, yet
+    /// its code block box paints from above its top, into the band's
+    /// last rows. A band takes in a line whose box reaches back into
+    /// it.
+    #[test]
+    fn a_box_starting_just_past_the_band_paints_into_it() {
+        let result = band_matches_whole(
+            &spec(
+                "usnxhgctjmcqsmmolvqcivumiagfollwkxcdkxbmif beta sit  # a 😀 mtsbierpsrubgtciuayakqf\n日本語  lorem مرحبا  🎉x x😀y tab\tbed 🎉x 😀 sit\nbymtydxxarunaeeysigegfhwohxprndkdaykgdfxjawesweauekeu  שלום ztfzoerepkeqnzivjefco I gamma naïve\n\n مرحبا dolor\n\n",
+                vec![
+                    Block::CodeBlock,
+                    Block::Quote,
+                    Block::Plain,
+                    Block::CodeBlock,
+                    Block::CodeBlock,
+                    Block::Plain,
+                ],
+                vec![],
+            ),
+            563,
+            0.4269801,
+            117,
+        );
+        if let Err(failure) = result {
+            panic!("{failure}");
+        }
+    }
+
+    /// A code box's bottom-right corner two rows below the band's
+    /// top: on the arc, the band paint came out a level darker than
+    /// the page where the whole paint still had a shade of the box —
+    /// chopped-arc coverage undershooting, not a plateau. The edge
+    /// test allows the noise.
+    #[test]
+    fn a_chopped_arc_may_undershoot_the_page_by_a_level() {
+        let result = band_matches_whole(
+            &spec(
+                " # héllo dolor 1. I a\nمرحبا héllo  مرحبا dolor alpha\nipsum - 😀 🎉x héllo delta beta alpha עברית qvvsxgbpkwdysfrrhfslkmdaxpufozwymgbugyvfkvysaqotg עברית\n",
+                vec![Block::CodeBlock, Block::ListItem, Block::Quote],
+                vec![],
+            ),
+            659,
+            0.17954165,
+            75,
+        );
+        if let Err(failure) = result {
+            panic!("{failure}");
+        }
+    }
+
+    /// A band whose top cuts through a box's bottom corner arcs:
+    /// Skia chops the arc at the clip, so the arc's partial pixels
+    /// drift a little, and the comparison forgives exactly that.
+    #[test]
+    fn a_box_top_two_rows_into_the_band_paints_the_same_corner() {
+        let result = band_matches_whole(
+            &spec(
+                " héllo ipsum lorem  I alpha שלום  gamma עברית\n\n😀 a I  vnclowomrmnkyqhmxhrvihailaqldfkcjunrigqxbovqqbqljqof caerahmvcledjjxvfbbiuqpklktfwiczrvuowlpgvnkgehluuaadi alpha 😀 lorem héllo\nalpha\nnbxymuzsugavojxfqmkugk x😀y - alpha naïve 1. x😀y a-שלום\ngamma naïve kymamjnmqrsbofbwsdlegnljnlakmfewmohmemjbcqetjocza 😀 lorem I #  日本語 😀 1.\n# ipsum עברית  delta sit # 日本語 a-שלום hfbrsdmparlykopbimqfffrfxgoiihyblhdrqmhbixdepwfwqfpre\n beta #\n",
+                vec![
+                    Block::Plain,
+                    Block::CodeBlock,
+                    Block::Quote,
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Header(1),
+                    Block::Plain,
+                ],
+                vec![],
+            ),
+            321,
+            0.17533548,
+            149,
+        );
+        if let Err(failure) = result {
+            panic!("{failure}");
+        }
+    }
+
+    /// The same drift on the arc's pixel in the first column, where
+    /// there is no neighbour to the left: the edge shows along the
+    /// column instead.
+    #[test]
+    fn an_arc_pixel_in_the_first_column_is_an_edge_pixel_too() {
+        let result = band_matches_whole(
+            &spec(
+                "tab\tbed\n\n  tab\tbed # beta\na עברית 🎉x fhidemihjsmzlyleljbcfkrsgilhohuetlu  héllo - 日本語 😀\ntab\tbed x😀y # 日本語\nhéllo delta # amet tab\tbed delta ipsum x😀y I amet 😀\n-  مرحبا - -    alpha - jxodswtbgyjvudbljofleyh",
+                vec![
+                    Block::Quote,
+                    Block::Plain,
+                    Block::Quote,
+                    Block::Quote,
+                    Block::Plain,
+                    Block::CodeBlock,
+                    Block::Quote,
+                ],
+                vec![],
+            ),
+            393,
+            0.59325993,
+            216,
+        );
+        if let Err(failure) = result {
+            panic!("{failure}");
+        }
+    }
+
+    /// A content-hugging box whose widest line lies outside the
+    /// band: the band painted the box as wide as the lines it had,
+    /// the whole paint as wide as the run.
+    #[test]
+    fn a_box_run_is_as_wide_as_its_widest_line_outside_the_band() {
+        let result = band_matches_whole(
+            &spec(
+                "amet tab\tbed 🎉x kgsyhorlqwsglkwntulkmifovxi rswqqrpubhozekbijtqmerpnxnjcsgnnqchjkj\na beta - 🎉x héllo  مرحبا naïve \na-שלום tab\tbed עברית jvspvdsrvwuyjgkwjujluqwmcl\nipsum amet gamma poagdylkqoesjaippesuktyrhqumefdpmudpquiccgmtvwqhejzlcavi 1.\n",
+                vec![Block::Quote, Block::CodeBlock, Block::CodeBlock, Block::ListItem],
+                vec![],
+            ),
+            268,
+            0.08045857,
+            200,
         );
         if let Err(failure) = result {
             panic!("{failure}");

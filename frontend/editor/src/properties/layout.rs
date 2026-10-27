@@ -126,8 +126,10 @@ fn repaired_equals_fresh(
         let Some(operation) = gen::resolve(document.text(), edit) else {
             continue;
         };
-        let start = layout.edit(&operation);
-        document.edit(&operation, &store, ui, &theme(), fx!());
+        let mut start = layout.edit(&operation);
+        for line in document.edit(&operation, &store, ui, &theme(), fx!()) {
+            start = start.min(layout.mark_modified_in(line));
+        }
         match budget {
             Some(budget) => repair_all(&mut layout, &document, width, start, budget),
             None => {
@@ -156,7 +158,7 @@ fn budget() -> impl Strategy<Value = f32> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 48, .. ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: 48, failure_persistence: None, .. ProptestConfig::default() })]
 
     /// Edit the layout and the document in step, repair the layout
     /// from the edit's own repair start, and the result is the layout
@@ -183,21 +185,56 @@ proptest! {
         repaired_equals_fresh(&spec, width, &edits, Some(budget))?;
     }
 
-    /// Wrapping at a narrower width never makes a document shorter.
+    /// Wrapping at a narrower width never gives a hard line fewer
+    /// rows. (Not "never a lower height": a row is as tall as the
+    /// tallest script's font in it, and a narrower wrap can part a
+    /// CJK word from a Hebrew one that shared a row, leaving one
+    /// row a pixel shorter — the 2026-10-27 finding, kept below.)
     #[test]
-    fn a_narrower_wrap_never_lowers_the_height(
+    fn a_narrower_wrap_never_gives_a_line_fewer_rows(
         spec in gen::document_spec(),
         widths in (gen::wrap_width(), gen::wrap_width()),
     ) {
         let (narrow, wide) = (widths.0.min(widths.1), widths.0.max(widths.1));
         let document = gen::build(&spec);
-        let narrow_height = fresh(&document, narrow, None).height();
-        let wide_height = fresh(&document, wide, None).height();
-        prop_assert!(
-            narrow_height + 0.01 >= wide_height,
-            "narrow {narrow} -> {narrow_height}, wide {wide} -> {wide_height}"
+        let narrow_rows = rows_per_line(&fresh(&document, narrow, None), &document);
+        let wide_rows = rows_per_line(&fresh(&document, wide, None), &document);
+        prop_assert_eq!(
+            narrow_rows.len(),
+            wide_rows.len(),
+            "same hard lines at {} and {}",
+            narrow,
+            wide
         );
+        for (line, (narrow_count, wide_count)) in narrow_rows.iter().zip(&wide_rows).enumerate() {
+            prop_assert!(
+                narrow_count >= wide_count,
+                "line {line}: {narrow_count} rows at {narrow}, {wide_count} at {wide}"
+            );
+        }
     }
+}
+
+/// How many rows each hard line of the text takes in `layout`: a row
+/// ends a line when its last byte is a newline, and the layout's last
+/// row ends the last line.
+fn rows_per_line(layout: &DocumentLayout, document: &Document) -> Vec<usize> {
+    let mut view = document.text().view();
+    let mut counts = Vec::new();
+    let mut rows = 0;
+    let ranges = layout.element_byte_ranges();
+    for (index, range) in ranges.iter().enumerate() {
+        rows += 1;
+        let mut last = Vec::new();
+        if range.end > range.start {
+            view.byte_range_into(range.end as usize - 1, range.end as usize, &mut last);
+        }
+        if last.first() == Some(&b'\n') || index + 1 == ranges.len() {
+            counts.push(rows);
+            rows = 0;
+        }
+    }
+    counts
 }
 
 #[derive(Clone, Debug)]
@@ -234,7 +271,7 @@ pub(super) fn settle(document: &mut Document) -> usize {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 32, .. ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig { cases: 32, failure_persistence: None, .. ProptestConfig::default() })]
 
     /// Through the document's own editor: edits repair within the
     /// keystroke budget and hand the rest to the repair worker; a
@@ -314,10 +351,149 @@ mod shrunk {
         }
     }
 
+    /// Runs `steps` through the document's own editor, settling the
+    /// repair worker after each, and checks the editor's layout against
+    /// a fresh one (the settled-editor property's body).
+    fn settled(spec: &Spec, width: f32, steps: &[Step]) {
+        let store = imba::store::Store::new();
+        let ui = test_ui();
+        let theme = theme();
+        let mut document = gen::build(spec);
+        let editor = document.add_editor(
+            width,
+            None,
+            EditorBuild::Complete,
+            &[],
+            &store,
+            ui,
+            &theme,
+            fx!(),
+        );
+        for (index, step) in steps.iter().enumerate() {
+            match step {
+                Step::Edit(edit) => {
+                    if let Some(operation) = gen::resolve(document.text(), edit) {
+                        document.edit(&operation, &store, ui, &theme, fx!());
+                    }
+                }
+                Step::Resize(to) => {
+                    document.resize(editor, *to, 0, &store, ui, &theme, fx!());
+                }
+            }
+            settle(&mut document);
+            assert_eq!(
+                document.element_heights(editor),
+                document.fresh_layout_heights(editor, &store, ui, &theme),
+                "step {index} {step:?}"
+            );
+            assert_eq!(
+                document.find_misaligned_boundary(editor),
+                None,
+                "step {index} {step:?}"
+            );
+        }
+    }
+
+    /// A deletion took a bidi line's whole first row; the row that
+    /// survived at the line's start kept its continuation flag, so
+    /// the bidi rule walked the repair back to the previous line's
+    /// start, where it converged before reaching the damage — every
+    /// worker round, forever. Fix: a deletion that begins at a line's
+    /// first byte leaves a line start at its landing.
+    #[test]
+    fn a_deletion_that_takes_a_bidi_line_s_first_row_leaves_a_line_start() {
+        settled(
+            &spec(
+                "dolor 日本語 lorem xdshazzqgqnosaodnviohqgmrrdtjnmxefocuzdzahqbszscexfq lorem שלום gamma ipsum 1. - daivrhaeognyeqbpywatgxdeu\n😀 qddixyvnzsbojbxvitjpkqbywbyp lorem - I مرحبا\na # - ufjbbxlplddytuoufznnnmxmpwmnviueqjzxbkcalggubg alpha delta dolor dolor\nlorem  x😀y dgdelhfxwdnkmeoaggdedxbakbbqwxkltfwptrjk שלום ipsum \n\nx😀y 😀 ipsum  مرحبا  yxablqnardpplweblxjhckswlwzimiwahteosjveonmliyflrxwqxtofgjt tmjrptupqhfyzboxsrvjm a-שלום a-שלום\nnaïve a  lorem 🎉x azzafnempzqkrenpmwabtjiygprkijgcpylorkzzqchkbyc\n😀 naïve",
+                vec![Block::Plain; 8],
+                vec![],
+            ),
+            573.0,
+            &edits(&[
+                (0.48035145, 0.068869166, ""),
+                (0.9842734, 0.13078359, "atdljupduuwacouomkcctoshczhpolmxdkneqjmosut"),
+                (0.20090021, 0.0, "🎉x naïve עברית a-שלום tab\tbed altvizsnbharzyhsqbburcfg עברית beta gamma  ymcidasvdwhnhsrtzpazmoodjvywyegvmvc\n"),
+                (0.26186842, 0.0, "naïve"),
+                (0.15366876, 0.0, "a-שלום dolor tab\tbed naïve ipsum I lorem 😀 sxcaasnontfyurpmohorljcrkfdiuqwhamklmzmnulrhegqozzmdvyys\n"),
+                (0.2313143, 0.03697908, "שלום"),
+                (0.33288872, 0.26861355, "\n"),
+            ])
+            .into_iter()
+            .map(Step::Edit)
+            .collect::<Vec<_>>(),
+        );
+    }
+
+    /// A code block's first row held a CJK word and a Hebrew one at
+    /// the wide width; the narrow wrap parted them, and the row left
+    /// with only CJK came out a pixel shorter than one with Hebrew:
+    /// 1018 against 1019. Not a fault — a row is as tall as the
+    /// tallest font in it — so the property counts rows per line.
+    #[test]
+    fn a_narrower_wrap_may_be_a_pixel_shorter_but_never_has_fewer_rows() {
+        let spec = spec(
+            " tab\tbed 日本語 leghedvrnoegkkkobdowmbe שלום עברית xbdhzldhoezgzypopvgkqcnrmkgyyywtgcfehyw dolor  ivtvsjdgntzpaaribqhstunikfdykgimqdaopisrfqaojoqdnsp\n\n# 😀 héllo lorem\n- ztihcpenrepavfebilmwkfnqzqofpkmzoyzsnnmouzquzumddbb a-שלום amet héllo  alpha tab\tbed\njyotgvhwfdsarsliwiadaidqioxeemxmvivalwagxfeiighklmwjuzaymjmv 1. 🎉x  x😀y مرحبا\ngamma\n- alpha héllo a-שלום uogfuuywondnrqwfpspalazkldkgwhxbyzaxupszrpyznoahogm sit\ntab\tbed עברית ipsum # 🎉x\n\n",
+            vec![
+                Block::CodeBlock,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+                Block::Plain,
+            ],
+            vec![(0, 0.2680288, 0.17642334, Inline::InlineCode)],
+        );
+        let document = gen::build(&spec);
+        let narrow = rows_per_line(&fresh(&document, 635.0, None), &document);
+        let wide = rows_per_line(&fresh(&document, 738.0, None), &document);
+        assert_eq!(narrow.len(), wide.len());
+        assert!(
+            narrow.iter().zip(&wide).all(|(n, w)| n >= w),
+            "{narrow:?} vs {wide:?}"
+        );
+    }
+
+    /// A deletion ran from inside a header block's second line to
+    /// far past the block, so the block now ends exactly where its
+    /// first line does — and that line's last row carries the block
+    /// gap now. The repair started at the landing, the row before it
+    /// kept the gapless height. Fix: the interval set reports the
+    /// intervals a deletion shortened as well as the ones it took,
+    /// and the lines on both sides of the cut are re-laid.
+    #[test]
+    fn a_deletion_that_ends_a_block_at_a_line_boundary_gives_the_line_its_gap() {
+        check(
+            &spec(
+                "héllo مرحبا مرحبا alpha\nhéllo gamma\nnaïve # amet alpha 1. dolor alpha naïve dolor\ndbnktlcqknxcbsbozmcadykdxwbfvpbep  kvootipvcamyidfqtsfnsejqduwasnpontrwxyuzmprgkwefyghp 😀 مرحبا 🎉x gfbdnngpucfwjzssggnoomvilc  😀 🎉x\nifajekkntdmxphxilqssvcgkbejgmhkjmdgjrx amet naïve  a-שלום héllo lorem x😀y 🎉x",
+                vec![
+                    Block::Header(1),
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Plain,
+                ],
+                vec![],
+            ),
+            886.0,
+            &edits(&[
+                (
+                    0.044226028,
+                    0.0,
+                    "x😀y mczhctfutxwgqlwguqsvfjwmgnqkqrlbuyeempcdb  gamma sit\n",
+                ),
+                (0.18581016, 0.9276276, ""),
+            ]),
+            Some(4000.0),
+        );
+    }
+
     /// A header wrapped into two rows; a deletion inside row two
     /// shortens its first word so it fits on row one again. The
     /// repair started at row two and row one kept its early break.
-    /// Fix: only a hard line's first row is a safepoint.
+    /// Fix: a repair starts a row before the change.
     #[test]
     fn a_deletion_in_a_wrapped_row_lets_the_row_above_reflow() {
         check(
@@ -376,10 +552,9 @@ mod shrunk {
         );
     }
 
-    /// A deletion joined two lines; what had been line four's first
-    /// row still said it started a line, so the repair laid the
-    /// join from there as a line start. Fix: the splice clears the
-    /// landing row's flag and the repair backs up to the real start.
+    /// A deletion joined two lines, landing on what had been line
+    /// four's first row; the join is laid from a row before it and
+    /// the landing row, damaged, is re-laid rather than resumed on.
     #[test]
     fn a_deletion_joining_two_lines_restarts_the_repair_at_the_first() {
         check(
@@ -409,10 +584,9 @@ mod shrunk {
         );
     }
 
-    /// A 40 px budget against a 98 px header row: every pass restarted
-    /// at the line's first row and ran out before its second. Fix: a
-    /// spent budget ends the pass at the next hard line, never inside
-    /// one.
+    /// A 40 px budget against a 98 px header row: a pass must still
+    /// make progress, so it starts exactly at its pending byte and
+    /// never backs up on its own.
     #[test]
     fn a_budget_below_one_row_still_finishes_the_line() {
         check(
@@ -423,10 +597,9 @@ mod shrunk {
         );
     }
 
-    /// Newlines carved an old continuation row loose at a position
-    /// where a hard line now starts; still flagged as a continuation,
-    /// every budgeted pass backed up before it and stopped short of
-    /// it. Fix: the pass promotes the old element at its budget stop.
+    /// Newlines carved an old row loose at a position where a hard
+    /// line now starts; a budgeted repair must converge on it all the
+    /// same.
     #[test]
     fn a_budgeted_pass_promotes_the_old_row_at_a_new_line_start() {
         check(
@@ -439,6 +612,162 @@ mod shrunk {
                 (0.19751462, 0.22227117, "\n"),
                 (0.06641037, 0.1168113, "\n\n"),
                 (0.86012447, 0.19899122, ""),
+            ]),
+            Some(40.0),
+        );
+    }
+
+    /// A deletion took the bytes a header's block interval lived on,
+    /// so the merged line is plain in a fresh build; the rows before
+    /// the edit kept their header height. Fix: the interval set
+    /// reports what a deletion dropped (`Intervals::edit`), the markup
+    /// keeps the drops that style a whole line, and the document
+    /// damages those lines like any other markup change.
+    #[test]
+    fn a_deletion_that_takes_a_block_interval_re_styles_the_whole_line() {
+        check(
+            &spec(
+                "sit  ipsum alpha I tab\tbed x😀y xvntjnkkwhijtgtekcjrgbxuheobiqccpgsrodlnubudv vlnhupcdgxihcixqdymyvfqwegqzyngmyuhfjx\n日本語  lorem مرحبا bttcqtjilozwfbqybznqbli 1. \nhéllo amet naïve hijiczcfkytckigzatdvxmeoerkqbvbddfepbpnlajyjytwawfsvjkgjsdpd 🎉x\n1. 日本語 amet  ipsum עברית jfalkmtvhhagkpcafdjgjixeqcxiagze 日本語 ypcmrjqlradsrcijhqycgupvxnuqjqlwuuuroonhoasyzay delta a\n🎉x   x😀y\naydpunvchbdtwhtrkrvoiyidpgzvptix 😀 delta  naïve delta\n",
+                vec![
+                    Block::Plain,
+                    Block::Header(1),
+                    Block::Quote,
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Plain,
+                ],
+                vec![],
+            ),
+            438.0,
+            &edits(&[
+                (0.17902827, 0.20235488, "日本語"),
+                (0.045013815, 0.0, "שלום"),
+                (0.2689071, 0.10581228, "مرحبا"),
+                (0.46812055, 0.27262074, "gamma"),
+                (0.13750376, 0.2261995, "-"),
+            ]),
+            None,
+        );
+    }
+
+    /// A join of a centered line with a quoted one: the merged line
+    /// carries the quote's inset, so even the rows before the
+    /// deletion wrap differently. A newline edit re-lays the whole
+    /// line it lands in, backwards too.
+    #[test]
+    fn a_join_re_styles_the_rows_before_the_deletion_too() {
+        check(
+            &spec(
+                "lorem delta nchrajcilkkffwwygwuzntxqgitisbmdbobcuaigrvhsnkqyswzfsconfu  alpha\ngamma # -\n1.  unsipbeidubifawtwayfqirpbhfyrbempoq x😀y uomovvrfwlgojkxbzrsnffcuheak 🎉x héllo amet\na beta 🎉x 日本語 🎉x amet mehdhypkilpotogjezve dolor 🎉x\nalpha\naiwxxxyjxirjcrbafwdflfufhrvzyxzkmmfmlirmxyatuqmezkrwgk amet obfnatsqchofbqlwqgscqyloomixaxpuga a 1. - # icwysvdhnbkpcinotsbayylqjclfqkkfekacckycajpjwxbu gamma",
+                vec![
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Plain,
+                    Block::Centered,
+                    Block::Quote,
+                    Block::Quote,
+                ],
+                vec![
+                    (3, 0.63789535, 0.66176593, Inline::Emphasis),
+                    (4, 0.49812177, 0.11850176, Inline::Strong),
+                ],
+            ),
+            123.0,
+            &edits(&[
+                (0.47366163, 0.043680135, "gamma saxlrkiueghhstcbeiqummvgojabuexspp\n"),
+                (0.58046025, 0.6494543, "#"),
+                (0.6335012, 0.2628099, ""),
+            ]),
+            None,
+        );
+    }
+
+    /// An insert ending in a newline: its end is the next line's
+    /// start, so reshaping only there left the line that received
+    /// the text — now bidi, now a different shape — half old. An
+    /// insert reshapes the line it starts in and the one it ends in.
+    #[test]
+    fn an_insert_with_a_newline_re_styles_both_halves() {
+        check(
+            &spec(
+                "I vbqoicxyqitgrrompfabjxamubzcucheeaqeaxnonncntllgxnadjpq alpha\n日本語 delta - naïve dolor sit ikzwvtbvhherbznimttzshugeaqjzkb alpha dolor 😀 \n\na\n",
+                vec![Block::Plain, Block::Header(1), Block::Indent(1), Block::Centered],
+                vec![
+                    (2, 0.7287753, 0.91773003, Inline::Emphasis),
+                    (1, 0.8337991, 0.42689058, Inline::Emphasis),
+                ],
+            ),
+            626.0,
+            &edits(&[
+                (0.24734986, 0.24392039, "dolor"),
+                (0.93752664, 0.0, "\n"),
+                (0.79139507, 0.0, "\n"),
+                (0.45724383, 0.17338389, "1. a-שלום 1. amet dolor amet sit gamma مرحبا עברית \n"),
+                (0.941923, 0.0, "שלום"),
+                (0.79902154, 0.8486985, "ipsum"),
+                (0.91219944, 0.0, "\n"),
+            ]),
+            None,
+        );
+    }
+
+    /// A budget cut inside a line with right-to-left text: the suffix
+    /// measured a shade differently from the whole line even under
+    /// the line's base direction. A bidi line is laid whole, and a
+    /// spent budget runs to its end.
+    #[test]
+    fn a_budgeted_repair_lays_a_bidi_line_whole() {
+        check(
+            &spec(
+                "\nمرحبا itgicnhlqoldozlettazgklplv beta مرحبا amet\nمرحبا x😀y gamma a  1. odlhoisirdmbjrmgsxfngdenonbjxgdhnjwaua עברית עברית\n",
+                vec![Block::Plain, Block::Plain, Block::Centered],
+                vec![
+                    (2, 0.22460741, 0.6417349, Inline::Link),
+                    (0, 0.9011329, 0.56087565, Inline::Strikethrough),
+                    (0, 0.31081036, 0.5334279, Inline::Link),
+                    (0, 0.6717885, 0.8252064, Inline::Emphasis),
+                ],
+            ),
+            380.0,
+            &edits(&[
+                (0.023788484, 0.0, ""),
+                (0.7814382, 0.3889426, "\n\n"),
+                (0.63694817, 0.28769583, "oedshrtoinzuyjribbsejdwj"),
+            ]),
+            Some(40.0),
+        );
+    }
+
+    /// Old rows flagged bidi after the right-to-left text left their
+    /// line: a repair that trusted the flag snapped back to the line
+    /// start every pass and never reached its pending byte. The text
+    /// decides whether a line is bidi.
+    #[test]
+    fn a_line_that_lost_its_right_to_left_text_still_converges() {
+        check(
+            &spec(
+                " delta amet x😀y uavxntiuhqozszqzwrfgbhqagmntbekjy \n🎉x beta sit a 1. שלום 🎉x dolor vnozlhnzzgcmacmmvizxnjmlqliydatfls dnajhfazyinkzsuaqdnuvodivegaigotxmuyhfyksgvgqswpgjdegnhgectt lorem\nsit snmdgqqjiszpmqvmkvlubgfdvncvxulb - beta - I lorem a-שלום I dolor 🎉x\n amet - 🎉x gamma 1. amet alpha x😀y alpha\nשלום 🎉x\n\nlorem 1. dolor 日本語 ipsum\n",
+                vec![
+                    Block::Plain,
+                    Block::Header(2),
+                    Block::Plain,
+                    Block::Right,
+                    Block::ListItem,
+                    Block::Plain,
+                    Block::CodeBlock,
+                ],
+                vec![
+                    (5, 0.6956627, 0.50254697, Inline::Strong),
+                    (3, 0.1095485, 0.7720866, Inline::Hidden),
+                    (0, 0.2270711, 0.7755435, Inline::Link),
+                    (2, 0.6690437, 0.24562815, Inline::Emphasis),
+                ],
+            ),
+            432.0,
+            &edits(&[
+                (0.12955065, 0.0, "mbhsnwvalbavrwmjaaegepylurpxxbzbzyk"),
+                (0.2918115, 0.27800044, "\n\n"),
+                (0.8736551, 0.0, "😀 - I iruelxhaahkuhxtqadpbjptjtye 1. I wudbrbyohkcgglffqgukuystllucembsxjloatayssfsvjlwlauseekl\n"),
             ]),
             Some(40.0),
         );

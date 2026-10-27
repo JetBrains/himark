@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use crate::EditStep;
-use crate::{Interval, IntervalQuery, Intervals, Order};
+use crate::{Cut, Interval, IntervalQuery, Intervals, Order};
 
 fn interval(key: u32, from: u32, to: u32) -> Interval<u32, &'static str> {
     Interval {
@@ -764,6 +764,83 @@ fn edit_delete_across_end_boundary_moves_end_to_delete_start() {
     assert_eq!(all_ranges(&intervals), vec![(1, 10..15)]);
 }
 
+/// A deletion reports the intervals it takes whole and the ones it
+/// shortens, each with what it carries and at the offset the deleted
+/// span collapsed to; one it only shifts is not reported, and a set
+/// that keeps empties keeps an emptied one as shortened.
+#[test]
+fn edit_reports_what_a_deletion_cut_at_the_point_it_collapsed_to() {
+    let mut intervals = Intervals::new();
+    intervals.insert([
+        interval(1, 10, 20),
+        interval(2, 12, 14),
+        interval(3, 18, 30),
+        interval(4, 40, 50),
+    ]);
+
+    let mut cuts = intervals.edit(delete_at(5, 20));
+    cuts.sort_by_key(|cut| cut.key);
+
+    assert_eq!(
+        cuts,
+        vec![
+            Cut {
+                key: 1,
+                value: "x",
+                at: 5,
+                whole: true
+            },
+            Cut {
+                key: 2,
+                value: "x",
+                at: 5,
+                whole: true
+            },
+            Cut {
+                key: 3,
+                value: "x",
+                at: 5,
+                whole: false
+            },
+        ]
+    );
+    assert_eq!(
+        all_ranges(&intervals),
+        vec![(3, 5..10), (4, 20..30)],
+        "the shortened and the shifted stay"
+    );
+    assert_eq!(intervals.len(), 2);
+    assert!(intervals.edit(insert_at(7, "abc")).is_empty());
+    assert!(
+        intervals.edit(delete_at(16, 2)).is_empty(),
+        "a shift is no cut"
+    );
+    assert_eq!(
+        intervals.edit(delete_at(6, 2)),
+        vec![Cut {
+            key: 3,
+            value: "x",
+            at: 6,
+            whole: false
+        }],
+        "a deletion inside shortens"
+    );
+
+    let mut keeping = Intervals::keeping_empties();
+    keeping.insert([interval(1, 10, 20)]);
+    assert_eq!(
+        keeping.edit(delete_at(5, 20)),
+        vec![Cut {
+            key: 1,
+            value: "x",
+            at: 5,
+            whole: false
+        }],
+        "an emptied interval that stays was shortened, not taken"
+    );
+    assert_eq!(all_ranges(&keeping), vec![(1, 5..5)]);
+}
+
 #[test]
 fn query_preserves_greedy_flags_and_value() {
     let mut intervals = Intervals::new();
@@ -1070,7 +1147,13 @@ fn a_collapse_drops_the_markers_it_empties() {
     let mut deep = Intervals::new();
     deep.insert(large_intervals(40_000));
     assert_eq!(deep.len(), 40_000);
-    deep.edit(delete_at(0, 400_000));
+    let cuts = deep.edit(delete_at(0, 400_000));
+    assert_eq!(
+        cuts.len(),
+        40_000,
+        "every marker was reported, subtrees included"
+    );
+    assert!(cuts.iter().all(|cut| cut.at == 0 && cut.whole));
     assert_eq!(deep.len(), 0, "the key map emptied with the tree");
     assert_eq!(
         deep.query(0..u32::MAX, Order::Ascending).count(),

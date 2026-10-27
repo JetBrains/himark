@@ -639,7 +639,9 @@ proptest! {
     /// fragment's range, its elements tile that window, and its
     /// heights equal a fresh complete build of the same window. An
     /// insert strictly before the fragment shifts it whole; one
-    /// strictly inside grows it.
+    /// inside it, its first byte and its end included, grows it —
+    /// the window is an editing window, what its editor types stays
+    /// in it.
     #[test]
     fn a_bounded_editor_tracks_its_fragment_and_matches_a_fresh_build(
         source in source(),
@@ -657,7 +659,7 @@ proptest! {
         let ui = test_ui();
         let mut document = plain_document(&source);
         let set = document.add_fragment_set();
-        let key = document.add_fragment(set, start..end);
+        let key = document.add_editing_window(set, start..end);
         let bounded = add_editor(&mut document, width, Some(key), EditorBuild::Bounded, &store);
         let whole = add_editor(&mut document, width, None, EditorBuild::Complete, &store);
 
@@ -681,22 +683,20 @@ proptest! {
                     document.set_caret(bounded, position);
                     prop_assert_eq!(document.caret_byte(bounded), position, "a caret inside the window is not clamped");
                     document.insert(bounded, inserted, &store, ui, &theme(), &mut batch.effects());
-                    if fragment.start < position && position < fragment.end {
-                        expected = Some(fragment.start..fragment.end + inserted.len() as u32);
-                    }
+                    expected = Some(fragment.start..fragment.end + inserted.len() as u32);
                 }
                 FragmentEdit::Whole(at, inserted) => {
                     let position = pick(&text, *at);
                     document.set_caret(whole, position);
                     document.insert(whole, inserted, &store, ui, &theme(), &mut batch.effects());
                     let shift = inserted.len() as u32;
-                    if position < fragment.start {
-                        expected = Some(fragment.start + shift..fragment.end + shift);
-                    } else if fragment.start < position && position < fragment.end {
-                        expected = Some(fragment.start..fragment.end + shift);
-                    } else if position > fragment.end {
-                        expected = Some(fragment.clone());
-                    }
+                    expected = Some(if position < fragment.start {
+                        fragment.start + shift..fragment.end + shift
+                    } else if position <= fragment.end {
+                        fragment.start..fragment.end + shift
+                    } else {
+                        fragment.clone()
+                    });
                 }
                 FragmentEdit::Replace(a, b, inserted) => {
                     let (operation, replaced, _) = replacement(&text, *a, *b, inserted);
@@ -799,6 +799,49 @@ fn typing_a_breakable_word_lets_the_previous_row_absorb_it() {
     assert_eq!(
         document.element_heights(editor),
         document.fresh_layout_heights(editor, &store, ui, &theme()),
+        "the live layout equals a fresh one"
+    );
+}
+
+/// Shrunk 2026-10-26: a deletion before an editing window pulls it
+/// to the text's start, where a window over the whole text — like
+/// an unbounded layout — ends in the trailing empty line after a
+/// final newline. The repair must lay that line, far from the edit.
+#[test]
+fn a_window_pulled_to_the_text_start_gains_the_trailing_empty_line() {
+    let store = seeded_store();
+    let ui = test_ui();
+    let mut document = plain_document(" \n");
+    let set = document.add_fragment_set();
+    let key = document.add_editing_window(set, 1..2);
+    let bounded = add_editor(
+        &mut document,
+        220.0,
+        Some(key),
+        EditorBuild::Bounded,
+        &store,
+    );
+    let whole = add_editor(&mut document, 220.0, None, EditorBuild::Complete, &store);
+    document.set_caret(whole, 2);
+    document.insert(whole, "\n", &store, ui, &theme(), &mut fx().effects());
+    assert_eq!(
+        document.window(bounded),
+        1..3,
+        "an insert at the window's end grows it"
+    );
+    let text = text_of(&document);
+    let (operation, _, _) = replacement(&text, 0.29167939411642646, 0.0, "a");
+    document.edit(&operation, &store, ui, &theme(), &mut fx().effects());
+    assert_eq!(text_of(&document), "a\n\n");
+    assert_eq!(
+        document.window(bounded),
+        0..3,
+        "the window now spans the whole text"
+    );
+    assert_eq!(document.probe_state(bounded).0, None, "nothing pending");
+    assert_eq!(
+        document.element_heights(bounded),
+        document.fresh_layout_heights(bounded, &store, ui, &theme()),
         "the live layout equals a fresh one"
     );
 }

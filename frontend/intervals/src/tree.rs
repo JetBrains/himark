@@ -110,11 +110,44 @@ where
     }
 }
 
-struct CollapseContext<'a, K> {
+struct CollapseContext<'a, K, V> {
     parents: &'a mut dyn crate::ParentLinks,
     drop_empty: bool,
 
-    dropped: &'a mut Vec<K>,
+    dropped: &'a mut dyn DroppedSink<K, V>,
+}
+
+/// Where a removal reports the intervals it cut: by key alone — a
+/// removal by range only has ids to forget — or with the value and
+/// whether the cut took the interval whole or only shortened it,
+/// which is what a collapse hands its caller: a deletion cut these
+/// decorations with its bytes, and only the tree knew which.
+pub(crate) trait DroppedSink<K, V> {
+    fn took(&mut self, key: K, value: &V);
+    fn shortened(&mut self, _key: &K, _value: &V) {}
+}
+
+impl<K, V> DroppedSink<K, V> for Vec<K> {
+    fn took(&mut self, key: K, _: &V) {
+        self.push(key);
+    }
+}
+
+impl<K: Clone, V: Clone> DroppedSink<K, V> for Vec<(K, V, bool)> {
+    fn took(&mut self, key: K, value: &V) {
+        self.push((key, value.clone(), true));
+    }
+
+    fn shortened(&mut self, key: &K, value: &V) {
+        self.push((key.clone(), value.clone(), false));
+    }
+}
+
+/// The sink of a removal that already knows what it removes.
+struct Unreported;
+
+impl<K, V> DroppedSink<K, V> for Unreported {
+    fn took(&mut self, _: K, _: &V) {}
 }
 
 pub(crate) struct Query<'a, K, V> {
@@ -220,7 +253,7 @@ pub(crate) fn insert<K, V>(
 
     let mut leaves: Vec<Leaf<K, V>> = entries.into_iter().map(Leaf::from_entry).collect();
     leaves.sort_by_key(|leaf| leaf.raw.start);
-    extinct_node(root, parents, None);
+    extinct_node(root, parents, &mut Unreported);
     *root = build_root(leaves, next_inner_id);
     adopt_all(root, root_id, parents);
 }
@@ -245,7 +278,7 @@ pub(crate) fn collapse<K, V>(
     len: Offset,
     parents: &mut dyn crate::ParentLinks,
     drop_empty: bool,
-    dropped: &mut Vec<K>,
+    dropped: &mut dyn DroppedSink<K, V>,
 ) where
     K: Clone,
     V: Clone,
@@ -321,7 +354,7 @@ fn remove_in_range_node<K, V>(
                         inner.is_empty()
                     };
                     if emptied {
-                        extinct_child(child, parents, None);
+                        extinct_child(child, parents, &mut Unreported);
                     } else {
                         // What is left rebases onto its own first
                         // child, and the parent restates its extent.
@@ -759,7 +792,7 @@ fn collapse_node<K, V>(
     d: i64,
     offset: i64,
     len: i64,
-    ctx: &mut CollapseContext<'_, K>,
+    ctx: &mut CollapseContext<'_, K, V>,
 ) where
     K: Clone,
     V: Clone,
@@ -778,7 +811,7 @@ fn collapse_node<K, V>(
                     child.raw.shift(-len);
                     result.push(child);
                 } else if ctx.drop_empty && offset <= child_start && child_end <= offset + len {
-                    extinct_child(child, ctx.parents, Some(ctx.dropped));
+                    extinct_child(child, ctx.parents, &mut *ctx.dropped);
                 } else {
                     let is_empty = {
                         let child_node = Arc::make_mut(&mut child.node);
@@ -786,7 +819,7 @@ fn collapse_node<K, V>(
                         child_node.is_empty()
                     };
                     if is_empty {
-                        extinct_child(child, ctx.parents, Some(ctx.dropped));
+                        extinct_child(child, ctx.parents, &mut *ctx.dropped);
                     } else {
                         let (delta, max_end) = {
                             let child_node = Arc::make_mut(&mut child.node);
@@ -816,7 +849,7 @@ fn collapse_node<K, V>(
                     result.push(leaf);
                 } else if ctx.drop_empty && offset <= leaf_start && leaf_end <= offset + len {
                     ctx.parents.orphan(leaf.raw.id);
-                    ctx.dropped.push(leaf.key);
+                    ctx.dropped.took(leaf.key, &leaf.value);
                 } else {
                     let new_start = if offset < leaf_start {
                         max(offset - ((d + leaf_start) % 2), leaf_start - len)
@@ -826,8 +859,11 @@ fn collapse_node<K, V>(
                     let new_end = max(offset + ((d + leaf_end) % 2), leaf_end - len);
                     if ctx.drop_empty && new_end - new_start < 2 {
                         ctx.parents.orphan(leaf.raw.id);
-                        ctx.dropped.push(leaf.key);
+                        ctx.dropped.took(leaf.key, &leaf.value);
                     } else {
+                        if new_end - new_start < leaf_end - leaf_start {
+                            ctx.dropped.shortened(&leaf.key, &leaf.value);
+                        }
                         leaf.raw.start = narrowed(new_start);
                         leaf.raw.end = narrowed(new_end);
                         result.push(leaf);
@@ -872,7 +908,7 @@ fn remove_from_subtree<K, V>(
                         let child_node = Arc::make_mut(&mut child.node);
                         remove_from_subtree(child_node, child.raw.id, deletion_subtree, parents);
                         if child_node.is_empty() {
-                            extinct_child(child, parents, None);
+                            extinct_child(child, parents, &mut Unreported);
                         } else {
                             let (delta, max_end) = {
                                 let delta = child_node.normalize();
@@ -883,7 +919,7 @@ fn remove_from_subtree<K, V>(
                             children.push(child);
                         }
                     } else {
-                        extinct_child(child, parents, None);
+                        extinct_child(child, parents, &mut Unreported);
                     }
                     continue;
                 }
@@ -895,7 +931,7 @@ fn remove_from_subtree<K, V>(
                         child_node.is_empty()
                     };
                     if is_empty {
-                        extinct_child(child, parents, None);
+                        extinct_child(child, parents, &mut Unreported);
                     } else {
                         let (delta, max_end) = {
                             let child_node = Arc::make_mut(&mut child.node);
@@ -980,7 +1016,7 @@ fn adopt<K, V>(node: &Node<K, V>, parent_id: i64, parents: &mut dyn crate::Paren
 fn extinct_child<K, V>(
     child: Child<K, V>,
     parents: &mut dyn crate::ParentLinks,
-    dropped: Option<&mut Vec<K>>,
+    dropped: &mut dyn DroppedSink<K, V>,
 ) where
     K: Clone,
 {
@@ -991,7 +1027,7 @@ fn extinct_child<K, V>(
 fn extinct_node<K, V>(
     node: &Node<K, V>,
     parents: &mut dyn crate::ParentLinks,
-    mut dropped: Option<&mut Vec<K>>,
+    dropped: &mut dyn DroppedSink<K, V>,
 ) where
     K: Clone,
 {
@@ -999,15 +1035,13 @@ fn extinct_node<K, V>(
         Node::Internal(children) => {
             for child in children {
                 parents.orphan(child.raw.id);
-                extinct_node(&child.node, parents, dropped.as_deref_mut());
+                extinct_node(&child.node, parents, dropped);
             }
         }
         Node::Leaf(leaves) => {
             for leaf in leaves {
                 parents.orphan(leaf.raw.id);
-                if let Some(dropped) = dropped.as_deref_mut() {
-                    dropped.push(leaf.key.clone());
-                }
+                dropped.took(leaf.key.clone(), &leaf.value);
             }
         }
     }

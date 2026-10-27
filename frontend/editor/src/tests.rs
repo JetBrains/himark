@@ -310,8 +310,10 @@ fn repaired_layout_matches_fresh_layout_after_plain_insert() {
         "inserted words that should wrap ",
     );
 
-    let repair_start = layout.edit(&operation);
-    document.edit(&operation, store, ui, &test_theme(), fx!());
+    let mut repair_start = layout.edit(&operation);
+    for line in document.edit(&operation, store, ui, &test_theme(), fx!()) {
+        repair_start = repair_start.min(layout.mark_modified_in(line));
+    }
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
@@ -348,8 +350,10 @@ fn code_block_with_emoji_keeps_layout_ranges_on_utf8_boundaries_after_edit() {
         "😀 inserted ",
     );
 
-    let repair_start = layout.edit(&operation);
-    document.edit(&operation, store, ui, &test_theme(), fx!());
+    let mut repair_start = layout.edit(&operation);
+    for line in document.edit(&operation, store, ui, &test_theme(), fx!()) {
+        repair_start = repair_start.min(layout.mark_modified_in(line));
+    }
     let extras: Vec<_> = document.document_scoped_markups().collect();
     layout.repair_layout_slow(
         document.text(),
@@ -4719,7 +4723,10 @@ fn the_first_baseline_is_cached_at_shape_time() {
 fn deleting_the_text_drops_its_markup_intervals() {
     let mut builder = crate::markup::Markup::builder();
     for block in 0..1000u32 {
-        builder.push_block_styles(block * 10..block * 10 + 5, [crate::theme::StyleId::Strong]);
+        builder.push_block_styles(
+            block * 10..block * 10 + 5,
+            [crate::theme::StyleId::Header(1)],
+        );
     }
     let mut markup = builder.finish();
     assert_eq!(markup.interval_count(), 1000);
@@ -4728,12 +4735,17 @@ fn deleting_the_text_drops_its_markup_intervals() {
     let source = "x".repeat(10_000);
     let text = text::text::Text::from_string_exact(&source);
     let mut view = text.view();
-    markup.edit(
+    let restyled = markup.edit(
         &operation::operation::Operation::delete_at(0, &source),
         &mut view,
         0,
     );
 
+    assert_eq!(
+        restyled,
+        vec![0],
+        "every block went, and they all collapsed onto the one line left"
+    );
     assert_eq!(markup.query_count(), 0, "no corpse is left to walk");
     assert_eq!(
         markup.interval_count(),

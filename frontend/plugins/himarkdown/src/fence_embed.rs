@@ -374,7 +374,7 @@ fn install(
         let (bounds, fragments) = match window {
             Some(window) => {
                 let set = document.add_fragment_set();
-                let fragment = document.add_fragment(set, window);
+                let fragment = document.add_editing_window(set, window);
                 (Some(fragment), Some(set))
             }
             None => (None, None),

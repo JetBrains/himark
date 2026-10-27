@@ -39,6 +39,10 @@ const WORDS: &[&str] = &[
     "-",
     "1.",
     "#",
+    "שלום",
+    "مرحبا",
+    "עברית",
+    "a-שלום",
 ];
 
 pub(super) fn word() -> impl Strategy<Value = String> {
