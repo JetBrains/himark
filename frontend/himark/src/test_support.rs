@@ -218,10 +218,10 @@ impl Himark {
             document
                 .markup()
                 .marks_inline_hidden_in(byte..byte + 1, &mut inline, &mut hidden);
-        marks
+        let header = marks
             .ids()
-            .iter()
-            .any(|id| matches!(id, ::editor::theme::StyleId::Header(_)))
+            .any(|id| matches!(id, ::editor::theme::StyleId::Header(_)));
+        header
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
@@ -397,8 +397,7 @@ impl Himark {
             .markup()
             .block_marks_in(0..8)
             .ids()
-            .iter()
-            .find_map(|id| match *id {
+            .find_map(|id| match id {
                 ::editor::theme::StyleId::Header(level) => Some(Some(level)),
                 _ => None,
             })

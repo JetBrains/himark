@@ -4,10 +4,11 @@
 use super::*;
 
 fn plain_shaped(text: &str) -> ParleyLine {
-    let resolved = BlockStyle::default().resolved(&crate::theme::embedded());
+    let marks = BlockStyle::default();
+    let resolved = marks.resolved(&crate::theme::embedded());
     let display =
         DisplayText::build_segments(false, &[(text.to_owned(), 0)], &[], true, text.len());
-    shape_inputs(&resolved, &display, &[], &crate::theme::embedded())
+    shape_inputs(&marks, &resolved, &display, &[], &crate::theme::embedded())
         .shape(crate::test_document::test_ui(), None)
 }
 
@@ -102,7 +103,7 @@ fn rows_partition_the_text_at_breaks_and_wraps() {
             false,
             sample.len(),
         );
-        let line = shape_inputs(&resolved, &display, &[], &theme)
+        let line = shape_inputs(&BlockStyle::default(), &resolved, &display, &[], &theme)
             .shape(crate::test_document::test_ui(), Some(220.0));
         let rows = line.rows();
         if sample.is_empty() {

@@ -66,13 +66,12 @@ pub struct Markup {
     has_inlays: bool,
 }
 
-impl IntervalQuery<IntervalId, Decoration> for Markup {
-    type Iter<'a>
-        = RecursiveQuery<'a>
-    where
-        Self: 'a;
-
-    fn query(&self, range: Range<u32>, order: Order) -> Self::Iter<'_> {
+impl Markup {
+    /// A recursive walk over this markup and its nested syntax
+    /// layers. Yields `QueryHit`s — not the raw `IntervalRef`s the
+    /// `IntervalQuery` trait promises — because each hit carries the
+    /// weight shift of the layer it surfaced from.
+    pub(crate) fn query(&self, range: Range<u32>, order: Order) -> RecursiveQuery<'_> {
         RecursiveQuery::new(self, range, order)
     }
 }
@@ -93,13 +92,38 @@ struct RecursiveLevel<'a> {
         intervals::Query<'a, IntervalId, Decoration>,
     >,
 
+    /// Nested layers add `StyleWeight::LAYER` per descent — the
+    /// weight mirror of `base`'s range rebasing.
+    weight_shift: i32,
+
     peeked: Option<intervals::IntervalRef<'a, IntervalId, Decoration>>,
+}
+
+/// One hit of a recursive markup query: the interval rebased into
+/// document coordinates, plus the weight shift of the layer it came
+/// from (`StyleWeight::shifted` applies it to a styled hit).
+pub(crate) struct QueryHit<'a> {
+    pub(crate) range: Range<u32>,
+    pub(crate) key: IntervalId,
+    pub(crate) value: &'a Decoration,
+    pub(crate) weight_shift: i32,
+}
+
+impl<'a> QueryHit<'a> {
+    /// The hit's styled payload with the layer shift applied.
+    pub(crate) fn styled(&self) -> Option<(StyleId, StyleWeight)> {
+        match self.value {
+            Decoration::Styled { id, weight } => Some((*id, weight.shifted(self.weight_shift))),
+            _ => None,
+        }
+    }
 }
 
 impl<'a> RecursiveLevel<'a> {
     fn new(
         markup: &'a Markup,
         base: u32,
+        weight_shift: i32,
         range: &Range<u32>,
         order: Order,
         layer: MarkupLayer,
@@ -110,6 +134,7 @@ impl<'a> RecursiveLevel<'a> {
         let local = range.start.saturating_sub(base)..range.end - base;
         let mut level = Self {
             base,
+            weight_shift,
             markup,
             layer,
             iter: intervals::MergedQuery::new(
@@ -144,7 +169,7 @@ impl<'a> RecursiveQuery<'a> {
     ) -> Self {
         let levels = markups
             .into_iter()
-            .filter_map(|(layer, markup)| RecursiveLevel::new(markup, 0, &range, order, layer))
+            .filter_map(|(layer, markup)| RecursiveLevel::new(markup, 0, 0, &range, order, layer))
             .collect();
         Self {
             levels,
@@ -153,12 +178,7 @@ impl<'a> RecursiveQuery<'a> {
         }
     }
 
-    fn next_keyed(
-        &mut self,
-    ) -> Option<(
-        MarkupLayer,
-        intervals::IntervalRef<'a, IntervalId, Decoration>,
-    )> {
+    fn next_keyed(&mut self) -> Option<(MarkupLayer, QueryHit<'a>)> {
         let mut best: Option<usize> = None;
         for (index, level) in self.levels.iter().enumerate() {
             let Some(peeked) = &level.peeked else {
@@ -186,6 +206,7 @@ impl<'a> RecursiveQuery<'a> {
         let item = self.levels[index].peeked.take().expect("peeked");
         let owner = self.levels[index].markup;
         let layer = self.levels[index].layer;
+        let weight_shift = self.levels[index].weight_shift;
         self.levels[index].refill();
         if self.levels[index].peeked.is_none() {
             self.levels.remove(index);
@@ -195,6 +216,7 @@ impl<'a> RecursiveQuery<'a> {
                 if let Some(level) = RecursiveLevel::new(
                     &syntax.markup,
                     item.range.start,
+                    weight_shift.saturating_add(StyleWeight::LAYER),
                     &self.range,
                     self.order,
                     MarkupLayer::Syntax,
@@ -203,21 +225,99 @@ impl<'a> RecursiveQuery<'a> {
                 }
             }
         }
-        Some((layer, item))
+        Some((
+            layer,
+            QueryHit {
+                range: item.range,
+                key: *item.key,
+                value: item.value,
+                weight_shift,
+            },
+        ))
     }
 }
 
 impl<'a> Iterator for RecursiveQuery<'a> {
-    type Item = intervals::IntervalRef<'a, IntervalId, Decoration>;
+    type Item = QueryHit<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_keyed().map(|(_, item)| item)
     }
 }
 
+/// How strongly a styled interval speaks where intervals overlap.
+/// The flat interval set keeps none of the hierarchy its producers
+/// knew — the AST's nesting, a surface's register — so the producer
+/// writes it down as a weight: an emitter walking a tree hands in
+/// the NODE DEPTH over `DEFAULT`, as is. Overlapping styled
+/// intervals resolve lightest first and the heaviest has the last
+/// word on each attribute; equal weights keep document order, with
+/// a line's block styles speaking before its inline spans.
+///
+/// The space is BANDED: `UNDERLAY` sits below any document depth,
+/// `OVERLAY` above — and a nested syntax layer's weights are shifted
+/// a stride per nesting level at query time (the weight mirror of
+/// the range rebasing), so an embedded language outweighs the block
+/// that hosts it without either side knowing the other's depths.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StyleWeight(pub i32);
+
+impl StyleWeight {
+    /// A document's own markup — the AST-derived block and inline
+    /// styles a parser or highlighter emits, plus the node depth.
+    pub const DEFAULT: Self = Self(0);
+
+    /// The face a whole surface wears beneath its document's own
+    /// markup — chat's prose register, an input's field face, the
+    /// source-code base: any covering that the document's styles
+    /// must win over.
+    pub const UNDERLAY: Self = Self(-(1 << 20));
+
+    /// UI state over any document nesting — the hovered link, a
+    /// match tint, brace and occurrence washes, diff inks.
+    pub const OVERLAY: Self = Self(1 << 20);
+
+    /// One nested syntax layer's band: a layer's own depths stay
+    /// under this, and each descent into an embedded syntax shifts
+    /// the child's weights up by it.
+    pub(crate) const LAYER: i32 = 1 << 8;
+
+    pub(crate) fn shifted(self, shift: i32) -> Self {
+        Self(self.0.saturating_add(shift))
+    }
+}
+
+/// Weights for a FLAT span set harvested from one tree (a highlight
+/// query's captures): tree nodes never partially overlap, so the
+/// nesting survives in the spans themselves — each span weighs its
+/// containment depth within the set, and an inner capture outranks
+/// the outer one it sits in without the producer ever walking
+/// parents (`Node::parent` re-descends from the root; this is one
+/// sort and a stack sweep). Equal ranges keep the set's order — the
+/// later span comes out one deeper and wins, as a later stamp did.
+pub fn weigh_by_containment(
+    mut spans: Vec<(Range<u32>, StyleId)>,
+) -> Vec<(Range<u32>, StyleId, StyleWeight)> {
+    // Outer first: by start, the widest first where starts tie; the
+    // sort is stable, so identical ranges keep emission order.
+    spans.sort_by_key(|(range, _)| (range.start, std::cmp::Reverse(range.end)));
+    let mut ends: Vec<u32> = Vec::new();
+    spans
+        .into_iter()
+        .map(|(range, id)| {
+            while ends.last().is_some_and(|end| *end <= range.start) {
+                ends.pop();
+            }
+            let weight = StyleWeight(ends.len() as i32);
+            ends.push(range.end);
+            (range, id, weight)
+        })
+        .collect()
+}
+
 #[derive(Clone)]
 pub(crate) enum Decoration {
-    Styled(StyleId),
+    Styled { id: StyleId, weight: StyleWeight },
 
     Hidden,
 
@@ -241,7 +341,7 @@ impl Decoration {
     /// that takes one restyles bytes it never touched.
     fn reaches_past_its_bytes(&self) -> bool {
         match self {
-            Self::Styled(id) => id.is_block(),
+            Self::Styled { id, .. } => id.is_block(),
             Self::Hidden | Self::Unhide => false,
             Self::Inlay(_) | Self::Alignment(_) | Self::Syntax(_) => true,
         }
@@ -250,7 +350,7 @@ impl Decoration {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct BlockStyle {
-    ids: Vec<StyleId>,
+    styled: Vec<(StyleId, StyleWeight)>,
 
     continues_past: bool,
 
@@ -261,13 +361,13 @@ impl BlockStyle {
     /// A block style of one id — the covering style an input wears.
     pub(crate) fn with(id: StyleId) -> Self {
         let mut style = Self::default();
-        style.add(id);
+        style.add(id, StyleWeight::DEFAULT);
         style
     }
 
-    fn add(&mut self, id: StyleId) {
-        if !self.ids.contains(&id) {
-            self.ids.push(id);
+    fn add(&mut self, id: StyleId, weight: StyleWeight) {
+        if !self.styled.iter().any(|(known, _)| *known == id) {
+            self.styled.push((id, weight));
         }
     }
 
@@ -276,26 +376,33 @@ impl BlockStyle {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
+        self.styled.is_empty()
     }
 
-    pub fn ids(&self) -> &[StyleId] {
-        &self.ids
+    pub fn ids(&self) -> impl Iterator<Item = StyleId> + '_ {
+        self.styled.iter().map(|(id, _)| *id)
+    }
+
+    /// The line's block layers in the order they resolve: lightest
+    /// weight first, document order within a weight.
+    pub(crate) fn layers(&self) -> Vec<(StyleId, StyleWeight)> {
+        let mut layers = self.styled.clone();
+        layers.sort_by_key(|(_, weight)| *weight);
+        layers
     }
 
     pub fn resolved(&self, theme: &crate::theme::Theme) -> TextAttributes {
         let styles = theme.styles();
         let mut merged = styles.base().clone();
-        for id in &self.ids {
+        for (id, _) in self.layers() {
             match id {
                 StyleId::Indent(level) => {
                     let entry = styles.attributes(StyleId::Indent(0));
                     if let Some(inset) = entry.inset {
-                        merged.inset =
-                            Some(merged.inset.unwrap_or(0.0) + inset * f32::from(*level));
+                        merged.inset = Some(merged.inset.unwrap_or(0.0) + inset * f32::from(level));
                     }
                 }
-                id => merged.merge(styles.attributes(*id)),
+                id => merged.merge(styles.attributes(id)),
             }
         }
         if self.alignment.is_some() {
@@ -425,6 +532,7 @@ impl SyntaxId {
 pub struct TextDecorationInterval {
     pub range: Range<u32>,
     pub id: StyleId,
+    pub weight: StyleWeight,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -763,7 +871,7 @@ impl Markup {
     }
 
     fn is_shape(value: &Decoration) -> bool {
-        !matches!(value, Decoration::Styled(_))
+        !matches!(value, Decoration::Styled { .. })
     }
 
     fn insert_split(&mut self, items: impl IntoIterator<Item = Interval<IntervalId, Decoration>>) {
@@ -812,7 +920,11 @@ impl Markup {
 
     /// Seeds plain styled intervals (zero-length markers kept — the
     /// change map's deletion points ride them).
-    pub(crate) fn seed_styled(&mut self, hits: impl IntoIterator<Item = (Range<u32>, StyleId)>) {
+    pub(crate) fn seed_styled(
+        &mut self,
+        hits: impl IntoIterator<Item = (Range<u32>, StyleId)>,
+        weight: StyleWeight,
+    ) {
         let mut next = self.next_key;
         let seeded: Vec<Interval<IntervalId, Decoration>> = hits
             .into_iter()
@@ -824,7 +936,7 @@ impl Markup {
                     greedy_left: false,
                     greedy_right: false,
                     key,
-                    value: Decoration::Styled(id),
+                    value: Decoration::Styled { id, weight },
                 }
             })
             .collect();
@@ -869,7 +981,7 @@ impl Markup {
         for interval in self.styles.query(0..u32::MAX, Order::Ascending) {
             total += 1;
             match interval.value {
-                Decoration::Styled(id) => {
+                Decoration::Styled { id, .. } => {
                     styled += 1;
                     let continues_the_run = matches!(
                         last,
@@ -896,9 +1008,10 @@ impl Decoration {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::hash::DefaultHasher::new();
         match self {
-            Decoration::Styled(id) => {
+            Decoration::Styled { id, weight } => {
                 0u8.hash(&mut hasher);
                 id.hash(&mut hasher);
+                weight.hash(&mut hasher);
             }
             Decoration::Hidden => 1u8.hash(&mut hasher),
             Decoration::Unhide => 2u8.hash(&mut hasher),
@@ -931,7 +1044,7 @@ impl Default for Markup {
 /// producer-brings-the-change-set primitive: the marks landing and
 /// the normalize worker both derive their `changed` through it.
 pub fn set_diff(old: Option<&Markup>, new: &Markup) -> Vec<Range<u32>> {
-    use intervals::{IntervalQuery, Order};
+    use intervals::Order;
     let mut counts: std::collections::HashMap<(u32, u32, u64), i32> =
         std::collections::HashMap::new();
     let mut always: Vec<Range<u32>> = Vec::new();
@@ -1008,10 +1121,13 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         let mut marks = BlockStyle::default();
         for decoration in self.query(range.clone(), Order::Ascending) {
             if intersects(&decoration.range, &range) {
-                match decoration.value {
-                    Decoration::Styled(id) => marks.add(*id),
-                    Decoration::Alignment(alignment) => marks.alignment = Some(*alignment),
-                    _ => {}
+                match decoration.styled() {
+                    Some((id, weight)) => marks.add(id, weight),
+                    None => {
+                        if let Decoration::Alignment(alignment) = decoration.value {
+                            marks.alignment = Some(*alignment);
+                        }
+                    }
                 }
             }
         }
@@ -1048,7 +1164,7 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
     ) -> (BlockStyle, InlayMetrics) {
         classify_line_marks(
             self.query(range.clone(), Order::Ascending)
-                .map(|decoration| (decoration.range, decoration.value)),
+                .map(|decoration| (decoration.range, decoration.value, decoration.weight_shift)),
             &range,
             measure,
             inline,
@@ -1089,9 +1205,9 @@ pub struct InlayMeasure<'a> {
 
 pub(crate) struct LineMarksSweep<'a> {
     iter: RecursiveQuery<'a>,
-    peeked: Option<intervals::IntervalRef<'a, IntervalId, Decoration>>,
+    peeked: Option<QueryHit<'a>>,
 
-    active: Vec<intervals::IntervalRef<'a, IntervalId, Decoration>>,
+    active: Vec<QueryHit<'a>>,
     measure: Option<InlayMeasure<'a>>,
 
     pub(crate) pulls: usize,
@@ -1118,7 +1234,9 @@ impl<'a> LineMarksSweep<'a> {
 
         self.active.retain(|hit| hit.range.end >= range.start);
         classify_line_marks(
-            self.active.iter().map(|hit| (hit.range.clone(), hit.value)),
+            self.active
+                .iter()
+                .map(|hit| (hit.range.clone(), hit.value, hit.weight_shift)),
             &range,
             self.measure,
             inline,
@@ -1128,7 +1246,7 @@ impl<'a> LineMarksSweep<'a> {
 }
 
 fn classify_line_marks<'a, 'm>(
-    hits: impl Iterator<Item = (Range<u32>, &'a Decoration)>,
+    hits: impl Iterator<Item = (Range<u32>, &'a Decoration, i32)>,
     range: &Range<u32>,
     measure: Option<InlayMeasure<'m>>,
     inline: &mut Vec<TextDecorationInterval>,
@@ -1145,23 +1263,24 @@ fn classify_line_marks<'a, 'm>(
         hidden.clear();
         let mut unhide: Vec<Range<u32>> = Vec::new();
         let mut candidates: Vec<(Range<u32>, Range<u32>)> = Vec::new();
-        for (hit_range, value) in hits {
+        for (hit_range, value, weight_shift) in hits {
             if !intersects(&hit_range, range) {
                 continue;
             }
             let start = hit_range.start.max(range.start) - range.start;
             let end = hit_range.end.min(range.end) - range.start;
             match value {
-                Decoration::Styled(id) if !id.is_block() => {
+                Decoration::Styled { id, weight } if !id.is_block() => {
                     if start < end {
                         inline.push(TextDecorationInterval {
                             range: start..end,
                             id: *id,
+                            weight: weight.shifted(weight_shift),
                         });
                     }
                 }
-                Decoration::Styled(id) => {
-                    marks.add(*id);
+                Decoration::Styled { id, weight } => {
+                    marks.add(*id, weight.shifted(weight_shift));
                     if hit_range.end > range.end {
                         marks.continues_past = true;
                     }
@@ -1242,7 +1361,7 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
     ) -> Option<Range<u32>> {
         let mut widest: Option<Range<u32>> = None;
         for decoration in self.query(byte..byte.saturating_add(1), Order::Ascending) {
-            if let Decoration::Styled(id) = &decoration.value {
+            if let Decoration::Styled { id, .. } = &decoration.value {
                 if matches(*id) && decoration.range.start <= byte && decoration.range.end > byte {
                     widest = Some(match widest.take() {
                         Some(range) => {
@@ -1355,10 +1474,13 @@ impl Markup {
         let mut marks = BlockStyle::default();
         for decoration in self.query(range.clone(), Order::Ascending) {
             if intersects(&decoration.range, &range) {
-                match decoration.value {
-                    Decoration::Styled(id) => marks.add(*id),
-                    Decoration::Alignment(alignment) => marks.alignment = Some(*alignment),
-                    _ => {}
+                match decoration.styled() {
+                    Some((id, weight)) => marks.add(id, weight),
+                    None => {
+                        if let Decoration::Alignment(alignment) = decoration.value {
+                            marks.alignment = Some(*alignment);
+                        }
+                    }
                 }
             }
         }
@@ -1452,14 +1574,14 @@ impl Markup {
     }
 
     /// A plain styled span — the BULK lane. Nobody looks it up again.
-    pub fn push_styled(&mut self, range: Range<u32>, id: StyleId) {
+    pub fn push_styled(&mut self, range: Range<u32>, id: StyleId, weight: StyleWeight) {
         let key = self.mint();
         self.styles.insert([intervals::Interval {
             range,
             greedy_left: false,
             greedy_right: false,
             key,
-            value: Decoration::Styled(id),
+            value: Decoration::Styled { id, weight },
         }]);
     }
 
@@ -1496,14 +1618,14 @@ impl Markup {
             .map(|decoration| decoration.range.clone())
     }
 
-    pub fn push_styled_covering(&mut self, range: Range<u32>, id: StyleId) {
+    pub fn push_styled_covering(&mut self, range: Range<u32>, id: StyleId, weight: StyleWeight) {
         let key = self.mint();
         self.styles.insert([intervals::Interval {
             range,
             greedy_left: true,
             greedy_right: true,
             key,
-            value: Decoration::Styled(id),
+            value: Decoration::Styled { id, weight },
         }]);
     }
 
@@ -1962,6 +2084,7 @@ impl TextDecorationInterval {
             range: range.start.min(u32::MAX as usize) as u32
                 ..range.end.min(u32::MAX as usize) as u32,
             id,
+            weight: StyleWeight::DEFAULT,
         }
     }
 }
@@ -1973,8 +2096,8 @@ impl MarkupBuilder {
         key
     }
 
-    pub fn push_styled(&mut self, range: Range<u32>, id: StyleId) {
-        self.push(range, Decoration::Styled(id));
+    pub fn push_styled(&mut self, range: Range<u32>, id: StyleId, weight: StyleWeight) {
+        self.push(range, Decoration::Styled { id, weight });
     }
 
     fn new() -> Self {
@@ -1987,13 +2110,26 @@ impl MarkupBuilder {
     }
 
     pub fn push_block_styles(&mut self, range: Range<u32>, ids: impl IntoIterator<Item = StyleId>) {
-        for id in ids {
-            self.push(range.clone(), Decoration::Styled(id));
+        self.push_block_layers(
+            range,
+            ids.into_iter().map(|id| (id, StyleWeight::DEFAULT)),
+        );
+    }
+
+    /// Block styles with the nesting the producer knows: outer
+    /// layers lighter, inner heavier — the AST depth as weight.
+    pub fn push_block_layers(
+        &mut self,
+        range: Range<u32>,
+        layers: impl IntoIterator<Item = (StyleId, StyleWeight)>,
+    ) {
+        for (id, weight) in layers {
+            self.push(range.clone(), Decoration::Styled { id, weight });
         }
     }
 
-    pub fn push_inline(&mut self, range: Range<u32>, id: StyleId) {
-        self.push(range, Decoration::Styled(id));
+    pub fn push_inline(&mut self, range: Range<u32>, id: StyleId, weight: StyleWeight) {
+        self.push(range, Decoration::Styled { id, weight });
     }
 
     pub fn push_alignment(&mut self, range: Range<u32>, alignment: crate::theme::TextAlignment) {
@@ -2452,7 +2588,7 @@ impl Markup {
         self.styles
             .query(span, Order::Ascending)
             .filter_map(|interval| match interval.value {
-                Decoration::Styled(_) => Some(interval.range.clone()),
+                Decoration::Styled { .. } => Some(interval.range.clone()),
                 _ => None,
             })
             .collect()

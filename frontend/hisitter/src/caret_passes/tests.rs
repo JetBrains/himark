@@ -121,7 +121,11 @@ fn a_bracket_less_caret_clears_the_previous_highlight() {
     let source = "fn main() { let a = 1; }";
     let mut previous = Markup::new();
     let open = at(source, "{", 0);
-    previous.push_styled(open..open + 1, StyleId::BraceMatch);
+    previous.push_styled(
+        open..open + 1,
+        StyleId::BraceMatch,
+        editor::markup::StyleWeight::OVERLAY,
+    );
 
     let input = input_at(source, at(source, "main", 0) + 2, previous);
     assert_eq!(
@@ -161,7 +165,11 @@ fn a_caret_move_swaps_the_highlighted_word() {
 
     let mut previous = Markup::new();
     for range in &first {
-        previous.push_styled(range.clone(), StyleId::Occurrence);
+        previous.push_styled(
+            range.clone(),
+            StyleId::Occurrence,
+            editor::markup::StyleWeight::OVERLAY,
+        );
     }
     let second = landed(
         &OccurrencePass,

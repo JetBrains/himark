@@ -1019,7 +1019,11 @@ fn edit_text(input: &::editor::editor_view::EditorView) -> String {
 
 fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view::EditorView {
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Field);
+    markup.push_styled_covering(
+        0..text.len() as u32,
+        editor::theme::StyleId::Field,
+        editor::markup::StyleWeight::UNDERLAY,
+    );
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let mut input = ::editor::editor_view::EditorView::of_document(

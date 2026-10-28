@@ -125,7 +125,11 @@ impl imba::command::DynamicCommand for WashDocument {
         document.ensure_document_markup(markup);
         let mut tints = editor::markup::Markup::new();
         for range in &ranges {
-            tints.push_styled(range.clone(), editor::theme::StyleId::Match);
+            tints.push_styled(
+                range.clone(),
+                editor::theme::StyleId::Match,
+                editor::markup::StyleWeight::OVERLAY,
+            );
         }
         let entity = self.document;
         fx.scope(

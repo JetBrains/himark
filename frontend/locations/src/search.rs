@@ -749,7 +749,11 @@ impl hikit::modal::ModalView for SearchView {
 
 fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) -> EditorView {
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::QuerySmall);
+    markup.push_styled_covering(
+        0..text.len() as u32,
+        editor::theme::StyleId::QuerySmall,
+        editor::markup::StyleWeight::UNDERLAY,
+    );
     let document =
         editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let mut input = EditorView::of_document(document, 600.0, store, ui, &editor::theme::embedded());

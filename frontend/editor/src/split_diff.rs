@@ -941,16 +941,32 @@ fn derive_wash_markups(
         match fragment.kind {
             FragmentKind::Added => {}
             FragmentKind::Deleted => {
-                left_markup.push_styled(fragment.left.clone(), StyleId::DiffDeleted);
+                left_markup.push_styled(
+                    fragment.left.clone(),
+                    StyleId::DiffDeleted,
+                    crate::markup::StyleWeight::OVERLAY,
+                );
             }
             FragmentKind::Modified => {
-                left_markup.push_styled(fragment.left.clone(), StyleId::DiffDeleted);
+                left_markup.push_styled(
+                    fragment.left.clone(),
+                    StyleId::DiffDeleted,
+                    crate::markup::StyleWeight::OVERLAY,
+                );
                 for (left, right) in &fragment.words {
                     if left.start < left.end {
-                        left_markup.push_styled(left.clone(), StyleId::DiffDeletedWord);
+                        left_markup.push_styled(
+                            left.clone(),
+                            StyleId::DiffDeletedWord,
+                            crate::markup::StyleWeight::OVERLAY,
+                        );
                     }
                     if right.start < right.end {
-                        right_markup.push_styled(right.clone(), StyleId::DiffAddedWord);
+                        right_markup.push_styled(
+                            right.clone(),
+                            StyleId::DiffAddedWord,
+                            crate::markup::StyleWeight::OVERLAY,
+                        );
                     }
                 }
             }
@@ -1448,8 +1464,7 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
                 &job.fold_bans,
             );
             trace_diff(|| {
-                use intervals::IntervalQuery;
-                format!(
+                                format!(
                     "marks derived window={:?} bans={} left={} right={} changed=({},{})",
                     job.window,
                     job.fold_bans.len(),

@@ -149,7 +149,11 @@ impl Document {
 
         let wash_id = before.add_markup();
         let mut wash = crate::markup::Markup::new();
-        wash.push_styled(base_lines.clone(), crate::theme::StyleId::DiffDeleted);
+        wash.push_styled(
+            base_lines.clone(),
+            crate::theme::StyleId::DiffDeleted,
+            crate::markup::StyleWeight::OVERLAY,
+        );
         before.replace_markup(
             wash_id,
             wash,

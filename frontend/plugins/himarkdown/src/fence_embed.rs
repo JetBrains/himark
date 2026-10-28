@@ -536,7 +536,11 @@ fn build_document(
 
     let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
     let mut markup = Markup::new();
-    markup.push_styled_covering(0..byte_count, StyleId::SourceCode);
+    markup.push_styled_covering(
+        0..byte_count,
+        StyleId::SourceCode,
+        editor::markup::StyleWeight::UNDERLAY,
+    );
     Document::new(text, markup)
 }
 

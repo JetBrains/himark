@@ -127,7 +127,11 @@ mod tests {
         document.show_markup(editor_id, markup);
         document.mark_scroll_stripes(editor_id, markup);
         let mut tints = editor::markup::Markup::new();
-        tints.push_styled(90..95, editor::theme::StyleId::Match);
+        tints.push_styled(
+            90..95,
+            editor::theme::StyleId::Match,
+            editor::markup::StyleWeight::OVERLAY,
+        );
         document.replace_markup(markup, tints, &[], &store, ui, &theme, quiet);
         OpenDocuments::put_document(&mut store, documents, id, document);
 

@@ -172,7 +172,11 @@ impl Document {
     pub fn plain_text(text: Text) -> Self {
         let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
         let mut markup = Markup::new();
-        markup.push_styled_covering(0..byte_count, crate::theme::StyleId::SourceCode);
+        markup.push_styled_covering(
+            0..byte_count,
+            crate::theme::StyleId::SourceCode,
+            crate::markup::StyleWeight::UNDERLAY,
+        );
         Self::new(text, markup)
     }
 
@@ -192,7 +196,11 @@ impl Document {
         };
         let mut markup = Markup::new();
         if language != "markdown" {
-            markup.push_styled_covering(0..byte_count, crate::theme::StyleId::SourceCode);
+            markup.push_styled_covering(
+            0..byte_count,
+            crate::theme::StyleId::SourceCode,
+            crate::markup::StyleWeight::UNDERLAY,
+        );
         }
         Self::new(text, markup).with_syntax(root, &sites)
     }
@@ -268,13 +276,13 @@ impl Document {
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn markup_styled_ranges(&self, id: MarkupId) -> Vec<std::ops::Range<u32>> {
-        use intervals::{IntervalQuery, Order};
+        use intervals::Order;
         let Some(markup) = self.markups.get(&id) else {
             return Vec::new();
         };
         markup
             .query(0..u32::MAX, Order::Ascending)
-            .filter(|entry| matches!(entry.value, crate::markup::Decoration::Styled(_)))
+            .filter(|entry| matches!(entry.value, crate::markup::Decoration::Styled { .. }))
             .map(|entry| entry.range.clone())
             .collect()
     }

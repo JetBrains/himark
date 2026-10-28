@@ -12,7 +12,7 @@ use std::{ops::Range, sync::Arc};
 
 use imba::arena::Arena;
 use imba::event::{Event, EventResult};
-use intervals::{IntervalQuery, Order};
+use intervals::Order;
 use skia_safe::{Point, Rect, Size};
 
 use crate::document::{Document, DocumentToken};
@@ -88,7 +88,7 @@ pub(crate) fn derive(markups: &[Markup], layout: &DocumentLayout, theme: &Theme)
     let mut hits: Vec<(Range<u32>, StyleId)> = Vec::new();
     for markup in markups {
         for interval in markup.query(0..u32::MAX, Order::Ascending) {
-            if let Decoration::Styled(id) = interval.value {
+            if let Decoration::Styled { id, .. } = interval.value {
                 if theme.styles().attributes(*id).stripe.is_some() {
                     hits.push((interval.range.clone(), *id));
                 }

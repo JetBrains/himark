@@ -57,7 +57,7 @@ fn retint(
     let ui = crate::test_document::test_ui();
     let mut tints = Markup::new();
     for range in ranges {
-        tints.push_styled(range.clone(), style);
+        tints.push_styled(range.clone(), style, crate::markup::StyleWeight::OVERLAY);
     }
     document.replace_markup(
         id,
@@ -75,7 +75,7 @@ fn styled_hits(markup: &Markup) -> Vec<(Range<u32>, StyleId)> {
     markup
         .query(0..u32::MAX, Order::Ascending)
         .filter_map(|hit| match hit.value {
-            crate::markup::Decoration::Styled(id) => Some((hit.range.clone(), *id)),
+            crate::markup::Decoration::Styled { id, .. } => Some((hit.range.clone(), *id)),
             _ => None,
         })
         .collect()

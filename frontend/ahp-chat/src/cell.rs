@@ -231,7 +231,11 @@ fn prose_style(kind: CellKind) -> editor::theme::StyleId {
 /// stream's appends wear it too.
 fn prose_markup(kind: CellKind, length: u32) -> editor::markup::Markup {
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..length, prose_style(kind));
+    markup.push_styled_covering(
+        0..length,
+        prose_style(kind),
+        editor::markup::StyleWeight::UNDERLAY,
+    );
     markup
 }
 

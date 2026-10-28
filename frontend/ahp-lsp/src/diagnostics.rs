@@ -597,7 +597,11 @@ fn squiggle_markup(
             if start >= end {
                 continue;
             }
-            builder.push_styled(start as u32..end as u32, severity_style(diagnostic));
+            builder.push_styled(
+                start as u32..end as u32,
+                severity_style(diagnostic),
+                editor::markup::StyleWeight::OVERLAY,
+            );
         }
     }
     builder.finish()

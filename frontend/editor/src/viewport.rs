@@ -79,7 +79,6 @@ struct StripeWalk<'a> {
 
 impl<'a> StripeWalk<'a> {
     fn new(markup: &'a crate::markup::Markup, from: u32) -> Self {
-        use intervals::IntervalQuery;
         let mut iter = markup.query(from..u32::MAX, intervals::Order::Ascending);
         let peeked = Self::pull(&mut iter);
         Self {
@@ -93,7 +92,7 @@ impl<'a> StripeWalk<'a> {
         iter: &mut crate::markup::RecursiveQuery<'a>,
     ) -> Option<(Range<u32>, crate::theme::StyleId)> {
         iter.find_map(|hit| match hit.value {
-            crate::markup::Decoration::Styled(id) => Some((hit.range.clone(), *id)),
+            crate::markup::Decoration::Styled { id, .. } => Some((hit.range.clone(), *id)),
             _ => None,
         })
     }
@@ -399,6 +398,7 @@ impl EditorViewport {
                     viewport.inline.push(TextDecorationInterval {
                         range: lo - byte_start..hi - byte_start,
                         id: crate::theme::StyleId::Composing,
+                        weight: crate::markup::StyleWeight::OVERLAY,
                     });
                 }
             }
@@ -409,6 +409,7 @@ impl EditorViewport {
                     viewport.inline.push(TextDecorationInterval {
                         range: lo - byte_start..hi - byte_start,
                         id: crate::theme::StyleId::Link,
+                        weight: crate::markup::StyleWeight::OVERLAY,
                     });
                 }
             }

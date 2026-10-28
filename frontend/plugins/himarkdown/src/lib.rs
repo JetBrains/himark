@@ -13,6 +13,7 @@ pub mod table;
 use editor::document::Document;
 use editor::markup::Markup;
 use editor::markup::MarkupBuilder;
+use editor::markup::StyleWeight;
 use editor::markup::TextDecorationInterval;
 use editor::reparse::SyntaxLanguage;
 use editor::reparse::SyntaxTree;
@@ -430,6 +431,7 @@ fn visit_markdown_blocks_where(
                         token.decoration.range.start as usize..token.decoration.range.end as usize,
                     ),
                     id: token.decoration.id,
+                    weight: block.marks.inline_weight(),
                 });
 
                 for span in token.syntax {
@@ -459,7 +461,7 @@ fn push_markup_for_block(
     if block.table.is_some() {
         return;
     }
-    markup.push_block_styles(block.range.clone(), block.marks.style_ids());
+    markup.push_block_layers(block.range.clone(), block.marks.style_layers());
 
     match block.marks.header {
         Some(1) => markup.push_alignment(block.range.clone(), editor::theme::TextAlignment::Right),
@@ -483,7 +485,7 @@ fn push_markup_for_block(
     }
 
     for decoration in &block.inline {
-        markup.push_inline(decoration.range.clone(), decoration.id);
+        markup.push_inline(decoration.range.clone(), decoration.id, decoration.weight);
     }
 }
 
@@ -562,27 +564,42 @@ pub struct BlockMarks {
 }
 
 impl BlockMarks {
-    fn style_ids(&self) -> Vec<StyleId> {
-        let mut ids = Vec::new();
-        if let Some(level) = self.header {
-            ids.push(StyleId::Header(level));
-        }
-        if self.list_item {
-            ids.push(StyleId::ListItem);
-        }
-        if self.code {
-            ids.push(StyleId::CodeBlock);
-        }
-        if self.horizontal_line {
-            ids.push(StyleId::HorizontalLine);
+    /// The block's styles as LAYERS, outer to inner, each at its
+    /// nesting depth — the hierarchy the markdown tree knew, written
+    /// into the weights: an indent wraps a quote wraps a list item
+    /// wraps the content kind, so the innermost has the last word.
+    fn style_layers(&self) -> Vec<(StyleId, StyleWeight)> {
+        let mut layers: Vec<(StyleId, StyleWeight)> = Vec::new();
+        let mut layer = |layers: &mut Vec<(StyleId, StyleWeight)>, id: StyleId| {
+            let depth = layers.len() as i32;
+            layers.push((id, StyleWeight(depth)));
+        };
+        if self.indent > 0 {
+            layer(&mut layers, StyleId::Indent(self.indent));
         }
         if self.quote {
-            ids.push(StyleId::Quote);
+            layer(&mut layers, StyleId::Quote);
         }
-        if self.indent > 0 {
-            ids.push(StyleId::Indent(self.indent));
+        if self.list_item {
+            layer(&mut layers, StyleId::ListItem);
         }
-        ids
+        if let Some(level) = self.header {
+            layer(&mut layers, StyleId::Header(level));
+        }
+        if self.code {
+            layer(&mut layers, StyleId::CodeBlock);
+        }
+        if self.horizontal_line {
+            layer(&mut layers, StyleId::HorizontalLine);
+        }
+        layers
+    }
+
+    /// The weight of the block's INLINE content: one deeper than the
+    /// deepest block layer, so an emphasis never loses its face to
+    /// the block that contains it.
+    fn inline_weight(&self) -> StyleWeight {
+        StyleWeight(self.style_layers().len() as i32)
     }
 }
 

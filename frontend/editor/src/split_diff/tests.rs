@@ -1000,7 +1000,7 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
         use intervals::{IntervalQuery, Order};
         markup
             .query(0..u32::MAX, Order::Ascending)
-            .any(|entry| matches!(entry.value, crate::markup::Decoration::Styled(_)))
+            .any(|entry| matches!(entry.value, crate::markup::Decoration::Styled { .. }))
     });
     assert!(
         washes_visible,

@@ -737,7 +737,11 @@ fn semantic_markup(
         )
         .min(len);
         if start < end {
-            builder.push_styled(start as u32..end as u32, span.style);
+            builder.push_styled(
+                start as u32..end as u32,
+                span.style,
+                editor::markup::StyleWeight::DEFAULT,
+            );
         }
     }
     (semantic_tokens_markup(), builder.finish())

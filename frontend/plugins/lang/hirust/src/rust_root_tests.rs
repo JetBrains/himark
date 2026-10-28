@@ -35,7 +35,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
     let marks = editor::markup::OverlaidMarkup::new(document.markup(), &extras)
         .marks_inline_hidden_in(0..11, &mut inline, &mut hidden);
     assert!(
-        marks.ids().contains(&StyleId::CodeBlock) || marks.ids().contains(&StyleId::SourceCode),
+        marks.ids().any(|id| matches!(id, StyleId::CodeBlock | StyleId::SourceCode)),
         "a code-language root renders monospace"
     );
     assert!(

@@ -40,7 +40,7 @@ impl SyntaxLanguage for Toy {
     ) {
         let len = range.end - range.start;
         invalidated.push(0..len);
-        replacement.push_styled(0..len, StyleId::Keyword);
+        replacement.push_styled(0..len, StyleId::Keyword, editor::markup::StyleWeight::DEFAULT);
     }
 }
 

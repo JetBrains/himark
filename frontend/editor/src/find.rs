@@ -159,7 +159,11 @@ impl FindBar {
 
     fn seed(&mut self, store: &Store, ui: &UiCtx, query: &str) {
         let mut markup = crate::markup::Markup::new();
-        markup.push_styled_covering(0..query.len() as u32, crate::theme::StyleId::Input);
+        markup.push_styled_covering(
+            0..query.len() as u32,
+            crate::theme::StyleId::Input,
+            crate::markup::StyleWeight::UNDERLAY,
+        );
         let document = Document::new(text::text::Text::from_string_exact(query), markup);
         let theme = crate::env::Themes::of(store);
         let mut input = EditorView::of_document(document, 600.0, store, ui, &theme);
@@ -266,7 +270,11 @@ impl FindBar {
         changed.extend(matches.iter().cloned());
         let mut tints = crate::markup::Markup::new();
         for range in &matches {
-            tints.push_styled(range.clone(), crate::theme::StyleId::Match);
+            tints.push_styled(
+                range.clone(),
+                crate::theme::StyleId::Match,
+                crate::markup::StyleWeight::OVERLAY,
+            );
         }
         let markup = match self.installed {
             Some(markup) => markup,

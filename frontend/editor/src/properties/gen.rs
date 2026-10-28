@@ -13,7 +13,7 @@ use text::text::Text;
 
 use crate::{
     document::Document,
-    markup::Markup,
+    markup::{Markup, StyleWeight},
     theme::{StyleId, TextAlignment},
 };
 
@@ -196,11 +196,11 @@ pub(super) fn build(spec: &Spec) -> Document {
         }
         let span = range.start + from as u32..range.start + to as u32;
         match inline {
-            Inline::Emphasis => markup.push_inline(span, StyleId::Emphasis),
-            Inline::Strong => markup.push_inline(span, StyleId::Strong),
-            Inline::InlineCode => markup.push_inline(span, StyleId::InlineCode),
-            Inline::Link => markup.push_inline(span, StyleId::Link),
-            Inline::Strikethrough => markup.push_inline(span, StyleId::Strikethrough),
+            Inline::Emphasis => markup.push_inline(span, StyleId::Emphasis, StyleWeight::DEFAULT),
+            Inline::Strong => markup.push_inline(span, StyleId::Strong, StyleWeight::DEFAULT),
+            Inline::InlineCode => markup.push_inline(span, StyleId::InlineCode, StyleWeight::DEFAULT),
+            Inline::Link => markup.push_inline(span, StyleId::Link, StyleWeight::DEFAULT),
+            Inline::Strikethrough => markup.push_inline(span, StyleId::Strikethrough, StyleWeight::DEFAULT),
             Inline::Hidden => markup.push_hidden(span),
         }
     }

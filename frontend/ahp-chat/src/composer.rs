@@ -80,7 +80,11 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
     // message wears once sent (docs/Design.md). The covering style
     // is greedy, so everything typed wears it.
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..0, editor::theme::StyleId::ChatPrompt);
+    markup.push_styled_covering(
+        0..0,
+        editor::theme::StyleId::ChatPrompt,
+        editor::markup::StyleWeight::UNDERLAY,
+    );
     let document = editor::document::Document::new(text::text::Text::from_string_exact(""), markup)
         .with_syntax(
             editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),

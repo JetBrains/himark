@@ -67,10 +67,9 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     assert!(
         marks
             .ids()
-            .iter()
             .any(|id| matches!(id, editor::theme::StyleId::Header(_))),
         "the typed heading styles after the landing (ids: {:?})",
-        marks.ids()
+        marks.ids().collect::<Vec<_>>()
     );
 }
 
@@ -174,7 +173,11 @@ impl editor::reparse::SyntaxLanguage for RustLike {
         let mut view = text.view();
         let raw = view.byte_string(range.start as usize, range.end as usize);
         for (at, _) in raw.match_indices("fn ") {
-            replacement.push_styled(at as u32..at as u32 + 2, StyleId::Function);
+            replacement.push_styled(
+                at as u32..at as u32 + 2,
+                StyleId::Function,
+                editor::markup::StyleWeight::DEFAULT,
+            );
         }
     }
 }

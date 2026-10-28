@@ -749,7 +749,6 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     assert!(
         marks
             .ids()
-            .iter()
             .any(|id| matches!(id, editor::theme::StyleId::Header(_))),
         "the heading below the table keeps its block style"
     );
@@ -758,7 +757,6 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     assert!(
         marks
             .ids()
-            .iter()
             .any(|id| matches!(id, editor::theme::StyleId::HorizontalLine)),
         "the rule below the table keeps its block style"
     );
@@ -1745,7 +1743,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
             .markup()
             .block_marks_in(0..line_end)
             .ids()
-            .contains(&StyleId::Header(1))
+            .any(|id| id == StyleId::Header(1))
             .then_some(1u8),
         Some(1),
         "the rebased reparse styles the header at its shifted position"
@@ -1865,7 +1863,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
             .markup()
             .block_marks_in(0..9)
             .ids()
-            .contains(&StyleId::Header(1))
+            .any(|id| id == StyleId::Header(1))
             .then_some(1u8),
         Some(1),
         "install_parse must apply the syntax markup"
@@ -2173,7 +2171,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
             .markup()
             .block_marks_in(0..7)
             .ids()
-            .contains(&StyleId::Header(1))
+            .any(|id| id == StyleId::Header(1))
             .then_some(1u8),
         None,
         "before the reparse the line is still a paragraph"
@@ -2196,7 +2194,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
             .markup()
             .block_marks_in(0..7)
             .ids()
-            .contains(&StyleId::Header(1))
+            .any(|id| id == StyleId::Header(1))
             .then_some(1u8),
         Some(1),
         "the reparsed markup makes the line a header"

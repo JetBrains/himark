@@ -140,6 +140,7 @@ impl DisplayText {
                 (start < end).then(|| TextDecorationInterval {
                     range: start as u32..end as u32,
                     id: decoration.id,
+                    weight: decoration.weight,
                 })
             })
             .collect()
@@ -355,7 +356,42 @@ struct RunStyle {
     squiggle: Option<skia_safe::Color>,
 }
 
+/// The attributes a run INHERITS from any layer beneath it — the
+/// cascade a paragraph base hands its runs. The booleans (bold,
+/// italic, the inks) are span-local and only an inline span sets
+/// them.
+fn apply_inherited(run: &mut RunStyle, attributes: &crate::theme::TextAttributes) {
+    if let Some(color) = attributes.color {
+        run.color = color;
+    }
+    if let Some(size) = attributes.font_size {
+        run.size = size;
+    }
+    if let Some(weight) = attributes.font_weight {
+        run.weight = Some(weight);
+    }
+    if let Some(width) = attributes.font_width {
+        run.width = Some(width);
+    }
+    if let Some(families) = &attributes.font_families {
+        run.families = Some(families.to_vec());
+    }
+    if let Some(height) = attributes.line_height {
+        run.line_height = Some(height);
+    }
+}
+
+/// One styled layer covering a run, carried with its sort key: the
+/// weight first, block layers before inline at a tie, document order
+/// last — the same order `BlockStyle::resolved` merges, so a run and
+/// its line never disagree about who wins.
+enum RunLayer<'a> {
+    Block(crate::theme::StyleId),
+    Inline(&'a TextDecorationInterval),
+}
+
 pub(crate) fn shape_inputs(
+    marks: &BlockStyle,
     resolved: &crate::theme::TextAttributes,
     display: &DisplayText,
     decorations: &[TextDecorationInterval],
@@ -400,6 +436,20 @@ pub(crate) fn shape_inputs(
         cuts.sort_unstable();
         cuts.dedup();
 
+        // Every layer the line carries, lightest weight first. The
+        // block layers already live in `resolved`; re-woven here at
+        // their own weights, they stand between the inline layers
+        // they outweigh and the ones that outweigh them — an
+        // underlay never repaints over the block above it.
+        let mut layers: Vec<(crate::markup::StyleWeight, u8, usize, RunLayer<'_>)> = Vec::new();
+        for (seq, (id, weight)) in marks.layers().into_iter().enumerate() {
+            layers.push((weight, 0, seq, RunLayer::Block(id)));
+        }
+        for (seq, decoration) in decorations.iter().enumerate() {
+            layers.push((decoration.weight, 1, seq, RunLayer::Inline(decoration)));
+        }
+        layers.sort_by_key(|(weight, class, seq, _)| (*weight, *class, *seq));
+
         for window in cuts.windows(2) {
             let (start, end) = (window[0], window[1]);
             if start >= end {
@@ -419,33 +469,23 @@ pub(crate) fn shape_inputs(
                 squiggle: None,
             };
             let styles = theme.styles();
-            for decoration in decorations {
+            for (_, _, _, layer) in &layers {
+                let decoration = match layer {
+                    RunLayer::Block(id) => {
+                        apply_inherited(&mut run, styles.attributes(*id));
+                        continue;
+                    }
+                    RunLayer::Inline(decoration) => decoration,
+                };
                 let range = decoration.range.start as usize..decoration.range.end as usize;
                 if range.start <= start && range.end >= end {
                     let attributes = styles.attributes(decoration.id);
+                    apply_inherited(&mut run, attributes);
                     if attributes.bold {
                         run.bold = true;
                     }
-                    if let Some(weight) = attributes.font_weight {
-                        run.weight = Some(weight);
-                    }
-                    if let Some(width) = attributes.font_width {
-                        run.width = Some(width);
-                    }
                     if attributes.italic {
                         run.italic = true;
-                    }
-                    if let Some(color) = attributes.color {
-                        run.color = color;
-                    }
-                    if let Some(size) = attributes.font_size {
-                        run.size = size;
-                    }
-                    if let Some(families) = &attributes.font_families {
-                        run.families = Some(families.to_vec());
-                    }
-                    if let Some(height) = attributes.line_height {
-                        run.line_height = Some(height);
                     }
                     if attributes.underline {
                         run.underline = true;
@@ -623,7 +663,7 @@ impl ShapedLine {
 
         let inline = display.map_decorations(inline);
 
-        let mut inputs = shape_inputs(&resolved, &display, &inline, theme);
+        let mut inputs = shape_inputs(marks, &resolved, &display, &inline, theme);
         if inputs.text.is_empty() && inputs.boxes.is_empty() {
             // An empty line still answers heights and carets — the
             // zero-width space gives the shaper one real cluster.
@@ -714,7 +754,7 @@ impl ShapedLine {
         let alignment = resolved.alignment.take().unwrap_or_default();
         let segments = [(text.to_owned(), 0)];
         let display = DisplayText::build_segments(false, &segments, &[], true, text.len());
-        let inputs = shape_inputs(&resolved, &display, &[], theme);
+        let inputs = shape_inputs(&block, &resolved, &display, &[], theme);
         let line = inputs.shape(ui, None);
         let (x, extent_left, extent_right) =
             horizontal_geometry(document_x, &resolved, alignment, line.width(), layout_width);

@@ -1836,7 +1836,7 @@ fn visual_lines<'a>(
     let inline = text.map_decorations(inline);
     let rows_share_metrics =
         crate::shaped_line::rows_share_metrics(&inline, text.placeholders(), theme);
-    let mut inputs = crate::shaped_line::shape_inputs(&resolved, &text, &inline, theme);
+    let mut inputs = crate::shaped_line::shape_inputs(&marks, &resolved, &text, &inline, theme);
     inputs.base_direction = base_direction;
     let line = inputs.shape(
         measure.ui,

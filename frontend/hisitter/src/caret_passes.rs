@@ -31,7 +31,7 @@ fn styled(previous: &Markup, fresh: Vec<Range<u32>>, style: StyleId) -> Enrichme
     changed.dedup();
     let mut builder = Markup::builder();
     for range in fresh {
-        builder.push_styled(range, style);
+        builder.push_styled(range, style, editor::markup::StyleWeight::OVERLAY);
     }
     Enrichment {
         replacement: builder,

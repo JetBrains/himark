@@ -588,7 +588,7 @@ impl EditorView {
         style: crate::theme::StyleId,
     ) -> Self {
         let mut markup = crate::markup::Markup::new();
-        markup.push_styled_covering(0..0, style);
+        markup.push_styled_covering(0..0, style, crate::markup::StyleWeight::UNDERLAY);
 
         let mut view = Self::of_document(
             Document::new(text::text::Text::from_string_exact(""), markup),

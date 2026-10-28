@@ -1231,7 +1231,7 @@ mod injected_syntax {
     fn payload(tokens: &[(std::ops::Range<u32>, StyleId)]) -> Syntax {
         let mut markup = Markup::new();
         for (range, theme) in tokens {
-            markup.push_styled(range.clone(), *theme);
+            markup.push_styled(range.clone(), *theme, crate::markup::StyleWeight::DEFAULT);
         }
         Syntax::new("toy", None, markup)
     }
@@ -1530,6 +1530,7 @@ fn styled_runs_translate_across_hidden_syntax() {
     let decorations = vec![crate::markup::TextDecorationInterval {
         range: 7..11,
         id: crate::theme::StyleId::Strong,
+        weight: crate::markup::StyleWeight::DEFAULT,
     }];
     let mapped = display.map_decorations(&decorations);
     assert_eq!(mapped.len(), 1);
@@ -1878,6 +1879,137 @@ fn alignment_markers_place_the_covered_lines() {
 }
 
 #[test]
+fn a_code_block_outweighs_the_underlay_its_surface_wears() {
+    let theme = test_theme();
+    let source = "prose\ncode()\nafter\n";
+    let mut builder = crate::markup::Markup::builder();
+    builder.push_block_styles(6..13, [crate::theme::StyleId::CodeBlock]);
+    let mut markup = builder.finish();
+    markup.push_styled_covering(
+        0..source.len() as u32,
+        crate::theme::StyleId::Chat,
+        crate::markup::StyleWeight::UNDERLAY,
+    );
+
+    let styles = theme.styles();
+    let chat = styles.attributes(crate::theme::StyleId::Chat).clone();
+    let code_block = styles.attributes(crate::theme::StyleId::CodeBlock).clone();
+    assert_ne!(
+        chat.font_families, code_block.font_families,
+        "the theme keeps prose and code on different faces"
+    );
+
+    let shaped = |line: std::ops::Range<u32>| {
+        let mut inline = Vec::new();
+        let mut hidden = Vec::new();
+        let marks = markup.marks_inline_hidden_in(line.clone(), &mut inline, &mut hidden);
+        let resolved = marks.resolved(&theme);
+        let text = &source[line.start as usize..line.end as usize];
+        let segments = [(text.to_owned(), 0)];
+        let display =
+            crate::shaped_line::DisplayText::build_segments(false, &segments, &[], true, text.len());
+        let inputs =
+            crate::shaped_line::shape_inputs(&marks, &resolved, &display, &inline, &theme);
+        (marks, inputs)
+    };
+
+    let (prose_marks, prose) = shaped(0..5);
+    assert!(
+        !prose_marks.continues_past(),
+        "the underlay rides the inline lane; no block continues past the prose line"
+    );
+    assert_eq!(
+        prose.spans[0].size, chat.font_size,
+        "prose runs wear the underlay's face"
+    );
+
+    let (_, fenced) = shaped(6..12);
+    let mono: Vec<String> = code_block
+        .font_families
+        .as_ref()
+        .expect("code_block names its families")
+        .to_vec();
+    assert_eq!(
+        fenced.families, mono,
+        "the line's base resolves to the code block's face"
+    );
+    assert!(
+        fenced
+            .spans
+            .iter()
+            .all(|span| span.families.is_none() && span.size.is_none()),
+        "the underlay never repaints the runs the code block outweighs"
+    );
+}
+
+#[test]
+fn a_nested_layer_outweighs_the_block_that_hosts_it() {
+    let mut builder = crate::markup::Markup::builder();
+    builder.push_block_styles(0..7, [crate::theme::StyleId::CodeBlock]);
+    let mut markup = builder.finish();
+    let mut nested = crate::markup::Markup::new();
+    nested.push_styled(
+        0..4,
+        crate::theme::StyleId::Keyword,
+        crate::markup::StyleWeight::DEFAULT,
+    );
+    markup.add_syntax(0..7, crate::markup::Syntax::new("toy", None, nested));
+
+    let mut inline = Vec::new();
+    let mut hidden = Vec::new();
+    let marks = markup.marks_inline_hidden_in(0..6, &mut inline, &mut hidden);
+    let keyword = inline
+        .iter()
+        .find(|decoration| decoration.id == crate::theme::StyleId::Keyword)
+        .expect("the nested layer's span surfaces");
+    let code_block = marks
+        .layers()
+        .into_iter()
+        .find(|(id, _)| *id == crate::theme::StyleId::CodeBlock)
+        .expect("the host block mark");
+    assert!(
+        keyword.weight > code_block.1,
+        "a descent shifts the nested layer a band above its host: {:?} vs {:?}",
+        keyword.weight,
+        code_block.1
+    );
+}
+
+#[test]
+fn containment_weighs_a_flat_span_set_as_its_nesting() {
+    use crate::markup::{weigh_by_containment, StyleWeight};
+    use crate::theme::StyleId;
+
+    let weighed = weigh_by_containment(vec![
+        (0..20, StyleId::Function),
+        (4..9, StyleId::String),
+        (6..8, StyleId::Keyword),
+        (12..16, StyleId::Number),
+        (0..20, StyleId::DeclarationName),
+    ]);
+    let weight_of = |id: StyleId| {
+        weighed
+            .iter()
+            .find(|(_, known, _)| *known == id)
+            .map(|(_, _, weight)| *weight)
+            .expect("the span survives weighing")
+    };
+    assert_eq!(weight_of(StyleId::Function), StyleWeight(0));
+    assert_eq!(
+        weight_of(StyleId::DeclarationName),
+        StyleWeight(1),
+        "an equal range keeps the set's order: the later span sits deeper"
+    );
+    assert_eq!(weight_of(StyleId::String), StyleWeight(2));
+    assert_eq!(weight_of(StyleId::Keyword), StyleWeight(3));
+    assert_eq!(
+        weight_of(StyleId::Number),
+        StyleWeight(2),
+        "a sibling after the string pops back to the parent's depth"
+    );
+}
+
+#[test]
 fn line_spanning_background_markers_paint_to_the_line_end() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
@@ -1887,7 +2019,7 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
 
     let washed = |line: std::ops::Range<u32>, mark: std::ops::Range<u32>| -> (bool, bool) {
         let mut builder = crate::markup::Markup::builder();
-        builder.push_styled(mark, crate::theme::StyleId::DiffAdded);
+        builder.push_styled(mark, crate::theme::StyleId::DiffAdded, crate::markup::StyleWeight::OVERLAY);
         let markup = builder.finish();
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
@@ -1948,7 +2080,7 @@ fn a_through_end_wash_fills_the_block_gap_below() {
 
     let paints = |style: crate::theme::StyleId, mark: std::ops::Range<u32>| -> (Vec<u8>, Vec<u8>) {
         let mut builder = crate::markup::Markup::builder();
-        builder.push_styled(mark, style);
+        builder.push_styled(mark, style, crate::markup::StyleWeight::OVERLAY);
         let markup = builder.finish();
         let line = 0..7u32;
         let mut inline = Vec::new();
@@ -2022,9 +2154,9 @@ fn tight_background_markers_hug_their_glyphs() {
 
     let paint_rows = |style: Option<crate::theme::StyleId>| -> Vec<u8> {
         let mut builder = crate::markup::Markup::builder();
-        builder.push_styled(0..3, crate::theme::StyleId::DeclarationName);
+        builder.push_styled(0..3, crate::theme::StyleId::DeclarationName, crate::markup::StyleWeight::DEFAULT);
         if let Some(style) = style {
-            builder.push_styled(4..8, style);
+            builder.push_styled(4..8, style, crate::markup::StyleWeight::DEFAULT);
         }
         let markup = builder.finish();
         let line = 0..13u32;
@@ -2289,7 +2421,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
             let len = range.end - range.start;
             invalidated.clear();
             invalidated.push(0..len);
-            replacement.push_styled(0..len, crate::theme::StyleId::Keyword);
+            replacement.push_styled(0..len, crate::theme::StyleId::Keyword, crate::markup::StyleWeight::DEFAULT);
         }
     }
 
@@ -4214,14 +4346,14 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
         let token = document.add_markup();
         document.show_markup(editor, token);
         let mut marks = crate::markup::Markup::new();
-        marks.push_styled(0..6, crate::theme::StyleId::Keyword);
+        marks.push_styled(0..6, crate::theme::StyleId::Keyword, crate::markup::StyleWeight::DEFAULT);
         document.replace_markup(token, marks, &[0..6], store, ui, &test_theme(), fx!());
 
         if with_tint {
             let tint = document.add_markup();
             document.show_markup(editor, tint);
             let mut marks = crate::markup::Markup::new();
-            marks.push_styled(0..6, crate::theme::StyleId::Match);
+            marks.push_styled(0..6, crate::theme::StyleId::Match, crate::markup::StyleWeight::OVERLAY);
             document.replace_markup(tint, marks, &[0..6], store, ui, &test_theme(), fx!());
         }
         let mut surface = skia_safe::surfaces::raster_n32_premul((400, 40)).expect("surface");
@@ -4270,10 +4402,18 @@ fn editor_scroll_bench() {
                 (4, 31),
                 (3, 36),
             ] {
-                tints.push_styled(base + at..base + at + len, crate::theme::StyleId::Match);
+                tints.push_styled(
+                    base + at..base + at + len,
+                    crate::theme::StyleId::Match,
+                    crate::markup::StyleWeight::OVERLAY,
+                );
             }
             if line % 3 == 0 {
-                tints.push_styled_covering(base..base + line_len, crate::theme::StyleId::Input);
+                tints.push_styled_covering(
+                    base..base + line_len,
+                    crate::theme::StyleId::Input,
+                    crate::markup::StyleWeight::DEFAULT,
+                );
             }
         }
         let markup = document.add_markup();
@@ -4339,8 +4479,8 @@ fn line_marks_sweep_matches_the_per_line_query() {
             let len = (rand() % 120) as u32;
             let range = start..(start + len).min(extent);
             match rand() % 5 {
-                0 => builder.push_inline(range, crate::theme::StyleId::Match),
-                1 => builder.push_styled(range, crate::theme::StyleId::Input),
+                0 => builder.push_inline(range, crate::theme::StyleId::Match, crate::markup::StyleWeight::OVERLAY),
+                1 => builder.push_styled(range, crate::theme::StyleId::Input, crate::markup::StyleWeight::DEFAULT),
                 2 => builder.push_hidden(range),
                 3 => builder.push_block_styles(range, [crate::theme::StyleId::Match]),
                 _ => builder.push_alignment(range, crate::theme::TextAlignment::Center),
@@ -4782,7 +4922,7 @@ fn a_markup_change_reshapes_only_the_lines_it_touches() {
     let second = build(&document);
     let line30 = first.lines[30].byte_start..first.lines[30].byte_end;
     let mut marks = crate::markup::Markup::new();
-    marks.push_styled(line30.clone(), crate::theme::StyleId::Keyword);
+    marks.push_styled(line30.clone(), crate::theme::StyleId::Keyword, crate::markup::StyleWeight::DEFAULT);
     document.replace_markup(
         token,
         marks,
@@ -4878,7 +5018,7 @@ fn translucent_washes_never_double_at_block_seams() {
     let styled = document.add_markup();
     document.show_markup(editor, styled);
     let mut tints = crate::markup::Markup::new();
-    tints.push_styled(14..20, crate::theme::StyleId::InlineCode);
+    tints.push_styled(14..20, crate::theme::StyleId::InlineCode, crate::markup::StyleWeight::DEFAULT);
     document.replace_markup(
         styled,
         tints,
@@ -5281,7 +5421,7 @@ fn a_diagnostic_span_paints_its_squiggle() {
     let markup_id = crate::markup::MarkupId::mint();
     document.ensure_document_markup(markup_id);
     let mut builder = crate::markup::Markup::builder();
-    builder.push_styled(3..7, crate::theme::StyleId::DiagnosticError);
+    builder.push_styled(3..7, crate::theme::StyleId::DiagnosticError, crate::markup::StyleWeight::OVERLAY);
     let replacement = builder.finish();
     let changed = crate::markup::set_diff(document.feature_markup(markup_id), &replacement);
     assert!(!changed.is_empty(), "the span is a change");
@@ -5351,7 +5491,7 @@ fn a_one_character_diagnostic_still_paints() {
     let markup_id = crate::markup::MarkupId::mint();
     document.ensure_document_markup(markup_id);
     let mut builder = crate::markup::Markup::builder();
-    builder.push_styled(10..11, crate::theme::StyleId::DiagnosticError);
+    builder.push_styled(10..11, crate::theme::StyleId::DiagnosticError, crate::markup::StyleWeight::OVERLAY);
     let replacement = builder.finish();
     let changed = crate::markup::set_diff(document.feature_markup(markup_id), &replacement);
     assert!(!changed.is_empty(), "the span is a change");
@@ -5783,5 +5923,18 @@ fn inlay_placement_reuses_the_painted_line() {
         shapes() - before <= 1,
         "only the touched row re-shapes: {} lines",
         shapes() - before
+    );
+}
+
+#[test]
+fn a_styled_decoration_stays_within_the_boxed_inlay_width() {
+    // The bulk lane pays the enum's width per span (the boxed-inlay
+    // note on `Decoration`): a weight wide enough for raw AST depth
+    // must ride inside the width the Box variant already set.
+    assert!(
+        std::mem::size_of::<crate::markup::Decoration>()
+            <= std::mem::size_of::<Box<crate::markup::Inlay>>() * 2,
+        "Decoration grew past tag + pointer-width payload: {} bytes",
+        std::mem::size_of::<crate::markup::Decoration>()
     );
 }

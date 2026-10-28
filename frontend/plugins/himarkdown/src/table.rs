@@ -280,6 +280,7 @@ fn cell_view(
         markup.push_inline(
             token.decoration.range.start..token.decoration.range.end,
             token.decoration.id,
+            editor::markup::StyleWeight::DEFAULT,
         );
         for span in token.syntax {
             markup.push_hidden(span.start as u32..span.end as u32);

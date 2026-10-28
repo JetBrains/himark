@@ -761,7 +761,11 @@ mod tests {
             changed.dedup();
             let mut builder = Markup::builder();
             for range in fresh {
-                builder.push_styled(range, crate::theme::StyleId::Match);
+                builder.push_styled(
+                    range,
+                    crate::theme::StyleId::Match,
+                    crate::markup::StyleWeight::OVERLAY,
+                );
             }
             ready(Enrichment {
                 replacement: builder,

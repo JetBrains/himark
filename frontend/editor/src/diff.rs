@@ -421,7 +421,7 @@ pub fn hunk_markup(operation: &Operation, right: &Text) -> crate::markup::Markup
     }
     flush(&mut run);
     let mut markup = crate::markup::Markup::new();
-    markup.seed_styled(hunks);
+    markup.seed_styled(hunks, crate::markup::StyleWeight::OVERLAY);
     markup
 }
 

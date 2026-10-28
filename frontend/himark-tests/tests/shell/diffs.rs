@@ -2365,7 +2365,11 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
                 let start = at + word * 4;
                 let end = (start + 3).min(at + len.saturating_sub(1));
                 if start < end {
-                    markup.push_styled(start..end, editor::theme::StyleId::DiffAdded);
+                    markup.push_styled(
+                        start..end,
+                        editor::theme::StyleId::DiffAdded,
+                        editor::markup::StyleWeight::OVERLAY,
+                    );
                 }
             }
             at += len;
@@ -2496,7 +2500,11 @@ fn folded_squash_paint_cost_is_size_independent() {
                     let start = at + word * 4;
                     let end = (start + 3).min(at + len.saturating_sub(1));
                     if start < end {
-                        markup.push_styled(start..end, editor::theme::StyleId::DiffAdded);
+                        markup.push_styled(
+                        start..end,
+                        editor::theme::StyleId::DiffAdded,
+                        editor::markup::StyleWeight::OVERLAY,
+                    );
                     }
                 }
                 at += len;
@@ -5283,7 +5291,11 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
             let mut builder = editor::markup::Markup::builder();
             for line in 0..60u32 {
                 let start = line * 17 + 3;
-                builder.push_styled(start..start + 5, editor::theme::StyleId::Function);
+                builder.push_styled(
+                    start..start + 5,
+                    editor::theme::StyleId::Function,
+                    editor::markup::StyleWeight::DEFAULT,
+                );
             }
             let replacement = builder.finish();
             let changed = editor::markup::set_diff(document.feature_markup(markup), &replacement);

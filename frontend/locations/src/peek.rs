@@ -295,7 +295,11 @@ impl PeekView {
             changed.push(start..end);
         }
         let mut tints = editor::markup::Markup::new();
-        tints.push_styled(target.0..target.1, editor::theme::StyleId::Match);
+        tints.push_styled(
+            target.0..target.1,
+            editor::theme::StyleId::Match,
+            editor::markup::StyleWeight::OVERLAY,
+        );
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
             view.document
@@ -350,7 +354,11 @@ impl PeekView {
 
         let markup = document.add_markup();
         let mut tints = editor::markup::Markup::new();
-        tints.push_styled(target.clone(), editor::theme::StyleId::Match);
+        tints.push_styled(
+            target.clone(),
+            editor::theme::StyleId::Match,
+            editor::markup::StyleWeight::OVERLAY,
+        );
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
             document.replace_markup(markup, tints, &[target.clone()], store, ui, &theme, fx)

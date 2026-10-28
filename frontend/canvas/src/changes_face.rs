@@ -728,7 +728,7 @@ fn fresh_input_box(
 ) -> EditorView {
     let theme = env::Themes::of(store);
     let mut markup = editor::markup::Markup::new();
-    markup.push_styled_covering(0..0, style);
+    markup.push_styled_covering(0..0, style, editor::markup::StyleWeight::UNDERLAY);
     let mut document =
         editor::document::Document::new(text::text::Text::from_string_exact(""), markup);
     if let Some(language) = syntax {

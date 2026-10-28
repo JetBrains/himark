@@ -228,10 +228,14 @@ impl SyntaxLanguage for TreeSitterLanguage {
             }
         }
 
-        for (span, theme) in spans {
+        for (span, _) in &spans {
             invalidated.push(span.clone());
-            replacement.push_styled(span, theme);
         }
+        // The styled lanes weigh TOGETHER at the end: the captures,
+        // the link candidates and the declaration names all come
+        // from one tree, so containment across the whole set is the
+        // node hierarchy.
+        let mut styled = spans;
 
         // Everything the tree itself tells us — link candidates
         // (approximately every identifier leaf, refinable per
@@ -253,7 +257,7 @@ impl SyntaxLanguage for TreeSitterLanguage {
         harvest.links.truncate(MAX_TOKENS_PER_BLOCK);
         for span in harvest.links {
             invalidated.push(span.clone());
-            replacement.push_styled(span, StyleId::Reference);
+            styled.push((span, StyleId::Reference));
         }
 
         harvest
@@ -266,7 +270,7 @@ impl SyntaxLanguage for TreeSitterLanguage {
             if !title.is_empty() {
                 replacement.push_outline(node, editor::markup::OutlineItem { title });
                 if name.start < name.end {
-                    replacement.push_styled(name, StyleId::DeclarationName);
+                    styled.push((name, StyleId::DeclarationName));
                 }
             }
         }
@@ -277,6 +281,10 @@ impl SyntaxLanguage for TreeSitterLanguage {
         harvest.foldables.dedup();
         for span in harvest.foldables {
             replacement.push_foldable(span);
+        }
+
+        for (span, id, weight) in editor::markup::weigh_by_containment(styled) {
+            replacement.push_styled(span, id, weight);
         }
     }
 
