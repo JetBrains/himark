@@ -697,7 +697,7 @@ impl Composer {
 }
 
 /// An editor's whole text.
-fn editor_text(view: &EditorView) -> String {
+pub(crate) fn editor_text(view: &EditorView) -> String {
     let text = view.document.text();
     let end = text.byte_count().min(u32::MAX as usize) as u32;
     text.view().substring(0..end)

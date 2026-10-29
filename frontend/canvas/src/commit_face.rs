@@ -167,10 +167,10 @@ impl CommitFace {
 
     fn adopt(&mut self, message: String, author: String, author_name: String) {
         let (headline, body) = split_message(&message);
-        self.body = match body {
-            Some(body) => Body::Pending(body),
-            None => Body::None,
-        };
+        // A one-line message still gets the box, empty: the banner
+        // is a REAL editor (the graph test's contract), and an added
+        // body grows the message below its headline.
+        self.body = Body::Pending(body.unwrap_or_default());
         self.block = Some(CommitBlock {
             message,
             headline,
@@ -267,6 +267,17 @@ impl View for CommitFace {
                 fx.scope(CommitCommand::Body, |fx| {
                     body.perform(store, ui, command, fx)
                 });
+                // The box edits the MESSAGE: what the probes (and an
+                // amend) read recomposes from the headline and the
+                // body's text, the composer's own recipe.
+                if let Some(block) = &mut self.block {
+                    let body_text = crate::changes_face::editor_text(body);
+                    let body_text = body_text.trim_end();
+                    block.message = match body_text.is_empty() {
+                        true => block.headline.clone(),
+                        false => format!("{}\n\n{}", block.headline, body_text),
+                    };
+                }
             }
             CommitCommand::Boot => {
                 self.read(store);
@@ -285,8 +296,15 @@ impl View for CommitFace {
             }
             CommitCommand::Focus(area) => {
                 self.focus = area;
-                if let (FaceFocus::Canvas, Body::Built(body)) = (area, &mut self.body) {
-                    body.blur();
+                if let Body::Built(body) = &mut self.body {
+                    // The head claims the KEYBOARD, not just the focus
+                    // scope: a click anywhere in the banner lands the
+                    // caret in the message box (the test's contract),
+                    // the way the composer hands its boxes the caret.
+                    match area {
+                        FaceFocus::Head => body.focus_text(),
+                        FaceFocus::Canvas => body.blur(),
+                    }
                 }
             }
         }

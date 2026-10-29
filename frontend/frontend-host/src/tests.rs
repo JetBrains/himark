@@ -7124,12 +7124,13 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     let chrome_top = editor::env::Themes::of(engine.app.store())
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
-    // The canvas sits in a split half here, so the COMMIT cell eats
-    // the right side of the band — click well inside the editor zone.
+    // The SUMMARY strip heads the face and the composer stands under
+    // it — click under the strip, in the box's own zone.
+    let strip = ::canvas::diff_summary::strip_height(engine.app.store(), &engine.app.ui_ctx());
     assert!(himark::test_driver::click(
         &mut engine.app,
         60.0,
-        chrome_top + 14.0,
+        chrome_top + strip + 14.0,
         900.0,
         700.0
     ));
