@@ -10,7 +10,9 @@ use skia_safe::Size;
 use crate::document::EditorBuild;
 use crate::editor::EditorId;
 use crate::editor_view::{EditorCommand, EditorView};
+use crate::markup::Inlay;
 use crate::split_diff::{fold, SplitDiffCommand, SplitDiffView};
+use std::ops::Range;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum DiffLayout {
@@ -41,6 +43,16 @@ pub enum UnifiedDiffCommand {
     GoTo {
         byte: u32,
     },
+
+    /// The workshop finished the inline face's before-cards
+    /// (`BuildBeforeCardsEffect`): push them if the dressing and the
+    /// host text still stand where the launch saw them — a moved pair
+    /// drops the set, and the next dressing's refresh re-expands.
+    BeforeCards {
+        cards: Vec<(Range<u32>, Inlay)>,
+        seq: u64,
+        right_revision: u64,
+    },
 }
 
 impl std::fmt::Display for UnifiedDiffCommand {
@@ -50,6 +62,7 @@ impl std::fmt::Display for UnifiedDiffCommand {
             UnifiedDiffCommand::Inline(command) => command.fmt(out),
             UnifiedDiffCommand::SetLayout(_) => out.write_str("set layout"),
             UnifiedDiffCommand::GoTo { .. } => out.write_str("go to"),
+            UnifiedDiffCommand::BeforeCards { .. } => out.write_str("before cards"),
         }
     }
 }
@@ -156,11 +169,10 @@ impl UnifiedDiffView {
             self.split.state.hunk_markup(),
             self.split.state.right_marks(),
         ];
-        let diff = self.split.state.diff_id();
         let base = self.split.left.document.clone();
         let right = &mut self.split.right.document;
-        fx.scope(UnifiedDiffCommand::Inline, |fx| {
-            let editor = right.add_editor(
+        let editor = fx.scope(UnifiedDiffCommand::Inline, |fx| {
+            right.add_editor(
                 width,
                 None,
                 EditorBuild::Bounded,
@@ -169,10 +181,23 @@ impl UnifiedDiffView {
                 ui,
                 &theme,
                 fx,
-            );
-            right.expand_before_inlays(editor, &base, diff, store, ui, &theme, fx);
-            editor
-        })
+            )
+        });
+        // The cards build in the WORKSHOP off snapshots — the set for
+        // a monster diff cost half a second constructed here on the
+        // frame. The landing (`BeforeCards`) pushes them whole, one
+        // coalesced repair, guarded by the dressing's seq and the
+        // host's revision.
+        let effect = crate::before_inlay::BuildBeforeCardsEffect {
+            right_text: right.text().clone(),
+            base,
+            operation: self.split.state.diff().clone(),
+            width,
+            seq: self.split.state.pair_seq(),
+            right_revision: right.revision(),
+        };
+        fx.relaunch(self.split.state.cards_token_mut(), effect);
+        editor
     }
 
     /// The normalize lane landed a fresh generation and the inline face
@@ -333,6 +358,25 @@ impl imba::View for UnifiedDiffView {
     ) {
         match command {
             UnifiedDiffCommand::SetLayout(next) => self.set_layout(store, ui, next, fx),
+            UnifiedDiffCommand::BeforeCards {
+                cards,
+                seq,
+                right_revision,
+            } => {
+                let standing = seq == self.split.state.pair_seq()
+                    && right_revision == self.split.right.document.revision();
+                let Some(editor) = self.inline_editor.filter(|_| standing) else {
+                    return;
+                };
+                let Some(markup_id) = self.split.right.document.before_markup_of(editor) else {
+                    return;
+                };
+                let theme = crate::env::Themes::of(store);
+                let right = &mut self.split.right.document;
+                fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                    right.push_inlays(markup_id, cards, store, ui, &theme, fx)
+                });
+            }
             UnifiedDiffCommand::Split(command) => {
                 fx.scope(UnifiedDiffCommand::Split, |fx| {
                     self.split.perform(store, ui, command, fx)

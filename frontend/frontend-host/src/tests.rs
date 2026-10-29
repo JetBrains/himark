@@ -8906,3 +8906,298 @@ fn engine_resize_shape_meter() {
         );
     }
 }
+
+/// The CANVAS LANDING budget: a working copy with many touched files
+/// and one monster lands its diff rows while the UI thread keeps
+/// frame-sized slices — the preparation (fetches, documents, Myers,
+/// marks) belongs to the background, the landing only mounts editors
+/// (docs/editor/diff-canvas.md §4). Timings ride perf.csv
+/// (`canvas-landing`); the born-on-the-runner law is the assert.
+#[test]
+fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
+    const FILES: usize = 10;
+    const FILE_LINES: usize = 2_000;
+    const MONSTER_LINES: usize = 30_000;
+
+    let (_host, mut engine, window, _fs) = hosted_engine();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonical root");
+    let sh = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .arg("-c")
+            .arg("core.fsmonitor=false")
+            .arg("-C")
+            .arg(&root)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+    };
+    sh(&["init", "-q", "-b", "main"]);
+    sh(&["config", "user.email", "test@example.com"]);
+    sh(&["config", "user.name", "Test"]);
+
+    let body = |lines: usize, edited: bool| -> String {
+        let mut text = String::with_capacity(lines * 48);
+        for line in 0..lines {
+            if edited && line % 25 == 0 {
+                text.push_str(&format!(
+                    "pub fn item_{line}() -> u64 {{ {line} + 1 /* edited */ }}\n"
+                ));
+            } else {
+                text.push_str(&format!("pub fn item_{line}() -> u64 {{ {line} }}\n"));
+            }
+        }
+        text
+    };
+    for file in 0..FILES {
+        std::fs::write(root.join(format!("file_{file}.rs")), body(FILE_LINES, false)).unwrap();
+    }
+    std::fs::write(root.join("monster.rs"), body(MONSTER_LINES, false)).unwrap();
+    sh(&["add", "."]);
+    sh(&["commit", "-q", "-m", "base"]);
+    for file in 0..FILES {
+        std::fs::write(root.join(format!("file_{file}.rs")), body(FILE_LINES, true)).unwrap();
+    }
+    std::fs::write(root.join("monster.rs"), body(MONSTER_LINES, true)).unwrap();
+
+    let root_segments: Vec<String> = root
+        .to_str()
+        .unwrap()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
+        root_segments,
+    );
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![folder]));
+    settle_into_session(&mut engine);
+
+    assert!(engine.perform_command(window, "changes.view"));
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
+    for ms in [0.0, 1_000.0, 2_000.0] {
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(ms),
+        );
+        settle(&mut engine);
+        let _ = engine.draw(window, surface.canvas(), 1400.0, 900.0, 1.0);
+    }
+    settle_until(&mut engine, "the changed rows listed", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 1400.0, 900.0, 1.0);
+        sole_entity(engine)
+            .dock_panel()
+            .and_then(|side| {
+                side.as_any()
+                    .downcast_ref::<changesview::changes_view::ChangesPane>()
+            })
+            .and_then(|pane| {
+                changesview::hichanges::Changes::view_ref(
+                    engine.app.store(),
+                    pane.changes(),
+                    pane.view(),
+                )
+            })
+            .map(|view| view.rows())
+            .is_some_and(|rows| {
+                rows.iter()
+                    .any(|(depth, label, pick)| *depth == 1 && label.starts_with("monster") && *pick)
+            })
+    });
+
+    let listed = sole_entity(&engine)
+        .dock_panel()
+        .and_then(|side| {
+            side.as_any()
+                .downcast_ref::<changesview::changes_view::ChangesPane>()
+        })
+        .and_then(|pane| {
+            changesview::hichanges::Changes::view_ref(
+                engine.app.store(),
+                pane.changes(),
+                pane.view(),
+            )
+        })
+        .map(|view| view.rows())
+        .expect("the dock is up");
+    let monster_at = listed
+        .iter()
+        .position(|(depth, label, _)| *depth == 1 && label.starts_with("monster"))
+        .expect("the monster row stands");
+
+    // The PICK arms the canvas: from here every run_pending slice is
+    // background preparation and every draw+drain slice is a frame
+    // the user would feel. The first pick arms file_0 and the
+    // prefetch horizon streams the rows after it; the second pick
+    // arms the monster. `draw` and `drain` time separately — the
+    // drain is where a landing batch hits the UI thread.
+    let built_rows = |engine: &HimarkEngine| -> usize {
+        let mut count = 0;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
+                count = count.max(
+                    canvas
+                        .probe_rows(engine.app.store())
+                        .iter()
+                        .filter(|(_, phase, _)| *phase == ::canvas::canvas::RowPhase::Built)
+                        .count(),
+                );
+            }
+        });
+        count
+    };
+    let built = |engine: &HimarkEngine, title: &str| -> bool {
+        let mut done = false;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
+                done = done
+                    || canvas.probe_rows(engine.app.store()).iter().any(|(name, phase, _)| {
+                        name.starts_with(title) && *phase == ::canvas::canvas::RowPhase::Built
+                    });
+            }
+        });
+        done
+    };
+
+    let frame_births = std::cell::Cell::new(0u64);
+    let mut draws: Vec<std::time::Duration> = Vec::new();
+    let mut drains: Vec<std::time::Duration> = Vec::new();
+    let mut background: Vec<std::time::Duration> = Vec::new();
+    let mut clock = 2_000.0f64;
+    let mut pump_timed = |engine: &mut HimarkEngine,
+                          draws: &mut Vec<std::time::Duration>,
+                          drains: &mut Vec<std::time::Duration>,
+                          background: &mut Vec<std::time::Duration>| {
+        let work = std::time::Instant::now();
+        engine.worker().run_pending();
+        background.push(work.elapsed());
+
+        clock += 8.33;
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(clock),
+        );
+        // The FRAME's law: the draw and the drain mint no documents —
+        // sides and their parses arrive ready-made from the runner.
+        // (The face's own input boxes, minted once when the composer
+        // first stands, are the allowed exception, counted below.)
+        let frame_born = editor::document::Document::born_on_this_thread();
+        let frame = std::time::Instant::now();
+        let _ = engine.draw(window, surface.canvas(), 1400.0, 900.0, 1.0);
+        let drew = frame.elapsed();
+        draws.push(drew);
+        let drain = std::time::Instant::now();
+        engine.drain();
+        let drained = drain.elapsed();
+        if drained > std::time::Duration::from_millis(50) {
+            eprintln!("[canvas-landing] LONG DRAIN {:?} at frame {}", drained, draws.len());
+        }
+        drains.push(drained);
+        frame_births.set(
+            frame_births.get() + (editor::document::Document::born_on_this_thread() - frame_born),
+        );
+    };
+
+    // Phase A: the horizon. file_0 heads the listing; the prefetch
+    // streams the rows after it, one landing at a time.
+    let file0_at = listed
+        .iter()
+        .position(|(depth, label, _)| *depth == 1 && label.starts_with("file_0"))
+        .expect("the first file row stands");
+    let row_y = changes_row_y(&engine, file0_at);
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        dock_x_in(1400.0, 90.0),
+        row_y,
+        1400.0,
+        900.0
+    ));
+    let started = std::time::Instant::now();
+    let horizon;
+    loop {
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(45),
+            "the horizon never streamed: built={}",
+            built_rows(&engine)
+        );
+        pump_timed(&mut engine, &mut draws, &mut drains, &mut background);
+        if built_rows(&engine) >= 4 {
+            horizon = started.elapsed();
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+
+    // Phase B: the monster.
+    let row_y = changes_row_y(&engine, monster_at);
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        dock_x_in(1400.0, 90.0),
+        row_y,
+        1400.0,
+        900.0
+    ));
+    let picked = std::time::Instant::now();
+    let monster_landed;
+    loop {
+        assert!(
+            picked.elapsed() < std::time::Duration::from_secs(60),
+            "the monster row never landed"
+        );
+        pump_timed(&mut engine, &mut draws, &mut drains, &mut background);
+        if built(&engine, "monster") {
+            monster_landed = picked.elapsed();
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    // A few more frames: the dressing that follows the mount is a
+    // frame cost too.
+    for _ in 0..120 {
+        pump_timed(&mut engine, &mut draws, &mut drains, &mut background);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    let landed = built_rows(&engine);
+
+    let ms = |samples: &mut Vec<std::time::Duration>| -> (f64, f64, f64) {
+        samples.sort();
+        (
+            samples[samples.len() / 2].as_secs_f64() * 1000.0,
+            samples[samples.len() * 95 / 100].as_secs_f64() * 1000.0,
+            samples[samples.len() - 1].as_secs_f64() * 1000.0,
+        )
+    };
+    let frames = draws.len();
+    let (draw_p50, draw_p95, draw_max) = ms(&mut draws);
+    let (drain_p50, drain_p95, drain_max) = ms(&mut drains);
+    let background_total = background.iter().sum::<std::time::Duration>().as_secs_f64() * 1000.0;
+    eprintln!(
+        "canvas-landing: rows={landed}, frames={frames}, horizon {:.0}ms, monster {:.0}ms, draw p50={draw_p50:.3} p95={draw_p95:.3} max={draw_max:.3}ms, drain p50={drain_p50:.3} p95={drain_p95:.3} max={drain_max:.3}ms, background {background_total:.1}ms",
+        horizon.as_secs_f64() * 1000.0,
+        monster_landed.as_secs_f64() * 1000.0,
+    );
+    imba::perf::record("canvas-landing", "draw_p95_ms", draw_p95);
+    imba::perf::record("canvas-landing", "draw_max_ms", draw_max);
+    imba::perf::record("canvas-landing", "drain_p95_ms", drain_p95);
+    imba::perf::record("canvas-landing", "drain_max_ms", drain_max);
+    imba::perf::record("canvas-landing", "background_total_ms", background_total);
+    imba::perf::record(
+        "canvas-landing",
+        "monster_landed_ms",
+        monster_landed.as_secs_f64() * 1000.0,
+    );
+
+    assert!(landed >= 4, "the horizon landed its stream: {landed}");
+    assert!(
+        frame_births.get() <= 2,
+        "frames minted documents on the UI thread: {}",
+        frame_births.get()
+    );
+}

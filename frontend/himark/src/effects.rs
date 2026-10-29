@@ -146,6 +146,9 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers.register::<::editor::split_diff::RepairDiffEffect>(
         ::editor::split_diff::RepairDiffHandler(Arc::clone(workshop)),
     );
+    handlers.register::<::editor::before_inlay::BuildBeforeCardsEffect>(
+        ::editor::before_inlay::BuildBeforeCardsHandler(Arc::clone(workshop)),
+    );
     handlers.register::<::editor::scroll_stripe::ScrollStripeEffect>(
         ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(workshop)),
     );

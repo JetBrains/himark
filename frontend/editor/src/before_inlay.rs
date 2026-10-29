@@ -12,6 +12,8 @@ use crate::document::Document;
 use crate::editor::{EditorEffects, EditorId};
 use crate::editor_view::EditorView;
 use crate::markup::{Inlay, InlayKey, InlayMode, MarkupId, MarkupLayer};
+use operation::operation::Operation;
+use text::text::Text;
 
 impl Document {
     pub fn toggle_before_inlay(
@@ -135,16 +137,34 @@ impl Document {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) -> Option<Inlay> {
-        if base_span.start >= base_span.end {
-            return None;
-        }
-        let base_lines = hard_lines(&mut base.text().view(), base_span);
-
         let width = self
             .editors
             .get(&editor)
             .map(|state| state.layout.layout_width())
             .unwrap_or(400.0);
+        built_card(base, base_span, width, animate, store, ui, theme)
+    }
+}
+
+/// `built_before_card`, anywhere: pure construction on clones, so the
+/// workshop builds card sets off the UI thread
+/// (`BuildBeforeCardsEffect`) and a landing only pushes them.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn built_card(
+    base: &Document,
+    base_span: Range<u32>,
+    width: f32,
+    animate: bool,
+    store: &imba::store::Store,
+    ui: &imba::ui::UiCtx,
+    theme: &crate::theme::Theme,
+) -> Option<Inlay> {
+    {
+        if base_span.start >= base_span.end {
+            return None;
+        }
+        let base_lines = hard_lines(&mut base.text().view(), base_span);
+
         let mut before = base.clone();
 
         let wash_id = before.add_markup();
@@ -194,7 +214,59 @@ impl Document {
         };
         Some(Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST))
     }
+}
 
+/// The card BLOCKS a diff operation calls for: the host's hard-line
+/// anchors, each with the base span its card frames — adjacent
+/// fragments coalesce under the block cap. One walk, shared by the
+/// sync expansion and the workshop build.
+pub(crate) fn card_blocks(
+    right_text: &Text,
+    base_text: &Text,
+    operation: &Operation,
+) -> Vec<(Range<u32>, Range<u32>)> {
+    let mut view = right_text.view();
+    if view.byte_count() == 0 {
+        return Vec::new();
+    }
+    const BLOCK_CAP_BYTES: u32 = 64 * 1024;
+    let mut fragments = crate::diff::fragments_at(operation, base_text, 0);
+    let mut blocks: Vec<(Range<u32>, Range<u32>)> = Vec::new();
+    let complete =
+        |block: Option<(Range<u32>, Range<u32>)>, blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
+            if let Some((lines, span)) = block {
+                if span.start < span.end {
+                    blocks.push((lines, span));
+                }
+            }
+        };
+    let mut block: Option<(Range<u32>, Range<u32>)> = None;
+    while let Some(fragment) = fragments.next() {
+        let lines = hard_lines(&mut view, fragment.right.clone());
+        match &mut block {
+            Some((standing, base_span))
+                if lines.start <= standing.end
+                    && standing.end.saturating_sub(standing.start) <= BLOCK_CAP_BYTES =>
+            {
+                standing.end = standing.end.max(lines.end);
+                if !fragment.left.is_empty() {
+                    match base_span.start >= base_span.end {
+                        true => *base_span = fragment.left.clone(),
+                        false => base_span.end = base_span.end.max(fragment.left.end),
+                    }
+                }
+            }
+            _ => {
+                complete(block.take(), &mut blocks);
+                block = Some((lines, fragment.left.clone()));
+            }
+        }
+    }
+    complete(block.take(), &mut blocks);
+    blocks
+}
+
+impl Document {
     pub fn expand_before_inlays(
         &mut self,
         editor: EditorId,
@@ -209,44 +281,10 @@ impl Document {
             return;
         };
         let operation = entry.operation().clone();
-        let mut view = self.text.view();
-        if view.byte_count() == 0 {
+        let blocks = card_blocks(&self.text, base.text(), &operation);
+        if blocks.is_empty() {
             return;
         }
-        const BLOCK_CAP_BYTES: u32 = 64 * 1024;
-        let mut fragments = crate::diff::fragments_at(&operation, base.text(), 0);
-        let mut blocks: Vec<(Range<u32>, Range<u32>)> = Vec::new();
-        let complete = |block: Option<(Range<u32>, Range<u32>)>,
-                        blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
-            if let Some((lines, span)) = block {
-                if span.start < span.end {
-                    blocks.push((lines, span));
-                }
-            }
-        };
-        let mut block: Option<(Range<u32>, Range<u32>)> = None;
-        while let Some(fragment) = fragments.next() {
-            let lines = hard_lines(&mut view, fragment.right.clone());
-            match &mut block {
-                Some((standing, base_span))
-                    if lines.start <= standing.end
-                        && standing.end.saturating_sub(standing.start) <= BLOCK_CAP_BYTES =>
-                {
-                    standing.end = standing.end.max(lines.end);
-                    if !fragment.left.is_empty() {
-                        match base_span.start >= base_span.end {
-                            true => *base_span = fragment.left.clone(),
-                            false => base_span.end = base_span.end.max(fragment.left.end),
-                        }
-                    }
-                }
-                _ => {
-                    complete(block.take(), &mut blocks);
-                    block = Some((lines, fragment.left.clone()));
-                }
-            }
-        }
-        complete(block.take(), &mut blocks);
         let Some(markup_id) = self.before_markup_of(editor) else {
             return;
         };
@@ -317,7 +355,7 @@ impl Document {
         self.expand_before_inlays(editor, base, diff, store, ui, theme, fx);
     }
 
-    fn before_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {
+    pub(crate) fn before_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {
         if let Some(id) = self.editors.get(&editor)?.before {
             return Some(id);
         }
@@ -646,5 +684,53 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
         'a: 'w,
     {
         self.inner.layout_data(target)
+    }
+}
+
+/// The inline face's before-cards, built in the WORKSHOP: the block
+/// walk and every card's document, fragment and complete layout are
+/// pure construction over snapshots (persistent clones), so the UI
+/// thread pays only the landing's `push_inlays` — one splice, one
+/// coalesced repair. This was the diff canvas's landing freeze: a
+/// monster file's card set cost half a second built on the frame.
+pub struct BuildBeforeCardsEffect {
+    pub(crate) right_text: Text,
+    pub(crate) base: Document,
+    pub(crate) operation: Operation,
+    pub(crate) width: f32,
+    pub(crate) seq: u64,
+    pub(crate) right_revision: u64,
+}
+
+impl std::fmt::Display for BuildBeforeCardsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("build before cards")
+    }
+}
+
+impl imba::effect::Effect for BuildBeforeCardsEffect {
+    type Result = crate::unified_diff::UnifiedDiffCommand;
+}
+
+pub struct BuildBeforeCardsHandler(pub std::sync::Arc<crate::env::Workshop>);
+
+impl imba::effect::EffectHandler<BuildBeforeCardsEffect> for BuildBeforeCardsHandler {
+    async fn handle(&self, effect: BuildBeforeCardsEffect) -> crate::unified_diff::UnifiedDiffCommand {
+        let theme = self.0.theme();
+        let cards = self.0.with_ctx(|store, ui| {
+            card_blocks(&effect.right_text, effect.base.text(), &effect.operation)
+                .into_iter()
+                .filter_map(|(anchor, base_span)| {
+                    let inlay =
+                        built_card(&effect.base, base_span, effect.width, false, store, ui, &theme)?;
+                    Some((anchor, inlay))
+                })
+                .collect()
+        });
+        crate::unified_diff::UnifiedDiffCommand::BeforeCards {
+            cards,
+            seq: effect.seq,
+            right_revision: effect.right_revision,
+        }
     }
 }

@@ -84,6 +84,10 @@ pub struct DiffViewState {
 
     pair_repair_token: Option<imba::effect::CancellationToken>,
 
+    /// The in-flight workshop build of the inline face's before-cards
+    /// (`BuildBeforeCardsEffect`) — a relaunch cancels the stale set.
+    cards_token: Option<imba::effect::CancellationToken>,
+
     pair_seq: u64,
 
     marks_dirty: bool,
@@ -92,6 +96,14 @@ pub struct DiffViewState {
 }
 
 impl DiffViewState {
+    pub(crate) fn pair_seq(&self) -> u64 {
+        self.pair_seq
+    }
+
+    pub(crate) fn cards_token_mut(&mut self) -> &mut Option<imba::effect::CancellationToken> {
+        &mut self.cards_token
+    }
+
     pub fn attach(
         id: crate::diff::DiffId,
         left: &crate::document::Document,
@@ -127,6 +139,7 @@ impl DiffViewState {
             #[cfg(any(test, feature = "test-support"))]
             ui_synced_boundaries: 0,
             pair_repair_token: None,
+            cards_token: None,
             pair_seq: 0,
             marks_dirty: seeded.is_none(),
             marks_window: seeded,
