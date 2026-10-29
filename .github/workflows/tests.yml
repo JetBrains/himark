@@ -90,7 +90,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           cache-targets: false
           shared-key: ${{ matrix.name }}
@@ -156,7 +156,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           cache-targets: false
           shared-key: ${{ matrix.name }}
@@ -215,7 +215,7 @@ jobs:
       # Restore before the emsdk lands in target/: on a partial cache match
       # rust-cache prunes everything in target/ that cargo did not produce.
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           shared-key: web-emscripten-6.0.7
 
@@ -278,7 +278,7 @@ jobs:
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@5626e41434f03ab3022d9685405c0645c879f441
