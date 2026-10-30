@@ -20,6 +20,8 @@ pub struct TerminalChrome {
     pub foreground: Rgba,
     pub cursor: Rgba,
 
+    pub selection: Rgba,
+
     pub pad: f32,
 
     pub palette: Vec<Rgba>,
@@ -39,6 +41,7 @@ impl Default for TerminalChrome {
             background: Rgba(Color::new(0xff0d0d0f)),
             foreground: Rgba(Color::new(0xffd8d8db)),
             cursor: Rgba(Color::new(0xff5ca9ff)),
+            selection: Rgba(Color::new(0xff2e4668)),
             pad: 16.0,
             palette: vec![
                 Rgba(Color::new(0xff10131d)),

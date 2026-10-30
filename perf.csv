@@ -15410,3 +15410,13 @@ timestamp,commit,profile,bench,metric,value_ms
 1793113242,7a9b58edc,debug,chat-edits,frame_p95_ms,24.5447
 1793113242,7a9b58edc,debug,chat-edits,frame_max_ms,28.0680
 1793113242,7a9b58edc,debug,chat-edits,background_total_ms,1964.9322
+1793383511,006f8d2f3,debug,plain-typing,keystroke_p50_ms,0.7902
+1793383581,006f8d2f3,debug,list-scroll,build_ms,6.7816
+1793383581,006f8d2f3,debug,list-scroll,frame_p50_ms,0.1213
+1793383581,006f8d2f3,debug,list-scroll,frame_p95_ms,0.1353
+1793383581,006f8d2f3,debug,tree-ops,toggle_ms,0.0782
+1793383581,006f8d2f3,debug,tree-ops,build_ms,304.9162
+1793383699,006f8d2f3,debug,editor-scroll,build_p50_ms,0.5050
+1793383699,006f8d2f3,debug,editor-scroll,build_p95_ms,0.8318
+1793383712,006f8d2f3,debug,plain-typing,keystroke_p50_ms,0.8167
+1793383718,006f8d2f3,debug,fold-toggle,monster_ms,2.4383

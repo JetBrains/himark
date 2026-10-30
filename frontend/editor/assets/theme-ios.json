@@ -581,6 +581,7 @@
       "background": "#0d0d0f",
       "foreground": "#d8d8db",
       "cursor": "#5ca9ff",
+      "selection": "#2e4668",
       "pad": 24.0,
       "palette": [
         "#10131d",

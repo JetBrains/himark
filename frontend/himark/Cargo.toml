@@ -5,7 +5,6 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-alacritty_terminal = { version = "0.26.0", default-features = false }
 ahp-types = "0.9"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 host-discovery = { path = "../../protocol/host-discovery" }

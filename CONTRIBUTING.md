@@ -12,6 +12,11 @@ Design documentation lives in [docs/](docs/) — start from the
 
 - **Rust** via [rustup](https://rustup.rs). The stable toolchain is enough for
   the native builds; the web build additionally needs nightly (see below).
+- **The `vendor/ghostty` submodule**: clone with
+  `git submodule update --init --depth 1`. The `ghostty-sys` crate builds the
+  terminal emulator, libghostty-vt, from it with Zig, which it fetches itself
+  (pinned release, verified, cached under the user cache directory) unless a
+  matching `zig` is on PATH or `ZIG` points at one.
 - **A C/C++ toolchain.** Several crates compile C sources (tree-sitter
   grammars, QuickJS).
 - **libclang.** The QuickJS bindings are generated at build time with

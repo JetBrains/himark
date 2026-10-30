@@ -20,6 +20,8 @@ env:
   # Full DWARF for a workspace this size fills the Linux runner's disk while
   # linking test binaries; line tables keep backtraces readable.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  # ghostty-sys builds vendor/ghostty (libghostty-vt) with Zig.
+  ZIG_VERSION: 0.16.0
 
 jobs:
   format:
@@ -61,6 +63,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          submodules: true
 
       - name: Free disk space
         if: runner.os == 'Linux'
@@ -85,6 +88,11 @@ jobs:
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           components: clippy
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
@@ -129,6 +137,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          submodules: true
 
       - name: Free disk space
         if: runner.os == 'Linux'
@@ -151,6 +160,11 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
@@ -193,6 +207,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          submodules: true
 
       - name: Install build dependencies
         run: |
@@ -211,6 +226,11 @@ jobs:
           toolchain: nightly
           components: rust-src
           targets: wasm32-unknown-emscripten
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
 
       # Restore before the emsdk lands in target/: on a partial cache match
       # rust-cache prunes everything in target/ that cargo did not produce.

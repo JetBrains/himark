@@ -37,7 +37,7 @@ Two facts shape the design:
 ```
 TerminalView (channel-keyed HANDLE)
    └─ terminal::Terminals            the family: channel uri → Arc<Session>
-        └─ Session                   alacritty Term + Processor (grid, keys)
+        └─ Session                   libghostty-vt behind vt::Vt (grid, keys, mouse)
              └─ Box<dyn TerminalBackend>
                   └─ AhpBackend { seat, channel }   (frontend-host)
                        write  → seat.terminal_input   (dispatch terminal/input)

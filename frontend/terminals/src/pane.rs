@@ -1,22 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The terminal PANE: the grid painter, the xterm keymap, the
-//! navigation place and the pane row — the one face over the
+//! The terminal PANE: the grid painter, the input encoders' feeder,
+//! the navigation place and the pane row — the one face over the
 //! collection in lib.rs. No window: where the pane lands is the
 //! shell's business.
 
-use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::index::{Column, Line, Point as TermPoint};
-use alacritty_terminal::term::cell::Flags as CellFlags;
-use alacritty_terminal::term::{Term, TermMode};
-use alacritty_terminal::vte::ansi::{Color as TermColor, CursorShape, NamedColor, Rgb};
-
-use imba::event::{Event, EventResult, Key, Modifiers};
+use ghostty_sys::{
+    GhosttyMouseButton, GHOSTTY_MOUSE_ACTION_MOTION, GHOSTTY_MOUSE_ACTION_PRESS,
+    GHOSTTY_MOUSE_ACTION_RELEASE, GHOSTTY_MOUSE_BUTTON_FIVE, GHOSTTY_MOUSE_BUTTON_FOUR,
+    GHOSTTY_MOUSE_BUTTON_LEFT, GHOSTTY_MOUSE_BUTTON_MIDDLE, GHOSTTY_MOUSE_BUTTON_RIGHT,
+};
+use imba::event::{Event, EventResult, Key, Modifiers, MouseButton};
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
 use skia_safe::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
-use crate::{Collector, Session, TerminalId, Terminals};
+use crate::vt::{Colors, CursorShape, Frame, Select};
+use crate::{Press, Session, TerminalId, Terminals};
 
 /// A terminal pane's row: the collection and the terminal.
 #[derive(Clone, PartialEq)]
@@ -57,6 +57,17 @@ pub enum TerminalCommand {
     Scroll {
         lines: i32,
     },
+
+    /// One step of a mouse selection, in grid cells and grid pixels.
+    Select {
+        step: Select,
+        col: u16,
+        row: u16,
+        x: f32,
+        y: f32,
+        cell_w: f32,
+        height: f32,
+    },
 }
 
 impl std::fmt::Display for TerminalCommand {
@@ -64,6 +75,7 @@ impl std::fmt::Display for TerminalCommand {
         match self {
             TerminalCommand::Resize { .. } => out.write_str("terminal resize"),
             TerminalCommand::Scroll { .. } => out.write_str("terminal scroll"),
+            TerminalCommand::Select { .. } => out.write_str("terminal select"),
         }
     }
 }
@@ -102,41 +114,40 @@ impl View for TerminalView {
         };
         imba::focus::FocusData {
             on_key: Some(Box::new(move |key, mods| {
-                let app_cursor = session.term().lock().mode().contains(TermMode::APP_CURSOR);
-                match encode_key(key, mods, app_cursor) {
-                    Some(bytes) => {
-                        session.write(&bytes);
-                        EventResult::handled()
-                    }
-                    None => EventResult::Ignored,
+                match session.key_input(key, mods) {
+                    true => EventResult::handled(),
+                    false => EventResult::Ignored,
                 }
             })),
             on_text: Some(Box::new(move |text| {
-                session.write(text.as_bytes());
+                session.text_input(text);
                 EventResult::handled()
             })),
             clipboard: Some(Box::new(move |visit| {
-                struct PtyPaste<'a> {
+                struct PtyClipboard<'a> {
                     session: &'a Session,
                 }
-                impl imba::clipboard::ClipboardClient for PtyPaste<'_> {
+                impl imba::clipboard::ClipboardClient for PtyClipboard<'_> {
                     fn copy(&mut self) -> Option<imba::clipboard::ClipboardContent> {
-                        None
+                        self.session
+                            .selection_text()
+                            .map(|text| imba::clipboard::ClipboardContent { text })
                     }
                     fn cut(&mut self) -> Option<imba::clipboard::ClipboardContent> {
                         None
                     }
                     fn paste(&mut self, content: &imba::clipboard::ClipboardContent) -> bool {
-                        self.session.write(content.text.as_bytes());
+                        self.session.paste(&content.text);
                         true
                     }
                 }
-                visit(&mut PtyPaste { session });
+                visit(&mut PtyClipboard { session });
                 EventResult::handled()
             })),
             ..imba::focus::FocusData::default()
         }
     }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -155,6 +166,15 @@ impl View for TerminalView {
                 px_height,
             } => session.resize(cols, rows, px_width, px_height),
             TerminalCommand::Scroll { lines } => session.scroll_lines(lines),
+            TerminalCommand::Select {
+                step,
+                col,
+                row,
+                x,
+                y,
+                cell_w,
+                height,
+            } => session.select(step, col, row, x, y, cell_w, height),
         }
     }
 
@@ -173,8 +193,9 @@ impl View for TerminalView {
                 return blank;
             };
             let chrome = editor::env::Themes::of(store).part(crate::chrome::TerminalChrome::KEY);
-            let font = grid_font(ui, &chrome);
-            let cell = cell_metrics(&font);
+            session.set_colors(Colors::from_chrome(&chrome));
+            let fonts = grid_fonts(ui, &chrome);
+            let cell = cell_metrics(&fonts.normal);
             let fallbacks = ui.env(|| FallbackFaces {
                 manager: skia_safe::FontMgr::new(),
                 by_char: Default::default(),
@@ -185,7 +206,7 @@ impl View for TerminalView {
                     session,
                     size: constraints.max,
                     chrome,
-                    font,
+                    fonts,
                     cell,
                     fallbacks,
                     surface: imba::event::ScrollSurfaceId::keyed(self.id.raw()),
@@ -272,7 +293,30 @@ impl hikit::panel::PanelView for TerminalView {
     }
 }
 
-struct TerminalTypeface(skia_safe::Typeface);
+struct TerminalTypefaces {
+    normal: skia_safe::Typeface,
+    bold: skia_safe::Typeface,
+    italic: skia_safe::Typeface,
+    bold_italic: skia_safe::Typeface,
+}
+
+struct GridFonts {
+    normal: Font,
+    bold: Font,
+    italic: Font,
+    bold_italic: Font,
+}
+
+impl GridFonts {
+    fn pick(&self, bold: bool, italic: bool) -> &Font {
+        match (bold, italic) {
+            (false, false) => &self.normal,
+            (true, false) => &self.bold,
+            (false, true) => &self.italic,
+            (true, true) => &self.bold_italic,
+        }
+    }
+}
 
 struct FallbackFaces {
     manager: skia_safe::FontMgr,
@@ -299,16 +343,30 @@ impl FallbackFaces {
     }
 }
 
-fn grid_font(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> Font {
+fn grid_fonts(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> GridFonts {
     let states = chrome.font_families.clone();
-    let typeface = ui.env(|| {
-        let face = editor::env::ui_typeface(ui, &states, skia_safe::FontStyle::normal())
-            .expect("a monospace typeface");
-        TerminalTypeface(face)
+    let faces = ui.env(|| {
+        let style = |style: skia_safe::FontStyle| editor::env::ui_typeface(ui, &states, style);
+        let normal = style(skia_safe::FontStyle::normal()).expect("a monospace typeface");
+        TerminalTypefaces {
+            bold: style(skia_safe::FontStyle::bold()).unwrap_or_else(|| normal.clone()),
+            italic: style(skia_safe::FontStyle::italic()).unwrap_or_else(|| normal.clone()),
+            bold_italic: style(skia_safe::FontStyle::bold_italic())
+                .unwrap_or_else(|| normal.clone()),
+            normal,
+        }
     });
-    let mut font = Font::from_typeface(typeface.0.clone(), chrome.font_size);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
-    font
+    let font = |face: &skia_safe::Typeface| {
+        let mut font = Font::from_typeface(face.clone(), chrome.font_size);
+        font.set_edging(skia_safe::font::Edging::AntiAlias);
+        font
+    };
+    GridFonts {
+        normal: font(&faces.normal),
+        bold: font(&faces.bold),
+        italic: font(&faces.italic),
+        bold_italic: font(&faces.bold_italic),
+    }
 }
 
 fn cell_metrics(font: &Font) -> (f32, f32, f32) {
@@ -322,11 +380,21 @@ struct TerminalWidget<'a> {
     session: &'a Session,
     size: Size,
     chrome: std::sync::Arc<crate::chrome::TerminalChrome>,
-    font: Font,
+    fonts: GridFonts,
     cell: (f32, f32, f32),
     fallbacks: &'a FallbackFaces,
 
     surface: imba::event::ScrollSurfaceId,
+}
+
+/// A glyph run being gathered: where it starts, its color and its face.
+struct Run {
+    x: f32,
+    y: f32,
+    color: Color,
+    bold: bool,
+    italic: bool,
+    text: String,
 }
 
 impl TerminalWidget<'_> {
@@ -340,178 +408,177 @@ impl TerminalWidget<'_> {
         )
     }
 
-    fn color(&self, color: TermColor, foreground: bool) -> Color {
-        match color {
-            TermColor::Spec(Rgb { r, g, b }) => Color::from_argb(0xff, r, g, b),
-            TermColor::Indexed(index) => self.indexed(index as usize, foreground),
-            TermColor::Named(named) => match named {
-                NamedColor::Foreground => self.chrome.foreground.0,
-                NamedColor::Background => self.chrome.background.0,
-                NamedColor::Cursor => self.chrome.cursor.0,
-                named => self.indexed(named as usize, foreground),
-            },
-        }
+    /// The pointer's grid cell and grid-local pixel position.
+    fn grid_point(&self, point: Point) -> (u16, u16, f32, f32) {
+        let (cell_w, cell_h, _) = self.cell;
+        let x = (point.x - self.chrome.pad).max(0.0);
+        let y = (point.y - self.chrome.pad).max(0.0);
+        ((x / cell_w) as u16, (y / cell_h) as u16, x, y)
     }
 
-    fn indexed(&self, index: usize, foreground: bool) -> Color {
-        if let Some(color) = self.chrome.palette.get(index) {
-            return color.0;
-        }
+    /// The grid for mouse reports: columns, rows, cell pixels.
+    fn report_size(&self) -> (u32, u32, f32, f32) {
+        let (cols, rows) = self.session.told();
+        (cols as u32, rows as u32, self.cell.0, self.cell.1)
+    }
 
-        if (16..=231).contains(&index) {
-            let index = index - 16;
-            let level = |value: usize| match value {
-                0 => 0u8,
-                v => (v * 40 + 55) as u8,
-            };
-            return Color::from_argb(
-                0xff,
-                level(index / 36),
-                level(index % 36 / 6),
-                level(index % 6),
-            );
-        }
-        if (232..=255).contains(&index) {
-            let gray = ((index - 232) * 10 + 8) as u8;
-            return Color::from_argb(0xff, gray, gray, gray);
-        }
-        match foreground {
-            true => self.chrome.foreground.0,
-            false => self.chrome.background.0,
-        }
+    fn select_command(&self, step: Select, point: Point) -> EventResult<TerminalCommand> {
+        let (col, row, x, y) = self.grid_point(point);
+        let (_, rows) = self.session.told();
+        EventResult::command(TerminalCommand::Select {
+            step,
+            col,
+            row,
+            x,
+            y,
+            cell_w: self.cell.0,
+            height: self.cell.1 * rows as f32,
+        })
     }
 
     fn paint_grid(&self, canvas: &Canvas, focused: bool) {
+        let frame = self.session.frame();
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
-        paint.set_color(self.chrome.background.0);
+        paint.set_color(frame.bg);
         canvas.draw_rect(Rect::from_size(self.size), &paint);
 
         let (cell_w, cell_h, baseline) = self.cell;
         let origin = (self.chrome.pad, self.chrome.pad);
-        let term = self.session.term().lock();
-        let content = term.renderable_content();
-        let cursor = content.cursor;
-        let display_offset = content.display_offset as i32;
 
         let mut glyph_paint = Paint::default();
         glyph_paint.set_anti_alias(true);
-        let mut run = String::new();
-        let mut run_start: Option<(f32, f32, Color)> = None;
-        let mut previous_line = None;
+        let mut run: Option<Run> = None;
+        // Thin marks over the text: underlines and strikethroughs.
+        let mut marks: Vec<(Rect, Color)> = Vec::new();
+        let line = (cell_h / 16.0).max(1.0);
 
-        for indexed in content.display_iter {
-            let point = indexed.point;
-            let cell = &indexed.cell;
-            let line = (point.line.0 + display_offset) as f32;
-            let x = origin.0 + point.column.0 as f32 * cell_w;
-            let y = origin.1 + line * cell_h;
-
-            if previous_line != Some(point.line) {
-                flush_run(
-                    canvas,
-                    &self.font,
-                    &mut glyph_paint,
-                    baseline,
-                    &mut run,
-                    &mut run_start,
-                );
-                previous_line = Some(point.line);
-            }
-            if cell
-                .flags
-                .intersects(CellFlags::WIDE_CHAR_SPACER | CellFlags::LEADING_WIDE_CHAR_SPACER)
-            {
-                continue;
-            }
-
-            let (mut fg, mut bg) = (self.color(cell.fg, true), self.color(cell.bg, false));
-            if cell.flags.contains(CellFlags::INVERSE) {
-                std::mem::swap(&mut fg, &mut bg);
-            }
-            if bg != self.chrome.background.0 {
-                flush_run(
-                    canvas,
-                    &self.font,
-                    &mut glyph_paint,
-                    baseline,
-                    &mut run,
-                    &mut run_start,
-                );
-                paint.set_color(bg);
-                let width = match cell.flags.contains(CellFlags::WIDE_CHAR) {
+        for (row_index, row) in frame.rows.iter().enumerate() {
+            flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
+            let y = origin.1 + row_index as f32 * cell_h;
+            // A wide character's head covers its tail cell too.
+            let mut skip_tail = false;
+            for (column, cell) in row.iter().enumerate() {
+                if std::mem::take(&mut skip_tail) {
+                    continue;
+                }
+                skip_tail = cell.wide;
+                let x = origin.0 + column as f32 * cell_w;
+                let width = match cell.wide {
                     true => cell_w * 2.0,
                     false => cell_w,
                 };
-                canvas.draw_rect(Rect::from_xywh(x, y, width, cell_h), &paint);
-            }
 
-            if cell.c != ' ' && self.font.unichar_to_glyph(cell.c as i32) == 0 {
-                flush_run(
-                    canvas,
-                    &self.font,
-                    &mut glyph_paint,
-                    baseline,
-                    &mut run,
-                    &mut run_start,
-                );
-                if let Some(font) = self.fallbacks.font_for(cell.c, self.chrome.font_size) {
-                    let mut cluster = String::from(cell.c);
-                    cluster.extend(cell.zerowidth().into_iter().flatten());
-                    glyph_paint.set_color(fg);
-                    canvas.draw_str(
-                        cluster.as_str(),
-                        Point::new(x, y + baseline),
-                        &font,
-                        &glyph_paint,
-                    );
+                if let Some(bg) = cell.bg {
+                    if bg != frame.bg {
+                        flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
+                        paint.set_color(bg);
+                        canvas.draw_rect(Rect::from_xywh(x, y, width, cell_h), &paint);
+                    }
                 }
-                continue;
-            }
 
-            match run_start {
-                Some((_, _, color)) if color == fg => {}
-                _ => flush_run(
-                    canvas,
-                    &self.font,
-                    &mut glyph_paint,
-                    baseline,
-                    &mut run,
-                    &mut run_start,
-                ),
-            }
-            if run_start.is_none() {
-                run_start = Some((x, y, fg));
-            }
-            run.push(cell.c);
+                let fg = match cell.faint {
+                    true => cell.fg.with_a(160),
+                    false => cell.fg,
+                };
+                if cell.underline {
+                    marks.push((Rect::from_xywh(x, y + cell_h - line, width, line), fg));
+                }
+                if cell.strike {
+                    marks.push((
+                        Rect::from_xywh(x, y + baseline - cell_h * 0.25, width, line),
+                        fg,
+                    ));
+                }
 
-            run.extend(cell.zerowidth().into_iter().flatten());
-            if cell.flags.contains(CellFlags::WIDE_CHAR) {
-                run.push(' ');
+                // A blank cell still holds its place in the open run.
+                let first = cell.text.chars().next().filter(|c| *c != ' ');
+                let Some(first) = first else {
+                    if let Some(open) = run.as_mut() {
+                        open.text.push(' ');
+                    }
+                    continue;
+                };
+
+                let face = self.fonts.pick(cell.bold, cell.italic);
+                if face.unichar_to_glyph(first as i32) == 0 {
+                    flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
+                    if let Some(font) = self.fallbacks.font_for(first, self.chrome.font_size) {
+                        glyph_paint.set_color(fg);
+                        canvas.draw_str(
+                            cell.text.as_str(),
+                            Point::new(x, y + baseline),
+                            &font,
+                            &glyph_paint,
+                        );
+                    }
+                    continue;
+                }
+
+                match &run {
+                    Some(open)
+                        if open.color == fg
+                            && open.bold == cell.bold
+                            && open.italic == cell.italic => {}
+                    _ => {
+                        flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
+                        run = Some(Run {
+                            x,
+                            y,
+                            color: fg,
+                            bold: cell.bold,
+                            italic: cell.italic,
+                            text: String::new(),
+                        });
+                    }
+                }
+                let open = run.as_mut().expect("an open run");
+                open.text.push_str(&cell.text);
+                if cell.wide {
+                    open.text.push(' ');
+                }
             }
         }
-        flush_run(
-            canvas,
-            &self.font,
-            &mut glyph_paint,
-            baseline,
-            &mut run,
-            &mut run_start,
-        );
+        flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
 
-        if focused && cursor.shape != CursorShape::Hidden && display_offset == 0 {
-            let x = origin.0 + cursor.point.column.0 as f32 * cell_w;
-            let y = origin.1 + cursor.point.line.0 as f32 * cell_h;
-            paint.set_color(self.chrome.cursor.0);
-            canvas.draw_rect(Rect::from_xywh(x, y, cell_w, cell_h), &paint);
-            if let Some(c) = cursor_cell(&term, cursor.point) {
-                glyph_paint.set_color(self.chrome.background.0);
-                canvas.draw_str(
-                    c.to_string().as_str(),
-                    Point::new(x, y + baseline),
-                    &self.font,
-                    &glyph_paint,
-                );
+        for (rect, color) in marks {
+            paint.set_color(color);
+            canvas.draw_rect(rect, &paint);
+        }
+
+        if focused {
+            if let Some(cursor) = frame.cursor {
+                let x = origin.0 + cursor.x as f32 * cell_w;
+                let y = origin.1 + cursor.y as f32 * cell_h;
+                paint.set_color(cursor.color);
+                let bar = (cell_w / 8.0).max(1.0);
+                match cursor.shape {
+                    CursorShape::Bar => {
+                        canvas.draw_rect(Rect::from_xywh(x, y, bar, cell_h), &paint);
+                    }
+                    CursorShape::Underline => {
+                        canvas
+                            .draw_rect(Rect::from_xywh(x, y + cell_h - line, cell_w, line), &paint);
+                    }
+                    CursorShape::Hollow => {
+                        paint.set_style(skia_safe::paint::Style::Stroke);
+                        paint.set_stroke_width(line);
+                        canvas.draw_rect(Rect::from_xywh(x, y, cell_w, cell_h), &paint);
+                        paint.set_style(skia_safe::paint::Style::Fill);
+                    }
+                    CursorShape::Block => {
+                        canvas.draw_rect(Rect::from_xywh(x, y, cell_w, cell_h), &paint);
+                        if let Some(text) = cursor_text(&frame, cursor.x, cursor.y) {
+                            glyph_paint.set_color(frame.bg);
+                            canvas.draw_str(
+                                text,
+                                Point::new(x, y + baseline),
+                                &self.fonts.normal,
+                                &glyph_paint,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -519,30 +586,35 @@ impl TerminalWidget<'_> {
 
 fn flush_run(
     canvas: &Canvas,
-    font: &Font,
+    fonts: &GridFonts,
     paint: &mut Paint,
     baseline: f32,
-    run: &mut String,
-    start: &mut Option<(f32, f32, Color)>,
+    run: &mut Option<Run>,
 ) {
-    if let Some((x, y, color)) = start.take() {
-        if !run.trim().is_empty() {
-            paint.set_color(color);
-            canvas.draw_str(run.as_str(), Point::new(x, y + baseline), font, paint);
+    if let Some(run) = run.take() {
+        if !run.text.trim().is_empty() {
+            paint.set_color(run.color);
+            canvas.draw_str(
+                run.text.as_str(),
+                Point::new(run.x, run.y + baseline),
+                fonts.pick(run.bold, run.italic),
+                paint,
+            );
         }
-        run.clear();
     }
 }
 
-fn cursor_cell(term: &Term<Collector>, point: TermPoint) -> Option<char> {
-    if point.line.0 < 0
-        || point.line.0 >= term.screen_lines() as i32
-        || point.column >= Column(term.columns())
-    {
-        return None;
+fn cursor_text(frame: &Frame, x: u16, y: u16) -> Option<&str> {
+    let cell = frame.rows.get(y as usize)?.get(x as usize)?;
+    (!cell.text.trim().is_empty()).then_some(cell.text.as_str())
+}
+
+fn report_button(button: MouseButton) -> GhosttyMouseButton {
+    match button {
+        MouseButton::Left => GHOSTTY_MOUSE_BUTTON_LEFT,
+        MouseButton::Right => GHOSTTY_MOUSE_BUTTON_RIGHT,
+        MouseButton::Middle => GHOSTTY_MOUSE_BUTTON_MIDDLE,
     }
-    let c = term.grid()[Line(point.line.0)][point.column].c;
-    (c != ' ').then_some(c)
 }
 
 impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
@@ -575,8 +647,8 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
             Event::Scroll {
                 delta_x,
                 delta_y,
+                point,
                 gesture,
-                ..
             } => {
                 if gesture.owned_by_other(self.surface) {
                     return EventResult::Ignored;
@@ -588,98 +660,132 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                     let _ = gesture.claims(self.surface);
                 }
                 let lines = (-delta_y / self.cell.1).round() as i32;
-                match lines {
-                    0 => EventResult::handled(),
-                    lines => EventResult::command(TerminalCommand::Scroll { lines }),
+                if lines == 0 {
+                    return EventResult::handled();
                 }
+                if self.session.mouse_tracking() {
+                    // The wheel is the program's: buttons four and five.
+                    let (_, _, x, y) = self.grid_point(*point);
+                    let button = match lines > 0 {
+                        true => GHOSTTY_MOUSE_BUTTON_FOUR,
+                        false => GHOSTTY_MOUSE_BUTTON_FIVE,
+                    };
+                    for _ in 0..lines.unsigned_abs() {
+                        self.session.mouse_report(
+                            GHOSTTY_MOUSE_ACTION_PRESS,
+                            Some(button),
+                            Modifiers::default(),
+                            x,
+                            y,
+                            self.report_size(),
+                            false,
+                        );
+                    }
+                    return EventResult::handled();
+                }
+                if self.session.alt_screen() {
+                    // No scrollback behind a full-screen program: the
+                    // wheel turns into arrow keys (less, vim).
+                    let key = match lines > 0 {
+                        true => Key::Up,
+                        false => Key::Down,
+                    };
+                    for _ in 0..lines.unsigned_abs() {
+                        self.session.key_input(key, Modifiers::default());
+                    }
+                    return EventResult::handled();
+                }
+                EventResult::command(TerminalCommand::Scroll { lines })
             }
-            Event::MouseDown { .. } => EventResult::handled(),
+            Event::MouseDown {
+                point,
+                button,
+                mods,
+                ..
+            } => {
+                if self.session.mouse_tracking() && !mods.shift {
+                    let (_, _, x, y) = self.grid_point(*point);
+                    self.session.set_press(Some(Press::Reported(*button)));
+                    self.session.mouse_report(
+                        GHOSTTY_MOUSE_ACTION_PRESS,
+                        Some(report_button(*button)),
+                        *mods,
+                        x,
+                        y,
+                        self.report_size(),
+                        false,
+                    );
+                    return EventResult::handled();
+                }
+                if *button == MouseButton::Left {
+                    self.session.set_press(Some(Press::Selecting));
+                    return self.select_command(Select::Press, *point);
+                }
+                EventResult::handled()
+            }
+            // Drags and releases are BROADCAST by containers (no rect
+            // cull), so they may only be claimed by the pane whose
+            // press armed them.
+            Event::MouseDrag { point, mods } => match self.session.press() {
+                Some(Press::Reported(button)) => {
+                    let (_, _, x, y) = self.grid_point(*point);
+                    self.session.mouse_report(
+                        GHOSTTY_MOUSE_ACTION_MOTION,
+                        Some(report_button(button)),
+                        *mods,
+                        x,
+                        y,
+                        self.report_size(),
+                        true,
+                    );
+                    EventResult::handled()
+                }
+                Some(Press::Selecting) => self.select_command(Select::Drag, *point),
+                None => EventResult::Ignored,
+            },
+            Event::MouseUp { point } => match self.session.press() {
+                Some(Press::Reported(button)) => {
+                    self.session.set_press(None);
+                    let (_, _, x, y) = self.grid_point(*point);
+                    self.session.mouse_report(
+                        GHOSTTY_MOUSE_ACTION_RELEASE,
+                        Some(report_button(button)),
+                        Modifiers::default(),
+                        x,
+                        y,
+                        self.report_size(),
+                        false,
+                    );
+                    EventResult::handled()
+                }
+                Some(Press::Selecting) => {
+                    self.session.set_press(None);
+                    self.select_command(Select::Release, *point)
+                }
+                None => EventResult::Ignored,
+            },
+            Event::MouseMove { point, mods } => {
+                use skia_safe::Contains;
+                // Moves are broadcast too: only the hovered pane
+                // reports them (programs in mode 1003 want hover).
+                if self.session.press().is_none()
+                    && Rect::from_size(self.size).contains(*point)
+                    && self.session.mouse_tracking()
+                {
+                    let (_, _, x, y) = self.grid_point(*point);
+                    self.session.mouse_report(
+                        GHOSTTY_MOUSE_ACTION_MOTION,
+                        None,
+                        *mods,
+                        x,
+                        y,
+                        self.report_size(),
+                        false,
+                    );
+                }
+                EventResult::Ignored
+            }
             _ => EventResult::Ignored,
         }
-    }
-}
-
-fn encode_key(key: Key, mods: Modifiers, app_cursor: bool) -> Option<Vec<u8>> {
-    let encoded: Vec<u8> = match key {
-        Key::Enter => b"\r".to_vec(),
-        Key::Backspace => vec![0x7f],
-        Key::Tab if mods.shift => b"\x1b[Z".to_vec(),
-        Key::Tab => b"\t".to_vec(),
-        Key::Escape => vec![0x1b],
-        Key::Left | Key::Right | Key::Up | Key::Down => {
-            let letter = match key {
-                Key::Up => b'A',
-                Key::Down => b'B',
-                Key::Right => b'C',
-                _ => b'D',
-            };
-            match app_cursor {
-                true => vec![0x1b, b'O', letter],
-                false => vec![0x1b, b'[', letter],
-            }
-        }
-        Key::Home => b"\x1b[H".to_vec(),
-        Key::End => b"\x1b[F".to_vec(),
-        Key::PageUp => b"\x1b[5~".to_vec(),
-        Key::PageDown => b"\x1b[6~".to_vec(),
-        Key::Delete => b"\x1b[3~".to_vec(),
-        Key::F(n @ 1..=4) => vec![0x1b, b'O', b'P' + n - 1],
-        Key::F(n @ 5..=12) => {
-            let code = match n {
-                5 => 15,
-                6..=10 => 11 + n as u32,
-                _ => 12 + n as u32,
-            };
-            format!("\x1b[{code}~").into_bytes()
-        }
-        Key::F(_) => return None,
-        Key::Char(c) if mods.control => {
-            let c = c.to_ascii_lowercase();
-            let byte = match c {
-                'a'..='z' => c as u8 & 0x1f,
-                '@' | ' ' => 0,
-                '[' => 0x1b,
-                '\\' => 0x1c,
-                ']' => 0x1d,
-                '^' => 0x1e,
-                '_' | '/' => 0x1f,
-                _ => return None,
-            };
-            match mods.alt {
-                true => vec![0x1b, byte],
-                false => vec![byte],
-            }
-        }
-        Key::Char(c) if mods.alt => {
-            let mut bytes = vec![0x1b];
-            bytes.extend_from_slice(c.to_string().as_bytes());
-            bytes
-        }
-        Key::Char(_) => return None,
-    };
-    Some(encoded)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keys_encode_like_xterm() {
-        let plain = Modifiers::default();
-        let ctrl = Modifiers {
-            control: true,
-            ..Default::default()
-        };
-        assert_eq!(encode_key(Key::Enter, plain, false), Some(b"\r".to_vec()));
-        assert_eq!(encode_key(Key::Up, plain, false), Some(b"\x1b[A".to_vec()));
-        assert_eq!(encode_key(Key::Up, plain, true), Some(b"\x1bOA".to_vec()));
-        assert_eq!(encode_key(Key::Char('c'), ctrl, false), Some(vec![0x03]));
-        assert_eq!(encode_key(Key::Char('d'), ctrl, false), Some(vec![0x04]));
-        assert_eq!(
-            encode_key(Key::F(5), plain, false),
-            Some(b"\x1b[15~".to_vec())
-        );
-        assert_eq!(encode_key(Key::Char('x'), plain, false), None);
     }
 }

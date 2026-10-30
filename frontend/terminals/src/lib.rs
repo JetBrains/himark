@@ -3,25 +3,21 @@
 
 //! The terminals COLLECTION (docs/entities.md): a session's terminal
 //! emulators, addressed by `(Id<Terminals>, TerminalId)`. Pure model
-//! — the grid, the parser, the backend door. The pane, the keymap and
-//! the wire that feeds `Session::output` live with the shells; which
-//! wire channel feeds the PTY is the backend's business, never the
-//! collection's key.
+//! — the grid (libghostty-vt behind `vt::Vt`), the backend door. The
+//! pane, the keymap and the wire that feeds `Session::output` live
+//! with the shells; which wire channel feeds the PTY is the backend's
+//! business, never the collection's key.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-
-use alacritty_terminal::event::{Event as TermEvent, EventListener, WindowSize};
-use alacritty_terminal::grid::Scroll;
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::test::TermSize;
-use alacritty_terminal::term::{Config, Term};
-use alacritty_terminal::vte::ansi::Processor;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use imba::store::Store;
 
 pub mod chrome;
 pub mod pane;
+pub mod vt;
+
+use vt::{Colors, Frame, Select, Vt};
 
 /// The PTY end a session writes into — the one door to the wire,
 /// implemented by whoever owns the transport.
@@ -33,27 +29,26 @@ pub trait TerminalBackend: Send + Sync {
     fn hangup(&self);
 }
 
-/// TEST SUPPORT: no production caller outside this crate.
-#[derive(Clone)]
-#[doc(hidden)]
-pub struct Collector(Arc<Mutex<Vec<TermEvent>>>);
-
-impl EventListener for Collector {
-    fn send_event(&self, event: TermEvent) {
-        self.0.lock().expect("collector lock").push(event);
-    }
-}
-
 pub struct Session {
-    term: FairMutex<Term<Collector>>,
-    parser: Mutex<Processor>,
-    events: Arc<Mutex<Vec<TermEvent>>>,
+    vt: Mutex<Vt>,
     backend: Box<dyn TerminalBackend>,
     title: Mutex<String>,
     exited: Mutex<Option<i32>>,
     hung_up: AtomicBool,
 
     told: Mutex<(u16, u16)>,
+
+    /// What the pane's press armed: drags and releases are broadcast,
+    /// so only the session that owns the press may claim them.
+    pressed: Mutex<Option<Press>>,
+}
+
+/// What a mouse press started: the program took it (with this button),
+/// or a selection.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Press {
+    Reported(imba::event::MouseButton),
+    Selecting,
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
@@ -65,28 +60,23 @@ pub const DEFAULT_ROWS: u16 = 24;
 
 impl Session {
     pub fn new(backend: Box<dyn TerminalBackend>) -> Arc<Self> {
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let size = TermSize::new(DEFAULT_COLS as usize, DEFAULT_ROWS as usize);
-        let term = Term::new(Config::default(), &size, Collector(events.clone()));
         Arc::new(Self {
-            term: FairMutex::new(term),
-            parser: Mutex::new(Processor::new()),
-            events,
+            vt: Mutex::new(Vt::new(DEFAULT_COLS, DEFAULT_ROWS, Colors::default())),
             backend,
             title: Mutex::new(String::new()),
             exited: Mutex::new(None),
             hung_up: AtomicBool::new(false),
             told: Mutex::new((DEFAULT_COLS, DEFAULT_ROWS)),
+            pressed: Mutex::new(None),
         })
     }
 
+    /// Program output lands in the grid; whatever the terminal wants
+    /// to say back (cursor reports, size reports) rides to the PTY.
     pub fn output(&self, bytes: &[u8]) -> bool {
-        {
-            let mut parser = self.parser.lock().expect("parser lock");
-            let mut term = self.term.lock();
-            parser.advance(&mut *term, bytes);
-        }
-        self.drain_events();
+        let mut vt = self.vt();
+        vt.write(bytes);
+        self.pump(&mut vt);
         true
     }
 
@@ -101,19 +91,35 @@ impl Session {
     /// double every line.
     pub fn reset(&self) -> bool {
         let (cols, rows) = *self.told.lock().expect("told lock");
-        let size = TermSize::new(cols as usize, rows as usize);
-        {
-            let mut term = self.term.lock();
-            *term = Term::new(Config::default(), &size, Collector(self.events.clone()));
-        }
-        *self.parser.lock().expect("parser lock") = Processor::new();
-        self.drain_events();
+        let mut vt = self.vt();
+        *vt = Vt::new(cols, rows, vt.colors().clone());
         true
     }
 
-    /// The emulator, for the shell that paints the grid.
-    pub fn term(&self) -> &FairMutex<Term<Collector>> {
-        &self.term
+    fn vt(&self) -> MutexGuard<'_, Vt> {
+        self.vt.lock().expect("vt lock")
+    }
+
+    /// Drains what the emulator produced besides the grid: replies to
+    /// the program, and the title.
+    fn pump(&self, vt: &mut Vt) {
+        let replies = vt.take_replies();
+        if !replies.is_empty() {
+            self.write(&replies);
+        }
+        if let Some(title) = vt.take_title() {
+            *self.title.lock().expect("title lock") = title;
+        }
+    }
+
+    /// One frame for the pane to draw.
+    pub fn frame(&self) -> Frame {
+        self.vt().frame()
+    }
+
+    /// The theme's colors, applied live.
+    pub fn set_colors(&self, colors: Colors) {
+        self.vt().set_colors(colors);
     }
 
     pub fn title(&self) -> String {
@@ -126,35 +132,116 @@ impl Session {
         *self.told.lock().expect("told lock")
     }
 
-    fn drain_events(&self) {
-        let events: Vec<TermEvent> = std::mem::take(&mut *self.events.lock().expect("events"));
-        for event in events {
-            match event {
-                TermEvent::PtyWrite(text) => self.write(text.as_bytes()),
-                TermEvent::Title(title) => {
-                    *self.title.lock().expect("title lock") = title;
-                }
-                TermEvent::ResetTitle => self.title.lock().expect("title lock").clear(),
-                TermEvent::TextAreaSizeRequest(format) => {
-                    let (cols, rows) = *self.told.lock().expect("told lock");
-                    let reply = format(WindowSize {
-                        num_lines: rows,
-                        num_cols: cols,
-                        cell_width: 0,
-                        cell_height: 0,
-                    });
-                    self.write(reply.as_bytes());
-                }
-
-                _ => {}
-            }
-        }
+    /// The emulator's own grid size.
+    pub fn grid_size(&self) -> (u16, u16) {
+        let vt = self.vt();
+        (vt.cols, vt.rows)
     }
 
     pub fn write(&self, bytes: &[u8]) {
         if self.exited.lock().expect("exit lock").is_none() {
             self.backend.write(bytes);
         }
+    }
+
+    /// A pane key press: encoded in the program's keyboard mode and
+    /// sent. Typing lets go of the selection and rides the viewport
+    /// back to the prompt.
+    pub fn key_input(&self, key: imba::event::Key, mods: imba::event::Modifiers) -> bool {
+        let bytes = {
+            let mut vt = self.vt();
+            let Some(bytes) = vt.key_bytes(key, mods) else {
+                return false;
+            };
+            vt.clear_selection();
+            vt.scroll_to_bottom();
+            bytes
+        };
+        self.write(&bytes);
+        true
+    }
+
+    /// Typed text, encoded per character so kitty-keyboard programs
+    /// see real key events.
+    pub fn text_input(&self, text: &str) {
+        let bytes = {
+            let mut vt = self.vt();
+            let bytes = vt.text_bytes(text);
+            vt.clear_selection();
+            vt.scroll_to_bottom();
+            bytes
+        };
+        self.write(&bytes);
+    }
+
+    /// Pasted text, wrapped the way the program asked (bracketed paste).
+    pub fn paste(&self, text: &str) {
+        let bytes = {
+            let mut vt = self.vt();
+            let bytes = vt.paste_bytes(text);
+            vt.scroll_to_bottom();
+            bytes
+        };
+        self.write(&bytes);
+    }
+
+    pub fn selection_text(&self) -> Option<String> {
+        self.vt().selection_text()
+    }
+
+    /// One mouse step of a selection gesture, in grid cells and pixels.
+    #[allow(clippy::too_many_arguments)]
+    pub fn select(
+        &self,
+        step: Select,
+        col: u16,
+        row: u16,
+        x: f32,
+        y: f32,
+        cell_w: f32,
+        height: f32,
+    ) {
+        self.vt().select(step, col, row, x, y, cell_w, height);
+    }
+
+    /// Whether the program tracks the mouse (then clicks are its, not
+    /// a selection's — unless Shift holds them back).
+    pub fn mouse_tracking(&self) -> bool {
+        self.vt().mouse_tracking()
+    }
+
+    pub fn alt_screen(&self) -> bool {
+        self.vt().alt_screen()
+    }
+
+    /// A mouse report for a program that tracks the mouse; empty when
+    /// the mode doesn't ask for this event.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mouse_report(
+        &self,
+        action: ghostty_sys::GhosttyMouseAction,
+        button: Option<ghostty_sys::GhosttyMouseButton>,
+        mods: imba::event::Modifiers,
+        x: f32,
+        y: f32,
+        size: (u32, u32, f32, f32),
+        any_pressed: bool,
+    ) {
+        let bytes = self
+            .vt()
+            .encode_mouse(action, button, mods, x, y, size, any_pressed);
+        if !bytes.is_empty() {
+            self.write(&bytes);
+        }
+    }
+
+    /// What the pane's last press armed, if it still holds.
+    pub fn press(&self) -> Option<Press> {
+        *self.pressed.lock().expect("press lock")
+    }
+
+    pub fn set_press(&self, press: Option<Press>) {
+        *self.pressed.lock().expect("press lock") = press;
     }
 
     pub fn resize(&self, cols: u16, rows: u16, px_width: f32, px_height: f32) {
@@ -167,9 +254,14 @@ impl Session {
             }
             *told = (cols, rows);
         }
-        self.term
-            .lock()
-            .resize(TermSize::new(cols as usize, rows as usize));
+        let cell_w = (px_width / cols as f32).round().max(1.0) as u32;
+        let cell_h = (px_height / rows as f32).round().max(1.0) as u32;
+        {
+            let mut vt = self.vt();
+            vt.resize(cols, rows, cell_w, cell_h);
+            // An in-band size report (mode 2048) answers right away.
+            self.pump(&mut vt);
+        }
         self.backend.resize(cols, rows, px_width, px_height);
     }
 
@@ -180,7 +272,9 @@ impl Session {
     }
 
     pub(crate) fn scroll_lines(&self, lines: i32) {
-        self.term.lock().scroll_display(Scroll::Delta(lines));
+        // Positive scrolls INTO history, as the pane's wheel delta has
+        // it; libghostty's delta goes the other way.
+        self.vt().scroll_viewport(-(lines as isize));
     }
 }
 
@@ -269,9 +363,6 @@ impl Terminals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alacritty_terminal::grid::Dimensions;
-    use alacritty_terminal::index::{Column, Line};
-    use alacritty_terminal::term::TermMode;
 
     #[derive(Clone, Default)]
     struct Recorder {
@@ -291,13 +382,14 @@ mod tests {
         fn hangup(&self) {}
     }
 
-    fn row_text(session: &Session, row: i32) -> String {
-        let term = session.term.lock();
-        let mut text = String::new();
-        for column in 0..term.columns() {
-            text.push(term.grid()[Line(row)][Column(column)].c);
-        }
-        text.trim_end().to_owned()
+    fn row_text(session: &Session, row: usize) -> String {
+        let frame = session.frame();
+        frame.rows[row]
+            .iter()
+            .map(|c| c.text.as_str())
+            .collect::<String>()
+            .trim_end()
+            .to_owned()
     }
 
     #[test]
@@ -325,8 +417,7 @@ mod tests {
         session.resize(120, 40, 960.0, 1200.0);
         session.resize(120, 40, 960.0, 1200.0);
         assert_eq!(*recorder.resizes.lock().unwrap(), vec![(120, 40)]);
-        assert_eq!(session.term.lock().columns(), 120);
-        assert_eq!(session.term.lock().screen_lines(), 40);
+        assert_eq!(session.grid_size(), (120, 40));
     }
 
     /// The re-attach replays the snapshot from byte one — the grid
@@ -339,16 +430,11 @@ mod tests {
         session.output(b"stale line");
         assert!(session.reset());
         assert_eq!(
-            session.term.lock().columns(),
-            100,
+            session.grid_size(),
+            (100, 30),
             "the reset keeps the TOLD size"
         );
-        assert_eq!(session.term.lock().screen_lines(), 30);
-        assert_eq!(
-            row_text(&session, 0).trim_end(),
-            "",
-            "the stale copy is gone"
-        );
+        assert_eq!(row_text(&session, 0), "", "the stale copy is gone");
         session.output(b"fresh");
         assert_eq!(
             row_text(&session, 0),
@@ -368,10 +454,32 @@ mod tests {
     }
 
     #[test]
-    fn alternate_screen_and_title_follow_the_stream() {
+    fn titles_follow_the_stream() {
         let session = Session::new(Box::new(Recorder::default()));
         session.output(b"\x1b]0;vim\x07\x1b[?1049h");
         assert_eq!(session.title(), "vim");
-        assert!(session.term.lock().mode().contains(TermMode::ALT_SCREEN));
+        assert!(session.alt_screen());
+    }
+
+    #[test]
+    fn typing_snaps_the_viewport_back_to_the_prompt() {
+        let recorder = Recorder::default();
+        let session = Session::new(Box::new(recorder.clone()));
+        for line in 0..100 {
+            session.output(format!("line {line}\r\n").as_bytes());
+        }
+        session.scroll_lines(50);
+        assert!(
+            row_text(&session, 0).starts_with("line 27"),
+            "{}",
+            row_text(&session, 0)
+        );
+        session.text_input("x");
+        assert_eq!(recorder.written.lock().unwrap().as_slice(), b"x");
+        assert!(
+            row_text(&session, 0).starts_with("line 77"),
+            "{}",
+            row_text(&session, 0)
+        );
     }
 }

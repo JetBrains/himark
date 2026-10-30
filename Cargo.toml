@@ -55,6 +55,7 @@ members = [
     "apps/web/tools/grammar-pack",
     "vendor/difftastic-core",
     "vendor/fsp-types",
+    "vendor/ghostty-sys",
     "frontend/myersdiff",
     "frontend/structdiff",
 ]

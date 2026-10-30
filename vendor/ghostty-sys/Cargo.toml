@@ -1,0 +1,12 @@
+[package]
+name = "ghostty-sys"
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Generated bindings to upstream libghostty-vt (vendor/ghostty)"
+publish = false
+links = "ghostty-vt"
+
+[build-dependencies]
+bindgen = "0.72"
+sha2 = "0.10"

@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use crate::app_ext::AppExt;
 use ::terminals::pane::*;
 use ::terminals::*;
-use alacritty_terminal::grid::Dimensions;
 use hikit::panel::PanelView;
 use imba::event::Modifiers;
 use imba::store::Store;
@@ -87,8 +86,7 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
         "one resize to the laid-out grid: {resizes:?}"
     );
     let (cols, rows) = resizes[0];
-    assert_eq!(session.term().lock().columns(), cols as usize);
-    assert_eq!(session.term().lock().screen_lines(), rows as usize);
+    assert_eq!(session.grid_size(), (cols, rows));
     assert!(
         (cols, rows) != (DEFAULT_COLS, DEFAULT_ROWS),
         "the pane's grid differs from the default"
