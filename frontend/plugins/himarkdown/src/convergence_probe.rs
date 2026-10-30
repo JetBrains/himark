@@ -124,7 +124,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         let command = himark::test_support::handle_effect(effect, &cx);
         if let editor::editor_view::EditorCommand::ApplyRepair(items) = command {
             for item in items {
-                document.apply_repair(item);
+                document.apply_repair(item, &theme());
             }
         }
     }

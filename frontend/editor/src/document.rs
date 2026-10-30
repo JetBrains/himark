@@ -197,10 +197,10 @@ impl Document {
         let mut markup = Markup::new();
         if language != "markdown" {
             markup.push_styled_covering(
-            0..byte_count,
-            crate::theme::StyleId::SourceCode,
-            crate::markup::StyleWeight::UNDERLAY,
-        );
+                0..byte_count,
+                crate::theme::StyleId::SourceCode,
+                crate::markup::StyleWeight::UNDERLAY,
+            );
         }
         Self::new(text, markup).with_syntax(root, &sites)
     }
@@ -1558,7 +1558,7 @@ impl Document {
             EditorCommand::ApplyRepair(repaired) => {
                 let mut moved = false;
                 for item in repaired {
-                    moved |= self.apply_repair_anchored(item);
+                    moved |= self.apply_repair_anchored(item, theme);
                 }
                 if moved {
                     fx.settle();
@@ -2408,23 +2408,52 @@ impl Document {
         Some(invalidated)
     }
 
-    pub(crate) fn repair_landable(&self, repaired: &RepairedLayout) -> bool {
+    pub(crate) fn repair_landable(
+        &self,
+        repaired: &RepairedLayout,
+        theme: &crate::theme::Theme,
+    ) -> bool {
         let Some(editor) = self.editors.get(&repaired.editor) else {
             return false;
         };
         editor.layout.layout_width() == repaired.width
             && repaired.revision == self.revision()
             && repaired.markup_generation == self.markup_generation()
-            && (repaired.layout.shaped_theme().is_empty()
-                || editor.layout.shaped_theme().is_empty()
-                || repaired.layout.shaped_theme() == editor.layout.shaped_theme())
+            && Self::repair_theme_lands(&editor.layout, repaired, theme)
+    }
+
+    /// A repaired layout wears the theme the Workshop shaped it under.
+    /// It lands when that is the standing layout's theme (a repair, or
+    /// a half riding a pair landing unchanged) — or the theme the app
+    /// wears NOW: for an editor that never paints (the halves behind a
+    /// deferred inline face) that landing IS its retheme. Refusing it
+    /// against the standing layout's stale name — the old rule — left
+    /// `repair_pending` set, so the lane relaunched off every refused
+    /// landing, forever (the Oct 30 2026 repair storm: two chat diff
+    /// cells, ~2k batches/s). A layout shaped under a theme that is
+    /// neither — captured before a switch, landing after — is stale
+    /// and waits: the lane recaptures under the current theme.
+    fn repair_theme_lands(
+        standing: &crate::document_layout::DocumentLayout,
+        repaired: &RepairedLayout,
+        theme: &crate::theme::Theme,
+    ) -> bool {
+        let shaped = repaired.layout.shaped_theme();
+        shaped.is_empty()
+            || standing.shaped_theme().is_empty()
+            || shaped == standing.shaped_theme()
+            || shaped == theme.name()
     }
 
     /// `apply_repair` with the viewport door around it: capture the
     /// anchored byte against the OLD layout, land the repair, note
     /// where the anchor went. Returns whether a correction is now
     /// pending (docs/editor/viewport-preservation.md §5).
-    pub fn apply_repair_anchored(&mut self, repaired: RepairedLayout) -> bool {
+    pub fn apply_repair_anchored(
+        &mut self,
+        repaired: RepairedLayout,
+        theme: &crate::theme::Theme,
+    ) -> bool {
         let id = repaired.editor;
         let door = self.editors.get(&id).and_then(|editor| {
             let top = editor.viewport.as_ref()?.start;
@@ -2433,7 +2462,7 @@ impl Document {
                 (byte, top - editor.layout.height_before(byte), top)
             })
         });
-        self.apply_repair(repaired);
+        self.apply_repair(repaired, theme);
         let (Some((byte, dy, was)), Some(editor)) = (door, self.editors.get_mut(&id)) else {
             return false;
         };
@@ -2447,7 +2476,7 @@ impl Document {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn apply_repair(&mut self, repaired: RepairedLayout) {
+    pub fn apply_repair(&mut self, repaired: RepairedLayout, theme: &crate::theme::Theme) {
         let revision = self.revision();
         let markup_generation = self.markup_generation();
         let Some(editor) = self.editors.get_mut(&repaired.editor) else {
@@ -2469,10 +2498,15 @@ impl Document {
             return;
         }
 
-        if !repaired.layout.shaped_theme().is_empty()
-            && !editor.layout.shaped_theme().is_empty()
-            && repaired.layout.shaped_theme() != editor.layout.shaped_theme()
-        {
+        if !Self::repair_theme_lands(&editor.layout, &repaired, theme) {
+            if crate::env_flags::trace_repair() {
+                eprintln!(
+                    "[repair] DISCARD stale theme {:?}: standing {:?}, current {:?}",
+                    repaired.layout.shaped_theme(),
+                    editor.layout.shaped_theme(),
+                    theme.name()
+                );
+            }
             return;
         }
         if crate::env_flags::trace_repair() {

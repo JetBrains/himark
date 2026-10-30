@@ -1157,8 +1157,8 @@ impl View for SplitDiffView {
                 seq,
             } => {
                 let landable = seq == self.state.pair_seq
-                    && self.left.document.repair_landable(&left)
-                    && self.right.document.repair_landable(&right);
+                    && self.left.document.repair_landable(&left, &theme)
+                    && self.right.document.repair_landable(&right, &theme);
                 trace_diff(|| {
                     format!(
                         "pair landing seq={seq}/{} landable={landable} marks={}",
@@ -1169,14 +1169,14 @@ impl View for SplitDiffView {
                 match landable {
                     true => {
                         self.state.pair_seq += 1;
-                        let mut moved = self.left.document.apply_repair_anchored(left)
-                            | self.right.document.apply_repair_anchored(right);
+                        let mut moved = self.left.document.apply_repair_anchored(left, &theme)
+                            | self.right.document.apply_repair_anchored(right, &theme);
                         // The inline face lands on its own check: a
                         // stale capture re-pends and the pair_lane
                         // below re-asks.
                         if let Some(inline) = inline {
-                            if self.right.document.repair_landable(&inline) {
-                                moved |= self.right.document.apply_repair_anchored(inline);
+                            if self.right.document.repair_landable(&inline, &theme) {
+                                moved |= self.right.document.apply_repair_anchored(inline, &theme);
                             }
                         }
                         if moved {
@@ -1477,7 +1477,7 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
                 &job.fold_bans,
             );
             trace_diff(|| {
-                                format!(
+                format!(
                     "marks derived window={:?} bans={} left={} right={} changed=({},{})",
                     job.window,
                     job.fold_bans.len(),

@@ -1108,7 +1108,7 @@ fn resize_repair_matches_fresh_layout() {
             himark::test_support::handle_effect(effect, &workshop)
         {
             for item in items {
-                document.apply_repair(item);
+                document.apply_repair(item, &theme);
             }
         }
     }

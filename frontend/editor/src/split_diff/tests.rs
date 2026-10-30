@@ -1618,3 +1618,78 @@ fn a_removed_fold_survives_rederivation() {
     drain(&mut view, effects);
     assert_eq!(strips(&view).len(), 0, "the ban survives the re-derivation");
 }
+
+fn workshop_wearing(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::Workshop> {
+    std::sync::Arc::new(crate::env::Workshop::new(
+        crate::parley_line::shaper(crate::test_document::test_ui())
+            .world()
+            .clone(),
+        theme,
+    ))
+}
+
+fn shaped_theme_of(view: &EditorView) -> String {
+    view.document.editors[&view.editor]
+        .layout
+        .shaped_theme()
+        .to_string()
+}
+
+/// The halves behind a deferred inline face never paint, so no
+/// paint-born retheme reaches them: after the app switches theme
+/// their layouts still wear the old name while the Workshop shapes
+/// every repair under the new one. Refusing that landing against the
+/// standing layout's name left `repair_pending` set — the lane
+/// relaunched off every refused landing, forever (two chat diff
+/// cells, ~2k batches/s, Oct 30 2026). A repair shaped under the
+/// CURRENT theme lands: that landing IS the retheme.
+#[test]
+fn a_repair_shaped_under_the_current_theme_lands_over_a_stale_one() {
+    let dark = crate::theme::embedded();
+    let light = crate::theme::light();
+    assert_ne!(dark.name(), light.name());
+
+    let mut view = pair("alpha\nbeta\n", "alpha\ngamma\n", 400.0);
+    assert_eq!(shaped_theme_of(&view.left), dark.name());
+    assert_eq!(shaped_theme_of(&view.right), dark.name());
+    let ui = UiCtx::dont_use_too_slow();
+    let mut store = Store::new();
+    assert_eq!(crate::env::Themes::of(&store).name(), dark.name());
+
+    // A keystroke pends a pair repair while the app still wears dark…
+    let mut effects = perform_collect(
+        &mut view,
+        &mut store,
+        &ui,
+        SplitDiffCommand::Left(EditorCommand::InsertText {
+            text: "x".to_owned(),
+        }),
+    );
+    assert_eq!(effects.len(), 1, "the keystroke pended a pair repair");
+    assert_eq!(shaped_theme_of(&view.left), dark.name());
+
+    // …then the app switches: store and Workshop wear light, the
+    // halves' layouts (never painted, never rethemed) still dark.
+    crate::env::Themes::set(&mut store, light.clone());
+    let workshop = workshop_wearing(light.clone());
+    let mut rounds = 0;
+    while let Some(effect) = effects.pop() {
+        rounds += 1;
+        assert!(
+            rounds < 8,
+            "the pair lane relaunched off its own refused landing — the theme livelock"
+        );
+        let command = run_effect(effect, &workshop);
+        effects.extend(perform_collect(&mut view, &mut store, &ui, command));
+    }
+    assert_eq!(
+        shaped_theme_of(&view.left),
+        light.name(),
+        "the current-theme repair landed and rethemed the typed half"
+    );
+    assert_eq!(
+        shaped_theme_of(&view.right),
+        dark.name(),
+        "the untouched half rode the landing as it stood — its standing name lands too"
+    );
+}

@@ -265,7 +265,7 @@ pub(super) fn settle(document: &mut Document) -> usize {
         rounds += 1;
         assert!(rounds < 1_000, "settling must terminate");
         for repaired in handler.repairs(effect) {
-            document.apply_repair(repaired);
+            document.apply_repair(repaired, &theme());
         }
     }
 }
