@@ -228,7 +228,7 @@ impl imba::View for FoldChip {
                         if empty {
                             return;
                         }
-                        use skia_safe::{Paint, Rect};
+                        use gfx::{Paint, Rect};
                         let mut paint = Paint::default();
                         paint.set_anti_alias(true);
                         paint.set_color(chrome.fill.0);
@@ -244,7 +244,7 @@ impl imba::View for FoldChip {
                         let cx = rect.left + rect.width() * 0.5;
                         let step = radius * 4.0;
                         for dot in [-1.0f32, 0.0, 1.0] {
-                            canvas.draw_circle((cx + dot * step, cy), radius, &paint);
+                            canvas.draw_circle((cx + dot * step, cy).into(), radius, &paint);
                         }
                     })
                     .event(move |_arena, event, _size| match event {

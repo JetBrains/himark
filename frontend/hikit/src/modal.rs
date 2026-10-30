@@ -8,7 +8,7 @@
 
 use imba::store::Store;
 use imba::{arena::Arena, constraints::Constraints, dyn_view::DynCommand, ui::UiCtx, View};
-use skia_safe::Size;
+use gfx::Size;
 
 /// A one-slot mailbox for a view's outbound request. Cloning a view
 /// never clones its pending ask — the clone starts empty.

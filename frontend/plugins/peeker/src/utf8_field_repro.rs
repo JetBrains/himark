@@ -46,8 +46,8 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         ));
     }
 
-    let size = skia_safe::Size::new(1200.0, 900.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
+    let size = gfx::Size::new(1200.0, 900.0);
+    let mut surface = gfx::surfaces::raster_n32_premul((1200, 900)).expect("surface");
     let settle = |app: &mut Himark| {
         runner.run();
         while let Ok(command) = arriving.try_recv() {

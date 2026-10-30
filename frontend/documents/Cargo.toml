@@ -11,7 +11,7 @@ operation = { path = "../operation" }
 rebase = { path = "../rebase" }
 rpds = "1"
 text = { path = "../text" }
-skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 
 [dev-dependencies]
 myersdiff = { path = "../myersdiff" }

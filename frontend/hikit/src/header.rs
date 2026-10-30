@@ -16,7 +16,7 @@ use imba::{
     store::Store,
     ui::UiCtx,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::ui::{text, Hairline, TextStyle};
 
@@ -67,7 +67,7 @@ impl HeaderStyles {
 
 pub struct ColumnHeader<'a, Command> {
     chrome: std::sync::Arc<crate::chrome::ToolbarChrome>,
-    ground: skia_safe::Color,
+    ground: gfx::Color,
     styles: HeaderStyles,
     /// The first word's x — the column's text edge.
     lead: f32,
@@ -268,7 +268,7 @@ impl<'a, Command: 'a> Layout<'a, Command> for ColumnHeader<'a, Command> {
             imba::thunk_ext::ThunkExt::paint_below(
                 Hairline::new(chrome.rule.0).bottom().wrap(band),
                 move |_arena, canvas, rect| {
-                    let mut paint = skia_safe::Paint::default();
+                    let mut paint = gfx::Paint::default();
                     paint.set_color(ground);
                     canvas.draw_rect(rect, &paint);
                 },

@@ -11,7 +11,7 @@
 
 use imba::event::{Event, EventResult};
 use imba::{arena::Arena, store::Store, ui::UiCtx, Widget};
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::canvas::DiffCanvasView;
 use crate::changes_face::ChangesFace;

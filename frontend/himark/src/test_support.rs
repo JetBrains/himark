@@ -139,7 +139,7 @@ impl Himark {
             .workbench()
     }
 
-    pub fn viewport_size(&self) -> skia_safe::Size {
+    pub fn viewport_size(&self) -> gfx::Size {
         ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .viewport_size()

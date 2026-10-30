@@ -9,9 +9,9 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     assert!(view.is_diagram());
     let size = view.scaled(400.0);
     let (w, h) = (size.width.ceil() as i32, size.height.ceil() as i32);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((w, h)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((w, h)).expect("surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::WHITE);
+    canvas.clear(gfx::Color::WHITE);
     let store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
     let arena = imba::arena::Arena::default();
@@ -26,7 +26,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let widget = imba::Thunk::realize(
         widget,
         &arena,
-        skia_safe::Rect::from_wh(size.width, size.height),
+        gfx::Rect::from_wh(size.width, size.height),
     );
     imba::Widget::handle_event(
         &widget,
@@ -35,7 +35,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
             focused: false,
             canvas,
         },
-        skia_safe::Rect::from_wh(size.width, size.height),
+        gfx::Rect::from_wh(size.width, size.height),
     );
     let image = surface.image_snapshot();
     let pixels = image.peek_pixels().expect("pixels");
@@ -44,7 +44,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let mut black = 0usize;
     for y in 0..h {
         for x in 0..w {
-            let color: skia_safe::Color = pixels.get_color((x, y));
+            let color: gfx::Color = pixels.get_color((x, y));
             colors.insert((color.r() / 16, color.g() / 16, color.b() / 16));
             if color.b() > color.r().saturating_add(8) {
                 tinted += 1;

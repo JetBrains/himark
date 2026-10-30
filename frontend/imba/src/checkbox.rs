@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use skia_safe::{Paint, PaintCap, PathBuilder, Rect};
+use gfx::{Paint, PaintCap, PathBuilder, Rect};
 
 use crate::{event::Event, event::EventResult, leaf::leaf, thunk_ext::ThunkExt, Thunk};
 
@@ -10,9 +10,9 @@ pub struct CheckboxStyle {
     pub size: f32,
     pub radius: f32,
     pub stroke: f32,
-    pub border: skia_safe::Color,
-    pub fill: skia_safe::Color,
-    pub check: skia_safe::Color,
+    pub border: gfx::Color,
+    pub fill: gfx::Color,
+    pub check: gfx::Color,
 }
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ pub fn checkbox<'a>(checked: bool, style: CheckboxStyle) -> impl Thunk<'a, Check
                     &paint,
                 );
                 paint.set_color(style.check);
-                paint.set_style(skia_safe::PaintStyle::Stroke);
+                paint.set_style(gfx::PaintStyle::Stroke);
                 paint.set_stroke_width(style.stroke);
                 paint.set_stroke_cap(PaintCap::Round);
                 let mut tick = PathBuilder::new();
@@ -53,7 +53,7 @@ pub fn checkbox<'a>(checked: bool, style: CheckboxStyle) -> impl Thunk<'a, Check
                 canvas.draw_path(&tick.detach(), &paint);
             } else {
                 paint.set_color(style.border);
-                paint.set_style(skia_safe::PaintStyle::Stroke);
+                paint.set_style(gfx::PaintStyle::Stroke);
                 paint.set_stroke_width(style.stroke);
                 canvas.draw_round_rect(
                     Rect::from_xywh(

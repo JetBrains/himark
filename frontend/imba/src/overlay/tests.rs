@@ -3,7 +3,7 @@
 
 use std::cell::RefCell;
 
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::{
     arena::Arena,

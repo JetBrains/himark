@@ -18,7 +18,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::{Canvas, Color, Paint, Rect, Size};
+use gfx::{Canvas, Color, Paint, Rect, Size};
 
 use crate::AnnotationId;
 use editor::document::Document;
@@ -377,13 +377,13 @@ impl CommentView {
         paint.set_color(color);
         let inset = rect.width() * 0.28;
         canvas.draw_line(
-            (rect.left + inset, rect.top + rect.height() * 0.55),
-            (rect.left + rect.width() * 0.45, rect.bottom - inset),
+            (rect.left + inset, rect.top + rect.height() * 0.55).into(),
+            (rect.left + rect.width() * 0.45, rect.bottom - inset).into(),
             &paint,
         );
         canvas.draw_line(
-            (rect.left + rect.width() * 0.45, rect.bottom - inset),
-            (rect.right - inset * 0.8, rect.top + inset),
+            (rect.left + rect.width() * 0.45, rect.bottom - inset).into(),
+            (rect.right - inset * 0.8, rect.top + inset).into(),
             &paint,
         );
     }
@@ -402,10 +402,10 @@ impl CommentView {
             rect.left + rect.width() * 0.42,
             rect.top + rect.height() * 0.5,
         );
-        canvas.draw_line(top, nose, &paint);
-        canvas.draw_line(bottom, nose, &paint);
-        canvas.draw_line(top, hinge, &paint);
-        canvas.draw_line(bottom, hinge, &paint);
+        canvas.draw_line(top.into(), nose.into(), &paint);
+        canvas.draw_line(bottom.into(), nose.into(), &paint);
+        canvas.draw_line(top.into(), hinge.into(), &paint);
+        canvas.draw_line(bottom.into(), hinge.into(), &paint);
     }
 
     fn paint_cross(chrome: &CommentChrome, canvas: &Canvas, rect: Rect) {
@@ -416,13 +416,13 @@ impl CommentView {
         paint.set_color(Color::from(chrome.cross.clone()));
         let inset = rect.width() * 0.3;
         canvas.draw_line(
-            (rect.left + inset, rect.top + inset),
-            (rect.right - inset, rect.bottom - inset),
+            (rect.left + inset, rect.top + inset).into(),
+            (rect.right - inset, rect.bottom - inset).into(),
             &paint,
         );
         canvas.draw_line(
-            (rect.right - inset, rect.top + inset),
-            (rect.left + inset, rect.bottom - inset),
+            (rect.right - inset, rect.top + inset).into(),
+            (rect.left + inset, rect.bottom - inset).into(),
             &paint,
         );
     }

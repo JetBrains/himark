@@ -17,7 +17,7 @@ fn boot() -> Himark {
 #[test]
 fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     let mut app = boot();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let located = |name: &str| {
         editor::location::ResourceLocation::new(
@@ -192,7 +192,7 @@ fn dump_jump_screenshot() {
         return;
     };
     let mut app = boot();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let files: &[&[&str]] = &[
         &["backend", "agent-host", "src", "main.rs"],
@@ -243,7 +243,7 @@ fn dump_jump_screenshot() {
     }
     let data = surface
         .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .encode(None, gfx::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
     std::fs::write(format!("{dir}/jump.png"), data.as_bytes()).expect("write");

@@ -570,7 +570,7 @@ impl<'a> imba::layout::Layout<'a, editor::editor_view::EditorCommand> for EmbedF
             false => constraints.min.width,
         }
         .max(60.0);
-        let mut pane = imba::container::container(arena, skia_safe::Size::new(width, height));
+        let mut pane = imba::container::container(arena, gfx::Size::new(width, height));
         pane.place(
             0.0,
             0.0,

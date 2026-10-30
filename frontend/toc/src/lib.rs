@@ -23,7 +23,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use hikit::{
     forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,

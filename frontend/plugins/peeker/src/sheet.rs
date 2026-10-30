@@ -15,7 +15,7 @@ use imba::{
     layout::{Insets, LayoutExt as _},
     ui::UiCtx,
 };
-use skia_safe::{Paint, Rect, Size};
+use gfx::{Paint, Rect, Size};
 
 /// THE one boxed surface the design keeps: a centered sheet — flat
 /// fill, hairline border, soft radius, soft drop shadow. The page
@@ -57,7 +57,7 @@ impl Sheet {
 
     /// The soft drop shadow, painted by whatever stands BEHIND the
     /// sheet — the sheet's own box clips what it paints.
-    pub(crate) fn shadow_painter(&self, sheet: Rect) -> impl Fn(&Arena, &skia_safe::Canvas, Rect) {
+    pub(crate) fn shadow_painter(&self, sheet: Rect) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
         let chrome = self.0.clone();
         move |_arena, canvas, _rect| {
             if chrome.shadow_blur <= 0.0 {
@@ -67,8 +67,8 @@ impl Sheet {
             paint.set_anti_alias(true);
             paint.set_color(chrome.shadow.0);
             // A CSS blur radius is twice the gaussian's sigma.
-            paint.set_mask_filter(skia_safe::MaskFilter::blur(
-                skia_safe::BlurStyle::Normal,
+            paint.set_mask_filter(gfx::MaskFilter::blur(
+                gfx::BlurStyle::Normal,
                 chrome.shadow_blur * 0.5,
                 false,
             ));
@@ -83,7 +83,7 @@ impl Sheet {
 }
 
 /// A chrome style at a ramp rung, in `color`.
-pub(crate) fn styled(ui: &UiCtx, role: &TypeRole, color: skia_safe::Color) -> TextStyle {
+pub(crate) fn styled(ui: &UiCtx, role: &TypeRole, color: gfx::Color) -> TextStyle {
     TextStyle {
         font: hikit::fonts::role_font(ui, role),
         color,
@@ -93,7 +93,7 @@ pub(crate) fn styled(ui: &UiCtx, role: &TypeRole, color: skia_safe::Color) -> Te
 }
 
 /// The mono face at `size`, in `color` — keys and shortcuts.
-pub(crate) fn mono(ui: &UiCtx, size: f32, color: skia_safe::Color) -> TextStyle {
+pub(crate) fn mono(ui: &UiCtx, size: f32, color: gfx::Color) -> TextStyle {
     TextStyle {
         font: hikit::fonts::mono_font(ui, size),
         color,
@@ -107,7 +107,7 @@ pub(crate) fn mono(ui: &UiCtx, size: f32, color: skia_safe::Color) -> TextStyle 
 #[derive(Clone)]
 pub(crate) struct MatchMark {
     pub(crate) style: TextStyle,
-    pub(crate) underline: skia_safe::Color,
+    pub(crate) underline: gfx::Color,
     pub(crate) thickness: f32,
     /// The underline's drop below the baseline.
     pub(crate) offset: f32,
@@ -119,8 +119,8 @@ impl MatchMark {
         ui: &UiCtx,
         role: &TypeRole,
         weight: f32,
-        color: skia_safe::Color,
-        underline: skia_safe::Color,
+        color: gfx::Color,
+        underline: gfx::Color,
         thickness: f32,
         offset: f32,
     ) -> Self {
@@ -149,7 +149,7 @@ impl MatchMark {
                 ..Default::default()
             })
             .backdrop(
-                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                move |_arena: &Arena, canvas: &gfx::Canvas, rect: Rect| {
                     let mut paint = Paint::default();
                     paint.set_color(color);
                     canvas.draw_rect(

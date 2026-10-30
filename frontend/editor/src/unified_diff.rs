@@ -5,7 +5,7 @@ use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::{ui::UiCtx, View as _};
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::document::EditorBuild;
 use crate::editor::EditorId;
@@ -539,7 +539,7 @@ impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
     fn realize(
         self,
         arena: &'a imba::arena::Arena,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::WidgetBox<'a, EditorCommand> {
         let InlineThunk {
             ui,
@@ -577,7 +577,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
         &self,
         arena: &imba::arena::Arena,
         event: &imba::event::Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::event::EventResult<EditorCommand> {
         self.inner.handle_event(arena, event, viewport)
     }

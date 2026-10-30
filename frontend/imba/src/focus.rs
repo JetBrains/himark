@@ -13,13 +13,13 @@ pub type ClipboardSeat<'w, Command> =
     Box<dyn FnMut(&mut dyn FnMut(&mut dyn ClipboardClient)) -> EventResult<Command> + 'w>;
 
 pub struct ImeSeat<'w, Command> {
-    pub origin: skia_safe::Point,
-    pub clip: Option<skia_safe::Rect>,
+    pub origin: gfx::Point,
+    pub clip: Option<gfx::Rect>,
     #[allow(clippy::type_complexity)]
     pub ask: Box<
         dyn FnMut(
-                skia_safe::Point,
-                Option<skia_safe::Rect>,
+                gfx::Point,
+                Option<gfx::Rect>,
                 &mut dyn FnMut(&mut dyn ImeClient),
             ) -> EventResult<Command>
             + 'w,
@@ -237,12 +237,12 @@ impl<'w, Command> LayoutData<'w, Command> {
         self
     }
 
-    pub fn clipped(mut self, rect: skia_safe::Rect) -> Self {
+    pub fn clipped(mut self, rect: gfx::Rect) -> Self {
         if let Some(seat) = &mut self.ime {
             seat.clip = Some(match seat.clip {
                 Some(mut inner) => match inner.intersect(rect) {
                     true => inner,
-                    false => skia_safe::Rect::new_empty(),
+                    false => gfx::Rect::new_empty(),
                 },
                 None => rect,
             });

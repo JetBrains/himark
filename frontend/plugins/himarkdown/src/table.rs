@@ -13,7 +13,7 @@ use imba::{
     Widget,
 };
 use operation::{op::Op, operation::Operation};
-use skia_safe::{Canvas, Paint, Rect, Size};
+use gfx::{Canvas, Paint, Rect, Size};
 
 use crate::inline_decorations;
 
@@ -306,7 +306,7 @@ fn cell_intrinsics(text: &str, ui: &UiCtx, theme: &editor::theme::Theme) -> Colu
         .map(|families| families.iter().map(|family| family.as_str()).collect())
         .unwrap_or_default();
     let size = base.font_size.unwrap_or(14.0);
-    let span = [imba::shape::SpanStyle::plain(skia_safe::Color::BLACK)];
+    let span = [imba::shape::SpanStyle::plain(gfx::Color::BLACK)];
     // Unwrapped advance = max intrinsic; wrapped at nothing = the
     // widest unbreakable word = min intrinsic.
     let mut widest = imba::shape::ShapeSpec::new(text, &families, size);
@@ -657,7 +657,7 @@ impl TableEditor {
         let remove = self.chrome.control_remove.0;
         let fill = self.chrome.control_fill.0;
 
-        let button = |plus: bool, color: skia_safe::Color, command: TableCommand| {
+        let button = |plus: bool, color: gfx::Color, command: TableCommand| {
             imba::eager(ControlButton {
                 size,
                 plus,
@@ -1335,7 +1335,7 @@ impl View for TableEditor {
             container
                 .paint_below(move |_arena, canvas, _rect| {
                     canvas.save();
-                    canvas.translate((strip, strip));
+                    canvas.translate(strip, strip);
                     self.paint_grid(canvas, Rect::from_size(table), &widths);
                     canvas.restore();
                 })
@@ -1480,8 +1480,8 @@ where
 struct ControlButton<'a> {
     size: f32,
     plus: bool,
-    color: skia_safe::Color,
-    fill: skia_safe::Color,
+    color: gfx::Color,
+    fill: gfx::Color,
     command: std::cell::Cell<Option<TableCommand>>,
     armed: &'a AtomicBool,
 }
@@ -1503,25 +1503,25 @@ impl<'a> Widget<'a, TableCommand> for ControlButton<'a> {
                 focused: true,
             } => {
                 let size = self.size;
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_color(self.fill);
                 let center = (size * 0.5, size * 0.5);
-                canvas.draw_circle(center, size * 0.5, &paint);
+                canvas.draw_circle(center.into(), size * 0.5, &paint);
                 paint.set_color(self.color);
-                paint.set_style(skia_safe::PaintStyle::Stroke);
+                paint.set_style(gfx::PaintStyle::Stroke);
                 paint.set_stroke_width(2.0);
-                paint.set_stroke_cap(skia_safe::PaintCap::Round);
+                paint.set_stroke_cap(gfx::PaintCap::Round);
                 let arm = size * 0.22;
                 canvas.draw_line(
-                    (center.0 - arm, center.1),
-                    (center.0 + arm, center.1),
+                    (center.0 - arm, center.1).into(),
+                    (center.0 + arm, center.1).into(),
                     &paint,
                 );
                 if self.plus {
                     canvas.draw_line(
-                        (center.0, center.1 - arm),
-                        (center.0, center.1 + arm),
+                        (center.0, center.1 - arm).into(),
+                        (center.0, center.1 + arm).into(),
                         &paint,
                     );
                 }
@@ -1592,7 +1592,7 @@ mod hitbox {
 
         let mut x_left = strip + chrome.thickness;
         for (col, width) in widths.iter().enumerate() {
-            let point = skia_safe::Point::new(x_left + width - chrome.cell_pad_x - 2.0, y);
+            let point = gfx::Point::new(x_left + width - chrome.cell_pad_x - 2.0, y);
             let widget = imba::layout::Layout::layout(
                 imba::View::display(&editor, &arena, &store, &ui),
                 &arena,
@@ -1653,7 +1653,7 @@ mod hitbox {
         let strip = editor.chrome.control_size + 6.0;
         let click = Event::MouseDown {
             mods: Default::default(),
-            point: skia_safe::Point::new(
+            point: gfx::Point::new(
                 strip + editor.chrome.thickness * 0.5,
                 editor.chrome.control_size * 0.5,
             ),
@@ -1676,7 +1676,7 @@ mod hitbox {
             "unpainted controls are inert"
         );
 
-        let mut surface = skia_safe::surfaces::raster_n32_premul((640, 480)).expect("a surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((640, 480)).expect("a surface");
         let _ = send(
             &editor,
             &Event::Paint {

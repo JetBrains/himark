@@ -8,8 +8,8 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use skia_safe::Contains;
-use skia_safe::{Rect, Size};
+use gfx::Contains;
+use gfx::{Rect, Size};
 
 use crate::arena::Arena;
 use crate::constraints::Constraints;
@@ -306,7 +306,7 @@ mod tests {
 
     fn hit(x: f32, y: f32) -> Event<'static> {
         Event::HitTest {
-            point: skia_safe::Point::new(x, y),
+            point: gfx::Point::new(x, y),
             miss: false,
             mods: Default::default(),
         }

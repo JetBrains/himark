@@ -25,6 +25,7 @@ demo = { path = "../plugins/demo" }
 desktop = { path = "../desktop" }
 frontend-host = { path = "../frontend-host" }
 skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 softbuffer = "0.4.8"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-csd-adwaita", "wayland-dlopen", "x11"] }
 

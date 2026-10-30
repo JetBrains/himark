@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::ui::UiCtx;
-use skia_safe::Rect;
+use gfx::Rect;
 
 use crate::{
     arena::Arena,
@@ -159,7 +159,7 @@ where
     BaseThunk: crate::Thunk<'a, BaseCommand> + 'a,
     ModalThunk: crate::Thunk<'a, ModalCommand> + 'a,
 {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         self.base.size()
     }
 
@@ -187,7 +187,7 @@ struct RealizedStack<'a, BaseCommand, ModalCommand> {
 impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand, ModalCommand>>
     for RealizedStack<'a, BaseCommand, ModalCommand>
 {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         self.base.size()
     }
 
@@ -237,7 +237,7 @@ impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand,
         if let Event::Paint { .. } | Event::AnimationClock { .. } | Event::ThemeChanged = event {
             let base_event = match event {
                 Event::Paint { canvas, .. } => Event::Paint {
-                    canvas,
+                    canvas: *canvas,
                     focused: false,
                 },
                 other => *other,

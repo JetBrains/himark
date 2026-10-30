@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::higent::open_session::OpenSessionRow;
 use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
 use imba::store::Store;
-use skia_safe::Rect;
+use gfx::Rect;
 
 /// The shell's answers to the panel's gestures, each closed over the
 /// window the drawer stands in.
@@ -139,25 +139,25 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
         order: 2.0,
         side: ::workbench::toolbar::ToolbarSide::Left,
         glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
 
             let head = Rect::from_xywh(l + w * 0.14, t + h * 0.3, w * 0.72, h * 0.56);
             canvas.draw_round_rect(head, w * 0.14, w * 0.14, &paint);
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
             path.move_to((l + w * 0.5, t + h * 0.3));
             path.line_to((l + w * 0.5, t + h * 0.12));
             canvas.draw_path(&path.detach(), &paint);
-            let mut dot = skia_safe::Paint::default();
+            let mut dot = gfx::Paint::default();
             dot.set_anti_alias(true);
             dot.set_color(color);
-            canvas.draw_circle((l + w * 0.36, t + h * 0.56), w * 0.055, &dot);
-            canvas.draw_circle((l + w * 0.64, t + h * 0.56), w * 0.055, &dot);
+            canvas.draw_circle((l + w * 0.36, t + h * 0.56).into(), w * 0.055, &dot);
+            canvas.draw_circle((l + w * 0.64, t + h * 0.56).into(), w * 0.055, &dot);
         }),
     }
 }

@@ -29,7 +29,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use super::agents::Agents;
 use super::drawer_row::{AgeInk, DrawerLine, Lead, LineKind, TitleForm};

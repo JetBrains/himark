@@ -35,7 +35,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 enum Activation {
     Done,
@@ -1519,7 +1519,7 @@ impl View for SessionTreeView {
 fn role_style(
     ui: &UiCtx,
     role: &editor::theme::TypeRole,
-    color: skia_safe::Color,
+    color: gfx::Color,
 ) -> hikit::ui::TextStyle {
     hikit::ui::TextStyle {
         font: hikit::fonts::role_font(ui, role),
@@ -1548,7 +1548,7 @@ struct CurrentRow {
     name: imba::layout::Text,
     slash: Option<imba::layout::Text>,
     lead: f32,
-    wash: skia_safe::Color,
+    wash: gfx::Color,
 }
 
 impl CurrentRow {
@@ -1614,7 +1614,7 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<TreeCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) {

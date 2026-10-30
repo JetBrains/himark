@@ -42,7 +42,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 /// What a row DOES when activated — the whole changes/history
 /// behavioural difference, carried as data minted by the node
@@ -614,7 +614,7 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<ChangesViewCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
         let near_tail = viewport.bottom >= self.total_height - 2.0 * hikit::ui::space::XL;

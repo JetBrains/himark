@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::{
     arena::Arena,

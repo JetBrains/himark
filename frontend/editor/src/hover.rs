@@ -286,18 +286,18 @@ impl imba::View for HoverView {
                     self.view.display(arena, store, ui),
                     arena,
                     imba::constraints::Constraints {
-                        min: skia_safe::Size::new(inner_width, inner_height),
-                        max: skia_safe::Size::new(inner_width, f32::MAX),
+                        min: gfx::Size::new(inner_width, inner_height),
+                        max: gfx::Size::new(inner_width, f32::MAX),
                     },
                 );
                 let mut card =
-                    imba::container::container(arena, skia_safe::Size::new(width, height));
+                    imba::container::container(arena, gfx::Size::new(width, height));
                 card.place(
                     0.0,
                     0.0,
                     imba::leaf::leaf::<Self::Command>(width, height).paint_instead(
                         move |_arena, canvas, rect| {
-                            let mut paint = skia_safe::Paint::default();
+                            let mut paint = gfx::Paint::default();
                             paint.set_anti_alias(true);
                             paint.set_color(fill);
                             canvas.draw_round_rect(rect, 8.0, 8.0, &paint);
@@ -317,7 +317,7 @@ impl Document {
     pub(crate) fn hover_sync(
         &mut self,
         editor: EditorId,
-        point: Option<skia_safe::Point>,
+        point: Option<gfx::Point>,
         location: Option<&ResourceLocation>,
         store: &Store,
         ui: &UiCtx,

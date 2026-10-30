@@ -21,7 +21,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 /// What a comment row shows.
 #[derive(Clone, Debug)]

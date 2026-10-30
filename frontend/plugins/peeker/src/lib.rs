@@ -24,7 +24,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 use workbench::workbench_node::EditorPane;
 
 mod sheet;
@@ -925,7 +925,7 @@ impl View for Peeker {
                     size,
                     Size::new(sheet.width_in(size), sheet.max_height_in(size)),
                 ),
-                false => skia_safe::Rect::from_size(size),
+                false => gfx::Rect::from_size(size),
             };
             let list_w = list_width(dialog.width(), chrome);
             // Live, not the open-time snapshot: the mounted host
@@ -1323,7 +1323,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
                         // pixels) — near-full-window glass; display
                         // relays out live, this seeds the preview's
                         // wrap width.
-                        skia_safe::Size::new(3_100.0, 1_850.0),
+                        gfx::Size::new(3_100.0, 1_850.0),
                         recents,
                         Vec::new(),
                         folders,

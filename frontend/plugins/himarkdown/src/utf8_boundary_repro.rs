@@ -136,7 +136,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     ::editor::test_document::test_ui(),
                     EditorCommand::Click {
                         kind: editor::editor_view::ClickKind::Set,
-                        point: skia_safe::Point::new((rand() % 500) as f32, y),
+                        point: gfx::Point::new((rand() % 500) as f32, y),
                     },
                     &mut batch.effects(),
                 );

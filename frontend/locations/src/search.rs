@@ -20,7 +20,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::views::{locations_forest, result_row, ResultRow};
 use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
@@ -680,7 +680,7 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<SearchCommand> {
         match event {
             Event::MouseDown { point, .. } => {
@@ -961,10 +961,10 @@ mod tests {
                         imba::constraints::Constraints::tight(Size::new(400.0, 400.0)),
                     ),
                     &arena,
-                    skia_safe::Rect::from_wh(400.0, 400.0),
+                    gfx::Rect::from_wh(400.0, 400.0),
                 );
                 let event = Event::MouseDown {
-                    point: skia_safe::Point::new(200.0, y),
+                    point: gfx::Point::new(200.0, y),
                     button: imba::event::MouseButton::Left,
                     mods: imba::event::Modifiers::default(),
                     count: 1,
@@ -973,7 +973,7 @@ mod tests {
                     &widget,
                     &arena,
                     &event,
-                    skia_safe::Rect::from_wh(400.0, 400.0),
+                    gfx::Rect::from_wh(400.0, 400.0),
                 )
                 .into_commands()
             };
@@ -1100,13 +1100,13 @@ mod tests {
                 Constraints::tight(Size::new(400.0, 400.0)),
             ),
             &arena,
-            skia_safe::Rect::from_wh(400.0, 400.0),
+            gfx::Rect::from_wh(400.0, 400.0),
         );
         imba::Widget::handle_event(
             &widget,
             &arena,
             event,
-            skia_safe::Rect::from_wh(400.0, 400.0),
+            gfx::Rect::from_wh(400.0, 400.0),
         )
         .into_commands()
     }
@@ -1258,7 +1258,7 @@ mod tests {
             &store,
             &ui,
             &Event::MouseDown {
-                point: skia_safe::Point::new(200.0, 10.0),
+                point: gfx::Point::new(200.0, 10.0),
                 button: imba::event::MouseButton::Left,
                 mods: imba::event::Modifiers::default(),
                 count: 1,

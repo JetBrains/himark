@@ -11,7 +11,7 @@ use ::filetree::TreeCommand;
 use std::sync::Arc;
 
 use imba::store::Store;
-use skia_safe::{Paint, PathBuilder};
+use gfx::{Paint, PathBuilder};
 
 /// The files feature as a plugin: the tree toggle and its toolbar
 /// button.
@@ -101,9 +101,9 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
             let rows = [t + h * 0.14, t + h * 0.5, t + h * 0.86];
             let mut path = PathBuilder::new();

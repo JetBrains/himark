@@ -27,9 +27,9 @@ pub struct SummarySpec {
 
 pub struct SummaryLine {
     brief: hikit::ui::TextStyle,
-    added_color: skia_safe::Color,
-    removed_color: skia_safe::Color,
-    state_color: skia_safe::Color,
+    added_color: gfx::Color,
+    removed_color: gfx::Color,
+    state_color: gfx::Color,
     gap: f32,
     pad: f32,
     lead: f32,

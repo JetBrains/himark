@@ -11,7 +11,7 @@
 use std::ops::Range;
 
 use proptest::prelude::*;
-use skia_safe::{surfaces, Color, EncodedImageFormat, Rect};
+use gfx::{surfaces, Color, EncodedImageFormat, Rect};
 
 use super::{
     gen::{self, Block, EditSpec, Inline, Spec},
@@ -32,7 +32,7 @@ const CLEAR: Color = Color::from_argb(255, 9, 8, 7);
 struct Raster {
     width: i32,
     bytes: Vec<u8>,
-    png: Option<skia_safe::Data>,
+    png: Option<gfx::Data>,
 }
 
 /// Paint the band `top..bottom` of the editor into a surface exactly

@@ -801,7 +801,7 @@ impl View for WorkbenchNode {
                         )
                         .map(|command| NodeCommand::Split(Box::new(command)))
                         .paint_below(move |_arena, canvas, _| {
-                            let mut paint = skia_safe::Paint::default();
+                            let mut paint = gfx::Paint::default();
                             paint.set_anti_alias(true);
                             paint.set_color(color);
                             canvas.draw_rect(divider.with_offset((-inset, 0.0)), &paint);

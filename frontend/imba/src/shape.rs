@@ -72,7 +72,7 @@ struct WorldInner {
     /// CoreText for a variation copy) is far too dear to repeat per
     /// thread, and because a `Typeface` is `Send + Sync` by skia's
     /// own promise.
-    typefaces: Mutex<HashMap<TypefaceKey, Option<skia_safe::Typeface>>>,
+    typefaces: Mutex<HashMap<TypefaceKey, Option<gfx::Typeface>>>,
 }
 
 type TypefaceKey = (u64, u32, Vec<(u32, i32)>);
@@ -173,7 +173,7 @@ fn seed_symbol_fallbacks(collection: &mut parley::fontique::Collection) {
 #[derive(Clone)]
 pub struct SpanStyle {
     pub start: usize,
-    pub color: skia_safe::Color,
+    pub color: gfx::Color,
     pub bold: bool,
     pub italic: bool,
     /// `None` inherits the line's base size.
@@ -200,7 +200,7 @@ impl SpanStyle {
         self
     }
 
-    pub fn plain(color: skia_safe::Color) -> Self {
+    pub fn plain(color: gfx::Color) -> Self {
         Self {
             start: 0,
             color,
@@ -240,8 +240,8 @@ pub struct DecorationSpec {
     pub range: Range<usize>,
     pub underline: bool,
     pub strikethrough: bool,
-    pub squiggle: Option<skia_safe::Color>,
-    pub color: skia_safe::Color,
+    pub squiggle: Option<gfx::Color>,
+    pub color: gfx::Color,
 }
 
 /// Everything one shape call can carry.
@@ -303,8 +303,8 @@ enum InkKind {
 
 #[derive(Clone)]
 struct Ink {
-    rect: skia_safe::Rect,
-    color: skia_safe::Color,
+    rect: gfx::Rect,
+    color: gfx::Color,
     kind: InkKind,
 }
 
@@ -315,9 +315,9 @@ pub struct ParleyLine {
     /// Graphite's atlas sub-run cache warm — rebuilding per paint
     /// minted new blob ids every frame and re-recorded the same
     /// quads.
-    blobs: Vec<(skia_safe::TextBlob, skia_safe::Color)>,
+    blobs: Vec<(gfx::TextBlob, gfx::Color)>,
     /// Positioned inline boxes, by spec order.
-    boxes: Vec<(u64, skia_safe::Rect)>,
+    boxes: Vec<(u64, gfx::Rect)>,
     /// Decoration geometry, precomputed — paint stays a value walk.
     ink: Vec<Ink>,
 }
@@ -401,14 +401,14 @@ struct ShaperState {
     /// shared bridge already knows never needs one at all. (Not
     /// shared: skia-safe marks `Typeface` `Send + Sync` and the
     /// manager not.)
-    manager: Option<skia_safe::FontMgr>,
+    manager: Option<gfx::FontMgr>,
     /// fvar axis defaults per blob — parsed from the bytes ONCE,
     /// not per run per shape.
     axes: HashMap<(u64, u32), Vec<(u32, f32)>>,
     /// The name-bridged BASE face per blob: the family walk
     /// (instantiating every platform cut to fingerprint them) runs
     /// once per font, not once per variation combo.
-    bases: HashMap<(u64, u32), Option<skia_safe::Typeface>>,
+    bases: HashMap<(u64, u32), Option<gfx::Typeface>>,
     /// Shaped lines BEFORE line breaking, keyed by everything but
     /// the width. A resize re-breaks a clone (under a microsecond)
     /// instead of re-shaping (ten); skparagraph kept exactly this
@@ -420,7 +420,7 @@ struct ShaperState {
     /// default differs from its named instances — advances drift,
     /// carets follow). Backed by the world's shared map: this one
     /// spares the lock in `build_blobs`'s inner loop, not the work.
-    typefaces: HashMap<TypefaceKey, Option<skia_safe::Typeface>>,
+    typefaces: HashMap<TypefaceKey, Option<gfx::Typeface>>,
     /// How many lines this context has shaped — the meter for "how
     /// much text does one frame lay out?", which no profile answers
     /// directly.
@@ -536,10 +536,10 @@ impl ShaperState {
     /// bytes, match through the platform manager, fingerprint the
     /// cut by postscript name with glyph count as the id-space
     /// guard; parse the bytes for faces the platform does not know.
-    fn base(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
+    fn base(&mut self, font: &parley::FontData) -> Option<gfx::Typeface> {
         let manager = self
             .manager
-            .get_or_insert_with(skia_safe::FontMgr::new)
+            .get_or_insert_with(gfx::FontMgr::new)
             .clone();
         self.bases
             .entry((font.data.id(), font.index))
@@ -550,7 +550,7 @@ impl ShaperState {
                     .and_then(|family| {
                         let count = fingerprint?;
                         let mut cuts = manager.match_family(&family);
-                        let cuts: Vec<skia_safe::Typeface> = (0..cuts.count())
+                        let cuts: Vec<gfx::Typeface> = (0..cuts.count())
                             .filter_map(|index| cuts.new_typeface(index))
                             .collect();
                         cuts.iter()
@@ -564,7 +564,7 @@ impl ShaperState {
                     })
                     .or_else(|| {
                         manager.new_from_data(
-                            skia_safe::Data::new_copy(font.data.as_ref()),
+                            gfx::Data::new_copy(font.data.as_ref()),
                             Some(font.index),
                         )
                     })
@@ -577,7 +577,7 @@ impl ShaperState {
         world: &FontWorld,
         font: &parley::FontData,
         variations: &[(skrifa::Tag, f32)],
-    ) -> Option<skia_safe::Typeface> {
+    ) -> Option<gfx::Typeface> {
         let position = self.position(font, variations);
         let coords: Vec<(u32, i32)> = position
             .iter()
@@ -600,18 +600,18 @@ impl ShaperState {
             if position.is_empty() {
                 return Some(typeface);
             }
-            let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> =
+            let coordinates: Vec<gfx::font_arguments::variation_position::Coordinate> =
                 position
                     .iter()
                     .map(
-                        |(tag, value)| skia_safe::font_arguments::variation_position::Coordinate {
-                            axis: skia_safe::FourByteTag::from(*tag),
+                        |(tag, value)| gfx::font_arguments::variation_position::Coordinate {
+                            axis: gfx::FourByteTag::from(*tag),
                             value: *value,
                         },
                     )
                     .collect();
-            let arguments = skia_safe::FontArguments::new().set_variation_design_position(
-                skia_safe::font_arguments::VariationPosition {
+            let arguments = gfx::FontArguments::new().set_variation_design_position(
+                gfx::font_arguments::VariationPosition {
                     coordinates: &coordinates,
                 },
             );
@@ -809,7 +809,7 @@ impl Shaper {
         families: &[&str],
         size: f32,
         letter_spacing: f32,
-        color: skia_safe::Color,
+        color: gfx::Color,
         bold: bool,
         weight: Option<f32>,
         width: Option<f32>,
@@ -902,7 +902,7 @@ impl ParleyLine {
     }
 
     /// Positioned inline boxes, as (spec index, rect).
-    pub fn boxes(&self) -> impl Iterator<Item = (usize, skia_safe::Rect)> + '_ {
+    pub fn boxes(&self) -> impl Iterator<Item = (usize, gfx::Rect)> + '_ {
         self.boxes.iter().map(|(id, rect)| (*id as usize, *rect))
     }
 
@@ -959,14 +959,14 @@ impl ParleyLine {
 
     /// Selection rects with CONTENT-height verticals — the tight
     /// band road (inline code chips hugging their glyphs).
-    pub fn content_rects(&self, range: Range<usize>) -> Vec<skia_safe::Rect> {
+    pub fn content_rects(&self, range: Range<usize>) -> Vec<gfx::Rect> {
         let (top, bottom) = match self.content_vertical(range.start) {
             Some(band) => band,
             None => return self.rects(range),
         };
         self.rects(range)
             .into_iter()
-            .map(|rect| skia_safe::Rect::from_ltrb(rect.left, top, rect.right, bottom))
+            .map(|rect| gfx::Rect::from_ltrb(rect.left, top, rect.right, bottom))
             .collect()
     }
 
@@ -1006,7 +1006,7 @@ impl ParleyLine {
     }
 
     /// Selection rects for a byte range.
-    pub fn rects(&self, range: Range<usize>) -> Vec<skia_safe::Rect> {
+    pub fn rects(&self, range: Range<usize>) -> Vec<gfx::Rect> {
         let selection = parley::Selection::new(
             parley::Cursor::from_byte_index(
                 &self.layout,
@@ -1019,7 +1019,7 @@ impl ParleyLine {
             .geometry(&self.layout)
             .into_iter()
             .map(|(bounds, _)| {
-                skia_safe::Rect::new(
+                gfx::Rect::new(
                     bounds.x0 as f32,
                     bounds.y0 as f32,
                     bounds.x1 as f32,
@@ -1032,17 +1032,17 @@ impl ParleyLine {
     /// The runs as blobs for the atlas road — built once at shape
     /// time, so every paint hands Graphite the SAME blob objects
     /// and the atlas sub-run cache keys hold across frames.
-    pub fn blobs(&self) -> &[(skia_safe::TextBlob, skia_safe::Color)] {
+    pub fn blobs(&self) -> &[(gfx::TextBlob, gfx::Color)] {
         &self.blobs
     }
 
     /// Paint glyphs and decorations through the atlas road.
-    pub fn paint(&self, canvas: &skia_safe::Canvas, origin: (f32, f32)) {
-        let mut paint = skia_safe::Paint::default();
+    pub fn paint(&self, canvas: &gfx::Canvas, origin: (f32, f32)) {
+        let mut paint = gfx::Paint::default();
         paint.set_anti_alias(true);
         for (blob, color) in &self.blobs {
             paint.set_color(*color);
-            canvas.draw_text_blob(blob, origin, &paint);
+            canvas.draw_text_blob(blob, gfx::Point::new(origin.0, origin.1), &paint);
         }
         for ink in &self.ink {
             paint.set_color(ink.color);
@@ -1052,7 +1052,7 @@ impl ParleyLine {
                     canvas.draw_rect(rect, &paint);
                 }
                 InkKind::Squiggle => {
-                    let mut path = skia_safe::PathBuilder::new();
+                    let mut path = gfx::PathBuilder::new();
                     let amplitude = rect.height();
                     let step = amplitude * 2.0;
                     let mut x = rect.left;
@@ -1071,9 +1071,9 @@ impl ParleyLine {
                         x = next;
                     }
                     let path = path.snapshot();
-                    let mut stroke = skia_safe::Paint::default();
+                    let mut stroke = gfx::Paint::default();
                     stroke.set_anti_alias(true);
-                    stroke.set_style(skia_safe::PaintStyle::Stroke);
+                    stroke.set_style(gfx::PaintStyle::Stroke);
                     stroke.set_stroke_width((amplitude / 2.0).max(1.0));
                     stroke.set_color(ink.color);
                     canvas.draw_path(&path, &stroke);
@@ -1181,7 +1181,7 @@ impl Shaper {
                     continue;
                 };
                 let name = typeface.post_script_name();
-                let font = skia_safe::Font::new(typeface, run.run().font_size());
+                let font = gfx::Font::new(typeface, run.run().font_size());
                 let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
                 let ids: Vec<u16> = glyphs.iter().map(|glyph| glyph.id as u16).collect();
                 let mut widths = vec![0.0f32; ids.len()];
@@ -1203,7 +1203,7 @@ impl Shaper {
     }
 }
 
-fn collect_boxes(layout: &parley::Layout<Brush>) -> Vec<(u64, skia_safe::Rect)> {
+fn collect_boxes(layout: &parley::Layout<Brush>) -> Vec<(u64, gfx::Rect)> {
     let mut out = Vec::new();
     for line in layout.lines() {
         for item in line.items() {
@@ -1212,7 +1212,7 @@ fn collect_boxes(layout: &parley::Layout<Brush>) -> Vec<(u64, skia_safe::Rect)> 
             };
             out.push((
                 positioned.id,
-                skia_safe::Rect::from_xywh(
+                gfx::Rect::from_xywh(
                     positioned.x,
                     positioned.y,
                     positioned.width,
@@ -1268,7 +1268,7 @@ fn build_ink(layout: &parley::Layout<Brush>, decorations: &[DecorationSpec]) -> 
                 let thickness = metrics.underline_size.max(1.0) * 2.0;
                 let y = baseline + metrics.underline_offset.abs().max(1.0);
                 out.push(Ink {
-                    rect: skia_safe::Rect::from_ltrb(
+                    rect: gfx::Rect::from_ltrb(
                         left,
                         y - thickness / 2.0,
                         right,
@@ -1281,7 +1281,7 @@ fn build_ink(layout: &parley::Layout<Brush>, decorations: &[DecorationSpec]) -> 
                 let thickness = metrics.underline_size.max(1.0);
                 let y = baseline + metrics.underline_offset.abs().max(1.0);
                 out.push(Ink {
-                    rect: skia_safe::Rect::from_ltrb(left, y, right, y + thickness),
+                    rect: gfx::Rect::from_ltrb(left, y, right, y + thickness),
                     color: spec.color,
                     kind: InkKind::Rule,
                 });
@@ -1290,7 +1290,7 @@ fn build_ink(layout: &parley::Layout<Brush>, decorations: &[DecorationSpec]) -> 
                 let thickness = metrics.strikethrough_size.max(1.0);
                 let y = baseline - metrics.strikethrough_offset.abs();
                 out.push(Ink {
-                    rect: skia_safe::Rect::from_ltrb(left, y, right, y + thickness),
+                    rect: gfx::Rect::from_ltrb(left, y, right, y + thickness),
                     color: spec.color,
                     kind: InkKind::Rule,
                 });
@@ -1308,7 +1308,7 @@ fn build_blobs(
     world: &FontWorld,
     ctx: &mut ShaperState,
     layout: &parley::Layout<Brush>,
-) -> Vec<(skia_safe::TextBlob, skia_safe::Color)> {
+) -> Vec<(gfx::TextBlob, gfx::Color)> {
     let mut out = Vec::new();
     for line in layout.lines() {
         for item in line.items() {
@@ -1325,26 +1325,26 @@ fn build_blobs(
             else {
                 continue;
             };
-            let mut font = skia_safe::Font::new(typeface, run.run().font_size());
+            let mut font = gfx::Font::new(typeface, run.run().font_size());
             if synthesis.embolden() {
                 font.set_embolden(true);
             }
             if let Some(degrees) = synthesis.skew() {
                 font.set_skew_x(-degrees.to_radians().tan());
             }
-            let mut builder = skia_safe::TextBlobBuilder::new();
+            let mut builder = gfx::TextBlobBuilder::new();
             {
                 let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
                 for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
                     *slot = glyph.id as u16;
                 }
                 for (slot, glyph) in points.iter_mut().zip(&glyphs) {
-                    *slot = skia_safe::Point::new(glyph.x, glyph.y);
+                    *slot = gfx::Point::new(glyph.x, glyph.y);
                 }
             }
             let Some(blob) = builder.make() else { continue };
             let [r, g, b, a] = run.style().brush;
-            out.push((blob, skia_safe::Color::from_argb(a, r, g, b)));
+            out.push((blob, gfx::Color::from_argb(a, r, g, b)));
         }
     }
     out
@@ -1414,7 +1414,7 @@ fn generic_of(name: &str) -> Option<parley::fontique::GenericFamily> {
     })
 }
 
-fn brush_of(color: skia_safe::Color) -> Brush {
+fn brush_of(color: gfx::Color) -> Brush {
     [color.r(), color.g(), color.b(), color.a()]
 }
 
@@ -1431,7 +1431,7 @@ mod tests {
     }
 
     fn plain() -> [SpanStyle; 1] {
-        [SpanStyle::plain(skia_safe::Color::BLACK)]
+        [SpanStyle::plain(gfx::Color::BLACK)]
     }
 
     /// THE THREAD LAW: a world is built once and SHARED. Every
@@ -1524,7 +1524,7 @@ mod tests {
         let mut bold = ShapeSpec::new(text, &["Noto Sans"], 14.0);
         let bold_spans = [SpanStyle {
             bold: true,
-            ..SpanStyle::plain(skia_safe::Color::BLACK)
+            ..SpanStyle::plain(gfx::Color::BLACK)
         }];
         bold.spans = &bold_spans;
         let _ = shaper.shape_spec(&bold);

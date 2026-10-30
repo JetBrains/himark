@@ -11,7 +11,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind, DiffHeader, LineRole};
 use crate::chat::model::PartId;

@@ -4,7 +4,7 @@
 use crate::ui::UiCtx;
 use std::marker::PhantomData;
 
-use skia_safe::{Canvas, Color, Contains, Paint, Rect, Size};
+use gfx::{Canvas, Color, Contains, Paint, Rect, Size};
 
 use crate::{
     arena::Arena,
@@ -494,8 +494,8 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
         };
 
         canvas.save();
-        canvas.clip_rect(Rect::from_size(self.viewport), None, true);
-        canvas.translate((0.0, -self.scroll_y));
+        canvas.clip_rect(Rect::from_size(self.viewport), true);
+        canvas.translate(0.0, -self.scroll_y);
         let result = self
             .content
             .handle_event(arena, event, self.content_viewport())
@@ -551,7 +551,7 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
         })
     }
 
-    fn knob_grab(&self, point: skia_safe::Point) -> Option<ScrollCommand<ContentCommand>> {
+    fn knob_grab(&self, point: gfx::Point) -> Option<ScrollCommand<ContentCommand>> {
         let band = self.knob()?;
         if point.x < self.viewport.width - self.scrollbar.margin - KNOB_GRAB_SLOP {
             return None;

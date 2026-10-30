@@ -181,13 +181,13 @@ fn box_backgrounds_hug_their_content() {
         "the plain line is wider than the box: box {box_extent}, document {document_max}"
     );
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 300)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((800, 300)).expect("surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::WHITE);
+    canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
         canvas,
-        skia_safe::Rect::from_xywh(0.0, 0.0, 800.0, 300.0),
+        gfx::Rect::from_xywh(0.0, 0.0, 800.0, 300.0),
         false,
         store,
         ui,
@@ -991,13 +991,13 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
         .expect("the empty document still has caret geometry");
     assert!(top >= 0.0 && width > 0.0 && height > 0.0);
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((40, 40)).expect("surface");
-    let background = skia_safe::Color::from_rgb(1, 2, 3);
+    let mut surface = gfx::surfaces::raster_n32_premul((40, 40)).expect("surface");
+    let background = gfx::Color::from_rgb(1, 2, 3);
     surface.canvas().clear(background);
     document.paint(
         editor,
         surface.canvas(),
-        skia_safe::Rect::from_wh(40.0, 40.0),
+        gfx::Rect::from_wh(40.0, 40.0),
         true,
         store,
         ui,
@@ -1189,13 +1189,13 @@ fn a_bounded_editor_paints_only_its_fragment() {
 
     let extra = 120;
     let mut surface =
-        skia_safe::surfaces::raster_n32_premul((400, height as i32 + extra)).expect("surface");
-    let background = skia_safe::Color::from_rgb(1, 2, 3);
+        gfx::surfaces::raster_n32_premul((400, height as i32 + extra)).expect("surface");
+    let background = gfx::Color::from_rgb(1, 2, 3);
     surface.canvas().clear(background);
     document.paint(
         editor,
         surface.canvas(),
-        skia_safe::Rect::from_wh(400.0, height + extra as f32),
+        gfx::Rect::from_wh(400.0, height + extra as f32),
         true,
         store,
         ui,
@@ -1207,7 +1207,7 @@ fn a_bounded_editor_paints_only_its_fragment() {
     let mut painted_below = 0;
     for y in (height as i32 + 8)..(height as i32 + extra) {
         for x in 0..400 {
-            let color: skia_safe::Color = pixmap.get_color((x, y));
+            let color: gfx::Color = pixmap.get_color((x, y));
             if color != background {
                 painted_below += 1;
             }
@@ -1367,13 +1367,13 @@ mod injected_syntax {
         );
         let height = document.content_height(editor);
         let mut surface =
-            skia_safe::surfaces::raster_n32_premul((400, height as i32 + 4)).expect("surface");
-        let background = skia_safe::Color::from_rgb(1, 2, 3);
+            gfx::surfaces::raster_n32_premul((400, height as i32 + 4)).expect("surface");
+        let background = gfx::Color::from_rgb(1, 2, 3);
         surface.canvas().clear(background);
         document.paint(
             editor,
             surface.canvas(),
-            skia_safe::Rect::from_wh(400.0, height + 4.0),
+            gfx::Rect::from_wh(400.0, height + 4.0),
             true,
             store,
             ui,
@@ -1389,7 +1389,7 @@ mod injected_syntax {
         let mut hits = 0;
         for y in 0..(height as i32) {
             for x in 0..400 {
-                let color: skia_safe::Color = pixmap.get_color((x, y));
+                let color: gfx::Color = pixmap.get_color((x, y));
                 if color == background {
                     continue;
                 }
@@ -1709,9 +1709,9 @@ fn popup_overlays_carry_projected_inlays() {
     let laid = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
-        imba::constraints::Constraints::tight(skia_safe::Size::new(240.0, 400.0)),
+        imba::constraints::Constraints::tight(gfx::Size::new(240.0, 400.0)),
     );
-    let mut widget = imba::Thunk::realize(laid, &arena, skia_safe::Rect::from_wh(240.0, 400.0));
+    let mut widget = imba::Thunk::realize(laid, &arena, gfx::Rect::from_wh(240.0, 400.0));
     let overlays = imba::Widget::overlays(&mut widget);
     let projected: Vec<_> = overlays
         .iter()
@@ -2040,9 +2040,9 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
             0.0,
             true,
         );
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 40)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 40)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         shaped.paint(canvas, 0.0);
         let image = surface.image_snapshot();
         let pixmap = image.peek_pixels().expect("raster pixels");
@@ -2103,9 +2103,9 @@ fn a_through_end_wash_fills_the_block_gap_below() {
             true,
         );
         let render = |slot: Option<f32>| -> Vec<u8> {
-            let mut surface = skia_safe::surfaces::raster_n32_premul((400, 120)).expect("surface");
+            let mut surface = gfx::surfaces::raster_n32_premul((400, 120)).expect("surface");
             let canvas = surface.canvas();
-            canvas.clear(skia_safe::Color::WHITE);
+            canvas.clear(gfx::Color::WHITE);
             match slot {
                 None => shaped.paint(canvas, 0.0),
                 Some(bottom) => shaped.paint_in_slot(canvas, 0.0, 0.0, bottom),
@@ -2179,9 +2179,9 @@ fn tight_background_markers_hug_their_glyphs() {
             0.0,
             true,
         );
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 80)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 80)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         shaped.paint(canvas, 0.0);
         let image = surface.image_snapshot();
         let pixmap = image.peek_pixels().expect("raster pixels");
@@ -2312,13 +2312,13 @@ fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
         .expect("the Instead-covered line is a zero-height element");
 
     let ink_rows = |document: &Document| -> Vec<usize> {
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 400)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 400)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         document.paint(
             editor,
             canvas,
-            skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 400.0),
+            gfx::Rect::from_xywh(0.0, 0.0, 400.0, 400.0),
             false,
             store,
             ui,
@@ -3226,8 +3226,8 @@ fn gutter_paints_numbers_beside_shifted_text() {
     let ui = crate::test_document::test_ui();
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
-        min: skia_safe::Size::default(),
-        max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
+        min: gfx::Size::default(),
+        max: gfx::Size::new(400.0 + chrome_width, f32::MAX),
     };
     let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
@@ -3235,7 +3235,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
         constraints,
     );
     let size = imba::Thunk::size(&widget);
-    let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
+    let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, 200.0));
     assert!(
         (size.width - (400.0 + chrome_width)).abs() < 1.0,
         "gutter + text: {}",
@@ -3243,8 +3243,8 @@ fn gutter_paints_numbers_beside_shifted_text() {
     );
 
     let mut surface =
-        skia_safe::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
-    let background = skia_safe::Color::from_rgb(9, 9, 9);
+        gfx::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
+    let background = gfx::Color::from_rgb(9, 9, 9);
     surface.canvas().clear(background);
     let result = imba::Widget::handle_event(
         &widget,
@@ -3253,7 +3253,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
             canvas: surface.canvas(),
             focused: false,
         },
-        skia_safe::Rect::from_wh(size.width, 200.0),
+        gfx::Rect::from_wh(size.width, 200.0),
     );
     drop(result);
 
@@ -3277,7 +3277,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
         &arena,
         constraints,
     );
-    let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
+    let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, 200.0));
     surface.canvas().clear(background);
     let _ = imba::Widget::handle_event(
         &widget,
@@ -3286,7 +3286,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
             canvas: surface.canvas(),
             focused: false,
         },
-        skia_safe::Rect::from_wh(size.width, 200.0),
+        gfx::Rect::from_wh(size.width, 200.0),
     );
     let image = surface.image_snapshot();
     let pixmap = image.peek_pixels().expect("raster pixels");
@@ -3322,8 +3322,8 @@ fn gutter_numbers_share_the_text_baseline() {
     let ui = crate::test_document::test_ui();
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
-        min: skia_safe::Size::default(),
-        max: skia_safe::Size::new(400.0 + chrome.width, f32::MAX),
+        min: gfx::Size::default(),
+        max: gfx::Size::new(400.0 + chrome.width, f32::MAX),
     };
     let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
@@ -3331,10 +3331,10 @@ fn gutter_numbers_share_the_text_baseline() {
         constraints,
     );
     let size = imba::Thunk::size(&widget);
-    let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
+    let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, 200.0));
     let mut surface =
-        skia_safe::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
-    let background = skia_safe::Color::from_rgb(9, 9, 9);
+        gfx::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
+    let background = gfx::Color::from_rgb(9, 9, 9);
     surface.canvas().clear(background);
     let _ = imba::Widget::handle_event(
         &widget,
@@ -3343,7 +3343,7 @@ fn gutter_numbers_share_the_text_baseline() {
             canvas: surface.canvas(),
             focused: false,
         },
-        skia_safe::Rect::from_wh(size.width, 200.0),
+        gfx::Rect::from_wh(size.width, 200.0),
     );
     let image = surface.image_snapshot();
     let pixmap = image.peek_pixels().expect("raster pixels");
@@ -3701,8 +3701,8 @@ mod folding {
         let ui = crate::test_document::test_ui();
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
-            min: skia_safe::Size::default(),
-            max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
+            min: gfx::Size::default(),
+            max: gfx::Size::new(400.0 + chrome_width, f32::MAX),
         };
         let y = view.document.height_before(editor, interior().start) + 2.0;
         let widget = imba::layout::Layout::layout(
@@ -3713,18 +3713,18 @@ mod folding {
         let widget = imba::Thunk::realize(
             widget,
             &arena,
-            skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
+            gfx::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
         let result = imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::MouseDown {
                 button: imba::event::MouseButton::Left,
-                point: skia_safe::Point::new(chrome_width * 0.5, y),
+                point: gfx::Point::new(chrome_width * 0.5, y),
                 mods: imba::event::Modifiers::default(),
                 count: 1,
             },
-            skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
+            gfx::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
         let Some(crate::editor_view::EditorCommand::ToggleFold { range }) = result.into_command()
         else {
@@ -4307,7 +4307,7 @@ mod before_inlay_presentation {
                 command: imba::dyn_view::DynCommand::new(BeforeCommand::Editor(
                     crate::editor_view::EditorCommand::Click {
                         kind: crate::editor_view::ClickKind::Set,
-                        point: skia_safe::Point::new(2.0, 2.0),
+                        point: gfx::Point::new(2.0, 2.0),
                     },
                 )),
             },
@@ -4356,12 +4356,12 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
             marks.push_styled(0..6, crate::theme::StyleId::Match, crate::markup::StyleWeight::OVERLAY);
             document.replace_markup(tint, marks, &[0..6], store, ui, &test_theme(), fx!());
         }
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 40)).expect("surface");
-        surface.canvas().clear(skia_safe::Color::BLACK);
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 40)).expect("surface");
+        surface.canvas().clear(gfx::Color::BLACK);
         document.paint(
             editor,
             surface.canvas(),
-            skia_safe::Rect::from_wh(400.0, 40.0),
+            gfx::Rect::from_wh(400.0, 40.0),
             false,
             store,
             ui,
@@ -4585,11 +4585,11 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     let ui = crate::test_document::test_ui();
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
-        min: skia_safe::Size::default(),
-        max: skia_safe::Size::new(400.0, f32::MAX),
+        min: gfx::Size::default(),
+        max: gfx::Size::new(400.0, f32::MAX),
     };
     let drain =
-        |viewport: skia_safe::Rect| -> Vec<imba::overlay::Overlay<'_, crate::editor_view::EditorCommand>> {
+        |viewport: gfx::Rect| -> Vec<imba::overlay::Overlay<'_, crate::editor_view::EditorCommand>> {
             let thunk = imba::layout::Layout::layout(
                 imba::View::display(&view, &arena, &store, &ui),
                 &arena,
@@ -4603,12 +4603,12 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         };
 
     assert!(
-        drain(skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 300.0)).is_empty(),
+        drain(gfx::Rect::from_xywh(0.0, 0.0, 400.0, 300.0)).is_empty(),
         "unscrolled: no sticky stack"
     );
 
     assert!(
-        drain(skia_safe::Rect::from_xywh(
+        drain(gfx::Rect::from_xywh(
             0.0,
             line_height * 10.0,
             400.0,
@@ -4618,7 +4618,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         "a header at the top edge stays a plain line"
     );
 
-    let minted = drain(skia_safe::Rect::from_xywh(
+    let minted = drain(gfx::Rect::from_xywh(
         0.0,
         line_height * 20.0,
         400.0,
@@ -4631,7 +4631,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     );
 
     let top = line_height * 60.0;
-    let minted = drain(skia_safe::Rect::from_xywh(0.0, top, 400.0, 300.0));
+    let minted = drain(gfx::Rect::from_xywh(0.0, top, 400.0, 300.0));
     assert_eq!(minted.len(), 1);
     let overlay = minted.into_iter().next().unwrap();
     assert!((overlay.anchor.top - top).abs() < 0.5, "pinned at the top");
@@ -4643,24 +4643,24 @@ fn sticky_lines_pin_the_enclosing_scopes() {
 
     let placed = overlay.content.layout(
         &arena,
-        skia_safe::Size::new(400.0, 300.0),
-        skia_safe::Rect::from_xywh(0.0, 0.0, overlay.anchor.width(), overlay.anchor.height()),
+        gfx::Size::new(400.0, 300.0),
+        gfx::Rect::from_xywh(0.0, 0.0, overlay.anchor.width(), overlay.anchor.height()),
     );
     assert_eq!(placed.len(), 1, "the stack is one widget");
     let (at, thunk) = placed.into_iter().next().unwrap();
     assert_eq!((at.x, at.y), (0.0, 0.0));
     let size = imba::Thunk::size(&thunk);
-    let widget = imba::Thunk::realize(thunk, &arena, skia_safe::Rect::from_size(size));
+    let widget = imba::Thunk::realize(thunk, &arena, gfx::Rect::from_size(size));
     let pressed = imba::Widget::handle_event(
         &widget,
         &arena,
         &imba::event::Event::MouseDown {
-            point: skia_safe::Point::new(50.0, line_height * 1.5),
+            point: gfx::Point::new(50.0, line_height * 1.5),
             button: imba::event::MouseButton::Left,
             mods: imba::event::Modifiers::default(),
             count: 1,
         },
-        skia_safe::Rect::from_size(size),
+        gfx::Rect::from_size(size),
     );
     match pressed.into_command() {
         Some(crate::editor_view::EditorCommand::RevealAt { byte }) => {
@@ -4671,13 +4671,13 @@ fn sticky_lines_pin_the_enclosing_scopes() {
 
     // The band and its divider run EDGE TO EDGE of the hosting pane,
     // even when the editor sits inset inside a wider host.
-    let minted = drain(skia_safe::Rect::from_xywh(0.0, top, 400.0, 300.0));
+    let minted = drain(gfx::Rect::from_xywh(0.0, top, 400.0, 300.0));
     let overlay = minted.into_iter().next().unwrap();
     let anchor =
-        skia_safe::Rect::from_xywh(120.0, 0.0, overlay.anchor.width(), overlay.anchor.height());
+        gfx::Rect::from_xywh(120.0, 0.0, overlay.anchor.width(), overlay.anchor.height());
     let placed = overlay
         .content
-        .layout(&arena, skia_safe::Size::new(1000.0, 300.0), anchor);
+        .layout(&arena, gfx::Size::new(1000.0, 300.0), anchor);
     let (at, thunk) = placed.into_iter().next().unwrap();
     assert_eq!(at.x, 0.0, "the band starts at the pane's left edge");
     assert!(
@@ -5029,13 +5029,13 @@ fn translucent_washes_never_double_at_block_seams() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 300)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((400, 300)).expect("surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::BLACK);
+    canvas.clear(gfx::Color::BLACK);
     document.paint(
         editor,
         canvas,
-        skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 300.0),
+        gfx::Rect::from_xywh(0.0, 0.0, 400.0, 300.0),
         false,
         store,
         ui,
@@ -5103,15 +5103,15 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
     // are sub-pixel seams between per-row bands.
     for step in 0..20u32 {
         let scroll = step as f32 * 0.05;
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 1200)).expect("surface");
-        let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::BLACK);
-        canvas.scale((2.0, 2.0));
-        canvas.translate((0.0, -scroll));
+        let mut surface = gfx::surfaces::raster_n32_premul((800, 1200)).expect("surface");
+        let canvas: &gfx::Canvas = surface.canvas();
+        canvas.clear(gfx::Color::BLACK);
+        canvas.scale(2.0, 2.0);
+        canvas.translate(0.0, -scroll);
         right.paint(
             editor,
             canvas,
-            skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 600.0),
+            gfx::Rect::from_xywh(0.0, 0.0, 400.0, 600.0),
             false,
             store,
             ui,
@@ -5435,13 +5435,13 @@ fn a_diagnostic_span_paints_its_squiggle() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 60)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((400, 60)).expect("surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::WHITE);
+    canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
         canvas,
-        skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
+        gfx::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
         false,
         store,
         ui,
@@ -5505,13 +5505,13 @@ fn a_one_character_diagnostic_still_paints() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 60)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((400, 60)).expect("surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::WHITE);
+    canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
         canvas,
-        skia_safe::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
+        gfx::Rect::from_xywh(0.0, 0.0, 400.0, 60.0),
         false,
         store,
         ui,
@@ -5854,9 +5854,9 @@ fn inlay_placement_reuses_the_painted_line() {
         let laid = imba::layout::Layout::layout(
             imba::View::display(view, &arena, store, ui),
             &arena,
-            imba::constraints::Constraints::tight(skia_safe::Size::new(240.0, 400.0)),
+            imba::constraints::Constraints::tight(gfx::Size::new(240.0, 400.0)),
         );
-        let widget = imba::Thunk::realize(laid, &arena, skia_safe::Rect::from_wh(240.0, 400.0));
+        let widget = imba::Thunk::realize(laid, &arena, gfx::Rect::from_wh(240.0, 400.0));
         std::hint::black_box(&widget);
     };
     let shapes = || crate::parley_line::shaper(ui).shapes_so_far();

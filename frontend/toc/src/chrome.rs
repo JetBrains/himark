@@ -13,7 +13,7 @@ use imba::{
     thunk_ext::ThunkExt as _,
     Thunk as _,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 fn bounded(extent: f32) -> Option<f32> {
     (extent < f32::MAX / 2.0).then_some(extent)
@@ -30,8 +30,8 @@ pub(crate) struct ContentsColumn<'a, Command, Keys> {
     pub content: imba::layout::LayoutBox<'a, Command>,
     pub width: f32,
     pub top_gap: f32,
-    pub ground: skia_safe::Color,
-    pub rule: skia_safe::Color,
+    pub ground: gfx::Color,
+    pub rule: gfx::Color,
     pub keys: Keys,
 }
 
@@ -104,9 +104,9 @@ impl<'a, Command: 'a, L: Layout<'a, Command> + 'a> Layout<'a, Command> for Obliq
             word.paint_below(move |_arena, canvas, rect| {
                 let line = rect.top + baseline;
                 canvas.save();
-                canvas.translate((0.0, line));
-                canvas.skew((-slant, 0.0));
-                canvas.translate((0.0, -line));
+                canvas.translate(0.0, line);
+                canvas.skew(-slant, 0.0);
+                canvas.translate(0.0, -line);
             })
             .paint_above(|_arena, canvas, _rect| {
                 canvas.restore();
@@ -119,7 +119,7 @@ impl<'a, Command: 'a, L: Layout<'a, Command> + 'a> Layout<'a, Command> for Obliq
 /// number: a row of dots raised `rise` off the baseline it joins.
 pub(crate) struct DottedLeader {
     pub width: f32,
-    pub color: skia_safe::Color,
+    pub color: gfx::Color,
     pub dot: f32,
     pub rise: f32,
 }
@@ -137,11 +137,11 @@ impl<'a, Command: 'a> Layout<'a, Command> for DottedLeader {
         let height = dot + rise;
         let dots = imba::leaf::leaf::<Command>(width, height).paint_instead(
             move |_arena, canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_color(color);
                 let mut x = rect.left;
                 while x + dot <= rect.right {
-                    canvas.draw_rect(skia_safe::Rect::from_xywh(x, rect.top, dot, dot), &paint);
+                    canvas.draw_rect(gfx::Rect::from_xywh(x, rect.top, dot, dot), &paint);
                     x += dot * 2.0;
                 }
             },
@@ -165,7 +165,7 @@ pub(crate) struct LeaderLine<'a, Command> {
     pub name: imba::layout::LayoutBox<'a, Command>,
     pub number: imba::layout::Text,
     pub number_min_width: f32,
-    pub color: skia_safe::Color,
+    pub color: gfx::Color,
     pub min: f32,
     pub dot: f32,
     pub rise: f32,

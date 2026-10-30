@@ -3,7 +3,7 @@
 
 use std::marker::PhantomData;
 
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::{
     arena::Arena,

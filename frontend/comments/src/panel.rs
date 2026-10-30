@@ -21,7 +21,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::rows::{CommentFacts, CommentsRow};
 use crate::view::comments_markup;

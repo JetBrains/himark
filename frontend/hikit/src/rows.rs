@@ -114,11 +114,11 @@ pub fn selection_style(store: &Store) -> SelectionStyle {
     // (docs/Design.md, "no glass, no pills, no boxes").
     SelectionStyle {
         fill: ink.selected.0,
-        accent: skia_safe::Color::TRANSPARENT,
+        accent: gfx::Color::TRANSPARENT,
         accent_width: 0.0,
         accent_inset: 0.0,
         radius: 0.0,
-        border: skia_safe::Color::TRANSPARENT,
+        border: gfx::Color::TRANSPARENT,
         inset_x: 0.0,
         ..SelectionStyle::default()
     }
@@ -130,7 +130,7 @@ mod tests {
     use imba::anim::AnimationClock;
     use imba::list::ListView;
     use imba::scroll::ScrollView;
-    use skia_safe::Size;
+    use gfx::Size;
 
     #[test]
     fn selection_reveal_glides_the_scroll_until_visible() {
@@ -163,12 +163,12 @@ mod tests {
                     now: AnimationClock::from_millis(tick as f64 * 8.0),
                 };
                 let widget =
-                    imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(viewport));
+                    imba::Thunk::realize(widget, &arena, gfx::Rect::from_size(viewport));
                 imba::Widget::handle_event(
                     &widget,
                     &arena,
                     &event,
-                    skia_safe::Rect::from_size(viewport),
+                    gfx::Rect::from_size(viewport),
                 )
                 .into_commands()
             };

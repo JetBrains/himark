@@ -16,7 +16,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use skia_safe::{Paint, Rect, Size};
+use gfx::{Paint, Rect, Size};
 
 use crate::document::Document;
 use crate::editor::EditorId;
@@ -407,10 +407,10 @@ impl FindBar {
                 }
                 let mut paint = Paint::default();
                 paint.set_anti_alias(true);
-                paint.set_color(skia_safe::Color::from_argb(0xaa, 0x80, 0x86, 0x90));
+                paint.set_color(gfx::Color::from_argb(0xaa, 0x80, 0x86, 0x90));
                 canvas.draw_str(
                     status.as_str(),
-                    (rect.left, rect.top + rect.height() * 0.62),
+                    (rect.left, rect.top + rect.height() * 0.62).into(),
                     &font,
                     &paint,
                 );
@@ -421,16 +421,16 @@ impl FindBar {
     }
 }
 
-fn status_font(ui: &UiCtx) -> skia_safe::Font {
-    struct StatusTypeface(skia_safe::Typeface);
+fn status_font(ui: &UiCtx) -> gfx::Font {
+    struct StatusTypeface(gfx::Typeface);
     let typeface = ui.env(|| {
         StatusTypeface(
-            crate::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::normal())
+            crate::env::ui_typeface(ui, &[] as &[&str], gfx::FontStyle::normal())
                 .expect("a ui typeface"),
         )
     });
-    let mut font = skia_safe::Font::from_typeface(typeface.0.clone(), 22.0);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
+    let mut font = gfx::Font::from_typeface(typeface.0.clone(), 22.0);
+    font.set_edging(gfx::font::Edging::AntiAlias);
     font
 }
 

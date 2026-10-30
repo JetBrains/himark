@@ -258,14 +258,14 @@ fn folders_added_mid_session_join_on_paint() {
     let paint = |view: &SessionTreeView, store: &Store| -> Vec<TreeCommand> {
         let arena = imba::arena::Arena::default();
         let ui = ::editor::test_document::test_ui();
-        let size = skia_safe::Size::new(400.0, 600.0);
+        let size = gfx::Size::new(400.0, 600.0);
         let widget = imba::layout::Layout::layout(
             imba::View::display(view, &arena, store, &ui),
             &arena,
             imba::constraints::Constraints::tight(size),
         );
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
@@ -273,7 +273,7 @@ fn folders_added_mid_session_join_on_paint() {
                 canvas: surface.canvas(),
                 focused: true,
             },
-            skia_safe::Rect::from_wh(400.0, 600.0),
+            gfx::Rect::from_wh(400.0, 600.0),
         )
         .into_commands()
     };
@@ -514,10 +514,10 @@ fn an_unfocused_paint_cancels_the_edit() {
         let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, test_ui),
             &arena,
-            imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
+            imba::constraints::Constraints::tight(gfx::Size::new(400.0, 600.0)),
         );
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
@@ -525,7 +525,7 @@ fn an_unfocused_paint_cancels_the_edit() {
                 canvas: surface.canvas(),
                 focused: false,
             },
-            skia_safe::Rect::from_wh(400.0, 600.0),
+            gfx::Rect::from_wh(400.0, 600.0),
         )
         .into_commands()
     };
@@ -583,10 +583,10 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
         let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, test_ui),
             &arena,
-            imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
+            imba::constraints::Constraints::tight(gfx::Size::new(400.0, 600.0)),
         );
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
-        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
+        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
@@ -594,7 +594,7 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
                 canvas: surface.canvas(),
                 focused: true,
             },
-            skia_safe::Rect::from_wh(400.0, 600.0),
+            gfx::Rect::from_wh(400.0, 600.0),
         )
         .into_commands()
     };
@@ -981,18 +981,18 @@ fn a_theme_switch_re_resolves_the_selection_style() {
     let commands = {
         let arena = imba::arena::Arena::default();
         let ui = ::editor::test_document::test_ui();
-        let size = skia_safe::Size::new(400.0, 600.0);
+        let size = gfx::Size::new(400.0, 600.0);
         let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, &ui),
             &arena,
             imba::constraints::Constraints::tight(size),
         );
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
+        let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
         imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::ThemeChanged,
-            skia_safe::Rect::from_wh(400.0, 600.0),
+            gfx::Rect::from_wh(400.0, 600.0),
         )
         .into_commands()
     };

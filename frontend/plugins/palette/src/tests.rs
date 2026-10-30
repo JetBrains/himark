@@ -114,7 +114,7 @@ fn dump_palette_screenshot() {
     let mut app = himark::app::Himark::new(himark::app::AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePalette));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(
         &mut app,
@@ -135,7 +135,7 @@ fn dump_palette_screenshot() {
     }
     let data = surface
         .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .encode(None, gfx::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
     std::fs::write(format!("{dir}/palette.png"), data.as_bytes()).expect("write");

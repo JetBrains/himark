@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 
 use crate::{
     arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
@@ -13,7 +13,7 @@ pub struct ImageView {
     bytes: Arc<[u8]>,
     intrinsic: Size,
 
-    decoded: Mutex<Option<skia_safe::Image>>,
+    decoded: Mutex<Option<gfx::Image>>,
 }
 
 impl Clone for ImageView {
@@ -83,19 +83,13 @@ impl ImageView {
         let Some(image) = cell.as_ref() else {
             return;
         };
-        let paint = skia_safe::Paint::default();
-        canvas.draw_image_rect_with_sampling_options(
-            image,
-            None,
-            rect,
-            skia_safe::SamplingOptions::from(skia_safe::FilterMode::Linear),
-            &paint,
-        );
+        let paint = gfx::Paint::default();
+        canvas.draw_image_rect(image, rect, gfx::Sampling::Linear, &paint);
     }
 }
 
-fn decode(bytes: &[u8]) -> Option<skia_safe::Image> {
-    skia_safe::images::deferred_from_encoded_data(skia_safe::Data::new_copy(bytes), None)
+fn decode(bytes: &[u8]) -> Option<gfx::Image> {
+    gfx::images::deferred_from_encoded_data(gfx::Data::new_copy(bytes), None)
 }
 
 impl View for ImageView {
@@ -146,12 +140,12 @@ mod tests {
     use super::*;
 
     fn png() -> Vec<u8> {
-        let surface = skia_safe::surfaces::raster_n32_premul((2, 1)).expect("surface");
+        let surface = gfx::surfaces::raster_n32_premul((2, 1)).expect("surface");
         let mut surface = surface;
-        surface.canvas().clear(skia_safe::Color::RED);
+        surface.canvas().clear(gfx::Color::RED);
         let image = surface.image_snapshot();
         image
-            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .encode(None, gfx::EncodedImageFormat::PNG, None)
             .expect("encoded")
             .as_bytes()
             .to_vec()
@@ -178,15 +172,15 @@ mod tests {
     #[test]
     fn the_view_paints_its_pixels() {
         let view = ImageView::new(png()).expect("decodes");
-        let mut surface = skia_safe::surfaces::raster_n32_premul((2, 1)).expect("surface");
-        surface.canvas().clear(skia_safe::Color::WHITE);
+        let mut surface = gfx::surfaces::raster_n32_premul((2, 1)).expect("surface");
+        surface.canvas().clear(gfx::Color::WHITE);
         view.paint(surface.canvas(), Rect::from_xywh(0.0, 0.0, 2.0, 1.0));
         let image = surface.image_snapshot();
         let mut pixels = vec![0u8; 2 * 4];
-        let info = skia_safe::ImageInfo::new(
+        let info = gfx::ImageInfo::new(
             (2, 1),
-            skia_safe::ColorType::RGBA8888,
-            skia_safe::AlphaType::Premul,
+            gfx::ColorType::RGBA8888,
+            gfx::AlphaType::Premul,
             None,
         );
         assert!(image.read_pixels(
@@ -194,7 +188,7 @@ mod tests {
             &mut pixels,
             8,
             (0, 0),
-            skia_safe::image::CachingHint::Allow
+            gfx::image::CachingHint::Allow
         ));
         assert_eq!(&pixels[..3], &[255, 0, 0], "the red pixel painted");
     }

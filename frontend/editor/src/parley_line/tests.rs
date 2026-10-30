@@ -50,10 +50,10 @@ fn parley_shapes_paints_and_answers_geometry() {
 
     // Paint both roads side by side; the diff metric is the
     // spike's deliverable, printed for the record.
-    let paint_to = |painter: &dyn Fn(&skia_safe::Canvas)| -> Vec<u8> {
-        let mut surface = skia_safe::surfaces::raster_n32_premul((900, 60)).expect("surface");
+    let paint_to = |painter: &dyn Fn(&gfx::Canvas)| -> Vec<u8> {
+        let mut surface = gfx::surfaces::raster_n32_premul((900, 60)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         painter(canvas);
         let image = surface.image_snapshot();
         let pixmap = image.peek_pixels().expect("pixels");
@@ -141,7 +141,7 @@ fn fallback_corpus_keeps_its_eyes_open() {
             text,
             "Menlo",
             24.0,
-            &[SpanStyle::plain(skia_safe::Color::BLACK)],
+            &[SpanStyle::plain(gfx::Color::BLACK)],
         );
         let (families, notdefs, total) = shaper().coverage_for_test(&line);
         let verdict = if notdefs == 0 { "ok" } else { "TOFU" };
@@ -171,13 +171,13 @@ fn styled_spans_reach_the_blobs() {
         crate::embedded_fonts::FAMILY,
         24.0,
         &[
-            SpanStyle::plain(skia_safe::Color::BLACK),
+            SpanStyle::plain(gfx::Color::BLACK),
             SpanStyle {
                 bold: true,
-                ..SpanStyle::plain(skia_safe::Color::BLACK)
+                ..SpanStyle::plain(gfx::Color::BLACK)
             }
             .at(bold_from),
-            SpanStyle::plain(skia_safe::Color::RED).at(color_from),
+            SpanStyle::plain(gfx::Color::RED).at(color_from),
         ],
     );
     let blobs = line.blobs();
@@ -189,7 +189,7 @@ fn styled_spans_reach_the_blobs() {
     assert!(
         blobs
             .iter()
-            .any(|(_, color)| *color == skia_safe::Color::RED),
+            .any(|(_, color)| *color == gfx::Color::RED),
         "the colored span kept its ink"
     );
 }
@@ -213,14 +213,14 @@ fn the_editor_family_chain_lands_monospace() {
         &families,
         24.0,
         None,
-        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+        &[SpanStyle::plain(gfx::Color::BLACK)],
     );
     let wide = shaper().shape_with_families(
         "mmmmmmmmmm",
         &families,
         24.0,
         None,
-        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+        &[SpanStyle::plain(gfx::Color::BLACK)],
     );
     eprintln!(
         "[parley-family] i-run {:.1} vs m-run {:.1}",
@@ -249,13 +249,13 @@ fn bold_runs_resolve_a_bold_cut() {
         24.0,
         None,
         &[
-            SpanStyle::plain(skia_safe::Color::BLACK),
+            SpanStyle::plain(gfx::Color::BLACK),
             SpanStyle {
                 bold: true,
-                ..SpanStyle::plain(skia_safe::Color::BLACK)
+                ..SpanStyle::plain(gfx::Color::BLACK)
             }
             .at(from),
-            SpanStyle::plain(skia_safe::Color::BLACK).at(to),
+            SpanStyle::plain(gfx::Color::BLACK).at(to),
         ],
     );
     let report = shaper().face_report_for_test(&line);
@@ -289,7 +289,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
             None,
             &[SpanStyle {
                 bold,
-                ..SpanStyle::plain(skia_safe::Color::BLACK)
+                ..SpanStyle::plain(gfx::Color::BLACK)
             }],
         );
         let report = shaper().face_report_for_test(&line);
@@ -322,7 +322,7 @@ fn variable_fonts_rasterize_the_shaped_instance() {
             None,
             &[SpanStyle {
                 bold,
-                ..SpanStyle::plain(skia_safe::Color::BLACK)
+                ..SpanStyle::plain(gfx::Color::BLACK)
             }],
         );
         for (face, vars, ours, theirs) in shaper().bridge_advances_for_test(&line) {
@@ -348,7 +348,7 @@ fn caret_x_round_trips_through_hit_testing() {
         &["JetBrains Mono"],
         14.0,
         None,
-        &[SpanStyle::plain(skia_safe::Color::BLACK)],
+        &[SpanStyle::plain(gfx::Color::BLACK)],
     );
     for byte in 0..=text.len() {
         let x = line.caret_x(byte);
@@ -382,7 +382,7 @@ fn typeface_bridge_caches_hold_across_shapes() {
                 None,
                 &[SpanStyle {
                     bold,
-                    ..SpanStyle::plain(skia_safe::Color::BLACK)
+                    ..SpanStyle::plain(gfx::Color::BLACK)
                 }],
             );
             assert!(!line.blobs().is_empty());

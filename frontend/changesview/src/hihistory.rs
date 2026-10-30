@@ -439,7 +439,7 @@ pub fn graph_node(
     folder: &ResourceLocation,
     held: Option<&FolderHistory>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-    counts: (skia_safe::Color, skia_safe::Color),
+    counts: (gfx::Color, gfx::Color),
 ) -> ForestNode<ResourceLocation> {
     let key = folder.child(ResourceType::new("history-graph"), "graph");
     items.insert_mut(key.clone(), RowItem::Branch { select: true });
@@ -482,7 +482,7 @@ pub fn graph_node(
                         },
                     );
 
-                    let trail: Vec<(String, skia_safe::Color)> = Vec::new();
+                    let trail: Vec<(String, gfx::Color)> = Vec::new();
                     let held = store.entity(history).and_then(|held| {
                         crate::hichanges::Changes::commit_set(
                             store,
@@ -659,7 +659,7 @@ impl imba::View for CommitTip {
                 let lines = self.lines.clone();
                 imba::leaf::leaf::<Self::Command>(width.min(560.0), height).paint_instead(
                     move |_arena, canvas, rect| {
-                        let mut paint = skia_safe::Paint::default();
+                        let mut paint = gfx::Paint::default();
                         paint.set_anti_alias(true);
                         paint.set_color(chrome.menu_fill.0);
                         canvas.draw_round_rect(rect, 8.0, 8.0, &paint);

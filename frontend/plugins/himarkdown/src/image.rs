@@ -36,7 +36,7 @@ impl ImageInlay {
         &self.reference
     }
 
-    pub fn intrinsic(&self) -> skia_safe::Size {
+    pub fn intrinsic(&self) -> gfx::Size {
         self.view.intrinsic()
     }
 }

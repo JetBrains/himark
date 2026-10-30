@@ -14,7 +14,7 @@ editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 mdparser = { path = "../../mdparser" }
 operation = { path = "../../operation" }
-skia-safe = "0.153.3"
+gfx = { path = "../../gfx" }
 text = { path = "../../text" }
 hisitter = { path = "../../hisitter" }
 tree-sitter = "0.26.8"

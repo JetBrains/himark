@@ -292,7 +292,7 @@ fn references_stream_into_the_search_dock() {
 
     invoke(&mut app, window, "code.references");
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     for _ in 0..4 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {

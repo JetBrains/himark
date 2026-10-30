@@ -4,7 +4,7 @@
 use crate::theme::ThemeStyles as _;
 use std::ops::Range;
 
-use skia_safe::{Canvas, Color, Paint, Rect};
+use gfx::{Canvas, Color, Paint, Rect};
 
 use crate::markup::{BlockStyle, InlayMetrics, TextDecorationInterval};
 use crate::shaped_line::{line_text_x, ShapedLine};

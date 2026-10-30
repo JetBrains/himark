@@ -3,7 +3,7 @@
 
 use std::marker::PhantomData;
 
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 
 use crate::{
     arena::Arena,
@@ -357,7 +357,7 @@ where
             Event::Paint { canvas, focused } => self.inner.handle_event(
                 arena,
                 &Event::Paint {
-                    canvas,
+                    canvas: *canvas,
                     focused: *focused && self.focused,
                 },
                 viewport,

@@ -13,7 +13,7 @@ use editor::env;
 use imba::effect::Effects;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View};
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::canvas::{CanvasCommand, DiffCanvasView};
 use crate::diff_canvas::CanvasPlace;

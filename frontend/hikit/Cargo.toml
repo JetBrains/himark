@@ -10,7 +10,7 @@ documents = { path = "../documents" }
 editor = { path = "../editor" }
 imba = { path = "../imba" }
 rpds = "1"
-skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 
 [features]
 test-support = []

@@ -27,7 +27,7 @@ use imba::event::Placement;
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
 use imba::thunk_ext::ThunkExt;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk, View};
-use skia_safe::Size;
+use gfx::Size;
 
 /// The row key: the file's `new` side names the FILE node (the header
 /// row and its cover span — the reveal target), and the diff child

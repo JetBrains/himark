@@ -3,7 +3,7 @@
 
 use std::sync::OnceLock;
 
-use skia_safe::{FontMgr, Typeface};
+use gfx::{FontMgr, Typeface};
 
 #[cfg(not(target_os = "emscripten"))]
 static NOTO_SANS: &[u8] = include_bytes!("../assets/NotoSans-Regular.ttf");
@@ -48,7 +48,7 @@ pub fn code_typeface() -> Typeface {
         CODE_TYPEFACE
             .get_or_init(|| {
                 FontMgr::new()
-                    .new_from_data(skia_safe::Data::new_copy(JETBRAINS_MONO[0]), None)
+                    .new_from_data(gfx::Data::new_copy(JETBRAINS_MONO[0]), None)
                     .expect("embedded JetBrains Mono loads")
             })
             .clone()
@@ -87,7 +87,7 @@ pub fn chrome_typeface() -> Typeface {
         CHROME_TYPEFACE
             .get_or_init(|| {
                 FontMgr::new()
-                    .new_from_data(skia_safe::Data::new_copy(CHROME), None)
+                    .new_from_data(gfx::Data::new_copy(CHROME), None)
                     .expect("embedded Bricolage Grotesque loads")
             })
             .clone()
@@ -114,7 +114,7 @@ pub const FAMILY: &str = "JetBrains Mono";
 pub fn install_bytes(bytes: Vec<u8>) -> &'static [u8] {
     let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
     let typeface = FontMgr::new()
-        .new_from_data(skia_safe::Data::new_copy(bytes), None)
+        .new_from_data(gfx::Data::new_copy(bytes), None)
         .expect("the web font parses");
     assert!(
         TYPEFACE.set(typeface).is_ok(),
@@ -129,7 +129,7 @@ pub fn typeface() -> Typeface {
         TYPEFACE
             .get_or_init(|| {
                 FontMgr::new()
-                    .new_from_data(skia_safe::Data::new_copy(NOTO_SANS), None)
+                    .new_from_data(gfx::Data::new_copy(NOTO_SANS), None)
                     .expect("embedded Noto Sans loads")
             })
             .clone()

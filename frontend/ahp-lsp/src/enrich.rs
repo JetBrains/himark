@@ -794,7 +794,7 @@ const HINT_SCALE: f32 = 0.8;
 
 /// The code typeface every hint chip shares — cached in the ui
 /// context (the theme's code families do not change between looks).
-struct HintTypeface(Option<skia_safe::Typeface>);
+struct HintTypeface(Option<gfx::Typeface>);
 
 /// The hint chip: a line of dim text in the code font, sized off the
 /// source-code look, colored by the theme's `inlay_hint` entry.
@@ -841,12 +841,12 @@ impl imba::View for HintView {
         let typeface = ui
             .env(|| {
                 HintTypeface(
-                    editor::env::ui_typeface(ui, &families, skia_safe::FontStyle::normal())
+                    editor::env::ui_typeface(ui, &families, gfx::FontStyle::normal())
                         .or_else(|| {
                             editor::env::ui_typeface(
                                 ui,
                                 &[] as &[&str],
-                                skia_safe::FontStyle::normal(),
+                                gfx::FontStyle::normal(),
                             )
                         }),
                 )
@@ -855,8 +855,8 @@ impl imba::View for HintView {
             .clone();
         let mut style = hikit::ui::caption(store, ui).sized(size);
         if let Some(typeface) = typeface {
-            style.font = skia_safe::Font::from_typeface(typeface, size);
-            style.font.set_edging(skia_safe::font::Edging::AntiAlias);
+            style.font = gfx::Font::from_typeface(typeface, size);
+            style.font.set_edging(gfx::font::Edging::AntiAlias);
         }
         if let Some(color) = look.color {
             style = style.colored(color);

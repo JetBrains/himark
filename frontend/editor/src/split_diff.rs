@@ -14,7 +14,7 @@ use imba::{
     Thunk, View,
 };
 use operation::{op::Op, operation::Bias, operation::Operation};
-use skia_safe::Size;
+use gfx::Size;
 use text::text::Text;
 
 use crate::diff::FragmentKind;
@@ -1313,10 +1313,10 @@ impl View for SplitDiffView {
             let pair = pair.wrap_realized(move |pair| PairChain { pair });
 
             pair.paint_above(move |_arena, canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_color(divider);
                 canvas.draw_rect(
-                    skia_safe::Rect::from_xywh(
+                    gfx::Rect::from_xywh(
                         rect.left + half + CENTER_GAP * 0.5 - 0.5,
                         rect.top,
                         1.0,
@@ -1346,7 +1346,7 @@ impl<'a> imba::Widget<'a, SplitDiffCommand> for PairChain<'a> {
         &self,
         arena: &Arena,
         event: &imba::event::Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::event::EventResult<SplitDiffCommand> {
         self.pair.handle_event(arena, event, viewport)
     }

@@ -266,25 +266,25 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
         order: 0.5,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let radius = rect.width() * 0.32;
-            let center = skia_safe::Point::new(
+            let center = gfx::Point::new(
                 rect.left + rect.width() * 0.42,
                 rect.top + rect.height() * 0.42,
             );
             canvas.draw_circle(center, radius, &paint);
-            let start = skia_safe::Point::new(
+            let start = gfx::Point::new(
                 center.x + radius * std::f32::consts::FRAC_1_SQRT_2,
                 center.y + radius * std::f32::consts::FRAC_1_SQRT_2,
             );
             canvas.draw_line(
                 start,
-                skia_safe::Point::new(
+                gfx::Point::new(
                     rect.right - rect.width() * 0.08,
                     rect.bottom - rect.height() * 0.08,
                 ),

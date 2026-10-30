@@ -13,7 +13,7 @@ use imba::{
     thunk_ext::ThunkExt,
     View,
 };
-use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
+use gfx::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
 
 use editor::document::Document;
 use editor::markup::Inlay;
@@ -363,10 +363,10 @@ impl DemoInlay {
             2.5,
             &paint,
         );
-        canvas.draw_circle((size.width - 16.0, 14.0), 3.0, &paint);
+        canvas.draw_circle((size.width - 16.0, 14.0).into(), 3.0, &paint);
         if self.expanded {
-            canvas.draw_circle((size.width - 27.0, size.height - 13.0), 4.0, &paint);
-            canvas.draw_circle((size.width - 40.0, size.height - 13.0), 2.5, &paint);
+            canvas.draw_circle((size.width - 27.0, size.height - 13.0).into(), 4.0, &paint);
+            canvas.draw_circle((size.width - 40.0, size.height - 13.0).into(), 2.5, &paint);
         }
     }
 

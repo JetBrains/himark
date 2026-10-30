@@ -3,7 +3,7 @@
 
 use imba::theme::{Key, Rgba};
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 impl CommentChrome {
     pub const KEY: Key<CommentChrome> = Key::new("comment");

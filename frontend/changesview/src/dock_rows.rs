@@ -78,7 +78,7 @@ pub(crate) fn folder_of(key: &ResourceLocation) -> ResourceLocation {
 
 /// A ramp rung in a color — `TextStyle` from a role the dock's own
 /// chrome carries rather than the shared ramp.
-fn styled(ui: &UiCtx, role: &TypeRole, color: skia_safe::Color) -> TextStyle {
+fn styled(ui: &UiCtx, role: &TypeRole, color: gfx::Color) -> TextStyle {
     TextStyle {
         font: hikit::fonts::role_font(ui, role),
         color,
@@ -129,7 +129,7 @@ fn broken(style: &TextStyle, text: &str, measure: f32) -> Vec<String> {
 fn quiet_press(
     _arena: &Arena,
     event: &Event<'_>,
-    _size: skia_safe::Size,
+    _size: gfx::Size,
 ) -> EventResult<TreeItemCommand<TreeLabelCommand>> {
     match event {
         Event::MouseDown { .. } => EventResult::handled(),
@@ -224,7 +224,7 @@ impl DockRow {
             let count = files.files.len();
             let noun = if count == 1 { "file" } else { "files" };
             let meta = styled(ui, &chrome.meta, ink.ink_3.0);
-            let tally = |sign: &str, value: i64, color: skia_safe::Color| {
+            let tally = |sign: &str, value: i64, color: gfx::Color| {
                 let color = if value == 0 { ink.ink_4.0 } else { color };
                 hikit::ui::text(&meta.clone().colored(color), format!("{sign}{value}"))
             };
@@ -343,8 +343,8 @@ impl<'a> Rail<'a> {
     /// The rows the clip shows, as (index, top, height, key).
     fn visible(
         list: &'a imba::list::ListView<crate::changes_view::HistoryRow, ResourceLocation>,
-        canvas: &skia_safe::Canvas,
-        rect: skia_safe::Rect,
+        canvas: &gfx::Canvas,
+        rect: gfx::Rect,
     ) -> Vec<(usize, f32, f32, ResourceLocation)> {
         let Some(clip) = canvas.local_clip_bounds() else {
             return Vec::new();
@@ -394,14 +394,14 @@ impl<'a> Rail<'a> {
         rows.paint_below(move |_arena, canvas, rect| {
             let rows = Self::visible(list, canvas, rect);
             let here = Self::here(list, &rows);
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_color(below_ink.rule_strong.0);
             for (_, top, height, key) in &rows {
                 if *key.kind() == ResourceType::new(GRAPH_KIND) {
                     continue;
                 }
                 canvas.draw_rect(
-                    skia_safe::Rect::from_xywh(
+                    gfx::Rect::from_xywh(
                         rect.left + below.rail_x,
                         rect.top + top,
                         below.rail_width,
@@ -421,7 +421,7 @@ impl<'a> Rail<'a> {
             if let (Some(first), Some(last)) = (block.first(), block.last()) {
                 paint.set_color(below_ink.here.0);
                 canvas.draw_rect(
-                    skia_safe::Rect::from_ltrb(
+                    gfx::Rect::from_ltrb(
                         rect.left,
                         rect.top + first.1,
                         rect.right,
@@ -434,7 +434,7 @@ impl<'a> Rail<'a> {
         .paint_above(move |_arena, canvas, rect| {
             let rows = Self::visible(list, canvas, rect);
             let here = Self::here(list, &rows);
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             let radius = (chrome.node_size - chrome.node_stroke) * 0.5;
             for (_, top, _, key) in &rows {
@@ -450,13 +450,13 @@ impl<'a> Rail<'a> {
                     (false, true) => (ink.ground.0, ink.ink_2.0),
                     (false, false) => (ink.ground.0, ink.ink_3.0),
                 };
-                paint.set_style(skia_safe::paint::Style::Fill);
+                paint.set_style(gfx::paint::Style::Fill);
                 paint.set_color(fill);
-                canvas.draw_circle(center, radius, &paint);
-                paint.set_style(skia_safe::paint::Style::Stroke);
+                canvas.draw_circle(center.into(), radius, &paint);
+                paint.set_style(gfx::paint::Style::Stroke);
                 paint.set_stroke_width(chrome.node_stroke);
                 paint.set_color(ring);
-                canvas.draw_circle(center, radius, &paint);
+                canvas.draw_circle(center.into(), radius, &paint);
             }
         })
     }

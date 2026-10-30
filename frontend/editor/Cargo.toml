@@ -14,7 +14,7 @@ rope = { path = "../rope" }
 sumtree = { path = "../sumtree" }
 rpds = "1"
 regex = "1"
-skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 text = { path = "../text" }
 tokenize = { path = "../tokenize" }
 

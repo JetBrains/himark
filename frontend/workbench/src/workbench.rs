@@ -11,7 +11,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use skia_safe::{Contains as _, Rect, Size};
+use gfx::{Contains as _, Rect, Size};
 
 use crate::columns::{ChatSpan, ChatStance, Columns, DockSpan, DrawerSide, Span};
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
@@ -688,7 +688,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
 /// the keyboard between the chat column and the tree on click — the
 /// same move `SplitView` makes between its panes.
 struct ColumnsWidget<'a> {
-    background: skia_safe::Color,
+    background: gfx::Color,
     panes: imba::container::Container<'a, WorkbenchCommand>,
     chat_rect: Rect,
     root_rect: Rect,
@@ -722,7 +722,7 @@ impl<'a> Thunk<'a, WorkbenchCommand> for ColumnsWidget<'a> {
 }
 
 struct RealizedColumns<'a> {
-    background: skia_safe::Color,
+    background: gfx::Color,
     panes: imba::container::RealizedContainer<'a, WorkbenchCommand>,
     chat_rect: Rect,
     root_rect: Rect,

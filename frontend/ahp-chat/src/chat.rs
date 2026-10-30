@@ -39,7 +39,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::cell::{Cell, CellCommand};
 use crate::composer::ComposerCommand;
@@ -2592,7 +2592,7 @@ impl<'a, Inner: imba::Widget<'a, ChatPanelCommand>> imba::Widget<'a, ChatPanelCo
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<ChatPanelCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if self.stale && matches!(event, Event::Paint { .. }) {

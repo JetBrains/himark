@@ -1207,7 +1207,7 @@ pub fn folder_node(
     folder: &ResourceLocation,
     changes: Option<&FolderChanges>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-    counts: (skia_safe::Color, skia_safe::Color),
+    counts: (gfx::Color, gfx::Color),
 ) -> ForestNode<ResourceLocation> {
     // The workspace folder ROOT opens the diff canvas
     // (docs/editor/diff-canvas.md §6); the chevron expands either way.
@@ -1307,7 +1307,7 @@ pub trait DirSink {
 pub fn dir_forest(
     at: &ResourceLocation,
     trie: DirTrie,
-    counts: (skia_safe::Color, skia_safe::Color),
+    counts: (gfx::Color, gfx::Color),
     sink: &mut dyn DirSink,
 ) -> Vec<ForestNode<ResourceLocation>> {
     let mut children = Vec::new();

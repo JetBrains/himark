@@ -247,7 +247,7 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
         &folder,
         History::folder(&store, history_id(), &folder).as_ref(),
         &mut items,
-        (skia_safe::Color::GREEN, skia_safe::Color::RED),
+        (gfx::Color::GREEN, gfx::Color::RED),
     );
 
     assert_eq!(node.label, "repo — main");
@@ -319,7 +319,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         &folder,
         History::folder(&store, history_id(), &folder).as_ref(),
         &mut items,
-        (skia_safe::Color::GREEN, skia_safe::Color::RED),
+        (gfx::Color::GREEN, gfx::Color::RED),
     );
     let labels = rows_of(&node);
     assert_eq!(labels[1], (1, "second".to_owned(), true));

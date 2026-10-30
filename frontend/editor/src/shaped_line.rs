@@ -4,7 +4,7 @@
 use crate::theme::ThemeStyles as _;
 use std::{ops::Range, str};
 
-use skia_safe::{Canvas, Rect};
+use gfx::{Canvas, Rect};
 
 use imba::shape::{BoxAlign, DecorationSpec, InlineBoxSpec, ParleyLine, ShapeSpec, SpanStyle};
 use text::text_view::TextView;
@@ -266,7 +266,7 @@ impl DisplayText {
 struct Band {
     /// DISPLAY-BYTE range into the shape text.
     range: Range<usize>,
-    color: skia_safe::Color,
+    color: gfx::Color,
     extent: crate::theme::BackgroundExtent,
 
     height: crate::theme::BackgroundHeight,
@@ -343,7 +343,7 @@ impl ShapeInputs {
 /// that used to live in skia `TextStyle` pushes.
 #[derive(Clone)]
 struct RunStyle {
-    color: skia_safe::Color,
+    color: gfx::Color,
     bold: bool,
     weight: Option<f32>,
     width: Option<f32>,
@@ -353,7 +353,7 @@ struct RunStyle {
     line_height: Option<f32>,
     underline: bool,
     strikethrough: bool,
-    squiggle: Option<skia_safe::Color>,
+    squiggle: Option<gfx::Color>,
 }
 
 /// The attributes a run INHERITS from any layer beneath it — the
@@ -399,7 +399,7 @@ pub(crate) fn shape_inputs(
 ) -> ShapeInputs {
     let text = display.as_str();
     let base_size = resolved.font_size.unwrap_or(14.0);
-    let base_color = resolved.color.unwrap_or(skia_safe::Color::BLACK);
+    let base_color = resolved.color.unwrap_or(gfx::Color::BLACK);
     let base_families: Vec<String> = resolved
         .font_families
         .as_ref()
@@ -739,7 +739,7 @@ impl ShapedLine {
     pub(crate) fn placeholder(
         text: &str,
         style: Option<crate::theme::StyleId>,
-        color: skia_safe::Color,
+        color: gfx::Color,
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
         layout_width: f32,
@@ -783,7 +783,7 @@ impl ShapedLine {
 
     pub(crate) fn paint_in_slot(&self, canvas: &Canvas, slot_top: f32, top: f32, slot_bottom: f32) {
         if !self.backgrounds.is_empty() {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             let display_end = self.line_text_len();
 
             let gap_below = (slot_bottom - top - self.line.content_height()).max(0.0);

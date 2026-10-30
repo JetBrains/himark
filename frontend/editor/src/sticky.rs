@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use imba::arena::Arena;
 use imba::event::{Event, EventResult};
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::document::{Document, DocumentToken};
 use crate::editor::EditorId;
@@ -379,7 +379,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 let window = &self.theme.part(crate::theme::WindowChrome::KEY);
                 let sticky_chrome = &self.theme.part(crate::theme::StickyChrome::KEY);
                 let bounds = Rect::from_size(self.size);
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(false);
 
                 // The scope band stands on its own ground, a hairline
@@ -390,13 +390,12 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                 // Text and gutter numbers live in EDITOR coordinates;
                 // the band itself spans the whole pane.
                 canvas.save();
-                canvas.translate((self.content_left, 0.0));
+                canvas.translate(self.content_left, 0.0);
                 let text_right = bounds.right - self.content_left;
 
                 canvas.save();
                 canvas.clip_rect(
                     Rect::from_ltrb(self.gutter_width, 0.0, text_right, bounds.bottom),
-                    None,
                     false,
                 );
                 let mut top = 0.0;
@@ -404,10 +403,9 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                     canvas.save();
                     canvas.clip_rect(
                         Rect::from_ltrb(self.gutter_width, top, text_right, top + row.height),
-                        None,
                         false,
                     );
-                    row.shaped.paint(canvas, top);
+                    row.shaped.paint(*canvas, top);
                     canvas.restore();
                     top += row.height;
                 }
@@ -421,7 +419,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                         .clone();
                     let font = crate::editor_view::gutter_font(chrome.number_size);
                     let (_, metrics) = font.metrics();
-                    let mut number_paint = skia_safe::Paint::default();
+                    let mut number_paint = gfx::Paint::default();
                     number_paint.set_anti_alias(true);
                     number_paint.set_color(chrome.number_color.0);
                     let right = self.gutter_width - chrome.pad - chrome.fold_size;
@@ -435,7 +433,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                         use std::fmt::Write;
                         let _ = write!(digits, "{}", row.number);
                         let width = font.measure_str(&digits, Some(&number_paint)).0;
-                        canvas.draw_str(&digits, (right - width, baseline), &font, &number_paint);
+                        canvas.draw_str(&digits, (right - width, baseline).into(), &font, &number_paint);
                         top += row.height;
                     }
                 }

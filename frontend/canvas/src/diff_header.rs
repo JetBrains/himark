@@ -18,7 +18,7 @@ use imba::{
     ui::UiCtx,
     Widget,
 };
-use skia_safe::{Paint, Rect, Size};
+use gfx::{Paint, Rect, Size};
 
 use editor::env;
 
@@ -51,7 +51,7 @@ pub struct DiffHeaderSpec {
     /// both, so the affordances match across the app.
     pub title_size: f32,
     pub bold: bool,
-    pub title_color: Option<skia_safe::Color>,
+    pub title_color: Option<gfx::Color>,
     /// The text baseline, from the band's top.
     pub baseline: f32,
 }
@@ -69,13 +69,13 @@ pub struct DiffHeaderFace {
     inset: f32,
     baseline: f32,
 
-    title_font: skia_safe::Font,
-    title_color: skia_safe::Color,
-    trail_font: skia_safe::Font,
+    title_font: gfx::Font,
+    title_color: gfx::Color,
+    trail_font: gfx::Font,
     shaper: std::rc::Rc<imba::layout::TextShaper>,
-    added_color: skia_safe::Color,
-    removed_color: skia_safe::Color,
-    affordance_color: skia_safe::Color,
+    added_color: gfx::Color,
+    removed_color: gfx::Color,
+    affordance_color: gfx::Color,
 
     chevron: Option<(Rect, bool)>,
     buttons: Vec<(DiffHeaderPress, Rect)>,
@@ -165,7 +165,7 @@ impl DiffHeaderFace {
         }
     }
 
-    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         let baseline = rect.top + self.baseline;
@@ -177,11 +177,11 @@ impl DiffHeaderFace {
                 rect.left + zone.left + self.inset * 0.5 + glyph * 0.5,
                 baseline - glyph * 0.6,
             );
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((glyph * 0.22).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             paint.set_color(self.affordance_color);
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
             if *collapsed {
                 path.move_to((center.0 - glyph * 0.25, center.1 - glyph * 0.5));
                 path.line_to((center.0 + glyph * 0.35, center.1));
@@ -192,7 +192,7 @@ impl DiffHeaderFace {
                 path.line_to((center.0 + glyph * 0.5, center.1 - glyph * 0.25));
             }
             canvas.draw_path(&path.detach(), &paint);
-            paint.set_style(skia_safe::paint::Style::Fill);
+            paint.set_style(gfx::paint::Style::Fill);
         }
 
         // The text run clips at the buttons — a narrow pane crops the
@@ -205,7 +205,6 @@ impl DiffHeaderFace {
         canvas.save();
         canvas.clip_rect(
             Rect::new(rect.left, rect.top, rect.left + buttons_left, rect.bottom),
-            None,
             false,
         );
 
@@ -259,7 +258,7 @@ impl DiffHeaderFace {
         canvas.restore();
 
         // The buttons, hairline glyphs on the affordance color.
-        paint.set_style(skia_safe::paint::Style::Stroke);
+        paint.set_style(gfx::paint::Style::Stroke);
         paint.set_color(self.affordance_color);
         let side = self.trail_font.size() * 1.05;
         paint.set_stroke_width((side * 0.11).max(1.0));
@@ -274,19 +273,19 @@ impl DiffHeaderFace {
                 DiffHeaderPress::ToggleFace => {
                     // Two columns — switch the diff's face.
                     canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
-                    canvas.draw_line((center.0, frame.top), (center.0, frame.bottom), &paint);
+                    canvas.draw_line((center.0, frame.top).into(), (center.0, frame.bottom).into(), &paint);
                 }
                 DiffHeaderPress::OpenFile => {
                     // A corner arrow leaving the box.
                     let inset = side * 0.22;
-                    let mut path = skia_safe::PathBuilder::new();
+                    let mut path = gfx::PathBuilder::new();
                     path.move_to((frame.left + side * 0.5, frame.top + inset));
                     path.line_to((frame.left + inset, frame.top + inset));
                     path.line_to((frame.left + inset, frame.bottom - inset));
                     path.line_to((frame.right - inset, frame.bottom - inset));
                     path.line_to((frame.right - inset, frame.top + side * 0.5));
                     canvas.draw_path(&path.detach(), &paint);
-                    let mut arrow = skia_safe::PathBuilder::new();
+                    let mut arrow = gfx::PathBuilder::new();
                     arrow.move_to((center.0 + side * 0.05, center.1 - side * 0.05));
                     arrow.line_to((frame.right, frame.top));
                     arrow.move_to((frame.right - side * 0.32, frame.top));
@@ -299,14 +298,14 @@ impl DiffHeaderFace {
                     // side-by-side diff.
                     canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
                     let third = frame.left + frame.width() * 0.5;
-                    canvas.draw_line((third, frame.top), (third, frame.bottom), &paint);
+                    canvas.draw_line((third, frame.top).into(), (third, frame.bottom).into(), &paint);
                     let mid = frame.top + frame.height() * 0.5;
-                    canvas.draw_line((frame.left, mid), (third, mid), &paint);
+                    canvas.draw_line((frame.left, mid).into(), (third, mid).into(), &paint);
                 }
                 _ => {}
             }
         }
-        paint.set_style(skia_safe::paint::Style::Fill);
+        paint.set_style(gfx::paint::Style::Fill);
     }
 }
 
@@ -331,7 +330,7 @@ where
     ) -> EventResult<Command> {
         match event {
             Event::Paint { canvas, .. } => {
-                self.face.paint(canvas, Rect::from_size(self.size()));
+                self.face.paint(*canvas, Rect::from_size(self.size()));
                 EventResult::handled()
             }
             Event::MouseDown {
@@ -371,8 +370,8 @@ pub struct FileBand<'a, Command> {
     styles: FileBandStyles,
     chrome: std::sync::Arc<::hikit::chrome::DiffChrome>,
     lead: f32,
-    rule: skia_safe::Color,
-    ground: skia_safe::Color,
+    rule: gfx::Color,
+    ground: gfx::Color,
 }
 
 /// The band's RANKS: the directory and the trail in the brief rung,

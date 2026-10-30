@@ -12,7 +12,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Paint, Size};
+use gfx::{Paint, Size};
 
 use crate::combo::{measured, ComboItem, ComboOption};
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};

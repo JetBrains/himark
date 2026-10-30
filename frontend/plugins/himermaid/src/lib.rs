@@ -17,7 +17,7 @@ use imba::{
     arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt,
     ui::UiCtx, View,
 };
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 use text::text::Text;
 
 pub fn register(registry: &mut SyntaxLanguages) {
@@ -223,7 +223,7 @@ impl MermaidView {
                     canvas,
                     &font,
                     message.as_ref(),
-                    skia_safe::Color::from_argb(0xA0, 0x80, 0x80, 0x80),
+                    gfx::Color::from_argb(0xA0, 0x80, 0x80, 0x80),
                     0.0,
                     rect.left + DIAGRAM_PAD,
                     rect.top + ERROR_STRIP_HEIGHT * 0.5 + 4.0,

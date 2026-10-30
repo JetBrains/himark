@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RangeEnd {

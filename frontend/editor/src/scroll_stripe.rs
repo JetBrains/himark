@@ -13,7 +13,7 @@ use std::{ops::Range, sync::Arc};
 use imba::arena::Arena;
 use imba::event::{Event, EventResult};
 use intervals::Order;
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::document::{Document, DocumentToken};
 use crate::document_layout::DocumentLayout;
@@ -355,7 +355,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StripeWidget {
         match event {
             Event::Paint { canvas, .. } => {
                 let (top, scale) = self.track();
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(false);
                 for segment in &self.stripes.segments {
                     let Some(color) = self.theme.styles().attributes(segment.style).stripe else {

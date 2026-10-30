@@ -19,7 +19,7 @@ workbench-shell = { path = "../../workbench-shell" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 text = { path = "../../text" }
-skia-safe = "0.153.3"
+gfx = { path = "../../gfx" }
 
 serde_json = "1"
 

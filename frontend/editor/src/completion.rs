@@ -255,8 +255,7 @@ impl View for CompletionRow {
                                 let x = rect.right - pad - advance.min(room);
                                 canvas.save();
                                 canvas.clip_rect(
-                                    skia_safe::Rect::from_xywh(x, rect.top, room, rect.height()),
-                                    None,
+                                    gfx::Rect::from_xywh(x, rect.top, room, rect.height()),
                                     true,
                                 );
                                 shaper.draw(canvas, &font, trail, dim, 0.0, x, baseline);
@@ -270,16 +269,16 @@ impl View for CompletionRow {
     }
 }
 
-fn popup_font(ui: &UiCtx, size: f32) -> skia_safe::Font {
-    struct PopupTypeface(skia_safe::Typeface);
+fn popup_font(ui: &UiCtx, size: f32) -> gfx::Font {
+    struct PopupTypeface(gfx::Typeface);
     let typeface = ui.env(|| {
         PopupTypeface(
-            crate::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::normal())
+            crate::env::ui_typeface(ui, &[] as &[&str], gfx::FontStyle::normal())
                 .expect("a ui typeface"),
         )
     });
-    let mut font = skia_safe::Font::from_typeface(typeface.0.clone(), size);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
+    let mut font = gfx::Font::from_typeface(typeface.0.clone(), size);
+    font.set_edging(gfx::font::Edging::AntiAlias);
     font
 }
 
@@ -331,7 +330,7 @@ impl View for CompletionPopupView {
                 let height =
                     (visible as f32 * row_height + 2.0).min(constraints.max.height.max(row_height));
                 let mut popup =
-                    imba::container::Container::new(arena, skia_safe::Size::new(width, height));
+                    imba::container::Container::new(arena, gfx::Size::new(width, height));
                 let fill = chrome.background.0;
                 let border = chrome.rule.0;
                 popup.place(
@@ -339,7 +338,7 @@ impl View for CompletionPopupView {
                     0.0,
                     imba::leaf::leaf::<CompletionCommand>(width, height).paint_instead(
                         move |_arena, canvas, rect| {
-                            let mut paint = skia_safe::Paint::default();
+                            let mut paint = gfx::Paint::default();
                             paint.set_color(fill);
                             canvas.draw_rect(rect, &paint);
                             paint.set_stroke(true);
@@ -352,7 +351,7 @@ impl View for CompletionPopupView {
                 let rows = imba::layout::Layout::layout(
                     self.list.display(arena, store, ui),
                     arena,
-                    imba::constraints::Constraints::tight(skia_safe::Size::new(
+                    imba::constraints::Constraints::tight(gfx::Size::new(
                         width - 2.0,
                         height - 2.0,
                     )),

@@ -110,14 +110,14 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
         order: 1.0,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
 
             let (px, py, arm) = (l + w * 0.32, t + h * 0.32, w * 0.17);
             path.move_to((px - arm, py));

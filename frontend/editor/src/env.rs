@@ -42,9 +42,9 @@ impl Enrichers {
 pub fn ui_typeface(
     _ui: &imba::ui::UiCtx,
     families: &[impl AsRef<str>],
-    style: skia_safe::FontStyle,
-) -> Option<skia_safe::Typeface> {
-    let manager = skia_safe::FontMgr::new();
+    style: gfx::FontStyle,
+) -> Option<gfx::Typeface> {
+    let manager = gfx::FontMgr::new();
     for family in families {
         if let Some(face) = manager.match_family_style(family.as_ref(), style) {
             return Some(face);

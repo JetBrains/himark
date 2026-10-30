@@ -8,7 +8,7 @@
 //! geometry of its own: every container on the way translates the
 //! anchor, the list included.
 
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::{
     arena::Arena,

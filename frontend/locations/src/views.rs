@@ -399,7 +399,7 @@ impl imba::View for ResultLabel {
 /// baseline — inside the words' own box, which grows to hold it.
 struct MatchUnderline {
     text: imba::layout::Text,
-    color: skia_safe::Color,
+    color: gfx::Color,
     thickness: f32,
     offset: f32,
 }
@@ -432,11 +432,11 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for MatchUnderline {
         imba::ThunkBox::new(
             arena,
             words.paint_above(move |_arena, canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_color(color);
                 canvas.draw_rect(
-                    skia_safe::Rect::from_xywh(
+                    gfx::Rect::from_xywh(
                         rect.left,
                         rect.top + baseline + offset,
                         rect.width(),
@@ -453,7 +453,7 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for MatchUnderline {
 pub(crate) fn role_style(
     ui: &imba::ui::UiCtx,
     role: &editor::theme::TypeRole,
-    color: skia_safe::Color,
+    color: gfx::Color,
 ) -> hikit::ui::TextStyle {
     hikit::ui::TextStyle {
         font: hikit::fonts::role_font(ui, role),

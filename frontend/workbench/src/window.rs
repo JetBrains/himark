@@ -11,7 +11,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use imba::scroll::ScrollView;
 
@@ -439,7 +439,7 @@ where
     fn realize(
         self,
         arena: &'a Arena,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::WidgetBox<'a, WindowCommand> {
         let LayersWidget {
             base,
@@ -541,7 +541,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<WindowCommand> {
         if let Event::Paint { .. }
         | Event::AnimationClock { .. }
@@ -550,7 +550,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         {
             let scoped = |to: bool| match event {
                 Event::Paint { canvas, focused } => Event::Paint {
-                    canvas,
+                    canvas: *canvas,
                     focused: *focused && to,
                 },
                 other => *other,
@@ -605,7 +605,7 @@ impl<'a> RealizedLayers<'a> {
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<WindowCommand> {
         if let Event::HitTest { point, miss, mods } = event {
             // Top-down, and the OUTCOME is the hit test: the first
@@ -724,7 +724,7 @@ impl<'a> RealizedLayers<'a> {
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<WindowCommand> {
         let drag_path = matches!(event, Event::MouseDrag { .. } | Event::MouseUp { .. });
         let focus_routed = drag_path;

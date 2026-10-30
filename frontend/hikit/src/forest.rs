@@ -22,7 +22,7 @@ pub struct ForestNode<K> {
 
     pub dim: bool,
 
-    pub trail: Vec<(String, skia_safe::Color)>,
+    pub trail: Vec<(String, gfx::Color)>,
     pub tint: TreeTint,
 
     /// A right-aligned action chip on the row (`tree_action` decodes
@@ -43,7 +43,7 @@ struct Entry<K> {
     label: String,
     pick: bool,
     dim: bool,
-    trail: Vec<(String, skia_safe::Color)>,
+    trail: Vec<(String, gfx::Color)>,
     tint: TreeTint,
     action: Option<String>,
     depth: u16,

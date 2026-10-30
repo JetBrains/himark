@@ -13,7 +13,7 @@ use ghostty_sys::{
 };
 use imba::event::{Event, EventResult, Key, Modifiers, MouseButton};
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
-use skia_safe::{Canvas, Color, Font, Paint, Point, Rect, Size};
+use gfx::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
 use crate::vt::{Colors, CursorShape, Frame, Select};
 use crate::{Press, Session, TerminalId, Terminals};
@@ -197,7 +197,7 @@ impl View for TerminalView {
             let fonts = grid_fonts(ui, &chrome);
             let cell = cell_metrics(&fonts.normal);
             let fallbacks = ui.env(|| FallbackFaces {
-                manager: skia_safe::FontMgr::new(),
+                manager: gfx::FontMgr::new(),
                 by_char: Default::default(),
             });
             imba::ThunkBox::new(
@@ -294,10 +294,10 @@ impl hikit::panel::PanelView for TerminalView {
 }
 
 struct TerminalTypefaces {
-    normal: skia_safe::Typeface,
-    bold: skia_safe::Typeface,
-    italic: skia_safe::Typeface,
-    bold_italic: skia_safe::Typeface,
+    normal: gfx::Typeface,
+    bold: gfx::Typeface,
+    italic: gfx::Typeface,
+    bold_italic: gfx::Typeface,
 }
 
 struct GridFonts {
@@ -319,8 +319,8 @@ impl GridFonts {
 }
 
 struct FallbackFaces {
-    manager: skia_safe::FontMgr,
-    by_char: std::cell::RefCell<std::collections::HashMap<char, Option<skia_safe::Typeface>>>,
+    manager: gfx::FontMgr,
+    by_char: std::cell::RefCell<std::collections::HashMap<char, Option<gfx::Typeface>>>,
 }
 
 impl FallbackFaces {
@@ -331,14 +331,14 @@ impl FallbackFaces {
             .or_insert_with(|| {
                 self.manager.match_family_style_character(
                     "",
-                    skia_safe::FontStyle::normal(),
+                    gfx::FontStyle::normal(),
                     &[],
                     c as i32,
                 )
             })
             .clone()?;
         let mut font = Font::from_typeface(face, size);
-        font.set_edging(skia_safe::font::Edging::AntiAlias);
+        font.set_edging(gfx::font::Edging::AntiAlias);
         Some(font)
     }
 }
@@ -346,19 +346,19 @@ impl FallbackFaces {
 fn grid_fonts(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> GridFonts {
     let states = chrome.font_families.clone();
     let faces = ui.env(|| {
-        let style = |style: skia_safe::FontStyle| editor::env::ui_typeface(ui, &states, style);
-        let normal = style(skia_safe::FontStyle::normal()).expect("a monospace typeface");
+        let style = |style: gfx::FontStyle| editor::env::ui_typeface(ui, &states, style);
+        let normal = style(gfx::FontStyle::normal()).expect("a monospace typeface");
         TerminalTypefaces {
-            bold: style(skia_safe::FontStyle::bold()).unwrap_or_else(|| normal.clone()),
-            italic: style(skia_safe::FontStyle::italic()).unwrap_or_else(|| normal.clone()),
-            bold_italic: style(skia_safe::FontStyle::bold_italic())
+            bold: style(gfx::FontStyle::bold()).unwrap_or_else(|| normal.clone()),
+            italic: style(gfx::FontStyle::italic()).unwrap_or_else(|| normal.clone()),
+            bold_italic: style(gfx::FontStyle::bold_italic())
                 .unwrap_or_else(|| normal.clone()),
             normal,
         }
     });
-    let font = |face: &skia_safe::Typeface| {
+    let font = |face: &gfx::Typeface| {
         let mut font = Font::from_typeface(face.clone(), chrome.font_size);
-        font.set_edging(skia_safe::font::Edging::AntiAlias);
+        font.set_edging(gfx::font::Edging::AntiAlias);
         font
     };
     GridFonts {
@@ -561,10 +561,10 @@ impl TerminalWidget<'_> {
                             .draw_rect(Rect::from_xywh(x, y + cell_h - line, cell_w, line), &paint);
                     }
                     CursorShape::Hollow => {
-                        paint.set_style(skia_safe::paint::Style::Stroke);
+                        paint.set_style(gfx::paint::Style::Stroke);
                         paint.set_stroke_width(line);
                         canvas.draw_rect(Rect::from_xywh(x, y, cell_w, cell_h), &paint);
-                        paint.set_style(skia_safe::paint::Style::Fill);
+                        paint.set_style(gfx::paint::Style::Fill);
                     }
                     CursorShape::Block => {
                         canvas.draw_rect(Rect::from_xywh(x, y, cell_w, cell_h), &paint);
@@ -630,7 +630,7 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
     ) -> EventResult<TerminalCommand> {
         match event {
             Event::Paint { canvas, focused } => {
-                self.paint_grid(canvas, *focused);
+                self.paint_grid(*canvas, *focused);
 
                 let (cols, rows) = self.grid_for();
                 let told = self.session.told();
@@ -765,7 +765,7 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                 None => EventResult::Ignored,
             },
             Event::MouseMove { point, mods } => {
-                use skia_safe::Contains;
+                use gfx::Contains;
                 // Moves are broadcast too: only the hovered pane
                 // reports them (programs in mode 1003 want hover).
                 if self.session.press().is_none()

@@ -74,7 +74,7 @@ fn seed_terminal_row(app: &mut Himark, title: &str) -> terminals::TerminalId {
 fn displaced_handles_drop_and_their_rows_survive() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     let alpha = seed_terminal_row(&mut app, "alpha results");
     let home = app.sole_window_session();
@@ -103,7 +103,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.add_document(
         app.sole_window(),

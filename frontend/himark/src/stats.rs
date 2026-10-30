@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use skia_safe::{Canvas, Font, Paint, Rect};
+use gfx::{Canvas, Font, Paint, Rect};
 
 const FPS_WINDOW: Duration = Duration::from_millis(500);
 const RENDER_WINDOW: usize = 100;
@@ -129,16 +129,16 @@ impl Stats {
 
         paint.set_color(chrome.text.0);
         let baseline = chrome.top + chrome.first_baseline;
-        canvas.draw_str(fps, (left + chrome.pad_x, baseline), &self.font, &paint);
+        canvas.draw_str(&fps, (left + chrome.pad_x, baseline).into(), &self.font, &paint);
         canvas.draw_str(
-            latency,
-            (left + chrome.pad_x, baseline + chrome.line_height),
+            &latency,
+            (left + chrome.pad_x, baseline + chrome.line_height).into(),
             &self.font,
             &paint,
         );
         canvas.draw_str(
-            render,
-            (left + chrome.pad_x, baseline + chrome.line_height * 2.0),
+            &render,
+            (left + chrome.pad_x, baseline + chrome.line_height * 2.0).into(),
             &self.font,
             &paint,
         );

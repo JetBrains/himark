@@ -106,24 +106,24 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
         order: 1.1,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
 
             let x = l + w * 0.35;
             let radius = w * 0.10;
             let dots = [t + h * 0.22, t + h * 0.5, t + h * 0.78];
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
             path.move_to((x, dots[0] + radius));
             path.line_to((x, dots[2] - radius));
             canvas.draw_path(&path.detach(), &paint);
             for (index, y) in dots.iter().enumerate() {
-                canvas.draw_circle((x, *y), radius, &paint);
+                canvas.draw_circle((x, *y).into(), radius, &paint);
                 if index == 1 {
-                    let mut branch = skia_safe::PathBuilder::new();
+                    let mut branch = gfx::PathBuilder::new();
                     branch.move_to((x + radius, *y - radius * 0.4));
                     branch.line_to((l + w * 0.72, t + h * 0.32));
                     canvas.draw_path(&branch.detach(), &paint);

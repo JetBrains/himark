@@ -408,7 +408,7 @@ fn typing_across_boundaries_never_leaves_stale_spacers() {
         &ui,
         SplitDiffCommand::Right(EditorCommand::Click {
             kind: crate::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 40.0),
+            point: gfx::Point::new(1.0, 40.0),
         }),
     );
     for text in [
@@ -472,7 +472,7 @@ fn a_stale_repair_landing_must_not_revert_spacers() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Click {
             kind: crate::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, left_end - 5.0),
+            point: gfx::Point::new(1.0, left_end - 5.0),
         }),
     );
     let filler = "filler line\n".repeat(150);
@@ -500,7 +500,7 @@ fn a_stale_repair_landing_must_not_revert_spacers() {
         &ui,
         SplitDiffCommand::Right(EditorCommand::Click {
             kind: crate::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, block_y + 5.0),
+            point: gfx::Point::new(1.0, block_y + 5.0),
         }),
     );
     let _ = perform_collect(
@@ -600,7 +600,7 @@ fn a_line_typed_before_a_shared_paragraph_aligns_that_paragraph() {
         &ui,
         SplitDiffCommand::Right(EditorCommand::Click {
             kind: crate::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, beta_y + 5.0),
+            point: gfx::Point::new(1.0, beta_y + 5.0),
         }),
     );
     let _ = perform_collect(
@@ -636,7 +636,7 @@ fn clicking_a_half_takes_focus_from_the_other() {
     let ui = UiCtx::dont_use_too_slow();
     let click = |x: f32, y: f32| EditorCommand::Click {
         kind: crate::editor_view::ClickKind::Set,
-        point: skia_safe::Point::new(x, y),
+        point: gfx::Point::new(x, y),
     };
     let _ = perform_collect(
         &mut view,
@@ -777,7 +777,7 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
                 2 => EditorCommand::Backspace,
                 3 => EditorCommand::Click {
                     kind: crate::editor_view::ClickKind::Set,
-                    point: skia_safe::Point::new(
+                    point: gfx::Point::new(
                         (next() % 150) as f32,
                         (next() as f32 / u64::MAX as f32) * height.max(1.0),
                     ),
@@ -1229,7 +1229,7 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Click {
             kind: crate::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         }),
     );
     drain(&mut view, effects);

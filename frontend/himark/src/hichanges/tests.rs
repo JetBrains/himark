@@ -347,7 +347,7 @@ fn a_failed_subscribe_reports_on_the_row() {
         &folder,
         Some(entry),
         &mut items,
-        (skia_safe::Color::GREEN, skia_safe::Color::RED),
+        (gfx::Color::GREEN, gfx::Color::RED),
     );
     assert_eq!(
         rows_of(&node),
@@ -389,7 +389,7 @@ fn the_tree_nests_dirs_first_and_compacts_chains() {
         &folder,
         Some(entry),
         &mut items,
-        (skia_safe::Color::GREEN, skia_safe::Color::RED),
+        (gfx::Color::GREEN, gfx::Color::RED),
     );
     assert_eq!(
         rows_of(&node),
@@ -422,7 +422,7 @@ fn activation_pairs_carry_the_exact_locations() {
         &folder,
         Some(entry),
         &mut items,
-        (skia_safe::Color::GREEN, skia_safe::Color::RED),
+        (gfx::Color::GREEN, gfx::Color::RED),
     );
     let key = |name: &str| {
         ResourceLocation::new(

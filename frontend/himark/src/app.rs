@@ -16,7 +16,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 use text::text::Text;
 
 use ::workbench::window::Window;
@@ -1211,7 +1211,7 @@ impl Himark {
     pub(crate) fn sync_viewport_window(
         &mut self,
         window: ::workbench::window::WindowId,
-        size: skia_safe::Size,
+        size: gfx::Size,
     ) {
         if self.viewport_stale(window, size) {
             self.perform_batch(vec![crate::shell::viewport_resized(window, size)]);
@@ -1223,21 +1223,21 @@ impl Himark {
     pub fn draw_window(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &skia_safe::Canvas,
+        canvas: &gfx::Canvas,
     ) -> bool {
         let size = canvas.base_layer_size();
         self.draw_window_sized(
             window,
             canvas,
-            skia_safe::Size::new(size.width as f32, size.height as f32),
+            gfx::Size::new(size.width as f32, size.height as f32),
         )
     }
 
     pub fn draw_window_sized(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &skia_safe::Canvas,
-        size: skia_safe::Size,
+        canvas: &gfx::Canvas,
+        size: gfx::Size,
     ) -> bool {
         self.stats_mut().begin_frame();
 
@@ -1269,8 +1269,8 @@ impl Himark {
     pub fn draw_window_profiled(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &skia_safe::Canvas,
-        size: skia_safe::Size,
+        canvas: &gfx::Canvas,
+        size: gfx::Size,
     ) -> std::time::Duration {
         self.stats_mut().begin_frame();
         self.sync_viewport_window(window, size);

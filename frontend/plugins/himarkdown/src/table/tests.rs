@@ -263,8 +263,8 @@ fn paint_reports_relayout_while_the_width_lags() {
         min: Size::default(),
         max: Size::new(900.0, f32::MAX),
     };
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1024, 768)).expect("a surface");
-    let paint_commands = |editor: &TableEditor, surface: &mut skia_safe::Surface| {
+    let mut surface = gfx::surfaces::raster_n32_premul((1024, 768)).expect("a surface");
+    let paint_commands = |editor: &TableEditor, surface: &mut gfx::Surface| {
         let widget = imba::layout::Layout::layout(
             imba::View::display(editor, &arena, &store, &ui),
             &arena,

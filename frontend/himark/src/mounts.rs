@@ -355,7 +355,7 @@ pub(crate) struct OverlayMount {
     /// that slice: realizing the parent's whole content rect made
     /// every popover layout, IME ask and clock tick walk a 10k-line
     /// document end to end (popup-causes-freezes.trace).
-    pub(crate) band: std::sync::Mutex<Option<skia_safe::Rect>>,
+    pub(crate) band: std::sync::Mutex<Option<gfx::Rect>>,
     /// The overlay's stable identity: the host it was minted FOR
     /// and which of that host's overlays it stands (the exported
     /// set reorders as views mount and scroll; a positional index
@@ -365,7 +365,7 @@ pub(crate) struct OverlayMount {
     /// The union of the overlay's NON-host-covering pieces, in the
     /// parent's coordinates — the slice the shell's popover shows.
     /// Stashed at layout; read through the content-rect door.
-    pub(crate) content: std::sync::Mutex<Option<skia_safe::Rect>>,
+    pub(crate) content: std::sync::Mutex<Option<gfx::Rect>>,
 }
 
 impl OverlayMount {
@@ -393,7 +393,7 @@ impl BridgeView for OverlayMount {
         self.parent_ref()?.focus(store, ui)
     }
 
-    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>, band: Option<skia_safe::Rect>) {
+    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>, band: Option<gfx::Rect>) {
         let _ = self.pinned.set(parent);
         *self.band.lock().unwrap() = band;
     }
@@ -422,7 +422,7 @@ impl BridgeView for OverlayMount {
             .band
             .lock()
             .unwrap()
-            .unwrap_or_else(|| skia_safe::Rect::from_size(host_size));
+            .unwrap_or_else(|| gfx::Rect::from_size(host_size));
         let mut stacked = {
             let mut base = imba::container::Container::new(arena, host_size);
             base.place(0.0, 0.0, inner);
@@ -449,13 +449,13 @@ impl BridgeView for OverlayMount {
         // road, verbatim. The shell's popover shows only the
         // CONTENT slice: the union of the non-host-covering
         // pieces, stashed here for the content-rect door.
-        let mut content: Option<skia_safe::Rect> = None;
+        let mut content: Option<gfx::Rect> = None;
         for (point, thunk) in &placed {
             let size = thunk.size();
             let host_covering =
                 size.width >= host_size.width - 0.5 && size.height >= host_size.height - 0.5;
             if !host_covering {
-                let rect = skia_safe::Rect::from_xywh(point.x, point.y, size.width, size.height);
+                let rect = gfx::Rect::from_xywh(point.x, point.y, size.width, size.height);
                 content = Some(match content {
                     Some(mut acc) => {
                         acc.join(rect);
@@ -476,7 +476,7 @@ impl BridgeView for OverlayMount {
         imba::ThunkBox::new(arena, full)
     }
 
-    fn overlay_content_rect(&self) -> Option<skia_safe::Rect> {
+    fn overlay_content_rect(&self) -> Option<gfx::Rect> {
         *self.content.lock().unwrap()
     }
 }

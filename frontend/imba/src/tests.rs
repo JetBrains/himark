@@ -14,7 +14,7 @@ use crate::{
     thunk_ext::ThunkExt,
     Thunk, View, Widget,
 };
-use skia_safe::{surfaces, Point, Rect, Size};
+use gfx::{surfaces, Point, Rect, Size};
 use std::cell::{Cell, RefCell};
 
 fn perform_into<V: View>(
@@ -71,7 +71,7 @@ impl Widget<'_, Command> for HitBox {
                 ..
             } => EventResult::command(Command::Hit(self.name, *point)),
             Event::HitTest { point, miss, .. } => {
-                use skia_safe::Contains;
+                use gfx::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
                 EventResult::command(Command::Probe(self.name, inside))
             }
@@ -305,7 +305,7 @@ fn a_partially_scrolled_painter_keeps_its_true_box() {
         move |_arena, _canvas, rect| seen.set(Some(rect))
     });
     let widget = crate::ThunkBox::new(&arena, thunk).realize(&arena, Rect::from_wh(100.0, 40.0));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((100, 40)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((100, 40)).expect("surface");
 
     let band = Rect::from_ltrb(0.0, 25.0, 100.0, 40.0);
     let _ = widget.handle_event(
@@ -1223,7 +1223,7 @@ impl Widget<'_, Command> for WidthReporter {
 
 #[test]
 fn paint_broadcasts_and_merges_every_mismatch() {
-    let mut surface = skia_safe::surfaces::raster_n32_premul((100, 100)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((100, 100)).expect("surface");
     let arena = Arena::default();
     let mut widget = container(&arena, Size::new(100.0, 100.0));
     widget.place(
@@ -1270,7 +1270,7 @@ fn paint_broadcasts_and_merges_every_mismatch() {
 
 #[test]
 fn list_paint_reconciles_stale_row_heights() {
-    let mut surface = skia_safe::surfaces::raster_n32_premul((100, 60)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((100, 60)).expect("surface");
     let mut store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
@@ -1346,7 +1346,7 @@ fn list_scroll_benchmark() {
     )));
     let built = built_started.elapsed();
 
-    let mut surface = skia_safe::surfaces::raster_n32_premul((400, 900)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((400, 900)).expect("surface");
     let mut arena = Arena::default();
     let viewport = Rect::from_size(VIEWPORT);
 
@@ -1703,8 +1703,8 @@ mod list_sticky {
 
     fn style() -> crate::list::StickySource {
         std::sync::Arc::new(|_store: &Store| StickyStyle {
-            background: skia_safe::Color::WHITE,
-            divider: skia_safe::Color::BLACK,
+            background: gfx::Color::WHITE,
+            divider: gfx::Color::BLACK,
             divider_width: 1.0,
         })
     }
@@ -1988,7 +1988,7 @@ mod animated_splice {
 
 mod reveal {
     use crate::event::{reveal_satisfied, reveal_scroll_target, EventResult, Reveal};
-    use skia_safe::Rect;
+    use gfx::Rect;
 
     #[test]
     fn merge_carries_commands_and_reveal_together() {
@@ -2088,7 +2088,7 @@ mod reveal {
 
 fn scrollbar_style() -> crate::scroll::ScrollbarStyle {
     crate::scroll::ScrollbarStyle {
-        color: skia_safe::Color::WHITE,
+        color: gfx::Color::WHITE,
         width: 4.0,
         margin: 7.0,
         radius: 2.0,

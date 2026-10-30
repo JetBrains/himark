@@ -24,7 +24,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Paint, Rect, Size};
+use gfx::{Paint, Rect, Size};
 
 use crate::views::files_forest;
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk};
@@ -705,7 +705,7 @@ impl<'a> imba::Widget<'a, PeekCommand> for PeekWidget<'a> {
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<PeekCommand> {
         self.card.handle_event(arena, event, viewport)
     }
@@ -1016,14 +1016,14 @@ mod tests {
             gutter_width: 0.0,
             base: None,
         };
-        let viewport = skia_safe::Rect::from_wh(600.0, 500.0);
+        let viewport = gfx::Rect::from_wh(600.0, 500.0);
         let dispatch = |view: &editor::editor_view::EditorView, event: &imba::event::Event<'_>| {
             let arena = imba::arena::Arena::default();
             let widget = imba::Thunk::realize(
                 imba::layout::Layout::layout(
                     imba::View::display(view, &arena, store, ui),
                     &arena,
-                    imba::constraints::Constraints::tight(skia_safe::Size::new(600.0, 500.0)),
+                    imba::constraints::Constraints::tight(gfx::Size::new(600.0, 500.0)),
                 ),
                 &arena,
                 viewport,
@@ -1034,7 +1034,7 @@ mod tests {
         let click = dispatch(
             &view,
             &imba::event::Event::MouseDown {
-                point: skia_safe::Point::new(100.0, line + 150.0),
+                point: gfx::Point::new(100.0, line + 150.0),
                 button: imba::event::MouseButton::Left,
                 mods: Default::default(),
                 count: 1,
@@ -1048,7 +1048,7 @@ mod tests {
         let commands = dispatch(
             &view,
             &imba::event::Event::Scroll {
-                point: skia_safe::Point::new(100.0, line + 150.0),
+                point: gfx::Point::new(100.0, line + 150.0),
                 delta_x: 0.0,
                 delta_y: 40.0,
                 gesture: &gesture,
@@ -1070,7 +1070,7 @@ mod tests {
         let slam = dispatch(
             &view,
             &imba::event::Event::Scroll {
-                point: skia_safe::Point::new(100.0, line + 150.0),
+                point: gfx::Point::new(100.0, line + 150.0),
                 delta_x: 0.0,
                 delta_y: 5_000.0,
                 gesture: &gesture,
@@ -1084,7 +1084,7 @@ mod tests {
         let again = dispatch(
             &view,
             &imba::event::Event::Scroll {
-                point: skia_safe::Point::new(100.0, line + 150.0),
+                point: gfx::Point::new(100.0, line + 150.0),
                 delta_x: 0.0,
                 delta_y: 40.0,
                 gesture: &gesture,
@@ -1135,7 +1135,7 @@ mod tests {
                     imba::layout::Layout::layout(
                         self.scroll.display(arena, store, ui),
                         arena,
-                        imba::constraints::Constraints::tight(skia_safe::Size::new(200.0, 300.0)),
+                        imba::constraints::Constraints::tight(gfx::Size::new(200.0, 300.0)),
                     ),
                 )
             })

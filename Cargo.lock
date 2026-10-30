@@ -120,6 +120,7 @@ dependencies = [
  "canvas",
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "humantime",
  "imba",
@@ -129,7 +130,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skia-safe",
  "text",
 ]
 
@@ -188,12 +188,12 @@ dependencies = [
  "ahp-wire",
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "himark-ahp-ext-types",
  "imba",
  "rpds",
  "serde_json",
- "skia-safe",
  "text",
 ]
 
@@ -216,6 +216,7 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
+ "gfx",
  "hikit",
  "humantime",
  "imba",
@@ -224,7 +225,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skia-safe",
  "terminals",
  "tokio",
 ]
@@ -663,10 +663,10 @@ dependencies = [
  "changesview",
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
- "skia-safe",
  "text",
 ]
 
@@ -739,11 +739,11 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
 ]
 
 [[package]]
@@ -812,11 +812,11 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
  "text",
 ]
 
@@ -1068,6 +1068,7 @@ dependencies = [
  "ahp-session",
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "himark",
  "himarkdown",
@@ -1075,7 +1076,6 @@ dependencies = [
  "imba",
  "operation",
  "peeker",
- "skia-safe",
  "text",
  "workbench",
 ]
@@ -1114,10 +1114,10 @@ dependencies = [
  "ahp",
  "ahp-wire",
  "ahp-ws",
+ "gfx",
  "himark",
  "host-discovery",
  "serde_json",
- "skia-safe",
  "tokio",
  "tracing",
 ]
@@ -1212,12 +1212,12 @@ name = "documents"
 version = "0.1.0"
 dependencies = [
  "editor",
+ "gfx",
  "imba",
  "myersdiff",
  "operation",
  "rebase",
  "rpds",
- "skia-safe",
  "text",
 ]
 
@@ -1328,6 +1328,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 name = "editor"
 version = "0.1.0"
 dependencies = [
+ "gfx",
  "imba",
  "intervals",
  "myersdiff",
@@ -1338,7 +1339,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skia-safe",
  "sumtree",
  "text",
  "tokenize",
@@ -1430,11 +1430,11 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
  "text",
 ]
 
@@ -1795,6 +1795,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfx"
+version = "0.1.0"
+dependencies = [
+ "skia-safe",
+]
+
+[[package]]
 name = "ghostty-sys"
 version = "0.0.0"
 dependencies = [
@@ -2024,13 +2031,13 @@ dependencies = [
  "desktop",
  "documents",
  "editor",
+ "gfx",
  "himark",
  "himark-ahp-ext-types",
  "host-discovery",
  "imba",
  "locations",
  "serde_json",
- "skia-safe",
  "tempfile",
  "text",
  "tokio",
@@ -2307,10 +2314,10 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
 ]
 
 [[package]]
@@ -2366,6 +2373,7 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
+ "gfx",
  "hikit",
  "himark-ahp-ext-types",
  "himarkdown",
@@ -2443,6 +2451,7 @@ dependencies = [
  "demo",
  "desktop",
  "frontend-host",
+ "gfx",
  "himark",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -2463,13 +2472,13 @@ dependencies = [
  "ahp-wire",
  "documents",
  "editor",
+ "gfx",
  "himark",
  "hisitter",
  "imba",
  "mdparser",
  "operation",
  "serde",
- "skia-safe",
  "text",
  "tree-sitter",
 ]
@@ -2480,13 +2489,13 @@ version = "0.1.0"
 dependencies = [
  "ahp-session",
  "editor",
+ "gfx",
  "hikit",
  "himark",
  "himarkdown",
  "imba",
  "merman",
  "operation",
- "skia-safe",
  "text",
 ]
 
@@ -2607,12 +2616,12 @@ name = "hirust"
 version = "0.1.0"
 dependencies = [
  "editor",
+ "gfx",
  "himark",
  "himarkdown",
  "hisitter",
  "imba",
  "operation",
- "skia-safe",
  "text",
  "tree-sitter-rust",
 ]
@@ -2655,9 +2664,9 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "editor",
+ "gfx",
  "imba",
  "operation",
- "skia-safe",
  "streaming-iterator",
  "text",
  "tree-sitter",
@@ -3112,6 +3121,7 @@ name = "imba"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "gfx",
  "intervals",
  "parley",
  "resvg",
@@ -3119,7 +3129,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skia-safe",
  "skrifa",
 ]
 
@@ -3445,11 +3454,11 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
  "text",
 ]
 
@@ -4111,11 +4120,11 @@ version = "0.1.0"
 dependencies = [
  "ahp-session",
  "editor",
+ "gfx",
  "hikit",
  "himark",
  "imba",
  "peeker",
- "skia-safe",
  "text",
  "workbench",
 ]
@@ -4215,6 +4224,7 @@ dependencies = [
  "ahp-wire",
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "himark",
  "himarkdown",
@@ -4222,7 +4232,6 @@ dependencies = [
  "imba",
  "locations",
  "recents",
- "skia-safe",
  "terminals",
  "text",
  "workbench",
@@ -5536,12 +5545,12 @@ name = "terminals"
 version = "0.1.0"
 dependencies = [
  "editor",
+ "gfx",
  "ghostty-sys",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
 ]
 
 [[package]]
@@ -5728,11 +5737,11 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
  "serde",
- "skia-safe",
 ]
 
 [[package]]
@@ -7423,10 +7432,10 @@ version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
+ "gfx",
  "hikit",
  "imba",
  "rpds",
- "skia-safe",
  "text",
 ]
 
@@ -7446,6 +7455,7 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
+ "gfx",
  "hikit",
  "himark",
  "himark-ahp-ext-types",
@@ -7455,7 +7465,6 @@ dependencies = [
  "locations",
  "rpds",
  "serde_json",
- "skia-safe",
  "terminals",
  "workbench",
 ]

@@ -11,7 +11,7 @@ use rope::{
     cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,
     rope::Rope,
 };
-use skia_safe::{Color, Contains, Paint, Rect, Size};
+use gfx::{Color, Contains, Paint, Rect, Size};
 
 use crate::{
     arena::Arena,
@@ -2177,7 +2177,7 @@ where
                 let mut top = 0.0;
                 for line in &self.rows {
                     canvas.save();
-                    canvas.translate((self.content_left, top));
+                    canvas.translate(self.content_left, top);
                     canvas.clip_rect(
                         Rect::from_xywh(
                             0.0,
@@ -2185,7 +2185,6 @@ where
                             (bounds.width() - self.content_left).max(0.0),
                             line.height,
                         ),
-                        None,
                         false,
                     );
                     let result = route(line, event);
@@ -2332,7 +2331,7 @@ struct Backdrop {
 }
 
 impl Backdrop {
-    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
         let style = self.style;
         if self.matched {
             let fill = style.fill;
@@ -2354,7 +2353,7 @@ impl Backdrop {
             if style.border != Color::TRANSPARENT {
                 let mut stroke = Paint::default();
                 stroke.set_anti_alias(true);
-                stroke.set_style(skia_safe::PaintStyle::Stroke);
+                stroke.set_style(gfx::PaintStyle::Stroke);
                 stroke.set_stroke_width(1.0);
                 stroke.set_color(style.border);
                 canvas.draw_round_rect(
@@ -2441,7 +2440,7 @@ where
                     size: Size::new(host_size.width.max(1.0), height),
                 };
                 vec![(
-                    skia_safe::Point::new(0.0, anchor.top),
+                    gfx::Point::new(0.0, anchor.top),
                     crate::ThunkBox::new(arena, crate::eager(widget)),
                 )]
             }),

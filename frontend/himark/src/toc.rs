@@ -8,7 +8,7 @@
 use ::toc::{OutlineView, TocView};
 
 use imba::store::Store;
-use skia_safe::Paint;
+use gfx::Paint;
 
 pub(crate) struct NavigateToPlace {
     pub place: hikit::navigation::EditorPlace,
@@ -58,12 +58,12 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
             let rows = [t + h * 0.14, t + h * 0.38, t + h * 0.62, t + h * 0.86];
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
             path.move_to((l, rows[0]));
             path.line_to((l + w, rows[0]));
             path.move_to((l + w * 0.28, rows[1]));

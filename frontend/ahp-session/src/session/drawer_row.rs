@@ -17,7 +17,7 @@ use imba::{
     ui::UiCtx,
     Thunk, ThunkBox, View, Widget, WidgetBox,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 /// How a session's title reads: the session's own words, or a quiet
 /// italic stand-in when it has none worth showing.
@@ -475,9 +475,9 @@ impl<'a, Command: 'a> Widget<'a, Command> for ObliqueWidget<'a, Command> {
             return self.inner.handle_event(arena, event, viewport);
         };
         canvas.save();
-        canvas.translate((0.0, self.baseline));
-        canvas.skew((self.skew, 0.0));
-        canvas.translate((0.0, -self.baseline));
+        canvas.translate(0.0, self.baseline);
+        canvas.skew(self.skew, 0.0);
+        canvas.translate(0.0, -self.baseline);
         let result = self.inner.handle_event(arena, event, viewport);
         canvas.restore();
         result

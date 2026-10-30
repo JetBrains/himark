@@ -19,7 +19,7 @@ use imba::{
     ui::UiCtx,
     PresentableCommand, View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 mod sheet;
 

@@ -12,7 +12,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind};
 use editor::env;
@@ -726,7 +726,7 @@ fn face_row<'a>(
     let chat = theme.part(::hikit::chrome::ChatChrome::KEY);
     let ink = theme.part(::editor::theme::InkChrome::KEY);
     let shaper = imba::layout::TextShaper::of(ui);
-    let style = |font: skia_safe::Font, color: skia_safe::Color| hikit::ui::TextStyle {
+    let style = |font: gfx::Font, color: gfx::Color| hikit::ui::TextStyle {
         font,
         color,
         tracking: 0.0,
@@ -808,7 +808,7 @@ fn face_row<'a>(
 #[derive(Clone, Copy)]
 pub(crate) struct Disclosure {
     pub open: bool,
-    pub color: skia_safe::Color,
+    pub color: gfx::Color,
     pub size: f32,
     pub stroke: f32,
 }
@@ -824,14 +824,14 @@ impl Disclosure {
         imba::layout::Fill::<Command>::new()
             .sized(width, height)
             .backdrop(
-                move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                move |_arena: &Arena, canvas: &gfx::Canvas, rect: gfx::Rect| {
                     // The mock's 16-unit glyph: M6 3 l5 5 -5 5 closed,
                     // M3 6 l5 5 5 -5 open.
                     let unit = self.size / 16.0;
                     let left = rect.left;
                     let top = rect.top + (rect.height() - self.size) * 0.5;
                     let at = |x: f32, y: f32| (left + x * unit, top + y * unit);
-                    let mut path = skia_safe::PathBuilder::new();
+                    let mut path = gfx::PathBuilder::new();
                     match self.open {
                         false => {
                             path.move_to(at(6.0, 3.0));
@@ -844,12 +844,12 @@ impl Disclosure {
                             path.line_to(at(13.0, 6.0));
                         }
                     }
-                    let mut paint = skia_safe::Paint::default();
+                    let mut paint = gfx::Paint::default();
                     paint.set_anti_alias(true);
                     paint.set_stroke(true);
                     paint.set_stroke_width(self.stroke);
-                    paint.set_stroke_cap(skia_safe::PaintCap::Round);
-                    paint.set_stroke_join(skia_safe::PaintJoin::Round);
+                    paint.set_stroke_cap(gfx::PaintCap::Round);
+                    paint.set_stroke_join(gfx::PaintJoin::Round);
                     paint.set_color(self.color);
                     canvas.draw_path(&path.detach(), &paint);
                 },

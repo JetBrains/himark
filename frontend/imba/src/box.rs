@@ -6,7 +6,7 @@ use crate::{
     event::{Event, EventResult},
     Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 impl<'a, Command: 'a, W> Widget<'a, Command> for &W
 where

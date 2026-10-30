@@ -3,7 +3,7 @@
 
 use imba::theme::{Key, Rgba, TypeRole};
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 impl ToolbarChrome {
     pub const KEY: Key<ToolbarChrome> = Key::new("toolbar");

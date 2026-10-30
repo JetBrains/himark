@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use skia_safe::{Canvas, Paint, Rect};
+use gfx::{Canvas, Paint, Rect};
 
 use crate::shaped_line::ShapedLine;
 use crate::viewport::EditorViewport;

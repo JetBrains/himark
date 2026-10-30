@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 
 use crate::{
     arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
@@ -24,7 +24,7 @@ pub struct SvgView {
 
     scale_limit: f32,
 
-    raster: Mutex<Option<(f32, skia_safe::Image)>>,
+    raster: Mutex<Option<(f32, gfx::Image)>>,
 }
 
 impl Clone for SvgView {
@@ -80,10 +80,7 @@ impl SvgView {
     }
 
     pub fn paint(&self, canvas: &Canvas, rect: Rect) {
-        let device_scale = {
-            let matrix = canvas.local_to_device_as_3x3();
-            matrix.scale_x().abs().max(matrix.scale_y().abs()).max(0.5)
-        };
+        let device_scale = canvas.device_scale().max(0.5);
 
         let draw_scale = (rect.width() / self.intrinsic.width.max(1.0)).min(self.scale_limit);
         let raster_scale = draw_scale * device_scale;
@@ -102,21 +99,16 @@ impl SvgView {
             return;
         };
 
-        let paint = skia_safe::Paint::default();
+        let paint = gfx::Paint::default();
         canvas.save();
-        canvas.translate((rect.left, rect.top));
+        canvas.translate(rect.left, rect.top);
         let inverse = draw_scale / raster_scale;
-        canvas.scale((inverse, inverse));
-        canvas.draw_image_with_sampling_options(
-            image,
-            (0.0, 0.0),
-            skia_safe::SamplingOptions::from(skia_safe::FilterMode::Linear),
-            Some(&paint),
-        );
+        canvas.scale(inverse, inverse);
+        canvas.draw_image(image, gfx::Point::new(0.0, 0.0), gfx::Sampling::Linear, &paint);
         canvas.restore();
     }
 
-    fn rasterize(&self, scale: f32) -> Option<skia_safe::Image> {
+    fn rasterize(&self, scale: f32) -> Option<gfx::Image> {
         let options = resvg::usvg::Options {
             fontdb: Arc::clone(fontdb()),
             ..Default::default()
@@ -133,15 +125,15 @@ impl SvgView {
         );
         resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-        let info = skia_safe::ImageInfo::new(
+        let info = gfx::ImageInfo::new(
             (width as i32, height as i32),
-            skia_safe::ColorType::RGBA8888,
-            skia_safe::AlphaType::Premul,
+            gfx::ColorType::RGBA8888,
+            gfx::AlphaType::Premul,
             None,
         );
-        skia_safe::images::raster_from_data(
+        gfx::images::raster_from_data(
             &info,
-            skia_safe::Data::new_copy(pixmap.data()),
+            gfx::Data::new_copy(pixmap.data()),
             width as usize * 4,
         )
     }
@@ -218,14 +210,14 @@ mod tests {
             <rect class="box" x="0" y="0" width="40" height="20"/>
         </svg>"##;
         let view = SvgView::new(svg, Size::new(40.0, 20.0));
-        let mut surface = skia_safe::surfaces::raster_n32_premul((40, 20)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((40, 20)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_wh(40.0, 20.0));
         let image = surface.image_snapshot();
         let pixels = image.peek_pixels().expect("pixels");
 
-        let color: skia_safe::Color = pixels.get_color((20, 10));
+        let color: gfx::Color = pixels.get_color((20, 10));
         let (r, g, b) = (color.r(), color.g(), color.b());
         assert!(
             r > 200 && g < 60 && b < 60,

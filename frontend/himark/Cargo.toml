@@ -42,6 +42,7 @@ imba = { path = "../imba" }
 operation = { path = "../operation" }
 rebase = { path = "../rebase" }
 skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 text = { path = "../text" }
 
 # The C surface's runtime (ffi/mod.rs, gated off wasm) builds the

@@ -304,7 +304,7 @@ impl View for EditorIdView {
         imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let constraints = Constraints {
                 min: constraints.min,
-                max: skia_safe::Size::new(
+                max: gfx::Size::new(
                     Self::editor_width(
                         constraints.max.width,
                         &::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY),
@@ -346,20 +346,20 @@ struct GatheredPane<'a> {
 }
 
 impl<'a> imba::Thunk<'a, EditorCommand> for GatheredPane<'a> {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         match &self.view {
-            Some(view) => skia_safe::Size::new(
+            Some(view) => gfx::Size::new(
                 view.gutter_width + view.layout_width() + self.content_pad * 2.0,
                 view.content_height().max(self.constraints.min.height),
             ),
-            None => skia_safe::Size::default(),
+            None => gfx::Size::default(),
         }
     }
 
     fn realize(
         self,
         arena: &'a Arena,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::WidgetBox<'a, EditorCommand> {
         let size = imba::Thunk::size(&self);
         let GatheredPane {
@@ -402,7 +402,7 @@ struct RealizedGatheredPane<'a> {
 }
 
 impl<'a> Widget<'a, EditorCommand> for RealizedGatheredPane<'a> {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         Widget::size(&self.inner)
     }
 
@@ -416,7 +416,7 @@ impl<'a> Widget<'a, EditorCommand> for RealizedGatheredPane<'a> {
         &self,
         arena: &Arena,
         event: &imba::event::Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::event::EventResult<EditorCommand> {
         self.inner.handle_event(arena, event, viewport)
     }

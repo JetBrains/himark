@@ -10,7 +10,7 @@
 use imba::{
     arena::Arena, constraints::Constraints, layout::LayoutExt as _, store::Store, ui::UiCtx,
 };
-use skia_safe::{Color, Paint, Rect};
+use gfx::{Color, Paint, Rect};
 
 /// The spacing scale — every inset and gap is one of these.
 pub mod space {
@@ -30,7 +30,7 @@ pub const RADIUS_S: f32 = 6.0;
 /// baseline its own metrics give it.
 #[derive(Clone)]
 pub struct TextStyle {
-    pub font: skia_safe::Font,
+    pub font: gfx::Font,
     pub color: Color,
     pub tracking: f32,
     pub shaper: std::rc::Rc<imba::layout::TextShaper>,
@@ -222,7 +222,7 @@ impl Surface {
     }
 
     /// The painter, for `.backdrop(...)`.
-    pub fn painter(self) -> impl Fn(&Arena, &skia_safe::Canvas, Rect) {
+    pub fn painter(self) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
         move |_arena, canvas, rect| self.paint(canvas, rect)
     }
 
@@ -235,7 +235,7 @@ impl Surface {
         inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
     }
 
-    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         if let Some(fill) = self.fill {
@@ -258,7 +258,7 @@ impl Surface {
 
 /// A FLAT GROUND painter, for `.backdrop(...)`: the page color under
 /// a column, a sheet — the one fill the redesign keeps (no wells).
-pub fn ground(color: Color) -> impl Fn(&Arena, &skia_safe::Canvas, Rect) {
+pub fn ground(color: Color) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
     move |_arena, canvas, rect| {
         let mut paint = Paint::default();
         paint.set_color(color);
@@ -349,7 +349,7 @@ impl Hairline {
         inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
     }
 
-    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_color(self.color);
         if self.top {
@@ -663,8 +663,8 @@ mod tests {
                 .trail("+3 −1"),
             &arena,
             Constraints {
-                min: skia_safe::Size::default(),
-                max: skia_safe::Size::new(400.0, f32::MAX),
+                min: gfx::Size::default(),
+                max: gfx::Size::new(400.0, f32::MAX),
             },
         );
         let baseline = imba::Thunk::first_baseline(&thunk).expect("the label answers a baseline");

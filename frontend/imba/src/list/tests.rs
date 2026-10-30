@@ -97,7 +97,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
     use crate::store::Store;
     use crate::thunk_ext::ThunkExt;
     use crate::ui::UiCtx;
-    use skia_safe::{Point, Rect, Size};
+    use gfx::{Point, Rect, Size};
 
     // A row that echoes the pointer coordinates it was handed.
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -227,15 +227,15 @@ struct EmitterWidget {
 }
 
 impl<'a> crate::Widget<'a, std::convert::Infallible> for EmitterWidget {
-    fn size(&self) -> skia_safe::Size {
-        skia_safe::Size::new(10.0, 30.0)
+    fn size(&self) -> gfx::Size {
+        gfx::Size::new(10.0, 30.0)
     }
 
     fn handle_event(
         &self,
         _arena: &crate::arena::Arena,
         _event: &crate::event::Event<'_>,
-        _viewport: skia_safe::Rect,
+        _viewport: gfx::Rect,
     ) -> crate::event::EventResult<std::convert::Infallible> {
         crate::event::EventResult::Ignored
     }
@@ -247,8 +247,8 @@ impl<'a> crate::Widget<'a, std::convert::Infallible> for EmitterWidget {
         vec![crate::overlay::Overlay {
             host: ROW_HOST,
             attachment: crate::overlay::Attachment::Flank,
-            anchor: skia_safe::Rect::from_xywh(2.0, 4.0, 6.0, 8.0),
-            content: Box::new(|_host: skia_safe::Size, _anchor: skia_safe::Rect| Vec::new()),
+            anchor: gfx::Rect::from_xywh(2.0, 4.0, 6.0, 8.0),
+            content: Box::new(|_host: gfx::Size, _anchor: gfx::Rect| Vec::new()),
         }]
     }
 }
@@ -298,15 +298,15 @@ fn visible_rows_surface_their_overlays_through_the_list() {
     let store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let arena = crate::arena::Arena::default();
-    let viewport = skia_safe::Rect::from_xywh(0.0, 0.0, 100.0, 75.0);
+    let viewport = gfx::Rect::from_xywh(0.0, 0.0, 100.0, 75.0);
     let mut widget = crate::layout::Layout::layout(
         crate::View::display(&rows, &arena, &store, &ui),
         &arena,
-        crate::constraints::Constraints::tight(skia_safe::Size::new(100.0, 120.0)),
+        crate::constraints::Constraints::tight(gfx::Size::new(100.0, 120.0)),
     )
     .realize(&arena, viewport);
     let overlays = crate::Widget::overlays(&mut widget);
-    let anchors: Vec<(crate::overlay::OverlayHost, skia_safe::Rect)> = overlays
+    let anchors: Vec<(crate::overlay::OverlayHost, gfx::Rect)> = overlays
         .iter()
         .map(|overlay| (overlay.host, overlay.anchor))
         .collect();
@@ -315,7 +315,7 @@ fn visible_rows_surface_their_overlays_through_the_list() {
         vec![
             // Row 1 (top 30) emits and is visible; row 3 (top 90)
             // lies past the viewport and is never realized.
-            (ROW_HOST, skia_safe::Rect::from_xywh(2.0, 34.0, 6.0, 8.0)),
+            (ROW_HOST, gfx::Rect::from_xywh(2.0, 34.0, 6.0, 8.0)),
         ],
         "the emitting visible row's anchor rides into list coordinates"
     );
@@ -338,13 +338,13 @@ fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
     // broadcasts there (and performs back into itself, as a shell's
     // drain would).
     let clock = |rows: &mut ListView<Stub>, top: f32| -> Option<crate::event::Reveal> {
-        let viewport = skia_safe::Rect::from_xywh(0.0, top, 100.0, 100.0);
+        let viewport = gfx::Rect::from_xywh(0.0, top, 100.0, 100.0);
         let (reveal, commands) = {
             let arena = crate::arena::Arena::default();
             let widget = crate::layout::Layout::layout(
                 crate::View::display(&*rows, &arena, &store, &ui),
                 &arena,
-                crate::constraints::Constraints::tight(skia_safe::Size::new(
+                crate::constraints::Constraints::tight(gfx::Size::new(
                     100.0,
                     rows.total_height(),
                 )),

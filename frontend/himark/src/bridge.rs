@@ -29,7 +29,7 @@ use imba::{
     ui::UiCtx,
     Thunk, ThunkBox, Widget, WidgetBox,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::perform::AppCommand;
 
@@ -164,7 +164,7 @@ pub(crate) trait BridgeView: Send + Sync {
     /// A POPOVER view's content slice, in the parent's coordinates
     /// — the rect the shell's popover shows. `None` everywhere but
     /// `OverlayMount`.
-    fn overlay_content_rect(&self) -> Option<skia_safe::Rect> {
+    fn overlay_content_rect(&self) -> Option<gfx::Rect> {
         None
     }
 
@@ -175,7 +175,7 @@ pub(crate) trait BridgeView: Send + Sync {
     fn overlay_pin_parent(
         &self,
         _parent: std::sync::Arc<dyn BridgeView>,
-        _band: Option<skia_safe::Rect>,
+        _band: Option<gfx::Rect>,
     ) {
     }
 

@@ -7,7 +7,7 @@
 //! this, so a splitter in the band and the one under it are the
 //! SAME x; the dock's slide and the chat's slide move both at once.
 
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 /// Which edge a drawer rolls in from: the LEFT one covers the chat
 /// column (Sessions), the RIGHT one the side column (Contents).

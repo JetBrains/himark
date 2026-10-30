@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use imba::effect::AnyEffect;
 use imba::store::Store;
-use skia_safe::{Paint, PathBuilder};
+use gfx::{Paint, PathBuilder};
 
 use editor::location::ResourceLocation;
 

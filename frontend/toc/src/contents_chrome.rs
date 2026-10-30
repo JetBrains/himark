@@ -3,7 +3,7 @@
 
 use imba::theme::{Key, Rgba};
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 /// The Contents drawer: an outline set like a book's table of
 /// contents — the KIND word in a right-aligned margin column, the

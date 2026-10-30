@@ -12,7 +12,7 @@ use imba::{
 };
 use intervals::{Interval, IntervalQuery, Intervals, Order};
 use operation::{op::Op, operation::Operation};
-use skia_safe::Size;
+use gfx::Size;
 
 pub(crate) fn interval_steps(
     operation: &Operation,

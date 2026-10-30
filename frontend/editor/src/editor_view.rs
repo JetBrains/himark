@@ -13,7 +13,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::{
     document::Document,
@@ -108,12 +108,12 @@ pub enum EditorCommand {
 
     SelectAllOccurrences,
     Click {
-        point: skia_safe::Point,
+        point: gfx::Point,
         kind: ClickKind,
     },
 
     Drag {
-        point: skia_safe::Point,
+        point: gfx::Point,
     },
 
     DragEnd,
@@ -331,15 +331,15 @@ struct EditorGutterView<'a> {
     size: Size,
 }
 
-pub(crate) fn gutter_font(size: f32) -> skia_safe::Font {
-    static TYPEFACE: std::sync::OnceLock<skia_safe::Typeface> = std::sync::OnceLock::new();
+pub(crate) fn gutter_font(size: f32) -> gfx::Font {
+    static TYPEFACE: std::sync::OnceLock<gfx::Typeface> = std::sync::OnceLock::new();
     let typeface = TYPEFACE.get_or_init(|| {
-        skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+        gfx::FontMgr::new()
+            .legacy_make_typeface(None, gfx::FontStyle::normal())
             .expect("a system typeface")
     });
-    let mut font = skia_safe::Font::from_typeface(typeface.clone(), size);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
+    let mut font = gfx::Font::from_typeface(typeface.clone(), size);
+    font.set_edging(gfx::font::Edging::AntiAlias);
     font
 }
 
@@ -365,7 +365,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                 let data = self.shared.viewport(viewport.top..viewport.bottom);
                 let font = gutter_font(chrome.number_size);
                 let (_, metrics) = font.metrics();
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_color(chrome.number_color.0);
 
@@ -376,7 +376,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                 for line in &data.lines {
                     if let Some(kind) = line.diff {
                         use crate::viewport::DiffLineKind;
-                        let mut stripe = skia_safe::Paint::default();
+                        let mut stripe = gfx::Paint::default();
                         stripe.set_anti_alias(true);
                         match kind {
                             DiffLineKind::Added | DiffLineKind::Modified => {
@@ -385,7 +385,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                                     _ => chrome.stripe_modified.0,
                                 });
                                 canvas.draw_rect(
-                                    skia_safe::Rect::from_xywh(
+                                    gfx::Rect::from_xywh(
                                         chrome.stripe_inset,
                                         line.top,
                                         chrome.stripe_width,
@@ -397,7 +397,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                             DiffLineKind::DeletedAbove => {
                                 stripe.set_color(chrome.stripe_deleted.0);
                                 let size = chrome.stripe_width * 2.0;
-                                let mut path = skia_safe::PathBuilder::new();
+                                let mut path = gfx::PathBuilder::new();
                                 path.move_to((chrome.stripe_inset, line.top - size * 0.5));
                                 path.line_to((chrome.stripe_inset, line.top + size * 0.5));
                                 path.line_to((chrome.stripe_inset + size, line.top));
@@ -416,24 +416,24 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                         use std::fmt::Write;
                         let _ = write!(digits, "{number}");
                         let width = font.measure_str(&digits, Some(&paint)).0;
-                        canvas.draw_str(&digits, (right - width, baseline), &font, &paint);
+                        canvas.draw_str(&digits, (right - width, baseline).into(), &font, &paint);
                     }
 
                     if let Some(foldable) = &line.foldable {
-                        let mut stroke = skia_safe::Paint::default();
+                        let mut stroke = gfx::Paint::default();
                         stroke.set_anti_alias(true);
                         stroke.set_color(chrome.number_color.0);
-                        stroke.set_style(skia_safe::paint::Style::Stroke);
+                        stroke.set_style(gfx::paint::Style::Stroke);
                         stroke.set_stroke_width(2.0);
                         let cx = fold_right - chrome.fold_size * 0.5;
                         let cy = baseline + metrics.ascent * 0.35;
                         let arm = chrome.fold_size * 0.22;
-                        let mut path = skia_safe::PathBuilder::new();
+                        let mut path = gfx::PathBuilder::new();
                         path.move_to((cx - arm, cy - arm * 0.6));
                         path.line_to((cx, cy + arm * 0.8));
                         path.line_to((cx + arm, cy - arm * 0.6));
                         canvas.save();
-                        canvas.rotate(-90.0 * foldable.spin, Some(skia_safe::Point::new(cx, cy)));
+                        canvas.rotate(-90.0 * foldable.spin, Some(gfx::Point::new(cx, cy)));
                         canvas.draw_path(&path.detach(), &stroke);
                         canvas.restore();
                     }
@@ -1254,7 +1254,7 @@ impl View for EditorView {
                     );
                 }
 
-                let popup_origin = skia_safe::Point::new(gutter - scroll_x, 0.0);
+                let popup_origin = gfx::Point::new(gutter - scroll_x, 0.0);
                 let mut popups = self.assist_overlays(arena, store, ui, popup_origin);
                 popups.extend(crate::popup::projected_overlays(
                     &document,
@@ -1544,7 +1544,7 @@ impl EditorView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-        origin: skia_safe::Point,
+        origin: gfx::Point,
     ) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
         use imba::with_overlay::Placement;
         let theme = crate::env::Themes::of(store);
@@ -1666,7 +1666,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                 let ui = self.ui;
                 LayoutData {
                     ime: Some(imba::focus::ImeSeat {
-                        origin: skia_safe::Point::new(view.gutter_width.max(0.0), 0.0),
+                        origin: gfx::Point::new(view.gutter_width.max(0.0), 0.0),
                         clip: None,
                         ask: Box::new(move |origin, clip, visit| {
                             let mut client = EditorImeClient {
@@ -1675,7 +1675,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                                 theme,
                                 store,
                                 ui,
-                                origin: skia_safe::Point::new(-origin.x, -origin.y),
+                                origin: gfx::Point::new(-origin.x, -origin.y),
                                 clip,
 
                                 bounds: Size::new(
@@ -1783,7 +1783,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     self.document().paint_with(
                         self.editor(),
                         &data,
-                        canvas,
+                        *canvas,
                         *focused,
                         self.shared.store,
                         self.shared.ui,
@@ -1940,7 +1940,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
             }
 
             Event::HitTest { point, miss, mods } if self.location.is_some() => {
-                use skia_safe::Contains;
+                use gfx::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
                 let hover = EditorCommand::Hover(inside.then_some(*point));
 
@@ -1987,7 +1987,7 @@ struct EditorImeClient<'a> {
     theme: &'a crate::theme::Theme,
     store: &'a Store,
     ui: &'a UiCtx,
-    origin: skia_safe::Point,
+    origin: gfx::Point,
 
     bounds: Size,
 
@@ -2066,8 +2066,8 @@ impl imba::ime::ImeClient for EditorImeClient<'_> {
 
     fn char_index_at(&self, x: f32, y: f32) -> Option<u32> {
         if self.clip.is_some_and(|clip| {
-            use skia_safe::Contains;
-            !clip.contains(skia_safe::Point::new(x, y))
+            use gfx::Contains;
+            !clip.contains(gfx::Point::new(x, y))
         }) {
             return None;
         }
@@ -2191,7 +2191,7 @@ where
             Event::Paint { canvas, focused } => self.inner.handle_event(
                 arena,
                 &Event::Paint {
-                    canvas,
+                    canvas: *canvas,
                     focused: *focused && self.focused,
                 },
                 viewport,

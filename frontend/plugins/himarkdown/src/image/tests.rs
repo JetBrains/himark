@@ -19,11 +19,11 @@ fn base() -> ResourceLocation {
 }
 
 fn png() -> Vec<u8> {
-    let mut surface = skia_safe::surfaces::raster_n32_premul((4, 2)).expect("surface");
-    surface.canvas().clear(skia_safe::Color::BLUE);
+    let mut surface = gfx::surfaces::raster_n32_premul((4, 2)).expect("surface");
+    surface.canvas().clear(gfx::Color::BLUE);
     surface
         .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .encode(None, gfx::EncodedImageFormat::PNG, None)
         .expect("encoded")
         .as_bytes()
         .to_vec()

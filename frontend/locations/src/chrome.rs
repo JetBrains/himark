@@ -3,7 +3,7 @@
 
 use imba::theme::{Key, Rgba, TypeRole};
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 /// The Find tab under the side column's tabs (the Find artboard): a
 /// caps "FIND IN …" label, the query over a hairline, the counts

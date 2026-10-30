@@ -6,7 +6,7 @@ use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::{ui::UiCtx, Thunk};
-use skia_safe::{Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 
 use crate::document::Document;
 use crate::editor::EditorId;

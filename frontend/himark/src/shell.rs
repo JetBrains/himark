@@ -16,7 +16,7 @@ use std::sync::Arc;
 use imba::command::Verb;
 use imba::store::{Entity, Id};
 use imba::{store::Store, ui::UiCtx, View};
-use skia_safe::Size;
+use gfx::Size;
 
 use ::workbench::window::WindowId;
 use documents::OpenDocuments;

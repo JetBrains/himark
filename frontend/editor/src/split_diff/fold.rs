@@ -584,8 +584,8 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
             )
             .sized(width, height)
             .backdrop(
-                move |_arena: &imba::arena::Arena, canvas: &skia_safe::Canvas, rect| {
-                    let mut paint = skia_safe::Paint::default();
+                move |_arena: &imba::arena::Arena, canvas: &gfx::Canvas, rect| {
+                    let mut paint = gfx::Paint::default();
                     paint.set_color(background);
                     canvas.draw_rect(rect, &paint);
                 },
@@ -595,7 +595,7 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
             .shield();
         band.layout(
             arena,
-            imba::constraints::Constraints::tight(skia_safe::Size::new(width, height)),
+            imba::constraints::Constraints::tight(gfx::Size::new(width, height)),
         )
     }
 }
@@ -612,7 +612,7 @@ struct Chevron {
     size: f32,
     hit: f32,
     stroke: f32,
-    color: skia_safe::Color,
+    color: gfx::Color,
     down: bool,
 }
 
@@ -635,13 +635,13 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for Chevron {
         imba::ThunkBox::new(
             arena,
             imba::leaf::leaf::<Command>(hit, hit).paint_instead(move |_arena, canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
+                let mut paint = gfx::Paint::default();
                 paint.set_anti_alias(true);
                 paint.set_color(color);
-                paint.set_style(skia_safe::paint::Style::Stroke);
+                paint.set_style(gfx::paint::Style::Stroke);
                 paint.set_stroke_width(stroke);
-                paint.set_stroke_cap(skia_safe::paint::Cap::Round);
-                paint.set_stroke_join(skia_safe::paint::Join::Round);
+                paint.set_stroke_cap(gfx::paint::Cap::Round);
+                paint.set_stroke_join(gfx::paint::Join::Round);
                 let cx = rect.center_x();
                 let cy = rect.center_y();
                 let arm = size * 0.31;
@@ -650,7 +650,7 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for Chevron {
                     true => (cy - rise, cy + rise),
                     false => (cy + rise, cy - rise),
                 };
-                let mut path = skia_safe::PathBuilder::new();
+                let mut path = gfx::PathBuilder::new();
                 path.move_to((cx - arm, near));
                 path.line_to((cx, far));
                 path.line_to((cx + arm, near));
@@ -662,9 +662,9 @@ impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for Chevron {
 
 /// The band's words wear the chrome face, like every label outside
 /// the code.
-fn chrome_font(size: f32) -> skia_safe::Font {
-    let mut font = skia_safe::Font::from_typeface(crate::embedded_fonts::chrome_typeface(), size);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
+fn chrome_font(size: f32) -> gfx::Font {
+    let mut font = gfx::Font::from_typeface(crate::embedded_fonts::chrome_typeface(), size);
+    font.set_edging(gfx::font::Edging::AntiAlias);
     font
 }
 

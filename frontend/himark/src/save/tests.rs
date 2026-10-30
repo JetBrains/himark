@@ -52,7 +52,7 @@ fn setup(
         }),
         Arc::new(|| {}),
     );
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
+    let mut surface = gfx::surfaces::raster_n32_premul((800, 600)).unwrap();
     app.draw_window(app.sole_window(), surface.canvas());
     (app, runner, arriving, writes)
 }
@@ -78,7 +78,7 @@ fn open_file(app: &mut Himark) -> documents::DocumentId {
             focus: false,
         },
     ));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
+    let mut surface = gfx::surfaces::raster_n32_premul((800, 600)).unwrap();
     app.draw_window(app.sole_window(), surface.canvas());
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
@@ -196,7 +196,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
                 focus: false,
             },
         ));
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
+        let mut surface = gfx::surfaces::raster_n32_premul((800, 600)).unwrap();
         app.draw_window(app.sole_window(), surface.canvas());
         OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };

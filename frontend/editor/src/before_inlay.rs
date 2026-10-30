@@ -6,7 +6,7 @@ use std::ops::Range;
 use imba::anim::{Animation, AnimationClock, Easing, Motion};
 use imba::constraints::Constraints;
 use operation::operation::Bias;
-use skia_safe::Size;
+use gfx::Size;
 
 use crate::document::Document;
 use crate::editor::{EditorEffects, EditorId};
@@ -648,7 +648,7 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
         &self,
         arena: &imba::arena::Arena,
         event: &imba::event::Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::event::EventResult<BeforeCommand> {
         use imba::event::{Event, EventResult};
         let result = self.inner.handle_event(arena, event, viewport);

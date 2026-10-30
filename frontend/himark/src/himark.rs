@@ -31,7 +31,7 @@ pub(crate) struct Mounted {
     pub(crate) overlay_anchors: Vec<(
         imba::overlay::Attachment,
         imba::overlay::OverlayHost,
-        skia_safe::Rect,
+        gfx::Rect,
     )>,
     pub(crate) overlay_epoch: u64,
 
@@ -47,13 +47,13 @@ pub(crate) struct Mounted {
     /// store batches.
     pub(crate) frame: Option<crate::bridge::Frame>,
     pub(crate) revision: u64,
-    pub(crate) size: skia_safe::Size,
+    pub(crate) size: gfx::Size,
 
     /// The STAGE road's shadow: the band the host last realized.
     /// A stage client never fills `frame`, but the IME fold needs
     /// one — `mounted_frame` rebuilds at `size` and realizes this
     /// band, so the folded geometry matches what is on screen.
-    pub(crate) stage_viewport: Option<skia_safe::Rect>,
+    pub(crate) stage_viewport: Option<gfx::Rect>,
 
     /// One warm arena from the last recycled frame.
     pub(crate) spare_arena: Option<Box<imba::arena::Arena>>,
@@ -68,7 +68,7 @@ impl Mounted {
             overlay_parent: None,
             frame: None,
             revision: 0,
-            size: skia_safe::Size::new(-1.0, -1.0),
+            size: gfx::Size::new(-1.0, -1.0),
             stage_viewport: None,
             spare_arena: None,
         }
@@ -700,8 +700,8 @@ impl Himark {
     pub(crate) fn mounted_frame(
         &mut self,
         id: ViewBridgeId,
-        size: Option<skia_safe::Size>,
-    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+        size: Option<gfx::Size>,
+    ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
         self.mounted_frame_inner(id, size, false)
     }
 
@@ -713,16 +713,16 @@ impl Himark {
     pub(crate) fn mounted_frame_standing(
         &mut self,
         id: ViewBridgeId,
-    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+    ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
         self.mounted_frame_inner(id, None, true)
     }
 
     fn mounted_frame_inner(
         &mut self,
         id: ViewBridgeId,
-        size: Option<skia_safe::Size>,
+        size: Option<gfx::Size>,
         standing: bool,
-    ) -> Option<(&mut crate::bridge::Frame, skia_safe::Size)> {
+    ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
         let revision = self.revision;
         // A popover slot's layout runs at the PARENT'S standing
         // size, against a freshly pinned parent; its own `size`
@@ -760,7 +760,7 @@ impl Himark {
             // shows; the retained road realizes its whole rect.
             let viewport = slot
                 .stage_viewport
-                .unwrap_or_else(|| skia_safe::Rect::from_size(size));
+                .unwrap_or_else(|| gfx::Rect::from_size(size));
             let mut frame = layout.realize(viewport);
             let anchors = frame.exported_overlays();
             if anchors != slot.overlay_anchors {
@@ -803,7 +803,7 @@ impl Himark {
             }
             return imba::event::EventResult::Ignored;
         };
-        let viewport = band.unwrap_or_else(|| skia_safe::Rect::from_size(size));
+        let viewport = band.unwrap_or_else(|| gfx::Rect::from_size(size));
         let result = frame.handle(event, viewport);
         if trace {
             eprintln!(
@@ -831,13 +831,13 @@ impl Himark {
     pub fn draw_mounted(
         &mut self,
         id: ViewBridgeId,
-        canvas: &skia_safe::Canvas,
-        size: skia_safe::Size,
+        canvas: &gfx::Canvas,
+        size: gfx::Size,
     ) -> bool {
         // TRANSPARENT floor, like the stage road: the HOST behind
         // the mounted view owns the background (a glass island, the
         // document floor's color).
-        canvas.clear(skia_safe::Color::TRANSPARENT);
+        canvas.clear(gfx::Color::TRANSPARENT);
         let result = {
             let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
                 return false;
@@ -847,7 +847,7 @@ impl Himark {
                     canvas,
                     focused: true,
                 },
-                skia_safe::Rect::from_size(size),
+                gfx::Rect::from_size(size),
             )
         };
         let imba::event::EventResult::Handled(handled) = result else {
@@ -876,7 +876,7 @@ impl Himark {
         Vec<(
             imba::overlay::Attachment,
             imba::overlay::OverlayHost,
-            skia_safe::Rect,
+            gfx::Rect,
         )>,
     )> {
         let slot = self.bridges.get(&id)?;
@@ -917,7 +917,7 @@ impl Himark {
     /// A POPOVER slot's content slice, in the parent's coordinates
     /// — stashed by the last layout. The shell sizes the popover
     /// to it and paints exactly this viewport.
-    pub fn overlay_content(&self, id: ViewBridgeId) -> Option<skia_safe::Rect> {
+    pub fn overlay_content(&self, id: ViewBridgeId) -> Option<gfx::Rect> {
         self.bridges.get(&id)?.bridge.view().overlay_content_rect()
     }
 
@@ -929,7 +929,7 @@ impl Himark {
         id: ViewBridgeId,
     ) -> Option<(
         std::sync::Arc<dyn crate::bridge::BridgeView>,
-        Option<skia_safe::Rect>,
+        Option<gfx::Rect>,
     )> {
         let parent = self.bridges.get(&id)?.overlay_parent?;
         let slot = self.bridges.get(&parent)?;
@@ -939,7 +939,7 @@ impl Himark {
     /// A popover slot lays out at its PARENT'S standing size — the
     /// popover window is content-sized, and tight constraints at
     /// that size would collapse the re-derivation inside.
-    fn overlay_host_size(&self, id: ViewBridgeId) -> Option<skia_safe::Size> {
+    fn overlay_host_size(&self, id: ViewBridgeId) -> Option<gfx::Size> {
         let parent = self.bridges.get(&id)?.overlay_parent?;
         let size = self.bridges.get(&parent)?.size;
         (size.width > 0.0).then_some(size)
@@ -1033,7 +1033,7 @@ impl Himark {
     /// (the mounted dispatch arm routes against the standing frame
     /// and ignores the passed size; this keeps those roads from
     /// treating "no window viewport" as "gone").
-    pub fn mounted_viewport(&self, id: ViewBridgeId) -> Option<skia_safe::Size> {
+    pub fn mounted_viewport(&self, id: ViewBridgeId) -> Option<gfx::Size> {
         id.is_mounted()
             .then(|| self.bridges.get(&id).map(|slot| slot.size))
             .flatten()
@@ -1097,7 +1097,7 @@ impl Himark {
 
     // ── the stage doors (the C surface delegates here) ──
 
-    pub fn stage_layout(&mut self, id: ViewBridgeId, size: skia_safe::Size) -> u64 {
+    pub fn stage_layout(&mut self, id: ViewBridgeId, size: gfx::Size) -> u64 {
         // A popover slot ignores the shell's (content-sized) ask
         // and lays out at the parent's standing size, against a
         // freshly pinned parent.
@@ -1116,7 +1116,7 @@ impl Himark {
         // size. A finite size stays the window-shaped tight fit.
         let constraints = if size.height.is_infinite() {
             imba::constraints::Constraints {
-                min: skia_safe::Size::new(size.width, 0.0),
+                min: gfx::Size::new(size.width, 0.0),
                 max: size,
             }
         } else {
@@ -1134,13 +1134,13 @@ impl Himark {
         self.stage_layouts.mint((id, stage))
     }
 
-    pub fn stage_layout_size(&self, handle: u64) -> Option<skia_safe::Size> {
+    pub fn stage_layout_size(&self, handle: u64) -> Option<gfx::Size> {
         self.stage_layouts
             .get(handle)
             .map(|(_, stage)| stage.size())
     }
 
-    pub fn stage_realize(&mut self, handle: u64, viewport: skia_safe::Rect) -> u64 {
+    pub fn stage_realize(&mut self, handle: u64, viewport: gfx::Rect) -> u64 {
         let Some((id, stage)) = self.stage_layouts.take(handle) else {
             return 0;
         };

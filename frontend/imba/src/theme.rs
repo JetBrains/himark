@@ -16,7 +16,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 /// A color in a theme file: `#rrggbb` or `#aarrggbb`.
 #[derive(Clone, Copy, Deserialize)]

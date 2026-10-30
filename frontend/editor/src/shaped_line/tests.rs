@@ -156,9 +156,9 @@ fn paint_is_deterministic_and_inked() {
     );
 
     let shoot = |line: &ShapedLine| -> Vec<u8> {
-        let mut surface = skia_safe::surfaces::raster_n32_premul((700, 60)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((700, 60)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::WHITE);
+        canvas.clear(gfx::Color::WHITE);
         line.paint(canvas, 4.0);
         let image = surface.image_snapshot();
         let pixmap = image.peek_pixels().expect("raster pixels");

@@ -158,11 +158,11 @@ struct GatheredThunk<'a> {
     arena: &'a Arena,
     constraints: Constraints,
 
-    laid: std::cell::Cell<Option<skia_safe::Size>>,
+    laid: std::cell::Cell<Option<gfx::Size>>,
 }
 
 impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         if let Some(size) = self.laid.get() {
             return size;
         }
@@ -173,9 +173,9 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
                     self.arena,
                     self.constraints,
                 );
-                skia_safe::Size::new(self.constraints.max.width, imba::Thunk::size(&inner).height)
+                gfx::Size::new(self.constraints.max.width, imba::Thunk::size(&inner).height)
             }
-            None => skia_safe::Size::default(),
+            None => gfx::Size::default(),
         };
         self.laid.set(Some(size));
         size
@@ -184,7 +184,7 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
     fn realize(
         self,
         arena: &'a Arena,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::WidgetBox<'a, UnifiedDiffCommand> {
         let inner = self.view.map(|view| {
             imba::layout::Layout::layout(
@@ -340,7 +340,7 @@ struct GatheredSplit<'a> {
 }
 
 impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
-    fn size(&self) -> skia_safe::Size {
+    fn size(&self) -> gfx::Size {
         self.inner
             .as_ref()
             .map(|inner| Widget::size(inner))
@@ -358,7 +358,7 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         &self,
         arena: &Arena,
         event: &imba::event::Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::event::EventResult<UnifiedDiffCommand> {
         let (Some(_view), Some(inner)) = (self.view, &self.inner) else {
             return imba::event::EventResult::Ignored;

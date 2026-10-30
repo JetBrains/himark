@@ -21,7 +21,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 use crate::cell::Cell;
 use crate::chat::model;

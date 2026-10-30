@@ -10,7 +10,7 @@ use imba::{
     layout::LayoutExt as _,
     ui::UiCtx,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 type ChatChrome = ::hikit::chrome::ChatChrome;
 

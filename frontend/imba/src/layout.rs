@@ -87,7 +87,7 @@ where
 
 use crate::container::container;
 use crate::thunk_ext::ThunkExt;
-use skia_safe::Size;
+use gfx::Size;
 
 /// Treat imba's conventional f32::MAX-ish bounds as "unbounded".
 fn bounded(extent: f32) -> Option<f32> {
@@ -787,7 +787,7 @@ impl<'a, Command: 'a, T: Thunk<'a, Command> + 'a> Thunk<'a, Command> for WithBas
         Some(self.baseline)
     }
 
-    fn realize(self, arena: &'a Arena, viewport: skia_safe::Rect) -> crate::WidgetBox<'a, Command> {
+    fn realize(self, arena: &'a Arena, viewport: gfx::Rect) -> crate::WidgetBox<'a, Command> {
         self.thunk.realize(arena, viewport)
     }
 }
@@ -800,8 +800,8 @@ impl<'a, Command: 'a, T: Thunk<'a, Command> + 'a> Thunk<'a, Command> for WithBas
 /// paragraphs belong to the editor.)
 pub struct Text {
     text: String,
-    font: skia_safe::Font,
-    color: skia_safe::Color,
+    font: gfx::Font,
+    color: gfx::Color,
     tracking: f32,
     shaper: std::rc::Rc<TextShaper>,
 }
@@ -809,8 +809,8 @@ pub struct Text {
 pub fn text(
     ui: &crate::ui::UiCtx,
     content: impl Into<String>,
-    font: skia_safe::Font,
-    color: skia_safe::Color,
+    font: gfx::Font,
+    color: gfx::Color,
 ) -> Text {
     Text::with_shaper(content, font, color, TextShaper::of(ui))
 }
@@ -820,8 +820,8 @@ impl Text {
     /// already — layout structs built where `UiCtx` was in scope.
     pub fn with_shaper(
         content: impl Into<String>,
-        font: skia_safe::Font,
-        color: skia_safe::Color,
+        font: gfx::Font,
+        color: gfx::Color,
         shaper: std::rc::Rc<TextShaper>,
     ) -> Text {
         Text {
@@ -876,7 +876,7 @@ pub struct TextShaper {
 /// Everything that shapes a label besides its text.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 struct StyleKey {
-    typeface: skia_safe::typeface::TypefaceId,
+    typeface: gfx::typeface::TypefaceId,
     size: u32,
     tracking: u32,
     argb: u32,
@@ -891,16 +891,16 @@ struct StyleKey {
 /// variation position: the chrome face is one variable family, and
 /// `hikit::fonts` hands out clones standing at a ramp rung. A static
 /// face answers nothing and shapes by its style's weight.
-fn typeface_axes(typeface: &skia_safe::Typeface) -> (Option<f32>, Option<f32>) {
+fn typeface_axes(typeface: &gfx::Typeface) -> (Option<f32>, Option<f32>) {
     let Some(position) = typeface.variation_design_position() else {
         return (None, None);
     };
     let mut weight = None;
     let mut width = None;
     for coordinate in position {
-        if coordinate.axis == skia_safe::font_arguments::variation_position::Coordinate::wght {
+        if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wght {
             weight = Some(coordinate.value);
-        } else if coordinate.axis == skia_safe::font_arguments::variation_position::Coordinate::wdth
+        } else if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wdth
         {
             width = Some(coordinate.value);
         }
@@ -933,9 +933,9 @@ impl TextShaper {
     #[cfg(test)]
     fn shape(
         &self,
-        font: &skia_safe::Font,
+        font: &gfx::Font,
         text: &str,
-        color: skia_safe::Color,
+        color: gfx::Color,
         tracking: f32,
     ) -> crate::shape::ParleyLine {
         self.shape_clipped(font, text, color, tracking, None)
@@ -947,9 +947,9 @@ impl TextShaper {
     /// fallback (the chrome face maps almost none of ⌘ ⌃ ⌥ ⇧ ⌫ ⎋).
     fn shape_clipped(
         &self,
-        font: &skia_safe::Font,
+        font: &gfx::Font,
         text: &str,
-        color: skia_safe::Color,
+        color: gfx::Color,
         tracking: f32,
         clip: Option<f32>,
     ) -> crate::shape::ParleyLine {
@@ -958,7 +958,7 @@ impl TextShaper {
         let style = typeface.font_style();
         let (weight, width) = typeface_axes(&typeface);
         let bold = font.is_embolden()
-            || (weight.is_none() && style.weight() >= skia_safe::font_style::Weight::SEMI_BOLD);
+            || (weight.is_none() && style.weight() >= gfx::font_style::Weight::SEMI_BOLD);
         self.shaper.ellipsized(
             text,
             &[family.as_str(), "system-ui"],
@@ -974,9 +974,9 @@ impl TextShaper {
 
     fn label(
         &self,
-        font: &skia_safe::Font,
+        font: &gfx::Font,
         text: &str,
-        color: skia_safe::Color,
+        color: gfx::Color,
         tracking: f32,
     ) -> std::rc::Rc<ShapedLabel> {
         self.label_clipped(font, text, color, tracking, None)
@@ -984,9 +984,9 @@ impl TextShaper {
 
     fn label_clipped(
         &self,
-        font: &skia_safe::Font,
+        font: &gfx::Font,
         text: &str,
-        color: skia_safe::Color,
+        color: gfx::Color,
         tracking: f32,
         clip: Option<f32>,
     ) -> std::rc::Rc<ShapedLabel> {
@@ -1044,13 +1044,13 @@ impl TextShaper {
 
     /// Advance of `text` shaped the way `Text` paints it —
     /// `Font::measure_str` alone counts notdef boxes.
-    pub fn advance(&self, font: &skia_safe::Font, text: &str) -> f32 {
-        self.label(font, text, skia_safe::Color::BLACK, 0.0).width
+    pub fn advance(&self, font: &gfx::Font, text: &str) -> f32 {
+        self.label(font, text, gfx::Color::BLACK, 0.0).width
     }
 
     /// `advance` with the per-glyph tracking chrome caps labels use.
-    pub fn tracked_advance(&self, font: &skia_safe::Font, text: &str, tracking: f32) -> f32 {
-        self.label(font, text, skia_safe::Color::BLACK, tracking)
+    pub fn tracked_advance(&self, font: &gfx::Font, text: &str, tracking: f32) -> f32 {
+        self.label(font, text, gfx::Color::BLACK, tracking)
             .width
     }
 
@@ -1060,10 +1060,10 @@ impl TextShaper {
     /// Returns the advance.
     pub fn draw(
         &self,
-        canvas: &skia_safe::Canvas,
-        font: &skia_safe::Font,
+        canvas: &gfx::Canvas,
+        font: &gfx::Font,
         text: &str,
-        color: skia_safe::Color,
+        color: gfx::Color,
         tracking: f32,
         x: f32,
         baseline: f32,
@@ -1076,7 +1076,7 @@ impl TextShaper {
 
 /// Advance of `text` shaped the way `Text` paints it, for callsites
 /// that pre-measure symbol strings against a raw `Font`.
-pub fn text_advance(ui: &crate::ui::UiCtx, font: &skia_safe::Font, text: &str) -> f32 {
+pub fn text_advance(ui: &crate::ui::UiCtx, font: &gfx::Font, text: &str) -> f32 {
     TextShaper::of(ui).advance(font, text)
 }
 
@@ -1133,11 +1133,11 @@ mod tests {
     use super::*;
     use crate::leaf::leaf;
 
-    fn chrome_font() -> skia_safe::Font {
-        let face = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+    fn chrome_font() -> gfx::Font {
+        let face = gfx::FontMgr::new()
+            .legacy_make_typeface(None, gfx::FontStyle::normal())
             .expect("default typeface");
-        skia_safe::Font::from_typeface(face, 13.0)
+        gfx::Font::from_typeface(face, 13.0)
     }
 
     /// The platform UI face misses most keycap symbols (Helvetica has
@@ -1150,7 +1150,7 @@ mod tests {
         let shaper = TextShaper::of(&ui);
         let font = chrome_font();
         let symbols = "⌘⌃⌥⇧⏎⌫⎋";
-        let line = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
+        let line = shaper.shape(&font, symbols, gfx::Color::BLACK, 0.0);
         let (_, notdefs, total) = crate::shape::Shaper::of(&ui).coverage_for_test(&line);
         assert_eq!(notdefs, 0, "notdef in {symbols} ({total} glyphs)");
         assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
@@ -1164,7 +1164,7 @@ mod tests {
     fn fullwidth_plus_resolves_through_fallback() {
         let ui = crate::ui::UiCtx::dont_use_too_slow();
         let shaper = TextShaper::of(&ui);
-        let line = shaper.shape(&chrome_font(), "＋", skia_safe::Color::BLACK, 0.0);
+        let line = shaper.shape(&chrome_font(), "＋", gfx::Color::BLACK, 0.0);
         let (_, notdefs, _) = crate::shape::Shaper::of(&ui).coverage_for_test(&line);
         assert_eq!(notdefs, 0, "notdef in ＋");
     }
@@ -1179,7 +1179,7 @@ mod tests {
         let shaper = TextShaper::of(&ui);
         let mut bold = chrome_font();
         bold.set_embolden(true);
-        let line = shaper.shape(&bold, "bold label", skia_safe::Color::BLACK, 0.0);
+        let line = shaper.shape(&bold, "bold label", gfx::Color::BLACK, 0.0);
         let report = crate::shape::Shaper::of(&ui).face_report_for_test(&line);
         assert!(!report.is_empty(), "the label resolves at least one run");
         assert!(
@@ -1203,7 +1203,7 @@ mod tests {
             "seeded fonts",
             "Noto Sans",
             13.0,
-            &[crate::shape::SpanStyle::plain(skia_safe::Color::BLACK)],
+            &[crate::shape::SpanStyle::plain(gfx::Color::BLACK)],
         );
         let (families, notdefs, total) = shaper.coverage_for_test(&line);
         assert_eq!(notdefs, 0, "registered face covers latin");
@@ -1489,12 +1489,12 @@ mod baseline_tests {
     fn text_answers_its_font_ascent_as_the_line() {
         let arena = Arena::default();
         let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let typeface = skia_safe::FontMgr::new()
-            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+        let typeface = gfx::FontMgr::new()
+            .legacy_make_typeface(None, gfx::FontStyle::normal())
             .expect("a system typeface");
-        let font = skia_safe::Font::new(typeface, 24.0);
+        let font = gfx::Font::new(typeface, 24.0);
         let thunk: ThunkBox<'_, ()> =
-            text(&ui, "hello", font.clone(), skia_safe::Color::WHITE).layout(&arena, bounds());
+            text(&ui, "hello", font.clone(), gfx::Color::WHITE).layout(&arena, bounds());
         let (_, metrics) = font.metrics();
         assert_eq!(thunk.first_baseline(), Some(-metrics.ascent));
         assert!(thunk.size().width > 0.0, "a real face measures");
@@ -1584,8 +1584,8 @@ pub struct Button<'a, Command, F> {
     content: LayoutBox<'a, Command>,
     on_click: F,
     insets: Insets,
-    fill: Option<skia_safe::Color>,
-    stroke: Option<skia_safe::Color>,
+    fill: Option<gfx::Color>,
+    stroke: Option<gfx::Color>,
     radius: f32,
     min_width: f32,
     enabled: bool,
@@ -1605,12 +1605,12 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Button<'a, Command, F> {
         }
     }
 
-    pub fn fill(mut self, color: skia_safe::Color) -> Self {
+    pub fn fill(mut self, color: gfx::Color) -> Self {
         self.fill = Some(color);
         self
     }
 
-    pub fn stroke(mut self, color: skia_safe::Color) -> Self {
+    pub fn stroke(mut self, color: gfx::Color) -> Self {
         self.stroke = Some(color);
         self
     }
@@ -1672,7 +1672,7 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Layout<'a, Command> for Button<'a
             ..
         } = self;
         let chrome = surface.paint_below(move |_arena, canvas, rect| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             if let Some(fill) = fill {
                 paint.set_color(fill);
@@ -1719,12 +1719,12 @@ mod button_tests {
         let size = thunk.size();
         assert_eq!((size.width, size.height), (60.0, 18.0));
 
-        let viewport = skia_safe::Rect::from_wh(60.0, 18.0);
+        let viewport = gfx::Rect::from_wh(60.0, 18.0);
         let widget = thunk.realize(&arena, viewport);
         let result = widget.handle_event(
             &arena,
             &Event::MouseDown {
-                point: skia_safe::Point::new(5.0, 5.0),
+                point: gfx::Point::new(5.0, 5.0),
                 button: MouseButton::Left,
                 mods: Default::default(),
                 count: 1,
@@ -1746,12 +1746,12 @@ mod button_tests {
                     max: Size::new(400.0, 400.0),
                 },
             );
-        let viewport = skia_safe::Rect::from_wh(60.0, 18.0);
+        let viewport = gfx::Rect::from_wh(60.0, 18.0);
         let widget = thunk.realize(&arena, viewport);
         let result = widget.handle_event(
             &arena,
             &Event::MouseDown {
-                point: skia_safe::Point::new(5.0, 5.0),
+                point: gfx::Point::new(5.0, 5.0),
                 button: MouseButton::Left,
                 mods: Default::default(),
                 count: 1,
@@ -1891,7 +1891,7 @@ impl<L, F> LayoutValue for Backdrop<L, F> {}
 impl<'a, Command: 'a, L, F> Layout<'a, Command> for Backdrop<L, F>
 where
     L: Layout<'a, Command> + 'a,
-    F: Fn(&Arena, &skia_safe::Canvas, skia_safe::Rect) + 'a,
+    F: Fn(&Arena, &gfx::Canvas, gfx::Rect) + 'a,
 {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
         ThunkBox::new(

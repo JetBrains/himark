@@ -11,7 +11,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 /// What the label NAMES — resolved to a theme color at display time
 /// (rows live long in ropes; a baked color would survive a theme
@@ -33,9 +33,9 @@ pub struct TreeLabel {
 
     /// A short status mark leading the label, in its own color (the
     /// drawer's session activity dots).
-    badge: Option<(String, skia_safe::Color)>,
+    badge: Option<(String, gfx::Color)>,
 
-    trail: Vec<(String, skia_safe::Color)>,
+    trail: Vec<(String, gfx::Color)>,
 
     /// A right-aligned ghost chip on the row (the changes view's
     /// per-repository REFRESH); a press mints `Action`.
@@ -88,7 +88,7 @@ impl TreeLabel {
         }
     }
 
-    pub fn with_badge(mut self, badge: Option<(String, skia_safe::Color)>) -> Self {
+    pub fn with_badge(mut self, badge: Option<(String, gfx::Color)>) -> Self {
         self.badge = badge;
         self
     }
@@ -98,7 +98,7 @@ impl TreeLabel {
         self
     }
 
-    pub fn with_trail(mut self, trail: Vec<(String, skia_safe::Color)>) -> Self {
+    pub fn with_trail(mut self, trail: Vec<(String, gfx::Color)>) -> Self {
         self.trail = trail;
         self
     }
@@ -393,7 +393,7 @@ struct TreeItemWidget<Inner, C> {
     expanded: Option<bool>,
     zone: f32,
     action_first: bool,
-    color: skia_safe::Color,
+    color: gfx::Color,
     size: Size,
     _command: std::marker::PhantomData<C>,
 }
@@ -409,7 +409,7 @@ where
     fn realize(
         self,
         arena: &'a imba::arena::Arena,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> imba::WidgetBox<'a, TreeItemCommand<C>> {
         let TreeItemWidget {
             inner,
@@ -457,9 +457,9 @@ where
         &self,
         arena: &Arena,
         event: &Event<'_>,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> EventResult<TreeItemCommand<C>> {
-        let rect = skia_safe::Rect::from_xywh(
+        let rect = gfx::Rect::from_xywh(
             self.offset,
             0.0,
             (self.size.width - self.offset).max(0.0),
@@ -473,7 +473,7 @@ where
             // typographic"); the toggle zone stays where it was.
             Event::Paint { canvas, .. } => {
                 canvas.save();
-                canvas.translate((self.offset, 0.0));
+                canvas.translate(self.offset, 0.0);
                 let result = self
                     .inner
                     .handle_event(arena, event, child_viewport)

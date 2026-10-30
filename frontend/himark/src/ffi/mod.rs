@@ -38,7 +38,7 @@ pub struct Pointed {
     pub changed: bool,
     pub shape: PointerShape,
 }
-use skia_safe::{Canvas, Point, Size};
+use gfx::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
@@ -996,7 +996,7 @@ impl HimarkEngine {
         delta_x: f32,
         delta_y: f32,
         phase: u32,
-        viewport: skia_safe::Rect,
+        viewport: gfx::Rect,
     ) -> bool {
         // Frames are one-pass handles — the gesture stream keys by
         // the frame's ORIGIN bridge, which outlives them all.

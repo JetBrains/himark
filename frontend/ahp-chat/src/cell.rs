@@ -16,7 +16,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 type ChatChrome = ::hikit::chrome::ChatChrome;
 

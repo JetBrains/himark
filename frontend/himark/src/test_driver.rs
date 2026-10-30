@@ -3,7 +3,7 @@
 
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, Modifiers, MouseButton};
-use skia_safe::{Point, Size};
+use gfx::{Point, Size};
 
 use crate::app::Himark;
 

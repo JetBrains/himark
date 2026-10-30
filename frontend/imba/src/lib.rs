@@ -40,7 +40,7 @@ pub mod with_overlay;
 
 use arena::Arena;
 use event::{Event, EventResult};
-use skia_safe::{Rect, Size};
+use gfx::{Rect, Size};
 
 pub struct PresentableCommand<Command> {
     pub id: &'static str,

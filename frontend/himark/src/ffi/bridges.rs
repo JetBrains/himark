@@ -31,7 +31,7 @@ use std::sync::{LazyLock, Mutex};
 
 use crate::bridge::ViewBridgeId;
 use imba::event::{Event, EventResult, MouseButton};
-use skia_safe::{Canvas, Point, Rect, Size};
+use gfx::{Canvas, Point, Rect, Size};
 
 use crate::ffi::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed,
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn himark_bridge_draw(
     if engine.is_null() || canvas.is_null() {
         return false;
     }
-    let canvas = &*(canvas as *const Canvas);
+    let canvas: &Canvas = &*(canvas as *const skia_safe::Canvas);
     engine.as_mut().map_or(false, |engine| {
         engine.draw(bridge.raw, canvas, width, height, scale)
     })
@@ -703,7 +703,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let canvas = &*(canvas as *const Canvas);
+    let canvas: &Canvas = &*(canvas as *const skia_safe::Canvas);
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
         let Some(stage) = engine.app.stage_frame(frame.raw) else {
@@ -714,12 +714,12 @@ pub unsafe extern "C" fn himark_frame_paint(
         // over whatever the HOST puts behind it — a glass island, a
         // column color. (The clear still resets the band; only the
         // opaque floor moved host-side.)
-        canvas.clear(skia_safe::Color::TRANSPARENT);
+        canvas.clear(gfx::Color::TRANSPARENT);
         // The host's canvas IS the slice: translate so content
         // coordinates land at its origin — the widget paints at
         // its layout position, the viewport names the band.
         canvas.save();
-        canvas.translate((-x, -y));
+        canvas.translate(-x, -y);
         let result = stage.handle(
             &Event::Paint {
                 canvas,
@@ -732,8 +732,8 @@ pub unsafe extern "C" fn himark_frame_paint(
         // slice's corner — splits "painted transparent" from
         // "present never composited" when a surface shows empty.
         if std::env::var_os("HIMARK_PAINT_SPLASH").is_some() {
-            let mut paint = skia_safe::Paint::default();
-            paint.set_color(skia_safe::Color::MAGENTA);
+            let mut paint = gfx::Paint::default();
+            paint.set_color(gfx::Color::MAGENTA);
             canvas.draw_rect(Rect::from_xywh(4.0, 4.0, 40.0, 40.0), &paint);
         }
         result

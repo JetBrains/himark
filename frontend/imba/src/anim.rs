@@ -73,7 +73,7 @@ impl Animatable for f32 {
     }
 }
 
-impl Animatable for skia_safe::Size {
+impl Animatable for gfx::Size {
     type Vector = [f32; 2];
 
     fn decompose(self) -> [f32; 2] {
@@ -81,11 +81,11 @@ impl Animatable for skia_safe::Size {
     }
 
     fn compose(vector: [f32; 2]) -> Self {
-        skia_safe::Size::new(vector[0], vector[1])
+        gfx::Size::new(vector[0], vector[1])
     }
 }
 
-impl Animatable for skia_safe::Point {
+impl Animatable for gfx::Point {
     type Vector = [f32; 2];
 
     fn decompose(self) -> [f32; 2] {
@@ -93,7 +93,7 @@ impl Animatable for skia_safe::Point {
     }
 
     fn compose(vector: [f32; 2]) -> Self {
-        skia_safe::Point::new(vector[0], vector[1])
+        gfx::Point::new(vector[0], vector[1])
     }
 }
 

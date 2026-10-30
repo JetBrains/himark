@@ -500,7 +500,7 @@ fn a_focused_table_cell_presents_structural_commands() {
                 col: 0,
                 command: EditorCommand::Click {
                     kind: editor::editor_view::ClickKind::Set,
-                    point: skia_safe::Point::new(2.0, 2.0),
+                    point: gfx::Point::new(2.0, 2.0),
                 },
             }),
         },
@@ -799,7 +799,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
         &mut store,
         EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         },
     );
     for _ in 0..15 {
@@ -892,7 +892,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
         &mut store,
         EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         },
     );
     for _ in 0..5 {
@@ -979,7 +979,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
             &mut store,
             EditorCommand::Click {
                 kind: editor::editor_view::ClickKind::Set,
-                point: skia_safe::Point::new(x, 8.0),
+                point: gfx::Point::new(x, 8.0),
             },
         );
         send(
@@ -1036,7 +1036,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         &mut store,
         EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         },
     );
     let _ = cell_command(
@@ -1250,7 +1250,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
         &mut store,
         EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         },
     );
     cell(&mut store, EditorCommand::Enter { soft: false });
@@ -1339,7 +1339,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
         &mut store,
         EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(1.0, 1.0),
+            point: gfx::Point::new(1.0, 1.0),
         },
     );
     cell(&mut store, EditorCommand::DeleteForward);
@@ -1515,7 +1515,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
                 col: 0,
                 command: EditorCommand::Click {
                     kind: editor::editor_view::ClickKind::Set,
-                    point: skia_safe::Point::new(1.0, 1.0),
+                    point: gfx::Point::new(1.0, 1.0),
                 },
             }),
         },
@@ -1608,7 +1608,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
                 col: 0,
                 command: EditorCommand::Click {
                     kind: editor::editor_view::ClickKind::Set,
-                    point: skia_safe::Point::new(1.0, 1.0),
+                    point: gfx::Point::new(1.0, 1.0),
                 },
             }),
         },
@@ -2079,7 +2079,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     ::editor::test_document::test_ui(),
                     EditorCommand::Click {
                         kind: editor::editor_view::ClickKind::Set,
-                        point: skia_safe::Point::new((rand() % 300) as f32, y),
+                        point: gfx::Point::new((rand() % 300) as f32, y),
                     },
                     &mut batch.effects(),
                 );

@@ -81,18 +81,18 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
         order: 1.5,
         side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
+            let mut paint = gfx::Paint::default();
             paint.set_anti_alias(true);
             paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_style(gfx::paint::Style::Stroke);
             paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            paint.set_stroke_cap(gfx::paint::Cap::Round);
             let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
 
-            let body = skia_safe::Rect::from_xywh(l + w * 0.18, t + h * 0.2, w * 0.64, h * 0.44);
+            let body = gfx::Rect::from_xywh(l + w * 0.18, t + h * 0.2, w * 0.64, h * 0.44);
             let radius = h * 0.12;
             canvas.draw_round_rect(body, radius, radius, &paint);
-            let mut path = skia_safe::PathBuilder::new();
+            let mut path = gfx::PathBuilder::new();
             path.move_to((l + w * 0.34, t + h * 0.64));
             path.line_to((l + w * 0.30, t + h * 0.8));
             path.line_to((l + w * 0.46, t + h * 0.64));

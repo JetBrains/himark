@@ -155,7 +155,7 @@ fn settle(
 fn found_documents_preview_and_adopt_on_pick() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.add_document(
         app.sole_window(),
@@ -240,7 +240,7 @@ fn found_documents_preview_and_adopt_on_pick() {
 fn temps_clean_up_and_early_picks_fall_back() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
@@ -300,7 +300,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
 fn outside_dismissal_releases_glanced_documents() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),

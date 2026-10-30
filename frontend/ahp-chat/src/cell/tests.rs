@@ -68,10 +68,10 @@ fn paint_cell(
     let viewport = Rect::from_wh(width, height);
     let widget = imba::Thunk::realize(thunk, &arena, viewport);
     let mut surface =
-        skia_safe::surfaces::raster_n32_premul((width as i32, height.ceil() as i32 + 4))
+        gfx::surfaces::raster_n32_premul((width as i32, height.ceil() as i32 + 4))
             .expect("raster surface");
     let canvas = surface.canvas();
-    canvas.clear(skia_safe::Color::from_argb(0xff, 0x10, 0x12, 0x18));
+    canvas.clear(gfx::Color::from_argb(0xff, 0x10, 0x12, 0x18));
     let result = imba::Widget::handle_event(
         &widget,
         &arena,
@@ -85,7 +85,7 @@ fn paint_cell(
     if let Ok(dir) = std::env::var("HIMARK_SHOT") {
         let image = surface.image_snapshot();
         let data = image
-            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .encode(None, gfx::EncodedImageFormat::PNG, None)
             .expect("png");
         std::fs::write(format!("{dir}/{path}"), data.as_bytes()).expect("write png");
     }
@@ -280,9 +280,9 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         let viewport = Rect::from_wh(width, view_h);
         let widget = imba::Thunk::realize(thunk, &arena, viewport);
         let mut surface =
-            skia_safe::surfaces::raster_n32_premul((width as i32, view_h as i32)).expect("surface");
+            gfx::surfaces::raster_n32_premul((width as i32, view_h as i32)).expect("surface");
         let canvas = surface.canvas();
-        canvas.clear(skia_safe::Color::from_argb(0xff, 0x10, 0x12, 0x18));
+        canvas.clear(gfx::Color::from_argb(0xff, 0x10, 0x12, 0x18));
         imba::Widget::handle_event(
             &widget,
             &arena,
@@ -295,7 +295,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         if let Ok(dir) = std::env::var("HIMARK_SHOT") {
             let image = surface.image_snapshot();
             let data = image
-                .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+                .encode(None, gfx::EncodedImageFormat::PNG, None)
                 .expect("png");
             std::fs::write(format!("{dir}/{path}"), data.as_bytes()).expect("write png");
         }

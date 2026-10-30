@@ -12,7 +12,7 @@ use himark::app_ext::AppExt;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use skia_safe::surfaces;
+use gfx::surfaces;
 
 struct TestHost {
     arriving: std::sync::mpsc::Receiver<AppCommand>,
@@ -243,7 +243,7 @@ fn dump_rust_split_screenshot() {
     }
     let image = surface.image_snapshot();
     let data = image
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .encode(None, gfx::EncodedImageFormat::PNG, None)
         .expect("png encode");
     std::fs::write(dir.join("rust-split.png"), data.as_bytes()).expect("write screenshot");
 }
@@ -266,7 +266,7 @@ fn dump_workbench_screenshots() {
         app.draw_window(app.sole_window(), surface.canvas());
         let image = surface.image_snapshot();
         let data = image
-            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .encode(None, gfx::EncodedImageFormat::PNG, None)
             .expect("png encode");
         std::fs::write(dir.join(name), data.as_bytes()).expect("write screenshot");
     };
@@ -329,7 +329,7 @@ fn dump_peeker_screenshot() {
     app.draw_window(app.sole_window(), surface.canvas());
     let image = surface.image_snapshot();
     let data = image
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+        .encode(None, gfx::EncodedImageFormat::PNG, None)
         .expect("png encode");
     std::fs::write(path, data.as_bytes()).expect("write screenshot");
 }
@@ -799,7 +799,7 @@ fn scroll_steps(app: &himark::app::Himark, step: f32) -> usize {
     (((extent / step).ceil() as usize).saturating_add(2)).min(MAX_SCROLL_STEPS - 1)
 }
 
-fn scroll_pass(app: &mut Himark, surface: &mut skia_safe::Surface) -> Vec<Duration> {
+fn scroll_pass(app: &mut Himark, surface: &mut gfx::Surface) -> Vec<Duration> {
     app.draw_window(app.sole_window(), surface.canvas());
 
     let mut samples = Vec::new();
@@ -813,7 +813,7 @@ fn scroll_pass(app: &mut Himark, surface: &mut skia_safe::Surface) -> Vec<Durati
     samples
 }
 
-fn scroll_to_top(app: &mut Himark, surface: &mut skia_safe::Surface) {
+fn scroll_to_top(app: &mut Himark, surface: &mut gfx::Surface) {
     himark::test_driver::scroll(app, f32::MIN);
     app.draw_window(app.sole_window(), surface.canvas());
 }
@@ -883,7 +883,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
         }
     }
 
-    let measure = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+    let measure = |app: &mut Himark, surface: &mut gfx::Surface| {
         let mut samples = Vec::new();
         for _ in 0..60 {
             std::thread::sleep(Duration::from_millis(10));
@@ -926,7 +926,7 @@ fn scroll_frame_breakdown() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let (width, height) = profile_surface_size();
-    let size = skia_safe::Size::new(width as f32, height as f32);
+    let size = gfx::Size::new(width as f32, height as f32);
     let mut surface = surfaces::raster_n32_premul((width, height)).expect("raster surface");
     app.draw_window(app.sole_window(), surface.canvas());
 
@@ -1213,7 +1213,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     let toolbar = theme.part(::hikit::chrome::ToolbarChrome::KEY);
     let content_height = 600.0 - toolbar.height;
     let top = toolbar.height;
-    let first_row = skia_safe::Point::new(30.0, top + 13.0);
+    let first_row = gfx::Point::new(30.0, top + 13.0);
 
     let started = std::time::Instant::now();
     app.dispatch(
@@ -1224,7 +1224,7 @@ fn tree_demo_panel_toggles_through_clicks() {
             button: imba::event::MouseButton::Left,
             count: 1,
         },
-        skia_safe::Size::new(800.0, 600.0),
+        gfx::Size::new(800.0, 600.0),
     );
     let toggle_ms = started.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(row_count(&app), 100_010, "the first root expanded");
@@ -1249,7 +1249,7 @@ fn tree_demo_panel_toggles_through_clicks() {
             imba::event::Event::AnimationClock {
                 now: imba::anim::AnimationClock::from_millis(at_ms),
             },
-            skia_safe::Size::new(800.0, 600.0),
+            gfx::Size::new(800.0, 600.0),
         );
         app.draw_window(window, surface.canvas());
         extents.push(content_height(&app));
@@ -1276,7 +1276,7 @@ fn tree_demo_panel_toggles_through_clicks() {
             button: imba::event::MouseButton::Left,
             count: 1,
         },
-        skia_safe::Size::new(800.0, 600.0),
+        gfx::Size::new(800.0, 600.0),
     );
     assert_eq!(row_count(&app), 100_000, "the root collapsed");
     eprintln!("[probe] tree demo toggle over 100k rows: {toggle_ms:.2}ms");
@@ -1307,9 +1307,9 @@ fn rust_document_settles_and_stops_reconciling() {
     app.add_document(app.sole_window(), document, "document.rs".to_owned(), true);
 
     for (w, h) in [(1920.0f32, 1080.0f32), (1100.0, 763.0)] {
-        let size = skia_safe::Size::new(w, h);
+        let size = gfx::Size::new(w, h);
         let mut surface = surfaces::raster_n32_premul((w as i32, h as i32)).expect("surface");
-        let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, tag: &str| {
+        let settle = |app: &mut Himark, surface: &mut gfx::Surface, tag: &str| {
             let mut settled_streak = 0;
             for frame in 0..1500 {
                 let mut landed = false;
@@ -1339,7 +1339,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 app.sole_window(),
                 imba::event::Event::Scroll {
                     delta_x: 0.0,
-                    point: skia_safe::Point::new(w * 0.5, h * 0.5),
+                    point: gfx::Point::new(w * 0.5, h * 0.5),
                     delta_y: -3000.0,
                     gesture: &gesture,
                 },
@@ -1422,7 +1422,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
         }
     }
 
-    let measure = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+    let measure = |app: &mut Himark, surface: &mut gfx::Surface| {
         let mut samples = Vec::new();
         for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(10));

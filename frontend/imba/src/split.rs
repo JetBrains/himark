@@ -11,7 +11,7 @@ use crate::{
     thunk_ext::ThunkExt,
     View, Widget,
 };
-use skia_safe::{Contains, Rect, Size};
+use gfx::{Contains, Rect, Size};
 
 #[derive(Clone)]
 pub struct SplitView<First, Second> {

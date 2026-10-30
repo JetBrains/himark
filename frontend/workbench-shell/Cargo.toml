@@ -22,7 +22,7 @@ ahp-changes = { path = "../ahp-changes" }
 ahp-comments = { path = "../ahp-comments" }
 ahp-locations = { path = "../ahp-locations" }
 host-discovery = { path = "../../protocol/host-discovery" }
-skia-safe = "0.153.3"
+gfx = { path = "../gfx" }
 
 [dev-dependencies]
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }

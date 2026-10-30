@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use skia_safe::Contains;
-use skia_safe::{Rect, Size};
+use gfx::Contains;
+use gfx::{Rect, Size};
 
 use crate::{
     arena::{Arena, ArenaVec},
@@ -266,8 +266,8 @@ impl<Command> Child<'_, Command> {
                 };
 
                 canvas.save();
-                canvas.translate((self.rect.left, self.rect.top));
-                canvas.clip_rect(Rect::from_size(self.rect.size()), None, true);
+                canvas.translate(self.rect.left, self.rect.top);
+                canvas.clip_rect(Rect::from_size(self.rect.size()), true);
                 let result = self.widget.handle_event(arena, event, child_viewport);
                 canvas.restore();
                 result.reveal_translated(self.rect.left, self.rect.top)

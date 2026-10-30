@@ -8,7 +8,7 @@ use imba::{
     constraints::Constraints, container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use ahp_wire::client::SessionChannel;
 use hikit::combo::{Combo, ComboCommand, ComboOption};

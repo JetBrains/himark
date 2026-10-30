@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 pub use imba::theme::{parse_color, Key, Rgba, Theme, TypeRole};
 

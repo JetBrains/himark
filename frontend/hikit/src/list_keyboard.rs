@@ -23,7 +23,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::{Paint, Rect, Size};
+use gfx::{Paint, Rect, Size};
 
 use editor::editor_view::EditorView;
 
@@ -629,7 +629,7 @@ where
                             let mut edge = Paint::default();
                             edge.set_anti_alias(true);
                             edge.set_color(rule);
-                            edge.set_style(skia_safe::paint::Style::Stroke);
+                            edge.set_style(gfx::paint::Style::Stroke);
                             canvas.draw_round_rect(
                                 Rect::from_xywh(
                                     rect.left + 0.5,
@@ -698,7 +698,7 @@ where
             Event::Paint { canvas, focused } => self.inner.handle_event(
                 arena,
                 &Event::Paint {
-                    canvas,
+                    canvas: *canvas,
                     focused: *focused && self.open,
                 },
                 viewport,
@@ -747,7 +747,7 @@ mod tests {
     #[test]
     fn speed_search_input_paints_focused_only_while_a_query_stands() {
         let arena = Arena::default();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((1, 1)).expect("surface");
+        let mut surface = gfx::surfaces::raster_n32_premul((1, 1)).expect("surface");
         let observed = Cell::new(None);
         let idle = ChainGate {
             inner: PaintFocusProbe(&observed),

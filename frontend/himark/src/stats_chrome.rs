@@ -3,7 +3,7 @@
 
 use imba::theme::{Key, Rgba};
 use serde::Deserialize;
-use skia_safe::Color;
+use gfx::Color;
 
 impl StatsChrome {
     pub const KEY: Key<StatsChrome> = Key::new("stats");

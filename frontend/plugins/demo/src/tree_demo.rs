@@ -13,7 +13,7 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use skia_safe::{Paint, PathBuilder, Rect, Size};
+use gfx::{Paint, PathBuilder, Rect, Size};
 
 const ROW_HEIGHT: f32 = 26.0;
 const INDENT: f32 = 18.0;
@@ -113,7 +113,7 @@ impl View for TreeDemoRow {
                 color: ::editor::theme::ThemeStyles::styles(&theme)
                     .base()
                     .color
-                    .unwrap_or(skia_safe::Color::from_argb(0xFF, 0x80, 0x80, 0x80)),
+                    .unwrap_or(gfx::Color::from_argb(0xFF, 0x80, 0x80, 0x80)),
                 font: hikit::fonts::ui_text_font(ui, 13.0),
                 size: Size::new(constraints.max.width, ROW_HEIGHT),
             })
@@ -123,8 +123,8 @@ impl View for TreeDemoRow {
 
 struct TreeDemoRowWidget<'a> {
     row: &'a TreeDemoRow,
-    color: skia_safe::Color,
-    font: skia_safe::Font,
+    color: gfx::Color,
+    font: gfx::Font,
     size: Size,
 }
 
@@ -161,8 +161,8 @@ impl<'a> Widget<'a, RowCommand> for TreeDemoRowWidget<'a> {
                     canvas.draw_path(&triangle.detach(), &paint);
                 }
                 canvas.draw_str(
-                    label_of(self.row.id),
-                    (inset + 18.0, ROW_HEIGHT * 0.5 + 4.5),
+                    &label_of(self.row.id),
+                    (inset + 18.0, ROW_HEIGHT * 0.5 + 4.5).into(),
                     &self.font,
                     &paint,
                 );

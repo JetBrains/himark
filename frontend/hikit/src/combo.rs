@@ -13,7 +13,7 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
+use gfx::{Font, Paint, PathBuilder, Point, Rect, Size};
 
 use crate::chrome::ComboChrome;
 use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
@@ -542,9 +542,9 @@ pub fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
 
 pub(crate) fn draw_tracked(
     shaper: &imba::layout::TextShaper,
-    canvas: &skia_safe::Canvas,
+    canvas: &gfx::Canvas,
     font: &Font,
-    color: skia_safe::Color,
+    color: gfx::Color,
     text: &str,
     x: f32,
     baseline: f32,

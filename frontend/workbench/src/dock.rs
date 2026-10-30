@@ -13,7 +13,7 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use skia_safe::Size;
+use gfx::Size;
 
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;

@@ -11,7 +11,7 @@
 //! registered button is a WORD (docs/ui/toolbar.md, docs/Design.md).
 
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk};
-use skia_safe::{Canvas, Rect, Size};
+use gfx::{Canvas, Rect, Size};
 
 use crate::columns::Columns;
 use crate::workbench::Workbench;
@@ -42,7 +42,7 @@ pub struct ToolbarButton {
     pub side: ToolbarSide,
 
     /// A glyph for shells that still draw icons (none of ours).
-    pub glyph: std::sync::Arc<dyn Fn(&Canvas, Rect, skia_safe::Color) + Send + Sync>,
+    pub glyph: std::sync::Arc<dyn Fn(&Canvas, Rect, gfx::Color) + Send + Sync>,
 }
 
 #[derive(Clone, Default)]

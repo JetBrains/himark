@@ -318,7 +318,7 @@ impl Document {
     pub(crate) fn click_carets(
         &mut self,
         editor: EditorId,
-        point: skia_safe::Point,
+        point: gfx::Point,
         kind: ClickKind,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
@@ -378,7 +378,7 @@ impl Document {
     pub(crate) fn drag_carets(
         &mut self,
         editor: EditorId,
-        point: skia_safe::Point,
+        point: gfx::Point,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,

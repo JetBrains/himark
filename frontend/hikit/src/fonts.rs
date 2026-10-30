@@ -17,11 +17,11 @@ use std::collections::HashMap;
 use editor::theme::TypeRole;
 
 /// The chrome-face instances this ctx has minted, by (weight, width).
-struct ChromeFaces(RefCell<HashMap<(u32, u32), skia_safe::Typeface>>);
+struct ChromeFaces(RefCell<HashMap<(u32, u32), gfx::Typeface>>);
 
-struct MonoTypeface(skia_safe::Typeface);
+struct MonoTypeface(gfx::Typeface);
 
-fn chrome_typeface(ui: &imba::ui::UiCtx, weight: f32, width: f32) -> skia_safe::Typeface {
+fn chrome_typeface(ui: &imba::ui::UiCtx, weight: f32, width: f32) -> gfx::Typeface {
     let faces = ui.env(|| ChromeFaces(RefCell::new(HashMap::new())));
     let key = (weight.to_bits(), width.to_bits());
     if let Some(face) = faces.0.borrow().get(&key) {
@@ -29,17 +29,17 @@ fn chrome_typeface(ui: &imba::ui::UiCtx, weight: f32, width: f32) -> skia_safe::
     }
     let base = editor::embedded_fonts::chrome_typeface();
     let coordinates = [
-        skia_safe::font_arguments::variation_position::Coordinate {
-            axis: skia_safe::font_arguments::variation_position::Coordinate::wght,
+        gfx::font_arguments::variation_position::Coordinate {
+            axis: gfx::font_arguments::variation_position::Coordinate::wght,
             value: weight,
         },
-        skia_safe::font_arguments::variation_position::Coordinate {
-            axis: skia_safe::font_arguments::variation_position::Coordinate::wdth,
+        gfx::font_arguments::variation_position::Coordinate {
+            axis: gfx::font_arguments::variation_position::Coordinate::wdth,
             value: width,
         },
     ];
-    let arguments = skia_safe::FontArguments::new().set_variation_design_position(
-        skia_safe::font_arguments::VariationPosition {
+    let arguments = gfx::FontArguments::new().set_variation_design_position(
+        gfx::font_arguments::VariationPosition {
             coordinates: &coordinates,
         },
     );
@@ -48,37 +48,37 @@ fn chrome_typeface(ui: &imba::ui::UiCtx, weight: f32, width: f32) -> skia_safe::
     face
 }
 
-fn font_of(typeface: skia_safe::Typeface, size: f32) -> skia_safe::Font {
-    let mut font = skia_safe::Font::from_typeface(typeface, size);
-    font.set_edging(skia_safe::font::Edging::AntiAlias);
+fn font_of(typeface: gfx::Typeface, size: f32) -> gfx::Font {
+    let mut font = gfx::Font::from_typeface(typeface, size);
+    font.set_edging(gfx::font::Edging::AntiAlias);
     font.set_subpixel(true);
     font
 }
 
 /// The chrome face at a size, weight and width — the ramp's door.
-pub fn chrome_font(ui: &imba::ui::UiCtx, size: f32, weight: f32, width: f32) -> skia_safe::Font {
+pub fn chrome_font(ui: &imba::ui::UiCtx, size: f32, weight: f32, width: f32) -> gfx::Font {
     font_of(chrome_typeface(ui, weight, width), size)
 }
 
 /// The chrome face at a ramp rung.
-pub fn role_font(ui: &imba::ui::UiCtx, role: &TypeRole) -> skia_safe::Font {
+pub fn role_font(ui: &imba::ui::UiCtx, role: &TypeRole) -> gfx::Font {
     chrome_font(ui, role.size, role.weight, role.width)
 }
 
 /// The TITLE weight of the chrome face at `size` — the role every
 /// emphasized label used to ask for as "bold".
-pub fn ui_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
+pub fn ui_font(ui: &imba::ui::UiCtx, size: f32) -> gfx::Font {
     chrome_font(ui, size, TITLE_WEIGHT, NORMAL_WIDTH)
 }
 
 /// The regular weight of the chrome face at `size`.
-pub fn ui_text_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
+pub fn ui_text_font(ui: &imba::ui::UiCtx, size: f32) -> gfx::Font {
     chrome_font(ui, size, TEXT_WEIGHT, NORMAL_WIDTH)
 }
 
 /// The mono face (the bundled code font) at `size` — keys, tool
 /// invocations, line numbers: the margin register.
-pub fn mono_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
+pub fn mono_font(ui: &imba::ui::UiCtx, size: f32) -> gfx::Font {
     let typeface = ui.env(|| MonoTypeface(editor::embedded_fonts::code_typeface()));
     font_of(typeface.0.clone(), size)
 }

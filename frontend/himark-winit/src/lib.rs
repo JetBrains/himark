@@ -229,7 +229,7 @@ impl Engine {
         self.inner.drain()
     }
 
-    fn draw(&mut self, canvas: &skia_safe::Canvas, width: f32, height: f32, scale: f32) -> bool {
+    fn draw(&mut self, canvas: &gfx::Canvas, width: f32, height: f32, scale: f32) -> bool {
         self.inner.draw(self.window, canvas, width, height, scale)
     }
 
@@ -672,7 +672,7 @@ impl MenuBar {
         }
     }
 
-    fn paint(&mut self, canvas: &skia_safe::Canvas, width: f32, scale: f32) {
+    fn paint(&mut self, canvas: &gfx::Canvas, width: f32, scale: f32) {
         if !self.enabled() {
             return;
         }
@@ -718,7 +718,7 @@ impl MenuBar {
             paint.set_color(Color::from_argb(255, 35, 35, 38));
             canvas.draw_str(
                 ROOT_MENUS[index].title,
-                (rect.left + metrics.root_pad_x, metrics.root_baseline),
+                (rect.left + metrics.root_pad_x, metrics.root_baseline).into(),
                 self.root_font(),
                 &paint,
             );
@@ -773,7 +773,8 @@ impl MenuBar {
                         (
                             panel_rect.left + metrics.panel_pad_x,
                             item_rect.top + metrics.item_baseline,
-                        ),
+                        )
+                        .into(),
                         self.item_font(),
                         &paint,
                     );
@@ -785,7 +786,8 @@ impl MenuBar {
                             (
                                 panel_rect.right - metrics.panel_pad_x - shortcut_width,
                                 item_rect.top + metrics.item_baseline,
-                            ),
+                            )
+                            .into(),
                             self.item_font(),
                             &paint,
                         );
@@ -895,12 +897,11 @@ impl WindowState {
         let scale = self.window.scale_factor() as f32;
         let menu_height = menu.bar_height(scale);
         // The one painting pass, whatever carries it to the screen.
-        let mut paint = |canvas: &skia_safe::Canvas, width: f32, height: f32| -> bool {
+        let mut paint = |canvas: &gfx::Canvas, width: f32, height: f32| -> bool {
             canvas.save();
-            canvas.translate((0.0, menu_height));
+            canvas.translate(0.0, menu_height);
             canvas.clip_rect(
                 Rect::from_xywh(0.0, 0.0, width, (height - menu_height).max(1.0)),
-                None,
                 true,
             );
             let reconciling = engine.draw(canvas, width, (height - menu_height).max(1.0), scale);
