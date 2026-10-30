@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::hash::Hash;
+use std::sync::Arc;
 
 use crate::anim::{Animation, AnimationClock, Easing, Motion};
 use crate::ui::UiCtx;
@@ -45,8 +46,13 @@ pub struct StickyStyle {
 /// Resolved at display time, so the band re-themes live.
 pub type StickySource = std::sync::Arc<dyn Fn(&Store) -> StickyStyle + Send + Sync>;
 
+/// One rope element: the row view behind an `Arc`, so a rope
+/// mutation (a `Child` or `SetHeight` splice clones the leaf it
+/// touches — up to BRANCHING_FACTOR elements) copies refcounts, never
+/// the views. A row that holds editors (documents, syntax trees) would
+/// otherwise be deep-copied 32 times per command.
 pub struct ListElement<T> {
-    view: T,
+    view: Arc<T>,
     height: f32,
 }
 
@@ -171,7 +177,10 @@ fn measured_slice<T: Clone, K: Clone + Eq + Hash>(
     let mut slice = ListSlice::new();
     slice.pending = rows
         .into_iter()
-        .map(|(view, height)| ListElement { view, height })
+        .map(|(view, height)| ListElement {
+            view: Arc::new(view),
+            height,
+        })
         .collect();
     slice
 }
@@ -260,7 +269,10 @@ impl<T: Clone, K: Clone + Eq + Hash> ListSlice<T, K> {
     /// real width (width-dependent rows) or carried over from an
     /// existing rope element.
     pub fn push_sized(&mut self, view: T, height: f32) {
-        self.pending.push(ListElement { view, height });
+        self.pending.push(ListElement {
+            view: Arc::new(view),
+            height,
+        });
     }
 
     pub fn push_keyed_sized(&mut self, key: K, view: T, height: f32) {
@@ -442,11 +454,10 @@ pub enum Edge {
 pub type ListRope<T> = Rope<ListElement<T>, ListMeasure>;
 
 pub fn measured<T: Clone>(items: impl IntoIterator<Item = (T, f32)>) -> ListRope<T> {
-    Rope::from_iter(
-        items
-            .into_iter()
-            .map(|(view, height)| ListElement { view, height }),
-    )
+    Rope::from_iter(items.into_iter().map(|(view, height)| ListElement {
+        view: Arc::new(view),
+        height,
+    }))
 }
 
 impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
@@ -580,7 +591,21 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         if !cursor.seek_to_index(index as u32) {
             return None;
         }
-        Some(cursor.element().view.clone())
+        Some((*cursor.element().view).clone())
+    }
+
+    /// A row view SHARED — the refcount hop for a read that only
+    /// measures or inspects (the chat's height accounting), never a
+    /// copy of the row's content.
+    pub fn shared_at(&self, index: usize) -> Option<Arc<T>> {
+        if self.items.is_empty() {
+            return None;
+        }
+        let mut cursor = self.items.cursor();
+        if !cursor.seek_to_index(index as u32) {
+            return None;
+        }
+        Some(Arc::clone(&cursor.element().view))
     }
 
     pub fn key_at(&self, index: usize) -> Option<&K> {
@@ -849,14 +874,14 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
     }
 
     pub fn rows(&self) -> impl Iterator<Item = T> + '_ {
-        self.items.iter().map(|element| element.view)
+        self.items.iter().map(|element| (*element.view).clone())
     }
 
     pub fn rows_from(&self, index: usize) -> impl Iterator<Item = T> + '_ {
         let mut cursor = self.items.cursor();
         let seeked = cursor.seek_to_index(index as u32);
         seeked
-            .then(|| cursor.iter().map(|element| element.view))
+            .then(|| cursor.iter().map(|element| (*element.view).clone()))
             .into_iter()
             .flatten()
     }
@@ -1581,7 +1606,7 @@ where
             let mut view = element.view.clone();
             fx.scope(
                 move |command| ListCommand::Child(index, command),
-                |fx| view.destroy(store, fx),
+                |fx| Arc::make_mut(&mut view).destroy(store, fx),
             );
         }
     }
@@ -1602,10 +1627,19 @@ where
                 if !cursor.seek_to_index(index as u32) {
                     return;
                 }
+                // The element leaves the rope BEFORE it performs: with
+                // the rope's reference gone, `make_mut` on a uniquely
+                // held view writes in place; a view some snapshot still
+                // shares copies once — never the leaf's neighbours.
                 let mut element = cursor.element().clone();
+                cursor.delete(1u32);
+                // The list's own rope goes too: the cursor's zipper is
+                // the one holder now, and `cursor.rope()` below hands
+                // the list its items back.
+                self.items = Rope::new();
                 fx.scope(
                     move |command| ListCommand::Child(index, command),
-                    |fx| element.view.perform(store, ui, command, fx),
+                    |fx| Arc::make_mut(&mut element.view).perform(store, ui, command, fx),
                 );
 
                 let laid_width =
@@ -1626,7 +1660,6 @@ where
                         element.height = live;
                     }
                 }
-                cursor.delete(1u32);
                 cursor.insert(Rope::from_iter([element]));
                 self.items = cursor.rope();
             }
@@ -2064,7 +2097,7 @@ where
 
 struct StickyLine<T> {
     index: usize,
-    view: T,
+    view: Arc<T>,
     height: f32,
 }
 

@@ -2044,7 +2044,10 @@ impl ChatView {
         let Some(range) = self.rows.content().row_range(turn) else {
             return;
         };
-        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+        let Some(row) = self.rows.content().shared_at(range.start) else {
+            return;
+        };
+        let ChatRow::Turn(row) = row.as_ref() else {
             return;
         };
         if row.cell_at(key).is_some() {
@@ -2090,7 +2093,10 @@ impl ChatView {
         let Some(range) = self.rows.content().row_range(&turn) else {
             return;
         };
-        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+        let Some(row) = self.rows.content().shared_at(range.start) else {
+            return;
+        };
+        let ChatRow::Turn(row) = row.as_ref() else {
             return;
         };
         let Some(cell) = row.cell_at(&key) else {
@@ -2140,7 +2146,10 @@ impl ChatView {
             return;
         };
         let index = range.start;
-        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(index) else {
+        let Some(row) = self.rows.content().shared_at(index) else {
+            return;
+        };
+        let ChatRow::Turn(row) = row.as_ref() else {
             return;
         };
         let Some(cell_index) = row.cell_at(key) else {
@@ -2168,7 +2177,10 @@ impl ChatView {
         // The row's total follows the cells' sum — independent check:
         // a `Place` splice fixes the inner element itself but leaves
         // the row at its estimate.
-        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(index) else {
+        let Some(row) = self.rows.content().shared_at(index) else {
+            return;
+        };
+        let ChatRow::Turn(row) = row.as_ref() else {
             return;
         };
         let total = row.cells_height();

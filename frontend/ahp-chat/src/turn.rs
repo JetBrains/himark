@@ -111,8 +111,8 @@ impl TurnView {
     }
 
     /// One cell to MEASURE — a clone of refcounts, not of content.
-    pub(crate) fn cell_view(&self, index: usize) -> Option<Cell> {
-        self.cells.view_at(index)
+    pub(crate) fn cell_view(&self, index: usize) -> Option<std::sync::Arc<Cell>> {
+        self.cells.shared_at(index)
     }
 
     pub fn id(&self) -> &str {

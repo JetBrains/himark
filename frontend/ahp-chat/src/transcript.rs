@@ -73,6 +73,12 @@ impl TranscriptView {
         self.list.view_at(index)
     }
 
+    /// The row SHARED — the refcount hop for the panel's per-command
+    /// reads (which cell, what height), never a copy of the row.
+    pub(crate) fn shared_at(&self, index: usize) -> Option<std::sync::Arc<ChatRow>> {
+        self.list.shared_at(index)
+    }
+
     pub(crate) fn rows(&self) -> impl Iterator<Item = ChatRow> + '_ {
         self.list.rows()
     }

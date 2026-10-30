@@ -436,3 +436,101 @@ fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
         "the hand outranks the follow"
     );
 }
+
+/// The rope holds its rows behind `Arc`s: a `Child` or `SetHeight`
+/// splice clones the touched leaf — up to BRANCHING_FACTOR elements —
+/// and must copy refcounts, never rows. A chat row carries editors
+/// (documents, syntax trees); copying 32 of them per command was the
+/// Oct 30 2026 beach ball's amplifier.
+#[test]
+fn a_splice_copies_refcounts_not_rows() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static CLONES: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Clone, Copy, Debug)]
+    struct Nudge;
+    impl std::fmt::Display for Nudge {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            out.write_str("nudge")
+        }
+    }
+
+    struct Counted;
+    impl Clone for Counted {
+        fn clone(&self) -> Self {
+            CLONES.fetch_add(1, Ordering::Relaxed);
+            Counted
+        }
+    }
+    impl crate::View for Counted {
+        type Command = Nudge;
+
+        fn perform(
+            &mut self,
+            _store: &mut crate::store::Store,
+            _ui: &crate::ui::UiCtx,
+            _command: Nudge,
+            _fx: &mut crate::effect::Effects<'_, Nudge>,
+        ) {
+        }
+
+        fn display<'a>(
+            &'a self,
+            _arena: &'a crate::arena::Arena,
+            _store: &'a crate::store::Store,
+            _ui: &'a crate::ui::UiCtx,
+        ) -> impl crate::layout::Layout<'a, Nudge> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(
+                move |_arena: &'a crate::arena::Arena,
+                      _constraints: crate::constraints::Constraints| {
+                    crate::leaf::leaf::<Nudge>(10.0, 30.0)
+                },
+            )
+        }
+    }
+
+    let mut rows: ListView<Counted> =
+        ListView::from_rope(crate::list::measured((0..40).map(|_| (Counted, 30.0))));
+    let store = crate::store::Store::new();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
+
+    CLONES.store(0, Ordering::Relaxed);
+    let mut batch = crate::effect::Batch::new();
+    rows.perform(
+        &mut crate::store::Store::clone(&store),
+        &ui,
+        ListCommand::Child(5, Nudge),
+        &mut batch.effects(),
+    );
+    let child = CLONES.load(Ordering::Relaxed);
+
+    CLONES.store(0, Ordering::Relaxed);
+    let mut batch = crate::effect::Batch::new();
+    rows.perform(
+        &mut crate::store::Store::clone(&store),
+        &ui,
+        ListCommand::SetHeight(7, 12.0),
+        &mut batch.effects(),
+    );
+    let set_height = CLONES.load(Ordering::Relaxed);
+
+    // A snapshot elsewhere (a cloned view, a standing frame) shares
+    // the rows: the performed row copies ONCE, its neighbours never.
+    let snapshot = rows.clone();
+    CLONES.store(0, Ordering::Relaxed);
+    let mut batch = crate::effect::Batch::new();
+    rows.perform(
+        &mut crate::store::Store::clone(&store),
+        &ui,
+        ListCommand::Child(9, Nudge),
+        &mut batch.effects(),
+    );
+    let shared = CLONES.load(Ordering::Relaxed);
+    drop(snapshot);
+
+    eprintln!("[clones] child={child} set_height={set_height} shared={shared}");
+    assert_eq!(child, 0, "a uniquely held row performs in place");
+    assert_eq!(set_height, 0, "a height splice copies refcounts");
+    assert_eq!(shared, 1, "a shared row copies once — never the leaf");
+    assert_eq!(rows.len(), 40);
+}
