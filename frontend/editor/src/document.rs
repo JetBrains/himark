@@ -1129,6 +1129,33 @@ impl Document {
     ) {
         let byte_count = crate::text_cursor::byte_count(&self.text);
 
+        // A set diff answers one range PER SPAN, in hash order — a
+        // semantic-tokens delivery hands tens of thousands. Each
+        // mark is a damage-tree insert and a rope seek, so marking
+        // them raw froze the ui on every delivery. Sorted and
+        // coalesced they collapse to a handful: the gap between two
+        // tokens shapes with its line regardless, so bridging
+        // sub-line gaps marks nothing that was not already going to
+        // reshape.
+        const BRIDGE: u32 = 256;
+        let mut coalesced: Vec<Range<u32>> = Vec::new();
+        {
+            let mut sorted: Vec<Range<u32>> = changed
+                .iter()
+                .map(|range| range.start.min(byte_count)..range.end.min(byte_count))
+                .filter(|range| range.start < range.end)
+                .collect();
+            sorted.sort_by_key(|range| range.start);
+            for range in sorted {
+                match coalesced.last_mut() {
+                    Some(last) if range.start <= last.end.saturating_add(BRIDGE) => {
+                        last.end = last.end.max(range.end);
+                    }
+                    _ => coalesced.push(range),
+                }
+            }
+        }
+
         let everywhere = self
             .markups
             .get(&id)
@@ -1140,14 +1167,11 @@ impl Document {
             if !everywhere && !state.markups.contains(&id) {
                 continue;
             }
-            for range in changed {
-                let range = range.start.min(byte_count)..range.end.min(byte_count);
-                if range.start < range.end {
-                    state.layout.mark_modified_in(range);
-                }
+            for range in &coalesced {
+                state.layout.mark_modified_in(range.clone());
             }
         }
-        self.note_markup_change(Some(changed));
+        self.note_markup_change(Some(&coalesced));
         self.repair_damaged_viewports(store, ui, theme, fx)
     }
 
