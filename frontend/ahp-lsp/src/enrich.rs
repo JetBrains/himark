@@ -525,6 +525,15 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
         // The text the server answers FOR: its positions are
         // line/col in this revision, and nothing else.
         let revision = entry.revision();
+        // Snapshots for the WORKSHOP build: the markup and its diff
+        // against the standing layer are made off the ui thread —
+        // tens of thousands of spans per delivery froze it. Sound
+        // because one ask stands per document (a relaunch cancels
+        // the old) and the landing drops on any revision drift, so
+        // the layer cannot change between this snapshot and a
+        // landing that still applies.
+        let text = entry.text().clone();
+        let standing = entry.feature_markup(semantic_tokens_markup()).cloned();
         let uri = uris.uri_of(&location);
         trace(|| format!("enrich: asking tokens + hints for {}", uri.as_str()));
         let mut asks = of(store, wire)
@@ -536,11 +545,16 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
             uri: uri.clone(),
         })
         .map(move |result| {
+            let built = result.map(|spans| {
+                let replacement = semantic_markup(&text, &spans);
+                let changed = editor::markup::set_diff(standing.as_ref(), &replacement);
+                (replacement, changed)
+            });
             Verb::Dynamic(Arc::new(TokensLanded {
                 wire,
                 document,
                 revision,
-                result,
+                built,
             }))
         });
         fx.relaunch_erased(&mut asks.tokens, tokens);
@@ -570,7 +584,9 @@ struct TokensLanded {
     document: DocumentId,
     /// The revision the ask was made at — see `apply`.
     revision: u64,
-    result: Option<Vec<SemanticSpan>>,
+    /// The layer and its change set, BUILT IN THE WORKSHOP against
+    /// the ask-time snapshots; the landing only swaps and reshapes.
+    built: Option<(Markup, Vec<std::ops::Range<u32>>)>,
 }
 
 impl imba::command::DynamicCommand for TokensLanded {
@@ -592,25 +608,27 @@ impl imba::command::DynamicCommand for TokensLanded {
                 );
             }
         });
-        let Some(spans) = &self.result else {
+        let Some((replacement, changed)) = &self.built else {
             trace(|| format!("enrich: no semantic tokens for {:?}", self.document));
             return;
         };
         trace(|| {
             format!(
-                "enrich: {} semantic spans for {:?}",
-                spans.len(),
+                "enrich: a semantic layer with {} changes lands for {:?}",
+                changed.len(),
                 self.document
             )
         });
-        apply(
+        land(
             store,
             ui,
             self.wire,
             self.document,
             self.revision,
             fx,
-            |document| semantic_markup(document, spans),
+            semantic_tokens_markup(),
+            replacement.clone(),
+            changed,
         );
     }
 }
@@ -717,14 +735,60 @@ fn apply(
     OpenDocuments::put_document(store, documents, document_id, document);
 }
 
-/// The semantic layer against the current text: one styled span per
-/// token, clamped; a token off the end (an older text) drops.
-fn semantic_markup(
-    document: &editor::document::Document,
-    spans: &[SemanticSpan],
-) -> (MarkupId, Markup) {
+/// Land a layer the WORKSHOP already built: `apply` minus the build
+/// and the diff — the ui thread only swaps and reshapes. The same
+/// revision gate guards it, which is also what makes the ask-time
+/// snapshots the diff was computed against sound.
+#[allow(clippy::too_many_arguments)]
+fn land(
+    store: &mut Store,
+    ui: &imba::ui::UiCtx,
+    wire: imba::store::Id<EnrichWire>,
+    document_id: DocumentId,
+    revision: u64,
+    fx: &mut Fx<'_>,
+    markup: MarkupId,
+    replacement: Markup,
+    changed: &[std::ops::Range<u32>],
+) {
+    let Some(documents) = of(store, wire).map(|row| row.documents) else {
+        return;
+    };
+    let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
+        return;
+    };
+    if document.revision() != revision {
+        trace(|| {
+            format!(
+                "enrich: a landing for revision {revision} dropped — {:?} is at {}",
+                document_id,
+                document.revision()
+            )
+        });
+        return;
+    }
+    document.ensure_document_markup(markup);
+    let theme = editor::env::Themes::of(store);
+    fx.scope(
+        move |command| {
+            Verb::at(
+                documents,
+                documents::DocumentsCommand::Editor(document_id, command),
+            )
+        },
+        |fx| {
+            document.replace_markup(markup, replacement, changed, store, ui, &theme, fx);
+        },
+    );
+    OpenDocuments::put_document(store, documents, document_id, document);
+}
+
+/// The semantic layer against the text the ask was made for: one
+/// styled span per token, clamped; a token off the end (an older
+/// text) drops. Pure over its snapshot — the WORKSHOP builds it.
+fn semantic_markup(text: &text::text::Text, spans: &[SemanticSpan]) -> Markup {
     let mut builder = Markup::builder();
-    let mut view = document.text().view();
+    let mut view = text.view();
     let len = view.byte_count();
     for span in spans {
         let start = documents::text_ext::offset_at(&mut view, span.start).min(len);
@@ -744,7 +808,7 @@ fn semantic_markup(
             );
         }
     }
-    (semantic_tokens_markup(), builder.finish())
+    builder.finish()
 }
 
 /// The hint layer against the current text: a chip anchored LEFT of
@@ -841,14 +905,9 @@ impl imba::View for HintView {
         let typeface = ui
             .env(|| {
                 HintTypeface(
-                    editor::env::ui_typeface(ui, &families, gfx::FontStyle::normal())
-                        .or_else(|| {
-                            editor::env::ui_typeface(
-                                ui,
-                                &[] as &[&str],
-                                gfx::FontStyle::normal(),
-                            )
-                        }),
+                    editor::env::ui_typeface(ui, &families, gfx::FontStyle::normal()).or_else(
+                        || editor::env::ui_typeface(ui, &[] as &[&str], gfx::FontStyle::normal()),
+                    ),
                 )
             })
             .0
@@ -965,12 +1024,9 @@ mod tests {
 
     #[test]
     fn the_layers_build_against_the_current_text() {
-        let document = editor::document::Document::new(
-            text::text::Text::from_string_exact("fn main() {}\nlet x = 1;\n"),
-            Markup::new(),
-        );
-        let (id, markup) = semantic_markup(
-            &document,
+        let text = text::text::Text::from_string_exact("fn main() {}\nlet x = 1;\n");
+        let markup = semantic_markup(
+            &text,
             &[
                 SemanticSpan {
                     start: LineCol { line: 0, col: 3 },
@@ -985,13 +1041,13 @@ mod tests {
                 },
             ],
         );
-        assert_eq!(id, semantic_tokens_markup());
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
         markup.marks_inline_hidden_in(0..u32::MAX, &mut inline, &mut hidden);
         let spans: Vec<_> = inline.iter().map(|i| (i.range.clone(), i.id)).collect();
         assert_eq!(spans, vec![(3..7, StyleId::Function)]);
 
+        let document = editor::document::Document::new(text, Markup::new());
         let (id, markup) = hints_markup(
             &document,
             &[
