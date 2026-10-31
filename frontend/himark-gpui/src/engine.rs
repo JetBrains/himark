@@ -117,9 +117,10 @@ impl Engine {
                     if !changed {
                         continue;
                     }
-                    shared.views.borrow_mut().retain(|view| {
-                        view.update(cx, |_, cx| cx.notify()).is_ok()
-                    });
+                    shared
+                        .views
+                        .borrow_mut()
+                        .retain(|view| view.update(cx, |_, cx| cx.notify()).is_ok());
                 }
             }
         })

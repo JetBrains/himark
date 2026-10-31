@@ -206,9 +206,9 @@ impl GpuiPainter {
         let clip = self.state.borrow().current.clip;
         let window = self.window();
         match clip {
-            Some(bounds) => window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                paint(window)
-            }),
+            Some(bounds) => {
+                window.with_content_mask(Some(ContentMask { bounds }), |window| paint(window))
+            }
             None => paint(window),
         }
     }
@@ -505,8 +505,7 @@ impl gfx::Painter for GpuiPainter {
     }
 
     fn draw_line(&self, from: gfx::Point, to: gfx::Point, paint: &gfx::Paint) {
-        let mut builder =
-            gpui::PathBuilder::stroke(self.to_len(paint.stroke_width().max(1.0)));
+        let mut builder = gpui::PathBuilder::stroke(self.to_len(paint.stroke_width().max(1.0)));
         builder.move_to(self.to_window(from.x, from.y));
         builder.line_to(self.to_window(to.x, to.y));
         self.paint_built(builder, paint);
@@ -562,8 +561,9 @@ impl gfx::Painter for GpuiPainter {
                     }
                 };
                 match clip {
-                    Some(bounds) => window
-                        .with_content_mask(Some(ContentMask { bounds }), paint_one),
+                    Some(bounds) => {
+                        window.with_content_mask(Some(ContentMask { bounds }), paint_one)
+                    }
                     None => paint_one(window),
                 }
             }
@@ -620,7 +620,13 @@ impl gfx::Painter for GpuiPainter {
         }
     }
 
-    fn draw_image(&self, image: &gfx::Image, origin: gfx::Point, sampling: gfx::Sampling, paint: &gfx::Paint) {
+    fn draw_image(
+        &self,
+        image: &gfx::Image,
+        origin: gfx::Point,
+        sampling: gfx::Sampling,
+        paint: &gfx::Paint,
+    ) {
         let rect = gfx::Rect::from_xywh(
             origin.x,
             origin.y,
@@ -646,7 +652,14 @@ impl gfx::Painter for GpuiPainter {
         });
     }
 
-    fn draw_blurred_round_rect(&self, rect: gfx::Rect, rx: f32, _ry: f32, sigma: f32, c: gfx::Color) {
+    fn draw_blurred_round_rect(
+        &self,
+        rect: gfx::Rect,
+        rx: f32,
+        _ry: f32,
+        sigma: f32,
+        c: gfx::Color,
+    ) {
         let bounds = self.to_bounds(rect);
         let radius = self.to_len(rx);
         // A CSS blur radius is twice the gaussian's sigma.

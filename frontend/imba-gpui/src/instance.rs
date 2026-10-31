@@ -83,7 +83,6 @@ fn table_directory(data: &[u8]) -> Option<Vec<Table>> {
     Some(tables)
 }
 
-
 /// Overwrite the tail of every family-ish name record with the
 /// suffix, and answer the patched typographic (or plain) family.
 fn patch_names(data: &mut [u8], offset: usize, len: usize, suffix: &str) -> Option<String> {
@@ -155,8 +154,7 @@ mod tests {
     /// changed, not just the metadata.
     #[test]
     fn chrome_instances_are_static_and_distinct() {
-        let bytes: &[u8] =
-            include_bytes!("../../editor/assets/BricolageGrotesque-Variable.ttf");
+        let bytes: &[u8] = include_bytes!("../../editor/assets/BricolageGrotesque-Variable.ttf");
         let entry = |weight: f32| FaceEntry {
             data: Arc::new(bytes),
             index: 0,

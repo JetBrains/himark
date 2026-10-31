@@ -756,7 +756,9 @@ impl HimarkEngine {
             .unwrap_or(false)
     }
 
-    pub(crate) fn text_input_replacing(
+    // Pub like its C export `himark_text_input_replacing`: the Rust
+    // shell walks the same IME road the Swift one does.
+    pub fn text_input_replacing(
         &mut self,
         window: u64,
         text: &str,

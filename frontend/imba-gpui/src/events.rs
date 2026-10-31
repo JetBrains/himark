@@ -33,12 +33,8 @@ pub fn key_of(keystroke: &gpui::Keystroke) -> (Option<Key>, Option<String>) {
         _ => None,
     };
     if let Some(key) = named {
-        let text = matches!(key, Key::Char(' ')).then(|| {
-            keystroke
-                .key_char
-                .clone()
-                .unwrap_or_else(|| " ".to_owned())
-        });
+        let text = matches!(key, Key::Char(' '))
+            .then(|| keystroke.key_char.clone().unwrap_or_else(|| " ".to_owned()));
         return (Some(key), text);
     }
 
