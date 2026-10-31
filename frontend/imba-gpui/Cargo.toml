@@ -1,0 +1,21 @@
+[package]
+name = "imba-gpui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+imba = { path = "../imba" }
+gfx = { path = "../gfx" }
+skia-safe = "0.153.3"
+# Pinned exactly: painter.rs transmutes gpui::GlyphId (no public
+# constructor in 0.2.2) — bump deliberately, checking that type.
+# runtime_shaders: compile the Metal shaders at runtime — the build
+# machine needs no Xcode Metal Toolchain. Only consulted on macOS.
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+image = "0.25"
+smallvec = "1"
+# True variable-font instancing: CoreText renders a data-loaded
+# variable font's DEFAULT MASTER, ignoring fvar defaults, so each
+# chrome instance is pinned into static outlines before registering.
+hb-subset = "0.3"

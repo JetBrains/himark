@@ -421,6 +421,9 @@ struct ShaperState {
     /// carets follow). Backed by the world's shared map: this one
     /// spares the lock in `build_blobs`'s inner loop, not the work.
     typefaces: HashMap<TypefaceKey, Option<gfx::Typeface>>,
+    /// The same instances as backend-agnostic face ids — what a
+    /// non-skia painter resolves its own face handle by.
+    faces: HashMap<TypefaceKey, gfx::FaceId>,
     /// How many lines this context has shaped — the meter for "how
     /// much text does one frame lay out?", which no profile answers
     /// directly.
@@ -460,6 +463,7 @@ impl Shaper {
                 axes: HashMap::new(),
                 bases: HashMap::new(),
                 typefaces: HashMap::new(),
+                faces: HashMap::new(),
                 shapes: 0,
             }),
         }
@@ -570,6 +574,33 @@ impl ShaperState {
                     })
             })
             .clone()
+    }
+
+    /// The backend-agnostic face id for the instance parley shaped —
+    /// interned in gfx once per (font, coords), bytes and family
+    /// name riding along for a name-resolving backend.
+    fn face_id(
+        &mut self,
+        font: &parley::FontData,
+        variations: &[(skrifa::Tag, f32)],
+    ) -> gfx::FaceId {
+        let position = self.position(font, variations);
+        let coords: Vec<(u32, i32)> = position
+            .iter()
+            .map(|(tag, value)| (*tag, value.to_bits() as i32))
+            .collect();
+        let key = (font.data.id(), font.index, coords);
+        if let Some(hit) = self.faces.get(&key) {
+            return *hit;
+        }
+        let id = gfx::register_face(gfx::FaceEntry {
+            data: std::sync::Arc::new(font.data.clone()),
+            index: font.index,
+            coords: position,
+            family: family_name_of(font),
+        });
+        self.faces.insert(key, id);
+        id
     }
 
     fn typeface(
@@ -1320,31 +1351,53 @@ fn build_blobs(
                 continue;
             }
             let synthesis = run.run().synthesis();
-            let Some(typeface) =
-                ctx.typeface(world, run.run().font(), synthesis.variation_settings())
-            else {
-                continue;
+            let size = run.run().font_size();
+            let embolden = synthesis.embolden();
+            let skew_x = synthesis
+                .skew()
+                .map_or(0.0, |degrees| -degrees.to_radians().tan());
+
+            // The skia twin, built exactly as it always was — the
+            // atlas sees the same blob object every frame.
+            let skia = ctx
+                .typeface(world, run.run().font(), synthesis.variation_settings())
+                .and_then(|typeface| {
+                    let mut font = gfx::Font::new(typeface, size);
+                    if embolden {
+                        font.set_embolden(true);
+                    }
+                    if skew_x != 0.0 {
+                        font.set_skew_x(skew_x);
+                    }
+                    let mut builder = gfx::TextBlobBuilder::new();
+                    {
+                        let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
+                        for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
+                            *slot = glyph.id as u16;
+                        }
+                        for (slot, glyph) in points.iter_mut().zip(&glyphs) {
+                            *slot = gfx::Point::new(glyph.x, glyph.y);
+                        }
+                    }
+                    builder.make()
+                });
+
+            let glyph_run = gfx::GlyphRun {
+                face: ctx.face_id(run.run().font(), synthesis.variation_settings()),
+                size,
+                embolden,
+                skew_x,
+                glyphs: glyphs
+                    .iter()
+                    .map(|glyph| (glyph.id as u16, gfx::Point::new(glyph.x, glyph.y)))
+                    .collect(),
             };
-            let mut font = gfx::Font::new(typeface, run.run().font_size());
-            if synthesis.embolden() {
-                font.set_embolden(true);
-            }
-            if let Some(degrees) = synthesis.skew() {
-                font.set_skew_x(-degrees.to_radians().tan());
-            }
-            let mut builder = gfx::TextBlobBuilder::new();
-            {
-                let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
-                for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
-                    *slot = glyph.id as u16;
-                }
-                for (slot, glyph) in points.iter_mut().zip(&glyphs) {
-                    *slot = gfx::Point::new(glyph.x, glyph.y);
-                }
-            }
-            let Some(blob) = builder.make() else { continue };
+
             let [r, g, b, a] = run.style().brush;
-            out.push((blob, gfx::Color::from_argb(a, r, g, b)));
+            out.push((
+                gfx::TextBlob::new(vec![glyph_run], skia),
+                gfx::Color::from_argb(a, r, g, b),
+            ));
         }
     }
     out

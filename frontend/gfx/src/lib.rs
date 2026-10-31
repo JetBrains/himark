@@ -13,8 +13,10 @@
 //! one with our own type changes this file and nobody above.
 
 mod painter;
+mod text;
 
 pub use painter::{Painter, Sampling};
+pub use text::{face, register_face, FaceEntry, FaceId, GlyphRun, TextBlob};
 
 /// THE canvas the widget tree paints into — any backend, behind the
 /// trait. A type alias so `&Canvas` keeps meaning "somewhere to
@@ -33,7 +35,7 @@ pub use skia_safe::{Path, PathBuilder};
 // ─── text ───
 pub use skia_safe::{
     font, font_arguments, font_style, typeface, Font, FontArguments, FontMetrics, FontMgr,
-    FontStyle, FourByteTag, TextBlob, TextBlobBuilder, Typeface,
+    FontStyle, FourByteTag, TextBlobBuilder, Typeface,
 };
 
 // ─── images ───

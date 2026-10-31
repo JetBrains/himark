@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Color, Font, Image, Paint, Path, Point, Rect, Size, TextBlob};
+use crate::{text::TextBlob, Color, Font, Image, Paint, Path, Point, Rect, Size};
 
 /// How an image is resampled into its destination. The app only
 /// ever asks for these two; a backend never sees a free-form
@@ -52,6 +52,10 @@ pub trait Painter {
     fn draw_str(&self, text: &str, origin: Point, font: &Font, paint: &Paint);
     fn draw_image(&self, image: &Image, origin: Point, sampling: Sampling, paint: &Paint);
     fn draw_image_rect(&self, image: &Image, dst: Rect, sampling: Sampling, paint: &Paint);
+    /// A gaussian-blurred round rect — the sheet drop shadow, and
+    /// the only blur there is. `sigma` is the gaussian's, not a CSS
+    /// radius.
+    fn draw_blurred_round_rect(&self, rect: Rect, rx: f32, ry: f32, sigma: f32, color: Color);
 }
 
 impl From<Sampling> for skia_safe::SamplingOptions {
@@ -135,7 +139,9 @@ impl Painter for skia_safe::Canvas {
     }
 
     fn draw_text_blob(&self, blob: &TextBlob, origin: Point, paint: &Paint) {
-        self.draw_text_blob(blob, origin, paint);
+        if let Some(skia) = blob.skia() {
+            skia_safe::Canvas::draw_text_blob(self, skia, origin, paint);
+        }
     }
 
     fn draw_str(&self, text: &str, origin: Point, font: &Font, paint: &Paint) {
@@ -150,5 +156,17 @@ impl Painter for skia_safe::Canvas {
     fn draw_image_rect(&self, image: &Image, dst: Rect, sampling: Sampling, paint: &Paint) {
         self
             .draw_image_rect_with_sampling_options(image, None, dst, sampling, paint);
+    }
+
+    fn draw_blurred_round_rect(&self, rect: Rect, rx: f32, ry: f32, sigma: f32, color: Color) {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_color(color);
+        paint.set_mask_filter(skia_safe::MaskFilter::blur(
+            skia_safe::BlurStyle::Normal,
+            sigma,
+            None,
+        ));
+        skia_safe::Canvas::draw_round_rect(self, rect, rx, ry, &paint);
     }
 }

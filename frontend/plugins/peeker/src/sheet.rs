@@ -63,20 +63,13 @@ impl Sheet {
             if chrome.shadow_blur <= 0.0 {
                 return;
             }
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_color(chrome.shadow.0);
             // A CSS blur radius is twice the gaussian's sigma.
-            paint.set_mask_filter(gfx::MaskFilter::blur(
-                gfx::BlurStyle::Normal,
-                chrome.shadow_blur * 0.5,
-                false,
-            ));
-            canvas.draw_round_rect(
+            canvas.draw_blurred_round_rect(
                 sheet.with_offset((0.0, chrome.shadow_dy)),
                 chrome.radius,
                 chrome.radius,
-                &paint,
+                chrome.shadow_blur * 0.5,
+                chrome.shadow.0,
             );
         }
     }

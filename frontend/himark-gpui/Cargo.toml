@@ -1,0 +1,15 @@
+[package]
+name = "himark-gpui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+imba-gpui = { path = "../imba-gpui" }
+imba = { path = "../imba" }
+workbench = { path = "../workbench" }
+gfx = { path = "../gfx" }
+frontend-host = { path = "../frontend-host" }
+desktop = { path = "../desktop" }
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+futures = "0.3"
