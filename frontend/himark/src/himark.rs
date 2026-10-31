@@ -400,8 +400,12 @@ impl Himark {
         // unmarked arm and the frames invalidate as always.
         let mut all_quiet = true;
         while let Some(command) = queue.pop_front() {
-            let slow_probe = std::env::var_os("HIMARK_TRACE_BATCH")
-                .map(|_| (crate::perform::command_label(&command), std::time::Instant::now()));
+            let slow_probe = std::env::var_os("HIMARK_TRACE_BATCH").map(|_| {
+                (
+                    crate::perform::command_label(&command),
+                    std::time::Instant::now(),
+                )
+            });
             let mut fx = batch.effects();
             performer.perform(&mut store, &ui, command, &mut fx);
             if let Some((label, started)) =

@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
+use gfx::Size;
 use hikit::forest::TreeRow;
 use hikit::tree_item::{TreeItemCommand, TreeItemView, TreeLabelCommand};
 use imba::{
@@ -21,7 +22,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 /// What a comment row shows.
 #[derive(Clone, Debug)]

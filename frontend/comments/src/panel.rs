@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use editor::{location::ResourceLocation, location::ResourceType};
+use gfx::{Rect, Size};
 use hikit::{
     forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
     list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView,
@@ -21,7 +22,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::{Rect, Size};
 
 use crate::rows::{CommentFacts, CommentsRow};
 use crate::view::comments_markup;

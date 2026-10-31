@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Size;
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -13,7 +14,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;

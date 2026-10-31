@@ -7,6 +7,7 @@ use documents::BuildDocumentEffect;
 use documents::FetchDocumentEffect;
 use editor::document::Document;
 use editor::location::ResourceLocation;
+use gfx::Size;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 use hikit::panel::WidgetOrigin;
@@ -24,7 +25,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 use workbench::workbench_node::EditorPane;
 
 mod sheet;

@@ -198,9 +198,13 @@ pub(super) fn build(spec: &Spec) -> Document {
         match inline {
             Inline::Emphasis => markup.push_inline(span, StyleId::Emphasis, StyleWeight::DEFAULT),
             Inline::Strong => markup.push_inline(span, StyleId::Strong, StyleWeight::DEFAULT),
-            Inline::InlineCode => markup.push_inline(span, StyleId::InlineCode, StyleWeight::DEFAULT),
+            Inline::InlineCode => {
+                markup.push_inline(span, StyleId::InlineCode, StyleWeight::DEFAULT)
+            }
             Inline::Link => markup.push_inline(span, StyleId::Link, StyleWeight::DEFAULT),
-            Inline::Strikethrough => markup.push_inline(span, StyleId::Strikethrough, StyleWeight::DEFAULT),
+            Inline::Strikethrough => {
+                markup.push_inline(span, StyleId::Strikethrough, StyleWeight::DEFAULT)
+            }
             Inline::Hidden => markup.push_hidden(span),
         }
     }

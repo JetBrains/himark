@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use gfx::{Paint, Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -24,7 +25,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::{Paint, Rect, Size};
 
 use crate::views::files_forest;
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk};

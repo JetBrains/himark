@@ -10,11 +10,11 @@
 use crate::diff_canvas::CanvasFile;
 use editor::env;
 use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
+use gfx::{Paint, Rect, Size};
 use imba::effect::Effects;
 use imba::event::{Event, EventResult};
 use imba::thunk_ext::ThunkExt;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk, View, Widget};
-use gfx::{Paint, Rect, Size};
 
 const MIN_EST_LINES: i64 = 4;
 const MAX_EST_LINES: i64 = 60;
@@ -465,8 +465,7 @@ pub(crate) fn skeleton_layout<'a>(
         true => added / (added + removed),
         false => 0.6,
     };
-    let tint =
-        |color: gfx::Color| gfx::Color::from_argb(40, color.r(), color.g(), color.b());
+    let tint = |color: gfx::Color| gfx::Color::from_argb(40, color.r(), color.g(), color.b());
     let (added_color, removed_color) = (tint(chrome.added_color.0), tint(chrome.removed_color.0));
     // The bars start at the code text edge, where the diff's text
     // will.

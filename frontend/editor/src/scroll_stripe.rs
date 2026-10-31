@@ -10,10 +10,10 @@
 use crate::theme::ThemeStyles as _;
 use std::{ops::Range, sync::Arc};
 
+use gfx::{Point, Rect, Size};
 use imba::arena::Arena;
 use imba::event::{Event, EventResult};
 use intervals::Order;
-use gfx::{Point, Rect, Size};
 
 use crate::document::{Document, DocumentToken};
 use crate::document_layout::DocumentLayout;

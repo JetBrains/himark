@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Point, Size};
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, Modifiers, MouseButton};
-use gfx::{Point, Size};
 
 use crate::app::Himark;
 

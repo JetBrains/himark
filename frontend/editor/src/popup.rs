@@ -1,12 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Point, Rect, Size};
 use imba::arena::Arena;
 use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::{ui::UiCtx, Thunk};
-use gfx::{Point, Rect, Size};
 
 use crate::document::Document;
 use crate::editor::EditorId;

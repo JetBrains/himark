@@ -7,8 +7,8 @@
 
 use ::toc::{OutlineView, TocView};
 
-use imba::store::Store;
 use gfx::Paint;
+use imba::store::Store;
 
 pub(crate) struct NavigateToPlace {
     pub place: hikit::navigation::EditorPlace,

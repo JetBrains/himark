@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use gfx::{Canvas, Color, Paint, Rect, Size};
 use imba::command::{Requests, Verb};
 use imba::{
     arena::Arena,
@@ -18,7 +19,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use gfx::{Canvas, Color, Paint, Rect, Size};
 
 use crate::AnnotationId;
 use editor::document::Document;

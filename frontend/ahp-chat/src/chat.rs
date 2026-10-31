@@ -26,6 +26,7 @@ use ahp_wire::effects::{
     CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect,
 };
 use editor::env;
+use gfx::{Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -39,7 +40,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::{Rect, Size};
 
 use crate::cell::{Cell, CellCommand};
 use crate::composer::ComposerCommand;

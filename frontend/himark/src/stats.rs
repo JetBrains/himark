@@ -129,7 +129,12 @@ impl Stats {
 
         paint.set_color(chrome.text.0);
         let baseline = chrome.top + chrome.first_baseline;
-        canvas.draw_str(&fps, (left + chrome.pad_x, baseline).into(), &self.font, &paint);
+        canvas.draw_str(
+            &fps,
+            (left + chrome.pad_x, baseline).into(),
+            &self.font,
+            &paint,
+        );
         canvas.draw_str(
             &latency,
             (left + chrome.pad_x, baseline + chrome.line_height).into(),

@@ -12,6 +12,7 @@ use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 type DrawerRowsCommand =
     imba::scroll::ScrollCommand<imba::list::ListCommand<std::convert::Infallible>>;
+use gfx::{Rect, Size};
 use imba::list::ActivateTrigger;
 use imba::list::ListOps;
 use imba::{
@@ -29,7 +30,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::{Rect, Size};
 
 use super::agents::Agents;
 use super::drawer_row::{AgeInk, DrawerLine, Lead, LineKind, TitleForm};

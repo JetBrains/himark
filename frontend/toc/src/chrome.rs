@@ -6,6 +6,7 @@
 //! oblique kind word, the dotted LEADER and the leader LINE that
 //! runs a name to its number.
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -13,7 +14,6 @@ use imba::{
     thunk_ext::ThunkExt as _,
     Thunk as _,
 };
-use gfx::Size;
 
 fn bounded(extent: f32) -> Option<f32> {
     (extent < f32::MAX / 2.0).then_some(extent)

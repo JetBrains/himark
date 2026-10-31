@@ -11,6 +11,7 @@
 //! until they adopt the band. Call sites map the presses onto their
 //! own command type.
 
+use gfx::{Paint, Rect, Size};
 use imba::{
     arena::Arena,
     event::{Event, EventResult},
@@ -18,7 +19,6 @@ use imba::{
     ui::UiCtx,
     Widget,
 };
-use gfx::{Paint, Rect, Size};
 
 use editor::env;
 
@@ -273,7 +273,11 @@ impl DiffHeaderFace {
                 DiffHeaderPress::ToggleFace => {
                     // Two columns — switch the diff's face.
                     canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
-                    canvas.draw_line((center.0, frame.top).into(), (center.0, frame.bottom).into(), &paint);
+                    canvas.draw_line(
+                        (center.0, frame.top).into(),
+                        (center.0, frame.bottom).into(),
+                        &paint,
+                    );
                 }
                 DiffHeaderPress::OpenFile => {
                     // A corner arrow leaving the box.
@@ -298,7 +302,11 @@ impl DiffHeaderFace {
                     // side-by-side diff.
                     canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
                     let third = frame.left + frame.width() * 0.5;
-                    canvas.draw_line((third, frame.top).into(), (third, frame.bottom).into(), &paint);
+                    canvas.draw_line(
+                        (third, frame.top).into(),
+                        (third, frame.bottom).into(),
+                        &paint,
+                    );
                     let mid = frame.top + frame.height() * 0.5;
                     canvas.draw_line((frame.left, mid).into(), (third, mid).into(), &paint);
                 }

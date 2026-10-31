@@ -5,6 +5,7 @@ use crate::tool_group::{
     ToolCallSpec, ToolGroup, ToolRowCommand, ToolRowKey, ToolRowsCommand, ToolUpdate,
 };
 use editor::{editor_view::EditorCommand, editor_view::EditorView, env};
+use gfx::{Rect, Size};
 use hikit::tree_item::TreeItemCommand;
 use imba::{
     arena::Arena,
@@ -16,7 +17,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use gfx::{Rect, Size};
 
 type ChatChrome = ::hikit::chrome::ChatChrome;
 

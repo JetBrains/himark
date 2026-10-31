@@ -127,10 +127,10 @@ pub fn selection_style(store: &Store) -> SelectionStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gfx::Size;
     use imba::anim::AnimationClock;
     use imba::list::ListView;
     use imba::scroll::ScrollView;
-    use gfx::Size;
 
     #[test]
     fn selection_reveal_glides_the_scroll_until_visible() {
@@ -162,15 +162,9 @@ mod tests {
                 let event = Event::AnimationClock {
                     now: AnimationClock::from_millis(tick as f64 * 8.0),
                 };
-                let widget =
-                    imba::Thunk::realize(widget, &arena, gfx::Rect::from_size(viewport));
-                imba::Widget::handle_event(
-                    &widget,
-                    &arena,
-                    &event,
-                    gfx::Rect::from_size(viewport),
-                )
-                .into_commands()
+                let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_size(viewport));
+                imba::Widget::handle_event(&widget, &arena, &event, gfx::Rect::from_size(viewport))
+                    .into_commands()
             };
             if commands.is_empty() {
                 break;

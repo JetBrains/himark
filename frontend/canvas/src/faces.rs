@@ -9,9 +9,9 @@
 //! is the shell's (docs/mounted-parity.md), and one Column stacks the
 //! head over the list under that one scroller.
 
+use gfx::{Rect, Size};
 use imba::event::{Event, EventResult};
 use imba::{arena::Arena, store::Store, ui::UiCtx, Widget};
-use gfx::{Rect, Size};
 
 use crate::canvas::DiffCanvasView;
 use crate::changes_face::ChangesFace;

@@ -9,10 +9,10 @@ use std::{
 use editor::markup::InlayMode;
 use himark::app_ext::AppExt;
 
+use gfx::surfaces;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use gfx::surfaces;
 
 struct TestHost {
     arriving: std::sync::mpsc::Receiver<AppCommand>,

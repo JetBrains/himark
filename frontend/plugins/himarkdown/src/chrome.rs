@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Color;
 use imba::theme::{Key, Rgba};
 use serde::Deserialize;
-use gfx::Color;
 
 impl TableChrome {
     pub const KEY: Key<TableChrome> = Key::new("table");

@@ -7,6 +7,7 @@
 //! heads, the host foot and the "+ …" affordances are lines too, so the
 //! list's keyboard walk and its flat selection wash cover them all.
 
+use gfx::{Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -17,7 +18,6 @@ use imba::{
     ui::UiCtx,
     Thunk, ThunkBox, View, Widget, WidgetBox,
 };
-use gfx::{Rect, Size};
 
 /// How a session's title reads: the session's own words, or a quiet
 /// italic stand-in when it has none worth showing.

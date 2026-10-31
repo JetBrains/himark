@@ -10,8 +10,8 @@
 //! Panels come and go; the band stays. There are no icons: a
 //! registered button is a WORD (docs/ui/toolbar.md, docs/Design.md).
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk};
 use gfx::{Canvas, Rect, Size};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk};
 
 use crate::columns::Columns;
 use crate::workbench::Workbench;

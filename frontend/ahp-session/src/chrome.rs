@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Color;
 use imba::theme::{Key, Rgba, TypeRole};
 use serde::Deserialize;
-use gfx::Color;
 
 /// The Sessions drawer: ONE recency-sorted list under caps group
 /// heads, each row a three-column grid — the repo in a right-aligned

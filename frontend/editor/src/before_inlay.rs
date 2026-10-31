@@ -3,10 +3,10 @@
 
 use std::ops::Range;
 
+use gfx::Size;
 use imba::anim::{Animation, AnimationClock, Easing, Motion};
 use imba::constraints::Constraints;
 use operation::operation::Bias;
-use gfx::Size;
 
 use crate::document::Document;
 use crate::editor::{EditorEffects, EditorId};
@@ -232,14 +232,14 @@ pub(crate) fn card_blocks(
     const BLOCK_CAP_BYTES: u32 = 64 * 1024;
     let mut fragments = crate::diff::fragments_at(operation, base_text, 0);
     let mut blocks: Vec<(Range<u32>, Range<u32>)> = Vec::new();
-    let complete =
-        |block: Option<(Range<u32>, Range<u32>)>, blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
-            if let Some((lines, span)) = block {
-                if span.start < span.end {
-                    blocks.push((lines, span));
-                }
+    let complete = |block: Option<(Range<u32>, Range<u32>)>,
+                    blocks: &mut Vec<(Range<u32>, Range<u32>)>| {
+        if let Some((lines, span)) = block {
+            if span.start < span.end {
+                blocks.push((lines, span));
             }
-        };
+        }
+    };
     let mut block: Option<(Range<u32>, Range<u32>)> = None;
     while let Some(fragment) = fragments.next() {
         let lines = hard_lines(&mut view, fragment.right.clone());
@@ -715,14 +715,24 @@ impl imba::effect::Effect for BuildBeforeCardsEffect {
 pub struct BuildBeforeCardsHandler(pub std::sync::Arc<crate::env::Workshop>);
 
 impl imba::effect::EffectHandler<BuildBeforeCardsEffect> for BuildBeforeCardsHandler {
-    async fn handle(&self, effect: BuildBeforeCardsEffect) -> crate::unified_diff::UnifiedDiffCommand {
+    async fn handle(
+        &self,
+        effect: BuildBeforeCardsEffect,
+    ) -> crate::unified_diff::UnifiedDiffCommand {
         let theme = self.0.theme();
         let cards = self.0.with_ctx(|store, ui| {
             card_blocks(&effect.right_text, effect.base.text(), &effect.operation)
                 .into_iter()
                 .filter_map(|(anchor, base_span)| {
-                    let inlay =
-                        built_card(&effect.base, base_span, effect.width, false, store, ui, &theme)?;
+                    let inlay = built_card(
+                        &effect.base,
+                        base_span,
+                        effect.width,
+                        false,
+                        store,
+                        ui,
+                        &theme,
+                    )?;
                     Some((anchor, inlay))
                 })
                 .collect()

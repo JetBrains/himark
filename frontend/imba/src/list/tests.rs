@@ -344,10 +344,7 @@ fn the_tail_ask_follows_growth_and_yields_to_the_hand() {
             let widget = crate::layout::Layout::layout(
                 crate::View::display(&*rows, &arena, &store, &ui),
                 &arena,
-                crate::constraints::Constraints::tight(gfx::Size::new(
-                    100.0,
-                    rows.total_height(),
-                )),
+                crate::constraints::Constraints::tight(gfx::Size::new(100.0, rows.total_height())),
             )
             .realize(&arena, viewport);
             let result = crate::Widget::handle_event(

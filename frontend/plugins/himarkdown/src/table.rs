@@ -8,12 +8,12 @@ use editor::document::Document;
 use editor::editor_view::EditorCommand;
 use editor::editor_view::EditorView;
 use editor::markup::Markup;
+use gfx::{Canvas, Paint, Rect, Size};
 use imba::{
     arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
     Widget,
 };
 use operation::{op::Op, operation::Operation};
-use gfx::{Canvas, Paint, Rect, Size};
 
 use crate::inline_decorations;
 

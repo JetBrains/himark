@@ -23,11 +23,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
             max: Size::new(400.0, f32::MAX),
         },
     );
-    let widget = imba::Thunk::realize(
-        widget,
-        &arena,
-        gfx::Rect::from_wh(size.width, size.height),
-    );
+    let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, size.height));
     imba::Widget::handle_event(
         &widget,
         &arena,

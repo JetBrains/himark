@@ -6,6 +6,7 @@
 //! collection in lib.rs. No window: where the pane lands is the
 //! shell's business.
 
+use gfx::{Canvas, Color, Font, Paint, Point, Rect, Size};
 use ghostty_sys::{
     GhosttyMouseButton, GHOSTTY_MOUSE_ACTION_MOTION, GHOSTTY_MOUSE_ACTION_PRESS,
     GHOSTTY_MOUSE_ACTION_RELEASE, GHOSTTY_MOUSE_BUTTON_FIVE, GHOSTTY_MOUSE_BUTTON_FOUR,
@@ -13,7 +14,6 @@ use ghostty_sys::{
 };
 use imba::event::{Event, EventResult, Key, Modifiers, MouseButton};
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
-use gfx::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
 use crate::vt::{Colors, CursorShape, Frame, Select};
 use crate::{Press, Session, TerminalId, Terminals};
@@ -351,8 +351,7 @@ fn grid_fonts(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> GridFonts {
         TerminalTypefaces {
             bold: style(gfx::FontStyle::bold()).unwrap_or_else(|| normal.clone()),
             italic: style(gfx::FontStyle::italic()).unwrap_or_else(|| normal.clone()),
-            bold_italic: style(gfx::FontStyle::bold_italic())
-                .unwrap_or_else(|| normal.clone()),
+            bold_italic: style(gfx::FontStyle::bold_italic()).unwrap_or_else(|| normal.clone()),
             normal,
         }
     });

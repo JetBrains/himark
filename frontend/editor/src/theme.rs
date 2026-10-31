@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use serde::Deserialize;
 use gfx::Color;
+use serde::Deserialize;
 
 pub use imba::theme::{parse_color, Key, Rgba, Theme, TypeRole};
 

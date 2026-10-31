@@ -9,6 +9,7 @@
 //! by its items; the band's height, baseline, gaps and inks come
 //! from the toolbar chrome.
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -16,7 +17,6 @@ use imba::{
     store::Store,
     ui::UiCtx,
 };
-use gfx::Size;
 
 use crate::ui::{text, Hairline, TextStyle};
 

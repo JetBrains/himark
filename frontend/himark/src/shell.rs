@@ -13,10 +13,10 @@
 
 use std::sync::Arc;
 
+use gfx::Size;
 use imba::command::Verb;
 use imba::store::{Entity, Id};
 use imba::{store::Store, ui::UiCtx, View};
-use gfx::Size;
 
 use ::workbench::window::WindowId;
 use documents::OpenDocuments;

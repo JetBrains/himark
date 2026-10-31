@@ -290,8 +290,7 @@ impl imba::View for HoverView {
                         max: gfx::Size::new(inner_width, f32::MAX),
                     },
                 );
-                let mut card =
-                    imba::container::container(arena, gfx::Size::new(width, height));
+                let mut card = imba::container::container(arena, gfx::Size::new(width, height));
                 card.place(
                     0.0,
                     0.0,

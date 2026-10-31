@@ -14,6 +14,7 @@ pub mod chrome;
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
+use gfx::Size;
 use hikit::menu::MenuView;
 use hikit::tree_item::{TreeItemView, TreeLabel, TreeLabelCommand, TreeTint};
 use hikit::{
@@ -35,7 +36,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::Size;
 
 enum Activation {
     Done,

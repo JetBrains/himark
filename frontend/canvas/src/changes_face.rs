@@ -14,11 +14,11 @@ use changesview::hichanges::Changes;
 use editor::editor_view::{EditorCommand, EditorView};
 use editor::env;
 use editor::location::ResourceLocation;
+use gfx::Size;
 use imba::effect::Effects;
 use imba::event::EventResult;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View};
-use gfx::Size;
 
 use crate::canvas::{CanvasCommand, DiffCanvasView};
 use crate::diff_canvas::{CanvasPlace, Totals};

@@ -541,10 +541,7 @@ impl ShaperState {
     /// cut by postscript name with glyph count as the id-space
     /// guard; parse the bytes for faces the platform does not know.
     fn base(&mut self, font: &parley::FontData) -> Option<gfx::Typeface> {
-        let manager = self
-            .manager
-            .get_or_insert_with(gfx::FontMgr::new)
-            .clone();
+        let manager = self.manager.get_or_insert_with(gfx::FontMgr::new).clone();
         self.bases
             .entry((font.data.id(), font.index))
             .or_insert_with(|| {
@@ -631,16 +628,15 @@ impl ShaperState {
             if position.is_empty() {
                 return Some(typeface);
             }
-            let coordinates: Vec<gfx::font_arguments::variation_position::Coordinate> =
-                position
-                    .iter()
-                    .map(
-                        |(tag, value)| gfx::font_arguments::variation_position::Coordinate {
-                            axis: gfx::FourByteTag::from(*tag),
-                            value: *value,
-                        },
-                    )
-                    .collect();
+            let coordinates: Vec<gfx::font_arguments::variation_position::Coordinate> = position
+                .iter()
+                .map(
+                    |(tag, value)| gfx::font_arguments::variation_position::Coordinate {
+                        axis: gfx::FourByteTag::from(*tag),
+                        value: *value,
+                    },
+                )
+                .collect();
             let arguments = gfx::FontArguments::new().set_variation_design_position(
                 gfx::font_arguments::VariationPosition {
                     coordinates: &coordinates,

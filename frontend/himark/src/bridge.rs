@@ -21,6 +21,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gfx::{Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -29,7 +30,6 @@ use imba::{
     ui::UiCtx,
     Thunk, ThunkBox, Widget, WidgetBox,
 };
-use gfx::{Rect, Size};
 
 use crate::perform::AppCommand;
 

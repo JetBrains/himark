@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use ahp_types::state::{ConfirmationOption, ConfirmationOptionKind, Message, PendingMessage};
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -10,7 +11,6 @@ use imba::{
     layout::LayoutExt as _,
     ui::UiCtx,
 };
-use gfx::Size;
 
 type ChatChrome = ::hikit::chrome::ChatChrome;
 

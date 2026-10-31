@@ -18,12 +18,30 @@ pub const VERSION: &str = "0.16.0";
 
 /// Official release archives by Zig's host name, with their published sha256.
 const RELEASES: &[(&str, &str)] = &[
-    ("aarch64-macos", "b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489"),
-    ("x86_64-macos", "0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7"),
-    ("x86_64-linux", "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"),
-    ("aarch64-linux", "ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17"),
-    ("x86_64-windows", "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e"),
-    ("aarch64-windows", "aee38316ee4111717900f45dd3130145c39289e105541d737eb8c5ed653c78ef"),
+    (
+        "aarch64-macos",
+        "b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489",
+    ),
+    (
+        "x86_64-macos",
+        "0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7",
+    ),
+    (
+        "x86_64-linux",
+        "70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00",
+    ),
+    (
+        "aarch64-linux",
+        "ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17",
+    ),
+    (
+        "x86_64-windows",
+        "68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e",
+    ),
+    (
+        "aarch64-windows",
+        "aee38316ee4111717900f45dd3130145c39289e105541d737eb8c5ed653c78ef",
+    ),
 ];
 
 /// The Zig executable to build ghostty with; `src` is the ghostty checkout.
@@ -86,7 +104,11 @@ fn zig_host() -> String {
 
 /// Where downloads live across builds and `cargo clean`: the platform's user cache.
 fn cache_dir() -> PathBuf {
-    let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let env = |name: &str| {
+        std::env::var_os(name)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
     let base = if cfg!(target_os = "macos") {
         env("HOME").map(|h| h.join("Library/Caches"))
     } else if cfg!(target_os = "windows") {
@@ -121,7 +143,10 @@ fn download() -> PathBuf {
         return exe;
     }
 
-    println!("cargo:warning=ghostty-sys: no Zig {VERSION} on PATH, downloading it to {}", home.display());
+    println!(
+        "cargo:warning=ghostty-sys: no Zig {VERSION} on PATH, downloading it to {}",
+        home.display()
+    );
     // Unpack beside the destination and rename in, so a crashed or parallel build
     // never leaves a half-extracted toolchain where the next one would find it.
     let staging = root.join(format!(".{stem}.{}", std::process::id()));
@@ -130,7 +155,10 @@ fn download() -> PathBuf {
     let file = staging.join(&archive);
     let url = format!("https://ziglang.org/download/{VERSION}/{archive}");
     run(
-        Command::new("curl").args(["-fsSL", "--retry", "3", "-o"]).arg(&file).arg(&url),
+        Command::new("curl")
+            .args(["-fsSL", "--retry", "3", "-o"])
+            .arg(&file)
+            .arg(&url),
         &format!("curl {url}"),
     );
     let digest = format!("{:x}", Sha256::digest(std::fs::read(&file).unwrap()));
@@ -139,7 +167,11 @@ fn download() -> PathBuf {
         "ghostty-sys: {archive} sha256 is {digest}, expected {sha256}; refusing to use it"
     );
     run(
-        Command::new("tar").arg("-xf").arg(&file).arg("-C").arg(&staging),
+        Command::new("tar")
+            .arg("-xf")
+            .arg(&file)
+            .arg("-C")
+            .arg(&staging),
         &format!("tar -xf {archive}"),
     );
     std::fs::remove_file(&file).unwrap();

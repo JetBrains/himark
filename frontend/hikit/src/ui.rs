@@ -7,10 +7,10 @@
 //! (`ListRow`, `Surface`) and pick roles; a bare f32 in a view is a
 //! smell.
 
+use gfx::{Color, Paint, Rect};
 use imba::{
     arena::Arena, constraints::Constraints, layout::LayoutExt as _, store::Store, ui::UiCtx,
 };
-use gfx::{Color, Paint, Rect};
 
 /// The spacing scale — every inset and gap is one of these.
 pub mod space {

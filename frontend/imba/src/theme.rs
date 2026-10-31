@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
+use gfx::Color;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use gfx::Color;
 
 /// A color in a theme file: `#rrggbb` or `#aarrggbb`.
 #[derive(Clone, Copy, Deserialize)]

@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Color;
 use imba::theme::{Key, Rgba, TypeRole};
 use serde::Deserialize;
-use gfx::Color;
 
 impl ToolbarChrome {
     pub const KEY: Key<ToolbarChrome> = Key::new("toolbar");

@@ -900,8 +900,7 @@ fn typeface_axes(typeface: &gfx::Typeface) -> (Option<f32>, Option<f32>) {
     for coordinate in position {
         if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wght {
             weight = Some(coordinate.value);
-        } else if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wdth
-        {
+        } else if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wdth {
             width = Some(coordinate.value);
         }
     }
@@ -1050,8 +1049,7 @@ impl TextShaper {
 
     /// `advance` with the per-glyph tracking chrome caps labels use.
     pub fn tracked_advance(&self, font: &gfx::Font, text: &str, tracking: f32) -> f32 {
-        self.label(font, text, gfx::Color::BLACK, tracking)
-            .width
+        self.label(font, text, gfx::Color::BLACK, tracking).width
     }
 
     /// Paint `text` at `x` with the first line's alphabetic baseline

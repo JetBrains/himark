@@ -8951,7 +8951,11 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         text
     };
     for file in 0..FILES {
-        std::fs::write(root.join(format!("file_{file}.rs")), body(FILE_LINES, false)).unwrap();
+        std::fs::write(
+            root.join(format!("file_{file}.rs")),
+            body(FILE_LINES, false),
+        )
+        .unwrap();
     }
     std::fs::write(root.join("monster.rs"), body(MONSTER_LINES, false)).unwrap();
     sh(&["add", "."]);
@@ -9007,8 +9011,9 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
             })
             .map(|view| view.rows())
             .is_some_and(|rows| {
-                rows.iter()
-                    .any(|(depth, label, pick)| *depth == 1 && label.starts_with("monster") && *pick)
+                rows.iter().any(|(depth, label, pick)| {
+                    *depth == 1 && label.starts_with("monster") && *pick
+                })
             })
     });
 
@@ -9058,9 +9063,12 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 done = done
-                    || canvas.probe_rows(engine.app.store()).iter().any(|(name, phase, _)| {
-                        name.starts_with(title) && *phase == ::canvas::canvas::RowPhase::Built
-                    });
+                    || canvas
+                        .probe_rows(engine.app.store())
+                        .iter()
+                        .any(|(name, phase, _)| {
+                            name.starts_with(title) && *phase == ::canvas::canvas::RowPhase::Built
+                        });
             }
         });
         done
@@ -9097,7 +9105,11 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         engine.drain();
         let drained = drain.elapsed();
         if drained > std::time::Duration::from_millis(50) {
-            eprintln!("[canvas-landing] LONG DRAIN {:?} at frame {}", drained, draws.len());
+            eprintln!(
+                "[canvas-landing] LONG DRAIN {:?} at frame {}",
+                drained,
+                draws.len()
+            );
         }
         drains.push(drained);
         frame_births.set(

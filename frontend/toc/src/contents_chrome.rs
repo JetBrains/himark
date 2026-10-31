@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Color;
 use imba::theme::{Key, Rgba};
 use serde::Deserialize;
-use gfx::Color;
 
 /// The Contents drawer: an outline set like a book's table of
 /// contents — the KIND word in a right-aligned margin column, the

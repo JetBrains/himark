@@ -30,8 +30,8 @@ use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
 
 use crate::bridge::ViewBridgeId;
-use imba::event::{Event, EventResult, MouseButton};
 use gfx::{Canvas, Point, Rect, Size};
+use imba::event::{Event, EventResult, MouseButton};
 
 use crate::ffi::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed,

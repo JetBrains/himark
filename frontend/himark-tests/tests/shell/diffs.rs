@@ -2501,10 +2501,10 @@ fn folded_squash_paint_cost_is_size_independent() {
                     let end = (start + 3).min(at + len.saturating_sub(1));
                     if start < end {
                         markup.push_styled(
-                        start..end,
-                        editor::theme::StyleId::DiffAdded,
-                        editor::markup::StyleWeight::OVERLAY,
-                    );
+                            start..end,
+                            editor::theme::StyleId::DiffAdded,
+                            editor::markup::StyleWeight::OVERLAY,
+                        );
                     }
                 }
                 at += len;

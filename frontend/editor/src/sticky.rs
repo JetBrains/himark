@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gfx::{Point, Rect, Size};
 use imba::arena::Arena;
 use imba::event::{Event, EventResult};
-use gfx::{Point, Rect, Size};
 
 use crate::document::{Document, DocumentToken};
 use crate::editor::EditorId;
@@ -433,7 +433,12 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                         use std::fmt::Write;
                         let _ = write!(digits, "{}", row.number);
                         let width = font.measure_str(&digits, Some(&number_paint)).0;
-                        canvas.draw_str(&digits, (right - width, baseline).into(), &font, &number_paint);
+                        canvas.draw_str(
+                            &digits,
+                            (right - width, baseline).into(),
+                            &font,
+                            &number_paint,
+                        );
                         top += row.height;
                     }
                 }

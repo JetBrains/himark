@@ -3,6 +3,7 @@
 
 use std::{ops::Range, sync::OnceLock};
 
+use gfx::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -13,7 +14,6 @@ use imba::{
     thunk_ext::ThunkExt,
     View,
 };
-use gfx::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
 
 use editor::document::Document;
 use editor::markup::Inlay;

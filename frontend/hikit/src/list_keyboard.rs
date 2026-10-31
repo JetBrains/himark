@@ -12,6 +12,7 @@
 use std::any::Any;
 use std::hash::Hash;
 
+use gfx::{Paint, Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -23,7 +24,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::{Paint, Rect, Size};
 
 use editor::editor_view::EditorView;
 

@@ -4,11 +4,11 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
+use gfx::Size;
 use imba::{
     constraints::Constraints, container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 use ahp_wire::client::SessionChannel;
 use hikit::combo::{Combo, ComboCommand, ComboOption};

@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -11,7 +12,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use gfx::Size;
 
 use imba::scroll::ScrollView;
 
@@ -436,11 +436,7 @@ where
         self.base.size()
     }
 
-    fn realize(
-        self,
-        arena: &'a Arena,
-        viewport: gfx::Rect,
-    ) -> imba::WidgetBox<'a, WindowCommand> {
+    fn realize(self, arena: &'a Arena, viewport: gfx::Rect) -> imba::WidgetBox<'a, WindowCommand> {
         let LayersWidget {
             base,
             toolbar,

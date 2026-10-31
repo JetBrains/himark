@@ -3,6 +3,7 @@
 
 use std::ops::Range;
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -14,7 +15,6 @@ use imba::{
     Thunk, View,
 };
 use operation::{op::Op, operation::Bias, operation::Operation};
-use gfx::Size;
 use text::text::Text;
 
 use crate::diff::FragmentKind;

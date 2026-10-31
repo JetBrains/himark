@@ -137,12 +137,7 @@ fn fallback_corpus_keeps_its_eyes_open() {
 
     let mut failures = Vec::new();
     for (name, text, must) in corpus {
-        let line = shaper().shape(
-            text,
-            "Menlo",
-            24.0,
-            &[SpanStyle::plain(gfx::Color::BLACK)],
-        );
+        let line = shaper().shape(text, "Menlo", 24.0, &[SpanStyle::plain(gfx::Color::BLACK)]);
         let (families, notdefs, total) = shaper().coverage_for_test(&line);
         let verdict = if notdefs == 0 { "ok" } else { "TOFU" };
         eprintln!(
@@ -187,9 +182,7 @@ fn styled_spans_reach_the_blobs() {
         blobs.len()
     );
     assert!(
-        blobs
-            .iter()
-            .any(|(_, color)| *color == gfx::Color::RED),
+        blobs.iter().any(|(_, color)| *color == gfx::Color::RED),
         "the colored span kept its ink"
     );
 }

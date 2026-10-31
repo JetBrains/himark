@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use crate::higent::open_session::OpenSessionRow;
 use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
-use imba::store::Store;
 use gfx::Rect;
+use imba::store::Store;
 
 /// The shell's answers to the panel's gestures, each closed over the
 /// window the drawer stands in.

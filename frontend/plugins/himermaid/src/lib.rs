@@ -13,11 +13,11 @@ use editor::markup::InlayMode;
 use editor::reparse::SyntaxLanguage;
 use editor::reparse::SyntaxLanguages;
 use editor::reparse::SyntaxTree;
+use gfx::{Canvas, Rect, Size};
 use imba::{
     arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt,
     ui::UiCtx, View,
 };
-use gfx::{Canvas, Rect, Size};
 use text::text::Text;
 
 pub fn register(registry: &mut SyntaxLanguages) {

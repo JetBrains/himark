@@ -7,6 +7,7 @@
 //! compose them, nothing places pixels by hand.
 
 use editor::theme::TypeRole;
+use gfx::{Paint, Rect, Size};
 use hikit::chrome::SheetChrome;
 use hikit::modal::{ModalRequest, ModalView};
 use hikit::ui::TextStyle;
@@ -22,7 +23,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::{Paint, Rect, Size};
 
 /// THE one boxed surface the design keeps: a centered sheet — flat
 /// fill, hairline border, soft radius, soft drop shadow. The page
@@ -279,21 +279,19 @@ impl MatchMark {
                 bottom: foot,
                 ..Default::default()
             })
-            .backdrop(
-                move |_arena: &Arena, canvas: &gfx::Canvas, rect: Rect| {
-                    let mut paint = Paint::default();
-                    paint.set_color(color);
-                    canvas.draw_rect(
-                        Rect::from_xywh(
-                            rect.left,
-                            rect.top + ascent + offset,
-                            rect.width(),
-                            thickness,
-                        ),
-                        &paint,
-                    );
-                },
-            )
+            .backdrop(move |_arena: &Arena, canvas: &gfx::Canvas, rect: Rect| {
+                let mut paint = Paint::default();
+                paint.set_color(color);
+                canvas.draw_rect(
+                    Rect::from_xywh(
+                        rect.left,
+                        rect.top + ascent + offset,
+                        rect.width(),
+                        thickness,
+                    ),
+                    &paint,
+                );
+            })
     }
 }
 

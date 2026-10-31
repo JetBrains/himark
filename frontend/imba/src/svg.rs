@@ -104,7 +104,12 @@ impl SvgView {
         canvas.translate(rect.left, rect.top);
         let inverse = draw_scale / raster_scale;
         canvas.scale(inverse, inverse);
-        canvas.draw_image(image, gfx::Point::new(0.0, 0.0), gfx::Sampling::Linear, &paint);
+        canvas.draw_image(
+            image,
+            gfx::Point::new(0.0, 0.0),
+            gfx::Sampling::Linear,
+            &paint,
+        );
         canvas.restore();
     }
 

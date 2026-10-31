@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -20,7 +21,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 use crate::views::{locations_forest, result_row, ResultRow};
 use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
@@ -1102,13 +1102,8 @@ mod tests {
             &arena,
             gfx::Rect::from_wh(400.0, 400.0),
         );
-        imba::Widget::handle_event(
-            &widget,
-            &arena,
-            event,
-            gfx::Rect::from_wh(400.0, 400.0),
-        )
-        .into_commands()
+        imba::Widget::handle_event(&widget, &arena, event, gfx::Rect::from_wh(400.0, 400.0))
+            .into_commands()
     }
 
     fn scroll_move(command: &SearchCommand) -> bool {

@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Color;
 use imba::theme::{Key, Rgba, TypeRole};
 use serde::Deserialize;
-use gfx::Color;
 
 /// The History tab under the side column's tabs (docs/Design.md, the
 /// Main artboard's right column): a branch line, then the RAIL — a

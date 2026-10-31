@@ -149,13 +149,11 @@ impl Painter for skia_safe::Canvas {
     }
 
     fn draw_image(&self, image: &Image, origin: Point, sampling: Sampling, paint: &Paint) {
-        self
-            .draw_image_with_sampling_options(image, origin, sampling, Some(paint));
+        self.draw_image_with_sampling_options(image, origin, sampling, Some(paint));
     }
 
     fn draw_image_rect(&self, image: &Image, dst: Rect, sampling: Sampling, paint: &Paint) {
-        self
-            .draw_image_rect_with_sampling_options(image, None, dst, sampling, paint);
+        self.draw_image_rect_with_sampling_options(image, None, dst, sampling, paint);
     }
 
     fn draw_blurred_round_rect(&self, rect: Rect, rx: f32, ry: f32, sigma: f32, color: Color) {

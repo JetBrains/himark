@@ -356,11 +356,7 @@ impl<'a> imba::Thunk<'a, EditorCommand> for GatheredPane<'a> {
         }
     }
 
-    fn realize(
-        self,
-        arena: &'a Arena,
-        viewport: gfx::Rect,
-    ) -> imba::WidgetBox<'a, EditorCommand> {
+    fn realize(self, arena: &'a Arena, viewport: gfx::Rect) -> imba::WidgetBox<'a, EditorCommand> {
         let size = imba::Thunk::size(&self);
         let GatheredPane {
             ui,

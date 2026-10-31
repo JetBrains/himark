@@ -774,7 +774,7 @@ impl MenuBar {
                             panel_rect.left + metrics.panel_pad_x,
                             item_rect.top + metrics.item_baseline,
                         )
-                        .into(),
+                            .into(),
                         self.item_font(),
                         &paint,
                     );
@@ -787,7 +787,7 @@ impl MenuBar {
                                 panel_rect.right - metrics.panel_pad_x - shortcut_width,
                                 item_rect.top + metrics.item_baseline,
                             )
-                            .into(),
+                                .into(),
                             self.item_font(),
                             &paint,
                         );

@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Font, Paint, PathBuilder, Point, Rect, Size};
 use imba::{
     constraints::Constraints,
     effect::Effects,
@@ -13,7 +14,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use gfx::{Font, Paint, PathBuilder, Point, Rect, Size};
 
 use crate::chrome::ComboChrome;
 use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};

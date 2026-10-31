@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Paint, Size};
 use imba::{
     constraints::Constraints,
     effect::Effects,
@@ -12,7 +13,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::{Paint, Size};
 
 use crate::combo::{measured, ComboItem, ComboOption};
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};

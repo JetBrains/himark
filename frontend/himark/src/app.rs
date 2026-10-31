@@ -5,6 +5,7 @@ use documents::DocumentsCommand;
 
 use std::sync::OnceLock;
 
+use gfx::{Canvas, Rect, Size};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -16,7 +17,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::{Canvas, Rect, Size};
 use text::text::Text;
 
 use ::workbench::window::Window;

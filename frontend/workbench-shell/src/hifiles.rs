@@ -10,8 +10,8 @@ use ::filetree::TreeCommand;
 
 use std::sync::Arc;
 
-use imba::store::Store;
 use gfx::{Paint, PathBuilder};
+use imba::store::Store;
 
 /// The files feature as a plugin: the tree toggle and its toolbar
 /// button.

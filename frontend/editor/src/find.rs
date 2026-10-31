@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 
+use gfx::{Paint, Rect, Size};
 use imba::effect::{AnyEffect, Effects};
 use imba::{
     arena::Arena,
@@ -16,7 +17,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use gfx::{Paint, Rect, Size};
 
 use crate::document::Document;
 use crate::editor::EditorId;

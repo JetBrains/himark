@@ -6,13 +6,13 @@ use crate::theme::{StyleId, TextAttributes};
 
 use std::{ops::Range, sync::Arc};
 
+use gfx::Size;
 use imba::{
     arena::Arena, constraints::Constraints, dyn_view::DynCommand, store::Store, ui::UiCtx, Thunk,
     View,
 };
 use intervals::{Interval, IntervalQuery, Intervals, Order};
 use operation::{op::Op, operation::Operation};
-use gfx::Size;
 
 pub(crate) fn interval_steps(
     operation: &Operation,
@@ -317,7 +317,10 @@ pub fn weigh_by_containment(
 
 #[derive(Clone)]
 pub(crate) enum Decoration {
-    Styled { id: StyleId, weight: StyleWeight },
+    Styled {
+        id: StyleId,
+        weight: StyleWeight,
+    },
 
     Hidden,
 
@@ -2110,10 +2113,7 @@ impl MarkupBuilder {
     }
 
     pub fn push_block_styles(&mut self, range: Range<u32>, ids: impl IntoIterator<Item = StyleId>) {
-        self.push_block_layers(
-            range,
-            ids.into_iter().map(|id| (id, StyleWeight::DEFAULT)),
-        );
+        self.push_block_layers(range, ids.into_iter().map(|id| (id, StyleWeight::DEFAULT)));
     }
 
     /// Block styles with the nesting the producer knows: outer

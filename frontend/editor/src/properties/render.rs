@@ -10,8 +10,8 @@
 
 use std::ops::Range;
 
-use proptest::prelude::*;
 use gfx::{surfaces, Color, EncodedImageFormat, Rect};
+use proptest::prelude::*;
 
 use super::{
     gen::{self, Block, EditSpec, Inline, Spec},

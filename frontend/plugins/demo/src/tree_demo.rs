@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Paint, PathBuilder, Rect, Size};
 use hikit::panel::PanelView;
 use imba::{
     arena::Arena,
@@ -13,7 +14,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::{Paint, PathBuilder, Rect, Size};
 
 const ROW_HEIGHT: f32 = 26.0;
 const INDENT: f32 = 18.0;

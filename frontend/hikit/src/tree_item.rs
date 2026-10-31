@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -11,7 +12,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View, Widget,
 };
-use gfx::Size;
 
 /// What the label NAMES — resolved to a theme color at display time
 /// (rows live long in ropes; a baked color would survive a theme

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use editor::{editor_view::EditorCommand, editor_view::EditorView, env};
+use gfx::{Rect, Size};
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -15,7 +16,6 @@ use imba::{
     ui::UiCtx,
     View, Widget,
 };
-use gfx::{Rect, Size};
 
 use crate::cell::document_text;
 

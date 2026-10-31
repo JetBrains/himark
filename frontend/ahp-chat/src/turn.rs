@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -11,7 +12,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use gfx::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind, DiffHeader, LineRole};
 use crate::chat::model::PartId;

@@ -22,12 +22,12 @@ use crate::rows::{
 use changesview::hichanges::{CanvasId, CanvasSource, Changes};
 use editor::env;
 use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
+use gfx::Size;
 use imba::effect::{AnyEffect, Effects};
 use imba::event::Placement;
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
 use imba::thunk_ext::ThunkExt;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, Thunk, View};
-use gfx::Size;
 
 /// The row key: the file's `new` side names the FILE node (the header
 /// row and its cover span — the reveal target), and the diff child

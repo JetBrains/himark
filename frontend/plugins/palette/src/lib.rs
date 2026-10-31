@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::Size;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
@@ -19,7 +20,6 @@ use imba::{
     ui::UiCtx,
     PresentableCommand, View,
 };
-use gfx::Size;
 
 mod sheet;
 

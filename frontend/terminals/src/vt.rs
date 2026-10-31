@@ -12,8 +12,8 @@ use std::ffi::c_void;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ghostty_sys::*;
 use gfx::Color;
+use ghostty_sys::*;
 
 /// The terminal's colors, from the theme part. The palette's 16 seats
 /// override libghostty's defaults; 16..255 stay the standard cube.

@@ -15,6 +15,7 @@ mod entry;
 
 pub use entry::{ContentsEntry, ContentsRow, Place};
 
+use gfx::Size;
 use imba::{
     arena::Arena,
     event::{Event, EventResult, Key as InputKey},
@@ -23,7 +24,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 use hikit::{
     forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,

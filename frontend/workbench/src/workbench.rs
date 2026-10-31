@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use gfx::{Contains as _, Rect, Size};
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -11,7 +12,6 @@ use imba::{
     ui::UiCtx,
     Thunk, View,
 };
-use gfx::{Contains as _, Rect, Size};
 
 use crate::columns::{ChatSpan, ChatStance, Columns, DockSpan, DrawerSide, Span};
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};

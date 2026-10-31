@@ -23,6 +23,7 @@ use std::sync::Arc;
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
 use editor::location::ResourceLocation;
+use gfx::Size;
 use hikit::{
     forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand,
     list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand,
@@ -42,7 +43,6 @@ use imba::{
     ui::UiCtx,
     View,
 };
-use gfx::Size;
 
 /// What a row DOES when activated — the whole changes/history
 /// behavioural difference, carried as data minted by the node

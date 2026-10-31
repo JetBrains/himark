@@ -67,9 +67,8 @@ fn paint_cell(
     let height = imba::Thunk::size(&thunk).height;
     let viewport = Rect::from_wh(width, height);
     let widget = imba::Thunk::realize(thunk, &arena, viewport);
-    let mut surface =
-        gfx::surfaces::raster_n32_premul((width as i32, height.ceil() as i32 + 4))
-            .expect("raster surface");
+    let mut surface = gfx::surfaces::raster_n32_premul((width as i32, height.ceil() as i32 + 4))
+        .expect("raster surface");
     let canvas = surface.canvas();
     canvas.clear(gfx::Color::from_argb(0xff, 0x10, 0x12, 0x18));
     let result = imba::Widget::handle_event(
