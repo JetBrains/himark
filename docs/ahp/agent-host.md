@@ -80,16 +80,18 @@ a method or channel family on the same socket.
   binary. `host_discovery::resolve_daemon_binary` resolves it via
   `$HIMARK_AGENT_HOST_BIN`, then as `current_exe`'s sibling, then on
   `PATH`.
-- **Autostart + takeover**: the engine calls
-  `host_discovery::autostart()` at boot. A live host whose lockfile
-  `build` stamp (`path:len:mtime` of the daemon binary) matches the
-  resolved daemon is adopted; a stale one is SIGTERMed and awaited
-  (a host that refuses to die is adopted anyway — never a boot
-  hang), then the fresh daemon spawns detached and the lockfile is
-  polled. An app-only rebuild does not restart the host: the stamp
-  compares against the daemon binary, not the app. The host outlives
-  himark — sessions keep streaming while no client is attached,
-  which is the property that makes it a separate process at all.
+- **Autostart, never takeover**: every shell (the apple app, winit,
+  gpui) calls `host_discovery::autostart()` at boot. A live host is
+  adopted, full stop — even one from another build (the lockfile
+  `build` stamp, `path:len:mtime` of the daemon binary, only earns
+  a warning when it differs). Only when no host stands does the
+  resolved daemon spawn detached and the lockfile get polled. "Live"
+  means really running: a host that exited under an app that never
+  reaped it is a zombie, and `kill(pid, 0)` still succeeds on a
+  zombie, so `read_live` reaps our own dead child first. The host
+  outlives himark — sessions keep streaming while no client is
+  attached, which is the property that makes it a separate process
+  at all. Updating the host is a deliberate act: quit it yourself.
 - **Auth on the socket**: none — the socket lives under the user's
   home. The HTTP/WebSocket face is token-gated (§7).
 - **The watchdog**: each host tags itself `host#N`, tracks inflight
@@ -386,6 +388,7 @@ network instead of the socket (docs/ahp/remote.md).
   protocol owns the transcript. Append-only ndjson per chat, paged
   by `fetchTurns`, replayed at boot.
 - **A standalone tiny daemon beside the app binary** — the host
-  must outlive the editor, and the build-stamp takeover keeps
-  client and host from skewing: a host update is "the app noticed
-  and restarted the daemon", never a version negotiation.
+  must outlive the editor, and no shell may kill it on its own: a
+  build-stamp takeover (SIGTERM from a dev build beside the shipping
+  app) stopped a night's work on 2026-10-31. A host update is the
+  user quitting the host, never a version negotiation.

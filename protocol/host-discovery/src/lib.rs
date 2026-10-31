@@ -92,6 +92,11 @@ pub fn resolve_daemon_binary() -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Adopt the running host if there is one; spawn the daemon only when
+/// none stands. A live host is NEVER taken over for a build mismatch:
+/// it owns the user's sessions, and killing it from a second shell
+/// (a dev build beside the shipping app) stopped a night's work on
+/// 2026-10-31. A build update means "quit the host yourself".
 pub fn autostart() -> Option<Lockfile> {
     let dir = default_dir()?;
     let daemon = resolve_daemon_binary();
@@ -100,36 +105,16 @@ pub fn autostart() -> Option<Lockfile> {
             Some(daemon) => live.build.as_deref() == Some(build_stamp_of(daemon).as_str()),
             None => true,
         };
-        if matches {
-            return Some(live);
-        }
-        logging::init("app");
-        tracing::warn!(
-            target: "ahp_autostart",
-            pid = live.pid,
-            dir = %dir.display(),
-            "a live host from another build stands — taking over"
-        );
-        eprintln!(
-            "[agent-host] a live host from another build holds {} — taking over",
-            dir.display()
-        );
-        terminate(live.pid);
-        for _ in 0..100 {
-            if read_live(&dir).is_none() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        if let Some(stubborn) = read_live(&dir) {
+        if !matches {
+            logging::init("app");
             tracing::warn!(
                 target: "ahp_autostart",
-                pid = stubborn.pid,
-                "the standing host ignored the takeover — adopting it"
+                pid = live.pid,
+                dir = %dir.display(),
+                "a live host from another build stands — connecting to it, not replacing it"
             );
-            eprintln!("[agent-host] the standing host ignored the takeover — adopting it");
-            return Some(stubborn);
         }
+        return Some(live);
     }
     let binary = daemon?;
     logging::init("app");
@@ -149,17 +134,6 @@ pub fn autostart() -> Option<Lockfile> {
     }
     None
 }
-
-#[cfg(unix)]
-pub fn terminate(pid: u32) {
-    unsafe {
-        let _ = libc_kill(pid as i32, 15);
-    }
-}
-
-// The host does not run on Windows yet, so there is never a process to signal.
-#[cfg(not(unix))]
-pub fn terminate(_pid: u32) {}
 
 pub fn write(dir: &Path, socket: &Path, protocol_version: &str) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
@@ -202,8 +176,17 @@ pub fn read_live(dir: &Path) -> Option<Lockfile> {
     alive(lock.pid).then_some(lock)
 }
 
+/// A host that exited but was never reaped (the app spawned it and
+/// dropped the Child) sits as a zombie, and `kill(pid, 0)` still
+/// succeeds on a zombie. Reap it first when it is ours, so a dead
+/// host reads as dead and the next `autostart` spawns a fresh one.
 #[cfg(unix)]
 fn alive(pid: u32) -> bool {
+    let mut status: i32 = 0;
+    let reaped = unsafe { libc_waitpid(pid as i32, &mut status, WNOHANG) };
+    if reaped == pid as i32 {
+        return false;
+    }
     let outcome = unsafe { libc_kill(pid as i32, 0) };
     outcome == 0 || std::io::Error::last_os_error().raw_os_error() == Some(1)
 }
@@ -214,9 +197,14 @@ fn alive(_pid: u32) -> bool {
 }
 
 #[cfg(unix)]
+const WNOHANG: i32 = 1;
+
+#[cfg(unix)]
 extern "C" {
     #[link_name = "kill"]
     fn libc_kill(pid: i32, sig: i32) -> i32;
+    #[link_name = "waitpid"]
+    fn libc_waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
 }
 
 #[cfg(test)]
@@ -235,5 +223,38 @@ mod tests {
         let stamp = build_stamp();
         assert_ne!(stamp, "unknown");
         assert_eq!(stamp, build_stamp());
+    }
+
+    /// The host died under an app that never reaped it: a zombie must
+    /// read as dead, or no shell ever spawns a replacement.
+    #[cfg(unix)]
+    #[test]
+    fn a_dead_unreaped_child_is_not_alive() {
+        let child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn true");
+        let pid = child.id();
+        std::mem::forget(child);
+        // Give it time to exit; it becomes a zombie until someone waits.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while alive(pid) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!alive(pid), "an exited child is still reported live");
+    }
+
+    /// A host nobody spawned from this process still counts as live
+    /// while it runs — waitpid on a non-child must not condemn it.
+    #[cfg(unix)]
+    #[test]
+    fn a_running_process_is_alive() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        assert!(alive(child.id()));
+        assert!(alive(std::process::id()));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
