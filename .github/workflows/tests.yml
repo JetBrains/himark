@@ -81,7 +81,9 @@ jobs:
             libfontconfig1-dev \
             libfreetype6-dev \
             libwayland-dev \
+            libxcb1-dev \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
             pkg-config
 
       - name: Install Rust
@@ -155,7 +157,9 @@ jobs:
             libfontconfig1-dev \
             libfreetype6-dev \
             libwayland-dev \
+            libxcb1-dev \
             libxkbcommon-dev \
+            libxkbcommon-x11-dev \
             pkg-config
 
       - name: Install Rust
