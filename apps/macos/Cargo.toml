@@ -1,5 +1,5 @@
 [package]
-name = "himark-gpui-app"
+name = "macos"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -8,5 +8,5 @@ license = "Apache-2.0"
 himark-gpui = { path = "../../frontend/himark-gpui" }
 
 [[bin]]
-name = "himark-gpui-app"
+name = "macos"
 path = "src/main.rs"

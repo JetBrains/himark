@@ -152,7 +152,7 @@ Re-run `./build.sh gen` after changing the Rust side; Xcode links the static
 library that cargo produced and does not rebuild it.
 
 Open files with **File > Open** (`Cmd+O`). On macOS you can also run the
-`winit` shell described in the Linux section (`cargo run -p linux`) as a
+Rust gpui shell (`cargo run -p macos`) as a
 quick way to test the engine without Xcode.
 
 ## iOS
@@ -184,65 +184,6 @@ The first iOS build is slow because cargo downloads and prepares the iOS
 Skia archive. The script points `bindgen` at the iOS SDK sysroots through
 `BINDGEN_EXTRA_CLANG_ARGS_*`, so the QuickJS bindings generate without extra
 setup. Running on a physical device needs a signing team set in Xcode.
-
-## Linux
-
-Linux uses the shared `himark-winit` shell (`winit` 0.30 with `softbuffer`),
-which supports both Wayland and X11.
-
-### Prerequisites
-
-On Debian or Ubuntu:
-
-```sh
-sudo apt-get install -y clang libclang-dev pkg-config \
-    libfontconfig1-dev libfreetype6-dev libwayland-dev libxkbcommon-dev
-```
-
-Other distributions need the equivalents: a C++ compiler, libclang,
-pkg-config, fontconfig, FreeType, Wayland, and xkbcommon development headers.
-
-### Build and run
-
-```sh
-cargo build -p agent-host                             # the backend, once
-cargo run --release -p linux -- [file-or-directory ...]
-```
-
-Command-line paths and files dropped onto the window open recursively;
-`.md`, `.markdown`, `.rs`, and `.txt` files are picked up. The shell draws
-its own menu bar inside the window. Use `Ctrl+N` for a new document,
-`Ctrl+P` for the file peeker, `Ctrl+Shift+P` for the command palette,
-`Ctrl+D` to split, `Ctrl+F` to find, `Ctrl+Shift+F` to search in files,
-`Ctrl+W` to close, and `Ctrl+M` / `Ctrl+Shift+M` to open the demo documents.
-
-## Windows
-
-Windows uses the same `winit` shell.
-
-### Prerequisites
-
-- Rust via rustup with the default `x86_64-pc-windows-msvc` toolchain.
-- Visual Studio 2022 or Build Tools for Visual Studio 2022, **17.10 or
-  newer**, with the "Desktop development with C++" workload. The prebuilt
-  Skia binaries are compiled against the MSVC STL from toolset 14.40; linking
-  with an older toolset fails with unresolved `__std_min_f`, `__std_max_f`,
-  and `__std_minmax_f` symbols. Update the C++ toolset in the Visual Studio
-  Installer if you hit that.
-- LLVM, for libclang. Install it from the LLVM releases or with
-  `winget install LLVM.LLVM`, then set `LIBCLANG_PATH` to its `bin`
-  directory.
-
-### Build and run
-
-```sh
-cargo run --release -p windows -- [file-or-directory ...]
-```
-
-Shortcuts are the same as on Linux. The Windows build is not covered by CI,
-and the agent host currently depends on Unix-only APIs (pseudo-terminals and
-Unix sockets), so on Windows the shell runs without a backend and the
-features that route through it are unavailable.
 
 ## Web
 
@@ -352,8 +293,6 @@ The packages:
 | Package | Contents |
 |---|---|
 | `himark-<v>-macos-arm64.zip` | `himark-macOS.app` with the agent host and the web page bundled |
-| `himark-<v>-linux-{x86_64,aarch64}.tar.gz` | `himark` (the `winit` shell) and `himark-agent-host` |
-| `himark-<v>-windows-{x86_64,aarch64}.zip` | `himark.exe` (no agent host on Windows yet) |
 | `himark-<v>-web.tar.gz` | the static site from `apps/web/tools/build-web.sh` |
 | `SHA256SUMS` | checksums of the above |
 

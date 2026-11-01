@@ -4,8 +4,9 @@
 
 himark is an experimental markdown editor and AHP client written in Rust. The app core is a
 headless engine that renders through [Skia](https://skia.org) and is embedded
-into a native shell on each platform: an AppKit/UIKit app on macOS and iOS, a
-`winit` window on Linux and Windows, and a WebAssembly build in the browser.
+into a native shell on each platform: an AppKit/UIKit app on macOS and iOS,
+a Rust [gpui](https://www.gpui.rs) shell on macOS (`cargo run -p macos`),
+and a WebAssembly build in the browser.
 A separate backend process, the **agent host**, owns everything that touches
 the outside world: files, search, terminals, language servers, git, and
 coding agents (Claude Code and Codex).
@@ -27,7 +28,7 @@ coding agents (Claude Code and Codex).
 
 ```
 frontend/         the engine: rope, text, intervals, layout, editor, plugins,
-                  and the shells' Rust halves (frontend-host, desktop, himark-winit)
+                  and the shells' Rust halves (frontend-host, desktop, himark-gpui)
 frontend/plugins/ feature plugins (markdown, search, palette, peeker, diff, code)
 frontend/plugins/lang/  one tree-sitter language plugin per folder
 backend/          the agent host (himark-agent-host) and its services

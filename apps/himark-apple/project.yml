@@ -33,40 +33,6 @@ targets:
     # the target "disappears" from the scheme picker.
     scheme: {}
 
-  himark-desktop:
-    type: application
-    platform: macOS
-    sources:
-      - Sources/Shared
-      - Sources/Desktop
-      - path: Sources/macOS/HimarkBridgeView.swift
-      - path: Sources/macOS/OverlayHostView.swift
-      - path: Sources/macOS/HostBridge.swift
-    configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.himark.desktop
-        INFOPLIST_FILE: Info-Desktop.plist
-        ONLY_ACTIVE_ARCH: YES
-        SWIFT_VERSION: "5.9"
-        SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
-        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
-        CLANG_CXX_LIBRARY: "libc++"
-        # The Rust pre-build writes into the repo's target/ — the
-        # Xcode 15 script sandbox would refuse it.
-        ENABLE_USER_SCRIPT_SANDBOXING: NO
-    preBuildScripts:
-      - name: Build Rust (frontend-host)
-        basedOnDependencyAnalysis: false
-        script: |
-          set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cd "$SRCROOT/../.."
-          cargo build -p frontend-host --release --target aarch64-apple-darwin
-          cp frontend/himark/include/himark.h "$SRCROOT/himark.h"
-    frameworks: [AppKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
-    scheme: {}
-
   himark-iOS:
     type: application
     platform: iOS
@@ -100,14 +66,6 @@ targets:
 # Extra schemes: same targets, Run/Test/Analyze in Release. The per-target
 # `scheme: {}` ones stay Debug for ⌘R; pick these to run optimized Swift.
 schemes:
-  himark-desktop-release:
-    build:
-      targets: { himark-desktop: all }
-    run: { config: Release }
-    test: { config: Release }
-    profile: { config: Release }
-    analyze: { config: Release }
-    archive: { config: Release }
   himark-macOS-release:
     build:
       targets: { himark-macOS: all }
