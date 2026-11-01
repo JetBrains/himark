@@ -329,38 +329,28 @@ impl GpuiPainter {
     }
 
     fn render_image(&self, image: &gfx::Image) -> Option<Arc<RenderImage>> {
-        let key = image.unique_id();
-        if let Some(hit) = self.caches.borrow().images.get(&key) {
-            return Some(hit.clone());
-        }
-        let width = image.width() as u32;
-        let height = image.height() as u32;
-        // gpui's RenderImage is BGRA behind an RGBA-typed buffer;
-        // skia converts on readback.
-        let info = gfx::ImageInfo::new(
-            (width as i32, height as i32),
-            gfx::ColorType::BGRA8888,
-            gfx::AlphaType::Unpremul,
-            None,
-        );
-        let mut pixels = vec![0u8; width as usize * height as usize * 4];
-        let row_bytes = width as usize * 4;
-        if !image.read_pixels(
-            &info,
-            &mut pixels,
-            row_bytes,
-            (0, 0),
-            gfx::image::CachingHint::Allow,
-        ) {
-            return None;
-        }
-        let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
-        let rendered = Arc::new(RenderImage::new(smallvec![image::Frame::new(buffer)]));
-        self.caches
-            .borrow_mut()
-            .images
-            .insert(key, rendered.clone());
-        Some(rendered)
+        image
+            .backend(|image| {
+                let width = image.width();
+                let height = image.height();
+                // gpui's RenderImage is BGRA behind an RGBA-typed
+                // buffer, unpremultiplied — swizzle, and divide the
+                // alpha back out when the raster arrived premultiplied.
+                let mut pixels = image.pixels().to_vec();
+                for px in pixels.chunks_exact_mut(4) {
+                    px.swap(0, 2);
+                    if image.is_premultiplied() && px[3] != 0 && px[3] != 255 {
+                        let a = px[3] as u32;
+                        px[0] = ((px[0] as u32 * 255) / a).min(255) as u8;
+                        px[1] = ((px[1] as u32 * 255) / a).min(255) as u8;
+                        px[2] = ((px[2] as u32 * 255) / a).min(255) as u8;
+                    }
+                }
+                image::RgbaImage::from_raw(width, height, pixels)
+                    .map(|buffer| Arc::new(RenderImage::new(smallvec![image::Frame::new(buffer)])))
+            })
+            .cloned()
+            .flatten()
     }
 }
 
@@ -513,30 +503,28 @@ impl gfx::Painter for GpuiPainter {
 
     fn draw_path(&self, path: &gfx::Path, paint: &gfx::Paint) {
         let mut builder = self.path_builder(paint);
-        let mut iter = skia_safe::path::Iter::new(path, false);
-        while let Some((verb, points)) = iter.next() {
-            match verb {
-                skia_safe::path::Verb::Move => {
-                    builder.move_to(self.to_window(points[0].x, points[0].y));
+        for verb in path.verbs() {
+            match *verb {
+                gfx::path::Verb::Move(to) => {
+                    builder.move_to(self.to_window(to.x, to.y));
                 }
-                skia_safe::path::Verb::Line => {
-                    builder.line_to(self.to_window(points[1].x, points[1].y));
+                gfx::path::Verb::Line(to) => {
+                    builder.line_to(self.to_window(to.x, to.y));
                 }
-                skia_safe::path::Verb::Quad => {
+                gfx::path::Verb::Quad(control, to) => {
                     builder.curve_to(
-                        self.to_window(points[2].x, points[2].y),
-                        self.to_window(points[1].x, points[1].y),
+                        self.to_window(to.x, to.y),
+                        self.to_window(control.x, control.y),
                     );
                 }
-                skia_safe::path::Verb::Cubic => {
+                gfx::path::Verb::Cubic(first, second, to) => {
                     builder.cubic_bezier_to(
-                        self.to_window(points[3].x, points[3].y),
-                        self.to_window(points[1].x, points[1].y),
-                        self.to_window(points[2].x, points[2].y),
+                        self.to_window(to.x, to.y),
+                        self.to_window(first.x, first.y),
+                        self.to_window(second.x, second.y),
                     );
                 }
-                skia_safe::path::Verb::Close => builder.close(),
-                _ => {}
+                gfx::path::Verb::Close => builder.close(),
             }
         }
         self.paint_built(builder, paint);
@@ -579,7 +567,7 @@ impl gfx::Painter for GpuiPainter {
             family: SharedString::from(typeface.family_name()),
             features: Default::default(),
             fallbacks: None,
-            weight: gpui::FontWeight(*typeface.font_style().weight() as f32),
+            weight: gpui::FontWeight(typeface.weight()),
             style: Default::default(),
         };
         let font_size = self.to_len(font.size());

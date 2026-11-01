@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::anim::{Animation, AnimationClock, Easing, Motion};
 use crate::ui::UiCtx;
-use gfx::{Color, Contains, Paint, Rect, Size};
+use gfx::{Color, Paint, Rect, Size};
 use intervals::{Interval, IntervalQuery, Intervals, Order};
 use rope::{
     cursor::Cursor, cursor::SeekMode, metrics::Measure, metrics::MetricId, metrics::Metrics,

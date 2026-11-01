@@ -1,14 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The glyph road a backend can actually walk. A skia `SkTextBlob`
-//! is opaque — positions go in, nothing comes back out — so a blob
-//! here carries the runs themselves: face, size, synthesis, and
-//! positioned glyph ids. The skia blob rides along, built once at
-//! shape time the way it always was, so the skia backend hands the
-//! atlas the SAME object every frame and its sub-run cache keys
-//! hold.
+//! The glyph road a backend can actually walk: a blob carries the
+//! runs themselves — face, size, synthesis, positioned glyph ids —
+//! and nothing of any renderer. A backend builds its native twin
+//! (a skia `SkTextBlob`, a gpui run list) through the cache slot on
+//! first draw and reuses it for the blob's life, so identity-keyed
+//! atlas caches hold exactly as they did when the twin was built at
+//! shape time.
 
+use std::any::Any;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::Point;
@@ -30,23 +31,62 @@ pub struct FaceEntry {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct FaceId(pub u32);
 
-static FACES: OnceLock<RwLock<Vec<Arc<FaceEntry>>>> = OnceLock::new();
+type FaceKey = (usize, usize, u32, Vec<(u32, u32)>);
 
-fn faces() -> &'static RwLock<Vec<Arc<FaceEntry>>> {
-    FACES.get_or_init(|| RwLock::new(Vec::new()))
+struct Registry {
+    faces: Vec<Arc<FaceEntry>>,
+    /// Dedupe by identity — bytes address, collection index, coords:
+    /// every thread interning the face the shaper met answers the
+    /// SAME id, so backend caches stay one-per-face process-wide.
+    ids: std::collections::HashMap<FaceKey, FaceId>,
 }
 
-/// Intern a face. The caller is expected to memoize per (font,
-/// coords) — this pushes unconditionally and answers the new id.
+static FACES: OnceLock<RwLock<Registry>> = OnceLock::new();
+
+fn faces() -> &'static RwLock<Registry> {
+    FACES.get_or_init(|| {
+        RwLock::new(Registry {
+            faces: Vec::new(),
+            ids: std::collections::HashMap::new(),
+        })
+    })
+}
+
+fn key_of(entry: &FaceEntry) -> FaceKey {
+    let bytes = (*entry.data).as_ref();
+    (
+        bytes.as_ptr() as usize,
+        bytes.len(),
+        entry.index,
+        entry
+            .coords
+            .iter()
+            .map(|(tag, value)| (*tag, value.to_bits()))
+            .collect(),
+    )
+}
+
+/// Intern a face — idempotent per (bytes, index, coords).
 pub fn register_face(entry: FaceEntry) -> FaceId {
-    let mut faces = faces().write().expect("face registry");
-    faces.push(Arc::new(entry));
-    FaceId(faces.len() as u32 - 1)
+    let key = key_of(&entry);
+    let mut registry = faces().write().expect("face registry");
+    if let Some(id) = registry.ids.get(&key) {
+        return *id;
+    }
+    registry.faces.push(Arc::new(entry));
+    let id = FaceId(registry.faces.len() as u32 - 1);
+    registry.ids.insert(key, id);
+    id
+}
+
+/// How many faces the process has interned. Test support.
+pub fn face_count() -> usize {
+    faces().read().expect("face registry").faces.len()
 }
 
 /// Look a face up — a backend resolving its own handle for the id.
 pub fn face(id: FaceId) -> Arc<FaceEntry> {
-    faces().read().expect("face registry")[id.0 as usize].clone()
+    faces().read().expect("face registry").faces[id.0 as usize].clone()
 }
 
 /// One run of positioned glyphs in one face at one size.
@@ -69,15 +109,16 @@ pub struct TextBlob {
 
 struct TextBlobInner {
     runs: Vec<GlyphRun>,
-    /// The skia twin, built at shape time next to the runs. `None`
-    /// only when every run's face failed to bridge.
-    skia: Option<skia_safe::TextBlob>,
+    backend: OnceLock<Box<dyn Any + Send + Sync>>,
 }
 
 impl TextBlob {
-    pub fn new(runs: Vec<GlyphRun>, skia: Option<skia_safe::TextBlob>) -> Self {
+    pub fn new(runs: Vec<GlyphRun>) -> Self {
         Self {
-            inner: Arc::new(TextBlobInner { runs, skia }),
+            inner: Arc::new(TextBlobInner {
+                runs,
+                backend: OnceLock::new(),
+            }),
         }
     }
 
@@ -85,7 +126,15 @@ impl TextBlob {
         &self.inner.runs
     }
 
-    pub fn skia(&self) -> Option<&skia_safe::TextBlob> {
-        self.inner.skia.as_ref()
+    /// The backend's twin, built once per blob — identity-stable
+    /// for the blob's life. One backend per process.
+    pub fn backend<T: Send + Sync + 'static>(
+        &self,
+        build: impl FnOnce(&[GlyphRun]) -> T,
+    ) -> Option<&T> {
+        self.inner
+            .backend
+            .get_or_init(|| Box::new(build(&self.inner.runs)))
+            .downcast_ref::<T>()
     }
 }

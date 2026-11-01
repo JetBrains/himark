@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::theme::ThemeStyles as _;
+use gfx::Painter as _;
 
 /// The spike's parity meter: both roads shape the SAME bytes
 /// (the embedded face), paint through skia, and the diff metric
@@ -51,8 +52,8 @@ fn parley_shapes_paints_and_answers_geometry() {
     // Paint both roads side by side; the diff metric is the
     // spike's deliverable, printed for the record.
     let paint_to = |painter: &dyn Fn(&gfx::Canvas)| -> Vec<u8> {
-        let mut surface = gfx::surfaces::raster_n32_premul((900, 60)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((900, 60)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         painter(canvas);
         let image = surface.image_snapshot();
@@ -387,8 +388,11 @@ fn typeface_bridge_caches_hold_across_shapes() {
         shape(&format!("round {round} re-shapes the same styles"));
     }
     let second = shaper().bridge_sizes_for_test();
+    // Only the context-local cache is isolated enough to pin: the
+    // process-wide face registry is shared with every concurrently
+    // running test.
     assert_eq!(
-        first, second,
+        first.0, second.0,
         "the same styles missed the bridge caches on re-shape"
     );
     assert!(

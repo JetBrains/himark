@@ -2,46 +2,34 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The painting boundary: every crate above draws through
-//! [`Painter`], and only this crate (and the shells that create
-//! surfaces) names skia. The surface is deliberately the app's own
-//! inventory — ten draw calls, solid paints, rect clips — not a
-//! canvas in general; a backend owes nothing more than what the
-//! trait spells out.
+//! [`Painter`], in this crate's own vocabulary — geometry, paint,
+//! paths, faces, rasters. No renderer's name appears here: skia is
+//! one backend (`gfx-skia`), gpui another (`imba-gpui`), and each
+//! resolves faces, blobs and images from the neutral types through
+//! identity-keyed caches of its own.
 //!
-//! The types below are re-exported from skia for now. Each
-//! re-export is a debt this crate owes, not a contract: replacing
-//! one with our own type changes this file and nobody above.
+//! The surface is deliberately the app's own inventory — ten draw
+//! calls, solid paints, rect clips — not a canvas in general; a
+//! backend owes nothing more than what the trait spells out.
 
+mod geometry;
 mod painter;
 mod text;
 
+pub mod font;
+pub mod image;
+pub mod paint;
+pub mod path;
+
+pub use font::{Edging, Font, FontStyle, Typeface};
+pub use geometry::{Color, ISize, Point, Rect, Size};
+pub use image::Image;
+pub use paint::{Cap as PaintCap, Join as PaintJoin, Paint, Style as PaintStyle};
 pub use painter::{Painter, Sampling};
-pub use text::{face, register_face, FaceEntry, FaceId, GlyphRun, TextBlob};
+pub use path::{Path, PathBuilder};
+pub use text::{face, face_count, register_face, FaceEntry, FaceId, GlyphRun, TextBlob};
 
 /// THE canvas the widget tree paints into — any backend, behind the
 /// trait. A type alias so `&Canvas` keeps meaning "somewhere to
 /// draw" at every call site it always did.
 pub type Canvas = dyn Painter;
-
-// ─── geometry and color ───
-pub use skia_safe::{Color, Contains, ISize, Point, Rect, Size};
-
-// ─── paint ───
-pub use skia_safe::{paint, BlurStyle, MaskFilter, Paint, PaintCap, PaintJoin, PaintStyle};
-
-// ─── paths ───
-pub use skia_safe::{Path, PathBuilder};
-
-// ─── text ───
-pub use skia_safe::{
-    font, font_arguments, font_style, typeface, Font, FontArguments, FontMetrics, FontMgr,
-    FontStyle, FourByteTag, TextBlobBuilder, Typeface,
-};
-
-// ─── images ───
-pub use skia_safe::{
-    image, images, AlphaType, ColorType, Data, FilterMode, Image, ImageInfo, SamplingOptions,
-};
-
-// ─── offscreen rasters: the test oracle and the property renders ───
-pub use skia_safe::{surfaces, EncodedImageFormat, Surface};

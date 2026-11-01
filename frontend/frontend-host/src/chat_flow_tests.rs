@@ -438,7 +438,13 @@ fn settle_until(
             "never settled: {what}; transcript: {:?}",
             transcript(engine)
         );
-        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(
+            window,
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
         settle(engine);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
@@ -611,7 +617,13 @@ fn two_windows_hold_one_conversation() {
         }),
     )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let _ = engine.draw(second, surface.canvas(), 1100.0, 800.0, 1.0);
+    let _ = engine.draw(
+        second,
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        1100.0,
+        800.0,
+        1.0,
+    );
     settle(&mut engine);
 
     for batch in long_turn_stream("t-live") {
@@ -620,7 +632,13 @@ fn two_windows_hold_one_conversation() {
     settle_until(&mut engine, window, "the stream closed", |engine| {
         turn_text(&transcript(engine), "t-live").contains("the closing word")
     });
-    let _ = engine.draw(second, surface.canvas(), 1100.0, 800.0, 1.0);
+    let _ = engine.draw(
+        second,
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        1100.0,
+        800.0,
+        1.0,
+    );
     settle(&mut engine);
 
     let views = chat_record(&engine).expect("the chat").view_transcripts();
@@ -718,7 +736,13 @@ fn said(engine: &HimarkEngine) -> String {
 
 fn paint(engine: &mut HimarkEngine, window: u64) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+    let _ = engine.draw(
+        window,
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        1100.0,
+        800.0,
+        1.0,
+    );
     settle(engine);
 }
 
@@ -1002,7 +1026,13 @@ fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
 
             let born_before = editor::document::Document::born_on_this_thread();
             let frame = std::time::Instant::now();
-            let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+            let _ = engine.draw(
+                window,
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                1100.0,
+                800.0,
+                1.0,
+            );
             engine.drain();
             frames.push(frame.elapsed());
             assert_eq!(
@@ -1145,20 +1175,38 @@ fn a_scroll_tick_builds_one_tree() {
     for _ in 0..90 {
         let _ = himark::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 600.0);
         engine.worker().run_pending();
-        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(
+            window,
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
         engine.drain();
     }
     // Land every straggler, then return to the top and settle.
     for _ in 0..60 {
         engine.worker().run_pending();
-        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(
+            window,
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
         engine.drain();
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
     let _ = himark::test_driver::scroll(&mut engine.app, -10_000_000.0);
     for _ in 0..30 {
         engine.worker().run_pending();
-        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(
+            window,
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
         engine.drain();
     }
 
@@ -1176,7 +1224,13 @@ fn a_scroll_tick_builds_one_tree() {
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(60_000.0 + at as f64 * 8.0),
         );
-        let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(
+            window,
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
         engine.drain();
         ticks.push(started.elapsed());
     }

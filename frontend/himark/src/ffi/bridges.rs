@@ -364,6 +364,7 @@ pub unsafe extern "C" fn himark_bridge_event(
 /// Paint the window bridge into the host's canvas — the canvas is
 /// borrowed payload for this one call, the only pointer shape the
 /// normalized surface allows.
+#[cfg(feature = "skia-shell")]
 #[no_mangle]
 pub unsafe extern "C" fn himark_bridge_draw(
     engine: *mut HimarkEngine,
@@ -376,7 +377,7 @@ pub unsafe extern "C" fn himark_bridge_draw(
     if engine.is_null() || canvas.is_null() {
         return false;
     }
-    let canvas: &Canvas = &*(canvas as *const skia_safe::Canvas);
+    let canvas: &Canvas = gfx_skia::SkiaCanvas::wrap(&*(canvas as *const skia_safe::Canvas));
     engine.as_mut().map_or(false, |engine| {
         engine.draw(bridge.raw, canvas, width, height, scale)
     })
@@ -687,6 +688,7 @@ pub unsafe extern "C" fn himark_take_reveal(
 }
 
 /// Paint the realized slice into the host's canvas.
+#[cfg(feature = "skia-shell")]
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_paint(
     engine: *mut HimarkEngine,
@@ -703,7 +705,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let canvas: &Canvas = &*(canvas as *const skia_safe::Canvas);
+    let canvas: &Canvas = gfx_skia::SkiaCanvas::wrap(&*(canvas as *const skia_safe::Canvas));
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
         let Some(stage) = engine.app.stage_frame(frame.raw) else {
@@ -733,7 +735,7 @@ pub unsafe extern "C" fn himark_frame_paint(
         // "present never composited" when a surface shows empty.
         if std::env::var_os("HIMARK_PAINT_SPLASH").is_some() {
             let mut paint = gfx::Paint::default();
-            paint.set_color(gfx::Color::MAGENTA);
+            paint.set_color(gfx::Color::from_rgb(255, 0, 255));
             canvas.draw_rect(Rect::from_xywh(4.0, 4.0, 40.0, 40.0), &paint);
         }
         result

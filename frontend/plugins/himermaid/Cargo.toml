@@ -16,6 +16,7 @@ merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["sv
 gfx = { path = "../../gfx" }
 
 [dev-dependencies]
+gfx-skia = { path = "../../gfx-skia" }
 operation = { path = "../../operation" }
 himark = { path = "../../himark", features = ["test-support"] }
 himarkdown = { path = "../himarkdown" }

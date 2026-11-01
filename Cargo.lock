@@ -134,6 +134,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "humantime",
  "imba",
@@ -1978,6 +1979,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark",
  "himarkdown",
@@ -2326,6 +2328,7 @@ name = "editor"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "gfx-skia",
  "imba",
  "intervals",
  "myersdiff",
@@ -2579,6 +2582,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "imba",
  "rpds",
@@ -2801,6 +2805,8 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
+ "gfx",
+ "gfx-skia",
  "hibash",
  "hic",
  "hicmake",
@@ -3087,6 +3093,16 @@ dependencies = [
 name = "gfx"
 version = "0.1.0"
 dependencies = [
+ "fontique",
+ "skrifa",
+ "unicode-script",
+]
+
+[[package]]
+name = "gfx-skia"
+version = "0.1.0"
+dependencies = [
+ "gfx",
  "skia-safe",
 ]
 
@@ -3707,6 +3723,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "himark",
  "himark-ahp-ext-types",
  "host-discovery",
@@ -4001,6 +4018,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "imba",
  "rpds",
  "serde",
@@ -4060,6 +4078,7 @@ dependencies = [
  "editor",
  "filetree",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark-ahp-ext-types",
  "himarkdown",
@@ -4131,6 +4150,8 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
+ "gfx",
+ "gfx-skia",
  "hicode",
  "hikit",
  "himark",
@@ -4159,6 +4180,7 @@ dependencies = [
  "desktop",
  "frontend-host",
  "gfx",
+ "gfx-skia",
  "himark",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -4180,6 +4202,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "himark",
  "hisitter",
  "imba",
@@ -4197,6 +4220,7 @@ dependencies = [
  "ahp-session",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark",
  "himarkdown",
@@ -4324,6 +4348,7 @@ version = "0.1.0"
 dependencies = [
  "editor",
  "gfx",
+ "gfx-skia",
  "himark",
  "himarkdown",
  "hisitter",
@@ -4909,6 +4934,8 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "gfx",
+ "gfx-skia",
+ "image",
  "intervals",
  "parley",
  "resvg 0.48.1",
@@ -4928,7 +4955,6 @@ dependencies = [
  "hb-subset",
  "image",
  "imba",
- "skia-safe",
  "smallvec",
 ]
 
@@ -6555,6 +6581,7 @@ dependencies = [
  "ahp-session",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark",
  "imba",
@@ -6723,6 +6750,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark",
  "himarkdown",

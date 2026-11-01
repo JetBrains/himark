@@ -1676,11 +1676,11 @@ mod hitbox {
             "unpainted controls are inert"
         );
 
-        let mut surface = gfx::surfaces::raster_n32_premul((640, 480)).expect("a surface");
+        let mut surface = gfx_skia::raster_tuple((640, 480)).expect("a surface");
         let _ = send(
             &editor,
             &Event::Paint {
-                canvas: surface.canvas(),
+                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                 focused: true,
             },
         );
@@ -1694,7 +1694,7 @@ mod hitbox {
         let _ = send(
             &editor,
             &Event::Paint {
-                canvas: surface.canvas(),
+                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                 focused: false,
             },
         );

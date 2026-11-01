@@ -132,7 +132,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         false,
     ));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..4 {
@@ -140,7 +140,11 @@ fn the_diff_panel_opens_edits_and_dismantles() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -157,7 +161,11 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     assert!(panel_open, "the diff panel took the focused pane");
 
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     let right_before = document_text(&app, "right.md");
     for _ in 0..3 {
         let _ = himark::test_driver::type_text(&mut app, "é");
@@ -174,7 +182,11 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     );
 
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     let left_before = document_text(&app, "left.md");
     let right_frozen = document_text(&app, "right.md");
     for _ in 0..2 {
@@ -228,7 +240,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
         ));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
@@ -236,7 +248,11 @@ fn the_optimizer_landing_cancels_matching_edits() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -247,13 +263,21 @@ fn the_optimizer_landing_cancels_matching_edits() {
     settle(&mut app, &mut surface);
 
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     for _ in 0..4 {
         let _ = himark::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface);
     }
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     for _ in 0..4 {
         let _ = himark::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface);
@@ -318,7 +342,7 @@ fn identical_documents_settle_spacer_free() {
         ));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -326,7 +350,11 @@ fn identical_documents_settle_spacer_free() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 6);
@@ -390,7 +418,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         assert!(app.add_document(app.sole_window(), document, name.to_owned(), false,));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -398,7 +426,11 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 8);
@@ -407,7 +439,11 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     assert_pair_aligned(&app);
 
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     assert_pair_aligned(&app);
 
     for (step, text) in ["a", "\n", "b", "\n", "typed line\n", "c"]
@@ -415,7 +451,11 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         .enumerate()
     {
         let _ = himark::test_driver::type_text(&mut app, text);
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         assert_pair_aligned(&app);
 
         let mut landed = 0;
@@ -426,7 +466,11 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
             };
             landed += 1;
             app.perform_batch(vec![command]);
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             assert_pair_aligned(&app);
             if landed > 200 {
                 panic!("step {step}: landings never quiesce");
@@ -479,7 +523,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         ));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -487,7 +531,11 @@ fn an_edit_from_another_editor_realigns_the_pair() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 8);
@@ -591,7 +639,7 @@ fn typed_insertions_paint_washes() {
         ));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -599,7 +647,11 @@ fn typed_insertions_paint_washes() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
 
@@ -640,7 +692,11 @@ fn typed_insertions_paint_washes() {
     );
 
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
 
     let _ = himark::test_driver::type_text(&mut app, "a freshly added right-side line\n");
     settle(&mut app, &mut surface, 3);
@@ -657,7 +713,11 @@ fn typed_insertions_paint_washes() {
     );
 
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     let _ = himark::test_driver::type_text(&mut app, "a left-only line typed here\n");
     settle(&mut app, &mut surface, 3);
     let (_, deleted_now) = wash_pixels(&mut surface);
@@ -699,7 +759,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -707,7 +767,11 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 10);
@@ -716,7 +780,11 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     assert_pair_aligned(&app);
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     assert_pair_aligned(&app);
     let mut landed = 0;
     loop {
@@ -738,7 +806,11 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
             "the post-toggle storm never quiesces (mark churn discarding repairs?)"
         );
         app.perform_batch(vec![command]);
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         assert_pair_aligned(&app);
     }
     settle(&mut app, &mut surface, 10);
@@ -806,7 +878,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false));
     }
 
-    let size = skia_safe::Size::new(2000.0, 800.0);
+    let size = gfx::Size::new(2000.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -814,17 +886,25 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
 
-    let small = skia_safe::Size::new(1100.0, 800.0);
+    let small = gfx::Size::new(1100.0, 800.0);
     for _ in 0..10 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), small);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            small,
+        );
     }
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..60 {
@@ -832,7 +912,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), small);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            small,
+        );
     }
 
     settle(&mut app, &mut surface, 120);
@@ -843,7 +927,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        if app.draw_window_sized(app.sole_window(), surface.canvas(), size) {
+        if app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        ) {
             unsettled += 1;
         }
     }
@@ -854,16 +942,24 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
 
     for _ in 0..40 {
         let _ = himark::test_driver::scroll(&mut app, 400.0);
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     for step in 0..24 {
         let width = 2000.0 - (step as f32 + 1.0) * 35.0;
-        let frame = skia_safe::Size::new(width, 800.0);
+        let frame = gfx::Size::new(width, 800.0);
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), frame);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            frame,
+        );
     }
     settle(&mut app, &mut surface, 120);
     let mut unsettled = 0;
@@ -872,7 +968,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        if app.draw_window_sized(app.sole_window(), surface.canvas(), size) {
+        if app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        ) {
             unsettled += 1;
         }
     }
@@ -882,7 +982,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         let clock = imba::anim::AnimationClock::from_millis(f64::from(frame) * 16.6);
         let _ = himark::test_driver::animate(&mut app, clock);
         let width = 1160.0 + (frame as f32) * 10.0;
-        let frame_size = skia_safe::Size::new(width.min(2000.0), 800.0);
+        let frame_size = gfx::Size::new(width.min(2000.0), 800.0);
 
         if frame % 15 == 14 {
             runner.run();
@@ -890,7 +990,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), frame_size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            frame_size,
+        );
     }
     settle(&mut app, &mut surface, 120);
     let mut unsettled = 0;
@@ -899,7 +1003,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        if app.draw_window_sized(app.sole_window(), surface.canvas(), size) {
+        if app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        ) {
             unsettled += 1;
         }
     }
@@ -910,7 +1018,11 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
 
     for _ in 0..30 {
         let _ = himark::test_driver::scroll(&mut app, 500.0);
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     let mut checked_bands = 0;
     app.for_each_plugin_panel(&mut |panel| {
@@ -1047,7 +1159,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
         ));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -1055,7 +1167,11 @@ fn washes_follow_the_scroll_into_deep_documents() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 10);
@@ -1101,7 +1217,11 @@ fn washes_follow_the_scroll_into_deep_documents() {
 
     for _ in 0..400 {
         let _ = himark::test_driver::scroll(&mut app, 2000.0);
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -1157,7 +1277,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -1165,7 +1285,11 @@ fn scrolling_after_a_theme_toggle_converges() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 10);
@@ -1176,12 +1300,20 @@ fn scrolling_after_a_theme_toggle_converges() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     for _ in 0..3 {
         let _ = himark::test_driver::type_text(&mut app, "x");
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     himark::test_driver::click(&mut app, 150.0, 500.0, 1100.0, 800.0);
     for _ in 0..2 {
         let _ = himark::test_driver::type_text(&mut app, "é");
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
@@ -1192,7 +1324,11 @@ fn scrolling_after_a_theme_toggle_converges() {
             &mut app,
             imba::anim::AnimationClock::from_millis(step as f64 * 16.0),
         );
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -1202,7 +1338,11 @@ fn scrolling_after_a_theme_toggle_converges() {
     assert_pair_aligned(&app);
 
     let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     let cell_focused = |app: &Himark| {
         let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
@@ -1226,7 +1366,11 @@ fn scrolling_after_a_theme_toggle_converges() {
         for x in [620, 680, 740, 800, 860, 920, 1000] {
             let y = 60.0 + dy as f32;
             himark::test_driver::click(&mut app, x as f32, y, 1100.0, 800.0);
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             if cell_focused(&app) {
                 focused = true;
                 break 'probe;
@@ -1236,7 +1380,11 @@ fn scrolling_after_a_theme_toggle_converges() {
     assert!(focused, "a table cell took focus post-toggle");
     for _ in 0..6 {
         let _ = himark::test_driver::type_text(&mut app, "grow the row after the switch ");
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
@@ -1322,7 +1470,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &mut document,
         editor::editor_view::EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(5.0, 50.0),
+            point: gfx::Point::new(5.0, 50.0),
         },
     );
 
@@ -1344,7 +1492,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &mut document,
         editor::editor_view::EditorCommand::Click {
             kind: editor::editor_view::ClickKind::Set,
-            point: skia_safe::Point::new(5.0, 300.0),
+            point: gfx::Point::new(5.0, 300.0),
         },
     );
 
@@ -1402,7 +1550,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -1410,7 +1558,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 10);
@@ -1423,7 +1575,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     'probe: for x in [760, 800, 840, 880] {
         for y in [130, 145, 160, 175, 190] {
             himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
@@ -1468,7 +1624,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
 
     for _ in 0..6 {
         let _ = himark::test_driver::type_text(&mut app, "grow the row ");
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     settle(&mut app, &mut surface, 30);
     let (right_table_after, _) = table_heights(&app, "right.md");
@@ -1485,7 +1645,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
 
     for step in 0..3 {
         let _ = himark::test_driver::type_text(&mut app, "\n");
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         assert_pair_aligned(&app);
         let mut landed = 0;
         loop {
@@ -1496,7 +1660,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             landed += 1;
             assert!(landed < 300, "enter {step}: landings never quiesce");
             app.perform_batch(vec![command]);
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             assert_pair_aligned(&app);
         }
     }
@@ -1677,7 +1845,7 @@ fn an_edited_markdown_pair_settles_aligned() {
         false,
     ));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -1685,7 +1853,11 @@ fn an_edited_markdown_pair_settles_aligned() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface, 6);
@@ -1697,7 +1869,11 @@ fn an_edited_markdown_pair_settles_aligned() {
     assert_pair_aligned(&app);
 
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     for _ in 0..3 {
         let _ = himark::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface, 4);
@@ -2014,7 +2190,7 @@ fn a_settled_diff_pane_goes_quiet() {
             false,
         ));
     }
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut himark::app::Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..8 {
@@ -2022,7 +2198,11 @@ fn a_settled_diff_pane_goes_quiet() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -2037,7 +2217,11 @@ fn a_settled_diff_pane_goes_quiet() {
         );
     }
 
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     runner.run();
     let mut landed = 0;
     while arriving.try_recv().is_ok() {
@@ -2087,7 +2271,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         false,
     ));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..4 {
@@ -2095,7 +2279,11 @@ fn the_unified_view_switches_between_split_and_inline() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -2195,7 +2383,11 @@ fn the_unified_view_switches_between_split_and_inline() {
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     {
         let right =
             documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id)
@@ -2272,7 +2464,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         false,
     ));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
@@ -2280,7 +2472,11 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -2300,7 +2496,11 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
         // The FLOOR, not the median: suite-load contention only ever
@@ -2420,7 +2620,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
@@ -2428,7 +2628,11 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
                 &mut *app,
                 imba::anim::AnimationClock::from_millis(0.0),
             );
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -2437,7 +2641,11 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         let mut times = Vec::new();
         for _ in 0..12 {
             let started = std::time::Instant::now();
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
         // The FLOOR, not the median: suite-load contention only ever
@@ -2553,19 +2761,27 @@ fn folded_squash_paint_cost_is_size_independent() {
         let panel = face_panel(&mut app, canvas);
         assert!(app.open_panel(app.sole_window(), panel));
 
-        let size = skia_safe::Size::new(1100.0, 800.0);
+        let size = gfx::Size::new(1100.0, 800.0);
         let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
         for _ in 0..6 {
             let _ = himark::test_driver::animate(
                 &mut app,
                 imba::anim::AnimationClock::from_millis(0.0),
             );
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
         let mut times = Vec::new();
         for _ in 0..10 {
             let started = std::time::Instant::now();
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
         }
         // The FLOOR, not the median: suite-load contention only ever
@@ -2658,7 +2874,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         }),
         Arc::new(|| {}),
     );
-    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let size = gfx::Size::new(1100.0, 1500.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     for _ in 0..40 {
         let _ =
@@ -2667,7 +2883,11 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
 
     if std::env::var_os("HIMARK_SHOT").is_some() {
@@ -2760,7 +2980,11 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     assert_eq!(
         inline_of(&app),
@@ -2838,7 +3062,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let size = gfx::Size::new(1100.0, 1500.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
@@ -2847,7 +3071,11 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app);
@@ -3065,7 +3293,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
          not the undressed body: {reserved}"
     );
 
-    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let size = gfx::Size::new(1100.0, 1500.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut trace: Vec<f32> = vec![reserved];
     for _ in 0..40 {
@@ -3075,7 +3303,11 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         let height = row_height(&app);
         if (height - trace.last().copied().unwrap_or(0.0)).abs() > 0.5 {
             trace.push(height);
@@ -3157,7 +3389,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let draw_settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -3174,7 +3406,11 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
                 // state now — paint no longer carries probes.
                 app.perform_batch(vec![himark::app::viewport_resized(app.sole_window(), size)]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     draw_settle(&mut app, &mut surface, 40);
@@ -3297,7 +3533,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         }),
         Arc::new(|| {}),
     );
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..40 {
@@ -3306,7 +3542,11 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app);
@@ -3534,7 +3774,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         }),
         Arc::new(|| {}),
     );
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let settle = |app: &mut Himark| {
         for _ in 0..8 {
             let window = app.sole_window();
@@ -3727,7 +3967,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
@@ -3736,7 +3976,11 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     let stale_now = |app: &Himark| -> bool {
@@ -3880,7 +4124,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     let window = app.sole_window();
     app.perform_batch(vec![himark::app::viewport_resized(
         window,
-        skia_safe::Size::new(800.0, 600.0),
+        gfx::Size::new(800.0, 600.0),
     )]);
 
     // With no live Changes source the sync is a no-op: the row and its
@@ -4673,7 +4917,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
@@ -4682,7 +4926,11 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app);
@@ -4894,7 +5142,7 @@ fn completion_serves_a_canvas_diff_face() {
     };
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
-    let size = skia_safe::Size::new(1100.0, 1500.0);
+    let size = gfx::Size::new(1100.0, 1500.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
@@ -4903,7 +5151,11 @@ fn completion_serves_a_canvas_diff_face() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -5101,7 +5353,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     };
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
-    let size = skia_safe::Size::new(430.0, 600.0);
+    let size = gfx::Size::new(430.0, 600.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..16 {
@@ -5110,7 +5362,11 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     settle(&mut app, &mut surface);
@@ -5314,9 +5570,13 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     }
     // One draw arms the row; the landing arrives before the dressing
     // could complete.
-    let size = skia_safe::Size::new(1100.0, 800.0);
+    let size = gfx::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        size,
+    );
     assert!(app.perform_command(himark::app::windowed(
         window,
         Arc::new(Land(documents, right)),
@@ -5338,7 +5598,11 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
         rounds += 1;
     }
     assert!(
@@ -5494,7 +5758,7 @@ fn dump_commit_canvas_screenshot() {
     );
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let size = gfx::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
         let _ =
@@ -5503,7 +5767,11 @@ fn dump_commit_canvas_screenshot() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     let data = surface
         .image_snapshot()
@@ -5627,7 +5895,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
     );
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let size = gfx::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
         let _ =
@@ -5636,7 +5904,11 @@ fn dump_multi_file_commit_canvas_screenshot() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     let data = surface
         .image_snapshot()
@@ -5654,7 +5926,11 @@ fn dump_multi_file_commit_canvas_screenshot() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            size,
+        );
     }
     let data = surface
         .image_snapshot()
@@ -5741,7 +6017,7 @@ fn dump_commit_control_screenshots() {
     let panel = face_panel(&mut app, canvas);
     assert!(app.open_panel(app.sole_window(), panel));
 
-    let size = skia_safe::Size::new(2880.0, 1800.0);
+    let size = gfx::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
@@ -5750,7 +6026,11 @@ fn dump_commit_control_screenshots() {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                size,
+            );
         }
     };
     let dump = |surface: &mut skia_safe::Surface, name: &str| {

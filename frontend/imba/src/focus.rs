@@ -231,7 +231,7 @@ impl<'w, Command> LayoutData<'w, Command> {
             seat.origin.x += dx;
             seat.origin.y += dy;
             if let Some(clip) = &mut seat.clip {
-                clip.offset((dx, dy));
+                *clip = clip.with_offset((dx, dy));
             }
         }
         self
@@ -240,10 +240,7 @@ impl<'w, Command> LayoutData<'w, Command> {
     pub fn clipped(mut self, rect: gfx::Rect) -> Self {
         if let Some(seat) = &mut self.ime {
             seat.clip = Some(match seat.clip {
-                Some(mut inner) => match inner.intersect(rect) {
-                    true => inner,
-                    false => gfx::Rect::new_empty(),
-                },
+                Some(inner) => inner.intersect(&rect).unwrap_or_default(),
                 None => rect,
             });
         }

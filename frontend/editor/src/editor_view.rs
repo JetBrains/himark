@@ -334,9 +334,7 @@ struct EditorGutterView<'a> {
 pub(crate) fn gutter_font(size: f32) -> gfx::Font {
     static TYPEFACE: std::sync::OnceLock<gfx::Typeface> = std::sync::OnceLock::new();
     let typeface = TYPEFACE.get_or_init(|| {
-        gfx::FontMgr::new()
-            .legacy_make_typeface(None, gfx::FontStyle::normal())
-            .expect("a system typeface")
+        gfx::font::default_typeface(gfx::FontStyle::normal()).expect("a system typeface")
     });
     let mut font = gfx::Font::from_typeface(typeface.clone(), size);
     font.set_edging(gfx::font::Edging::AntiAlias);
@@ -415,7 +413,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
                         digits.clear();
                         use std::fmt::Write;
                         let _ = write!(digits, "{number}");
-                        let width = font.measure_str(&digits, Some(&paint)).0;
+                        let width = font.measure_str(&digits);
                         canvas.draw_str(&digits, (right - width, baseline).into(), &font, &paint);
                     }
 
@@ -1940,7 +1938,6 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
             }
 
             Event::HitTest { point, miss, mods } if self.location.is_some() => {
-                use gfx::Contains;
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
                 let hover = EditorCommand::Hover(inside.then_some(*point));
 
@@ -2065,10 +2062,10 @@ impl imba::ime::ImeClient for EditorImeClient<'_> {
     }
 
     fn char_index_at(&self, x: f32, y: f32) -> Option<u32> {
-        if self.clip.is_some_and(|clip| {
-            use gfx::Contains;
-            !clip.contains(gfx::Point::new(x, y))
-        }) {
+        if self
+            .clip
+            .is_some_and(|clip| !clip.contains(gfx::Point::new(x, y)))
+        {
             return None;
         }
 

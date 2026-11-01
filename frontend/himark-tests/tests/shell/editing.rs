@@ -476,8 +476,8 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
 
 #[test]
 fn focus_moves_between_text_and_inlays() {
+    use gfx::Point;
     use imba::event::EventResult;
-    use skia_safe::Point;
 
     let mut pane = TestPane::new(plain_document("abc"), 420.0);
     pane.replace_inlay(
@@ -589,18 +589,18 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
             View::display(&view, &arena, &pane.store, &ui),
             &arena,
             Constraints {
-                min: skia_safe::Size::default(),
-                max: skia_safe::Size::new(420.0, f32::MAX),
+                min: gfx::Size::default(),
+                max: gfx::Size::new(420.0, f32::MAX),
             },
         );
         let mut surface = skia_safe::surfaces::raster_n32_premul((420, 600)).expect("a surface");
-        let viewport = skia_safe::Rect::from_wh(420.0, 600.0);
+        let viewport = gfx::Rect::from_wh(420.0, 600.0);
         let widget = imba::Thunk::realize(widget, &arena, viewport);
         widget
             .handle_event(
                 &arena,
                 &Event::Paint {
-                    canvas: surface.canvas(),
+                    canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                     focused: true,
                 },
                 viewport,
@@ -618,7 +618,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 
     pane.perform(EditorCommand::Click {
         kind: editor::editor_view::ClickKind::Set,
-        point: skia_safe::Point::new(5.0, 5.0),
+        point: gfx::Point::new(5.0, 5.0),
     });
     assert_eq!(focus(&pane), EditorFocus::Text);
 
@@ -792,7 +792,10 @@ fn ime_composition_reaches_the_focused_editor() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let set = app.with_ime_client(app.sole_window(), |client| {
         client.set_marked_text("\u{306B}\u{307B}", (2, 0), None);
@@ -830,11 +833,17 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let _ = app.with_ime_client(app.sole_window(), |client| {
         client.insert_text("hello", None);
     });
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let (x, y, _, height) = app
         .with_ime_client(app.sole_window(), |client| client.first_rect(0, 0))
@@ -870,12 +879,18 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let _ = app.with_ime_client(app.sole_window(), |client| {
         client.insert_text("hello brave world", None);
     });
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let length = app
         .with_ime_client(app.sole_window(), |client| client.document_length())
         .expect("focused");
@@ -935,17 +950,26 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let mut text = String::new();
     for line in 0..80 {
         text.push_str(&format!("line {line} with some words on it\n"));
     }
     assert!(himark::test_driver::type_text(&mut app, &text));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     // At the text's start (past the gutter and the content inset),
     // under the header band.
     let (click_x, click_y) = {
@@ -959,7 +983,10 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
         )
     };
     let _ = himark::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let _ = app.with_ime_client(app.sole_window(), |client| {
         client.set_marked_text("\u{306B}", (1, 0), None);
@@ -985,7 +1012,10 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     assert!(himark::test_driver::scroll_at(
         &mut app, 400.0, 300.0, delta
     ));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let scrolled = app
         .with_ime_client(app.sole_window(), |client| client.first_rect(0, 1))
         .expect("still focused")
@@ -1016,7 +1046,10 @@ fn accent_popup_replaces_the_held_character() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     assert!(himark::test_driver::type_text(&mut app, "so"));
     assert!(himark::test_driver::type_text(&mut app, "u"));
@@ -1044,7 +1077,10 @@ fn typing_into_the_empty_startup_document_inserts() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(
         app.with_ime_client(app.sole_window(), |_| ()).is_some(),
         "the startup editor should have text focus"
@@ -1271,12 +1307,18 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(himark::test_driver::type_text(
         &mut app,
         "# A title\n\nSome body text to shape, long enough to wrap around.",
     ));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let height_dark = app.focused_pane_content_height();
     assert!(height_dark > 0.0);
 
@@ -1286,7 +1328,10 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
         "light",
         "the store's theme swapped"
     );
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let height_light = app.focused_pane_content_height();
 
     assert!(
@@ -1296,7 +1341,10 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
     assert_eq!(::editor::env::Themes::of(app.store()).name(), "dark");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(
         (app.focused_pane_content_height() - height_dark).abs() < 0.5,
         "toggling back restores the dark geometry"
@@ -1330,7 +1378,10 @@ fn caret_commands_glide_the_pane_to_the_caret() {
         true
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert_eq!(app.focused_pane_scroll_y(), 0.0);
 
     assert!(test_driver::key(
@@ -1349,7 +1400,10 @@ fn caret_commands_glide_the_pane_to_the_caret() {
             app.perform_batch(vec![command]);
         }
         let busy = test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
         if busy {
             moved_ticks += 1;
         } else if tick > 0 {
@@ -1395,7 +1449,10 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
         true
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     assert!(test_driver::key(
         &mut app,
@@ -1412,7 +1469,10 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
             app.perform_batch(vec![command]);
         }
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
     }
     assert!(app.focused_pane_scroll_y() > 0.0, "the glide started");
 
@@ -1424,7 +1484,10 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
             app.perform_batch(vec![command]);
         }
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
     }
     assert!(
         (app.focused_pane_scroll_y() - after_wheel).abs() < 1.0,
@@ -1502,8 +1565,8 @@ fn clipboard_reaches_the_focused_editor() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, surface.canvas());
-    let size = skia_safe::Size::new(800.0, 600.0);
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    let size = gfx::Size::new(800.0, 600.0);
 
     app.dispatch(
         window,
@@ -1563,13 +1626,13 @@ fn double_and_triple_click_select_word_and_line() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     use editor::editor_view::ClickKind;
+    use gfx::{Point, Rect, Size};
     use imba::{
         arena::Arena,
         constraints::Constraints,
         event::{Event, EventResult},
         Widget,
     };
-    use skia_safe::{Point, Rect, Size};
 
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
@@ -1663,7 +1726,7 @@ fn drag_extends_selection_by_the_press_unit() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     use editor::editor_view::ClickKind;
-    use skia_safe::Point;
+    use gfx::Point;
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
     let theme = ::editor::theme::embedded();
@@ -1755,7 +1818,10 @@ fn ime_hit_test_covers_an_empty_document() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert_eq!(
         app.with_ime_client(app.sole_window(), |client| client.document_length()),
         Some(0),
@@ -1787,7 +1853,10 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let mut text = String::new();
     for line in 0..80 {
         text.push_str(&format!("line number {line}\n"));
@@ -1795,7 +1864,10 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     let _ = app.with_ime_client(app.sole_window(), |client| {
         client.insert_text(&text, None);
     });
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let hit = |app: &mut Himark, y: f32| {
         app.with_ime_client(app.sole_window(), |client| client.char_index_at(400.0, y))
@@ -1803,7 +1875,10 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     };
     for scroll in [-100_000.0, 900.0] {
         let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, scroll);
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
         for y in [10.0, 30.0, 60.0] {
             assert!(
                 hit(&mut app, y).is_none(),

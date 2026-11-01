@@ -114,17 +114,26 @@ fn dump_palette_screenshot() {
     let mut app = himark::app::Himark::new(himark::app::AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePalette));
-    let mut surface = gfx::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(himark::test_driver::type_text(
         &mut app,
         "the document feed is an ordered lane — the servers hear edits in mirror order"
     ));
     assert!(app.perform_registered(app.sole_window(), "palette.toggle"));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(himark::test_driver::type_text(&mut app, "sel"));
     for tick in 0..30 {
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
         let busy = himark::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
@@ -135,7 +144,7 @@ fn dump_palette_screenshot() {
     }
     let data = surface
         .image_snapshot()
-        .encode(None, gfx::EncodedImageFormat::PNG, None)
+        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
     std::fs::write(format!("{dir}/palette.png"), data.as_bytes()).expect("write");

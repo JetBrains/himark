@@ -265,12 +265,12 @@ fn folders_added_mid_session_join_on_paint() {
             imba::constraints::Constraints::tight(size),
         );
         let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let mut surface = gfx_skia::raster_tuple((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: surface.canvas(),
+                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                 focused: true,
             },
             gfx::Rect::from_wh(400.0, 600.0),
@@ -517,12 +517,12 @@ fn an_unfocused_paint_cancels_the_edit() {
             imba::constraints::Constraints::tight(gfx::Size::new(400.0, 600.0)),
         );
         let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let mut surface = gfx_skia::raster_tuple((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: surface.canvas(),
+                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                 focused: false,
             },
             gfx::Rect::from_wh(400.0, 600.0),
@@ -586,12 +586,12 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
             imba::constraints::Constraints::tight(gfx::Size::new(400.0, 600.0)),
         );
         let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(400.0, 600.0));
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        let mut surface = gfx_skia::raster_tuple((400, 600)).expect("a surface");
         imba::Widget::handle_event(
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: surface.canvas(),
+                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
                 focused: true,
             },
             gfx::Rect::from_wh(400.0, 600.0),

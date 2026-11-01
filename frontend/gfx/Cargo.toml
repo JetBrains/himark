@@ -3,5 +3,10 @@ name = "gfx"
 version = "0.1.0"
 edition = "2021"
 
+# No renderer here: skia lives behind `gfx-skia`, gpui behind
+# `imba-gpui`. The two below are fontations — the same engine parley
+# shapes with — for face metadata, advances, and system lookup.
 [dependencies]
-skia-safe = "0.153.3"
+skrifa = "0.44"
+fontique = { version = "0.12", features = ["system"] }
+unicode-script = "0.5"

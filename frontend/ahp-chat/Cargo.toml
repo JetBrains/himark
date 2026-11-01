@@ -28,6 +28,7 @@ text = { path = "../text" }
 test-support = ["hikit/test-support"]
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
 editor = { path = "../editor", features = ["test-support"] }
 hikit = { path = "../hikit", features = ["test-support"] }
 ahp-wire = { path = "../ahp-wire", features = ["test-support"] }

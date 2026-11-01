@@ -383,14 +383,16 @@ fn render_declaration_names_snapshot() {
         &mut imba::effect::Batch::new().effects(),
     );
     let height = document.content_height(editor).ceil() as i32 + 40;
-    let mut surface = gfx::surfaces::raster_n32_premul((900, height)).expect("surface");
-    surface
-        .canvas()
-        .clear(gfx::Color::from_rgb(0x10, 0x14, 0x1e));
+    let mut surface = gfx_skia::raster_tuple((900, height)).expect("surface");
+    {
+        use gfx::Painter as _;
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        canvas.clear(gfx::Color::from_rgb(0x10, 0x14, 0x1e));
+    }
     surface.canvas().translate((20.0, 20.0));
     document.paint(
         editor,
-        surface.canvas(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
         gfx::Rect::from_wh(860.0, height as f32),
         true,
         store,
@@ -399,7 +401,7 @@ fn render_declaration_names_snapshot() {
     );
     let image = surface.image_snapshot();
     let data = image
-        .encode(None, gfx::EncodedImageFormat::PNG, None)
+        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::write(path, data.as_bytes()).expect("snapshot written");
 }

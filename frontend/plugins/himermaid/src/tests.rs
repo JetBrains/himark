@@ -56,6 +56,7 @@ pub(crate) mod helpers {
 }
 
 use super::*;
+use gfx::Painter as _;
 
 fn diagram_inlay(
     document: &editor::document::Document,
@@ -251,8 +252,8 @@ fn the_diagram_paints_real_pixels() {
     );
     let height = document.content_height(editor);
     eprintln!("[mermaid-pixels] content height {height}");
-    let mut surface = gfx::surfaces::raster_n32_premul((600, 800)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((600, 800)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,

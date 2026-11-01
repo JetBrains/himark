@@ -10,7 +10,7 @@
 
 use std::ops::Range;
 
-use gfx::{surfaces, Color, EncodedImageFormat, Rect};
+use gfx::{Color, Painter as _, Rect};
 use proptest::prelude::*;
 
 use super::{
@@ -32,7 +32,7 @@ const CLEAR: Color = Color::from_argb(255, 9, 8, 7);
 struct Raster {
     width: i32,
     bytes: Vec<u8>,
-    png: Option<gfx::Data>,
+    png: Option<Vec<u8>>,
 }
 
 /// Paint the band `top..bottom` of the editor into a surface exactly
@@ -47,12 +47,12 @@ fn paint(
     ui: &imba::ui::UiCtx,
 ) -> Raster {
     let height = ((band.end - band.start).ceil() as i32).max(1);
-    let mut surface = surfaces::raster_n32_premul((width, height)).expect("a raster surface");
-    surface.canvas().clear(CLEAR);
+    let mut surface = gfx_skia::raster_tuple((width, height)).expect("a raster surface");
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(CLEAR);
     surface.canvas().translate((0.0, -band.start));
     document.paint(
         editor,
-        surface.canvas(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
         Rect::from_xywh(0.0, band.start, width as f32, band.end - band.start),
         false,
         store,
@@ -66,8 +66,11 @@ fn paint(
         .bytes()
         .expect("pixel bytes")
         .to_vec();
-    let png = std::env::var_os("HIMARK_PROPERTY_DUMP")
-        .and_then(|_| image.encode(None, EncodedImageFormat::PNG, 100));
+    let png = std::env::var_os("HIMARK_PROPERTY_DUMP").and_then(|_| {
+        image
+            .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, 100)
+            .map(|data| data.as_bytes().to_vec())
+    });
     Raster { width, bytes, png }
 }
 
@@ -79,7 +82,7 @@ fn dump(name: &str, raster: &Raster) {
     };
     if let Some(png) = &raster.png {
         let path = std::path::PathBuf::from(dir).join(format!("{name}.png"));
-        let _ = std::fs::write(&path, png.as_bytes());
+        let _ = std::fs::write(&path, png);
         eprintln!("wrote {}", path.display());
     }
 }

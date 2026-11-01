@@ -15,5 +15,6 @@ gfx = { path = "../../gfx" }
 text = { path = "../../text" }
 
 [dev-dependencies]
+gfx-skia = { path = "../../gfx-skia" }
 himark = { path = "../../himark", features = ["test-support"] }
 peeker = { path = "../peeker" }

@@ -130,17 +130,7 @@ impl SvgView {
         );
         resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-        let info = gfx::ImageInfo::new(
-            (width as i32, height as i32),
-            gfx::ColorType::RGBA8888,
-            gfx::AlphaType::Premul,
-            None,
-        );
-        gfx::images::raster_from_data(
-            &info,
-            gfx::Data::new_copy(pixmap.data()),
-            width as usize * 4,
-        )
+        gfx::Image::from_rgba8(width, height, true, pixmap.take())
     }
 
     pub fn intrinsic_size(svg: &str) -> Option<Size> {
@@ -207,6 +197,7 @@ impl<'a> crate::layout::Layout<'a, SvgCommand> for Scaled<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gfx::Painter as _;
 
     #[test]
     fn css_styled_svg_paints_its_colors() {
@@ -215,15 +206,13 @@ mod tests {
             <rect class="box" x="0" y="0" width="40" height="20"/>
         </svg>"##;
         let view = SvgView::new(svg, Size::new(40.0, 20.0));
-        let mut surface = gfx::surfaces::raster_n32_premul((40, 20)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((40, 20)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_wh(40.0, 20.0));
-        let image = surface.image_snapshot();
-        let pixels = image.peek_pixels().expect("pixels");
-
-        let color: gfx::Color = pixels.get_color((20, 10));
-        let (r, g, b) = (color.r(), color.g(), color.b());
+        let (width, _, pixels) = gfx_skia::rgba(&mut surface);
+        let at = ((10 * width + 20) * 4) as usize;
+        let (r, g, b) = (pixels[at], pixels[at + 1], pixels[at + 2]);
         assert!(
             r > 200 && g < 60 && b < 60,
             "the class-styled rect paints red: ({r},{g},{b})"
@@ -267,8 +256,7 @@ mod raster_tests {
         let image = view.rasterize(2.0).expect("the svg rasterizes");
         assert_eq!((image.width(), image.height()), (80, 40));
 
-        let pixmap = image.peek_pixels().expect("raster pixels");
-        let bytes = pixmap.bytes().expect("pixel bytes");
+        let bytes = image.pixels();
         let mut purple = 0usize;
         let mut stroke = 0usize;
         for px in bytes.chunks(4) {

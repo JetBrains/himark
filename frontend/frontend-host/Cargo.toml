@@ -27,7 +27,7 @@ ahp-changes = { path = "../ahp-changes" }
 ahp-comments = { path = "../ahp-comments" }
 text = { path = "../text" }
 demo = { path = "../plugins/demo" }
-himark = { path = "../himark" }
+himark = { path = "../himark", default-features = false }
 workbench-shell = { path = "../workbench-shell" }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }
@@ -100,16 +100,18 @@ hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
 himermaid = { path = "../plugins/himermaid" }
 imba = { path = "../imba" }
-skia-safe = "0.153.3"
+skia-safe = { version = "0.153.3", optional = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # GRAPHITE, no ganesh: the Apple shells render through
 # SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
 # exists for graphite+textlayout — CI builds Skia from source
 # until our own binary cache lands.
-skia-safe = { version = "0.153.3", features = ["metal", "graphite"] }
+skia-safe = { version = "0.153.3", features = ["metal", "graphite"], optional = true }
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
+gfx = { path = "../gfx" }
 terminals = { path = "../terminals" }
 agent-host = { path = "../../backend/agent-host" }
 tempfile = "3"
@@ -120,3 +122,11 @@ documents = { path = "../documents" }
 himark = { path = "../himark", features = ["test-support"] }
 editor = { path = "../editor" }
 
+
+[features]
+# The apple staticlib build keeps the default: the Swift shell draws
+# through skia canvases crossing the C ABI. A shell with its own
+# painter (gpui) opts out and skia never links.
+default = ["skia-shell"]
+skia-shell = ["himark/skia-shell", "dep:skia-safe"]
+test-support = ["himark/test-support"]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use gfx::Painter as _;
 
 fn plain_shaped(text: &str) -> ParleyLine {
     let marks = BlockStyle::default();
@@ -156,8 +157,8 @@ fn paint_is_deterministic_and_inked() {
     );
 
     let shoot = |line: &ShapedLine| -> Vec<u8> {
-        let mut surface = gfx::surfaces::raster_n32_premul((700, 60)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((700, 60)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         line.paint(canvas, 4.0);
         let image = surface.image_snapshot();

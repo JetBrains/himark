@@ -120,7 +120,12 @@ impl BridgeView {
         // A standing composition owns the keyboard — the input
         // method sees every stroke first, the same gate every
         // shell keeps.
-        if self.engine.raw().borrow_mut().has_marked_text(self.bridge.0) {
+        if self
+            .engine
+            .raw()
+            .borrow_mut()
+            .has_marked_text(self.bridge.0)
+        {
             return;
         }
 
@@ -413,7 +418,11 @@ impl gpui::EntityInputHandler for BridgeView {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<gpui::UTF16Selection> {
-        let range = self.engine.raw().borrow_mut().selected_range(self.bridge.0)?;
+        let range = self
+            .engine
+            .raw()
+            .borrow_mut()
+            .selected_range(self.bridge.0)?;
         Some(gpui::UTF16Selection {
             range: utf16_range(range),
             reversed: false,
@@ -506,10 +515,7 @@ impl gpui::EntityInputHandler for BridgeView {
                 element_bounds.origin.x + gpui::px(rect.x / scale),
                 element_bounds.origin.y + gpui::px(rect.y / scale),
             ),
-            size: gpui::size(
-                gpui::px(rect.width / scale),
-                gpui::px(rect.height / scale),
-            ),
+            size: gpui::size(gpui::px(rect.width / scale), gpui::px(rect.height / scale)),
         })
     }
 

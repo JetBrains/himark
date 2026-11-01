@@ -956,7 +956,7 @@ impl ShapedLine {
                 }
             };
             for rect in &rects[1..] {
-                union.join(*rect);
+                union = union.union(rect);
             }
             let last_line = line.end >= display_end;
             let covers_end = band.range.end >= line_end && (!last_line || band.through_end);

@@ -17,7 +17,10 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let settle = |app: &mut Himark| {
         for _ in 0..3 {
             runner.run();
@@ -88,7 +91,10 @@ fn find_bar_highlights_and_walks_occurrences() {
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     assert!(himark::test_driver::type_text(
         &mut app,
@@ -112,7 +118,10 @@ fn find_bar_highlights_and_walks_occurrences() {
         "typing lands in the bar's input"
     );
 
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let find = |app: &Himark| -> Option<::editor::find::FindBar> {
         let (document, editor) = app.focused_editor_id();
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
@@ -223,7 +232,10 @@ fn keymap_backspace_edits_the_find_bar_query() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     assert!(himark::test_driver::type_text(&mut app, "hello"));
     let cmd = Modifiers {
@@ -234,7 +246,10 @@ fn keymap_backspace_edits_the_find_bar_query() {
         himark::test_driver::key(&mut app, Key::Char('f'), cmd),
         "cmd-F opens the find bar"
     );
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(himark::test_driver::type_text(&mut app, "ab"));
 
     let query = |app: &Himark| -> Option<String> {

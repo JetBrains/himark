@@ -28,22 +28,7 @@ fn chrome_typeface(ui: &imba::ui::UiCtx, weight: f32, width: f32) -> gfx::Typefa
         return face.clone();
     }
     let base = editor::embedded_fonts::chrome_typeface();
-    let coordinates = [
-        gfx::font_arguments::variation_position::Coordinate {
-            axis: gfx::font_arguments::variation_position::Coordinate::wght,
-            value: weight,
-        },
-        gfx::font_arguments::variation_position::Coordinate {
-            axis: gfx::font_arguments::variation_position::Coordinate::wdth,
-            value: width,
-        },
-    ];
-    let arguments = gfx::FontArguments::new().set_variation_design_position(
-        gfx::font_arguments::VariationPosition {
-            coordinates: &coordinates,
-        },
-    );
-    let face = base.clone_with_arguments(&arguments).unwrap_or(base);
+    let face = base.with_coords(vec![(gfx::font::WGHT, weight), (gfx::font::WDTH, width)]);
     faces.0.borrow_mut().insert(key, face.clone());
     face
 }

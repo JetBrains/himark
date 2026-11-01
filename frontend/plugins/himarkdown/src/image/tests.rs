@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use gfx::Painter as _;
 
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
@@ -19,11 +20,11 @@ fn base() -> ResourceLocation {
 }
 
 fn png() -> Vec<u8> {
-    let mut surface = gfx::surfaces::raster_n32_premul((4, 2)).expect("surface");
-    surface.canvas().clear(gfx::Color::BLUE);
+    let mut surface = gfx_skia::raster_tuple((4, 2)).expect("surface");
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::BLUE);
     surface
         .image_snapshot()
-        .encode(None, gfx::EncodedImageFormat::PNG, None)
+        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
         .expect("encoded")
         .as_bytes()
         .to_vec()

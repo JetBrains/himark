@@ -57,7 +57,10 @@ fn the_outline_derives_lands_and_jumps() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (source, document) = outlined_document();
     assert!(app.perform_command(himark::app::opened(
@@ -161,7 +164,10 @@ fn a_structureless_pane_offers_no_toc() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     // The toggle may refuse on a structureless pane — what matters
     // is that no panel opens.
@@ -367,7 +373,10 @@ fn outline_speedsearch_filters_steps_and_clears() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_command(himark::app::opened(
@@ -478,7 +487,10 @@ fn speedsearch_arrows_step_the_matches() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_command(himark::app::opened(
@@ -571,16 +583,16 @@ fn speedsearch_arrows_step_the_matches() {
         let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, &ui),
             &arena,
-            Constraints::tight(skia_safe::Size::new(800.0, 600.0)),
+            Constraints::tight(gfx::Size::new(800.0, 600.0)),
         );
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(800.0, 600.0));
+        let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(800.0, 600.0));
         let result = widget.handle_event(
             &arena,
             &Event::KeyDown {
                 key: Key::Down,
                 mods: Modifiers::default(),
             },
-            skia_safe::Rect::from_wh(800.0, 600.0),
+            gfx::Rect::from_wh(800.0, 600.0),
         );
         drop(widget);
         result
@@ -625,7 +637,10 @@ fn outline_folds_survive_relandings() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_command(himark::app::opened(
@@ -765,7 +780,10 @@ fn dump_contents_drawer_screenshot() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (document, caret) = server_outline();
     assert!(app.perform_command(himark::app::opened(
@@ -885,7 +903,10 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let (document, caret) = server_outline();
     assert!(app.perform_command(himark::app::opened(

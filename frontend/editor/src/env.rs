@@ -44,15 +44,12 @@ pub fn ui_typeface(
     families: &[impl AsRef<str>],
     style: gfx::FontStyle,
 ) -> Option<gfx::Typeface> {
-    let manager = gfx::FontMgr::new();
     for family in families {
-        if let Some(face) = manager.match_family_style(family.as_ref(), style) {
+        if let Some(face) = gfx::font::match_family_style(family.as_ref(), style) {
             return Some(face);
         }
     }
-    manager
-        .legacy_make_typeface(None, style)
-        .or_else(|| Some(crate::embedded_fonts::typeface()))
+    gfx::font::default_typeface(style).or_else(|| Some(crate::embedded_fonts::typeface()))
 }
 
 pub struct Workshop {

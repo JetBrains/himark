@@ -432,7 +432,7 @@ impl<'a> imba::Widget<'a, EditorCommand> for StickyWidget {
                         digits.clear();
                         use std::fmt::Write;
                         let _ = write!(digits, "{}", row.number);
-                        let width = font.measure_str(&digits, Some(&number_paint)).0;
+                        let width = font.measure_str(&digits);
                         canvas.draw_str(
                             &digits,
                             (right - width, baseline).into(),

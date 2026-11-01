@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::theme::ThemeStyles as _;
+use gfx::Painter as _;
 use std::str;
 
 use operation::{op::Op, operation::Operation};
@@ -181,8 +182,8 @@ fn box_backgrounds_hug_their_content() {
         "the plain line is wider than the box: box {box_extent}, document {document_max}"
     );
 
-    let mut surface = gfx::surfaces::raster_n32_premul((800, 300)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((800, 300)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
@@ -991,12 +992,12 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
         .expect("the empty document still has caret geometry");
     assert!(top >= 0.0 && width > 0.0 && height > 0.0);
 
-    let mut surface = gfx::surfaces::raster_n32_premul((40, 40)).expect("surface");
+    let mut surface = gfx_skia::raster_tuple((40, 40)).expect("surface");
     let background = gfx::Color::from_rgb(1, 2, 3);
-    surface.canvas().clear(background);
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
     document.paint(
         editor,
-        surface.canvas(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
         gfx::Rect::from_wh(40.0, 40.0),
         true,
         store,
@@ -1007,7 +1008,8 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
     let image = surface.image_snapshot();
     let pixmap = image.peek_pixels().expect("raster pixels");
     let caret = theme.part(crate::theme::CaretChrome::KEY).color.0;
-    let painted = (0..40).any(|y| (0..40).any(|x| pixmap.get_color((x, y)) == caret));
+    let painted =
+        (0..40).any(|y| (0..40).any(|x| gfx_skia::back_color(pixmap.get_color((x, y))) == caret));
     assert!(painted, "the focused empty document paints its caret");
 }
 
@@ -1188,13 +1190,12 @@ fn a_bounded_editor_paints_only_its_fragment() {
     assert!(height > 0.0 && height < 100.0, "one line: {height}");
 
     let extra = 120;
-    let mut surface =
-        gfx::surfaces::raster_n32_premul((400, height as i32 + extra)).expect("surface");
+    let mut surface = gfx_skia::raster_tuple((400, height as i32 + extra)).expect("surface");
     let background = gfx::Color::from_rgb(1, 2, 3);
-    surface.canvas().clear(background);
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
     document.paint(
         editor,
-        surface.canvas(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
         gfx::Rect::from_wh(400.0, height + extra as f32),
         true,
         store,
@@ -1207,7 +1208,7 @@ fn a_bounded_editor_paints_only_its_fragment() {
     let mut painted_below = 0;
     for y in (height as i32 + 8)..(height as i32 + extra) {
         for x in 0..400 {
-            let color: gfx::Color = pixmap.get_color((x, y));
+            let color = gfx_skia::back_color(pixmap.get_color((x, y)));
             if color != background {
                 painted_below += 1;
             }
@@ -1226,6 +1227,7 @@ mod injected_syntax {
     use crate::test_document::plain_document;
     use crate::theme::StyleId;
     use crate::theme::ThemeStyles as _;
+    use gfx::Painter as _;
     use operation::operation::Operation;
 
     fn payload(tokens: &[(std::ops::Range<u32>, StyleId)]) -> Syntax {
@@ -1366,13 +1368,12 @@ mod injected_syntax {
             fx!(),
         );
         let height = document.content_height(editor);
-        let mut surface =
-            gfx::surfaces::raster_n32_premul((400, height as i32 + 4)).expect("surface");
+        let mut surface = gfx_skia::raster_tuple((400, height as i32 + 4)).expect("surface");
         let background = gfx::Color::from_rgb(1, 2, 3);
-        surface.canvas().clear(background);
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
         document.paint(
             editor,
-            surface.canvas(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
             gfx::Rect::from_wh(400.0, height + 4.0),
             true,
             store,
@@ -1389,7 +1390,7 @@ mod injected_syntax {
         let mut hits = 0;
         for y in 0..(height as i32) {
             for x in 0..400 {
-                let color: gfx::Color = pixmap.get_color((x, y));
+                let color = gfx_skia::back_color(pixmap.get_color((x, y)));
                 if color == background {
                     continue;
                 }
@@ -2048,8 +2049,8 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
             0.0,
             true,
         );
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 40)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((400, 40)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         shaped.paint(canvas, 0.0);
         let image = surface.image_snapshot();
@@ -2111,8 +2112,8 @@ fn a_through_end_wash_fills_the_block_gap_below() {
             true,
         );
         let render = |slot: Option<f32>| -> Vec<u8> {
-            let mut surface = gfx::surfaces::raster_n32_premul((400, 120)).expect("surface");
-            let canvas = surface.canvas();
+            let mut surface = gfx_skia::raster_tuple((400, 120)).expect("surface");
+            let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
             canvas.clear(gfx::Color::WHITE);
             match slot {
                 None => shaped.paint(canvas, 0.0),
@@ -2191,8 +2192,8 @@ fn tight_background_markers_hug_their_glyphs() {
             0.0,
             true,
         );
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 80)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((400, 80)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         shaped.paint(canvas, 0.0);
         let image = surface.image_snapshot();
@@ -2324,8 +2325,8 @@ fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
         .expect("the Instead-covered line is a zero-height element");
 
     let ink_rows = |document: &Document| -> Vec<usize> {
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 400)).expect("surface");
-        let canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((400, 400)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         document.paint(
             editor,
@@ -3258,14 +3259,14 @@ fn gutter_paints_numbers_beside_shifted_text() {
         size.width
     );
 
-    let mut surface = gfx::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
+    let mut surface = gfx_skia::raster_tuple((size.width as i32, 200)).expect("surface");
     let background = gfx::Color::from_rgb(9, 9, 9);
-    surface.canvas().clear(background);
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
     let result = imba::Widget::handle_event(
         &widget,
         &arena,
         &imba::event::Event::Paint {
-            canvas: surface.canvas(),
+            canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
             focused: false,
         },
         gfx::Rect::from_wh(size.width, 200.0),
@@ -3278,7 +3279,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     let mut text_gutterband_ink = 0;
     for y in 0..200 {
         for x in 0..(chrome_width as i32) {
-            if pixmap.get_color((x, y)) != background {
+            if gfx_skia::back_color(pixmap.get_color((x, y))) != background {
                 gutter_ink += 1;
             }
         }
@@ -3293,12 +3294,12 @@ fn gutter_paints_numbers_beside_shifted_text() {
         constraints,
     );
     let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, 200.0));
-    surface.canvas().clear(background);
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
     let _ = imba::Widget::handle_event(
         &widget,
         &arena,
         &imba::event::Event::Paint {
-            canvas: surface.canvas(),
+            canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
             focused: false,
         },
         gfx::Rect::from_wh(size.width, 200.0),
@@ -3307,7 +3308,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     let pixmap = image.peek_pixels().expect("raster pixels");
     for y in 0..200 {
         for x in 0..(chrome_width as i32) {
-            if pixmap.get_color((x, y)) != background {
+            if gfx_skia::back_color(pixmap.get_color((x, y))) != background {
                 text_gutterband_ink += 1;
             }
         }
@@ -3347,14 +3348,14 @@ fn gutter_numbers_share_the_text_baseline() {
     );
     let size = imba::Thunk::size(&widget);
     let widget = imba::Thunk::realize(widget, &arena, gfx::Rect::from_wh(size.width, 200.0));
-    let mut surface = gfx::surfaces::raster_n32_premul((size.width as i32, 200)).expect("surface");
+    let mut surface = gfx_skia::raster_tuple((size.width as i32, 200)).expect("surface");
     let background = gfx::Color::from_rgb(9, 9, 9);
-    surface.canvas().clear(background);
+    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(background);
     let _ = imba::Widget::handle_event(
         &widget,
         &arena,
         &imba::event::Event::Paint {
-            canvas: surface.canvas(),
+            canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
             focused: false,
         },
         gfx::Rect::from_wh(size.width, 200.0),
@@ -3363,7 +3364,9 @@ fn gutter_numbers_share_the_text_baseline() {
     let pixmap = image.peek_pixels().expect("raster pixels");
     let ink_rows = |x0: i32, x1: i32| -> Vec<i32> {
         (0..200)
-            .filter(|y| (x0..x1).any(|x| pixmap.get_color((x, *y)) != background))
+            .filter(|y| {
+                (x0..x1).any(|x| gfx_skia::back_color(pixmap.get_color((x, *y))) != background)
+            })
             .collect()
     };
     let number_rows = ink_rows(0, chrome.width as i32);
@@ -4378,11 +4381,11 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
             );
             document.replace_markup(tint, marks, &[0..6], store, ui, &test_theme(), fx!());
         }
-        let mut surface = gfx::surfaces::raster_n32_premul((400, 40)).expect("surface");
-        surface.canvas().clear(gfx::Color::BLACK);
+        let mut surface = gfx_skia::raster_tuple((400, 40)).expect("surface");
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::BLACK);
         document.paint(
             editor,
-            surface.canvas(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
             gfx::Rect::from_wh(400.0, 40.0),
             false,
             store,
@@ -5055,8 +5058,8 @@ fn translucent_washes_never_double_at_block_seams() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = gfx::surfaces::raster_n32_premul((400, 300)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((400, 300)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::BLACK);
     document.paint(
         editor,
@@ -5129,8 +5132,8 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
     // are sub-pixel seams between per-row bands.
     for step in 0..20u32 {
         let scroll = step as f32 * 0.05;
-        let mut surface = gfx::surfaces::raster_n32_premul((800, 1200)).expect("surface");
-        let canvas: &gfx::Canvas = surface.canvas();
+        let mut surface = gfx_skia::raster_tuple((800, 1200)).expect("surface");
+        let canvas: &gfx::Canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
         canvas.clear(gfx::Color::BLACK);
         canvas.scale(2.0, 2.0);
         canvas.translate(0.0, -scroll);
@@ -5465,8 +5468,8 @@ fn a_diagnostic_span_paints_its_squiggle() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = gfx::surfaces::raster_n32_premul((400, 60)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((400, 60)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
@@ -5539,8 +5542,8 @@ fn a_one_character_diagnostic_still_paints() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let mut surface = gfx::surfaces::raster_n32_premul((400, 60)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((400, 60)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,

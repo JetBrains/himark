@@ -876,7 +876,7 @@ pub struct TextShaper {
 /// Everything that shapes a label besides its text.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 struct StyleKey {
-    typeface: gfx::typeface::TypefaceId,
+    typeface: u64,
     size: u32,
     tracking: u32,
     argb: u32,
@@ -892,16 +892,13 @@ struct StyleKey {
 /// `hikit::fonts` hands out clones standing at a ramp rung. A static
 /// face answers nothing and shapes by its style's weight.
 fn typeface_axes(typeface: &gfx::Typeface) -> (Option<f32>, Option<f32>) {
-    let Some(position) = typeface.variation_design_position() else {
-        return (None, None);
-    };
     let mut weight = None;
     let mut width = None;
-    for coordinate in position {
-        if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wght {
-            weight = Some(coordinate.value);
-        } else if coordinate.axis == gfx::font_arguments::variation_position::Coordinate::wdth {
-            width = Some(coordinate.value);
+    for (tag, value) in typeface.coords() {
+        if *tag == gfx::font::WGHT {
+            weight = Some(*value);
+        } else if *tag == gfx::font::WDTH {
+            width = Some(*value);
         }
     }
     (weight, width)
@@ -954,10 +951,8 @@ impl TextShaper {
     ) -> crate::shape::ParleyLine {
         let typeface = font.typeface();
         let family = typeface.family_name();
-        let style = typeface.font_style();
-        let (weight, width) = typeface_axes(&typeface);
-        let bold = font.is_embolden()
-            || (weight.is_none() && style.weight() >= gfx::font_style::Weight::SEMI_BOLD);
+        let (weight, width) = typeface_axes(typeface);
+        let bold = font.is_embolden() || (weight.is_none() && typeface.weight() >= 600.0);
         self.shaper.ellipsized(
             text,
             &[family.as_str(), "system-ui"],
@@ -1132,9 +1127,7 @@ mod tests {
     use crate::leaf::leaf;
 
     fn chrome_font() -> gfx::Font {
-        let face = gfx::FontMgr::new()
-            .legacy_make_typeface(None, gfx::FontStyle::normal())
-            .expect("default typeface");
+        let face = gfx::font::default_typeface(gfx::FontStyle::normal()).expect("default typeface");
         gfx::Font::from_typeface(face, 13.0)
     }
 
@@ -1180,11 +1173,21 @@ mod tests {
         let line = shaper.shape(&bold, "bold label", gfx::Color::BLACK, 0.0);
         let report = crate::shape::Shaper::of(&ui).face_report_for_test(&line);
         assert!(!report.is_empty(), "the label resolves at least one run");
+        let wght_of = |label: &str| -> f32 {
+            label
+                .split("wght=")
+                .nth(1)
+                .and_then(|tail| tail.split_whitespace().next())
+                .and_then(|word| word.parse().ok())
+                .unwrap_or(0.0)
+        };
         assert!(
-            report.iter().all(|(name, embolden, _)| {
-                *embolden || name.as_deref().is_some_and(|name| name.contains("Bold"))
+            report.iter().all(|(name, embolden, label)| {
+                *embolden
+                    || name.as_deref().is_some_and(|name| name.contains("Bold"))
+                    || wght_of(label) >= 600.0
             }),
-            "runs must resolve bold: {report:?}"
+            "runs must resolve bold (a cut, a synthesis mark, or a wght instance): {report:?}"
         );
     }
 
@@ -1487,9 +1490,8 @@ mod baseline_tests {
     fn text_answers_its_font_ascent_as_the_line() {
         let arena = Arena::default();
         let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let typeface = gfx::FontMgr::new()
-            .legacy_make_typeface(None, gfx::FontStyle::normal())
-            .expect("a system typeface");
+        let typeface =
+            gfx::font::default_typeface(gfx::FontStyle::normal()).expect("a system typeface");
         let font = gfx::Font::new(typeface, 24.0);
         let thunk: ThunkBox<'_, ()> =
             text(&ui, "hello", font.clone(), gfx::Color::WHITE).layout(&arena, bounds());

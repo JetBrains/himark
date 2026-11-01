@@ -8,7 +8,6 @@
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use gfx::Contains;
 use gfx::{Rect, Size};
 
 use crate::arena::Arena;

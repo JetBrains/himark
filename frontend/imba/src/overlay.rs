@@ -66,7 +66,7 @@ where
 
 impl<'a, Command: 'a> Overlay<'a, Command> {
     pub fn translate(&mut self, x: f32, y: f32) {
-        self.anchor.offset((x, y));
+        self.anchor = self.anchor.with_offset((x, y));
     }
 
     pub fn map<ParentCommand: 'a, F>(self, map: F) -> Overlay<'a, ParentCommand>

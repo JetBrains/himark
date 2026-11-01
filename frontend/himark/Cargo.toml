@@ -41,8 +41,9 @@ myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }
 operation = { path = "../operation" }
 rebase = { path = "../rebase" }
-skia-safe = "0.153.3"
+skia-safe = { version = "0.153.3", optional = true }
 gfx = { path = "../gfx" }
+gfx-skia = { path = "../gfx-skia", optional = true }
 text = { path = "../text" }
 
 # The C surface's runtime (ffi/mod.rs, gated off wasm) builds the
@@ -51,6 +52,10 @@ text = { path = "../text" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }
 
 [features]
+# The Swift shell hands this crate raw skia canvases over the C ABI —
+# the apple staticlib (frontend-host's default) turns this on. Off by
+# default so no other shell links skia through this crate.
+skia-shell = ["dep:skia-safe", "dep:gfx-skia"]
 test-support = [
     "workbench/test-support", 
     "editor/test-support", 
@@ -63,6 +68,7 @@ test-support = [
 ]
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
 editor = { path = "../editor", features = ["test-support"] }
 hikit = { path = "../hikit", features = ["test-support"] }
 changesview = { path = "../changesview", features = ["test-support"] }

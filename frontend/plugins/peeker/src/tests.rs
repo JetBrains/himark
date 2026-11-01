@@ -17,8 +17,11 @@ fn boot() -> Himark {
 #[test]
 fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     let mut app = boot();
-    let mut surface = gfx::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let located = |name: &str| {
         editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
@@ -49,7 +52,10 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         app.perform_registered(app.sole_window(), "peeker.toggle"),
         "the peeker opens"
     );
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let listed = labels(&app).expect("the peeker is the modal");
     assert!(
         listed.iter().any(|label| label == "alpha"),
@@ -69,7 +75,10 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         app.focused_document_text().as_deref(),
@@ -192,8 +201,11 @@ fn dump_jump_screenshot() {
         return;
     };
     let mut app = boot();
-    let mut surface = gfx::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let files: &[&[&str]] = &[
         &["backend", "agent-host", "src", "main.rs"],
         &["frontend", "ahp-chat", "src", "transcript.rs"],
@@ -229,10 +241,16 @@ fn dump_jump_screenshot() {
         )));
     }
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(himark::test_driver::type_text(&mut app, "ar"));
     for tick in 0..30 {
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
         let busy = himark::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
@@ -243,7 +261,7 @@ fn dump_jump_screenshot() {
     }
     let data = surface
         .image_snapshot()
-        .encode(None, gfx::EncodedImageFormat::PNG, None)
+        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
     std::fs::write(format!("{dir}/jump.png"), data.as_bytes()).expect("write");

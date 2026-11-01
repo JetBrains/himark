@@ -197,7 +197,6 @@ impl View for TerminalView {
             let fonts = grid_fonts(ui, &chrome);
             let cell = cell_metrics(&fonts.normal);
             let fallbacks = ui.env(|| FallbackFaces {
-                manager: gfx::FontMgr::new(),
                 by_char: Default::default(),
             });
             imba::ThunkBox::new(
@@ -319,7 +318,6 @@ impl GridFonts {
 }
 
 struct FallbackFaces {
-    manager: gfx::FontMgr,
     by_char: std::cell::RefCell<std::collections::HashMap<char, Option<gfx::Typeface>>>,
 }
 
@@ -328,14 +326,7 @@ impl FallbackFaces {
         let mut cache = self.by_char.borrow_mut();
         let face = cache
             .entry(c)
-            .or_insert_with(|| {
-                self.manager.match_family_style_character(
-                    "",
-                    gfx::FontStyle::normal(),
-                    &[],
-                    c as i32,
-                )
-            })
+            .or_insert_with(|| gfx::font::fallback_for_char(c, gfx::FontStyle::normal()))
             .clone()?;
         let mut font = Font::from_typeface(face, size);
         font.set_edging(gfx::font::Edging::AntiAlias);
@@ -370,7 +361,7 @@ fn grid_fonts(ui: &UiCtx, chrome: &crate::chrome::TerminalChrome) -> GridFonts {
 
 fn cell_metrics(font: &Font) -> (f32, f32, f32) {
     let (_, metrics) = font.metrics();
-    let advance = font.measure_str("M", None).0;
+    let advance = font.measure_str("M");
     let height = (metrics.descent - metrics.ascent + metrics.leading).ceil();
     (advance, height, -metrics.ascent)
 }
@@ -500,7 +491,7 @@ impl TerminalWidget<'_> {
                 };
 
                 let face = self.fonts.pick(cell.bold, cell.italic);
-                if face.unichar_to_glyph(first as i32) == 0 {
+                if !face.typeface().has_glyph(first) {
                     flush_run(canvas, &self.fonts, &mut glyph_paint, baseline, &mut run);
                     if let Some(font) = self.fallbacks.font_for(first, self.chrome.font_size) {
                         glyph_paint.set_color(fg);
@@ -764,7 +755,6 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                 None => EventResult::Ignored,
             },
             Event::MouseMove { point, mods } => {
-                use gfx::Contains;
                 // Moves are broadcast too: only the hovered pane
                 // reports them (programs in mode 1003 want hover).
                 if self.session.press().is_none()

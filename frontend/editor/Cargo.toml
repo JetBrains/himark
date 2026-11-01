@@ -28,5 +28,6 @@ tokenize = { path = "../tokenize" }
 test-support = []
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
 myersdiff = { path = "../myersdiff" }
 proptest = "1.12"

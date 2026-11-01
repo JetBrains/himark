@@ -4,7 +4,7 @@
 use crate::ui::UiCtx;
 use std::marker::PhantomData;
 
-use gfx::{Canvas, Color, Contains, Paint, Rect, Size};
+use gfx::{Canvas, Color, Paint, Rect, Size};
 
 use crate::{
     arena::Arena,

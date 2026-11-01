@@ -1,0 +1,9 @@
+[package]
+name = "gfx-skia"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+gfx = { path = "../gfx" }
+skia-safe = "0.153.3"

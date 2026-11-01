@@ -457,10 +457,7 @@ impl BridgeView for OverlayMount {
             if !host_covering {
                 let rect = gfx::Rect::from_xywh(point.x, point.y, size.width, size.height);
                 content = Some(match content {
-                    Some(mut acc) => {
-                        acc.join(rect);
-                        acc
-                    }
+                    Some(acc) => acc.union(&rect),
                     None => rect,
                 });
             }

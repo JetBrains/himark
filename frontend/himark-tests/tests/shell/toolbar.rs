@@ -101,7 +101,10 @@ fn a_right_button_press_dispatches_its_own_command() {
     let (width, height) = (1400.0f32, 600.0f32);
     let mut surface =
         skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);
     let styles = hikit::header::HeaderStyles::of(app.store(), &app.ui_ctx());

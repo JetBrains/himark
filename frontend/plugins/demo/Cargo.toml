@@ -19,6 +19,7 @@ text = { path = "../../text" }
 operation = { path = "../../operation" }
 
 [dev-dependencies]
+gfx-skia = { path = "../../gfx-skia" }
 himark = { path = "../../himark", features = ["test-support"] }
 peeker = { path = "../peeker" }
 

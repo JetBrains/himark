@@ -63,9 +63,12 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
 
-    let mut surface = gfx::surfaces::raster_n32_premul((1600, 900)).expect("surface");
+    let mut surface = gfx_skia::raster_tuple((1600, 900)).expect("surface");
     assert!(app.new_scratch(app.sole_window()));
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let home = app.sole_window_session();
     let terminals =
         ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
@@ -77,8 +80,14 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     ));
     session.output(b"$ echo himark\r\n\x1b[32mhimark\x1b[0m\r\n$ ");
 
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let resizes = recorder.resizes.lock().unwrap().clone();
     assert_eq!(
         resizes.len(),
@@ -117,8 +126,11 @@ fn dump_terminal_screenshot() {
     let _ = app.add_window();
     let session = Session::new(Box::new(Recorder::default()));
     assert!(app.new_scratch(app.sole_window()));
-    let mut surface = gfx::surfaces::raster_n32_premul((1600, 900)).expect("surface");
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let mut surface = gfx_skia::raster_tuple((1600, 900)).expect("surface");
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let home = app.sole_window_session();
     let terminals =
         ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
@@ -128,7 +140,10 @@ fn dump_terminal_screenshot() {
         app.sole_window(),
         Box::new(TerminalView::new(terminals, id))
     ));
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     session.output(
         b"$ cargo test -p terminal\r\n\
 \x1b[1;32m   Compiling\x1b[0m terminal v0.1.0\r\n\
@@ -136,11 +151,17 @@ fn dump_terminal_screenshot() {
 \x1b[7m inverse \x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[45m magenta bg \x1b[0m\r\n\
 $ \xf0\x9f\x91\xbb wide \xe6\xbc\xa2\xe5\xad\x97 chars\r\n$ ",
     );
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let image = surface.image_snapshot();
     let data = image
-        .encode(None, gfx::EncodedImageFormat::PNG, None)
+        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
         .expect("png encode");
     std::fs::write(dir.join("terminal-panel.png"), data.as_bytes()).expect("write screenshot");
 }

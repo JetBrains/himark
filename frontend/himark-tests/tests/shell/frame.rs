@@ -33,7 +33,7 @@ fn dump_frame_screenshot() {
     });
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -167,11 +167,11 @@ fn dump_frame_screenshot() {
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
         ),
     )));
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
     let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
     let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(64.0));
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
     let data = surface
         .image_snapshot()
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)

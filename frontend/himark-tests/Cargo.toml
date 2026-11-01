@@ -11,6 +11,8 @@ path = "src/lib.rs"
 [dependencies]
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
+gfx = { path = "../gfx" }
 himark = { path = "../himark", features = ["test-support"] }
 workbench = { path = "../workbench", features = ["test-support"] }
 ahp-chat = { path = "../ahp-chat" }

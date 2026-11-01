@@ -3,7 +3,7 @@
 
 use std::sync::OnceLock;
 
-use gfx::{FontMgr, Typeface};
+use gfx::Typeface;
 
 #[cfg(not(target_os = "emscripten"))]
 static NOTO_SANS: &[u8] = include_bytes!("../assets/NotoSans-Regular.ttf");
@@ -47,9 +47,7 @@ pub fn code_typeface() -> Typeface {
     {
         CODE_TYPEFACE
             .get_or_init(|| {
-                FontMgr::new()
-                    .new_from_data(gfx::Data::new_copy(JETBRAINS_MONO[0]), None)
-                    .expect("embedded JetBrains Mono loads")
+                Typeface::from_bytes(JETBRAINS_MONO[0], 0).expect("embedded JetBrains Mono loads")
             })
             .clone()
     }
@@ -86,9 +84,7 @@ pub fn chrome_typeface() -> Typeface {
     {
         CHROME_TYPEFACE
             .get_or_init(|| {
-                FontMgr::new()
-                    .new_from_data(gfx::Data::new_copy(CHROME), None)
-                    .expect("embedded Bricolage Grotesque loads")
+                Typeface::from_bytes(CHROME, 0).expect("embedded Bricolage Grotesque loads")
             })
             .clone()
     }
@@ -113,9 +109,7 @@ pub const FAMILY: &str = "JetBrains Mono";
 #[cfg(target_os = "emscripten")]
 pub fn install_bytes(bytes: Vec<u8>) -> &'static [u8] {
     let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-    let typeface = FontMgr::new()
-        .new_from_data(gfx::Data::new_copy(bytes), None)
-        .expect("the web font parses");
+    let typeface = Typeface::from_bytes(bytes, 0).expect("the web font parses");
     assert!(
         TYPEFACE.set(typeface).is_ok(),
         "the web typeface was installed more than once"
@@ -127,11 +121,7 @@ pub fn typeface() -> Typeface {
     #[cfg(not(target_os = "emscripten"))]
     {
         TYPEFACE
-            .get_or_init(|| {
-                FontMgr::new()
-                    .new_from_data(gfx::Data::new_copy(NOTO_SANS), None)
-                    .expect("embedded Noto Sans loads")
-            })
+            .get_or_init(|| Typeface::from_bytes(NOTO_SANS, 0).expect("embedded Noto Sans loads"))
             .clone()
     }
     #[cfg(target_os = "emscripten")]

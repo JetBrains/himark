@@ -88,7 +88,10 @@ fn palette_commands_follow_the_modal_focus() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let ids = |app: &Himark| -> Vec<&'static str> {
         himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .iter()
@@ -253,7 +256,10 @@ fn registered_commands_present_and_dispatch_by_id() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     app.register_command(std::sync::Arc::new(Probe));
     let ids: Vec<&str> =
@@ -340,7 +346,10 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     let cmd = Modifiers {
         command: true,

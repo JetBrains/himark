@@ -12,11 +12,9 @@ use std::{
 };
 
 use desktop::{is_insertable_text, startup_profile_log};
+use gfx::{Color, Font, FontStyle, Paint, Point, Rect};
 use himark::app_ext::AppExt as _;
-use skia_safe::{
-    surfaces, AlphaType, Color, ColorSpace, ColorType, Contains, Font, FontMgr, FontStyle,
-    ImageInfo, Paint, Point, Rect,
-};
+use skia_safe::{surfaces, AlphaType, ColorSpace, ColorType, ImageInfo};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
@@ -481,11 +479,9 @@ impl MenuBar {
     }
 
     fn font(size: f32, style: FontStyle) -> Font {
-        let typeface = FontMgr::new()
-            .legacy_make_typeface(None, style)
-            .expect("a system typeface");
+        let typeface = gfx::font::default_typeface(style).expect("a system typeface");
         let mut font = Font::from_typeface(typeface, size);
-        font.set_edging(skia_safe::font::Edging::AntiAlias);
+        font.set_edging(gfx::font::Edging::AntiAlias);
         font
     }
 
@@ -504,8 +500,7 @@ impl MenuBar {
         ROOT_MENUS
             .iter()
             .map(|menu| {
-                let width =
-                    self.root_font().measure_str(menu.title, None).0 + metrics.root_pad_x * 2.0;
+                let width = self.root_font().measure_str(menu.title) + metrics.root_pad_x * 2.0;
                 let rect = Rect::from_xywh(x, 0.0, width, metrics.bar_height);
                 x += width + metrics.root_gap;
                 rect
@@ -530,10 +525,9 @@ impl MenuBar {
                 label, shortcut, ..
             } = entry
             {
-                label_width = label_width.max(self.item_font().measure_str(label, None).0);
+                label_width = label_width.max(self.item_font().measure_str(label));
                 if let Some(shortcut) = shortcut {
-                    shortcut_width =
-                        shortcut_width.max(self.item_font().measure_str(shortcut, None).0);
+                    shortcut_width = shortcut_width.max(self.item_font().measure_str(shortcut));
                 }
             }
         }
@@ -734,10 +728,10 @@ impl MenuBar {
         paint.set_color(Color::from_argb(255, 250, 250, 252));
         canvas.draw_round_rect(panel_rect, 8.0 * scale, 8.0 * scale, &paint);
         paint.set_color(Color::from_argb(255, 196, 199, 205));
-        paint.set_style(skia_safe::paint::Style::Stroke);
+        paint.set_style(gfx::PaintStyle::Stroke);
         paint.set_stroke_width(scale.max(1.0));
         canvas.draw_round_rect(panel_rect, 8.0 * scale, 8.0 * scale, &paint);
-        paint.set_style(skia_safe::paint::Style::Fill);
+        paint.set_style(gfx::PaintStyle::Fill);
 
         for (index, entry) in ROOT_MENUS[open_root].entries.iter().enumerate() {
             match entry {
@@ -779,7 +773,7 @@ impl MenuBar {
                         &paint,
                     );
                     if let Some(shortcut) = shortcut {
-                        let shortcut_width = self.item_font().measure_str(shortcut, None).0;
+                        let shortcut_width = self.item_font().measure_str(shortcut);
                         paint.set_color(Color::from_argb(255, 112, 116, 124));
                         canvas.draw_str(
                             shortcut,
@@ -934,7 +928,7 @@ impl WindowState {
                     std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels")
                 })?;
                 let reconciling = paint(
-                    skia_surface.canvas(),
+                    gfx_skia::SkiaCanvas::wrap(skia_surface.canvas()),
                     buffer_width as f32,
                     buffer_height as f32,
                 );
@@ -950,7 +944,11 @@ impl WindowState {
                 self.window.pre_present_notify();
                 let mut reconciling = false;
                 surface.frame(|canvas| {
-                    reconciling = paint(canvas, width.get() as f32, height.get() as f32);
+                    reconciling = paint(
+                        gfx_skia::SkiaCanvas::wrap(canvas),
+                        width.get() as f32,
+                        height.get() as f32,
+                    );
                 })?;
                 Ok(reconciling)
             }

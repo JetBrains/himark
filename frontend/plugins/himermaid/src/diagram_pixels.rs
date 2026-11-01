@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use gfx::Painter as _;
 
 #[test]
 fn the_diagram_paints_styled_nodes_and_labels() {
@@ -9,8 +10,8 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     assert!(view.is_diagram());
     let size = view.scaled(400.0);
     let (w, h) = (size.width.ceil() as i32, size.height.ceil() as i32);
-    let mut surface = gfx::surfaces::raster_n32_premul((w, h)).expect("surface");
-    let canvas = surface.canvas();
+    let mut surface = gfx_skia::raster_tuple((w, h)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     let store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
@@ -40,7 +41,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let mut black = 0usize;
     for y in 0..h {
         for x in 0..w {
-            let color: gfx::Color = pixels.get_color((x, y));
+            let color = gfx_skia::back_color(pixels.get_color((x, y)));
             colors.insert((color.r() / 16, color.g() / 16, color.b() / 16));
             if color.b() > color.r().saturating_add(8) {
                 tinted += 1;

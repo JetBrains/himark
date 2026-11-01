@@ -3,17 +3,25 @@ use super::*;
 
 #[test]
 fn two_windows_edit_independently() {
+    use gfx::Size;
     use himark::app::AppFonts;
     use himark::app::Himark;
     use imba::event::Event;
-    use skia_safe::Size;
     let fonts = AppFonts::embedded();
     let mut app = Himark::new(fonts);
     let first = app.add_window();
     let second = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window_sized(first, surface.canvas(), Size::new(800.0, 600.0));
-    app.draw_window_sized(second, surface.canvas(), Size::new(500.0, 400.0));
+    app.draw_window_sized(
+        first,
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        Size::new(800.0, 600.0),
+    );
+    app.draw_window_sized(
+        second,
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        Size::new(500.0, 400.0),
+    );
 
     let focused_text = |app: &Himark, window: ::workbench::window::WindowId| -> Option<String> {
         let store = &app.window_store(window);
@@ -72,21 +80,30 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let start = app.pane_count();
 
     assert!(
         app.perform_registered(app.sole_window(), "workbench.split-pane"),
         "splitting the focused pane"
     );
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert_eq!(app.pane_count(), start + 1);
 
     assert!(
         app.perform_registered(app.sole_window(), "workbench.close-pane"),
         "closing the focused pane"
     );
-    let _ = app.draw_window(app.sole_window(), surface.canvas());
+    let _ = app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert_eq!(
         app.pane_count(),
         start,
@@ -97,7 +114,10 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
             app.perform_registered(app.sole_window(), "workbench.close-pane"),
             "closing down to one pane"
         );
-        let _ = app.draw_window(app.sole_window(), surface.canvas());
+        let _ = app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
     }
     let _ = app.perform_registered(app.sole_window(), "workbench.close-pane");
     assert_eq!(app.pane_count(), 1, "the last pane refuses to close");
@@ -171,7 +191,10 @@ fn navigation_back_and_forward_walk_pane_history() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
 
     let open = |app: &mut Himark, name: &str, text: &str| {
@@ -277,7 +300,10 @@ fn close_widget_walks_the_pane_history() {
     let mut app = Himark::new(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let window = app.sole_window();
     let open = |app: &mut Himark, name: &str, text: &str| {
         assert!(app.perform_command(himark::app::opened(
@@ -373,7 +399,10 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let settle = |app: &mut Himark| {
         for _ in 0..5 {
             runner.run();

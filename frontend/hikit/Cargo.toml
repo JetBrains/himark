@@ -16,4 +16,5 @@ gfx = { path = "../gfx" }
 test-support = []
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
 editor = { path = "../editor", features = ["test-support"] }

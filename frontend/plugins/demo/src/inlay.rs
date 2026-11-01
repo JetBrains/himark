@@ -3,7 +3,7 @@
 
 use std::{ops::Range, sync::OnceLock};
 
-use gfx::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
+use gfx::{Canvas, Color, Font, FontStyle, Paint, Rect, Size, Typeface};
 use imba::{
     anim::{Animation, AnimationClock, Easing, Motion},
     arena::Arena,
@@ -483,16 +483,11 @@ impl View for DemoInlay {
 
 fn demo_font(size: f32) -> Font {
     static TYPEFACE: OnceLock<Option<Typeface>> = OnceLock::new();
-    match TYPEFACE
-        .get_or_init(|| FontMgr::default().legacy_make_typeface(None, FontStyle::normal()))
-    {
-        Some(typeface) => Font::from_typeface(typeface.clone(), size),
-        None => {
-            let mut font = Font::default();
-            font.set_size(size);
-            font
-        }
-    }
+    let typeface = TYPEFACE
+        .get_or_init(|| gfx::font::default_typeface(FontStyle::normal()))
+        .clone()
+        .unwrap_or_else(editor::embedded_fonts::typeface);
+    Font::from_typeface(typeface, size)
 }
 
 fn is_plain_paragraph(marks: BlockMarks) -> bool {

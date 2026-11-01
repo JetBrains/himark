@@ -89,7 +89,9 @@ impl ImageView {
 }
 
 fn decode(bytes: &[u8]) -> Option<gfx::Image> {
-    gfx::images::deferred_from_encoded_data(gfx::Data::new_copy(bytes), None)
+    let decoded = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (width, height) = decoded.dimensions();
+    gfx::Image::from_rgba8(width, height, false, decoded.into_raw())
 }
 
 impl View for ImageView {
@@ -138,17 +140,16 @@ impl<'a> crate::layout::Layout<'a, ImageCommand> for Scaled<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gfx::Painter as _;
 
     fn png() -> Vec<u8> {
-        let surface = gfx::surfaces::raster_n32_premul((2, 1)).expect("surface");
-        let mut surface = surface;
-        surface.canvas().clear(gfx::Color::RED);
-        let image = surface.image_snapshot();
-        image
-            .encode(None, gfx::EncodedImageFormat::PNG, None)
-            .expect("encoded")
-            .as_bytes()
-            .to_vec()
+        let pixel = image::Rgba([255u8, 0, 0, 255]);
+        let raster = image::RgbaImage::from_pixel(2, 1, pixel);
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        raster
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .expect("encoded");
+        bytes.into_inner()
     }
 
     #[test]
@@ -172,24 +173,11 @@ mod tests {
     #[test]
     fn the_view_paints_its_pixels() {
         let view = ImageView::new(png()).expect("decodes");
-        let mut surface = gfx::surfaces::raster_n32_premul((2, 1)).expect("surface");
-        surface.canvas().clear(gfx::Color::WHITE);
-        view.paint(surface.canvas(), Rect::from_xywh(0.0, 0.0, 2.0, 1.0));
-        let image = surface.image_snapshot();
-        let mut pixels = vec![0u8; 2 * 4];
-        let info = gfx::ImageInfo::new(
-            (2, 1),
-            gfx::ColorType::RGBA8888,
-            gfx::AlphaType::Premul,
-            None,
-        );
-        assert!(image.read_pixels(
-            &info,
-            &mut pixels,
-            8,
-            (0, 0),
-            gfx::image::CachingHint::Allow
-        ));
+        let mut surface = gfx_skia::raster_tuple((2, 1)).expect("surface");
+        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        canvas.clear(gfx::Color::WHITE);
+        view.paint(canvas, Rect::from_xywh(0.0, 0.0, 2.0, 1.0));
+        let (_, _, pixels) = gfx_skia::rgba(&mut surface);
         assert_eq!(&pixels[..3], &[255, 0, 0], "the red pixel painted");
     }
 }

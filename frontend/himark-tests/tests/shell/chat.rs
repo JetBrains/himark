@@ -129,7 +129,7 @@ fn the_composer_command_fronts_the_chat_panel() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -276,7 +276,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
     let window = app.sole_window();
     // House units are 2x pixels: 3200 here is a 1600pt window.
     let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
-    app.draw_window(window, wide.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(wide.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -420,7 +420,7 @@ fn dump_chat_narrow_screenshot() {
     let window = app.sole_window();
     // The user's real squeezed window: 1392pt at 2x = 2784 device px.
     let mut narrow = skia_safe::surfaces::raster_n32_premul((2784, 1700)).expect("surface");
-    app.draw_window(window, narrow.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(narrow.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -536,7 +536,7 @@ fn dump_chat_column_screenshot() {
     });
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((1920, 1080)).expect("surface");
-    app.draw_window(window, wide.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(wide.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -627,7 +627,7 @@ fn dump_chat_transcript_screenshot() {
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -778,7 +778,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, narrow.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(narrow.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -919,7 +919,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
-    app.draw_window(window, wide.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(wide.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -1021,7 +1021,7 @@ fn any_open_road_lands_the_chat_in_the_slot() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/walkable");
     let home = ahp_wire::SessionId {
@@ -1076,7 +1076,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, surface.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -1188,7 +1188,7 @@ fn the_chat_tab_toggles_the_column() {
     let (width, height) = (3200.0f32, 1000.0f32);
     let mut wide =
         skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
-    app.draw_window(window, wide.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(wide.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -1301,7 +1301,7 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
     let (width, height) = (1600.0f32, 900.0f32);
     let mut narrow =
         skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
-    app.draw_window(window, narrow.canvas());
+    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(narrow.canvas()));
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {

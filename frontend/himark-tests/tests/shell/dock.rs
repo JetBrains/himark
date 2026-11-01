@@ -168,7 +168,10 @@ fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let before = ::workbench::workbench::panel_width(
         app.store(),
         entity(&app).workbench().root.focused_pane(),
@@ -201,7 +204,10 @@ fn escape_closes_the_dock_after_the_slide_settles() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
@@ -224,13 +230,19 @@ fn the_dock_resizes_by_dragging_its_edge() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
     let edge = 800.0 - ::workbench::dock::DOCK_WIDTH;
     assert!(test_driver::click(&mut app, edge, 300.0, 800.0, 600.0));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(test_driver::drag(&mut app, 100.0, 300.0));
     assert!(test_driver::mouse_up(&mut app, 100.0, 300.0));
     assert_eq!(
@@ -239,10 +251,16 @@ fn the_dock_resizes_by_dragging_its_edge() {
         "the drag clamps at the wide cap"
     );
 
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     let edge = 800.0 - 800.0 * 0.6;
     assert!(test_driver::click(&mut app, edge, 300.0, 800.0, 600.0));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(test_driver::drag(&mut app, 780.0, 300.0));
     assert!(test_driver::mouse_up(&mut app, 780.0, 300.0));
     assert_eq!(
@@ -257,7 +275,10 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     assert!(test_driver::type_text(
         &mut app,
         "alpha beta gamma delta epsilon zeta"
@@ -276,7 +297,10 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
         toolbar.height + 30.0,
     );
     assert!(test_driver::click(&mut app, x, y, 1600.0, 900.0));
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     test_driver::drag(&mut app, x + 220.0, y + 6.0);
     test_driver::mouse_up(&mut app, x + 220.0, y + 6.0);
     let (_, held) = documents::OpenDocuments::list(app.store(), app.sole_documents())
@@ -297,7 +321,10 @@ fn dock_picks_keep_the_panel_up() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
@@ -349,7 +376,10 @@ fn dock_header_buttons_dispatch_their_commands() {
         glyph: Arc::new(|_canvas, _rect, _color| {}),
     });
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
@@ -398,7 +428,10 @@ fn the_dock_swaps_content_in_place() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
@@ -436,7 +469,10 @@ fn the_dock_and_the_floating_drawer_coexist() {
     let mut app = Himark::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
     show_dock(&mut app, "files", "test.files");
     settle(&mut app, &mut surface);
 
@@ -463,7 +499,10 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     let mut app = Himark::new(fonts);
     let window = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(app.sole_window(), surface.canvas());
+    app.draw_window(
+        app.sole_window(),
+        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+    );
 
     show_dock(&mut app, "changes", "test.owner");
     settle(&mut app, &mut surface);
@@ -554,7 +593,10 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
 
     settle(&mut app, &mut surface);
     assert!(
-        !app.draw_window(app.sole_window(), surface.canvas()),
+        !app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas())
+        ),
         "the restored dock mounts settled — no slide, no reconcile"
     );
 }
@@ -577,7 +619,10 @@ pub(super) fn show_dock(app: &mut Himark, label: &'static str, owner: &'static s
 
 pub(super) fn settle(app: &mut Himark, surface: &mut skia_safe::Surface) {
     for tick in 0..60 {
-        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(
+            app.sole_window(),
+            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        );
         let busy = test_driver::animate(app, AnimationClock::from_millis(tick as f64 * 32.0));
         if !busy && tick > 1 {
             break;

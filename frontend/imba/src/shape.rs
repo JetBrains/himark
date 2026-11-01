@@ -67,12 +67,6 @@ struct WorldInner {
     /// The first registered family — the fallback when a chain
     /// resolves to nothing.
     fallback: Mutex<Option<String>>,
-    /// The fontique→skia bridge, shared because the walk behind a
-    /// miss (enumerate the family, instantiate every cut, ask
-    /// CoreText for a variation copy) is far too dear to repeat per
-    /// thread, and because a `Typeface` is `Send + Sync` by skia's
-    /// own promise.
-    typefaces: Mutex<HashMap<TypefaceKey, Option<gfx::Typeface>>>,
 }
 
 type TypefaceKey = (u64, u32, Vec<(u32, i32)>);
@@ -101,7 +95,6 @@ impl FontWorld {
             template: Mutex::new(fonts),
             generation: AtomicU64::new(1),
             fallback: Mutex::new(None),
-            typefaces: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -136,10 +129,10 @@ impl FontWorld {
             .clone()
     }
 
-    /// How many faces the bridge has crossed. Test support.
+    /// How many faces the process has interned. Test support.
     #[doc(hidden)]
     pub fn bridged_for_test(&self) -> usize {
-        self.0.typefaces.lock().expect("the bridge").len()
+        gfx::face_count()
     }
 }
 
@@ -394,33 +387,14 @@ struct ShaperState {
     /// The first registered family — the deterministic fallback
     /// when a chain resolves to nothing.
     fallback_family: Option<String>,
-    /// ONE platform manager per thread, built on FIRST MISS and not
-    /// before: every `FontMgr::new()` is a fresh
-    /// `SkFontMgr_New_CoreText` — CoreText enumerating and SORTING
-    /// every family on the machine — and a thread whose faces the
-    /// shared bridge already knows never needs one at all. (Not
-    /// shared: skia-safe marks `Typeface` `Send + Sync` and the
-    /// manager not.)
-    manager: Option<gfx::FontMgr>,
     /// fvar axis defaults per blob — parsed from the bytes ONCE,
     /// not per run per shape.
     axes: HashMap<(u64, u32), Vec<(u32, f32)>>,
-    /// The name-bridged BASE face per blob: the family walk
-    /// (instantiating every platform cut to fingerprint them) runs
-    /// once per font, not once per variation combo.
-    bases: HashMap<(u64, u32), Option<gfx::Typeface>>,
     /// Shaped lines BEFORE line breaking, keyed by everything but
     /// the width. A resize re-breaks a clone (under a microsecond)
     /// instead of re-shaping (ten); skparagraph kept exactly this
     /// memo, and losing it is what made a window drag crawl.
     shaped: HashMap<ShapeKey, parley::Layout<Brush>>,
-    /// This context's view of the bridge — blob id + ttc index +
-    /// variation coords → skia typeface, so the blob road rasterizes
-    /// the same INSTANCE parley shaped with (a variable font's
-    /// default differs from its named instances — advances drift,
-    /// carets follow). Backed by the world's shared map: this one
-    /// spares the lock in `build_blobs`'s inner loop, not the work.
-    typefaces: HashMap<TypefaceKey, Option<gfx::Typeface>>,
     /// The same instances as backend-agnostic face ids — what a
     /// non-skia painter resolves its own face handle by.
     faces: HashMap<TypefaceKey, gfx::FaceId>,
@@ -459,10 +433,7 @@ impl Shaper {
                 synced,
                 fallback_family,
                 shaped: HashMap::new(),
-                manager: None,
                 axes: HashMap::new(),
-                bases: HashMap::new(),
-                typefaces: HashMap::new(),
                 faces: HashMap::new(),
                 shapes: 0,
             }),
@@ -535,44 +506,6 @@ impl ShaperState {
         coords
     }
 
-    /// The name-bridged base face for a blob — the expensive walk,
-    /// cached per font: read family + postscript name from the
-    /// bytes, match through the platform manager, fingerprint the
-    /// cut by postscript name with glyph count as the id-space
-    /// guard; parse the bytes for faces the platform does not know.
-    fn base(&mut self, font: &parley::FontData) -> Option<gfx::Typeface> {
-        let manager = self.manager.get_or_insert_with(gfx::FontMgr::new).clone();
-        self.bases
-            .entry((font.data.id(), font.index))
-            .or_insert_with(|| {
-                let fingerprint = glyph_count_of(font);
-                let postscript = postscript_name_of(font);
-                family_name_of(font)
-                    .and_then(|family| {
-                        let count = fingerprint?;
-                        let mut cuts = manager.match_family(&family);
-                        let cuts: Vec<gfx::Typeface> = (0..cuts.count())
-                            .filter_map(|index| cuts.new_typeface(index))
-                            .collect();
-                        cuts.iter()
-                            .find(|cut| {
-                                postscript.is_some()
-                                    && cut.post_script_name() == postscript
-                                    && cut.count_glyphs() as u32 == count
-                            })
-                            .or_else(|| cuts.iter().find(|cut| cut.count_glyphs() as u32 == count))
-                            .cloned()
-                    })
-                    .or_else(|| {
-                        manager.new_from_data(
-                            gfx::Data::new_copy(font.data.as_ref()),
-                            Some(font.index),
-                        )
-                    })
-            })
-            .clone()
-    }
-
     /// The backend-agnostic face id for the instance parley shaped —
     /// interned in gfx once per (font, coords), bytes and family
     /// name riding along for a name-resolving backend.
@@ -600,56 +533,19 @@ impl ShaperState {
         id
     }
 
-    fn typeface(
+    /// The face parley shaped, as the app's own handle — bytes plus
+    /// the variation position. TEST SUPPORT's door to metadata.
+    fn gfx_typeface(
         &mut self,
-        world: &FontWorld,
         font: &parley::FontData,
         variations: &[(skrifa::Tag, f32)],
     ) -> Option<gfx::Typeface> {
         let position = self.position(font, variations);
-        let coords: Vec<(u32, i32)> = position
-            .iter()
-            .map(|(tag, value)| (*tag, value.to_bits() as i32))
-            .collect();
-        let key = (font.data.id(), font.index, coords);
-        if let Some(hit) = self.typefaces.get(&key) {
-            return hit.clone();
-        }
-        // The shared answer before the expensive one: another thread
-        // laying out another document has almost certainly met this
-        // face already.
-        let shared = &world.0.typefaces;
-        if let Some(hit) = shared.lock().expect("the typeface bridge").get(&key) {
-            let hit = hit.clone();
-            self.typefaces.insert(key, hit.clone());
-            return hit;
-        }
-        let instanced = self.base(font).and_then(|typeface| {
-            if position.is_empty() {
-                return Some(typeface);
-            }
-            let coordinates: Vec<gfx::font_arguments::variation_position::Coordinate> = position
-                .iter()
-                .map(
-                    |(tag, value)| gfx::font_arguments::variation_position::Coordinate {
-                        axis: gfx::FourByteTag::from(*tag),
-                        value: *value,
-                    },
-                )
-                .collect();
-            let arguments = gfx::FontArguments::new().set_variation_design_position(
-                gfx::font_arguments::VariationPosition {
-                    coordinates: &coordinates,
-                },
-            );
-            typeface.clone_with_arguments(&arguments)
-        });
-        shared
-            .lock()
-            .expect("the typeface bridge")
-            .insert(key.clone(), instanced.clone());
-        self.typefaces.insert(key, instanced.clone());
-        instanced
+        let base = gfx::Typeface::from_data(std::sync::Arc::new(font.data.clone()), font.index)?;
+        Some(match position.is_empty() {
+            true => base,
+            false => base.with_coords(position),
+        })
     }
 }
 
@@ -1123,18 +1019,16 @@ impl Shaper {
                 let PositionedLayoutItem::GlyphRun(run) = item else {
                     continue;
                 };
-                let skia = ctx
-                    .typeface(
-                        &self.world,
-                        run.run().font(),
-                        run.run().synthesis().variation_settings(),
-                    )
-                    .and_then(|typeface| typeface.post_script_name())
+                let label = ctx
+                    .gfx_typeface(run.run().font(), run.run().synthesis().variation_settings())
+                    .map(|typeface| {
+                        format!("face={} wght={}", typeface.family_name(), typeface.weight())
+                    })
                     .unwrap_or_else(|| "NONE".into());
                 out.push((
                     postscript_name_of(run.run().font()),
                     run.run().synthesis().embolden(),
-                    format!("skia={skia}"),
+                    label,
                 ));
             }
         }
@@ -1154,12 +1048,10 @@ impl Shaper {
                 let PositionedLayoutItem::GlyphRun(run) = item else {
                     continue;
                 };
-                let family = match ctx.typeface(
-                    &self.world,
-                    run.run().font(),
-                    run.run().synthesis().variation_settings(),
-                ) {
-                    Some(typeface) => typeface.family_name().to_string(),
+                let family = match ctx
+                    .gfx_typeface(run.run().font(), run.run().synthesis().variation_settings())
+                {
+                    Some(typeface) => typeface.family_name(),
                     None => format!(
                         "UNRASTERIZABLE({} bytes, index {})",
                         run.run().font().data.as_ref().len(),
@@ -1200,19 +1092,16 @@ impl Shaper {
                     .iter()
                     .map(|(tag, value)| (u32::from_be_bytes(tag.to_be_bytes()), *value))
                     .collect();
-                let Some(typeface) = ctx.typeface(
-                    &self.world,
-                    run.run().font(),
-                    synthesis.variation_settings(),
-                ) else {
+                let Some(typeface) =
+                    ctx.gfx_typeface(run.run().font(), synthesis.variation_settings())
+                else {
                     continue;
                 };
-                let name = typeface.post_script_name();
+                let name = Some(typeface.family_name());
                 let font = gfx::Font::new(typeface, run.run().font_size());
                 let glyphs: Vec<parley::Glyph> = run.positioned_glyphs().collect();
                 let ids: Vec<u16> = glyphs.iter().map(|glyph| glyph.id as u16).collect();
-                let mut widths = vec![0.0f32; ids.len()];
-                font.get_widths(&ids, &mut widths);
+                let widths = font.glyph_widths(&ids);
                 let ours: f32 = glyphs.iter().map(|glyph| glyph.advance).sum();
                 let theirs: f32 = widths.iter().sum();
                 out.push((name, vars, ours, theirs));
@@ -1226,7 +1115,7 @@ impl Shaper {
     #[doc(hidden)]
     pub fn bridge_sizes_for_test(&self) -> (usize, usize) {
         let ctx = self.inner.borrow();
-        (ctx.typefaces.len(), self.world.bridged_for_test())
+        (ctx.faces.len(), self.world.bridged_for_test())
     }
 }
 
@@ -1353,31 +1242,6 @@ fn build_blobs(
                 .skew()
                 .map_or(0.0, |degrees| -degrees.to_radians().tan());
 
-            // The skia twin, built exactly as it always was — the
-            // atlas sees the same blob object every frame.
-            let skia = ctx
-                .typeface(world, run.run().font(), synthesis.variation_settings())
-                .and_then(|typeface| {
-                    let mut font = gfx::Font::new(typeface, size);
-                    if embolden {
-                        font.set_embolden(true);
-                    }
-                    if skew_x != 0.0 {
-                        font.set_skew_x(skew_x);
-                    }
-                    let mut builder = gfx::TextBlobBuilder::new();
-                    {
-                        let (ids, points) = builder.alloc_run_pos(&font, glyphs.len(), None);
-                        for (slot, glyph) in ids.iter_mut().zip(&glyphs) {
-                            *slot = glyph.id as u16;
-                        }
-                        for (slot, glyph) in points.iter_mut().zip(&glyphs) {
-                            *slot = gfx::Point::new(glyph.x, glyph.y);
-                        }
-                    }
-                    builder.make()
-                });
-
             let glyph_run = gfx::GlyphRun {
                 face: ctx.face_id(run.run().font(), synthesis.variation_settings()),
                 size,
@@ -1391,7 +1255,7 @@ fn build_blobs(
 
             let [r, g, b, a] = run.style().brush;
             out.push((
-                gfx::TextBlob::new(vec![glyph_run], skia),
+                gfx::TextBlob::new(vec![glyph_run]),
                 gfx::Color::from_argb(a, r, g, b),
             ));
         }
