@@ -11,6 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
 
+use gfx_gpui::{GpuiPainter, PainterCaches};
 use gpui::{
     canvas, div, prelude::*, ClipboardItem, Context, FocusHandle, KeyDownEvent,
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollDelta,
@@ -18,7 +19,6 @@ use gpui::{
 };
 use imba::event::Event;
 use imba_gpui::events::{cursor_style_of, device_point, key_of, modifiers_of};
-use gfx_gpui::{GpuiPainter, PainterCaches};
 use workbench::window::WindowId;
 
 use crate::engine::{Bridge, Engine};
@@ -165,7 +165,11 @@ impl BridgeView {
             }
         }
 
-        let (key, insertable) = key_of(keystroke);
+        // Printable text NEVER rides key-down: the registered
+        // input handler is gpui's `insertText:` and delivers it
+        // through `replace_text_in_range` — dispatching the
+        // insertable here too typed every character twice.
+        let (key, _insertable) = key_of(keystroke);
         let mods = modifiers_of(self.modifiers);
         if let Some(key) = key {
             let size = self.viewport();
@@ -178,26 +182,6 @@ impl BridgeView {
             );
             if changed {
                 cx.notify();
-                return;
-            }
-        }
-
-        let blocked = self.primary_down() || self.modifiers.control;
-        if !blocked {
-            if let Some(text) = insertable {
-                if desktop::is_insertable_text(&text) {
-                    let size = self.viewport();
-                    let at = self.now();
-                    let changed = self.engine.raw().borrow_mut().app.dispatch_timed(
-                        self.wid(),
-                        Event::TextInput { text: &text },
-                        size,
-                        at,
-                    );
-                    if changed {
-                        cx.notify();
-                    }
-                }
             }
         }
     }
