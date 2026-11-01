@@ -253,7 +253,7 @@ fn the_diagram_paints_real_pixels() {
     let height = document.content_height(editor);
     eprintln!("[mermaid-pixels] content height {height}");
     let mut surface = gfx_skia::raster_tuple((600, 800)).expect("surface");
-    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,

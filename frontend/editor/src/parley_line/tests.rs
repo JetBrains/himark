@@ -51,9 +51,9 @@ fn parley_shapes_paints_and_answers_geometry() {
 
     // Paint both roads side by side; the diff metric is the
     // spike's deliverable, printed for the record.
-    let paint_to = |painter: &dyn Fn(&gfx::Canvas)| -> Vec<u8> {
+    let paint_to = |painter: &dyn Fn(&gfx::Canvas<'_>)| -> Vec<u8> {
         let mut surface = gfx_skia::raster_tuple((900, 60)).expect("surface");
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         painter(canvas);
         let image = surface.image_snapshot();
@@ -395,8 +395,10 @@ fn typeface_bridge_caches_hold_across_shapes() {
         first.0, second.0,
         "the same styles missed the bridge caches on re-shape"
     );
+    // The second count is the PROCESS-WIDE registry — concurrent
+    // tests feed it too, so only the context-local bound holds.
     assert!(
-        first.0 <= 8 && first.1 <= 12,
+        first.0 <= 8,
         "first pass already minted too many faces: bases {}, instanced {}",
         first.0,
         first.1

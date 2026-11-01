@@ -824,7 +824,7 @@ impl Disclosure {
         imba::layout::Fill::<Command>::new()
             .sized(width, height)
             .backdrop(
-                move |_arena: &Arena, canvas: &gfx::Canvas, rect: gfx::Rect| {
+                move |_arena: &Arena, canvas: &gfx::Canvas<'_>, rect: gfx::Rect| {
                     // The mock's 16-unit glyph: M6 3 l5 5 -5 5 closed,
                     // M3 6 l5 5 5 -5 open.
                     let unit = self.size / 16.0;

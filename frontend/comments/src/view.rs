@@ -353,7 +353,7 @@ impl CommentView {
         Size::new(width, editor_height + foreign + self.chrome.pad * 2.0)
     }
 
-    fn paint_card(&self, canvas: &Canvas, rect: Rect) {
+    fn paint_card(&self, canvas: &Canvas<'_>, rect: Rect) {
         let radius = self.chrome.radius;
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -365,7 +365,7 @@ impl CommentView {
         canvas.draw_round_rect(rect.with_inset((0.5, 0.5)), radius, radius, &paint);
     }
 
-    fn paint_check(chrome: &CommentChrome, canvas: &Canvas, rect: Rect, resolved: bool) {
+    fn paint_check(chrome: &CommentChrome, canvas: &Canvas<'_>, rect: Rect, resolved: bool) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke(true);
@@ -388,7 +388,7 @@ impl CommentView {
         );
     }
 
-    fn paint_plane(chrome: &CommentChrome, canvas: &Canvas, rect: Rect) {
+    fn paint_plane(chrome: &CommentChrome, canvas: &Canvas<'_>, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke(true);
@@ -408,7 +408,7 @@ impl CommentView {
         canvas.draw_line(bottom.into(), hinge.into(), &paint);
     }
 
-    fn paint_cross(chrome: &CommentChrome, canvas: &Canvas, rect: Rect) {
+    fn paint_cross(chrome: &CommentChrome, canvas: &Canvas<'_>, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         paint.set_stroke(true);

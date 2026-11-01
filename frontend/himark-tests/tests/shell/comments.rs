@@ -126,7 +126,7 @@ fn the_comments_dock_lists_files_and_lines() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1440, 900)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let _ = dock_seeded_comments(&mut app);
     super::dock::settle(&mut app, &mut surface);
@@ -165,7 +165,7 @@ fn dump_comments_dock_screenshot() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     for (order, (label, command)) in [
         ("History", "history.view"),
         ("Files", "files.tree"),

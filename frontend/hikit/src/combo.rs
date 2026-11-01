@@ -542,7 +542,7 @@ pub fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
 
 pub(crate) fn draw_tracked(
     shaper: &imba::layout::TextShaper,
-    canvas: &gfx::Canvas,
+    canvas: &gfx::Canvas<'_>,
     font: &Font,
     color: gfx::Color,
     text: &str,

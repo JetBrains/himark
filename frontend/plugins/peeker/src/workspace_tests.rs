@@ -158,7 +158,7 @@ fn found_documents_preview_and_adopt_on_pick() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(app.add_document(
         app.sole_window(),
@@ -175,7 +175,7 @@ fn found_documents_preview_and_adopt_on_pick() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
@@ -206,7 +206,7 @@ fn found_documents_preview_and_adopt_on_pick() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
@@ -252,7 +252,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
@@ -263,7 +263,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
@@ -284,7 +284,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(
         documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
@@ -295,7 +295,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "no"));
 
@@ -311,7 +311,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     settle(&mut app, &arriving, &runner);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(
         app.focused_document_text().as_deref(),
@@ -327,7 +327,7 @@ fn outside_dismissal_releases_glanced_documents() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(app.perform_batch(vec![himark::app::windowed(
         app.sole_window(),
@@ -338,7 +338,7 @@ fn outside_dismissal_releases_glanced_documents() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);

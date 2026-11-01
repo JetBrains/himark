@@ -117,7 +117,7 @@ fn dump_palette_screenshot() {
     let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(
         &mut app,
@@ -126,13 +126,13 @@ fn dump_palette_screenshot() {
     assert!(app.perform_registered(app.sole_window(), "palette.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "sel"));
     for tick in 0..30 {
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         let busy = himark::test_driver::animate(
             &mut app,

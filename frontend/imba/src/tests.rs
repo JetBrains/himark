@@ -310,7 +310,7 @@ fn a_partially_scrolled_painter_keeps_its_true_box() {
     let _ = widget.handle_event(
         &arena,
         &Event::Paint {
-            canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
             focused: true,
         },
         band,
@@ -543,7 +543,7 @@ fn paint_modifiers_control_paint_order() {
     let mut surface = gfx_skia::raster_tuple((8, 8)).expect("raster surface");
     let event = Event::Paint {
         focused: true,
-        canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
     };
     let widget = crate::eager(PaintTrace { log: &log })
         .paint_below(|_, _, _| log.borrow_mut().push("below"))
@@ -562,7 +562,7 @@ fn paint_instead_replaces_inner_paint() {
     let mut surface = gfx_skia::raster_tuple((8, 8)).expect("raster surface");
     let event = Event::Paint {
         focused: true,
-        canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
     };
     let widget = crate::eager(PaintTrace { log: &log })
         .paint_instead(|_, _, _| {
@@ -1253,7 +1253,7 @@ fn paint_broadcasts_and_merges_every_mismatch() {
         }),
     );
 
-    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
     let result = widget.realize(&arena, root_viewport()).handle_event(
         &arena,
         &Event::Paint {
@@ -1286,7 +1286,7 @@ fn list_paint_reconciles_stale_row_heights() {
             Constraints::tight(Size::new(100.0, 60.0)),
         )
         .realize(&arena, root_viewport());
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         widget
             .handle_event(
                 &arena,
@@ -1310,7 +1310,7 @@ fn list_paint_reconciles_stale_row_heights() {
         Constraints::tight(Size::new(100.0, 60.0)),
     )
     .realize(&arena, root_viewport());
-    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
     let quiet = widget
         .handle_event(
             &arena,
@@ -1384,7 +1384,7 @@ fn list_scroll_benchmark() {
                 Constraints::tight(VIEWPORT),
             )
             .realize(&arena, viewport);
-            let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+            let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
             let _ = widget.handle_event(
                 &arena,
                 &Event::Paint {
@@ -1945,7 +1945,7 @@ mod animated_splice {
                 &arena,
                 &Event::Paint {
                     focused: false,
-                    canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 },
                 Rect::from_wh(100.0, 200.0),
             )

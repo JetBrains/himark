@@ -385,7 +385,7 @@ fn settle_until(
         );
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -493,7 +493,7 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
     while started.elapsed() < std::time::Duration::from_secs(10) {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -659,7 +659,7 @@ fn live_host_squiggles_the_opened_file() {
         );
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -678,7 +678,7 @@ fn live_host_squiggles_the_opened_file() {
     while started.elapsed() < std::time::Duration::from_secs(20) {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -710,7 +710,7 @@ fn live_host_squiggles_the_opened_file() {
         let performed = started.elapsed();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -723,7 +723,7 @@ fn live_host_squiggles_the_opened_file() {
             let landed = engine.drain();
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -836,7 +836,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     let frame = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -844,7 +844,7 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
         settle(engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -953,7 +953,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         );
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1010,7 +1010,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     loop {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1047,7 +1047,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1099,7 +1099,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         let _ = engine.mouse_up(window, 700.0, y);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1175,7 +1175,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1231,7 +1231,7 @@ fn live_canvas_face_serves_completion_and_hover() {
             settle(&mut engine);
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,

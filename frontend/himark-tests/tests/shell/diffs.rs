@@ -142,7 +142,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -163,7 +163,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     let right_before = document_text(&app, "right.md");
@@ -184,7 +184,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     let left_before = document_text(&app, "left.md");
@@ -250,7 +250,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -265,7 +265,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..4 {
@@ -275,7 +275,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..4 {
@@ -352,7 +352,7 @@ fn identical_documents_settle_spacer_free() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -428,7 +428,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -441,7 +441,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     assert_pair_aligned(&app);
@@ -453,7 +453,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         let _ = himark::test_driver::type_text(&mut app, text);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         assert_pair_aligned(&app);
@@ -468,7 +468,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
             app.perform_batch(vec![command]);
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             assert_pair_aligned(&app);
@@ -533,7 +533,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -649,7 +649,7 @@ fn typed_insertions_paint_washes() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -694,7 +694,7 @@ fn typed_insertions_paint_washes() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
@@ -715,7 +715,7 @@ fn typed_insertions_paint_washes() {
     himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     let _ = himark::test_driver::type_text(&mut app, "a left-only line typed here\n");
@@ -769,7 +769,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -782,7 +782,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     assert_pair_aligned(&app);
@@ -808,7 +808,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         app.perform_batch(vec![command]);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         assert_pair_aligned(&app);
@@ -888,7 +888,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -902,7 +902,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             small,
         );
     }
@@ -914,7 +914,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             small,
         );
     }
@@ -929,7 +929,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         if app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         ) {
             unsettled += 1;
@@ -944,7 +944,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         let _ = himark::test_driver::scroll(&mut app, 400.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -957,7 +957,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             frame,
         );
     }
@@ -970,7 +970,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         if app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         ) {
             unsettled += 1;
@@ -992,7 +992,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             frame_size,
         );
     }
@@ -1005,7 +1005,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }
         if app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         ) {
             unsettled += 1;
@@ -1020,7 +1020,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         let _ = himark::test_driver::scroll(&mut app, 500.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -1169,7 +1169,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -1219,7 +1219,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
         let _ = himark::test_driver::scroll(&mut app, 2000.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         runner.run();
@@ -1287,7 +1287,7 @@ fn scrolling_after_a_theme_toggle_converges() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -1302,7 +1302,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         let _ = himark::test_driver::type_text(&mut app, "x");
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -1311,7 +1311,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         let _ = himark::test_driver::type_text(&mut app, "é");
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -1326,7 +1326,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         );
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         runner.run();
@@ -1340,7 +1340,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     let cell_focused = |app: &Himark| {
@@ -1368,7 +1368,7 @@ fn scrolling_after_a_theme_toggle_converges() {
             himark::test_driver::click(&mut app, x as f32, y, 1100.0, 800.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             if cell_focused(&app) {
@@ -1382,7 +1382,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         let _ = himark::test_driver::type_text(&mut app, "grow the row after the switch ");
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -1560,7 +1560,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -1577,7 +1577,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
@@ -1626,7 +1626,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         let _ = himark::test_driver::type_text(&mut app, "grow the row ");
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -1647,7 +1647,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         let _ = himark::test_driver::type_text(&mut app, "\n");
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         assert_pair_aligned(&app);
@@ -1662,7 +1662,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             app.perform_batch(vec![command]);
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             assert_pair_aligned(&app);
@@ -1855,7 +1855,7 @@ fn an_edited_markdown_pair_settles_aligned() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -1871,7 +1871,7 @@ fn an_edited_markdown_pair_settles_aligned() {
     himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..3 {
@@ -2200,7 +2200,7 @@ fn a_settled_diff_pane_goes_quiet() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -2219,7 +2219,7 @@ fn a_settled_diff_pane_goes_quiet() {
 
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     runner.run();
@@ -2281,7 +2281,7 @@ fn the_unified_view_switches_between_split_and_inline() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -2385,7 +2385,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     {
@@ -2474,7 +2474,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -2498,7 +2498,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
             let started = std::time::Instant::now();
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
@@ -2630,7 +2630,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
             );
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -2643,7 +2643,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
             let started = std::time::Instant::now();
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
@@ -2770,7 +2770,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             );
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -2779,7 +2779,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             let started = std::time::Instant::now();
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             times.push(started.elapsed().as_secs_f64() * 1000.0);
@@ -2885,7 +2885,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -2982,7 +2982,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -3073,7 +3073,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -3305,7 +3305,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         let height = row_height(&app);
@@ -3408,7 +3408,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -3544,7 +3544,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -3978,7 +3978,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -4928,7 +4928,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -5153,7 +5153,7 @@ fn completion_serves_a_canvas_diff_face() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -5364,7 +5364,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -5574,7 +5574,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     assert!(app.perform_command(himark::app::windowed(
@@ -5600,7 +5600,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         rounds += 1;
@@ -5769,7 +5769,7 @@ fn dump_commit_canvas_screenshot() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -5906,7 +5906,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -5928,7 +5928,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -6028,7 +6028,7 @@ fn dump_commit_control_screenshots() {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }

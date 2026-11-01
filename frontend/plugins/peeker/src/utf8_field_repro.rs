@@ -57,7 +57,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     settle(&mut app);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
@@ -67,7 +67,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     );
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
@@ -79,7 +79,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         let _ = himark::test_driver::key(&mut app, key, Default::default());
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         if round % 3 == 0 {
@@ -91,7 +91,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         settle(&mut app);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -102,7 +102,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         let _ = himark::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         settle(&mut app);

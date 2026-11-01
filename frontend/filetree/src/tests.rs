@@ -270,7 +270,7 @@ fn folders_added_mid_session_join_on_paint() {
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: true,
             },
             gfx::Rect::from_wh(400.0, 600.0),
@@ -522,7 +522,7 @@ fn an_unfocused_paint_cancels_the_edit() {
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: false,
             },
             gfx::Rect::from_wh(400.0, 600.0),
@@ -591,7 +591,7 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
             &widget,
             &arena,
             &imba::event::Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: true,
             },
             gfx::Rect::from_wh(400.0, 600.0),

@@ -18,7 +18,7 @@ fn app() -> (Himark, ::workbench::window::WindowId) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     (app, window)

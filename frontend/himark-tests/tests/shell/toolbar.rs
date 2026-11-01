@@ -103,7 +103,7 @@ fn a_right_button_press_dispatches_its_own_command() {
         skia_safe::surfaces::raster_n32_premul((width as i32, height as i32)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let chrome = ::editor::env::Themes::of(app.store()).part(::hikit::chrome::ToolbarChrome::KEY);

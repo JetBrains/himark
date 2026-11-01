@@ -569,7 +569,7 @@ fn dump_sessions_drawer_screenshot() {
     });
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     let offline = app.register_client(ahp_wire::client::inert());
     let host = ahp_wire::SessionId::local_default(app.store()).host;
     const JB: &str = "file:///Users/dev/himark-jb";

@@ -323,7 +323,7 @@ fn hosted_engine_with_language_servers(
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -418,7 +418,7 @@ fn plain_chars_over_the_peeker_stay_unconsumed() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -434,7 +434,7 @@ fn plain_chars_over_the_peeker_stay_unconsumed() {
     );
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -456,7 +456,7 @@ fn probe_scratch_after_wall_close() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -468,7 +468,7 @@ fn probe_scratch_after_wall_close() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -479,7 +479,7 @@ fn probe_scratch_after_wall_close() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -513,7 +513,7 @@ fn probe_scratch_after_wall_close() {
     for _ in 0..5 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -524,7 +524,7 @@ fn probe_scratch_after_wall_close() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -554,10 +554,10 @@ fn probe_scratch_after_wall_close() {
         .map(|(_, height)| *height)
         .fold(0.0f32, f32::max);
     assert!(tallest < 120.0, "no scratch element balloons: {heights:?}");
-    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::WHITE);
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -585,7 +585,7 @@ fn probe_history_reopen_layout() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -667,10 +667,10 @@ fn probe_history_reopen_layout() {
     }
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::WHITE);
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -692,11 +692,11 @@ fn probe_history_reopen_layout() {
     );
 }
 
-fn surface_stub() -> &'static gfx_skia::SkiaCanvas {
+fn surface_stub() -> &'static gfx_skia::SkiaCanvas<'static> {
     let surface = Box::leak(Box::new(
         skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface"),
     ));
-    gfx_skia::SkiaCanvas::wrap(surface.canvas())
+    Box::leak(Box::new(gfx_skia::SkiaCanvas::new(surface.canvas())))
 }
 
 #[test]
@@ -901,7 +901,7 @@ fn keymap_backspace_edits_the_dock_speed_search() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -979,7 +979,7 @@ fn keymap_backspace_edits_the_dock_speed_search() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -1039,7 +1039,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -1249,7 +1249,7 @@ fn the_docked_tree_follows_the_focused_document() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -1275,7 +1275,7 @@ fn the_docked_tree_follows_the_focused_document() {
     settle_until(&mut engine, "the open-time reveal landed", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -1290,7 +1290,7 @@ fn the_docked_tree_follows_the_focused_document() {
     settle_until(&mut engine, "the tree followed the open", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -1302,7 +1302,7 @@ fn the_docked_tree_follows_the_focused_document() {
     settle_until(&mut engine, "the tree followed the back-walk", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -1363,7 +1363,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
             .expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -1399,7 +1399,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1460,7 +1460,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1494,7 +1494,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1580,7 +1580,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -1588,7 +1588,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -1598,7 +1598,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1612,7 +1612,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1629,7 +1629,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     }
     let quiet = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -1668,7 +1668,7 @@ and another
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -1880,10 +1880,10 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
         let mut inked = 0usize;
         for _ in 0..200 {
             settle(engine);
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::WHITE);
+            gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 900.0,
                 700.0,
                 1.0,
@@ -1961,7 +1961,7 @@ fn a_failed_spawn_lands_and_shows_no_panel() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -2060,14 +2060,14 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         a,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
     );
     let _ = engine.draw(
         b,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -2078,14 +2078,14 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
         settle(&mut engine);
         let _ = engine.draw(
             a,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
         );
         let _ = engine.draw(
             b,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -2096,7 +2096,7 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
         settle(&mut engine);
         let _ = engine.draw(
             a,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -2238,7 +2238,7 @@ fn registered_commands_dispatch_by_id() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -2265,7 +2265,7 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
     let draw = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1280.0,
             860.0,
             1.0,
@@ -2281,7 +2281,7 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1280.0,
                 860.0,
                 1.0,
@@ -2727,7 +2727,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
     for _ in 0..4 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1400.0,
             800.0,
             1.0,
@@ -2899,7 +2899,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     settle_until(&mut engine, "the fence embedded the sibling", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -2920,7 +2920,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     });
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -2930,7 +2930,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -2947,7 +2947,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     for _ in 0..3 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -2959,7 +2959,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     for _ in 0..3 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -2987,7 +2987,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     settle_until(&mut engine, "the windowed embed landed", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -3057,7 +3057,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -3066,7 +3066,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     for _ in 0..3 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -3077,7 +3077,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     for _ in 0..3 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -3236,7 +3236,7 @@ fn a_one_sided_diff_goes_quiet() {
             .expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -3250,7 +3250,7 @@ fn a_one_sided_diff_goes_quiet() {
     settle_until(&mut engine, "the untracked row landed", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3295,7 +3295,7 @@ fn a_one_sided_diff_goes_quiet() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3332,7 +3332,7 @@ fn a_one_sided_diff_goes_quiet() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3365,7 +3365,7 @@ fn a_one_sided_diff_goes_quiet() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3401,7 +3401,7 @@ fn a_one_sided_diff_goes_quiet() {
                 .expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3417,7 +3417,7 @@ fn a_one_sided_diff_goes_quiet() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3431,7 +3431,7 @@ fn a_one_sided_diff_goes_quiet() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             SPLIT_WIDTH,
             SPLIT_HEIGHT,
             1.0,
@@ -3448,7 +3448,7 @@ fn a_one_sided_diff_goes_quiet() {
     }
     let quiet = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         SPLIT_WIDTH,
         SPLIT_HEIGHT,
         1.0,
@@ -3475,7 +3475,7 @@ fn a_rolled_away_drawer_leaves_and_goes_silent() {
         let _ = tick(&mut engine, &mut now);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -3493,7 +3493,7 @@ fn a_rolled_away_drawer_leaves_and_goes_silent() {
         let _ = tick(&mut engine, &mut now);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -3648,7 +3648,7 @@ macro_rules! fs_probe {
             for _ in 0..40 {
                 let _ = engine.draw(
                     window,
-                    gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
                     1100.0,
                     800.0,
                     1.0,
@@ -3774,7 +3774,7 @@ fn real_claude_answers_through_the_agent_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -3784,7 +3784,7 @@ fn real_claude_answers_through_the_agent_host() {
         for _ in 0..seconds * 4 {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -4117,7 +4117,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -4136,7 +4136,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
         let _ = engine.animation_tick(clock.get());
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -4804,7 +4804,7 @@ fn the_drawer_connects_to_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -4835,7 +4835,7 @@ fn the_drawer_connects_to_the_himark_host() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -4866,7 +4866,7 @@ fn dump_chat_pane_snapshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -4900,7 +4900,7 @@ fn dump_chat_pane_snapshot() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -4990,10 +4990,10 @@ fn dump_chat_pane_snapshot() {
         let px = (1100.0 * scale) as i32;
         let py = (800.0 * scale) as i32;
         let mut shot = skia_safe::surfaces::raster_n32_premul((px, py)).expect("surface");
-        gfx_skia::SkiaCanvas::wrap(shot.canvas()).clear(gfx::Color::BLACK);
+        gfx_skia::SkiaCanvas::new(shot.canvas()).clear(gfx::Color::BLACK);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(shot.canvas()),
+            &gfx_skia::SkiaCanvas::new(shot.canvas()),
             1100.0,
             800.0,
             scale,
@@ -5025,7 +5025,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -5072,7 +5072,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -5238,7 +5238,7 @@ fn the_chat_runs_through_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -5285,7 +5285,7 @@ fn the_chat_runs_through_the_himark_host() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -5617,7 +5617,7 @@ fn real_claude_answers_through_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -5651,7 +5651,7 @@ fn real_claude_answers_through_the_himark_host() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -5732,7 +5732,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -5766,7 +5766,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 900.0,
                 700.0,
                 1.0,
@@ -5872,10 +5872,10 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     pump(&mut engine, &mut surface);
 
     if let Ok(path) = std::env::var("HIHOST_FS_SNAPSHOT") {
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::BLACK);
+        gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::BLACK);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -6440,7 +6440,7 @@ fn two_engines_sync_a_live_document() {
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -6611,7 +6611,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -6818,7 +6818,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1200.0,
         800.0,
         1.0,
@@ -6829,7 +6829,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -6854,7 +6854,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -6882,7 +6882,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -6907,7 +6907,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -6927,7 +6927,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -7015,7 +7015,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1200.0,
         800.0,
         1.0,
@@ -7024,7 +7024,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     settle_until(engine_mut(&mut engine), "the session opened", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1200.0,
             800.0,
             1.0,
@@ -7055,7 +7055,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     settle_until(engine_mut(&mut engine), "the toolbar seeded", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1200.0,
             800.0,
             1.0,
@@ -7069,7 +7069,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1200.0,
         800.0,
         1.0,
@@ -7127,7 +7127,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         |engine| {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -7182,7 +7182,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         loop {
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1200.0,
                 800.0,
                 1.0,
@@ -7248,7 +7248,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -7281,7 +7281,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             let _ = engine.animation_tick(clock.get());
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -7426,7 +7426,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -7460,7 +7460,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7519,7 +7519,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7649,7 +7649,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7662,7 +7662,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7714,7 +7714,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7772,7 +7772,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7805,7 +7805,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             900.0,
             700.0,
             1.0,
@@ -7873,7 +7873,7 @@ fn diff_resize_probe_over_real_code() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1400.0,
         900.0,
         1.0,
@@ -7888,7 +7888,7 @@ fn diff_resize_probe_over_real_code() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             1400.0,
             900.0,
             1.0,
@@ -7934,7 +7934,7 @@ fn diff_resize_probe_over_real_code() {
     let started = std::time::Instant::now();
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1400.0,
         900.0,
         1.0,
@@ -7947,7 +7947,7 @@ fn diff_resize_probe_over_real_code() {
     let started = std::time::Instant::now();
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1400.0,
         900.0,
         1.0,
@@ -7962,7 +7962,7 @@ fn diff_resize_probe_over_real_code() {
                 let started = std::time::Instant::now();
                 let _ = engine.draw(
                     window,
-                    gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
                     width,
                     900.0,
                     scale,
@@ -7984,7 +7984,7 @@ fn diff_resize_probe_over_real_code() {
     settle(&mut engine);
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1400.0,
         900.0,
         1.0,
@@ -8000,7 +8000,7 @@ fn a_drain_hands_the_ui_thread_back_mid_burst() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8046,7 +8046,7 @@ fn a_markdown_image_shows_under_its_line() {
 
     let png = {
         let mut surface = skia_safe::surfaces::raster_n32_premul((6, 3)).expect("surface");
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::GREEN);
+        gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::GREEN);
         surface
             .image_snapshot()
             .encode(None, skia_safe::EncodedImageFormat::PNG, None)
@@ -8099,7 +8099,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     );
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8162,7 +8162,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     for _ in 0..3 {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -8184,7 +8184,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     assert!(engine.perform_command(window, "workbench.split-pane"));
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8263,7 +8263,7 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8860,7 +8860,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8876,7 +8876,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     );
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8895,7 +8895,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     ));
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8910,7 +8910,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     assert!(engine.perform_command(window, "search.view"));
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -8930,14 +8930,14 @@ fn input_reaches_a_second_window() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         a,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
     );
     let _ = engine.draw(
         b,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -8986,7 +8986,7 @@ fn cmd_hover_marks_the_link_under_the_pointer() {
     );
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         700.0,
         1.0,
@@ -9028,7 +9028,7 @@ fn cmd_hover_marks_the_link_under_the_pointer() {
     let snapshot = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -9201,7 +9201,7 @@ fn published_diagnostics_squiggle_the_open_document() {
     let snapshot = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             900.0,
             700.0,
             1.0,
@@ -9214,7 +9214,7 @@ fn published_diagnostics_squiggle_the_open_document() {
         let chrome = &theme.part(::himark::stats_chrome::StatsChrome::KEY);
         let mut mask = gfx::Paint::default();
         mask.set_color(gfx::Color::BLACK);
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()).draw_rect(
+        &gfx_skia::SkiaCanvas::new(surface.canvas()).draw_rect(
             gfx::Rect::from_xywh(
                 900.0 - chrome.right_margin - chrome.width - 2.0,
                 chrome.top - 2.0,
@@ -9477,7 +9477,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
         |engine| {
             let _ = engine.app.draw_mounted(
                 tree,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 gfx::Size::new(320.0, 40.0),
             );
             // The reveal rides the CLOCK road, and the MOUNTED clock is
@@ -9535,10 +9535,10 @@ fn a_hosted_sample_file_diagrams() {
         &mut engine,
         "the hosted fence births a RENDERED diagram",
         |engine| {
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::WHITE);
+            gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 900.0,
                 900.0,
                 1.0,
@@ -9571,7 +9571,7 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         900.0,
         900.0,
         1.0,
@@ -9606,10 +9606,10 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
         &mut engine,
         "the fence births a RENDERED diagram inlay",
         |engine| {
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::WHITE);
+            gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 900.0,
                 900.0,
                 1.0,
@@ -9636,7 +9636,7 @@ fn engine_resize_shape_meter() {
     settle_until(&mut engine, "the document shows", |engine| {
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1200.0,
             900.0,
             1.0,
@@ -9658,7 +9658,7 @@ fn engine_resize_shape_meter() {
         let started = std::time::Instant::now();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             width,
             900.0,
             1.0,
@@ -9757,7 +9757,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         settle(&mut engine);
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1400.0,
             900.0,
             1.0,
@@ -9767,7 +9767,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(paint.canvas()),
+            &gfx_skia::SkiaCanvas::new(paint.canvas()),
             1400.0,
             900.0,
             1.0,
@@ -9876,7 +9876,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         let frame = std::time::Instant::now();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1400.0,
             900.0,
             1.0,

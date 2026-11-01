@@ -59,7 +59,7 @@ fn the_outline_derives_lands_and_jumps() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (source, document) = outlined_document();
@@ -166,7 +166,7 @@ fn a_structureless_pane_offers_no_toc() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     // The toggle may refuse on a structureless pane — what matters
@@ -375,7 +375,7 @@ fn outline_speedsearch_filters_steps_and_clears() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
@@ -489,7 +489,7 @@ fn speedsearch_arrows_step_the_matches() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
@@ -639,7 +639,7 @@ fn outline_folds_survive_relandings() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
@@ -782,7 +782,7 @@ fn dump_contents_drawer_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();
@@ -905,7 +905,7 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();

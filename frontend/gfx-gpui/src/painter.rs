@@ -90,19 +90,14 @@ struct Frame {
     clip: Option<Bounds<Pixels>>,
 }
 
-/// `gfx::Canvas` is `dyn Painter` behind a bare type alias, and the
-/// object-lifetime default through an alias is `'static` — a painter
-/// that BORROWS the window can never coerce. So the window rides as
-/// a raw pointer, the same shape the ffi shells pass their canvases
-/// in.
-///
-/// SAFETY: a `GpuiPainter` lives strictly inside one canvas-element
-/// paint callback; `engine.draw` dispatches `Event::Paint` borrows
-/// and retains nothing. The pointers are dereferenced one method at
-/// a time on the ui thread.
-pub struct GpuiPainter {
-    window: *mut Window,
-    cx: *mut App,
+/// Borrows its window for the frame — `Canvas<'a>` carries the
+/// lifetime, so the coercion is safe Rust. The `Painter` trait
+/// paints through `&self`, so the `&mut` sides sit in `RefCell`s:
+/// validity is the borrow checker's, exclusivity is the cell's —
+/// a nested reborrow is a panic, never aliasing UB.
+pub struct GpuiPainter<'a> {
+    window: RefCell<&'a mut Window>,
+    cx: RefCell<&'a mut App>,
     /// The canvas element's origin — local (0,0) in window space.
     origin: Point<Pixels>,
     /// Device pixels per logical pixel: the engine speaks device,
@@ -136,17 +131,17 @@ fn color(color: gfx::Color) -> Hsla {
     })
 }
 
-impl GpuiPainter {
+impl<'a> GpuiPainter<'a> {
     pub fn new(
-        window: &mut Window,
-        cx: &mut App,
+        window: &'a mut Window,
+        cx: &'a mut App,
         origin: Point<Pixels>,
         scale: f32,
         caches: Rc<RefCell<PainterCaches>>,
     ) -> Self {
         Self {
-            window,
-            cx,
+            window: RefCell::new(window),
+            cx: RefCell::new(cx),
             origin,
             scale,
             caches,
@@ -160,15 +155,13 @@ impl GpuiPainter {
         }
     }
 
-    /// One reborrow per method scope — see the type's SAFETY note.
-    #[allow(clippy::mut_from_ref)]
-    fn window(&self) -> &mut Window {
-        unsafe { &mut *self.window }
+    /// One checked reborrow per method scope; a nested one panics.
+    fn window(&self) -> std::cell::RefMut<'_, &'a mut Window> {
+        self.window.borrow_mut()
     }
 
-    #[allow(clippy::mut_from_ref)]
-    fn app(&self) -> &mut App {
-        unsafe { &mut *self.cx }
+    fn app(&self) -> std::cell::RefMut<'_, &'a mut App> {
+        self.cx.borrow_mut()
     }
 
     /// A local device-pixel point to window-logical.
@@ -204,7 +197,8 @@ impl GpuiPainter {
 
     fn with_mask(&self, paint: impl FnOnce(&mut Window)) {
         let clip = self.state.borrow().current.clip;
-        let window = self.window();
+        let mut window = self.window();
+        let window: &mut Window = &mut window;
         match clip {
             Some(bounds) => {
                 window.with_content_mask(Some(ContentMask { bounds }), |window| paint(window))
@@ -288,7 +282,8 @@ impl GpuiPainter {
             return *hit;
         }
         let entry = gfx::face(face);
-        let text_system = self.app().text_system();
+        let app = self.app();
+        let text_system = app.text_system();
 
         // A face with variation coords gets its instance BAKED into
         // the bytes under a unique family (gpui's font-kit matching
@@ -354,7 +349,7 @@ impl GpuiPainter {
     }
 }
 
-impl gfx::Painter for GpuiPainter {
+impl gfx::Painter for GpuiPainter<'_> {
     fn save(&self) {
         let mut state = self.state.borrow_mut();
         let current = state.current;
@@ -538,7 +533,8 @@ impl gfx::Painter for GpuiPainter {
             for (glyph, position) in &run.glyphs {
                 let at = self.to_window(origin.x + position.x, origin.y + position.y);
                 let clip = self.state.borrow().current.clip;
-                let window = self.window();
+                let mut window = self.window();
+                let window: &mut Window = &mut window;
                 let paint_one = |window: &mut Window| {
                     let glyph = glyph_id(*glyph);
                     if window
@@ -580,11 +576,10 @@ impl gfx::Painter for GpuiPainter {
             strikethrough: None,
         };
         let shared: SharedString = SharedString::from(text.to_string());
-        let window = self.window();
-        let shaped = window
+        let shaped = self
+            .window()
             .text_system()
             .shape_line(shared, font_size, &[run], None);
-        let _ = window;
 
         // `origin` is the BASELINE; gpui's line paint wants the top
         // of a line box. With the box exactly ascent+descent tall,
@@ -594,8 +589,10 @@ impl gfx::Painter for GpuiPainter {
         let at = self.to_window(origin.x, origin.y);
         let top = point(at.x, at.y - ascent);
         let clip = self.state.borrow().current.clip;
-        let window = self.window();
-        let cx = self.app();
+        let mut window = self.window();
+        let window: &mut Window = &mut window;
+        let mut cx = self.app();
+        let cx: &mut App = &mut cx;
         match clip {
             Some(bounds) => {
                 window.with_content_mask(Some(ContentMask { bounds }), |window| {

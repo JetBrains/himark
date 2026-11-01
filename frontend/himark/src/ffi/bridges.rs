@@ -377,7 +377,7 @@ pub unsafe extern "C" fn himark_bridge_draw(
     if engine.is_null() || canvas.is_null() {
         return false;
     }
-    let canvas: &Canvas = gfx_skia::SkiaCanvas::wrap(&*(canvas as *const skia_safe::Canvas));
+    let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     engine.as_mut().map_or(false, |engine| {
         engine.draw(bridge.raw, canvas, width, height, scale)
     })
@@ -705,7 +705,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let canvas: &Canvas = gfx_skia::SkiaCanvas::wrap(&*(canvas as *const skia_safe::Canvas));
+    let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
         let Some(stage) = engine.app.stage_frame(frame.raw) else {

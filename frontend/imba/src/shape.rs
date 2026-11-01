@@ -960,7 +960,7 @@ impl ParleyLine {
     }
 
     /// Paint glyphs and decorations through the atlas road.
-    pub fn paint(&self, canvas: &gfx::Canvas, origin: (f32, f32)) {
+    pub fn paint(&self, canvas: &gfx::Canvas<'_>, origin: (f32, f32)) {
         let mut paint = gfx::Paint::default();
         paint.set_anti_alias(true);
         for (blob, color) in &self.blobs {

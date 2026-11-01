@@ -1053,7 +1053,7 @@ impl TextShaper {
     /// Returns the advance.
     pub fn draw(
         &self,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
         font: &gfx::Font,
         text: &str,
         color: gfx::Color,
@@ -1891,7 +1891,7 @@ impl<L, F> LayoutValue for Backdrop<L, F> {}
 impl<'a, Command: 'a, L, F> Layout<'a, Command> for Backdrop<L, F>
 where
     L: Layout<'a, Command> + 'a,
-    F: Fn(&Arena, &gfx::Canvas, gfx::Rect) + 'a,
+    F: Fn(&Arena, &gfx::Canvas<'_>, gfx::Rect) + 'a,
 {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
         ThunkBox::new(

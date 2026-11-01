@@ -600,7 +600,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
             .handle_event(
                 &arena,
                 &Event::Paint {
-                    canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                     focused: true,
                 },
                 viewport,
@@ -794,7 +794,7 @@ fn ime_composition_reaches_the_focused_editor() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let set = app.with_ime_client(app.sole_window(), |client| {
@@ -835,14 +835,14 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let _ = app.with_ime_client(app.sole_window(), |client| {
         client.insert_text("hello", None);
     });
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let (x, y, _, height) = app
@@ -881,7 +881,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let _ = app.with_ime_client(app.sole_window(), |client| {
@@ -889,7 +889,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     });
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let length = app
         .with_ime_client(app.sole_window(), |client| client.document_length())
@@ -952,7 +952,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let mut text = String::new();
@@ -962,13 +962,13 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     assert!(himark::test_driver::type_text(&mut app, &text));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     // At the text's start (past the gutter and the content inset),
     // under the header band.
@@ -985,7 +985,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     let _ = himark::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let _ = app.with_ime_client(app.sole_window(), |client| {
@@ -1014,7 +1014,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let scrolled = app
         .with_ime_client(app.sole_window(), |client| client.first_rect(0, 1))
@@ -1048,7 +1048,7 @@ fn accent_popup_replaces_the_held_character() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(himark::test_driver::type_text(&mut app, "so"));
@@ -1079,7 +1079,7 @@ fn typing_into_the_empty_startup_document_inserts() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(
         app.with_ime_client(app.sole_window(), |_| ()).is_some(),
@@ -1309,7 +1309,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(
         &mut app,
@@ -1317,7 +1317,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let height_dark = app.focused_pane_content_height();
     assert!(height_dark > 0.0);
@@ -1330,7 +1330,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     );
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let height_light = app.focused_pane_content_height();
 
@@ -1343,7 +1343,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     assert_eq!(::editor::env::Themes::of(app.store()).name(), "dark");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(
         (app.focused_pane_content_height() - height_dark).abs() < 0.5,
@@ -1380,7 +1380,7 @@ fn caret_commands_glide_the_pane_to_the_caret() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(app.focused_pane_scroll_y(), 0.0);
 
@@ -1402,7 +1402,7 @@ fn caret_commands_glide_the_pane_to_the_caret() {
         let busy = test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         if busy {
             moved_ticks += 1;
@@ -1451,7 +1451,7 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(test_driver::key(
@@ -1471,7 +1471,7 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     assert!(app.focused_pane_scroll_y() > 0.0, "the glide started");
@@ -1486,7 +1486,7 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     assert!(
@@ -1565,7 +1565,7 @@ fn clipboard_reaches_the_focused_editor() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     let size = gfx::Size::new(800.0, 600.0);
 
     app.dispatch(
@@ -1820,7 +1820,7 @@ fn ime_hit_test_covers_an_empty_document() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(
         app.with_ime_client(app.sole_window(), |client| client.document_length()),
@@ -1855,7 +1855,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let mut text = String::new();
     for line in 0..80 {
@@ -1866,7 +1866,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     });
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let hit = |app: &mut Himark, y: f32| {
@@ -1877,7 +1877,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
         let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, scroll);
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         for y in [10.0, 30.0, 60.0] {
             assert!(

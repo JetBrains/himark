@@ -758,7 +758,7 @@ mod tests {
             &idle,
             &arena,
             &Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: true,
             },
             Rect::from_wh(1.0, 1.0),
@@ -775,7 +775,7 @@ mod tests {
             &searching,
             &arena,
             &Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: true,
             },
             Rect::from_wh(1.0, 1.0),

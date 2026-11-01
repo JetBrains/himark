@@ -20,7 +20,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let located = |name: &str| {
         editor::location::ResourceLocation::new(
@@ -54,7 +54,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     );
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let listed = labels(&app).expect("the peeker is the modal");
     assert!(
@@ -77,7 +77,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
@@ -204,7 +204,7 @@ fn dump_jump_screenshot() {
     let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let files: &[&[&str]] = &[
         &["backend", "agent-host", "src", "main.rs"],
@@ -243,13 +243,13 @@ fn dump_jump_screenshot() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "ar"));
     for tick in 0..30 {
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         let busy = himark::test_driver::animate(
             &mut app,

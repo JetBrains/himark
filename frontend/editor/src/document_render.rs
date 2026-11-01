@@ -15,7 +15,7 @@ impl crate::document::Document {
     pub fn paint(
         &self,
         editor: crate::editor::EditorId,
-        canvas: &Canvas,
+        canvas: &Canvas<'_>,
         visible: Rect,
         focused: bool,
         store: &imba::store::Store,
@@ -40,7 +40,7 @@ impl crate::document::Document {
         &self,
         editor: crate::editor::EditorId,
         viewport: &EditorViewport,
-        canvas: &Canvas,
+        canvas: &Canvas<'_>,
         focused: bool,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
@@ -81,7 +81,7 @@ impl crate::document::Document {
     fn paint_carets(
         &self,
         editor: crate::editor::EditorId,
-        canvas: &Canvas,
+        canvas: &Canvas<'_>,
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,

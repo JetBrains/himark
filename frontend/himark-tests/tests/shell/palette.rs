@@ -90,7 +90,7 @@ fn palette_commands_follow_the_modal_focus() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let ids = |app: &Himark| -> Vec<&'static str> {
         himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
@@ -258,7 +258,7 @@ fn registered_commands_present_and_dispatch_by_id() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     app.register_command(std::sync::Arc::new(Probe));
@@ -348,7 +348,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let cmd = Modifiers {

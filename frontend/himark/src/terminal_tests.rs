@@ -67,7 +67,7 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     assert!(app.new_scratch(app.sole_window()));
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let home = app.sole_window_session();
     let terminals =
@@ -82,11 +82,11 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
 
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let resizes = recorder.resizes.lock().unwrap().clone();
     assert_eq!(
@@ -129,7 +129,7 @@ fn dump_terminal_screenshot() {
     let mut surface = gfx_skia::raster_tuple((1600, 900)).expect("surface");
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let home = app.sole_window_session();
     let terminals =
@@ -142,7 +142,7 @@ fn dump_terminal_screenshot() {
     ));
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     session.output(
         b"$ cargo test -p terminal\r\n\
@@ -153,11 +153,11 @@ $ \xf0\x9f\x91\xbb wide \xe6\xbc\xa2\xe5\xad\x97 chars\r\n$ ",
     );
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let image = surface.image_snapshot();
     let data = image

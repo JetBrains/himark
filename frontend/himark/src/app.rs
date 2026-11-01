@@ -385,7 +385,12 @@ impl Himark {
             .and_then(|entity| entity.dock_owner())
     }
 
-    pub(crate) fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas, size: Size) -> bool {
+    pub(crate) fn dispatch_paint(
+        &mut self,
+        window: WindowId,
+        canvas: &Canvas<'_>,
+        size: Size,
+    ) -> bool {
         if self.windows().entity(window).is_none() {
             return self.draw_mounted(
                 crate::bridge::ViewBridgeId::from_raw(window.raw()),
@@ -1223,7 +1228,7 @@ impl Himark {
     pub fn draw_window(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
     ) -> bool {
         let size = canvas.base_layer_size();
         self.draw_window_sized(
@@ -1236,7 +1241,7 @@ impl Himark {
     pub fn draw_window_sized(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
         size: gfx::Size,
     ) -> bool {
         self.stats_mut().begin_frame();
@@ -1269,7 +1274,7 @@ impl Himark {
     pub fn draw_window_profiled(
         &mut self,
         window: ::workbench::window::WindowId,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
         size: gfx::Size,
     ) -> std::time::Duration {
         self.stats_mut().begin_frame();

@@ -1092,7 +1092,7 @@ impl TableEditor {
         Size::new(width, height)
     }
 
-    fn paint_grid(&self, canvas: &Canvas, rect: Rect, widths: &[f32]) {
+    fn paint_grid(&self, canvas: &Canvas<'_>, rect: Rect, widths: &[f32]) {
         let rule = self.chrome.thickness;
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -1680,7 +1680,7 @@ mod hitbox {
         let _ = send(
             &editor,
             &Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: true,
             },
         );
@@ -1694,7 +1694,7 @@ mod hitbox {
         let _ = send(
             &editor,
             &Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: false,
             },
         );

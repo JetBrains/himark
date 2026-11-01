@@ -79,7 +79,7 @@ impl SvgView {
         (width.max(1.0) / self.intrinsic.width.max(1.0)).min(self.scale_limit)
     }
 
-    pub fn paint(&self, canvas: &Canvas, rect: Rect) {
+    pub fn paint(&self, canvas: &Canvas<'_>, rect: Rect) {
         let device_scale = canvas.device_scale().max(0.5);
 
         let draw_scale = (rect.width() / self.intrinsic.width.max(1.0)).min(self.scale_limit);
@@ -207,7 +207,7 @@ mod tests {
         </svg>"##;
         let view = SvgView::new(svg, Size::new(40.0, 20.0));
         let mut surface = gfx_skia::raster_tuple((40, 20)).expect("surface");
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_wh(40.0, 20.0));
         let (width, _, pixels) = gfx_skia::rgba(&mut surface);

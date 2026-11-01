@@ -227,7 +227,7 @@ impl Engine {
         self.inner.drain()
     }
 
-    fn draw(&mut self, canvas: &gfx::Canvas, width: f32, height: f32, scale: f32) -> bool {
+    fn draw(&mut self, canvas: &gfx::Canvas<'_>, width: f32, height: f32, scale: f32) -> bool {
         self.inner.draw(self.window, canvas, width, height, scale)
     }
 
@@ -666,7 +666,7 @@ impl MenuBar {
         }
     }
 
-    fn paint(&mut self, canvas: &gfx::Canvas, width: f32, scale: f32) {
+    fn paint(&mut self, canvas: &gfx::Canvas<'_>, width: f32, scale: f32) {
         if !self.enabled() {
             return;
         }
@@ -891,7 +891,7 @@ impl WindowState {
         let scale = self.window.scale_factor() as f32;
         let menu_height = menu.bar_height(scale);
         // The one painting pass, whatever carries it to the screen.
-        let mut paint = |canvas: &gfx::Canvas, width: f32, height: f32| -> bool {
+        let mut paint = |canvas: &gfx::Canvas<'_>, width: f32, height: f32| -> bool {
             canvas.save();
             canvas.translate(0.0, menu_height);
             canvas.clip_rect(
@@ -928,7 +928,7 @@ impl WindowState {
                     std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels")
                 })?;
                 let reconciling = paint(
-                    gfx_skia::SkiaCanvas::wrap(skia_surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(skia_surface.canvas()),
                     buffer_width as f32,
                     buffer_height as f32,
                 );
@@ -945,7 +945,7 @@ impl WindowState {
                 let mut reconciling = false;
                 surface.frame(|canvas| {
                     reconciling = paint(
-                        gfx_skia::SkiaCanvas::wrap(canvas),
+                        &gfx_skia::SkiaCanvas::new(canvas),
                         width.get() as f32,
                         height.get() as f32,
                     );

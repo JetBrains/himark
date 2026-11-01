@@ -167,7 +167,7 @@ fn typing_markdown_into_the_startup_scratch_styles_it() {
     let mut surface = gfx_skia::raster_tuple((800, 600)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(
         app.with_ime_client(app.sole_window(), |_| ()).is_some(),
@@ -236,7 +236,7 @@ fn dump_rust_split_screenshot() {
     let mut surface = gfx_skia::raster_tuple((1920, 1080)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     app.perform_registered(app.sole_window(), "workbench.split-pane");
     for _ in 0..10 {
@@ -246,7 +246,7 @@ fn dump_rust_split_screenshot() {
         }
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     let image = surface.image_snapshot();
@@ -268,18 +268,18 @@ fn dump_workbench_screenshots() {
     let mut surface = gfx_skia::raster_tuple((1920, 1080)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     drain_until_quiet(&mut app, &arriving);
 
     let mut shoot = |app: &mut Himark, name: &str| {
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         let image = surface.image_snapshot();
         let data = image
@@ -299,7 +299,7 @@ fn dump_workbench_screenshots() {
         loop {
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(probe.canvas()),
+                &gfx_skia::SkiaCanvas::new(probe.canvas()),
             );
             match arriving.recv_timeout(Duration::from_millis(1200)) {
                 Ok(command) => {
@@ -311,7 +311,7 @@ fn dump_workbench_screenshots() {
         for tick in 0..40 {
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(probe.canvas()),
+                &gfx_skia::SkiaCanvas::new(probe.canvas()),
             );
             if !himark::test_driver::animate(
                 app,
@@ -348,13 +348,13 @@ fn dump_peeker_screenshot() {
     let mut surface = gfx_skia::raster_tuple((1920, 1080)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     app.perform_registered(app.sole_window(), "peeker.toggle");
     himark::test_driver::type_text(&mut app, "s");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let image = surface.image_snapshot();
     let data = image
@@ -369,7 +369,7 @@ fn background_repair_finishes_the_whole_document_after_a_resize() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let drain = |app: &mut Himark| drain_until_quiet(app, &arriving);
@@ -383,7 +383,7 @@ fn background_repair_finishes_the_whole_document_after_a_resize() {
     let mut small = gfx_skia::raster_tuple((900, 700)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(small.canvas()),
+        &gfx_skia::SkiaCanvas::new(small.canvas()),
     );
     assert!(
         !app.unconverged_panes().is_empty(),
@@ -427,13 +427,13 @@ fn the_preview_is_a_real_editor_whose_tail_repairs_in_background() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let bounded = peeker::preview_height(&app, app.store()).expect("the torture sample previews");
     assert!(bounded > 0.0);
@@ -458,7 +458,7 @@ fn window_resize_reflows_panes_around_their_viewports() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let widths_before = app.pane_widths();
 
@@ -466,7 +466,7 @@ fn window_resize_reflows_panes_around_their_viewports() {
     let mut small = gfx_skia::raster_tuple((900, 700)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(small.canvas()),
+        &gfx_skia::SkiaCanvas::new(small.canvas()),
     );
 
     let widths_after = app.pane_widths();
@@ -477,7 +477,7 @@ fn window_resize_reflows_panes_around_their_viewports() {
 
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let widths_back = app.pane_widths();
     for (original, back) in widths_before.iter().zip(&widths_back) {
@@ -494,14 +494,14 @@ fn split_then_peek_a_file_into_the_focused_pane() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(app.pane_count(), 1, "startup is a single pane");
 
     assert!(app.perform_registered(app.sole_window(), "workbench.split-pane"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(app.pane_count(), 2);
 
@@ -509,7 +509,7 @@ fn split_then_peek_a_file_into_the_focused_pane() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let labels = peeker::labels(&app).expect("peeker is open");
     assert!(
@@ -531,7 +531,7 @@ fn split_then_peek_a_file_into_the_focused_pane() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(peeker::labels(&app).is_none(), "picking closes the peeker");
@@ -558,13 +558,13 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     himark::test_driver::click(&mut app, 200.0, 200.0, 1280.0, 900.0);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let mut seed = 0x9e3779b97f4a7c15u64;
@@ -606,7 +606,7 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
         }
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     std::thread::sleep(std::time::Duration::from_secs(1));
@@ -615,7 +615,7 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
     }
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 }
 
@@ -680,7 +680,7 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     while app.styled_pane_count() == 0 {
@@ -692,7 +692,7 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
     drain_until_quiet(&mut app, &arriving);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let (x, y) = app
@@ -740,7 +740,7 @@ fn an_idle_app_answers_the_animation_clock_with_silence() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     for ms in [0.0, 16.7, 33.4, 50.1] {
@@ -760,14 +760,14 @@ fn types_into_the_editor_and_reports_latency() {
     let mut surface = gfx_skia::raster_tuple(surface_size).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     for _ in 0..20 {
         himark::test_driver::type_text(&mut app, "x");
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -780,7 +780,7 @@ fn types_into_the_editor_and_reports_latency() {
         himark::test_driver::type_text(&mut app, if step % 7 == 0 { " " } else { "y" });
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -811,7 +811,7 @@ fn reparse_landings_during_typing_report_latency() {
     let mut surface = gfx_skia::raster_tuple(surface_size).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     for _ in 0..10 {
@@ -828,14 +828,14 @@ fn reparse_landings_during_typing_report_latency() {
         himark::test_driver::type_text(&mut app, "y");
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         samples.push(started.elapsed());
     }
@@ -857,12 +857,12 @@ fn opening_at_window_size_converges_and_styles() {
     let mut surface = gfx_skia::raster_tuple((2560, 1440)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let mut surface = gfx_skia::raster_tuple((2880, 1620)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let deadline = Instant::now() + Duration::from_secs(120);
@@ -872,7 +872,7 @@ fn opening_at_window_size_converges_and_styles() {
                 app.perform_batch(vec![command]);
                 app.draw_window(
                     app.sole_window(),
-                    gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 );
             }
             Err(_) => {
@@ -912,7 +912,7 @@ fn scroll_steps(app: &himark::app::Himark, step: f32) -> usize {
 fn scroll_pass(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) -> Vec<Duration> {
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let mut samples = Vec::new();
@@ -922,7 +922,7 @@ fn scroll_pass(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) -> 
         let started = Instant::now();
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         samples.push(started.elapsed());
     }
@@ -933,7 +933,7 @@ fn scroll_to_top(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) {
     himark::test_driver::scroll(app, f32::MIN);
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 }
 
@@ -995,7 +995,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     for _ in 0..6 {
@@ -1013,14 +1013,14 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
             himark::test_driver::type_text(app, "y");
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
             );
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
             );
             samples.push(started.elapsed());
         }
@@ -1033,7 +1033,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
     assert!(app.new_scratch(app.sole_window()));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let scratch = measure(&mut app, &mut surface);
 
@@ -1061,7 +1061,7 @@ fn scroll_frame_breakdown() {
     let mut surface = gfx_skia::raster_tuple((width, height)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     let mut scrolls = Vec::new();
@@ -1072,7 +1072,7 @@ fn scroll_frame_breakdown() {
         scrolls.push(started.elapsed());
         paints.push(app.draw_window_profiled(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         ));
     }
@@ -1202,7 +1202,7 @@ fn the_wall_of_text_opens_and_types() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     himark::test_driver::click(&mut app, 400.0, 300.0, 1280.0, 900.0);
 
@@ -1212,7 +1212,7 @@ fn the_wall_of_text_opens_and_types() {
         himark::test_driver::type_text(&mut app, "x");
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         samples.push(started.elapsed());
     }
@@ -1275,7 +1275,7 @@ fn where_do_heights_diverge() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     drain_until_quiet(&mut app, &arriving);
     let (live, fresh, text) = app.first_pane_heights_vs_fresh();
@@ -1334,13 +1334,13 @@ fn tree_demo_panel_toggles_through_clicks() {
     );
     let window = app.sole_window();
     let mut surface = gfx_skia::raster_tuple((800, 600)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     assert!(himark::app_ext::AppExt::perform_registered(
         &mut app,
         window,
         "demo.tree"
     ));
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
 
     let row_count = |app: &himark::app::Himark| -> usize {
         let mut count = None;
@@ -1375,7 +1375,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     );
     let toggle_ms = started.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(row_count(&app), 100_010, "the first root expanded");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
 
     let content_height = |app: &himark::app::Himark| -> f32 {
         let mut height = None;
@@ -1398,7 +1398,7 @@ fn tree_demo_panel_toggles_through_clicks() {
             },
             gfx::Size::new(800.0, 600.0),
         );
-        app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+        app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
         extents.push(content_height(&app));
     }
     let settled = 100_010.0 * 26.0;
@@ -1466,7 +1466,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 }
                 let reconciling = app.draw_window_sized(
                     app.sole_window(),
-                    gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
                     size,
                 );
                 if reconciling || landed {
@@ -1499,7 +1499,7 @@ fn rust_document_settles_and_stops_reconciling() {
             let _ = hop;
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -1545,7 +1545,7 @@ fn rust_document_settles_and_stops_reconciling() {
             );
             let reconciling = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             if reconciling || landed || animating {
@@ -1575,7 +1575,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     let mut surface = gfx_skia::raster_tuple((1280, 900)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     for _ in 0..6 {
         std::thread::sleep(Duration::from_millis(250));
@@ -1592,14 +1592,14 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
             himark::test_driver::type_text(app, "y");
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
             );
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
             app.draw_window(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
             );
             samples.push(started.elapsed());
         }
@@ -1618,7 +1618,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
         }
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     {
@@ -1642,7 +1642,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     assert!(app.new_scratch(app.sole_window()));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let scratch = measure(&mut app, &mut surface);
 

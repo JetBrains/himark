@@ -165,7 +165,7 @@ impl DiffHeaderFace {
         }
     }
 
-    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas<'_>, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         let baseline = rect.top + self.baseline;

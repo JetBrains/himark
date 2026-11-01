@@ -440,7 +440,7 @@ fn settle_until(
         );
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -619,7 +619,7 @@ fn two_windows_hold_one_conversation() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         second,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -634,7 +634,7 @@ fn two_windows_hold_one_conversation() {
     });
     let _ = engine.draw(
         second,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -738,7 +738,7 @@ fn paint(engine: &mut HimarkEngine, window: u64) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         1100.0,
         800.0,
         1.0,
@@ -1028,7 +1028,7 @@ fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
             let frame = std::time::Instant::now();
             let _ = engine.draw(
                 window,
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 1100.0,
                 800.0,
                 1.0,
@@ -1177,7 +1177,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.worker().run_pending();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1189,7 +1189,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.worker().run_pending();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1202,7 +1202,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.worker().run_pending();
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,
@@ -1226,7 +1226,7 @@ fn a_scroll_tick_builds_one_tree() {
         );
         let _ = engine.draw(
             window,
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             1100.0,
             800.0,
             1.0,

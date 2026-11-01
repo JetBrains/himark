@@ -48,11 +48,11 @@ fn paint(
 ) -> Raster {
     let height = ((band.end - band.start).ceil() as i32).max(1);
     let mut surface = gfx_skia::raster_tuple((width, height)).expect("a raster surface");
-    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(CLEAR);
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(CLEAR);
     surface.canvas().translate((0.0, -band.start));
     document.paint(
         editor,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         Rect::from_xywh(0.0, band.start, width as f32, band.end - band.start),
         false,
         store,

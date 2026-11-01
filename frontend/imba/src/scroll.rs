@@ -569,7 +569,7 @@ impl<'a, ContentCommand: 'a> RealizedScroll<'a, ContentCommand> {
         Some(ScrollCommand::BeginKnobDrag { scroll_y, grab })
     }
 
-    fn paint_scrollbar(&self, canvas: &Canvas) {
+    fn paint_scrollbar(&self, canvas: &Canvas<'_>) {
         let Some(band) = self.knob() else {
             return;
         };

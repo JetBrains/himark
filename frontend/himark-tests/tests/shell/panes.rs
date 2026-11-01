@@ -14,12 +14,12 @@ fn two_windows_edit_independently() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window_sized(
         first,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         Size::new(800.0, 600.0),
     );
     app.draw_window_sized(
         second,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         Size::new(500.0, 400.0),
     );
 
@@ -82,7 +82,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let start = app.pane_count();
 
@@ -92,7 +92,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     );
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(app.pane_count(), start + 1);
 
@@ -102,7 +102,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     );
     let _ = app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(
         app.pane_count(),
@@ -116,7 +116,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
         );
         let _ = app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
     }
     let _ = app.perform_registered(app.sole_window(), "workbench.close-pane");
@@ -193,7 +193,7 @@ fn navigation_back_and_forward_walk_pane_history() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
 
@@ -302,7 +302,7 @@ fn close_widget_walks_the_pane_history() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let window = app.sole_window();
     let open = |app: &mut Himark, name: &str, text: &str| {
@@ -401,7 +401,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let settle = |app: &mut Himark| {
         for _ in 0..5 {

@@ -10,7 +10,7 @@
 //!
 //! `SkiaCanvas` wraps a `&skia_safe::Canvas` (the orphan rule bars
 //! implementing `gfx::Painter` on the foreign canvas directly) and
-//! coerces to `&gfx::Canvas` wherever one is asked for.
+//! coerces to `&gfx::Canvas<'_>` wherever one is asked for.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -233,21 +233,17 @@ fn image(image: &gfx::Image) -> Option<skia_safe::Image> {
 
 // ─── the canvas ───
 
-/// A skia canvas standing where a `&gfx::Canvas` is asked for.
-/// `repr(transparent)` over the canvas itself — `wrap` is a
-/// reference cast, and the type carries no lifetime, so it
-/// satisfies the alias's implicit `dyn Painter + 'static`.
-#[repr(transparent)]
-pub struct SkiaCanvas(skia_safe::Canvas);
+/// A skia canvas standing where a `&gfx::Canvas<'_>` is asked for —
+/// a plain borrow, since `Canvas<'a>` carries the lifetime.
+pub struct SkiaCanvas<'a>(&'a skia_safe::Canvas);
 
-impl SkiaCanvas {
-    pub fn wrap(canvas: &skia_safe::Canvas) -> &SkiaCanvas {
-        // SAFETY: repr(transparent) — the two types share one layout.
-        unsafe { &*(canvas as *const skia_safe::Canvas as *const SkiaCanvas) }
+impl<'a> SkiaCanvas<'a> {
+    pub fn new(canvas: &'a skia_safe::Canvas) -> Self {
+        Self(canvas)
     }
 }
 
-impl Painter for SkiaCanvas {
+impl Painter for SkiaCanvas<'_> {
     fn save(&self) {
         self.0.save();
     }

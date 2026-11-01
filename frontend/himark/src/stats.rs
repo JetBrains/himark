@@ -97,7 +97,7 @@ impl Stats {
     /// so it must never live inside a store-derived (cacheable) tree.
     pub(crate) fn paint(
         &self,
-        canvas: &Canvas,
+        canvas: &Canvas<'_>,
         rect: Rect,
         chrome: &crate::stats_chrome::StatsChrome,
     ) {

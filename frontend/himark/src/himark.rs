@@ -835,7 +835,7 @@ impl Himark {
     pub fn draw_mounted(
         &mut self,
         id: ViewBridgeId,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
         size: gfx::Size,
     ) -> bool {
         // TRANSPARENT floor, like the stage road: the HOST behind

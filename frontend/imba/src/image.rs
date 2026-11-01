@@ -75,7 +75,7 @@ impl ImageView {
         )
     }
 
-    pub fn paint(&self, canvas: &Canvas, rect: Rect) {
+    pub fn paint(&self, canvas: &Canvas<'_>, rect: Rect) {
         let mut cell = self.decoded.lock().expect("image decode cell");
         if cell.is_none() {
             *cell = decode(&self.bytes);
@@ -174,7 +174,7 @@ mod tests {
     fn the_view_paints_its_pixels() {
         let view = ImageView::new(png()).expect("decodes");
         let mut surface = gfx_skia::raster_tuple((2, 1)).expect("surface");
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_xywh(0.0, 0.0, 2.0, 1.0));
         let (_, _, pixels) = gfx_skia::rgba(&mut surface);

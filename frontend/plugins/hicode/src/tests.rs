@@ -298,7 +298,7 @@ fn references_stream_into_the_search_dock() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+        let _ = app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     }
 
     let entity = workbench::window::Windows::window_ref(app.store(), window).expect("the window");

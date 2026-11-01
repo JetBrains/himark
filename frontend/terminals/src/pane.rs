@@ -426,7 +426,7 @@ impl TerminalWidget<'_> {
         })
     }
 
-    fn paint_grid(&self, canvas: &Canvas, focused: bool) {
+    fn paint_grid(&self, canvas: &Canvas<'_>, focused: bool) {
         let frame = self.session.frame();
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
@@ -575,7 +575,7 @@ impl TerminalWidget<'_> {
 }
 
 fn flush_run(
-    canvas: &Canvas,
+    canvas: &Canvas<'_>,
     fonts: &GridFonts,
     paint: &mut Paint,
     baseline: f32,

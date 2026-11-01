@@ -42,7 +42,7 @@ pub struct ToolbarButton {
     pub side: ToolbarSide,
 
     /// A glyph for shells that still draw icons (none of ours).
-    pub glyph: std::sync::Arc<dyn Fn(&Canvas, Rect, gfx::Color) + Send + Sync>,
+    pub glyph: std::sync::Arc<dyn Fn(&Canvas<'_>, Rect, gfx::Color) + Send + Sync>,
 }
 
 #[derive(Clone, Default)]

@@ -57,7 +57,7 @@ impl Sheet {
 
     /// The soft drop shadow, painted by whatever stands BEHIND the
     /// sheet — the sheet's own box clips what it paints.
-    pub(crate) fn shadow_painter(&self, sheet: Rect) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
+    pub(crate) fn shadow_painter(&self, sheet: Rect) -> impl Fn(&Arena, &gfx::Canvas<'_>, Rect) {
         let chrome = self.0.clone();
         move |_arena, canvas, _rect| {
             if chrome.shadow_blur <= 0.0 {
@@ -141,19 +141,21 @@ impl MatchMark {
                 bottom: foot,
                 ..Default::default()
             })
-            .backdrop(move |_arena: &Arena, canvas: &gfx::Canvas, rect: Rect| {
-                let mut paint = Paint::default();
-                paint.set_color(color);
-                canvas.draw_rect(
-                    Rect::from_xywh(
-                        rect.left,
-                        rect.top + ascent + offset,
-                        rect.width(),
-                        thickness,
-                    ),
-                    &paint,
-                );
-            })
+            .backdrop(
+                move |_arena: &Arena, canvas: &gfx::Canvas<'_>, rect: Rect| {
+                    let mut paint = Paint::default();
+                    paint.set_color(color);
+                    canvas.draw_rect(
+                        Rect::from_xywh(
+                            rect.left,
+                            rect.top + ascent + offset,
+                            rect.width(),
+                            thickness,
+                        ),
+                        &paint,
+                    );
+                },
+            )
     }
 }
 

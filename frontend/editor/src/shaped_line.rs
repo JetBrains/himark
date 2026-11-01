@@ -777,11 +777,17 @@ impl ShapedLine {
         }
     }
 
-    pub(crate) fn paint(&self, canvas: &Canvas, top: f32) {
+    pub(crate) fn paint(&self, canvas: &Canvas<'_>, top: f32) {
         self.paint_in_slot(canvas, top, top, top + self.line.content_height());
     }
 
-    pub(crate) fn paint_in_slot(&self, canvas: &Canvas, slot_top: f32, top: f32, slot_bottom: f32) {
+    pub(crate) fn paint_in_slot(
+        &self,
+        canvas: &Canvas<'_>,
+        slot_top: f32,
+        top: f32,
+        slot_bottom: f32,
+    ) {
         if !self.backgrounds.is_empty() {
             let mut paint = gfx::Paint::default();
             let display_end = self.line_text_len();

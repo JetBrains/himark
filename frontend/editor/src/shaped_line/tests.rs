@@ -158,7 +158,7 @@ fn paint_is_deterministic_and_inked() {
 
     let shoot = |line: &ShapedLine| -> Vec<u8> {
         let mut surface = gfx_skia::raster_tuple((700, 60)).expect("surface");
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::WHITE);
         line.paint(canvas, 4.0);
         let image = surface.image_snapshot();

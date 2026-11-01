@@ -325,7 +325,7 @@ impl DemoInlay {
         Size::new(size.width.min(max_width), size.height)
     }
 
-    fn paint(&self, canvas: &Canvas, rect: Rect) {
+    fn paint(&self, canvas: &Canvas<'_>, rect: Rect) {
         let size = rect.size();
         let palette = palette(self.tone, self.expanded);
         let radius = match self.mode {

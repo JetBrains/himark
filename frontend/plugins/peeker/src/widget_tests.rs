@@ -77,7 +77,7 @@ fn displaced_handles_drop_and_their_rows_survive() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let alpha = seed_terminal_row(&mut app, "alpha results");
     let home = app.sole_window_session();
@@ -109,7 +109,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(app.add_document(
         app.sole_window(),
@@ -123,7 +123,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let listed = labels(&app).expect("the peeker is up");
     assert!(
@@ -137,7 +137,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(mounted_titles(&app), vec!["beta widget"], "pane restored");
     assert!(
@@ -154,12 +154,12 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "alpha results"));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let listed = labels(&app).expect("still up");
     assert_eq!(listed, vec!["alpha results"], "the filter narrowed to it");
@@ -175,7 +175,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     ));
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(

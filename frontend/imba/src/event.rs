@@ -70,7 +70,7 @@ impl PointerShape {
 #[derive(Clone, Copy)]
 pub enum Event<'a> {
     Paint {
-        canvas: &'a Canvas,
+        canvas: &'a Canvas<'a>,
 
         focused: bool,
     },

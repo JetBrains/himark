@@ -55,7 +55,7 @@ fn setup(
     let mut surface = gfx_skia::raster_tuple((800, 600)).unwrap();
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     (app, runner, arriving, writes)
 }
@@ -84,7 +84,7 @@ fn open_file(app: &mut Himark) -> documents::DocumentId {
     let mut surface = gfx_skia::raster_tuple((800, 600)).unwrap();
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
@@ -205,7 +205,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         let mut surface = gfx_skia::raster_tuple((800, 600)).unwrap();
         app.draw_window(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
         OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };

@@ -70,7 +70,7 @@ fn paint_cell(
     let widget = imba::Thunk::realize(thunk, &arena, viewport);
     let mut surface =
         gfx_skia::raster_tuple((width as i32, height.ceil() as i32 + 4)).expect("raster surface");
-    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
     canvas.clear(gfx::Color::from_argb(0xff, 0x10, 0x12, 0x18));
     let result = imba::Widget::handle_event(
         &widget,
@@ -280,7 +280,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         let viewport = Rect::from_wh(width, view_h);
         let widget = imba::Thunk::realize(thunk, &arena, viewport);
         let mut surface = gfx_skia::raster_tuple((width as i32, view_h as i32)).expect("surface");
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::from_argb(0xff, 0x10, 0x12, 0x18));
         imba::Widget::handle_event(
             &widget,

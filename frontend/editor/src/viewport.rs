@@ -668,7 +668,7 @@ impl EditorViewport {
         viewport
     }
 
-    pub(crate) fn paint(&self, canvas: &Canvas, theme: &crate::theme::Theme) {
+    pub(crate) fn paint(&self, canvas: &Canvas<'_>, theme: &crate::theme::Theme) {
         let probing = crate::env_flags::paint_probe();
         let probe = probing.then(std::time::Instant::now);
         let mut paint = Paint::default();
@@ -798,7 +798,7 @@ struct RectangularBackground {
 }
 
 fn paint_rectangular_backgrounds(
-    canvas: &Canvas,
+    canvas: &Canvas<'_>,
     paint: &mut Paint,
     document_x: f32,
     layout_width: f32,
@@ -876,7 +876,7 @@ fn paint_rectangular_backgrounds(
 }
 
 fn draw_rectangular_background(
-    canvas: &Canvas,
+    canvas: &Canvas<'_>,
     paint: &mut Paint,
     document_x: f32,
     layout_width: f32,

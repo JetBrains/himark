@@ -215,7 +215,7 @@ fn dump_files_tab_screenshot() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
     assert!(app.perform_command(himark::app::windowed(
         window,
@@ -238,7 +238,7 @@ fn dump_files_tab_filtering_screenshot() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
     assert!(app.perform_command(himark::app::windowed(
         window,
@@ -403,7 +403,7 @@ fn dump_find_tab_screenshot() {
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, gfx_skia::SkiaCanvas::wrap(surface.canvas()));
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
     assert!(app.perform_command(himark::app::windowed(window, Arc::new(ShowFind))));
     super::dock::settle(&mut app, &mut surface);

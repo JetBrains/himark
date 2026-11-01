@@ -222,7 +222,7 @@ impl Surface {
     }
 
     /// The painter, for `.backdrop(...)`.
-    pub fn painter(self) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
+    pub fn painter(self) -> impl Fn(&Arena, &gfx::Canvas<'_>, Rect) {
         move |_arena, canvas, rect| self.paint(canvas, rect)
     }
 
@@ -235,7 +235,7 @@ impl Surface {
         inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
     }
 
-    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas<'_>, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_anti_alias(true);
         if let Some(fill) = self.fill {
@@ -258,7 +258,7 @@ impl Surface {
 
 /// A FLAT GROUND painter, for `.backdrop(...)`: the page color under
 /// a column, a sheet — the one fill the redesign keeps (no wells).
-pub fn ground(color: Color) -> impl Fn(&Arena, &gfx::Canvas, Rect) {
+pub fn ground(color: Color) -> impl Fn(&Arena, &gfx::Canvas<'_>, Rect) {
     move |_arena, canvas, rect| {
         let mut paint = Paint::default();
         paint.set_color(color);
@@ -349,7 +349,7 @@ impl Hairline {
         inner.paint_below(move |_arena, canvas, rect| self.paint(canvas, rect))
     }
 
-    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas<'_>, rect: Rect) {
         let mut paint = Paint::default();
         paint.set_color(self.color);
         if self.top {

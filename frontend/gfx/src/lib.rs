@@ -30,6 +30,8 @@ pub use path::{Path, PathBuilder};
 pub use text::{face, face_count, register_face, FaceEntry, FaceId, GlyphRun, TextBlob};
 
 /// THE canvas the widget tree paints into — any backend, behind the
-/// trait. A type alias so `&Canvas` keeps meaning "somewhere to
-/// draw" at every call site it always did.
-pub type Canvas = dyn Painter;
+/// trait. The lifetime is the point: a bare `dyn Painter` alias
+/// would default the object lifetime to `'static`, and a painter
+/// that BORROWS its window (gpui's) could never coerce — the raw
+/// pointers that workaround demanded are exactly what this spares.
+pub type Canvas<'a> = dyn Painter + 'a;

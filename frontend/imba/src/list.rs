@@ -2331,7 +2331,7 @@ struct Backdrop {
 }
 
 impl Backdrop {
-    fn paint(&self, canvas: &gfx::Canvas, rect: Rect) {
+    fn paint(&self, canvas: &gfx::Canvas<'_>, rect: Rect) {
         let style = self.style;
         if self.matched {
             let fill = style.fill;

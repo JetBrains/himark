@@ -106,7 +106,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
@@ -117,7 +117,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -137,7 +137,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         perform_total += perform_started.elapsed();
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         if round % 25 == 0 {
@@ -210,7 +210,7 @@ fn probe_pair(left: String, right: String) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
@@ -223,7 +223,7 @@ fn probe_pair(left: String, right: String) {
     let started = Instant::now();
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     eprintln!("[probe] first frame: {:?}", started.elapsed());
@@ -231,7 +231,7 @@ fn probe_pair(left: String, right: String) {
     himark::test_driver::click(&mut app, 900.0, 400.0, 1200.0, 900.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     let mut keystrokes = Vec::new();
@@ -241,7 +241,7 @@ fn probe_pair(left: String, right: String) {
         keystrokes.push(started.elapsed());
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -260,7 +260,7 @@ fn probe_pair(left: String, right: String) {
         let _ = himark::test_driver::scroll(&mut app, 400.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -273,7 +273,7 @@ fn probe_pair(left: String, right: String) {
         let started = Instant::now();
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             frame_size,
         );
         resize_frames.push(started.elapsed());
@@ -309,7 +309,7 @@ fn probe_pair(left: String, right: String) {
 
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
@@ -319,7 +319,7 @@ fn probe_pair(left: String, right: String) {
             let _ = himark::test_driver::scroll(&mut app, -2000.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -392,13 +392,13 @@ fn probe_pair(left: String, right: String) {
         let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         let _ = himark::test_driver::scroll(&mut app, table_y - 300.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         let _ = viewport_start(&app);
@@ -412,7 +412,7 @@ fn probe_pair(left: String, right: String) {
                 himark::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
                 let _ = app.draw_window_sized(
                     app.sole_window(),
-                    gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
                     size,
                 );
                 if cell_focused(&app) {
@@ -430,7 +430,7 @@ fn probe_pair(left: String, right: String) {
             let _ = himark::test_driver::type_text(&mut app, "grow the row substantially ");
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             super::diffs::assert_pair_aligned(&app);
@@ -439,7 +439,7 @@ fn probe_pair(left: String, right: String) {
             let _ = himark::test_driver::type_text(&mut app, "\n");
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
             super::diffs::assert_pair_aligned(&app);
@@ -453,7 +453,7 @@ fn probe_pair(left: String, right: String) {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -468,7 +468,7 @@ fn probe_pair(left: String, right: String) {
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
-                gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 size,
             );
         }
@@ -532,7 +532,7 @@ fn scroll_soak_for_profiling() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
@@ -543,7 +543,7 @@ fn scroll_soak_for_profiling() {
         }
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
@@ -558,7 +558,7 @@ fn scroll_soak_for_profiling() {
         let started = std::time::Instant::now();
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         paints.push(started.elapsed());
@@ -715,7 +715,7 @@ fn canvas_landing_breakdown_probe() {
     let started = Instant::now();
     let _ = app.draw_window_sized(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     eprintln!(
@@ -745,7 +745,7 @@ fn canvas_landing_breakdown_probe() {
         let started = Instant::now();
         let _ = app.draw_window_sized(
             app.sole_window(),
-            gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
         eprintln!(

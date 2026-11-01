@@ -386,13 +386,13 @@ fn render_declaration_names_snapshot() {
     let mut surface = gfx_skia::raster_tuple((900, height)).expect("surface");
     {
         use gfx::Painter as _;
-        let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
         canvas.clear(gfx::Color::from_rgb(0x10, 0x14, 0x1e));
     }
     surface.canvas().translate((20.0, 20.0));
     document.paint(
         editor,
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
         gfx::Rect::from_wh(860.0, height as f32),
         true,
         store,

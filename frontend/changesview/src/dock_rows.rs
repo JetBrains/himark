@@ -343,7 +343,7 @@ impl<'a> Rail<'a> {
     /// The rows the clip shows, as (index, top, height, key).
     fn visible(
         list: &'a imba::list::ListView<crate::changes_view::HistoryRow, ResourceLocation>,
-        canvas: &gfx::Canvas,
+        canvas: &gfx::Canvas<'_>,
         rect: gfx::Rect,
     ) -> Vec<(usize, f32, f32, ResourceLocation)> {
         let Some(clip) = canvas.local_clip_bounds() else {

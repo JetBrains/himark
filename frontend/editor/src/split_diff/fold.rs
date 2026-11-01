@@ -584,7 +584,7 @@ impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout<'a> {
             )
             .sized(width, height)
             .backdrop(
-                move |_arena: &imba::arena::Arena, canvas: &gfx::Canvas, rect| {
+                move |_arena: &imba::arena::Arena, canvas: &gfx::Canvas<'_>, rect| {
                     let mut paint = gfx::Paint::default();
                     paint.set_color(background);
                     canvas.draw_rect(rect, &paint);

@@ -276,7 +276,7 @@ fn paint_reports_relayout_while_the_width_lags() {
             &widget,
             &arena,
             &Event::Paint {
-                canvas: gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 focused: false,
             },
             viewport,

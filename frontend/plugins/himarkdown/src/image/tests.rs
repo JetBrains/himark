@@ -21,7 +21,7 @@ fn base() -> ResourceLocation {
 
 fn png() -> Vec<u8> {
     let mut surface = gfx_skia::raster_tuple((4, 2)).expect("surface");
-    gfx_skia::SkiaCanvas::wrap(surface.canvas()).clear(gfx::Color::BLUE);
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::BLUE);
     surface
         .image_snapshot()
         .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)

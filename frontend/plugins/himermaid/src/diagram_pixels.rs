@@ -11,7 +11,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let size = view.scaled(400.0);
     let (w, h) = (size.width.ceil() as i32, size.height.ceil() as i32);
     let mut surface = gfx_skia::raster_tuple((w, h)).expect("surface");
-    let canvas = gfx_skia::SkiaCanvas::wrap(surface.canvas());
+    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
     canvas.clear(gfx::Color::WHITE);
     let store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();

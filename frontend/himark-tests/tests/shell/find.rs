@@ -19,7 +19,7 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let settle = |app: &mut Himark| {
         for _ in 0..3 {
@@ -93,7 +93,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(himark::test_driver::type_text(
@@ -120,7 +120,7 @@ fn find_bar_highlights_and_walks_occurrences() {
 
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let find = |app: &Himark| -> Option<::editor::find::FindBar> {
         let (document, editor) = app.focused_editor_id();
@@ -234,7 +234,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
     assert!(himark::test_driver::type_text(&mut app, "hello"));
@@ -248,7 +248,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
     );
     app.draw_window(
         app.sole_window(),
-        gfx_skia::SkiaCanvas::wrap(surface.canvas()),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(himark::test_driver::type_text(&mut app, "ab"));
 

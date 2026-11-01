@@ -206,7 +206,7 @@ impl MermaidView {
         }
     }
 
-    fn paint(&self, ui: &UiCtx, canvas: &Canvas, rect: Rect) {
+    fn paint(&self, ui: &UiCtx, canvas: &Canvas<'_>, rect: Rect) {
         match &self.outcome {
             Outcome::Diagram(svg) => {
                 let inner = Rect::from_xywh(

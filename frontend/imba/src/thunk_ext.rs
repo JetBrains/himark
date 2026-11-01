@@ -31,7 +31,7 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
     where
         Self: 'a,
         Command: 'a,
-        F: Fn(&Arena, &Canvas, Rect) + 'a,
+        F: Fn(&Arena, &Canvas<'_>, Rect) + 'a,
     {
         PaintThunk {
             inner: self,
@@ -45,7 +45,7 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
     where
         Self: 'a,
         Command: 'a,
-        F: Fn(&Arena, &Canvas, Rect) + 'a,
+        F: Fn(&Arena, &Canvas<'_>, Rect) + 'a,
     {
         PaintThunk {
             inner: self,
@@ -59,7 +59,7 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
     where
         Self: 'a,
         Command: 'a,
-        F: Fn(&Arena, &Canvas, Rect) + 'a,
+        F: Fn(&Arena, &Canvas<'_>, Rect) + 'a,
     {
         PaintThunk {
             inner: self,
@@ -210,7 +210,7 @@ struct PaintThunk<Inner, Command, F> {
 impl<'a, Command: 'a, Inner, F> Thunk<'a, Command> for PaintThunk<Inner, Command, F>
 where
     Inner: Thunk<'a, Command> + 'a,
-    F: Fn(&Arena, &Canvas, Rect) + 'a,
+    F: Fn(&Arena, &Canvas<'_>, Rect) + 'a,
 {
     fn size(&self) -> Size {
         self.inner.size()
@@ -448,7 +448,7 @@ struct PaintWidget<Inner, F> {
 impl<'a, Command: 'a, Inner, F> Widget<'a, Command> for PaintWidget<Inner, F>
 where
     Inner: Widget<'a, Command>,
-    F: Fn(&Arena, &Canvas, Rect),
+    F: Fn(&Arena, &Canvas<'_>, Rect),
 {
     fn size(&self) -> Size {
         self.inner.size()

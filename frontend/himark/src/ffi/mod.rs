@@ -661,7 +661,7 @@ impl HimarkEngine {
     pub fn draw(
         &mut self,
         window: u64,
-        canvas: &Canvas,
+        canvas: &Canvas<'_>,
         width: f32,
         height: f32,
         _scale: f32,
