@@ -83,3 +83,5 @@ text = { path = "../../frontend/text" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
 skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl"] }
+gfx = { path = "../../frontend/gfx" }
+gfx-skia = { path = "../../frontend/gfx-skia" }

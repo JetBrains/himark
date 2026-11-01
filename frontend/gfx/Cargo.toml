@@ -8,5 +8,5 @@ edition = "2021"
 # shapes with — for face metadata, advances, and system lookup.
 [dependencies]
 skrifa = "0.44"
-fontique = { version = "0.12", features = ["system"] }
+fontique = { version = "0.12", features = ["system", "fontconfig-dlopen"] }
 unicode-script = "0.5"

@@ -19,6 +19,7 @@ mod app {
         os::raw::{c_char, c_double, c_int, c_void},
     };
 
+    use gfx::Painter as _;
     use himark::app::AppFonts;
     use himark::app::Himark;
     use himark::app_ext::AppExt;
@@ -27,7 +28,7 @@ mod app {
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
             SurfaceOrigin,
         },
-        ColorType, FontMgr, Size,
+        ColorType,
     };
 
     const CANVAS: *const c_char = b"#canvas\0".as_ptr().cast();
@@ -291,7 +292,7 @@ mod app {
         last_scroll_ms: Option<f64>,
         clicks: crate::clicks::ClickCounter,
         /// Only presses in this canvas can start a selection drag.
-        drag_point: Option<skia_safe::Point>,
+        drag_point: Option<gfx::Point>,
         /// The one browser canvas is one himark window.
         window: workbench::window::WindowId,
         context: DirectContext,
@@ -593,12 +594,12 @@ mod app {
             )
             .expect("failed to wrap default framebuffer");
 
-            let canvas = surface.canvas();
+            let canvas = gfx_skia::SkiaCanvas::new(surface.canvas());
             canvas.save();
             self.state.draw_window_sized(
                 self.window,
-                canvas,
-                Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
+                &canvas,
+                gfx::Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
             );
             canvas.restore();
 
@@ -890,7 +891,7 @@ mod app {
                 app.window,
                 imba::event::Event::Scroll {
                     delta_x: (event.delta_x * multiplier) as f32,
-                    point: skia_safe::Point::new(
+                    point: gfx::Point::new(
                         event.mouse.target_x as f32 * app.scale,
                         event.mouse.target_y as f32 * app.scale,
                     ),
@@ -911,7 +912,7 @@ mod app {
         unsafe {
             let app = &mut *user_data.cast::<WebApp>();
             let event = &*event;
-            let point = skia_safe::Point::new(
+            let point = gfx::Point::new(
                 event.target_x as f32 * app.scale,
                 event.target_y as f32 * app.scale,
             );
@@ -932,7 +933,7 @@ mod app {
                         button: imba::event::MouseButton::Right,
                         count: 1,
                     },
-                    skia_safe::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
+                    gfx::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
                     event.timestamp / 1000.0,
                 );
             }
@@ -951,7 +952,7 @@ mod app {
                     button: imba::event::MouseButton::Left,
                     count,
                 },
-                skia_safe::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
+                gfx::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
                 event.timestamp / 1000.0,
             )
         }
@@ -960,14 +961,14 @@ mod app {
     /// The canvas fills the viewport at (0, 0), so client coordinates
     /// remain canvas-relative even when a window listener receives input
     /// outside the canvas. Scale to the editor's physical pixels.
-    fn window_mouse_point(app: &WebApp, event: &EmscriptenMouseEvent) -> skia_safe::Point {
-        skia_safe::Point::new(
+    fn window_mouse_point(app: &WebApp, event: &EmscriptenMouseEvent) -> gfx::Point {
+        gfx::Point::new(
             event.client_x as f32 * app.scale,
             event.client_y as f32 * app.scale,
         )
     }
 
-    fn end_drag(app: &mut WebApp, point: skia_safe::Point, timestamp: f64) -> bool {
+    fn end_drag(app: &mut WebApp, point: gfx::Point, timestamp: f64) -> bool {
         if app.drag_point.take().is_none() {
             return false;
         }
