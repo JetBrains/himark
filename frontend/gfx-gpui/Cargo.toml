@@ -16,4 +16,4 @@ smallvec = "1"
 # True variable-font instancing: CoreText renders a data-loaded
 # variable font's DEFAULT MASTER, ignoring fvar defaults, so each
 # chrome instance is pinned into static outlines before registering.
-hb-subset = "0.3"
+hb-subset = { version = "0.3", features = ["bundled"] }

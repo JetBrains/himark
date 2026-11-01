@@ -57,6 +57,13 @@ fn main() {
             "-Dvt-features=-kitty-graphics",
         ])
         .arg(format!("-Dtarget={}", zig_target(&target)))
+        // The web build links with threads: every object in the
+        // archive must carry the atomics and bulk-memory features,
+        // or emscripten's wasm-ld refuses the shared memory.
+        .args(match target.as_str() {
+            "wasm32-unknown-emscripten" => &["-Dcpu=generic+atomics+bulk_memory"][..],
+            _ => &[][..],
+        })
         .arg("--prefix")
         .arg(out.join("zig-out"))
         .arg("--cache-dir")
