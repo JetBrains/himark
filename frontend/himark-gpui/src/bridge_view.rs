@@ -4,7 +4,7 @@
 //! One bridge as one gpui view — the `HimarkBridgeView` of the
 //! macOS shell, in Rust. Input lands as `imba::event::Event`s
 //! through Himark's own dispatch; frames go out through
-//! `imba_gpui::GpuiPainter`; the engine's scroll coalescer and
+//! `gfx_gpui::GpuiPainter`; the engine's scroll coalescer and
 //! animation clock pace the roads that need pacing.
 
 use std::cell::{Cell, RefCell};
@@ -18,7 +18,7 @@ use gpui::{
 };
 use imba::event::Event;
 use imba_gpui::events::{cursor_style_of, device_point, key_of, modifiers_of};
-use imba_gpui::{GpuiPainter, PainterCaches};
+use gfx_gpui::{GpuiPainter, PainterCaches};
 use workbench::window::WindowId;
 
 use crate::engine::{Bridge, Engine};

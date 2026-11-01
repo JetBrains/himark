@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 imba-gpui = { path = "../imba-gpui" }
+gfx-gpui = { path = "../gfx-gpui" }
 imba = { path = "../imba" }
 workbench = { path = "../workbench" }
 gfx = { path = "../gfx" }

@@ -3099,6 +3099,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfx-gpui"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "gpui",
+ "hb-subset",
+ "image",
+ "smallvec",
+]
+
+[[package]]
 name = "gfx-skia"
 version = "0.1.0"
 dependencies = [
@@ -4120,6 +4131,7 @@ dependencies = [
  "frontend-host",
  "futures",
  "gfx",
+ "gfx-gpui",
  "gpui",
  "imba",
  "imba-gpui",
@@ -4952,10 +4964,7 @@ version = "0.1.0"
 dependencies = [
  "gfx",
  "gpui",
- "hb-subset",
- "image",
  "imba",
- "smallvec",
 ]
 
 [[package]]
