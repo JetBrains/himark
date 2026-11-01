@@ -46,7 +46,40 @@ fn resolved(before: &str, after: &str) -> Cell {
         CellCommand::ResolveDiff(Ok(built)),
         &mut batch.effects(),
     );
+    // The resolve launches the before-cards build into the WORKSHOP
+    // (`BuildBeforeCardsEffect`); the app's worker runs it and lands
+    // the command. Here the test plays the worker, synchronously.
+    for command in pump_workshop(batch, &store) {
+        let mut tail = imba::effect::Batch::new();
+        cell.perform(&mut store, &ui, command, &mut tail.effects());
+    }
     cell
+}
+
+/// Play the app's effect worker for the ONE effect these cells
+/// launch: run each surviving `BuildBeforeCardsEffect` through its
+/// real handler and answer the landed commands, lifted into the
+/// cell's command type exactly as the engine would.
+fn pump_workshop<R: 'static>(batch: imba::effect::Batch<R>, store: &Store) -> Vec<R> {
+    use editor::before_inlay::{BuildBeforeCardsEffect, BuildBeforeCardsHandler};
+    use imba::effect::EffectHandler as _;
+    let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+        imba::shape::FontWorld::new(),
+        env::Themes::of(store),
+    ));
+    batch
+        .surviving_launches()
+        .into_iter()
+        .filter_map(|effect| {
+            let (payload, lift) = effect.into_payload().split();
+            let effect = payload.downcast::<BuildBeforeCardsEffect>().ok()?;
+            let workshop = workshop.clone();
+            let command = imba::effect::block_on(Box::pin(async move {
+                BuildBeforeCardsHandler(workshop).handle(*effect).await
+            }));
+            lift(Box::new(command))
+        })
+        .collect()
 }
 
 fn paint_cell(

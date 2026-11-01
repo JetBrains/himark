@@ -196,8 +196,29 @@ impl UnifiedDiffView {
             seq: self.split.state.pair_seq(),
             right_revision: right.revision(),
         };
+        self.split.state.reset_cards_landed();
         fx.relaunch(self.split.state.cards_token_mut(), effect);
         editor
+    }
+
+    /// Launch the before-cards build off the CURRENT pair — the
+    /// re-ask road for a landing that arrived stale.
+    fn relaunch_cards(&mut self, fx: &mut UnifiedDiffEffects<'_>) {
+        let width = self
+            .split
+            .right
+            .document
+            .layout_width(self.split.right.editor)
+            .max(200.0);
+        let effect = crate::before_inlay::BuildBeforeCardsEffect {
+            right_text: self.split.right.document.text().clone(),
+            base: self.split.left.document.clone(),
+            operation: self.split.state.diff().clone(),
+            width,
+            seq: self.split.state.pair_seq(),
+            right_revision: self.split.right.document.revision(),
+        };
+        fx.relaunch(self.split.state.cards_token_mut(), effect);
     }
 
     /// The normalize lane landed a fresh generation and the inline face
@@ -365,12 +386,22 @@ impl imba::View for UnifiedDiffView {
             } => {
                 let standing = seq == self.split.state.pair_seq()
                     && right_revision == self.split.right.document.revision();
+                // A STALE landing is not the end of the road: a pair
+                // repair bumped the seq after this build launched, and
+                // nobody else will ask again — relaunch off the
+                // settled pair, or the face never grows its cards
+                // (the Oct 30 bare-diff CI red).
+                if !standing && self.inline_editor.is_some() {
+                    self.relaunch_cards(fx);
+                    return;
+                }
                 let Some(editor) = self.inline_editor.filter(|_| standing) else {
                     return;
                 };
                 let Some(markup_id) = self.split.right.document.before_markup_of(editor) else {
                     return;
                 };
+                self.split.state.note_cards_landed();
                 let theme = crate::env::Themes::of(store);
                 let right = &mut self.split.right.document;
                 fx.scope(UnifiedDiffCommand::Inline, |fx| {

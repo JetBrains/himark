@@ -88,6 +88,11 @@ pub struct DiffViewState {
     /// (`BuildBeforeCardsEffect`) — a relaunch cancels the stale set.
     cards_token: Option<imba::effect::CancellationToken>,
 
+    /// The inline face's before-cards have LANDED at least once —
+    /// the last leg of the dressing chain: the stub stays up until
+    /// the face shows its cards, so loader → diff is one swap.
+    cards_landed: bool,
+
     pair_seq: u64,
 
     marks_dirty: bool,
@@ -141,6 +146,7 @@ impl DiffViewState {
             pair_repair_token: None,
             cards_token: None,
             pair_seq: 0,
+            cards_landed: false,
             marks_dirty: seeded.is_none(),
             marks_window: seeded,
         })
@@ -195,7 +201,9 @@ impl DiffViewState {
             return false;
         }
         match self.unified_layout {
-            crate::unified_diff::DiffLayout::Inline => self.inline_generation != 0,
+            crate::unified_diff::DiffLayout::Inline => {
+                self.inline_generation != 0 && self.cards_landed
+            }
             crate::unified_diff::DiffLayout::Split => true,
         }
     }
@@ -228,6 +236,20 @@ impl DiffViewState {
         if self.dressed() {
             self.ever_dressed = true;
         }
+    }
+
+    /// A `BeforeCards` landing applied (an empty set counts — a
+    /// pure-addition diff has no cards to wait for).
+    pub(crate) fn note_cards_landed(&mut self) {
+        self.cards_landed = true;
+        if self.dressed() {
+            self.ever_dressed = true;
+        }
+    }
+
+    /// A wholesale inline rebuild awaits a fresh card set.
+    pub(crate) fn reset_cards_landed(&mut self) {
+        self.cards_landed = false;
     }
 
     /// Presentable now or at least once before — the placeholder

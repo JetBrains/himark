@@ -54,7 +54,7 @@ jobs:
         include:
           - name: macos
             os: macos-15
-            cargo_args: --workspace --exclude linux
+            cargo_args: --workspace
           - name: linux
             os: ubuntu-24.04
             cargo_args: --workspace --exclude macos
@@ -128,7 +128,7 @@ jobs:
         include:
           - name: macos
             os: macos-15
-            cargo_args: --workspace --exclude linux
+            cargo_args: --workspace
           - name: linux
             os: ubuntu-24.04
             cargo_args: --workspace --exclude macos
