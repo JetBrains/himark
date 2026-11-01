@@ -2149,9 +2149,9 @@ checksum = "7454e41ff9012c00d53cf7f475c5e3afa3b91b7c90568495495e8d9bf47a1055"
 
 [[package]]
 name = "dugong"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49e042d0154d5b36580c5151b45baeb008e5fdb00a918ea203e85f24f2c921e6"
+checksum = "fd44734076d1328fc91fae55e0ac33dbd9bf5e54390dc2df085bf3abc91a8808"
 dependencies = [
  "dugong-graphlib",
  "rustc-hash 2.1.3",
@@ -2161,9 +2161,9 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.8.0-alpha.5"
+version = "0.8.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "219fd4382e892b3eb905d02a7cfb30ca60a7dad662a554b4aebf056f270c7649"
+checksum = "96e4ee3cf0526090a03f4757d42ac7e6f25affe75623443e62ef158dfdb97beb"
 dependencies = [
  "hashbrown 0.17.1",
  "rustc-hash 2.1.3",
@@ -5103,15 +5103,15 @@ dependencies = [
 
 [[package]]
 name = "lalrpop-util"
-version = "0.23.1"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "884f3e747ed2dcee867cda1b0c31a048f9e20de2d916a248949319921a2e666e"
+checksum = "364b49d1c98c07972e16fe1346463becc08bcd663da04e6e37ab1bea068dce6a"
 
 [[package]]
 name = "lazy_static"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 dependencies = [
  "spin",
 ]
@@ -5186,9 +5186,9 @@ dependencies = [
 
 [[package]]
 name = "line-numbers"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20cb02b1f7cf0c1da53c7bc8686223e492cefdba080086ecdd7f20315c6e2edd"
+checksum = "24ab6409a2f9ffae158ae823a012a7d7d68386663a14bedc260ca66eacf65c2c"
 
 [[package]]
 name = "linebender_resource_handle"
@@ -5239,9 +5239,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.29"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 dependencies = [
  "serde_core",
  "value-bag",
@@ -6602,9 +6602,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.4"
+version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+checksum = "3db2be46835f013dd3f4fa7f5f7402c537787b54ebb6fe2b94bbdd7e2669bb7b"
 dependencies = [
  "bitflags 2.13.2",
  "memchr",
@@ -9151,9 +9151,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-graphql"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e54723227ad8bf2b5700331ea522785d545a7f9787ff7271044a8f9e24ea660b"
+checksum = "8e3628190860fa4d04703babffb9d70f4da8ee934b8f79423c86ce8f3c6214b6"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -9750,9 +9750,12 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "utf16_iter"
-version = "1.0.5"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8232dd3cdaed5356e0f716d285e4b40b932ac434100fe9b7e0e8e935b9e6246"
+checksum = "1c7de35d9d8757dbc1f5125dc8b51438c68b4430546a735c3a9b91aaaaf9a18a"
+dependencies = [
+ "utf_types",
+]
 
 [[package]]
 name = "utf8_iter"
@@ -9765,6 +9768,12 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "utf_types"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
 
 [[package]]
 name = "uuid"

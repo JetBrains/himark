@@ -98,7 +98,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           cache-targets: false
           shared-key: ${{ matrix.name }}
@@ -170,7 +170,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           cache-targets: false
           shared-key: ${{ matrix.name }}
@@ -193,7 +193,7 @@ jobs:
 
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: junit-${{ matrix.name }}
           path: target/nextest/ci/junit.xml
@@ -235,7 +235,7 @@ jobs:
       # Restore before the emsdk lands in target/: on a partial cache match
       # rust-cache prunes everything in target/ that cargo did not produce.
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
           shared-key: web-emscripten-6.0.7
 
@@ -270,7 +270,7 @@ jobs:
       checks: write
     steps:
       - name: Download JUnit reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         continue-on-error: true
         with:
           pattern: junit-*
@@ -279,7 +279,7 @@ jobs:
 
       - name: Publish test report
         if: always() && hashFiles('test-reports/**/*.xml') != ''
-        uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d
         with:
           check_name: Test reports
           report_paths: test-reports/**/*.xml
@@ -298,7 +298,7 @@ jobs:
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
 
       - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@5626e41434f03ab3022d9685405c0645c879f441
