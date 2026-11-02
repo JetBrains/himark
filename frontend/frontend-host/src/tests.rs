@@ -4938,6 +4938,24 @@ fn dump_chat_pane_snapshot() {
     wait_for(&mut engine, &mut surface, "chat ready", &mut |engine| {
         shown_chat(engine).is_some_and(|chat| chat.ready())
     });
+    // Ready is the CHAT's state; typing needs the COMPOSER's focus,
+    // which lands a settle later — wait for a standing text focus
+    // (the scratch editor blurred when the chat pane took over).
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while engine
+            .app
+            .with_ime_client(::workbench::window::WindowId::from_raw(window), |_| ())
+            .is_none()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the composer never took text focus"
+            );
+            pump(&mut engine, &mut surface);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     let send = |engine: &mut HimarkEngine, text: &str| {
         assert!(himark::test_driver::type_text(&mut engine.app, text));
@@ -5117,6 +5135,22 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         "the chat over our host subscribed",
         &mut |engine| shown_chat(engine).is_some_and(|chat| chat.ready()),
     );
+    // Ready is the CHAT's state; typing needs the COMPOSER's focus.
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while engine
+            .app
+            .with_ime_client(::workbench::window::WindowId::from_raw(window), |_| ())
+            .is_none()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the composer never took text focus"
+            );
+            pump(&mut engine, &mut surface);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     // Replies carrying "OK" — one per prompt the fake CLI answered.
     let replies = |engine: &HimarkEngine| -> usize {
@@ -5201,6 +5235,21 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     // focusing the leaf; the front-existing road focuses it.)
     assert!(engine.perform_command(window, "chat.composer"));
     pump(&mut engine, &mut surface);
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while engine
+            .app
+            .with_ime_client(::workbench::window::WindowId::from_raw(window), |_| ())
+            .is_none()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the composer never took text focus"
+            );
+            pump(&mut engine, &mut surface);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
     assert!(himark::test_driver::type_text(&mut engine.app, "hello"));
     let _ = himark::test_driver::key(
         &mut engine.app,
@@ -5334,6 +5383,22 @@ fn the_chat_runs_through_the_himark_host() {
         "the chat over our host subscribed",
         &mut |engine| chat_ready(engine),
     );
+    // Ready is the CHAT's state; typing needs the COMPOSER's focus.
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while engine
+            .app
+            .with_ime_client(::workbench::window::WindowId::from_raw(window), |_| ())
+            .is_none()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the composer never took text focus"
+            );
+            pump(&mut engine, &mut surface);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     assert!(himark::test_driver::type_text(&mut engine.app, "hello"));
     let _ = himark::test_driver::key(
