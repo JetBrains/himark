@@ -1891,3 +1891,234 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
         );
     }
 }
+
+#[test]
+fn a_window_resize_keeps_the_top_visible_line() {
+    use himark::app::{AppFonts, Himark};
+    // The reported defect (2026-11-02): resizing the window changed
+    // the editor's top visible line. A width change rewraps every
+    // line — preservation must re-aim the scroll so the line at the
+    // top edge stays the line at the top edge.
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let wide = gfx::Size::new(1100.0, 800.0);
+    let narrow = gfx::Size::new(700.0, 800.0);
+
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        wide,
+    );
+    // A long, WRAPPING document: every paragraph long enough that a
+    // narrower window changes its row count.
+    for index in 0..120 {
+        let _ = himark::test_driver::type_text(
+            &mut app,
+            &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
+        );
+    }
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+        for tick in 0..10 {
+            let _ = himark::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
+            );
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                size,
+            );
+        }
+    };
+    settle(&mut app, &mut surface, wide);
+
+    // Scroll deep enough that wrap changes above the viewport move
+    // the pixel prefix.
+    let _ = himark::test_driver::scroll(&mut app, -2000.0);
+    settle(&mut app, &mut surface, wide);
+    let before = app
+        .focused_top_visible_line()
+        .expect("a top line before the resize");
+    assert!(before > 0, "the scroll moved off the top");
+
+    // The resize: narrower window, same scroll — the engine hears it
+    // through the next draws, exactly like a live window resize.
+    settle(&mut app, &mut surface, narrow);
+    let after = app
+        .focused_top_visible_line()
+        .expect("a top line after the resize");
+    assert_eq!(
+        before, after,
+        "the top visible line survived the rewrap: {before} -> {after}"
+    );
+
+    // And back: widening must hold it too.
+    settle(&mut app, &mut surface, wide);
+    let back = app
+        .focused_top_visible_line()
+        .expect("a top line after widening");
+    assert_eq!(
+        before, back,
+        "the top visible line survived the round trip: {before} -> {back}"
+    );
+}
+
+#[test]
+fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
+    use himark::app::{AppFonts, Himark};
+    // A real window resize is not one jump: the shell draws once per
+    // width step, and every step's anchor is captured from the
+    // previous frame's viewport. The drift, if any, compounds here.
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 800)).expect("surface");
+    let wide = gfx::Size::new(1300.0, 800.0);
+
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        wide,
+    );
+    for index in 0..120 {
+        let _ = himark::test_driver::type_text(
+            &mut app,
+            &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
+        );
+    }
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+        for tick in 0..10 {
+            let _ = himark::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
+            );
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                size,
+            );
+        }
+    };
+    settle(&mut app, &mut surface, wide);
+    let _ = himark::test_driver::scroll(&mut app, -2000.0);
+    settle(&mut app, &mut surface, wide);
+    let before = app
+        .focused_top_visible_line()
+        .expect("a top line before the resize");
+    assert!(before > 0, "the scroll moved off the top");
+
+    // The drag: 1300 -> 700 in 8px steps, ONE draw per step — the
+    // live-resize cadence, no settles in between.
+    let mut width = 1300.0_f32;
+    while width > 700.0 {
+        width -= 8.0;
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            gfx::Size::new(width, 800.0),
+        );
+    }
+    settle(&mut app, &mut surface, gfx::Size::new(width, 800.0));
+    let after = app
+        .focused_top_visible_line()
+        .expect("a top line after the drag");
+    assert_eq!(
+        before, after,
+        "the top visible line survived a live resize: {before} -> {after}"
+    );
+
+    // Height-only, for completeness: no rewrap, nothing may move.
+    for step in 1..=20 {
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            gfx::Size::new(width, 800.0 - step as f32 * 10.0),
+        );
+    }
+    let shrunk = app.focused_top_visible_line().expect("a top line");
+    assert_eq!(
+        after, shrunk,
+        "a height-only resize moved the top line: {after} -> {shrunk}"
+    );
+}
+
+#[test]
+fn a_markdown_pane_resize_keeps_the_top_visible_line() {
+    use himark::app::OpenedDocument;
+    use himark::app::{AppFonts, Himark};
+    // The markdown shell: a real document opened through the app
+    // road (header styles, wrapping prose, the centered column) —
+    // closest to the reported window.
+    let mut app = Himark::new(AppFonts::embedded());
+    let _ = app.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 900)).expect("surface");
+    let wide = gfx::Size::new(1300.0, 900.0);
+    let _ = app.draw_window_sized(
+        app.sole_window(),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        wide,
+    );
+    let window = app.sole_window();
+    let source: String = (0..80)
+        .map(|index| {
+            format!(
+                "## Section {index}\n\nA paragraph long enough to wrap when the window narrows,                  carrying several clauses so the row count genuinely changes with width.\n\n"
+            )
+        })
+        .collect();
+    let document = editor::document::Document::new(
+        text::text::Text::from_string_exact(&source),
+        editor::markup::Markup::new(),
+    );
+    assert!(app.perform_command(himark::app::opened(
+        window,
+        OpenedDocument {
+            documents: app.sole_documents(),
+            name: "resize.md".to_owned(),
+            document,
+            location: None,
+            primary: true,
+            target: None,
+            focus: true,
+        },
+    )));
+    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+        for tick in 0..10 {
+            let _ = himark::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
+            );
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                size,
+            );
+        }
+    };
+    settle(&mut app, &mut surface, wide);
+    let _ = himark::test_driver::scroll_at(&mut app, 660.0, 450.0, 2000.0);
+    settle(&mut app, &mut surface, wide);
+    let before = app
+        .focused_top_visible_line()
+        .expect("a top line before the resize");
+
+    assert!(before > 0, "the scroll moved off the top");
+
+    let mut width = 1300.0_f32;
+    while width > 700.0 {
+        width -= 8.0;
+        let _ = app.draw_window_sized(
+            app.sole_window(),
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            gfx::Size::new(width, 900.0),
+        );
+    }
+    settle(&mut app, &mut surface, gfx::Size::new(width, 900.0));
+    let after = app
+        .focused_top_visible_line()
+        .expect("a top line after the drag");
+    assert_eq!(
+        before, after,
+        "the markdown top line survived a live resize: {before} -> {after}"
+    );
+}

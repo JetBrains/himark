@@ -340,6 +340,24 @@ impl Himark {
             .map_or(0.0, |pane| pane.scroll_y())
     }
 
+    /// TEST SUPPORT: the LINE standing at the focused pane's top
+    /// edge — what viewport preservation must hold still across a
+    /// rewrap (docs/editor/viewport-preservation.md §5).
+    #[doc(hidden)]
+    pub fn focused_top_visible_line(&self) -> Option<usize> {
+        let pane = self.workbench().root.focused_pane().editor()?;
+        let scroll_y = pane.scroll_y();
+        let entity = pane.content();
+        let document = documents::OpenDocuments::document_ref(
+            self.store(),
+            entity.documents(),
+            entity.document(),
+        )?;
+        let layout = document.document_layout(entity.editor())?;
+        let byte = layout.byte_at_y(scroll_y);
+        Some(document.text().view().line_at(byte as usize).0)
+    }
+
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn focused_pane_content_height(&self) -> f32 {
