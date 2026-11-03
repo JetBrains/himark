@@ -1356,7 +1356,11 @@ mod tests {
     #[test]
     fn threads_share_one_world_and_one_bridge() {
         let world = world();
-        let shape = |world: &FontWorld| {
+        // The sharing property, stated concurrency-immune: every
+        // worker's line resolves to the SAME face ids the warm shape
+        // answered — nobody mints a private copy. (Counting the
+        // process-global registry here raced every other test.)
+        let shape = |world: &FontWorld| -> Vec<gfx::FaceId> {
             let shaper = Shaper::in_world(world.clone());
             let line = shaper.shape(
                 "the workers meet the same faces",
@@ -1365,41 +1369,38 @@ mod tests {
                 &plain(),
             );
             assert!(!line.blobs().is_empty(), "the line reaches the blob road");
+            let mut faces: Vec<gfx::FaceId> = line
+                .blobs()
+                .iter()
+                .flat_map(|(blob, _)| blob.runs().iter().map(|run| run.face))
+                .collect();
+            faces.sort_by_key(|face| face.0);
+            faces.dedup();
+            faces
         };
 
-        shape(&world);
-        let warm = world.bridged_for_test();
-        assert!(warm > 0, "the bridge answered at least one face");
+        let warm = shape(&world);
+        assert!(!warm.is_empty(), "the bridge answered at least one face");
 
         let workers: Vec<_> = (0..3)
             .map(|_| {
                 let world = world.clone();
+                let shape = shape;
                 std::thread::spawn(move || {
                     let started = std::time::Instant::now();
-                    let shaper = Shaper::in_world(world);
-                    let line = shaper.shape(
-                        "the workers meet the same faces",
-                        "Noto Sans",
-                        14.0,
-                        &plain(),
-                    );
-                    assert!(!line.blobs().is_empty());
-                    started.elapsed()
+                    let faces = shape(&world);
+                    (faces, started.elapsed())
                 })
             })
             .collect();
         for (worker, handle) in workers.into_iter().enumerate() {
-            eprintln!(
-                "[threads] worker {worker} shaped in {:?}",
-                handle.join().expect("worker")
+            let (faces, took) = handle.join().expect("worker");
+            eprintln!("[threads] worker {worker} shaped in {took:?}");
+            assert_eq!(
+                faces, warm,
+                "worker {worker} minted its own faces — the world is not shared"
             );
         }
-
-        assert_eq!(
-            world.bridged_for_test(),
-            warm,
-            "a worker minted its own typefaces — the world is not shared"
-        );
     }
 
     /// THE RESIZE LAW: shaping is width-independent, so a width
