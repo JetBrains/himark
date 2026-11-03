@@ -56,7 +56,13 @@ struct RootView: View {
             host.kickoff()
             host.follow(appearance: scheme)
         }
-        .onChange(of: section) { visited.insert($0) }
+        .onChange(of: section) {
+            visited.insert($0)
+            // Wake every view's (possibly sleeping) link: the next
+            // tick reconciles overlays, folding layers whose owner
+            // the switch just hid in place.
+            host.nudgeRedraws()
+        }
         .onChange(of: scheme) { host.follow(appearance: $0) }
     }
 }

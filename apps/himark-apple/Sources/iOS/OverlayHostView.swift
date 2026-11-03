@@ -96,9 +96,45 @@ final class OverlayHostView: UIView {
 
     // ─── presence and geometry ───
 
+    /// An owner whose layer chain is hidden anywhere up to the
+    /// window is NOT showing — the iOS sections hide inactive tabs
+    /// with opacity in place (never leaving the window), so
+    /// `didMoveToWindow`'s closeAll cannot be the only fold road.
+    /// The walk rides CALayers: SwiftUI's `.opacity(0)` lands in
+    /// the CA chain wherever it is applied.
+    private func effectivelyShowing(_ owner: HimarkBridgeView?) -> Bool {
+        guard let owner, owner.window != nil else { return false }
+        var layer: CALayer? = owner.layer
+        while let walk = layer {
+            if walk.isHidden || walk.opacity < 0.01 { return false }
+            layer = walk.superlayer
+        }
+        return true
+    }
+
+    /// Fold every hidden owner's layers — run by WHOEVER reconciles:
+    /// a hidden owner stops ticking, so it cannot sweep itself.
+    private func sweepHiddenOwners() {
+        for (key, client) in clients where !client.layers.isEmpty {
+            guard !effectivelyShowing(client.owner) else { continue }
+            if Self.traceOverlay {
+                NSLog("[overlay] owner \(client.owner?.bridgeId.raw ?? 0) hidden — folding \(client.layers.count) layer(s)")
+            }
+            for (_, entry) in client.layers {
+                close(entry)
+            }
+            client.layers.removeAll()
+            clients[key] = nil
+        }
+    }
+
     /// One owner's per-tick reconcile — the macOS logic, with the
     /// coordinate math in UIKit's one (y-down) space.
     func reconcile(for owner: HimarkBridgeView) {
+        sweepHiddenOwners()
+        // A hidden owner folds (above) and must not re-mint: its
+        // bridge still exports the anchors it would show.
+        guard effectivelyShowing(owner) else { return }
         let (epoch, pixelAnchors) = owner.engine.overlays(bridge: owner.bridgeId)
         let key = ObjectIdentifier(owner)
         let client = clients[key] ?? Client()
@@ -138,7 +174,7 @@ final class OverlayHostView: UIView {
                 if Self.traceOverlay {
                     NSLog("[overlay] close \(identity) (absent)")
                 }
-                close(entry, of: owner)
+                close(entry)
                 client.layers[identity] = nil
             }
             client.epoch = epoch
@@ -275,17 +311,19 @@ final class OverlayHostView: UIView {
         let key = ObjectIdentifier(owner)
         guard let client = clients[key] else { return }
         for (_, entry) in client.layers {
-            close(entry, of: owner)
+            close(entry)
         }
         client.layers.removeAll()
         clients[key] = nil
     }
 
     /// Take a closed overlay's layer out, unmount its bridge and
-    /// orphan its view from the redraw fan-out.
-    private func close(_ entry: Entry, of owner: HimarkBridgeView) {
+    /// orphan its view from the redraw fan-out. Everything needed
+    /// rides the CONTENT view — a sweep may fold layers whose owner
+    /// is already gone.
+    private func close(_ entry: Entry) {
         entry.view.removeFromSuperview()
-        owner.orphanFromRedraws?(entry.view)
-        owner.engine.unmount(bridge: entry.bridge)
+        entry.view.orphanFromRedraws?(entry.view)
+        entry.view.engine.unmount(bridge: entry.bridge)
     }
 }
