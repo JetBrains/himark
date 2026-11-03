@@ -363,6 +363,21 @@ struct SessionWord: View {
                     }
                 }
             }
+            Section {
+                switch host.tailnet.state {
+                case .off:
+                    Button("Connect Tailscale…") { host.connectTailnet() }
+                case .starting:
+                    Button("Tailscale: starting…") {}.disabled(true)
+                case .needsLogin:
+                    Button("Tailscale: finish login…") { host.openTailnetLogin() }
+                case .waitingApproval:
+                    Button("Tailscale: waiting for admin approval") {}.disabled(true)
+                case .running:
+                    Button {} label: { Label("Tailscale connected", systemImage: "checkmark.icloud") }
+                        .disabled(true)
+                }
+            }
         } label: {
             Word(theme: theme, role: theme.title, ink: theme.ink, text: title)
                 .frame(height: theme.barHeight)

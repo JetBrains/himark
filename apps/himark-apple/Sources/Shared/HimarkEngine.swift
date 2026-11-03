@@ -434,6 +434,34 @@ final class HimarkEngine {
         string.withCString { himark_paste(engine, bridge, $0, UInt(strlen($0))) }
     }
 
+    /// The tailnet face (docs/ahp/tailnet.md): process-global state
+    /// published by the engine's scanner; a change arrives as a
+    /// wake, so re-read after any drain.
+    enum TailnetState: UInt32 {
+        case off = 0
+        case starting = 1
+        case needsLogin = 2
+        case waitingApproval = 3
+        case running = 4
+    }
+
+    func tailnetState() -> TailnetState {
+        TailnetState(rawValue: himark_tailnet_state()) ?? .off
+    }
+
+    func tailnetAuthURL() -> String? {
+        sizedString { himark_tailnet_auth_url($0, $1) }
+    }
+
+    func tailnetLogin() {
+        himark_tailnet_login()
+    }
+
+    /// Call BEFORE the first engine exists.
+    static func setTailnetDataDir(_ path: String) {
+        _ = path.withCString { himark_tailnet_set_data_dir($0, UInt(strlen($0))) }
+    }
+
     private func sizedString(_ call: (UnsafeMutablePointer<CChar>?, UInt) -> UInt) -> String? {
         let needed = Int(call(nil, 0))
         if needed == 0 { return nil }

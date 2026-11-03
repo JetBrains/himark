@@ -194,8 +194,20 @@ Console is the tier-3 pattern, but closed and SSH-only.
    shared `mint_agent_server`, and nudges `RetryHosts` when a known
    host comes back online. Open: expiry countdown UX (needs a
    product surface), removal/relabel of rows (no such APIs exist).
-3. **iOS.** Login sheet, file protection, device-approval
-   ("waiting for admin") state for work tailnets.
+3. **iOS.** BUILT: the engine publishes an immutable `TailnetState`
+   (off / starting / needs-login / waiting-approval / running) on a
+   face the shell reads over the C ABI (`himark_tailnet_*`,
+   hand-declared in the cbindgen trailer); state changes post a
+   no-op command so the wake-drain cycle re-reads it. "Connect
+   Tailscale…" lives in the session menu; Safari carries the login
+   (no redirect scheme — Running is the completion signal); the
+   data root is placed before the engine via
+   `himark_tailnet_set_data_dir` (Application Support, node dir
+   protected until first unlock and excluded from backup — a
+   backed-up node key would clone the device identity). Go
+   cross-compiles to ios/arm64 with `CGO_CFLAGS=-Wno-sign-compare`
+   (Go's runtime/cgo under the cc crate's -Wall -Wextra -Werror).
+   Device-approval renders as waiting, never as an error.
 4. **Pairing.** Enclave challenge at `initialize`, TOFU approvals.
 5. **Browser.** The wasm node page — after pairing, ephemeral nodes
    only.

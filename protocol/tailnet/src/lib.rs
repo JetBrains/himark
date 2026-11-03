@@ -239,6 +239,13 @@ impl Status {
         self.backend_state == "Running"
     }
 
+    /// The tailnet requires an admin to approve this device before
+    /// it may join — a work-tailnet state the UI renders as waiting,
+    /// never as an error.
+    pub fn needs_machine_auth(&self) -> bool {
+        self.backend_state == "NeedsMachineAuth"
+    }
+
     /// The tailnet login that enrolled THIS node — the owner every
     /// caller is checked against.
     pub fn owner_login(&self) -> Option<&str> {

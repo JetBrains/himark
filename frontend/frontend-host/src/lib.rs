@@ -165,7 +165,9 @@ pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngi
     // through the embedded node (started lazily on the first such
     // dial), every other URL takes the plain desktop paths.
     #[cfg(unix)]
-    let tailnet_connector = Arc::new(desktop::tailnet_connector::TailnetConnector::new());
+    let tailnet_connector = Arc::new(desktop::tailnet_connector::TailnetConnector::new(
+        tailnet_hosts::client_node_dir(),
+    ));
     #[cfg(unix)]
     let connector: Arc<dyn ahp_wire::transport::Connector> = tailnet_connector.clone();
     #[cfg(not(unix))]

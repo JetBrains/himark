@@ -94,6 +94,10 @@ ensure_rust_target
 
 export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--sysroot $(xcrun --sdk iphoneos --show-sdk-path)"
 export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="--sysroot $(xcrun --sdk iphonesimulator --show-sdk-path) --target=arm64-apple-ios-simulator"
+# libtailscale's Go core: the cc-crate CC string carries -Wall -Wextra,
+# and Go compiles its own runtime/cgo with -Werror — a sign-compare
+# in gcc_darwin_arm64.c fails the cross build without this.
+export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }-Wno-sign-compare"
 
 resolve "--target $MACOS_RUST_TARGET" "$ROOT/target/$MACOS_RUST_TARGET/release" Generated-macOS.xcconfig "" "" "$MACOS_XCODE_ARCH"
 

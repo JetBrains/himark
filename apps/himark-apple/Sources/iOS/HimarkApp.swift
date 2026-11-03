@@ -26,7 +26,14 @@ struct HimarkApp: App {
 /// main, effect wake runs the worker; the drain also watches the
 /// catalog epoch and publishes the session list the chrome reads.
 final class AppHost: NSObject, ObservableObject {
-    let engine = HimarkEngine()
+    // The data root is placed BEFORE the engine exists: the node
+    // state dir rides the container's Application Support, locked
+    // until first unlock and kept out of backups (a backed-up node
+    // key would clone this device's tailnet identity).
+    let engine: HimarkEngine = {
+        AppHost.prepareTailnetDataDir()
+        return HimarkEngine()
+    }()
     let device = MTLCreateSystemDefaultDevice()!
 
     struct Selected: Equatable {
@@ -47,7 +54,13 @@ final class AppHost: NSObject, ObservableObject {
         static func == (a: Push, b: Push) -> Bool { a.id == b.id }
     }
 
+    struct TailnetStatus: Equatable {
+        var state: HimarkEngine.TailnetState = .off
+        var authURL: String?
+    }
+
     @Published var sessions: [HimarkEngine.CatalogSession] = []
+    @Published var tailnet = TailnetStatus()
     @Published var current: Selected?
     /// The pending push per TAB — the navigate callback routes by
     /// the origin bridge's tab.
@@ -135,6 +148,7 @@ final class AppHost: NSObject, ObservableObject {
         kicked = true
         engine.sync()
         syncCatalog()
+        syncTailnet()
     }
 
     private func drain() {
@@ -142,6 +156,58 @@ final class AppHost: NSObject, ObservableObject {
             for redraw in redraws.values { redraw() }
         }
         syncCatalog()
+        syncTailnet()
+    }
+
+    private func syncTailnet() {
+        let now = TailnetStatus(state: engine.tailnetState(), authURL: engine.tailnetAuthURL())
+        guard now != tailnet else { return }
+        tailnet = now
+        // The tap that asked to connect is still waiting for its
+        // URL — present the login the moment it exists.
+        if wantsLoginPresentation, now.state == .needsLogin {
+            openTailnetLogin()
+        }
+        if now.state == .running {
+            wantsLoginPresentation = false
+        }
+    }
+
+    private var wantsLoginPresentation = false
+
+    func connectTailnet() {
+        wantsLoginPresentation = true
+        engine.tailnetLogin()
+        syncTailnet()
+    }
+
+    /// Safari carries the Tailscale login; the scanner sees the
+    /// node flip to Running when the user returns.
+    func openTailnetLogin() {
+        guard tailnet.state == .needsLogin,
+            let raw = tailnet.authURL, let url = URL(string: raw)
+        else { return }
+        wantsLoginPresentation = false
+        UIApplication.shared.open(url)
+    }
+
+    private static func prepareTailnetDataDir() {
+        guard
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first
+        else { return }
+        let root = support.appendingPathComponent("himark", isDirectory: true)
+        var node = root.appendingPathComponent("tailnet-client", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: node,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        var exclude = URLResourceValues()
+        exclude.isExcludedFromBackup = true
+        try? node.setResourceValues(exclude)
+        HimarkEngine.setTailnetDataDir(root.path)
     }
 
     private func syncCatalog() {

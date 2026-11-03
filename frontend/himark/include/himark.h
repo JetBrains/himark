@@ -712,3 +712,20 @@ bool himark_sync(HimarkEngine *engine);
 /* The host's one door — defined in frontend-host, which assembles
    the plugin list and dials the agent hosts. */
 HimarkEngine *himark_create(HimarkEngineCallbacks callbacks);
+
+/* The tailnet face (docs/ahp/tailnet.md) — defined in frontend-host.
+   States are append-only. */
+#define HIMARK_TAILNET_OFF 0
+#define HIMARK_TAILNET_STARTING 1
+#define HIMARK_TAILNET_NEEDS_LOGIN 2
+#define HIMARK_TAILNET_WAITING_APPROVAL 3
+#define HIMARK_TAILNET_RUNNING 4
+uint32_t himark_tailnet_state(void);
+/* UTF-8, no NUL; returns byte length, copies when it fits cap.
+   Non-empty only in the needs-login state. */
+uintptr_t himark_tailnet_auth_url(char *out, uintptr_t cap);
+/* The shell's "Connect Tailscale" action. */
+void himark_tailnet_login(void);
+/* Place the data root (node state, saved hosts). Call BEFORE
+   himark_create. */
+bool himark_tailnet_set_data_dir(const char *path, uintptr_t len);

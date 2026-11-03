@@ -22,14 +22,19 @@ pub struct TailnetConnector {
 struct Inner {
     fallback: crate::connector::DesktopConnector,
     node: tokio::sync::OnceCell<Arc<tailnet::Tailnet>>,
+    /// Where the node's keys live — the EMBEDDER's choice (a dotdir
+    /// under $HOME on desktop, the app container on iOS). None means
+    /// no home exists: tailnet dials fail, plain dials still work.
+    state_dir: Option<std::path::PathBuf>,
 }
 
 impl TailnetConnector {
-    pub fn new() -> Self {
+    pub fn new(state_dir: Option<std::path::PathBuf>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 fallback: crate::connector::DesktopConnector,
                 node: tokio::sync::OnceCell::new(),
+                state_dir,
             }),
         }
     }
@@ -46,24 +51,17 @@ impl Inner {
     async fn node(&self) -> Result<&Arc<tailnet::Tailnet>, String> {
         self.node
             .get_or_try_init(|| async {
-                tokio::task::spawn_blocking(|| {
-                    let home = std::env::var_os("HOME")
-                        .ok_or_else(|| "no HOME for the tailnet state".to_owned())?;
-                    let dir = std::path::PathBuf::from(home)
-                        .join(".himark")
-                        .join("tailnet-client");
+                let dir = self
+                    .state_dir
+                    .clone()
+                    .ok_or_else(|| "no data dir for the tailnet state".to_owned())?;
+                tokio::task::spawn_blocking(move || {
                     tailnet::Tailnet::start(&dir, &tailnet::default_client_hostname())
                 })
                 .await
                 .map_err(|join| format!("tailnet start task: {join}"))?
             })
             .await
-    }
-}
-
-impl Default for TailnetConnector {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
