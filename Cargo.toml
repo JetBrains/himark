@@ -54,6 +54,7 @@ members = [
     "backend/git",
     "protocol/ahp-ext-types",
     "protocol/host-discovery",
+    "protocol/tailnet",
     "apps/web",
     "apps/macos",
     "apps/web/tools/grammar-pack",
@@ -105,6 +106,7 @@ default-members = [
     "backend/git",
     "protocol/ahp-ext-types",
     "protocol/host-discovery",
+    "protocol/tailnet",
     "apps/web",
 ]
 resolver = "2"

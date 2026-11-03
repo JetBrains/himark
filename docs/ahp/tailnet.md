@@ -1,7 +1,12 @@
 # Tailnet remoting (design)
 
-Status: design, nothing landed. Companion to docs/ahp/remote.md,
-which describes the remoting model and today's web face.
+Status: phase 1 built (uncommitted) — protocol/tailnet (the embedded
+node), the agent-host tailnet face (`--tailscale`, WhoIs owner gate,
+token-free router), and the desktop TailnetConnector (ts.net/CGNAT
+dials through a lazy client node, `himark-client-*` naming). Open:
+drawer discovery rows, saved host list, iOS login sheet, pairing.
+Companion to docs/ahp/remote.md, which describes the remoting model
+and today's web face.
 
 ## Problem
 
@@ -127,19 +132,67 @@ must work locked-in-pocket). Userspace networking — no VPN
 entitlement. App deletion loses the node key: user re-logs-in, a dead
 device lingers in their console; accepted.
 
-The browser is the one client that cannot embed a node. The web face
-stays as-is (served by the host, reachable when the browsing machine
-is on the tailnet by other means); not part of the zero-config story.
+The browser is the one client that cannot embed a native node — it
+gets its own road (next section).
+
+## The browser
+
+Agent-host stays the page's origin on both faces: it is always next
+to the newest build of the host the page talks to, and the tailnet
+face already serves it token-free with the ws URL injected. The
+question is only how a browser REACHES that origin, and the embedded
+decision sharpens it: **a userspace node routes only the sockets its
+own process dials** — himark desktop being on the tailnet does
+nothing for the browser beside it. Two roads:
+
+1. **What a machine can already route** — same LAN via the token
+   face, or a machine that happens to run the Tailscale app (not
+   required, not refused: the tailnet face serves it today).
+2. **The node in WASM.** Tailscale's `tsconnect` (what powers their
+   admin-console SSH) runs the node in the browser itself: a static
+   page — no server of ours — spins up an EPHEMERAL node,
+   authenticates it off the user's existing login.tailscale.com
+   session (one click when signed in), lists `himark-*` peers, dials
+   over DERP. Ephemeral is the right browser posture: the device
+   vanishes with the tab, which also shrinks the key-custody
+   exposure of browser storage. The host side needs NOTHING: an
+   ephemeral node is owned by the same login, so the owner gate
+   admits it as-is. Costs: a multi-MB wasm on top of ours, and
+   DERP-relayed latency — fine for stream-shaped AHP traffic, not
+   invisible. Sequenced after pairing, because browser custody is
+   the weakest of any client.
+
+Browsers can only speak HTTPS/WebSocket, so a wasm node always rides
+**DERP** — Tailscale's relay fleet, free with every tailnet,
+shuttling end-to-end-encrypted WireGuard. Native nodes already fall
+back to it through hostile NATs; the wasm road just lives on it.
+
+Ruled out: **Funnel** — it would make the page publicly reachable,
+but Funnel traffic carries no identity; we would be rebuilding
+password auth on a public endpoint for the weakest-custody client,
+against the identity-instead-of-credentials law. Revisit only for
+explicitly-shared links with their own auth, if ever. Also ruled
+out: **a localhost relay out of the desktop app** ("open this host
+in a browser") — on a machine running himark the desktop app IS the
+client, and widening such a relay beyond localhost would funnel
+other people through the user's identity.
+
+There is no road through the Tailscale admin console itself: it
+offers no HTTP proxy to nodes and no extension points — their SSH
+Console is the tier-3 pattern, but closed and SSH-only.
 
 ## Phasing
 
 1. **Host node + owner check.** Embedded node, tailnet `ws` listener,
    WhoIs owner-only policy. Desktop client dials via embedded node.
+   BUILT (uncommitted).
 2. **Discovery + persistence.** Peer-scan drawer rows, saved host
    list keyed by node ID, expiry countdown UX.
 3. **iOS.** Login sheet, file protection, device-approval
    ("waiting for admin") state for work tailnets.
 4. **Pairing.** Enclave challenge at `initialize`, TOFU approvals.
+5. **Browser.** The wasm node page — after pairing, ephemeral nodes
+   only.
 
 ## Risks
 

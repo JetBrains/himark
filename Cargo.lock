@@ -43,6 +43,7 @@ dependencies = [
  "rustix-openpty",
  "serde",
  "serde_json",
+ "tailnet",
  "tempfile",
  "text",
  "tokio",
@@ -1962,11 +1963,14 @@ dependencies = [
  "ahp",
  "ahp-wire",
  "ahp-ws",
+ "futures-util",
  "gfx",
  "himark",
  "host-discovery",
  "serde_json",
+ "tailnet",
  "tokio",
+ "tokio-tungstenite 0.30.0",
  "tracing",
 ]
 
@@ -5195,6 +5199,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "libtailscale"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1db18f9410fcf7b09c9cf4ce2338f9a5e7912fb5bc37c776c023078ec1f5558"
+dependencies = [
+ "libc",
+ "libtailscale-sys",
+]
+
+[[package]]
+name = "libtailscale-sys"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0285ec5d2b6a8ef32b87055a85447f47c05264108e598ffcd33fc122ca9850a0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "line-numbers"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8341,6 +8364,21 @@ dependencies = [
  "grid",
  "serde",
  "slotmap",
+]
+
+[[package]]
+name = "tailnet"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "futures-util",
+ "libc",
+ "libtailscale",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tracing",
 ]
 
 [[package]]

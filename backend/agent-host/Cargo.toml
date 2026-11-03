@@ -39,3 +39,6 @@ base64 = "0.22"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 tempfile = "3"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+
+[target.'cfg(unix)'.dependencies]
+tailnet = { path = "../../protocol/tailnet" }

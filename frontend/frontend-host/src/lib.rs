@@ -158,6 +158,13 @@ fn autostart_himark_host() -> Option<String> {
 /// host would reach the machine's REAL agent host and pull the
 /// user's catalog into its drawers).
 pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngine {
+    // The tailnet-aware connector: ts.net and CGNAT destinations go
+    // through the embedded node (started lazily on the first such
+    // dial), every other URL takes the plain desktop paths.
+    #[cfg(unix)]
+    let connector: Arc<dyn ahp_wire::transport::Connector> =
+        Arc::new(desktop::tailnet_connector::TailnetConnector::new());
+    #[cfg(not(unix))]
     let connector: Arc<dyn ahp_wire::transport::Connector> =
         Arc::new(desktop::connector::DesktopConnector);
     let mut engine = HimarkEngine::with_plugins(

@@ -15,6 +15,8 @@ mod pty;
 mod rpc;
 pub mod server;
 use server::{Host, HostConfig};
+#[cfg(unix)]
+pub(crate) mod tailnet_face;
 mod store;
 pub mod testing;
 mod trace;
@@ -54,10 +56,26 @@ pub fn run(socket: Option<&std::path::Path>) -> i32 {
     run_with(socket, None, None)
 }
 
+/// Join the user's tailnet and serve the identified face
+/// (docs/ahp/tailnet.md). `hostname` overrides the default
+/// `himark-<machine>` device name.
+pub struct TailnetOptions {
+    pub hostname: Option<String>,
+}
+
 pub fn run_with(
     socket: Option<&std::path::Path>,
     http: Option<&str>,
     web_root: Option<&std::path::Path>,
+) -> i32 {
+    run_with_tailnet(socket, http, web_root, None)
+}
+
+pub fn run_with_tailnet(
+    socket: Option<&std::path::Path>,
+    http: Option<&str>,
+    web_root: Option<&std::path::Path>,
+    tailnet: Option<TailnetOptions>,
 ) -> i32 {
     let Some(dir) = host_discovery::default_dir() else {
         eprintln!("[agent-host] no HOME — nowhere to put the socket");
@@ -112,6 +130,26 @@ pub fn run_with(
                 return 1;
             }
         }
+    }
+    #[cfg(unix)]
+    if let Some(options) = tailnet {
+        let root = host.web_root.lock().ok().and_then(|held| held.clone());
+        let _runtime = runtime.enter();
+        if let Err(error) = crate::tailnet_face::start(
+            &host,
+            crate::tailnet_face::Options {
+                hostname: options.hostname,
+            },
+            root,
+        ) {
+            eprintln!("[agent-host] tailnet: {error}");
+            return 1;
+        }
+    }
+    #[cfg(not(unix))]
+    if tailnet.is_some() {
+        eprintln!("[agent-host] tailnet serving is unix-only for now");
+        return 1;
     }
     eprintln!("[agent-host] serving on {}", socket.display());
 

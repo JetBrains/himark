@@ -26,10 +26,12 @@ struct Serving {
 }
 
 #[derive(Clone)]
-struct HttpState {
-    host: Arc<Host>,
-    token: Arc<str>,
-    web_root: Option<Arc<Path>>,
+pub(crate) struct HttpState {
+    pub(crate) host: Arc<Host>,
+    /// None on listeners where the network itself identifies the
+    /// caller (the tailnet face) — the token gate is skipped there.
+    pub(crate) token: Option<Arc<str>>,
+    pub(crate) web_root: Option<Arc<Path>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -110,22 +112,10 @@ pub(crate) async fn start(
     eprintln!("[agent-host] serving http on port {}", local.port());
     let state = HttpState {
         host: Arc::clone(host),
-        token,
-        web_root: web_root.clone(),
+        token: Some(token),
+        web_root,
     };
-    let mut app = Router::new()
-        .route("/", get(index_or_websocket))
-        .route("/index.html", get(index_or_websocket))
-        .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }));
-    if let Some(root) = web_root {
-        app = app.fallback_service(ServeDir::new(root).precompressed_br().precompressed_gzip());
-    }
-    let app = app
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            authenticate_and_set_headers,
-        ))
-        .with_state(state);
+    let app = router(state);
     let task = tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
             tracing::error!(target: "ahp_http", %error, "http server stopped");
@@ -138,6 +128,25 @@ pub(crate) async fn start(
         });
     }
     Ok(url)
+}
+
+pub(crate) fn router(state: HttpState) -> Router {
+    let mut app = Router::new()
+        .route("/", get(index_or_websocket))
+        .route("/index.html", get(index_or_websocket))
+        .route("/favicon.ico", get(|| async { StatusCode::NO_CONTENT }));
+    if let Some(root) = &state.web_root {
+        app = app.fallback_service(
+            ServeDir::new(root.to_path_buf())
+                .precompressed_br()
+                .precompressed_gzip(),
+        );
+    }
+    app.layer(middleware::from_fn_with_state(
+        state.clone(),
+        authenticate_and_set_headers,
+    ))
+    .with_state(state)
 }
 
 fn lan_ip() -> Option<String> {
@@ -170,10 +179,12 @@ async fn authenticate_and_set_headers(
         .filter_map(|value| value.to_str().ok())
         .flat_map(|cookies| cookies.split(';'))
         .find_map(|cookie| cookie.trim().strip_prefix("himark_tkn="));
-    if query_token.as_deref() != Some(state.token.as_ref())
-        && cookie_token != Some(state.token.as_ref())
-    {
-        return (StatusCode::FORBIDDEN, "missing or wrong token").into_response();
+    if let Some(token) = &state.token {
+        if query_token.as_deref() != Some(token.as_ref())
+            && cookie_token != Some(token.as_ref())
+        {
+            return (StatusCode::FORBIDDEN, "missing or wrong token").into_response();
+        }
     }
 
     let mut response = next.run(request).await;
@@ -252,18 +263,20 @@ async fn serve_index(state: &HttpState, headers: &HeaderMap) -> Response {
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
         .unwrap_or("127.0.0.1");
-    let url = format!("ws://{authority}/?tkn={}", state.token);
+    let url = match &state.token {
+        Some(token) => format!("ws://{authority}/?tkn={token}"),
+        None => format!("ws://{authority}/"),
+    };
     let encoded_url = serde_json::to_string(&url).expect("a string encodes");
     let inject = format!("<head><script>window.HIMARK_AHP_URL={encoded_url};</script>");
     let text = String::from_utf8_lossy(&bytes).replacen("<head>", &inject, 1);
     let mut response = Html(text).into_response();
-    response.headers_mut().insert(
-        header::SET_COOKIE,
-        HeaderValue::from_str(&format!(
-            "himark_tkn={}; HttpOnly; SameSite=Strict",
-            state.token
-        ))
-        .expect("the hex token is a header value"),
-    );
+    if let Some(token) = &state.token {
+        response.headers_mut().insert(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&format!("himark_tkn={token}; HttpOnly; SameSite=Strict"))
+                .expect("the hex token is a header value"),
+        );
+    }
     response
 }

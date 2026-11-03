@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod connector;
+#[cfg(unix)]
+pub mod tailnet_connector;
 /// TEST SUPPORT: no production caller outside this crate.
 #[cfg(unix)]
 #[doc(hidden)]

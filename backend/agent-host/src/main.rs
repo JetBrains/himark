@@ -10,6 +10,16 @@ fn main() {
     let socket = value_of("--socket").map(std::path::PathBuf::from);
     let http = value_of("--http");
     let web_root = value_of("--web-root").map(std::path::PathBuf::from);
-    let code = agent_host::run_with(socket.as_deref(), http.as_deref(), web_root.as_deref());
+    let tailnet = std::env::args()
+        .any(|argument| argument == "--tailscale")
+        .then(|| agent_host::TailnetOptions {
+            hostname: value_of("--tailscale-hostname"),
+        });
+    let code = agent_host::run_with_tailnet(
+        socket.as_deref(),
+        http.as_deref(),
+        web_root.as_deref(),
+        tailnet,
+    );
     std::process::exit(code);
 }
