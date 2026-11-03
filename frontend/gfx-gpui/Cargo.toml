@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 gfx = { path = "../gfx" }
+gfx-faces = { path = "../gfx-faces" }
 # Pinned exactly: painter.rs transmutes gpui::GlyphId (no public
 # constructor in 0.2.2) — bump deliberately, checking that type.
 # runtime_shaders: compile the Metal shaders at runtime — the build

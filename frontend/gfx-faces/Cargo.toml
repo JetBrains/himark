@@ -1,0 +1,13 @@
+[package]
+name = "gfx-faces"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+gfx = { path = "../gfx" }
+# The one library that actually understands font files end to end:
+# harfbuzz's subsetter extracts a collection member and pins
+# variation axes into static outlines — the two operations every
+# platform font API mishandles on loaded bytes.
+hb-subset = { version = "0.3", features = ["bundled"] }

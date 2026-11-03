@@ -289,7 +289,7 @@ impl<'a> GpuiPainter<'a> {
         // the bytes under a unique family (gpui's font-kit matching
         // never applies axes — see instance.rs); a plain face rides
         // its own bytes and family name.
-        let (bytes, family, weight) = match crate::instance::instanced(face.0, &entry) {
+        let (bytes, family, weight) = match gfx_faces::instanced(face.0, &entry) {
             Some((bytes, family)) => (bytes, family, gpui::FontWeight::default()),
             None => (
                 entry.data.as_ref().as_ref().to_vec(),

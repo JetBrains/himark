@@ -89,39 +89,68 @@ fn typeface(face: &gfx::Typeface) -> Option<skia_safe::Typeface> {
     if let Some(hit) = cache.get(&key) {
         return hit.clone();
     }
-    let data = face.data();
-    let resolved = skia_safe::FontMgr::new()
-        .new_from_data(
-            skia_safe::Data::new_copy((*data).as_ref()),
-            Some(face.index()),
-        )
-        .and_then(|base| {
-            if face.coords().is_empty() {
-                return Some(base);
-            }
-            let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> = face
-                .coords()
-                .iter()
-                .map(
-                    |(tag, value)| skia_safe::font_arguments::variation_position::Coordinate {
-                        axis: skia_safe::FourByteTag::new(*tag),
-                        value: *value,
-                    },
-                )
-                .collect();
-            let arguments = skia_safe::FontArguments::new().set_variation_design_position(
-                skia_safe::font_arguments::VariationPosition {
-                    coordinates: &coordinates,
-                },
-            );
-            base.clone_with_arguments(&arguments).or(Some(base))
-        });
+    let family = face.family_name();
+    let resolved = base_typeface(&face.data(), face.index(), Some(&family))
+        .and_then(|base| instanced(base, face.coords()));
     cache.insert(key, resolved.clone());
     resolved
 }
 
 /// A registered face (the shaped road) resolved for skia, cached by
 /// `FaceId`.
+/// A base typeface from neutral bytes, with the platform manager as
+/// the second rung: skia's `new_from_data` cannot open every system
+/// blob (a `.ttc` past index 0 defeats it on macOS), and those faces
+/// arrive as FALLBACKS the platform itself resolved — so ask it by
+/// family and pick the cut whose glyph count fingerprints the bytes,
+/// the same ladder the old shape-time bridge climbed. Silent `None`
+/// here is a BLANK run on screen.
+fn base_typeface(
+    data: &std::sync::Arc<dyn AsRef<[u8]> + Send + Sync>,
+    index: u32,
+    family: Option<&str>,
+) -> Option<skia_safe::Typeface> {
+    let manager = skia_safe::FontMgr::new();
+    if let Some(base) =
+        manager.new_from_data(skia_safe::Data::new_copy((**data).as_ref()), Some(index))
+    {
+        return Some(base);
+    }
+    // skia cannot open every loaded blob (a `.ttc` past index 0
+    // defeats it on macOS) — harfbuzz extracts the member as a
+    // standalone face, the same road the gpui backend bakes its
+    // instances on.
+    let entry = gfx::FaceEntry {
+        data: data.clone(),
+        index,
+        coords: Vec::new(),
+        family: family.map(str::to_owned),
+    };
+    let member = gfx_faces::standalone_member(&entry)?;
+    manager.new_from_data(skia_safe::Data::new_copy(&member), None)
+}
+
+fn instanced(base: skia_safe::Typeface, coords: &[(u32, f32)]) -> Option<skia_safe::Typeface> {
+    if coords.is_empty() {
+        return Some(base);
+    }
+    let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> = coords
+        .iter()
+        .map(
+            |(tag, value)| skia_safe::font_arguments::variation_position::Coordinate {
+                axis: skia_safe::FourByteTag::new(*tag),
+                value: *value,
+            },
+        )
+        .collect();
+    let arguments = skia_safe::FontArguments::new().set_variation_design_position(
+        skia_safe::font_arguments::VariationPosition {
+            coordinates: &coordinates,
+        },
+    );
+    base.clone_with_arguments(&arguments).or(Some(base))
+}
+
 fn face_typeface(id: gfx::FaceId) -> Option<skia_safe::Typeface> {
     static CACHE: Mutex<Option<HashMap<gfx::FaceId, Option<skia_safe::Typeface>>>> =
         Mutex::new(None);
@@ -131,32 +160,14 @@ fn face_typeface(id: gfx::FaceId) -> Option<skia_safe::Typeface> {
         return hit.clone();
     }
     let entry = gfx::face(id);
-    let resolved = skia_safe::FontMgr::new()
-        .new_from_data(
-            skia_safe::Data::new_copy((*entry.data).as_ref()),
-            Some(entry.index),
-        )
-        .and_then(|base| {
-            if entry.coords.is_empty() {
-                return Some(base);
-            }
-            let coordinates: Vec<skia_safe::font_arguments::variation_position::Coordinate> = entry
-                .coords
-                .iter()
-                .map(
-                    |(tag, value)| skia_safe::font_arguments::variation_position::Coordinate {
-                        axis: skia_safe::FourByteTag::new(*tag),
-                        value: *value,
-                    },
-                )
-                .collect();
-            let arguments = skia_safe::FontArguments::new().set_variation_design_position(
-                skia_safe::font_arguments::VariationPosition {
-                    coordinates: &coordinates,
-                },
-            );
-            base.clone_with_arguments(&arguments).or(Some(base))
-        });
+    let resolved = base_typeface(&entry.data, entry.index, entry.family.as_deref())
+        .and_then(|base| instanced(base, &entry.coords));
+    if resolved.is_none() {
+        eprintln!(
+            "[gfx-skia] face {:?} ({:?}) failed to bridge — its runs will not paint",
+            id, entry.family
+        );
+    }
     cache.insert(id, resolved.clone());
     resolved
 }

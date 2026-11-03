@@ -5975,3 +5975,65 @@ fn a_styled_decoration_stays_within_the_boxed_inlay_width() {
         std::mem::size_of::<crate::markup::Decoration>()
     );
 }
+
+/// The reported defect (2026-11-02, the native shell): Cyrillic
+/// typed into the chat composer painted BLANK. The prompt register
+/// covers the text with the CHROME face (no Cyrillic), the fallback
+/// run resolves a system face — and the skia backend must bridge
+/// that face from the registry bytes or the run silently vanishes.
+#[test]
+fn cyrillic_under_the_prompt_register_paints_ink() {
+    let store = &imba::store::Store::new();
+    let ui = crate::test_document::test_ui();
+    let theme = test_theme();
+
+    // The composer's document shape (ahp-chat fresh_input): markdown
+    // syntax, the ChatPrompt covering, the input mark.
+    let mut markup = crate::markup::Markup::new();
+    markup.push_styled_covering(
+        0..0,
+        crate::theme::StyleId::ChatPrompt,
+        crate::markup::StyleWeight::UNDERLAY,
+    );
+    let mut document = Document::new(text::text::Text::from_string_exact(""), markup).with_syntax(
+        crate::markup::Syntax::new("markdown", None, crate::markup::Markup::new()),
+        &[],
+    );
+    let editor = document.add_editor(
+        600.0,
+        None,
+        crate::document::EditorBuild::Complete,
+        &[],
+        store,
+        ui,
+        &theme,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    document.mark_input(editor, crate::theme::StyleId::ChatPrompt);
+    document.insert(editor, "привет мир", store, ui, &theme, fx!());
+
+    let mut surface = gfx_skia::raster_tuple((400, 60)).expect("surface");
+    use gfx::Painter as _;
+    let background = gfx::Color::from_rgb(9, 8, 7);
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(background);
+    document.paint(
+        editor,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        gfx::Rect::from_wh(400.0, 60.0),
+        false,
+        store,
+        ui,
+        &theme,
+    );
+    let (_, _, pixels) = gfx_skia::rgba(&mut surface);
+    let ink = pixels
+        .chunks_exact(4)
+        .filter(|px| {
+            (px[0] as i32 - 9).abs() + (px[1] as i32 - 8).abs() + (px[2] as i32 - 7).abs() > 48
+        })
+        .count();
+    assert!(
+        ink > 50,
+        "cyrillic under the prompt register INKS: {ink} non-background pixels"
+    );
+}

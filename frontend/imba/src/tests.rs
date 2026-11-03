@@ -2592,3 +2592,44 @@ fn a_pointer_answer_merges_shape_and_commands() {
     assert_eq!(answered.pointer, Some(PointerShape::Default));
     assert_eq!(answered.commands, vec![4]);
 }
+
+/// The reported defect (2026-11-02, the native shell): Cyrillic in
+/// the composer painted BLANK. The chrome face covers no Cyrillic,
+/// parley falls back to a system face — and the skia backend must
+/// bridge THAT face from the registry bytes, or the whole run paints
+/// nothing, silently.
+#[test]
+fn fallback_script_text_paints_ink_through_the_skia_backend() {
+    use gfx::Painter as _;
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
+    let world = crate::shape::FontWorld::new();
+    // Latin-only chrome: Bricolage carries no Cyrillic.
+    world.register(include_bytes!(
+        "../../editor/assets/BricolageGrotesque-Variable.ttf"
+    ));
+    ui.set(world);
+    let shaper = crate::shape::Shaper::of(&ui);
+    let line = shaper.shape(
+        "привет мир",
+        "Bricolage Grotesque",
+        24.0,
+        &[crate::shape::SpanStyle::plain(gfx::Color::BLACK)],
+    );
+    let (families, notdefs, total) = shaper.coverage_for_test(&line);
+    assert!(total > 0, "the line shaped");
+    assert_eq!(notdefs, 0, "fallback covers cyrillic: {families:?}");
+
+    let mut surface = gfx_skia::raster_tuple((300, 48)).expect("surface");
+    let canvas = gfx_skia::SkiaCanvas::new(surface.canvas());
+    canvas.clear(gfx::Color::WHITE);
+    line.paint(&canvas, (4.0, 32.0));
+    let (_, _, pixels) = gfx_skia::rgba(&mut surface);
+    let ink = pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] < 200 && px[1] < 200 && px[2] < 200)
+        .count();
+    assert!(
+        ink > 50,
+        "the fallback-script text INKS through skia: {ink} dark pixels"
+    );
+}

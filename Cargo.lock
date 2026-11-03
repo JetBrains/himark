@@ -2971,10 +2971,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfx-faces"
+version = "0.1.0"
+dependencies = [
+ "gfx",
+ "hb-subset",
+]
+
+[[package]]
 name = "gfx-gpui"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "gfx-faces",
  "gpui",
  "hb-subset",
  "image",
@@ -2986,6 +2995,7 @@ name = "gfx-skia"
 version = "0.1.0"
 dependencies = [
  "gfx",
+ "gfx-faces",
  "skia-safe",
 ]
 

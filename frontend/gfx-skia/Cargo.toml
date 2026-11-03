@@ -6,4 +6,5 @@ license = "Apache-2.0"
 
 [dependencies]
 gfx = { path = "../gfx" }
+gfx-faces = { path = "../gfx-faces" }
 skia-safe = "0.153.3"

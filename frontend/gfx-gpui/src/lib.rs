@@ -12,7 +12,6 @@
 //! Variable faces are pinned to static instances before they meet
 //! gpui's font store (see `instance.rs` for why).
 
-mod instance;
 mod painter;
 
 pub use painter::{GpuiPainter, PainterCaches};
