@@ -102,8 +102,17 @@ class HimarkBridgeView: UIView {
                            name: UIResponder.keyboardDidChangeFrameNotification, object: nil)
     }
 
-    @objc private func resume() { link?.isPaused = false }
+    @objc private func resume() {
+        needsRedraw = true
+        link?.isPaused = false
+    }
     @objc private func pause() { link?.isPaused = true }
+
+    /// Idle gate state: consecutive workless ticks before the link
+    /// sleeps, and whether a scroll-driven paint already landed
+    /// inside the current frame.
+    private var idleTicks = 0
+    private var paintedSinceTick = false
 
     @objc private func keyboardChanged() {
         if engine.revealSelection(bridge: bridgeId) { request() }
@@ -197,12 +206,30 @@ class HimarkBridgeView: UIView {
         }
         if needsRedraw || animating {
             needsRedraw = false
-            render()
+            if paintedSinceTick {
+                // A scroll already painted this band within this
+                // frame — one paint per vsync, the link skips.
+                needsRedraw = true
+            } else {
+                render()
+            }
+            // AFTER the render: the exported anchors now speak THIS
+            // tick's viewport, so the layers reconcile against the
+            // truth, not last frame's. No render, no anchor moves —
+            // reconcile rides the work.
+            reconcileOverlays()
+            idleTicks = 0
+        } else if glide == .zero {
+            // Nothing moved and nothing is owed: after a short
+            // tail the link SLEEPS. Every wake road already runs
+            // through `request()`, which rearms it.
+            idleTicks += 1
+            if idleTicks >= 4 {
+                idleTicks = 0
+                link.isPaused = true
+            }
         }
-        // AFTER the render: the exported anchors now speak THIS
-        // tick's viewport, so the layers reconcile against the
-        // truth, not last frame's.
-        reconcileOverlays()
+        paintedSinceTick = false
     }
 
     override func layoutSubviews() {
@@ -254,8 +281,12 @@ class HimarkBridgeView: UIView {
         let wasAt = metalLayer.frame
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        metalLayer.frame = visible
-        metalLayer.drawableSize = CGSize(width: CGFloat(w), height: CGFloat(h))
+        if wasAt != visible { metalLayer.frame = visible }
+        let drawable = CGSize(width: CGFloat(w), height: CGFloat(h))
+        // Touching drawableSize re-primes the layer's drawable pool;
+        // an unchanged size must not — the per-frame churn was fresh
+        // IOSurfaces instead of pool reuse.
+        if metalLayer.drawableSize != drawable { metalLayer.drawableSize = drawable }
 
         if scrollEmbedded {
             if !renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h) {
@@ -362,7 +393,12 @@ class HimarkBridgeView: UIView {
         return true
     }
 
-    func request() { needsRedraw = true }
+    func request() {
+        needsRedraw = true
+        // The one wake road: a sleeping link rearms on any ask —
+        // engine dirt (the clock fan-out), events, commands.
+        link?.isPaused = false
+    }
 
     // ─── overlay promotion: in-window layers, reconciled per frame ───
     //
@@ -443,8 +479,13 @@ class HimarkBridgeView: UIView {
 
     /// The embedding scroller moved the viewport: repaint the band
     /// NOW, in the same runloop turn — waiting for the display link
-    /// leaves one frame of the old band riding the scroll.
-    func renderNow() { render() }
+    /// leaves one frame of the old band riding the scroll. The tick
+    /// skips its own paint when one landed here (one per vsync).
+    func renderNow() {
+        paintedSinceTick = true
+        link?.isPaused = false
+        render()
+    }
 
     func performCommand(_ id: String) {
         if engine.perform(bridge: bridgeId, command: id) { request() }

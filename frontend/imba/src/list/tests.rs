@@ -321,6 +321,73 @@ fn visible_rows_surface_their_overlays_through_the_list() {
     );
 }
 
+/// A pending ask whose scroller RESTS short of the target must not
+/// tick the animation clock forever (the iOS idle burn): past the
+/// grace the stalled ask goes QUIET without dying — and growth,
+/// which moves the strip, wakes it again.
+#[test]
+fn a_resting_viewport_stalls_the_unreachable_ask_quiet() {
+    use crate::event::Event;
+    use crate::store::Store;
+    use crate::ui::UiCtx;
+    let mut rows = list(&[30.0; 10]); // total 300
+    let store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let clock = |rows: &mut ListView<Stub>, top: f32| -> Option<crate::event::Reveal> {
+        let viewport = gfx::Rect::from_xywh(0.0, top, 100.0, 100.0);
+        let (reveal, commands) = {
+            let arena = crate::arena::Arena::default();
+            let widget = crate::layout::Layout::layout(
+                crate::View::display(&*rows, &arena, &store, &ui),
+                &arena,
+                crate::constraints::Constraints::tight(gfx::Size::new(100.0, rows.total_height())),
+            )
+            .realize(&arena, viewport);
+            let result = crate::Widget::handle_event(
+                &widget,
+                &arena,
+                &Event::AnimationClock {
+                    now: crate::anim::AnimationClock::from_millis(16.0),
+                },
+                viewport,
+            );
+            match result.into_handled() {
+                None => (None, Vec::new()),
+                Some(handled) => (handled.reveal, handled.commands),
+            }
+        };
+        for command in commands {
+            let mut batch = crate::effect::Batch::new();
+            rows.perform(
+                &mut Store::clone(&store),
+                &ui,
+                command,
+                &mut batch.effects(),
+            );
+        }
+        reveal
+    };
+
+    rows.reveal_tail();
+    // The viewport rests at 120 — short of the tail and never
+    // moving: a native scroller that will not take the ask.
+    let asked = (0..40)
+        .filter(|_| clock(&mut rows, 120.0).is_some())
+        .count();
+    assert!(asked >= 2, "the ask re-emits while the grace runs: {asked}");
+    assert!(asked <= 12, "the stalled ask goes quiet: {asked}");
+    assert_eq!(clock(&mut rows, 120.0), None, "and stays quiet at rest");
+
+    // Growth moves the strip — the stall was keyed to the OLD
+    // target, so the standing mode wakes on its own.
+    let len = rows.len();
+    rows.splice(len..len, (0..3).map(|_| (Stub, 30.0)));
+    assert!(
+        clock(&mut rows, 120.0).is_some(),
+        "growth re-asks: the stall dies with its target"
+    );
+}
+
 /// The transcript's follow mode (docs/mounted-parity.md): the tail
 /// ask aims at the LIVE bottom edge, re-aims as content grows,
 /// disarms once the tail is visible — and is SUPERSEDED the moment

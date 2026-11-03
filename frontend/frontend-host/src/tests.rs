@@ -318,6 +318,7 @@ fn hosted_engine_with_language_servers(
         subscribe: None,
         unsubscribe: None,
         set_clipboard: None,
+        open_url: None,
     });
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
@@ -6501,6 +6502,7 @@ fn two_engines_sync_a_live_document() {
             subscribe: None,
             unsubscribe: None,
             set_clipboard: None,
+        open_url: None,
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
@@ -6672,6 +6674,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
             subscribe: None,
             unsubscribe: None,
             set_clipboard: None,
+        open_url: None,
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
@@ -6867,6 +6870,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         subscribe: None,
         unsubscribe: None,
         set_clipboard: None,
+        open_url: None,
     });
     // Production registers the local backend in the ENTRY, before the
     // shell can add a window — the window comes after here too, so
@@ -7066,6 +7070,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         subscribe: None,
         unsubscribe: None,
         set_clipboard: None,
+        open_url: None,
     });
     // Production registers the local backend in the ENTRY, before the
     // shell can add a window — the window comes after here too, so

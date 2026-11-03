@@ -373,6 +373,11 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     /// user's hand outranks the follow.
     tail_reveal: bool,
 
+    /// Stall bookkeeping for the pending reveal / tail ask:
+    /// (viewport top, target top, consecutive clocks there). Reset
+    /// by movement of either, by arming, and by `Revealed`.
+    reveal_stall: Option<(f32, f32, u32)>,
+
     animations: Vec<SpliceAnimation>,
 
     generation: u64,
@@ -413,6 +418,14 @@ pub enum ListCommand<C> {
     Animate(AnimationClock),
 
     Revealed,
+
+    /// The clock found the pending reveal (or tail ask) unsatisfied
+    /// with the viewport at `top` aiming at `target` — stall
+    /// bookkeeping. A run of identical reports means the scroller
+    /// RESTED short of the target (a native scroller's grid may
+    /// never meet a fractional row top); past the grace the clock
+    /// road goes quiet instead of ticking forever.
+    RevealStalled { top: f32, target: f32 },
 }
 
 impl<C: std::fmt::Display> std::fmt::Display for ListCommand<C> {
@@ -426,6 +439,7 @@ impl<C: std::fmt::Display> std::fmt::Display for ListCommand<C> {
             ListCommand::SetHeight(..) => out.write_str("list set height"),
             ListCommand::Animate(_) => out.write_str("list animate"),
             ListCommand::Revealed => out.write_str("list revealed"),
+            ListCommand::RevealStalled { .. } => out.write_str("list reveal stalled"),
         }
     }
 }
@@ -488,6 +502,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             settle_to: None,
             row_reveal: None,
             tail_reveal: false,
+            reveal_stall: None,
             animations: Vec::new(),
             generation: 0,
             sticky: None,
@@ -732,6 +747,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         }
         self.row_reveal = None;
         self.tail_reveal = false;
+        self.reveal_stall = None;
     }
 
     /// Arm a keyed reveal WITHOUT selecting: `TopLeftAt` pins the
@@ -741,6 +757,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
     /// aims at the row's reserved extent and survives its swap.
     pub fn reveal_row(&mut self, key: K, placement: crate::event::Placement) {
         self.row_reveal = Some((key, placement));
+        self.reveal_stall = None;
     }
 
     /// Arm the TAIL ask: scroll so the list's bottom edge is visible
@@ -749,6 +766,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
     /// the tail disarms it; the next arm is the caller's call.
     pub fn reveal_tail(&mut self) {
         self.tail_reveal = true;
+        self.reveal_stall = None;
     }
 
     pub fn clear_selection(&mut self) {
@@ -1566,6 +1584,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
             settle_to: self.settle_to,
             row_reveal: self.row_reveal.clone(),
             tail_reveal: self.tail_reveal,
+            reveal_stall: self.reveal_stall,
             animations: self.animations.clone(),
             generation: self.generation,
             sticky: self.sticky.clone(),
@@ -1773,6 +1792,19 @@ where
                 if let Some(selection) = &mut self.selection {
                     selection.reveal = false;
                 }
+                self.reveal_stall = None;
+            }
+            ListCommand::RevealStalled { top, target } => {
+                self.reveal_stall = Some(match self.reveal_stall {
+                    Some((at, aim, clocks))
+                        if (at - top).abs() < 0.5 && (aim - target).abs() < 0.5 =>
+                    {
+                        (at, aim, clocks.saturating_add(1))
+                    }
+                    _ => (top, target, 1),
+                });
+                // Bookkeeping: nothing a frame paints moved.
+                fx.quiet();
             }
             ListCommand::SetHeight(index, height) => {
                 if self.items.is_empty() {
@@ -1936,6 +1968,7 @@ where
                 reveal,
                 reveal_lost,
                 tail_ask,
+                reveal_stall: self.reveal_stall,
                 animations: &self.animations,
                 separators: self.separators,
                 sticky: self.sticky.as_ref().map(|source| source(store)),
@@ -1965,6 +1998,7 @@ struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     reveal_lost: bool,
     /// The follow mode's live bottom-edge strip, when armed.
     tail_ask: Option<Rect>,
+    reveal_stall: Option<(f32, f32, u32)>,
     animations: &'a [SpliceAnimation],
     separators: Option<SeparatorStyle>,
     sticky: Option<StickyStyle>,
@@ -2559,6 +2593,29 @@ where
                 merged = std::mem::replace(&mut merged, EventResult::Ignored)
                     .merge(EventResult::command(ListCommand::Revealed));
             }
+            // Clocks the viewport may REST short of a target before
+            // the ask is declared unreachable — covers the scroller's
+            // start latency without letting a miss tick forever.
+            const REVEAL_GRACE_CLOCKS: u32 = 10;
+            // THE STALL GUARD: re-asking every clock is legitimate
+            // while the scroller still approaches the target; a
+            // viewport RESTING short of it cannot reach it (a native
+            // scroller's grid may never meet a fractional row top),
+            // and without this gate the pending ask ticks the
+            // animation clock forever — the iOS idle-burn bug.
+            let stalled_at = |target: f32| {
+                list.reveal_stall.is_some_and(|(at, aim, clocks)| {
+                    (at - viewport.top).abs() < 0.5
+                        && (aim - target).abs() < 0.5
+                        && clocks >= REVEAL_GRACE_CLOCKS
+                })
+            };
+            let stall_tally = |target: f32| {
+                EventResult::command(ListCommand::RevealStalled {
+                    top: viewport.top,
+                    target,
+                })
+            };
             if let Some((rect, placement, motion)) = list.reveal {
                 if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                     eprintln!(
@@ -2569,11 +2626,17 @@ where
                     crate::event::Placement::EnsureVisible => {
                         match crate::event::reveal_satisfied(viewport, rect) {
                             true => EventResult::command(ListCommand::Revealed),
+                            // Resting short of the target: as close
+                            // as it gets — call it revealed.
+                            false if stalled_at(rect.top) => {
+                                EventResult::command(ListCommand::Revealed)
+                            }
                             false => EventResult::reveal(crate::event::Reveal {
                                 rect,
                                 placement,
                                 motion,
-                            }),
+                            })
+                            .merge(stall_tally(rect.top)),
                         }
                     }
                     crate::event::Placement::TopLeftAt => {
@@ -2584,18 +2647,21 @@ where
                         let best = rect
                             .top
                             .min((list.size.height - viewport.height()).max(0.0));
-                        match (viewport.top - best).abs() < 0.5 {
+                        match (viewport.top - best).abs() < 0.5 || stalled_at(best) {
                             true => EventResult::command(ListCommand::Revealed),
-                            false => EventResult::reveal(crate::event::Reveal::top_left_at(rect)),
+                            false => EventResult::reveal(crate::event::Reveal::top_left_at(rect))
+                                .merge(stall_tally(best)),
                         }
                     }
                 };
                 merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
             } else if let Some(strip) = list.tail_ask {
                 // FOLLOW MODE: satisfied is merely QUIET — the mode
-                // stands, so the next growth re-asks on its own. It
-                // dies only superseded (the hand) or cancelled.
-                if !crate::event::reveal_satisfied(viewport, strip) {
+                // stands, so the next growth re-asks on its own
+                // (growth moves the strip, which resets the stall).
+                // It dies only superseded (the hand) or cancelled;
+                // a stalled ask goes quiet WITHOUT dying.
+                if !crate::event::reveal_satisfied(viewport, strip) && !stalled_at(strip.top) {
                     if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                         eprintln!("[reveal] list clock: tail ask {strip:?} viewport {viewport:?}");
                     }
@@ -2603,7 +2669,8 @@ where
                         rect: strip,
                         placement: crate::event::Placement::EnsureVisible,
                         motion: crate::event::Motion::Jump,
-                    });
+                    })
+                    .merge(stall_tally(strip.top));
                     merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                 }
             }

@@ -1113,27 +1113,41 @@ impl HimarkEngine {
             .into_iter()
             .filter_map(|id| self.app.window_viewport(id).map(|size| (id, size)))
             .collect();
+        // HIMARK_TRACE_ANIM names every dispatch that answered
+        // "still animating" — the first question a hot idle trace
+        // asks is WHO keeps the clock alive.
+        static TRACE_ANIM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let trace =
+            *TRACE_ANIM.get_or_init(|| std::env::var_os("HIMARK_TRACE_ANIM").is_some());
         let mut animating = flushed;
         for (window, size) in windows {
-            animating |= self.app.dispatch(
+            let moved = self.app.dispatch(
                 window,
                 Event::AnimationClock {
                     now: AnimationClock::from_millis(now_ms),
                 },
                 size,
             );
+            if moved && trace {
+                eprintln!("[anim] window {window:?} still animating");
+            }
+            animating |= moved;
         }
         // Mounted bridges tick too — their scrollers and fades ride
         // the same clock; the mounted road ignores the passed size.
         for id in self.app.mounted_ids() {
             let size = self.app.mounted_viewport(id).unwrap_or_default();
-            animating |= self.app.dispatch(
+            let moved = self.app.dispatch(
                 wid(id.raw()),
                 Event::AnimationClock {
                     now: AnimationClock::from_millis(now_ms),
                 },
                 size,
             );
+            if moved && trace {
+                eprintln!("[anim] mounted {} still animating", id.raw());
+            }
+            animating |= moved;
         }
         animating
     }
