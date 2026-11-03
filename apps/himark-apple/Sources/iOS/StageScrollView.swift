@@ -87,7 +87,13 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
     private func contentMeasured(_ size: CGSize) {
         guard let content, size.height.isFinite else { return }
         let height = max(size.height, bounds.height)
-        if content.frame.size.height != height || scroll.contentSize.height != height {
+        // Sub-pixel tolerance: the measure arrives as pixels/scale
+        // and NEVER equals the stored CGFloat exactly — an exact
+        // compare re-set the frame on every paint, and each set ran
+        // layoutSubviews into a SECOND render per scroll event.
+        if abs(content.frame.size.height - height) > 0.5
+            || abs(scroll.contentSize.height - height) > 0.5
+        {
             content.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
             scroll.contentSize = content.frame.size
             // Tail-follow is NOT decided here: the engine arms a

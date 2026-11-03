@@ -234,7 +234,11 @@ class HimarkBridgeView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        render()
+        // A layout is a FLAG, not a paint: the next tick (or the
+        // scroll road, same turn) renders once. Painting here ran a
+        // second full pass — and a second nextDrawable — per scroll
+        // event whenever layout was dirtied mid-gesture.
+        request()
     }
 
     /// The visible band: the part of this view its superview shows —
