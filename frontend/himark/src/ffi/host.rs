@@ -280,6 +280,32 @@ impl EffectHandler<ahp_wire::effects::ShareHostEffect> for ShareHostHandler {
     }
 }
 
+pub(crate) struct ShareTailnetHandler(pub(crate) Arc<HostBridge>);
+
+impl EffectHandler<ahp_wire::effects::ShareTailnetEffect> for ShareTailnetHandler {
+    async fn handle(
+        &self,
+        effect: ahp_wire::effects::ShareTailnetEffect,
+    ) -> Result<ahp_wire::client::TailnetShare, String> {
+        // The first ask enables; the enrollment then moves on its
+        // own clock. A few re-asks catch the login URL (or a prior
+        // enrollment going straight to running) without the user
+        // rerunning the command.
+        let mut share = effect.client.tailnet_serve().await?;
+        for _ in 0..4 {
+            if share.auth_url.is_some() || share.url.is_some() || share.error.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            share = effect.client.tailnet_serve().await?;
+        }
+        if let Some(copy) = share.url.as_deref().or(share.auth_url.as_deref()) {
+            self.0.set_clipboard(copy);
+        }
+        Ok(share)
+    }
+}
+
 pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
 
 impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {

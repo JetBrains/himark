@@ -38,7 +38,15 @@ app anywhere.
 
 ## Enrollment
 
-`himark-agent-host --tailscale`, or a drawer action on desktop. The
+Three doors, one `TailnetServer::enable`: the `--tailscale` flag; a
+state dir left by an earlier enrollment (a host that joined once
+keeps serving across restarts, flag or no flag — the autostarted
+daemon never sees flags); and the `tailnetServe` RPC behind the
+drawer's "Share Host on Tailnet" command, which answers where the
+enrollment stands (needsLogin carries the AuthURL — copied to the
+clipboard — running carries the ws URL; callers re-ask to watch it
+move). Known wrinkle: a custom `--tailscale-hostname` is not
+persisted — a flagless restart re-registers under the default name. The
 embedded node generates its keys locally; we poll `status_json` until
 an `AuthURL` appears, open it (browser on desktop, printed link for
 headless, `ASWebAuthenticationSession` on iOS), and wait for state

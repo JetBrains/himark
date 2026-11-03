@@ -1442,6 +1442,20 @@ impl SessionClient for WireHost {
         }))
     }
 
+    fn tailnet_serve(
+        &self,
+    ) -> ClientFuture<Result<crate::client::TailnetShare, String>> {
+        Box::pin(self.run_ask(move |active| async move {
+            let answer: serde_json::Value = active
+                .client
+                .request("tailnetServe", serde_json::json!({ "enabled": true }))
+                .await
+                .map_err(|error| format!("tailnetServe: {error}"))?;
+            serde_json::from_value(answer)
+                .map_err(|error| format!("tailnetServe answer: {error}"))
+        }))
+    }
+
     fn dispatch_action(
         &self,
         channel: crate::client::ChannelUri,

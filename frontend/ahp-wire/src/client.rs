@@ -107,6 +107,14 @@ pub trait SessionClient: Send + Sync + 'static {
         )))
     }
 
+    /// Enable the host's tailnet face; the answer is where the
+    /// enrollment stands — callers re-ask to watch it move.
+    fn tailnet_serve(&self) -> ClientFuture<Result<TailnetShare, String>> {
+        Box::pin(std::future::ready(Err(
+            "this host cannot join a tailnet".to_owned()
+        )))
+    }
+
     fn subscribe_session(&self, session: SessionUri) -> ClientFuture<Result<SessionState, String>>;
     fn poll_session(&self, session: SessionUri) -> ClientFuture<Vec<StateAction>>;
 
@@ -115,6 +123,22 @@ pub trait SessionClient: Send + Sync + 'static {
         channel: ChannelUri,
         action: StateAction,
     ) -> ClientFuture<Result<(), String>>;
+}
+
+/// Where a host's tailnet enrollment stands, as `tailnetServe`
+/// answers it (docs/ahp/tailnet.md).
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct TailnetShare {
+    #[serde(default)]
+    pub state: String,
+    #[serde(rename = "authUrl", default)]
+    pub auth_url: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 /// The chat facet: chats, turns, and the file-edit reads a chat's

@@ -652,6 +652,9 @@ pub struct Host {
 
     pub(crate) http: crate::http::HttpServer,
 
+    #[cfg(unix)]
+    pub(crate) tailnet: crate::tailnet_face::TailnetServer,
+
     pub(crate) web_root: std::sync::Mutex<Option<std::path::PathBuf>>,
 
     /// The ordered document-feed lane's door — see `DocumentFeed`.
@@ -824,6 +827,8 @@ impl Host {
                 lsp_cancelled: Mutex::new(std::collections::HashSet::new()),
                 trace: crate::trace::HostTrace::new(),
                 http: crate::http::HttpServer::new(),
+                #[cfg(unix)]
+                tailnet: crate::tailnet_face::TailnetServer::new(),
                 web_root: std::sync::Mutex::new(None),
                 state: Mutex::new(Arc::new(State {
                     server_seq: 0,
@@ -1209,6 +1214,41 @@ impl Host {
         }
     }
 
+    /// The drawer's "Share Host on Tailnet": enable (idempotent) and
+    /// answer where the enrollment stands — needsLogin carries the
+    /// AuthURL, running carries the ws URL. Clients re-ask to watch
+    /// it move.
+    #[cfg(unix)]
+    fn tailnet_serve(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
+        let enabled = params
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        if !enabled {
+            return rpc::failure(
+                id,
+                INTERNAL,
+                "disabling the tailnet face is not supported yet",
+            );
+        }
+        let hostname = params
+            .get("hostname")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let web_root = self.web_root.lock().ok().and_then(|held| held.clone());
+        crate::tailnet_face::TailnetServer::enable(
+            self,
+            crate::tailnet_face::Options { hostname },
+            web_root,
+        );
+        rpc::success(id, self.tailnet.snapshot().to_json())
+    }
+
+    #[cfg(not(unix))]
+    fn tailnet_serve(self: &Arc<Self>, id: u64, _params: Value) -> JsonRpcMessage {
+        rpc::failure(id, INTERNAL, "tailnet serving is unix-only for now")
+    }
+
     async fn answer(
         self: &Arc<Self>,
         connection: u64,
@@ -1308,6 +1348,7 @@ impl Host {
             "search" => self.search(connection, id, params).await,
             "searchLocations" => self.search_locations(connection, id, params),
             "httpServe" => self.http_serve(id, params).await,
+            "tailnetServe" => self.tailnet_serve(id, params),
             "createTerminal" => self.create_terminal(id, params),
             "disposeTerminal" => self.dispose_terminal(id, params),
             other => rpc::failure(id, METHOD_NOT_FOUND, format!("Method not found: {other}")),

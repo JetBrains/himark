@@ -1243,6 +1243,12 @@ impl HimarkEngine {
                 ));
             self.app
                 .register_command(Arc::new(crate::higent::drawer::ShareHost));
+            self.app
+                .register_handler::<ahp_wire::effects::ShareTailnetEffect>(
+                    host::ShareTailnetHandler(Arc::clone(&bridge)),
+                );
+            self.app
+                .register_command(Arc::new(crate::higent::drawer::ShareHostTailnet));
         }
 
         self.install_agent_host_filesystem(AgentHostFilesystemCapabilities {

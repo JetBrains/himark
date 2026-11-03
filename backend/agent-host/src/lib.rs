@@ -131,19 +131,26 @@ pub fn run_with_tailnet(
             }
         }
     }
+    // The flag enables; so does a state dir from an earlier
+    // enrollment — a host that joined the tailnet once keeps
+    // serving it across restarts, flag or no flag.
     #[cfg(unix)]
-    if let Some(options) = tailnet {
-        let root = host.web_root.lock().ok().and_then(|held| held.clone());
-        let _runtime = runtime.enter();
-        if let Err(error) = crate::tailnet_face::start(
-            &host,
-            crate::tailnet_face::Options {
-                hostname: options.hostname,
-            },
-            root,
-        ) {
-            eprintln!("[agent-host] tailnet: {error}");
-            return 1;
+    {
+        let tailnet =
+            tailnet.or_else(|| {
+                crate::tailnet_face::enrolled_state_dir()
+                    .map(|_| TailnetOptions { hostname: None })
+            });
+        if let Some(options) = tailnet {
+            let root = host.web_root.lock().ok().and_then(|held| held.clone());
+            let _runtime = runtime.enter();
+            crate::tailnet_face::TailnetServer::enable(
+                &host,
+                crate::tailnet_face::Options {
+                    hostname: options.hostname,
+                },
+                root,
+            );
         }
     }
     #[cfg(not(unix))]

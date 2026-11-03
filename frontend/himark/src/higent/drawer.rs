@@ -200,6 +200,89 @@ impl crate::commands::HimarkCommand for ShareHost {
     }
 }
 
+pub struct ShareHostTailnet;
+
+impl crate::commands::HimarkCommand for ShareHostTailnet {
+    fn id(&self) -> &'static str {
+        "host.share-tailnet"
+    }
+
+    fn name(&self) -> String {
+        "Share Host on Tailnet".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+            return;
+        };
+        let client = store
+            .get::<ahp_wire::client::LocalHost>()
+            .and_then(|local| local.0)
+            .and_then(|host| ahp_wire::client::Servers::client(store, host));
+        let Some(client) = client else {
+            eprintln!("[himark] share-tailnet: no local host designated");
+            return;
+        };
+        fx.push(
+            imba::effect::AnyEffect::new(ahp_wire::effects::ShareTailnetEffect {
+                client: client.session.clone(),
+            })
+            .map(move |result| {
+                crate::shell::windowed(window, Arc::new(SharedTailnet { result }))
+            }),
+        );
+    }
+}
+
+struct SharedTailnet {
+    result: Result<ahp_wire::client::TailnetShare, String>,
+}
+
+impl crate::commands::HimarkCommand for SharedTailnet {
+    fn id(&self) -> &'static str {
+        "host.shared-tailnet"
+    }
+
+    fn name(&self) -> String {
+        "Host Shared on Tailnet".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _bound: &imba::focus::Bindings,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) {
+        match &self.result {
+            Ok(share) => match share.state.as_str() {
+                "running" => eprintln!(
+                    "[himark] tailnet: serving at {} (copied to clipboard)",
+                    share.url.as_deref().unwrap_or("?")
+                ),
+                "needsLogin" => eprintln!(
+                    "[himark] tailnet: login needed — URL copied to clipboard, open it and rerun"
+                ),
+                "waitingApproval" => {
+                    eprintln!("[himark] tailnet: waiting for the tailnet admin's approval")
+                }
+                "failed" => eprintln!(
+                    "[himark] tailnet: {}",
+                    share.error.as_deref().unwrap_or("failed")
+                ),
+                other => eprintln!("[himark] tailnet: {other} — rerun to check progress"),
+            },
+            Err(error) => eprintln!("[himark] share-tailnet failed: {error}"),
+        }
+    }
+}
+
 struct SharedHost {
     result: Result<String, String>,
 }

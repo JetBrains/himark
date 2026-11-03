@@ -42,6 +42,22 @@ impl Effect for ShareHostEffect {
     type Result = Result<String, String>;
 }
 
+/// Enable the host's tailnet face and report where the enrollment
+/// stands (docs/ahp/tailnet.md).
+pub struct ShareTailnetEffect {
+    pub client: Arc<dyn SessionClient>,
+}
+
+impl std::fmt::Display for ShareTailnetEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("share host on tailnet")
+    }
+}
+
+impl Effect for ShareTailnetEffect {
+    type Result = Result<crate::client::TailnetShare, String>;
+}
+
 pub struct ListSessionsEffect {
     pub client: Arc<dyn SessionClient>,
     pub cursor: Option<String>,
