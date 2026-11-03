@@ -1,30 +1,38 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Tailnet host discovery and the saved host list
-//! (docs/ahp/tailnet.md phase 2). The lockfile law extends here:
-//! discovery is the EMBEDDER's — the wire sees names and URLs,
-//! himark sees rows, nothing below this module sees tailscale.
+//! Tailnet host discovery, the saved host list, and the tailnet
+//! face (docs/ahp/tailnet.md phases 2–3). The lockfile law extends
+//! here: discovery is the EMBEDDER's — the wire sees names and
+//! URLs, himark sees rows, nothing below this module sees tailscale.
 //!
-//! `~/.himark/hosts.json` keeps the discovered hosts (keyed by URL —
-//! HostIds are per-process), so rows appear at boot before the node
-//! is even up, and survive an expired login. Discovery itself runs
-//! only when the client node's state dir already exists: logging in
-//! once (by adding a ts.net host, which starts the node) is the
-//! whole enablement — no setting.
+//! State management is the store's, nothing else's:
+//! - the shell-visible state is [`TailnetFaceState`], a store
+//!   component written ONLY by the posted [`TailnetChanged`]
+//!   command and read over the C ABI between batches — the same
+//!   road every catalog read takes, and the batch that writes it is
+//!   the wake;
+//! - the shell's connect action is [`TailnetFlows`], a flow closure
+//!   installed in the store (the `AgentFlows` precedent) that sends
+//!   on a channel the scanner owns the other end of;
+//! - everything the scanner tracks is a plain owned field.
+//!
+//! `hosts.json` under the data root keeps the discovered hosts
+//! (keyed by URL — HostIds are per-process), so rows appear at boot
+//! before the node is up and survive an expired login. The data
+//! root is THREADED from `himark_create`; the shell that knows the
+//! right place (the iOS container) passes it there.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use himark::app::AppCommand;
 
 const SCAN_SECONDS: u64 = 15;
 
-/// What a native shell renders of the tailnet. One IMMUTABLE value:
-/// the scanner swaps the whole thing, readers clone the whole thing,
-/// no field is ever poked in place.
+/// What a shell renders of the tailnet. Immutable value, replaced
+/// whole.
 #[derive(Clone, PartialEq, Default, Debug)]
 pub(crate) enum TailnetState {
     #[default]
@@ -40,7 +48,7 @@ pub(crate) enum TailnetState {
 impl TailnetState {
     /// The C ABI encoding — integers exist ONLY at this edge.
     /// Append-only once a header ships.
-    pub(crate) fn code(&self) -> u32 {
+    fn code(&self) -> u32 {
         match self {
             TailnetState::Off => 0,
             TailnetState::Starting => 1,
@@ -51,47 +59,18 @@ impl TailnetState {
     }
 }
 
-/// The shell's window onto the scanner: a state atom plus the
-/// login-request latch. A static, because the C reads are sync and
-/// a shell process runs one engine.
-pub(crate) struct TailnetFace {
-    state: Mutex<TailnetState>,
-    /// One-way latch: a shell asked to connect. Input TO the
-    /// scanner, never published state.
-    login_requested: AtomicBool,
-    wake: tokio::sync::Notify,
+/// The store component the C face reads. Written only by
+/// [`TailnetChanged`].
+#[derive(Clone, PartialEq, Default, Debug)]
+pub(crate) struct TailnetFaceState {
+    state: TailnetState,
 }
 
-pub(crate) fn face() -> &'static TailnetFace {
-    static FACE: std::sync::OnceLock<TailnetFace> = std::sync::OnceLock::new();
-    FACE.get_or_init(|| TailnetFace {
-        state: Mutex::new(TailnetState::Off),
-        login_requested: AtomicBool::new(false),
-        wake: tokio::sync::Notify::new(),
-    })
-}
-
-impl TailnetFace {
-    pub(crate) fn state(&self) -> TailnetState {
-        self.state
-            .lock()
-            .map(|held| held.clone())
-            .unwrap_or_default()
-    }
-
-    /// The shell's "Connect Tailscale" action: starts the node even
-    /// before any state dir exists and wakes the scanner for the
-    /// fast login cadence.
-    pub(crate) fn request_login(&self) {
-        self.login_requested.store(true, Ordering::Relaxed);
-        self.wake.notify_waiters();
-    }
-
-    fn publish(&self, state: TailnetState) {
-        if let Ok(mut held) = self.state.lock() {
-            *held = state;
-        }
-    }
+/// The shell's tailnet verbs, installed in the store at boot —
+/// the closure carries the scanner's channel sender.
+#[derive(Clone)]
+pub(crate) struct TailnetFlows {
+    connect: Arc<dyn Fn() + Send + Sync>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -100,35 +79,29 @@ struct SavedHost {
     url: String,
 }
 
-/// The data root. A shell may place it (the iOS container's
-/// Application Support — set BEFORE the engine exists); desktop
-/// defaults to the dotdir.
-static DATA_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-
-pub(crate) fn set_data_dir(path: PathBuf) -> bool {
-    DATA_DIR.set(path).is_ok()
-}
-
-fn himark_dir() -> Option<PathBuf> {
-    if let Some(dir) = DATA_DIR.get() {
-        return Some(dir.clone());
+/// The data root: the shell's choice, threaded from `himark_create`;
+/// the desktop default is the dotdir.
+pub(crate) fn data_root(from_shell: Option<PathBuf>) -> Option<PathBuf> {
+    if from_shell.is_some() {
+        return from_shell;
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".himark"))
 }
 
-fn hosts_path() -> Option<PathBuf> {
-    Some(himark_dir()?.join("hosts.json"))
+/// The client node's state dir under the root — handed to the
+/// connector at boot; its existence is the "tailnet is enabled"
+/// latch.
+pub(crate) fn client_node_dir(root: &Option<PathBuf>) -> Option<PathBuf> {
+    Some(root.as_ref()?.join("tailnet-client"))
 }
 
-/// The client node's state dir — handed to the connector at boot;
-/// its existence is the "tailnet is enabled" latch.
-pub(crate) fn client_node_dir() -> Option<PathBuf> {
-    Some(himark_dir()?.join("tailnet-client"))
+fn hosts_path(root: &Option<PathBuf>) -> Option<PathBuf> {
+    Some(root.as_ref()?.join("hosts.json"))
 }
 
-fn load() -> Vec<SavedHost> {
-    let Some(path) = hosts_path() else {
+fn load(root: &Option<PathBuf>) -> Vec<SavedHost> {
+    let Some(path) = hosts_path(root) else {
         return Vec::new();
     };
     let Ok(bytes) = std::fs::read(path) else {
@@ -137,8 +110,8 @@ fn load() -> Vec<SavedHost> {
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
-fn save(hosts: &[SavedHost]) {
-    let Some(path) = hosts_path() else { return };
+fn save(root: &Option<PathBuf>, hosts: &[SavedHost]) {
+    let Some(path) = hosts_path(root) else { return };
     let Ok(body) = serde_json::to_vec_pretty(hosts) else {
         return;
     };
@@ -150,14 +123,15 @@ fn save(hosts: &[SavedHost]) {
     }
 }
 
-/// Register the saved rows (between batches, before any window) and
-/// start the discovery scanner.
+/// Register the saved rows (between batches, before any window),
+/// install the flows, and start the discovery scanner.
 pub(crate) fn install(
     engine: &mut crate::HimarkEngine,
     tailnet_connector: Arc<desktop::tailnet_connector::TailnetConnector>,
     connector: Arc<dyn ahp_wire::transport::Connector>,
+    root: Option<PathBuf>,
 ) {
-    let saved = load();
+    let saved = load(&root);
     let mut known: HashSet<String> = HashSet::new();
     for host in &saved {
         if !known.insert(host.url.clone()) {
@@ -171,16 +145,29 @@ pub(crate) fn install(
         engine.register_agent_server(&host.name, ahp_wire::client::Client::of(Arc::new(seat)));
     }
 
+    let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();
+    engine.app.setup(|store| {
+        store.put(TailnetFaceState::default());
+        store.put(TailnetFlows {
+            connect: Arc::new(move || {
+                let _ = connect.send(());
+            }),
+        });
+    });
+
     let scanner = Scanner {
         poster: engine.app.poster(),
         runtime: engine.runtime(),
         clients: engine.clients(),
         node_source: tailnet_connector,
         connector,
+        root,
         known,
         saved,
         online: HashMap::new(),
         published: TailnetState::Off,
+        connect_requests,
+        connect_requested: false,
     };
     engine.runtime().spawn(scanner.run());
 }
@@ -191,10 +178,13 @@ struct Scanner {
     clients: Arc<ahp_wire::fs::ClientDirectory>,
     node_source: Arc<desktop::tailnet_connector::TailnetConnector>,
     connector: Arc<dyn ahp_wire::transport::Connector>,
+    root: Option<PathBuf>,
     known: HashSet<String>,
     saved: Vec<SavedHost>,
     online: HashMap<String, bool>,
     published: TailnetState,
+    connect_requests: tokio::sync::mpsc::UnboundedReceiver<()>,
+    connect_requested: bool,
 }
 
 impl Scanner {
@@ -202,16 +192,17 @@ impl Scanner {
         // Let the first poster land after the host attaches.
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         loop {
-            let enabled = self.enabled();
-            if !enabled {
+            if !self.enabled() {
                 self.announce(TailnetState::Off);
                 // Not enabled: no node has ever logged in here. The
-                // first ts.net Add Host (or a shell's Connect
-                // Tailscale, which wakes us) flips it.
+                // first ts.net Add Host flips the dir latch; a
+                // shell's Connect Tailscale arrives on the channel.
                 let lull = tokio::time::sleep(std::time::Duration::from_secs(45));
                 tokio::select! {
                     _ = lull => {}
-                    _ = face().wake.notified() => {}
+                    request = self.connect_requests.recv() => {
+                        self.connect_requested |= request.is_some();
+                    }
                 }
                 continue;
             }
@@ -249,24 +240,25 @@ impl Scanner {
         }
     }
 
-    fn enabled(&self) -> bool {
-        if face().login_requested.load(Ordering::Relaxed) {
+    fn enabled(&mut self) -> bool {
+        while let Ok(()) = self.connect_requests.try_recv() {
+            self.connect_requested = true;
+        }
+        if self.connect_requested {
             return true;
         }
-        client_node_dir().is_some_and(|dir| dir.exists())
+        client_node_dir(&self.root).is_some_and(|dir| dir.exists())
     }
 
-    /// Publish to the face; on a CHANGE, also post a (no-op) command
-    /// so the shell's wake-drain cycle runs and re-reads the face —
-    /// native chrome has no other pulse.
+    /// On a change, post the command that writes the store — the
+    /// batch is what wakes the shell, which reads the store back.
     fn announce(&mut self, state: TailnetState) {
         if self.published == state {
             return;
         }
         self.published = state.clone();
-        face().publish(state);
         self.poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(
-            Arc::new(TailnetStateChanged),
+            Arc::new(TailnetChanged { state }),
         )));
     }
 
@@ -281,7 +273,7 @@ impl Scanner {
                     name: label.clone(),
                     url: url.clone(),
                 });
-                save(&self.saved);
+                save(&self.root, &self.saved);
                 tracing::info!(target: "tailnet_hosts", %label, %url, "discovered");
                 self.poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(
                     Arc::new(HostDiscovered {
@@ -325,72 +317,29 @@ fn candidate(peer: &tailnet::NodeStatus) -> Option<(String, String)> {
     Some((label, url))
 }
 
-/// Wakes the shell, nothing else: the drain after any batch is when
-/// native chrome re-reads the face.
-struct TailnetStateChanged;
+/// The scanner's state landing: writes the component the C face
+/// reads.
+struct TailnetChanged {
+    state: TailnetState,
+}
 
-impl imba::command::DynamicCommand for TailnetStateChanged {
+impl imba::command::DynamicCommand for TailnetChanged {
     fn id(&self) -> &'static str {
         "tailnet.state-changed"
     }
 
     fn name(&self) -> String {
-        "Tailnet state changed".to_owned()
+        format!("Tailnet: {:?}", self.state)
     }
 
     fn perform(
         &self,
-        _store: &mut imba::store::Store,
+        store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
         _fx: &mut imba::command::Fx<'_>,
     ) {
+        store.update::<TailnetFaceState>(|held| held.state = self.state.clone());
     }
-}
-
-// ---- The C surface (hand-declared in himark's cbindgen trailer) --
-
-/// 0 off · 1 starting · 2 needs login · 3 waiting approval ·
-/// 4 running. Append-only.
-#[no_mangle]
-pub extern "C" fn himark_tailnet_state() -> u32 {
-    face().state().code()
-}
-
-/// UTF-8, no NUL; returns the byte length, copies when it fits.
-/// Non-empty only in the needs-login state.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_auth_url(
-    out: *mut std::os::raw::c_char,
-    cap: usize,
-) -> usize {
-    let url = match face().state() {
-        TailnetState::NeedsLogin { auth_url } => Some(auth_url),
-        _ => None,
-    };
-    himark::ffi::copy_optional_utf8(url, out, cap)
-}
-
-/// The shell's "Connect Tailscale" action.
-#[no_mangle]
-pub extern "C" fn himark_tailnet_login() {
-    face().request_login();
-}
-
-/// Place the data root (hosts.json, the node state dir). Call
-/// BEFORE himark_create; returns false once the root is set.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_set_data_dir(
-    path: *const std::os::raw::c_char,
-    len: usize,
-) -> bool {
-    if path.is_null() || len == 0 {
-        return false;
-    }
-    let bytes = std::slice::from_raw_parts(path as *const u8, len);
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return false;
-    };
-    set_data_dir(PathBuf::from(text))
 }
 
 /// The posted mint: runs store-in-hand on the UI thread; all the
@@ -401,6 +350,84 @@ struct HostDiscovered {
     runtime: tokio::runtime::Handle,
     connector: Arc<dyn ahp_wire::transport::Connector>,
     clients: Arc<ahp_wire::fs::ClientDirectory>,
+}
+
+impl imba::command::DynamicCommand for HostDiscovered {
+    fn id(&self) -> &'static str {
+        "tailnet.host-discovered"
+    }
+
+    fn name(&self) -> String {
+        format!("Tailnet host: {}", self.name)
+    }
+
+    fn perform(
+        &self,
+        store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        _fx: &mut imba::command::Fx<'_>,
+    ) {
+        let seat = ahp_wire::wire::WireHost::at(
+            self.runtime.clone(),
+            Arc::clone(&self.connector),
+            self.url.clone(),
+        );
+        himark::higent::flows::mint_agent_server(
+            store,
+            &self.clients,
+            &self.name,
+            ahp_wire::client::Client::of(Arc::new(seat)),
+        );
+    }
+}
+
+// ---- The C surface (hand-declared in himark's cbindgen trailer) --
+// Reads go through the engine's store between batches — the thread
+// the shell already drains on.
+
+/// 0 off · 1 starting · 2 needs login · 3 waiting approval ·
+/// 4 running. Append-only.
+#[no_mangle]
+pub unsafe extern "C" fn himark_tailnet_state(engine: *mut crate::HimarkEngine) -> u32 {
+    read_state(engine).code()
+}
+
+/// UTF-8, no NUL; returns the byte length, copies when it fits.
+/// Non-empty only in the needs-login state.
+#[no_mangle]
+pub unsafe extern "C" fn himark_tailnet_auth_url(
+    engine: *mut crate::HimarkEngine,
+    out: *mut std::os::raw::c_char,
+    cap: usize,
+) -> usize {
+    let url = match read_state(engine) {
+        TailnetState::NeedsLogin { auth_url } => Some(auth_url),
+        _ => None,
+    };
+    himark::ffi::copy_optional_utf8(url, out, cap)
+}
+
+/// The shell's "Connect Tailscale" action.
+#[no_mangle]
+pub unsafe extern "C" fn himark_tailnet_login(engine: *mut crate::HimarkEngine) {
+    let Some(engine) = engine.as_ref() else {
+        return;
+    };
+    if let Some(flows) = engine.app.store().get::<TailnetFlows>() {
+        (flows.connect)();
+    }
+}
+
+unsafe fn read_state(engine: *mut crate::HimarkEngine) -> TailnetState {
+    let Some(engine) = engine.as_ref() else {
+        return TailnetState::Off;
+    };
+    engine
+        .app
+        .store()
+        .get::<TailnetFaceState>()
+        .map(|held| held.state.clone())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -440,35 +467,6 @@ mod tests {
             found.expect("a row").0,
             "himark-",
             "an empty shed keeps the full name"
-        );
-    }
-}
-
-impl imba::command::DynamicCommand for HostDiscovered {
-    fn id(&self) -> &'static str {
-        "tailnet.host-discovered"
-    }
-
-    fn name(&self) -> String {
-        format!("Tailnet host: {}", self.name)
-    }
-
-    fn perform(
-        &self,
-        store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
-        _fx: &mut imba::command::Fx<'_>,
-    ) {
-        let seat = ahp_wire::wire::WireHost::at(
-            self.runtime.clone(),
-            Arc::clone(&self.connector),
-            self.url.clone(),
-        );
-        himark::higent::flows::mint_agent_server(
-            store,
-            &self.clients,
-            &self.name,
-            ahp_wire::client::Client::of(Arc::new(seat)),
         );
     }
 }

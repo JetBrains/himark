@@ -133,9 +133,11 @@ final class HimarkEngine {
 
     let seat = Seat()
 
-    init() {
+    /// `dataDir` is the shell's data root (the iOS container's
+    /// Application Support); nil takes the desktop dotdir.
+    init(dataDir: String? = nil) {
         let ctx = Unmanaged.passUnretained(seat).toOpaque()
-        engine = himark_create(HimarkEngineCallbacks(
+        let callbacks = HimarkEngineCallbacks(
             ctx: ctx,
             wake: { ctx in
                 guard let ctx else { return }
@@ -157,7 +159,13 @@ final class HimarkEngine {
                         encoding: .utf8) ?? ""
                 }
                 return navigate(origin, place, kind, name, focus)
-            }))
+            })
+        engine =
+            if let dataDir {
+                dataDir.withCString { himark_create(callbacks, $0, UInt(strlen($0))) }
+            } else {
+                himark_create(callbacks, nil, 0)
+            }
     }
 
     deinit {
@@ -446,20 +454,15 @@ final class HimarkEngine {
     }
 
     func tailnetState() -> TailnetState {
-        TailnetState(rawValue: himark_tailnet_state()) ?? .off
+        TailnetState(rawValue: himark_tailnet_state(engine)) ?? .off
     }
 
     func tailnetAuthURL() -> String? {
-        sizedString { himark_tailnet_auth_url($0, $1) }
+        sizedString { himark_tailnet_auth_url(engine, $0, $1) }
     }
 
     func tailnetLogin() {
-        himark_tailnet_login()
-    }
-
-    /// Call BEFORE the first engine exists.
-    static func setTailnetDataDir(_ path: String) {
-        _ = path.withCString { himark_tailnet_set_data_dir($0, UInt(strlen($0))) }
+        himark_tailnet_login(engine)
     }
 
     private func sizedString(_ call: (UnsafeMutablePointer<CChar>?, UInt) -> UInt) -> String? {

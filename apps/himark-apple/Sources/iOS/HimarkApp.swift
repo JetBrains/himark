@@ -26,14 +26,11 @@ struct HimarkApp: App {
 /// main, effect wake runs the worker; the drain also watches the
 /// catalog epoch and publishes the session list the chrome reads.
 final class AppHost: NSObject, ObservableObject {
-    // The data root is placed BEFORE the engine exists: the node
-    // state dir rides the container's Application Support, locked
-    // until first unlock and kept out of backups (a backed-up node
-    // key would clone this device's tailnet identity).
-    let engine: HimarkEngine = {
-        AppHost.prepareTailnetDataDir()
-        return HimarkEngine()
-    }()
+    // The data root rides the container's Application Support: the
+    // node state dir inside it is locked until first unlock and kept
+    // out of backups (a backed-up node key would clone this device's
+    // tailnet identity).
+    let engine = HimarkEngine(dataDir: AppHost.prepareTailnetDataDir())
     let device = MTLCreateSystemDefaultDevice()!
 
     struct Selected: Equatable {
@@ -191,12 +188,12 @@ final class AppHost: NSObject, ObservableObject {
         UIApplication.shared.open(url)
     }
 
-    private static func prepareTailnetDataDir() {
+    private static func prepareTailnetDataDir() -> String? {
         guard
             let support = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
             ).first
-        else { return }
+        else { return nil }
         let root = support.appendingPathComponent("himark", isDirectory: true)
         var node = root.appendingPathComponent("tailnet-client", isDirectory: true)
         try? FileManager.default.createDirectory(
@@ -207,7 +204,7 @@ final class AppHost: NSObject, ObservableObject {
         var exclude = URLResourceValues()
         exclude.isExcludedFromBackup = true
         try? node.setResourceValues(exclude)
-        HimarkEngine.setTailnetDataDir(root.path)
+        return root.path
     }
 
     private func syncCatalog() {

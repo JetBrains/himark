@@ -161,12 +161,25 @@ fn autostart_himark_host() -> Option<String> {
 /// host would reach the machine's REAL agent host and pull the
 /// user's catalog into its drawers).
 pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngine {
+    production_engine_at(callbacks, None)
+}
+
+/// `data_dir` is the shell's data root (the iOS container's
+/// Application Support); None takes the desktop dotdir.
+pub fn production_engine_at(
+    callbacks: Option<HimarkEngineCallbacks>,
+    data_dir: Option<std::path::PathBuf>,
+) -> HimarkEngine {
+    #[cfg(unix)]
+    let data_root = tailnet_hosts::data_root(data_dir);
+    #[cfg(not(unix))]
+    let _ = data_dir;
     // The tailnet-aware connector: ts.net and CGNAT destinations go
     // through the embedded node (started lazily on the first such
     // dial), every other URL takes the plain desktop paths.
     #[cfg(unix)]
     let tailnet_connector = Arc::new(desktop::tailnet_connector::TailnetConnector::new(
-        tailnet_hosts::client_node_dir(),
+        tailnet_hosts::client_node_dir(&data_root),
     ));
     #[cfg(unix)]
     let connector: Arc<dyn ahp_wire::transport::Connector> = tailnet_connector.clone();
@@ -203,7 +216,7 @@ pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngi
     );
     engine.set_local_backend(local_backend);
     #[cfg(unix)]
-    tailnet_hosts::install(&mut engine, tailnet_connector, connector);
+    tailnet_hosts::install(&mut engine, tailnet_connector, connector, data_root);
     engine
 }
 
@@ -227,9 +240,23 @@ pub fn agent_host_autostart() -> bool {
     host_discovery::autostart().is_some()
 }
 
+/// `data_dir`/`data_dir_len` name the shell's data root (UTF-8, no
+/// NUL; null means the desktop dotdir).
 #[no_mangle]
-pub extern "C" fn himark_create(callbacks: HimarkEngineCallbacks) -> *mut HimarkEngine {
-    Box::into_raw(Box::new(production_engine(Some(callbacks))))
+pub unsafe extern "C" fn himark_create(
+    callbacks: HimarkEngineCallbacks,
+    data_dir: *const std::os::raw::c_char,
+    data_dir_len: usize,
+) -> *mut HimarkEngine {
+    let data_dir = (!data_dir.is_null() && data_dir_len > 0)
+        .then(|| {
+            let bytes = std::slice::from_raw_parts(data_dir as *const u8, data_dir_len);
+            std::str::from_utf8(bytes)
+                .ok()
+                .map(|text| std::path::PathBuf::from(text))
+        })
+        .flatten();
+    Box::into_raw(Box::new(production_engine_at(Some(callbacks), data_dir)))
 }
 
 #[cfg(test)]
