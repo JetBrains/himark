@@ -154,6 +154,13 @@ impl SyntaxLanguages {
         self.entry(name).is_some()
     }
 
+    /// The primary name of the language registered under `name`. The
+    /// first registration name is the identity every alias resolves
+    /// to; `Syntax.language` and name comparisons only ever see it.
+    pub fn canonical(&self, name: &str) -> Option<&'static str> {
+        self.entry(name).map(|entry| entry.names[0])
+    }
+
     fn entry(&self, name: &str) -> Option<&Arc<LanguageEntry>> {
         self.entries
             .iter()
@@ -195,6 +202,7 @@ impl SyntaxLanguages {
         ui: &imba::ui::UiCtx,
         theme: &crate::theme::Theme,
     ) -> Option<(Syntax, Vec<Range<u32>>, Vec<SyntaxSite>)> {
+        let name = self.canonical(name)?;
         let language = self.ensure(name)?;
         let byte_count = range.end.saturating_sub(range.start);
         let old_tree = old.and_then(|old| old.tree.as_deref());

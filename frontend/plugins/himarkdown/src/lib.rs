@@ -36,7 +36,7 @@ pub fn document_from_markdown(
 pub fn markdown_languages(
     mut languages: editor::reparse::SyntaxLanguages,
 ) -> editor::reparse::SyntaxLanguages {
-    languages.register(&["markdown"], std::sync::Arc::new(MarkdownLanguage));
+    languages.register(&["markdown", "md"], std::sync::Arc::new(MarkdownLanguage));
     languages
 }
 
@@ -979,7 +979,7 @@ pub struct MarkdownPlugin;
 
 impl himark::plugin::Plugin for MarkdownPlugin {
     fn languages(&self, languages: &mut editor::reparse::SyntaxLanguages) {
-        languages.register(&["markdown"], std::sync::Arc::new(MarkdownLanguage));
+        languages.register(&["markdown", "md"], std::sync::Arc::new(MarkdownLanguage));
     }
 
     fn enrichers(&self, enrichers: &mut editor::enrich::Enrichers) {

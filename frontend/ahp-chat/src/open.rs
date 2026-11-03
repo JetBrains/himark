@@ -15,11 +15,10 @@ pub fn document_for(
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    // Markdown is just another registered language; anything the
-    // registry does not know opens as PLAIN TEXT — code-set, no
-    // syntax — never as markdown.
+    // Markdown is just another registered language ("md" is an
+    // alias); anything the registry does not know opens as PLAIN
+    // TEXT — code-set, no syntax — never as markdown.
     let language = match extension.as_str() {
-        "md" | "markdown" => Some("markdown"),
         known if languages.knows(known) => Some(known),
         _ => None,
     };

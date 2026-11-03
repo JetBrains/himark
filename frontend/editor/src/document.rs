@@ -195,7 +195,9 @@ impl Document {
             return Self::new(text, Markup::new());
         };
         let mut markup = Markup::new();
-        if language != "markdown" {
+        // root.language is canonical — "md" has already resolved to
+        // "markdown" in parse_syntax.
+        if root.language != "markdown" {
             markup.push_styled_covering(
                 0..byte_count,
                 crate::theme::StyleId::SourceCode,

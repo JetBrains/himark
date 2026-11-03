@@ -263,9 +263,10 @@ pub(crate) fn side_document(
     ui: &imba::ui::UiCtx,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
-    // An extension the registry knows parses as that language; any
-    // other (and a bare unit-test registry) is PLAIN TEXT — code-set,
-    // no syntax — never markdown.
+    // An extension the registry knows parses as that language ("md"
+    // is a registered alias of "markdown"); any other (and a bare
+    // unit-test registry) is PLAIN TEXT — code-set, no syntax —
+    // never markdown.
     if extension.is_empty() || !parsers.knows(extension) {
         return editor::document::Document::plain_text(text);
     }

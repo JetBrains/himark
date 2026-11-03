@@ -2509,6 +2509,19 @@ fn markup_only_languages_ride_an_opaque_parse() {
             .is_none(),
         "None keeps meaning unusable"
     );
+
+    // An alias parses, and the syntax carries the primary name:
+    // everything downstream that compares Syntax.language sees one
+    // identity per language (the "md" → "markdown" contract).
+    drop(calls); // markup_for_changes takes this lock
+    let mut languages = crate::reparse::SyntaxLanguages::new();
+    languages.register(&["stub", "sb"], recording.clone());
+    assert!(languages.knows("sb"));
+    assert_eq!(languages.canonical("sb"), Some("stub"));
+    let (syntax, _, _) = languages
+        .parse_syntax("sb", &text, 0..len, None, &[], store, ui, &theme)
+        .expect("an alias parses as its language");
+    assert_eq!(syntax.language, "stub", "the stamped name is canonical");
 }
 
 #[test]
