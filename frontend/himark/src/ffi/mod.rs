@@ -473,18 +473,12 @@ impl HimarkEngine {
                     // a batch, where the application's store is taken
                     // out; a mint through the app would be clobbered
                     // by the put-back.
-                    let mut id = ahp_wire::client::HostId::LOCAL;
-                    store.update::<ahp_wire::client::Servers>(|servers| {
-                        id = servers.mint(client.clone())
-                    });
-                    ahp_session::session::agents::Agents::seed(store, id, url.trim());
-                    ahp_session::session::state::Hosts::install_uris(
+                    Some(crate::higent::flows::mint_agent_server(
                         store,
-                        id,
-                        Arc::new(uris::FileUris),
-                    );
-                    clients.record(id, client);
-                    Some(id)
+                        &clients,
+                        url.trim(),
+                        client,
+                    ))
                 }),
             );
         }

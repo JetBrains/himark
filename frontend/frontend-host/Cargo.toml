@@ -49,7 +49,7 @@ ahp = "0.9"
 ahp-types = "0.9"
 humantime = "2"
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time"] }
 hirust = { path = "../plugins/lang/hirust" }
 hipython = { path = "../plugins/lang/hipython" }
 hijavascript = { path = "../plugins/lang/hijavascript" }
@@ -130,3 +130,6 @@ editor = { path = "../editor" }
 default = ["skia-shell"]
 skia-shell = ["himark/skia-shell", "dep:skia-safe"]
 test-support = ["himark/test-support"]
+
+[target.'cfg(unix)'.dependencies]
+tailnet = { path = "../../protocol/tailnet" }

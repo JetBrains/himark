@@ -2752,6 +2752,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skia-safe",
+ "tailnet",
  "tempfile",
  "terminals",
  "text",

@@ -186,8 +186,14 @@ Console is the tier-3 pattern, but closed and SSH-only.
 1. **Host node + owner check.** Embedded node, tailnet `ws` listener,
    WhoIs owner-only policy. Desktop client dials via embedded node.
    BUILT (uncommitted).
-2. **Discovery + persistence.** Peer-scan drawer rows, saved host
-   list keyed by node ID, expiry countdown UX.
+2. **Discovery + persistence.** Peer-scan drawer rows and the saved
+   host list BUILT: `~/.himark/hosts.json` (keyed by URL — HostIds
+   are per-process) registers rows at boot; frontend-host's scanner
+   polls the client node when its state dir exists (the no-config
+   enabled latch), posts discovered mints through the inbox via the
+   shared `mint_agent_server`, and nudges `RetryHosts` when a known
+   host comes back online. Open: expiry countdown UX (needs a
+   product surface), removal/relabel of rows (no such APIs exist).
 3. **iOS.** Login sheet, file protection, device-approval
    ("waiting for admin") state for work tailnets.
 4. **Pairing.** Enclave challenge at `initialize`, TOFU approvals.

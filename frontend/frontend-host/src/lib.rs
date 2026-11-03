@@ -17,6 +17,9 @@ use himark::app::AppFonts;
 pub use himark::app_ext::AppExt;
 pub use himark::ffi::*;
 
+#[cfg(unix)]
+mod tailnet_hosts;
+
 /// The grammar pack as a plugin: every tree-sitter language this
 /// host ships, plus the enrichment passes of crates that sit below
 /// himark and cannot speak the plugin trait themselves (hisitter's
@@ -162,8 +165,9 @@ pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngi
     // through the embedded node (started lazily on the first such
     // dial), every other URL takes the plain desktop paths.
     #[cfg(unix)]
-    let connector: Arc<dyn ahp_wire::transport::Connector> =
-        Arc::new(desktop::tailnet_connector::TailnetConnector::new());
+    let tailnet_connector = Arc::new(desktop::tailnet_connector::TailnetConnector::new());
+    #[cfg(unix)]
+    let connector: Arc<dyn ahp_wire::transport::Connector> = tailnet_connector.clone();
     #[cfg(not(unix))]
     let connector: Arc<dyn ahp_wire::transport::Connector> =
         Arc::new(desktop::connector::DesktopConnector);
@@ -196,6 +200,8 @@ pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngi
         ))),
     );
     engine.set_local_backend(local_backend);
+    #[cfg(unix)]
+    tailnet_hosts::install(&mut engine, tailnet_connector, connector);
     engine
 }
 

@@ -15,6 +15,24 @@ use ahp_wire::client::HostId;
 pub type NewSessionFlow =
     Arc<dyn Fn(HostId) -> Arc<dyn crate::commands::HimarkCommand> + Send + Sync>;
 
+/// The store-in-hand host mint — what the Add Host flow and embedder
+/// discovery share. The SEAT IS MINTED BEFORE THE ROW IS SEEDED: a
+/// row seeded first would connect against an unregistered seat and
+/// land Failed("unregistered").
+pub fn mint_agent_server(
+    store: &mut Store,
+    clients: &ahp_wire::fs::ClientDirectory,
+    name: &str,
+    client: ahp_wire::client::Client,
+) -> HostId {
+    let mut id = HostId::LOCAL;
+    store.update::<ahp_wire::client::Servers>(|servers| id = servers.mint(client.clone()));
+    ahp_session::session::agents::Agents::seed(store, id, name);
+    ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(ahp_wire::uris::FileUris));
+    clients.record(id, client);
+    id
+}
+
 pub(crate) type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + Send + Sync>;
 
 #[derive(Clone, Default)]

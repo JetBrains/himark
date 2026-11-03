@@ -33,6 +33,13 @@ impl TailnetConnector {
             }),
         }
     }
+
+    /// The embedded client node, started on first use. Discovery
+    /// (peer scans, login state) runs through this handle — dials
+    /// share the same node.
+    pub async fn node(&self) -> Result<Arc<tailnet::Tailnet>, String> {
+        self.inner.node().await.cloned()
+    }
 }
 
 impl Inner {
