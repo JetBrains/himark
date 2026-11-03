@@ -7,6 +7,10 @@ vcs, search and lsp are all served over AHP on one socket — so
 "remote" is not a feature layered onto the editor, it is the same
 host reached over a different wire.
 
+The off-LAN story — hosts and clients joining the user's Tailscale
+tailnet, identity instead of tokens — is designed in
+docs/ahp/tailnet.md (not landed).
+
 ## Why the host is the remoting unit
 
 The services must run where the files are: the agents mutate the
