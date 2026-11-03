@@ -70,6 +70,15 @@ final class HostBridge {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(copied, forType: .string)
                 }
+            },
+            open_url: { _, url, urlLen in
+                guard let url else { return }
+                let bytes = UnsafeRawBufferPointer(start: url, count: Int(urlLen))
+                let raw = String(decoding: bytes, as: UTF8.self)
+                DispatchQueue.main.async {
+                    guard let parsed = URL(string: raw) else { return }
+                    NSWorkspace.shared.open(parsed)
+                }
             })
         himark_set_host(engine.raw, callbacks)
     }

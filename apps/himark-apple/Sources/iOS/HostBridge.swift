@@ -61,6 +61,15 @@ final class HostBridge: NSObject, UIDocumentPickerDelegate {
                 DispatchQueue.main.async {
                     UIPasteboard.general.string = copied
                 }
+            },
+            open_url: { _, url, urlLen in
+                guard let url else { return }
+                let bytes = UnsafeRawBufferPointer(start: url, count: Int(urlLen))
+                let raw = String(decoding: bytes, as: UTF8.self)
+                DispatchQueue.main.async {
+                    guard let parsed = URL(string: raw) else { return }
+                    UIApplication.shared.open(parsed)
+                }
             })
         himark_set_host(engine.raw, callbacks)
     }

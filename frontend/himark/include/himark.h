@@ -181,6 +181,10 @@ typedef struct {
     void (*subscribe)(void *ctx, uint64_t request, const HimarkLocation *location);
     void (*unsubscribe)(void *ctx, uint64_t subscription);
     void (*set_clipboard)(void *ctx, const char *text, uintptr_t text_len);
+    /**
+     * Open a URL in the system browser (UTF-8, no NUL).
+     */
+    void (*open_url)(void *ctx, const char *url, uintptr_t url_len);
 } HimarkHostCallbacks;
 
 typedef struct {

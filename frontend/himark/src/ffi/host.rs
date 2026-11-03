@@ -76,6 +76,15 @@ pub struct HimarkHostCallbacks {
             text_len: usize,
         ),
     >,
+
+    /// Open a URL in the system browser (UTF-8, no NUL).
+    pub open_url: Option<
+        unsafe extern "C" fn(
+            ctx: *mut std::ffi::c_void,
+            url: *const std::ffi::c_char,
+            url_len: usize,
+        ),
+    >,
 }
 
 impl HimarkHostCallbacks {
@@ -90,6 +99,7 @@ impl HimarkHostCallbacks {
             subscribe: None,
             unsubscribe: None,
             set_clipboard: None,
+            open_url: None,
         }
     }
 }
@@ -247,6 +257,14 @@ impl HostBridge {
         })
     }
 
+    pub(crate) fn open_url(&self, url: &str) -> bool {
+        let Some(open) = self.callbacks.open_url else {
+            return false;
+        };
+        unsafe { open(self.callbacks.ctx, url.as_ptr() as *const _, url.len()) };
+        true
+    }
+
     pub(crate) fn set_clipboard(&self, text: &str) {
         if let Some(set) = self.callbacks.set_clipboard {
             unsafe { set(self.callbacks.ctx, text.as_ptr().cast(), text.len()) };
@@ -301,6 +319,11 @@ impl EffectHandler<ahp_wire::effects::ShareTailnetEffect> for ShareTailnetHandle
         }
         if let Some(copy) = share.url.as_deref().or(share.auth_url.as_deref()) {
             self.0.set_clipboard(copy);
+        }
+        // The login is a browser trip — take the user straight
+        // there when the shell has a door.
+        if let Some(auth_url) = share.auth_url.as_deref() {
+            self.0.open_url(auth_url);
         }
         Ok(share)
     }

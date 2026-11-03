@@ -267,7 +267,8 @@ impl crate::commands::HimarkCommand for SharedTailnet {
                     share.url.as_deref().unwrap_or("?")
                 ),
                 "needsLogin" => eprintln!(
-                    "[himark] tailnet: login needed — URL copied to clipboard, open it and rerun"
+                    "[himark] tailnet: login opened in the browser (URL also on the \
+                     clipboard) — rerun after signing in"
                 ),
                 "waitingApproval" => {
                     eprintln!("[himark] tailnet: waiting for the tailnet admin's approval")
