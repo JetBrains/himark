@@ -173,7 +173,10 @@ if ! grep -qF 'web.wasm' "$bin_dir/web.js"; then
     exit 1
 fi
 sed "s|web\.wasm|$wasm_name|g" apps/web/index.html > "$out_dir/index.html"
-cp apps/web/assets/JetBrainsMono-Regular.woff2 "$out_dir/JetBrainsMono-Regular.woff2"
+# The page fetches the TTF (the same cut the binary bundles); the
+# woff2 died with the font switch and shipping it alone panicked
+# the boot.
+cp apps/web/assets/JetBrainsMono-Regular.ttf "$out_dir/JetBrainsMono-Regular.ttf"
 sed "s|web\.wasm|$wasm_name|g" "$bin_dir/web.js" > "$out_dir/web.js"
 cp "$wasm_source" "$out_dir/$wasm_name"
 if [[ -f "$bin_dir/web.data" ]]; then
