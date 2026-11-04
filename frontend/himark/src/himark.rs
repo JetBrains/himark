@@ -238,6 +238,10 @@ impl Himark {
     /// shell's boot).
     pub fn bare(fonts: AppFonts, shell: Arc<dyn Shell>) -> Self {
         let total_started = crate::startup_profile::start();
+        // A platform without system fonts (the web) must still
+        // answer `default_typeface` — the embedded face stands in.
+        // On platforms with system fonts the install is never read.
+        gfx::font::install_default_typeface(::editor::embedded_fonts::typeface());
         let mut store = Store::new();
 
         let theme = ::editor::theme::embedded();

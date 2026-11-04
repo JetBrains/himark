@@ -453,7 +453,17 @@ pub fn match_family_style(family: &str, style: FontStyle) -> Option<Typeface> {
     typeface_of(&mut system, &font)
 }
 
-/// The platform's default UI face — `legacy_make_typeface(None)`.
+/// The embedder's stand-in for platforms with NO system fonts (the
+/// web): consulted when the system collection answers nothing.
+/// Process-global like [`system`] itself — platform font plumbing.
+static INSTALLED_DEFAULT: std::sync::OnceLock<Typeface> = std::sync::OnceLock::new();
+
+pub fn install_default_typeface(typeface: Typeface) {
+    let _ = INSTALLED_DEFAULT.set(typeface);
+}
+
+/// The platform's default UI face — `legacy_make_typeface(None)`;
+/// the installed stand-in when the platform offers none.
 pub fn default_typeface(style: FontStyle) -> Option<Typeface> {
     let family = {
         let mut system = system().lock().expect("the system font collection");
@@ -468,10 +478,12 @@ pub fn default_typeface(style: FontStyle) -> Option<Typeface> {
                 .collection
                 .generic_families(fontique::GenericFamily::SansSerif);
             generics.next()
-        })?;
-        system.collection.family_name(id)?.to_string()
+        });
+        id.and_then(|id| system.collection.family_name(id).map(str::to_string))
     };
-    match_family_style(&family, style)
+    family
+        .and_then(|family| match_family_style(&family, style))
+        .or_else(|| INSTALLED_DEFAULT.get().cloned())
 }
 
 /// Does the face map `c` at all — the fallback probe's gate.
