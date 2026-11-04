@@ -5,12 +5,10 @@ use std::sync::OnceLock;
 
 use gfx::Typeface;
 
-#[cfg(not(target_os = "emscripten"))]
 static NOTO_SANS: &[u8] = include_bytes!("../assets/NotoSans-Regular.ttf");
 
 /// The raw face bytes — the parley road registers the same bytes
 /// skia rasterizes with.
-#[cfg(not(target_os = "emscripten"))]
 pub fn bytes() -> &'static [u8] {
     NOTO_SANS
 }
@@ -21,7 +19,6 @@ pub fn bytes() -> &'static [u8] {
 /// every shape and let the two text roads disagree on the fallback.
 /// Both roads register these same bytes, so the family always
 /// resolves, identically, everywhere.
-#[cfg(not(target_os = "emscripten"))]
 static JETBRAINS_MONO: [&[u8]; 4] = [
     include_bytes!("../assets/JetBrainsMono-Regular.ttf"),
     include_bytes!("../assets/JetBrainsMono-Bold.ttf"),
@@ -29,7 +26,6 @@ static JETBRAINS_MONO: [&[u8]; 4] = [
     include_bytes!("../assets/JetBrainsMono-BoldItalic.ttf"),
 ];
 
-#[cfg(not(target_os = "emscripten"))]
 pub fn code_font_cuts() -> &'static [&'static [u8]] {
     &JETBRAINS_MONO
 }
@@ -37,24 +33,16 @@ pub fn code_font_cuts() -> &'static [&'static [u8]] {
 /// The code family's name, as the font declares it.
 pub const CODE_FAMILY: &str = "JetBrains Mono";
 
-#[cfg(not(target_os = "emscripten"))]
 static CODE_TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
 /// The code face's regular cut, for skia-side chrome that sets the
 /// margin register in mono (keys, tool invocations, line numbers).
 pub fn code_typeface() -> Typeface {
-    #[cfg(not(target_os = "emscripten"))]
-    {
-        CODE_TYPEFACE
-            .get_or_init(|| {
-                Typeface::from_bytes(JETBRAINS_MONO[0], 0).expect("embedded JetBrains Mono loads")
-            })
-            .clone()
-    }
-    #[cfg(target_os = "emscripten")]
-    {
-        typeface()
-    }
+    CODE_TYPEFACE
+        .get_or_init(|| {
+            Typeface::from_bytes(JETBRAINS_MONO[0], 0).expect("embedded JetBrains Mono loads")
+        })
+        .clone()
 }
 
 /// The CHROME FONT ships in the binary too: Bricolage Grotesque, one
@@ -62,10 +50,8 @@ pub fn code_typeface() -> Typeface {
 /// typographic redesign's whole UI voice (docs/Design.md). Both text
 /// roads register these bytes; `chrome_typeface` instances it for
 /// skia-side metrics.
-#[cfg(not(target_os = "emscripten"))]
 static CHROME: &[u8] = include_bytes!("../assets/BricolageGrotesque-Variable.ttf");
 
-#[cfg(not(target_os = "emscripten"))]
 pub fn chrome_font_bytes() -> &'static [u8] {
     CHROME
 }
@@ -73,7 +59,6 @@ pub fn chrome_font_bytes() -> &'static [u8] {
 /// The chrome family's name, as the font declares it.
 pub const CHROME_FAMILY: &str = "Bricolage Grotesque";
 
-#[cfg(not(target_os = "emscripten"))]
 static CHROME_TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
 /// The chrome face at its DEFAULT variation — callers instance a
@@ -96,39 +81,10 @@ pub fn chrome_typeface() -> Typeface {
 
 static TYPEFACE: OnceLock<Typeface> = OnceLock::new();
 
-#[cfg(not(target_os = "emscripten"))]
 pub const FAMILY: &str = "Noto Sans";
 
-#[cfg(target_os = "emscripten")]
-pub const FAMILY: &str = "JetBrains Mono";
-
-/// The web's face arrives over the wire. It is handed BACK to the
-/// caller, who puts it in the font world the app boots with — the
-/// shaper reads no registry of its own. Skia keeps a typeface for
-/// the chrome it rasterizes directly.
-#[cfg(target_os = "emscripten")]
-pub fn install_bytes(bytes: Vec<u8>) -> &'static [u8] {
-    let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-    let typeface = Typeface::from_bytes(bytes, 0).expect("the web font parses");
-    assert!(
-        TYPEFACE.set(typeface).is_ok(),
-        "the web typeface was installed more than once"
-    );
-    bytes
-}
-
 pub fn typeface() -> Typeface {
-    #[cfg(not(target_os = "emscripten"))]
-    {
-        TYPEFACE
-            .get_or_init(|| Typeface::from_bytes(NOTO_SANS, 0).expect("embedded Noto Sans loads"))
-            .clone()
-    }
-    #[cfg(target_os = "emscripten")]
-    {
-        TYPEFACE
-            .get()
-            .expect("the web font must load before the application starts")
-            .clone()
-    }
+    TYPEFACE
+        .get_or_init(|| Typeface::from_bytes(NOTO_SANS, 0).expect("embedded Noto Sans loads"))
+        .clone()
 }

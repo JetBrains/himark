@@ -35,7 +35,6 @@ mod app {
     };
 
     const CANVAS: *const c_char = b"#canvas\0".as_ptr().cast();
-    const FONT_URL: *const c_char = b"JetBrainsMono-Regular.ttf\0".as_ptr().cast();
     const EVENT_TARGET_WINDOW: *const c_char = 2 as *const c_char;
     const CALLBACK_THREAD_CALLING: usize = 2;
     const DOM_DELTA_LINE: u32 = 1;
@@ -147,12 +146,6 @@ mod app {
             callback: Option<extern "C" fn(c_double, *mut c_void) -> bool>,
             user_data: *mut c_void,
         ) -> c_int;
-        fn emscripten_async_wget_data(
-            url: *const c_char,
-            user_data: *mut c_void,
-            on_load: Option<extern "C" fn(*mut c_void, *mut c_void, c_int)>,
-            on_error: Option<extern "C" fn(*mut c_void)>,
-        );
         fn emscripten_set_wheel_callback_on_thread(
             target: *const c_char,
             user_data: *mut c_void,
@@ -249,43 +242,14 @@ mod app {
                 interfaces::make_web_gl().expect("failed to create Skia WebGL interface");
             let context = direct_contexts::make_gl(interface, None)
                 .expect("failed to create Skia direct context");
-            let context = Box::into_raw(Box::new(context)).cast::<c_void>();
-            emscripten_async_wget_data(
-                FONT_URL,
-                context,
-                Some(font_loaded),
-                Some(font_load_failed),
-            );
-        }
-    }
-
-    extern "C" fn font_loaded(user_data: *mut c_void, data: *mut c_void, size: c_int) {
-        let context = *unsafe { Box::from_raw(user_data.cast::<DirectContext>()) };
-        assert!(
-            !data.is_null() && size > 0,
-            "the web font response was empty"
-        );
-        let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
-        // The SAME bytes serve both halves: the shaper registers
-        // them for layout, skia keeps a typeface for chrome.
-        let face = editor::embedded_fonts::install_bytes(bytes.to_vec());
-        // The font world the app shapes with, carrying the face that
-        // just landed.
-        let world = editor::parley_line::world();
-        world.register(face);
-
-        let app = Box::into_raw(Box::new(WebApp::new(context, world))).cast::<c_void>();
-        unsafe {
-            install_callbacks(app);
+            // No font fetch: every face the app speaks (Noto Sans,
+            // the JetBrains Mono cuts, Bricolage Grotesque) ships in
+            // the wasm — the world seeds them on every platform.
+            let world = editor::parley_line::world();
+            let app = Box::into_raw(Box::new(WebApp::new(context, world))).cast::<c_void>();
             emscripten_request_animation_frame(Some(animation_frame), app);
+            install_callbacks(app);
         }
-    }
-
-    extern "C" fn font_load_failed(user_data: *mut c_void) {
-        unsafe {
-            drop(Box::from_raw(user_data.cast::<DirectContext>()));
-        }
-        panic!("failed to fetch JetBrains Mono");
     }
 
     struct WebApp {

@@ -4,15 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>himark</title>
-    <!-- Skia consumes the font through fetch(), so preload it with the same
-         request destination while the Wasm module downloads and compiles. -->
-    <link
-      rel="preload"
-      href="./JetBrainsMono-Regular.ttf"
-      as="fetch"
-      type="font/ttf"
-      crossorigin
-    />
     <link rel="preload" href="./web.js" as="script" />
     <!-- The in-page tailnet's main-thread half: a few lines now, the
          Go node lazily on the first Connect Tailscale. -->

@@ -17,14 +17,15 @@ pub use imba::shape::{
 /// pays for its own system scan, which is what a bare test wants.
 pub fn world() -> FontWorld {
     let world = FontWorld::new();
-    #[cfg(not(target_os = "emscripten"))]
-    {
-        world.register(crate::embedded_fonts::bytes());
-        for cut in crate::embedded_fonts::code_font_cuts() {
-            world.register(cut);
-        }
-        world.register(crate::embedded_fonts::chrome_font_bytes());
+    // EVERY platform, the web included: the faces are
+    // include_bytes!, and a wasm world without them shaped the
+    // chrome families to NOTHING (blank chat) — the platform has no
+    // system fonts to fall back to.
+    world.register(crate::embedded_fonts::bytes());
+    for cut in crate::embedded_fonts::code_font_cuts() {
+        world.register(cut);
     }
+    world.register(crate::embedded_fonts::chrome_font_bytes());
     world
 }
 
