@@ -228,6 +228,13 @@ Console is the tier-3 pattern, but closed and SSH-only.
 - C API gaps: no WhoIs (LocalAPI detour), no custom state store (no
   Keychain-backed node state without forking; sandbox + file
   protection is the accepted posture).
+- **The LocalAPI loopback is mortal on iOS** — the OS reclaims the
+  listener in the background (upstream added `tailscale_status_json`
+  for exactly this; our binding snapshot lacks it). LAW: the DIAL is
+  the truth — it rides the Go core, never the loopback; status only
+  decorates a failed dial with the login URL. Discovery (the
+  status-polling scanner) degrades after a background until relaunch;
+  the cure is vendoring a current libtailscale with status_json.
 - Embedded node per client app = one tailnet device per install;
   fine for personal tailnets, inventory noise at worst.
 - Work tailnets may enforce device approval or tailnet lock; render

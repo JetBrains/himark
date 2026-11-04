@@ -73,17 +73,26 @@ impl Connector for TailnetConnector {
         let this = Arc::clone(&self.inner);
         Box::pin(async move {
             let node = this.node().await?;
-            // Not Running yet usually means the login is pending —
-            // put the AuthURL in the error so the host row shows the
-            // way in; the redial loop picks it up once logged in.
-            let status = node.status().await?;
-            if !status.running() {
-                return Err(match status.auth_url.is_empty() {
-                    false => format!("tailnet login needed — open {}", status.auth_url),
-                    true => format!("tailnet is {}", status.backend_state),
-                });
-            }
-            let stream = node.dial(destination).await?;
+            // THE DIAL IS THE TRUTH; status only DECORATES a
+            // failure with the login URL. The dial rides the Go
+            // core directly — the LocalAPI loopback does not — and
+            // iOS reclaims that loopback listener in the
+            // background: a status precheck turned every resume
+            // into "localapi connect: refused" while the tunnel
+            // itself was fine.
+            let stream = match node.dial(destination).await {
+                Ok(stream) => stream,
+                Err(dial_error) => {
+                    let pending = node.status().await.ok().filter(|held| !held.running());
+                    return Err(match pending {
+                        Some(status) if !status.auth_url.is_empty() => {
+                            format!("tailnet login needed — open {}", status.auth_url)
+                        }
+                        Some(status) => format!("tailnet is {}", status.backend_state),
+                        None => format!("agent host unreachable at {url}: {dial_error}"),
+                    });
+                }
+            };
             // Plain ws over the tunnel: WireGuard already encrypts
             // and authenticates the path (docs/ahp/tailnet.md).
             let handshake_url = url.replacen("wss://", "ws://", 1);
