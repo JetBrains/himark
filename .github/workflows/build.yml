@@ -138,6 +138,38 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  pages:
+    name: Publish GitHub Pages
+    runs-on: ubuntu-24.04
+    needs: web
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Download web site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-site
+          path: site
+
+      # Pages cannot serve precompressed copies with a
+      # Content-Encoding header; its CDN gzips on the fly.
+      - name: Drop precompressed copies
+        run: find site \( -name '*.gz' -o -name '*.br' \) -delete
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
   macos:
     name: macOS (arm64)
     runs-on: macos-15
