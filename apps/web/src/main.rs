@@ -335,7 +335,11 @@ mod app {
                         false => std::ffi::CStr::from_ptr(raw).to_string_lossy().into_owned(),
                     }
                 };
-                if !url.is_empty() {
+                // The wire stack boots with or without a served host:
+                // a statically hosted page (GitHub Pages) starts
+                // hostless and connects over the tailnet; a
+                // daemon-served page also seeds its server below.
+                {
                     let (handle_tx, handle_rx) = std::sync::mpsc::channel();
                     std::thread::Builder::new()
                         .name("himark-wire".to_owned())
@@ -352,26 +356,6 @@ mod app {
                     let handle = handle_rx.recv().expect("wire handle");
                     himark::hiahp::register_all(&mut state);
 
-                    let client = ahp_wire::client::Client::of(std::sync::Arc::new(
-                        ahp_wire::wire::WireHost::at(
-                            handle.clone(),
-                            std::sync::Arc::new(crate::browser::BrowserConnector),
-                            url,
-                        ),
-                    ));
-                    let host = state.register_client(client.clone());
-                    ahp_session::session::agents::Agents::seed(
-                        &mut state.store_mut(),
-                        host,
-                        "This Host",
-                    );
-                    ahp_session::session::state::Hosts::install_uris(
-                        &mut state.store_mut(),
-                        host,
-                        std::sync::Arc::new(ahp_wire::uris::FileUris),
-                    );
-                    state.designate_local_host(host);
-
                     use std::sync::Arc;
                     let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
                         let posted = posted.clone();
@@ -381,8 +365,30 @@ mod app {
                             ));
                         })
                     }));
-                    clients.record(host, client);
-                    clients.set_local(host);
+
+                    if !url.is_empty() {
+                        let client = ahp_wire::client::Client::of(std::sync::Arc::new(
+                            ahp_wire::wire::WireHost::at(
+                                handle.clone(),
+                                std::sync::Arc::new(crate::browser::BrowserConnector),
+                                url,
+                            ),
+                        ));
+                        let host = state.register_client(client.clone());
+                        ahp_session::session::agents::Agents::seed(
+                            &mut state.store_mut(),
+                            host,
+                            "This Host",
+                        );
+                        ahp_session::session::state::Hosts::install_uris(
+                            &mut state.store_mut(),
+                            host,
+                            std::sync::Arc::new(ahp_wire::uris::FileUris),
+                        );
+                        state.designate_local_host(host);
+                        clients.record(host, client);
+                        clients.set_local(host);
+                    }
 
                     // The in-page tailnet: the command loads the Go
                     // wasm node and logs in; discovery turns its
