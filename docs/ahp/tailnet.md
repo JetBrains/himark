@@ -217,8 +217,14 @@ Console is the tier-3 pattern, but closed and SSH-only.
    (Go's runtime/cgo under the cc crate's -Wall -Wextra -Werror).
    Device-approval renders as waiting, never as an error.
 4. **Pairing.** Enclave challenge at `initialize`, TOFU approvals.
-5. **Browser.** The wasm node page — after pairing, ephemeral nodes
-   only.
+5. **Browser.** BUILT and LIVE-VERIFIED (ephemeral nodes only;
+   pulled ahead of pairing): a token-face page on localhost ran
+   Connect Tailscale, enrolled an ephemeral browser node, and the
+   host's gate admitted it over DERP onto the raw face — sessions
+   streamed. Found on the way: the page's COEP (require-corp, the
+   threads build demands it) blocks every cross-origin no-cors
+   fetch, so the in-page node ships WITHOUT logtail — control
+   (ts2021) and DERP ride WebSockets, which COEP exempts.
 
 ## Risks
 
