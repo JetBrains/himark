@@ -19,7 +19,6 @@ import (
 	"log"
 	"math/rand/v2"
 	"net"
-	"net/http"
 	"net/netip"
 	"syscall/js"
 	"time"
@@ -86,18 +85,13 @@ func newIPN(jsConfig js.Value) map[string]any {
 	}
 
 	lpc := getOrCreateLogPolicyConfig(store)
-	c := logtail.Config{
-		Collection: lpc.Collection,
-		PrivateID:  lpc.PrivateID,
-
-		// Compressed requests set HTTP headers that are not supported by the
-		// no-cors fetching mode:
-		CompressLogs: false,
-
-		HTTPC: &http.Client{Transport: &noCORSTransport{http.DefaultTransport}},
-	}
-	logtail := logtail.NewLogger(c, log.Printf)
-	logf := logtail.Logf
+	// NO LOGTAIL (himark): the host page is cross-origin-isolated
+	// (COEP: require-corp, the emscripten threads build demands it)
+	// and log.tailscale.com answers without CORP — every upload gets
+	// ERR_BLOCKED_BY_RESPONSE. The load-bearing traffic (ts2021
+	// control, DERP) rides WebSockets, which COEP exempts; telemetry
+	// goes to the console instead.
+	logf := log.Printf
 
 	sys := tsd.NewSystem()
 	sys.Set(store)
@@ -516,6 +510,8 @@ func getOrCreateLogPolicyConfig(state ipn.StateStore) *logpolicy.Config {
 	return config
 }
 
+// (unused with logtail stripped)
+/*
 // noCORSTransport wraps a RoundTripper and forces the no-cors mode on requests,
 // so that we can use it with non-CORS-aware servers.
 type noCORSTransport struct {
@@ -533,3 +529,4 @@ func (t *noCORSTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	return resp, err
 }
+*/
