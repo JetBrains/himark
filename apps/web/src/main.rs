@@ -278,6 +278,17 @@ mod app {
             let mut state = Himark::new(AppFonts::over(world));
             state.register_syntax_languages(web_languages());
 
+            // The boot-time halves of AhpPlugin (frontend-host installs
+            // the plugin; this shell assembles by hand): without the
+            // build handler every chat body's BuildDocumentEffect
+            // orphans and the transcript paints empty cells.
+            himark::hiahp::install_build_handler(
+                &mut state,
+                std::sync::Arc::new(web_languages()),
+                std::sync::Arc::new(myersdiff::Myers),
+            );
+            state.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
+
             himarkdown::register_handlers(&mut state);
             state.register_command(std::sync::Arc::new(palette::TogglePalette));
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
@@ -603,10 +614,6 @@ mod app {
             }
             self.scale = scale;
         }
-    }
-
-    fn app_fonts() -> AppFonts {
-        AppFonts::platform()
     }
 
     unsafe fn install_callbacks(app: *mut c_void) {
