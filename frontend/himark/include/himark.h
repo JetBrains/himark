@@ -578,6 +578,16 @@ uintptr_t himark_catalog_host_name(HimarkEngine *engine,
                                    char *out,
                                    uintptr_t cap);
 
+/**
+ * The connect error under a FAILED host row (UTF-8, no NUL;
+ * returns the byte length, copies when it fits). Empty otherwise.
+ */
+uintptr_t himark_catalog_host_error(HimarkEngine *engine,
+                                    HimarkCatalog catalog,
+                                    uintptr_t index,
+                                    char *out,
+                                    uintptr_t cap);
+
 uintptr_t himark_catalog_sessions(HimarkEngine *engine, HimarkCatalog catalog);
 
 uint64_t himark_catalog_session_host(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
@@ -734,3 +744,5 @@ uint32_t himark_tailnet_state(HimarkEngine *engine);
 uintptr_t himark_tailnet_auth_url(HimarkEngine *engine, char *out, uintptr_t cap);
 /* The shell's "Connect Tailscale" action. */
 void himark_tailnet_login(HimarkEngine *engine);
+/* Foregrounding: kick a suspension-wedged node, retry failed hosts. */
+void himark_tailnet_resume(HimarkEngine *engine);

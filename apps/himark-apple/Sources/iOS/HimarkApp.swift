@@ -57,6 +57,7 @@ final class AppHost: NSObject, ObservableObject {
     }
 
     @Published var sessions: [HimarkEngine.CatalogSession] = []
+    @Published var hosts: [HimarkEngine.CatalogHost] = []
     @Published var tailnet = TailnetStatus()
     @Published var current: Selected?
     /// The pending push per TAB — the navigate callback routes by
@@ -81,6 +82,17 @@ final class AppHost: NSObject, ObservableObject {
         // them to this host now that it stands.
         engine.seat.onWake = { [weak self] in
             DispatchQueue.main.async { self?.drain() }
+        }
+        // Coming back to the foreground: a suspension can wedge the
+        // embedded tailnet node mid-handshake — kick it and let the
+        // failed hosts redial, instead of waiting for a restart.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.engine.tailnetResume()
+            self.drain()
         }
         engine.seat.onEffectWake = { [weak self] in
             guard let self else { return }
@@ -172,6 +184,12 @@ final class AppHost: NSObject, ObservableObject {
 
     private var wantsLoginPresentation = false
 
+    /// A tap on a host row: the same kick as foregrounding — revive
+    /// the node if wedged and retry every failed host.
+    func retryHosts() {
+        engine.tailnetResume()
+    }
+
     func connectTailnet() {
         wantsLoginPresentation = true
         engine.tailnetLogin()
@@ -213,6 +231,8 @@ final class AppHost: NSObject, ObservableObject {
         epoch = now
         let rows = engine.sessions().sorted { $0.modified > $1.modified }
         sessions = rows
+        let standing = engine.hosts()
+        if standing != hosts { hosts = standing }
         if current == nil, let newest = rows.first {
             select(newest)
         } else if let selected = current,

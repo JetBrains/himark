@@ -255,6 +255,39 @@ final class HimarkEngine {
         return rows
     }
 
+    struct CatalogHost: Equatable {
+        let id: UInt64
+        let name: String
+        /// 0 idle · 1 connecting · 2 connected · 3 failed.
+        let status: UInt32
+        let error: String
+    }
+
+    func hosts() -> [CatalogHost] {
+        let catalog = himark_sessions_copy(engine)
+        guard catalog.raw != 0 else { return [] }
+        defer { himark_catalog_release(engine, catalog) }
+        let count = himark_catalog_hosts(engine, catalog)
+        return (0..<count).map { index in
+            CatalogHost(
+                id: himark_catalog_host_id(engine, catalog, index),
+                name: sizedString {
+                    himark_catalog_host_name(engine, catalog, index, $0, $1)
+                } ?? "",
+                status: himark_catalog_host_status(engine, catalog, index),
+                error: sizedString {
+                    himark_catalog_host_error(engine, catalog, index, $0, $1)
+                } ?? ""
+            )
+        }
+    }
+
+    /// Foregrounding: kick a suspension-wedged tailnet node and
+    /// retry the failed hosts.
+    func tailnetResume() {
+        himark_tailnet_resume(engine)
+    }
+
     @discardableResult
     func enterSession(host: UInt64, uri: String) -> Bool {
         uri.withCString { himark_session_enter(engine, host, $0, UInt(strlen($0))) }

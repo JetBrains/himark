@@ -67,10 +67,14 @@ pub(crate) struct TailnetFaceState {
 }
 
 /// The shell's tailnet verbs, installed in the store at boot —
-/// the closure carries the scanner's channel sender.
+/// the closures carry what they captured there (the scanner's
+/// channel, the connector, the poster).
 #[derive(Clone)]
 pub(crate) struct TailnetFlows {
     connect: Arc<dyn Fn() + Send + Sync>,
+    /// The foregrounding kick: revive a suspension-wedged engine
+    /// and nudge the Failed rows to redial.
+    resume: Arc<dyn Fn() + Send + Sync>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -146,12 +150,26 @@ pub(crate) fn install(
     }
 
     let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let resume = {
+        let connector = Arc::clone(&tailnet_connector);
+        let runtime = engine.runtime();
+        let poster = engine.app.poster();
+        Arc::new(move || {
+            connector.resume(&runtime);
+            // Failed rows never redial on their own — the return
+            // from background is exactly the moment to retry.
+            poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                ahp_session::session::driver::RetryHosts,
+            ))));
+        })
+    };
     engine.app.setup(|store| {
         store.put(TailnetFaceState::default());
         store.put(TailnetFlows {
             connect: Arc::new(move || {
                 let _ = connect.send(());
             }),
+            resume,
         });
     });
 
@@ -415,6 +433,18 @@ pub unsafe extern "C" fn himark_tailnet_login(engine: *mut crate::HimarkEngine) 
     };
     if let Some(flows) = engine.app.store().get::<TailnetFlows>() {
         (flows.connect)();
+    }
+}
+
+/// The shell came back to the foreground: kick the embedded node (a
+/// suspension can wedge its engine) and retry the failed hosts.
+#[no_mangle]
+pub unsafe extern "C" fn himark_tailnet_resume(engine: *mut crate::HimarkEngine) {
+    let Some(engine) = engine.as_ref() else {
+        return;
+    };
+    if let Some(flows) = engine.app.store().get::<TailnetFlows>() {
+        (flows.resume)();
     }
 }
 

@@ -185,6 +185,9 @@ pub struct HostRow {
     pub name: String,
     /// 0 idle · 1 connecting · 2 connected · 3 failed.
     pub status: u32,
+    /// The connect error when failed — what the native chrome shows
+    /// under the row.
+    pub error: Option<String>,
 }
 
 pub struct SessionRow {
@@ -654,6 +657,12 @@ impl Himark {
                     ahp_session::session::state::HostStatus::Connecting => 1,
                     ahp_session::session::state::HostStatus::Connected => 2,
                     ahp_session::session::state::HostStatus::Failed(_) => 3,
+                },
+                error: match &record.status {
+                    ahp_session::session::state::HostStatus::Failed(error) => {
+                        Some(error.clone())
+                    }
+                    _ => None,
                 },
             });
             for summary in record.sessions.iter() {

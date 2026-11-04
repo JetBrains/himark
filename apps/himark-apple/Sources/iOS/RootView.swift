@@ -381,6 +381,23 @@ struct SessionWord: View {
                     }
                 }
             }
+            // The hosts and where they stand — the status the
+            // drawer's footer shows on desktop.
+            Section {
+                ForEach(host.hosts, id: \.id) { row in
+                    let line = switch row.status {
+                    case 2: "\(row.name) — connected"
+                    case 1: "\(row.name) — connecting…"
+                    case 3: "\(row.name) — failed"
+                    default: "\(row.name) — idle"
+                    }
+                    if row.status == 3, !row.error.isEmpty {
+                        Button("\(line)\n\(row.error)") { host.retryHosts() }
+                    } else {
+                        Button(line) { host.retryHosts() }.disabled(row.status == 2)
+                    }
+                }
+            }
             Section {
                 switch host.tailnet.state {
                 case .off:

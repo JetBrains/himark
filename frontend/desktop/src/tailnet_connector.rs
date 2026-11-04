@@ -45,6 +45,15 @@ impl TailnetConnector {
     pub async fn node(&self) -> Result<Arc<tailnet::Tailnet>, String> {
         self.inner.node().await.cloned()
     }
+
+    /// Kick a possibly-wedged engine (an iOS suspension freezes the
+    /// Go side mid-handshake) — fire-and-forget; a healthy node
+    /// answers instantly. No-op before the first start.
+    pub fn resume(&self, runtime: &tokio::runtime::Handle) {
+        if let Some(node) = self.inner.node.get() {
+            node.resume(runtime);
+        }
+    }
 }
 
 impl Inner {

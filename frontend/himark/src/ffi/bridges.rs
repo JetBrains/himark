@@ -981,6 +981,28 @@ pub unsafe extern "C" fn himark_catalog_host_name(
     })
 }
 
+/// The connect error under a FAILED host row (UTF-8, no NUL;
+/// returns the byte length, copies when it fits). Empty otherwise.
+#[no_mangle]
+pub unsafe extern "C" fn himark_catalog_host_error(
+    engine: *mut HimarkEngine,
+    catalog: HimarkCatalog,
+    index: usize,
+    out: *mut c_char,
+    cap: usize,
+) -> usize {
+    with_catalog(engine, catalog, 0, |snapshot| {
+        copy_optional_utf8(
+            snapshot
+                .hosts
+                .get(index)
+                .and_then(|host| host.error.clone()),
+            out,
+            cap,
+        )
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn himark_catalog_sessions(
     engine: *mut HimarkEngine,

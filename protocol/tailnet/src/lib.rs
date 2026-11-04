@@ -26,12 +26,44 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// core — so a UnixStream is their honest tokio shape.
 pub type TailnetStream = tokio::net::UnixStream;
 
+/// The node, held by its raw libtailscale handle (an int): no
+/// borrowed lifetimes, so the engine stays fully drivable —
+/// `resume()` can re-run `tailscale_up` after an iOS suspension
+/// wedges the data plane, and the node closes with the last Arc.
 pub struct Tailnet {
-    /// Leaked on purpose: the node lives as long as the process, and
-    /// libtailscale's `Listener<'a>` borrows it.
-    ts: &'static libtailscale::Tailscale,
+    sd: libtailscale_sys::tailscale,
     localapi_address: String,
     localapi_auth: String,
+}
+
+// The Go side is thread-safe over the int handle (the safe wrapper
+// declares the same).
+unsafe impl Send for Tailnet {}
+unsafe impl Sync for Tailnet {}
+
+fn errmsg(sd: libtailscale_sys::tailscale) -> String {
+    let mut buffer = [0u8; 256];
+    let read = unsafe {
+        libtailscale_sys::tailscale_errmsg(sd, buffer.as_mut_ptr().cast(), buffer.len())
+    };
+    match read {
+        0 => {
+            let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(0);
+            String::from_utf8_lossy(&buffer[..end]).into_owned()
+        }
+        _ => "unknown tailscale error".to_owned(),
+    }
+}
+
+fn check(sd: libtailscale_sys::tailscale, ret: std::os::raw::c_int, what: &str) -> Result<(), String> {
+    match ret {
+        0 => Ok(()),
+        _ => Err(format!("{what}: {}", errmsg(sd))),
+    }
+}
+
+fn cstring(text: &str, what: &str) -> Result<std::ffi::CString, String> {
+    std::ffi::CString::new(text).map_err(|_| format!("{what} contains NUL"))
 }
 
 impl Tailnet {
@@ -45,18 +77,64 @@ impl Tailnet {
         let dir = state_dir
             .to_str()
             .ok_or_else(|| "tailnet state dir is not utf-8".to_owned())?;
-        let mut ts = libtailscale::Tailscale::new();
-        ts.set_dir(dir)?;
-        ts.set_hostname(hostname)?;
-        ts.start()?;
-        let loopback = ts.loopback()?;
-        let auth = base64::engine::general_purpose::STANDARD
-            .encode(format!(":{}", loopback.credential));
-        Ok(Arc::new(Self {
-            ts: Box::leak(Box::new(ts)),
-            localapi_address: loopback.address,
-            localapi_auth: auth,
-        }))
+        let dir = cstring(dir, "state dir")?;
+        let hostname = cstring(hostname, "hostname")?;
+        unsafe {
+            let sd = libtailscale_sys::tailscale_new();
+            check(sd, libtailscale_sys::tailscale_set_dir(sd, dir.as_ptr()), "set_dir")?;
+            check(
+                sd,
+                libtailscale_sys::tailscale_set_hostname(sd, hostname.as_ptr()),
+                "set_hostname",
+            )?;
+            check(sd, libtailscale_sys::tailscale_start(sd), "start")?;
+            let mut address = [0u8; 1024];
+            let mut proxy_cred = [0u8; 33];
+            let mut localapi_cred = [0u8; 33];
+            check(
+                sd,
+                libtailscale_sys::tailscale_loopback(
+                    sd,
+                    address.as_mut_ptr().cast(),
+                    address.len(),
+                    proxy_cred.as_mut_ptr().cast(),
+                    localapi_cred.as_mut_ptr().cast(),
+                ),
+                "loopback",
+            )?;
+            let end = address.iter().position(|byte| *byte == 0).unwrap_or(0);
+            let localapi_address = String::from_utf8_lossy(&address[..end]).into_owned();
+            let cred_end = localapi_cred
+                .iter()
+                .position(|byte| *byte == 0)
+                .unwrap_or(localapi_cred.len());
+            let auth = base64::engine::general_purpose::STANDARD.encode(format!(
+                ":{}",
+                String::from_utf8_lossy(&localapi_cred[..cred_end])
+            ));
+            Ok(Arc::new(Self {
+                sd,
+                localapi_address,
+                localapi_auth: auth,
+            }))
+        }
+    }
+
+    /// KICK the engine after a suspension: `tailscale_up` re-runs
+    /// the backend start and blocks until the node is usable, so it
+    /// rides a detached blocking task. Fire on every foregrounding —
+    /// a healthy node answers immediately.
+    pub fn resume(self: &Arc<Self>, runtime: &tokio::runtime::Handle) {
+        let node = Arc::clone(self);
+        runtime.spawn_blocking(move || {
+            let ret = unsafe { libtailscale_sys::tailscale_up(node.sd) };
+            match ret {
+                0 => tracing::info!(target: "tailnet", "resume: node up"),
+                _ => {
+                    tracing::warn!(target: "tailnet", error = %errmsg(node.sd), "resume")
+                }
+            }
+        });
     }
 
     pub async fn status(&self) -> Result<Status, String> {
@@ -78,18 +156,44 @@ impl Tailnet {
     /// both resolve inside the node).
     pub async fn dial(self: &Arc<Self>, address: String) -> Result<TailnetStream, String> {
         let node = Arc::clone(self);
-        let stream = tokio::task::spawn_blocking(move || node.ts.dial("tcp", &address))
-            .await
-            .map_err(|join| format!("tailnet dial task: {join}"))??;
-        to_tokio(stream)
+        let fd = tokio::task::spawn_blocking(move || {
+            let tcp = cstring("tcp", "network")?;
+            let address = cstring(&address, "address")?;
+            let mut conn: libtailscale_sys::tailscale_conn = 0;
+            unsafe {
+                check(
+                    node.sd,
+                    libtailscale_sys::tailscale_dial(
+                        node.sd,
+                        tcp.as_ptr(),
+                        address.as_ptr(),
+                        &mut conn,
+                    ),
+                    "dial",
+                )?;
+            }
+            Ok::<_, String>(conn)
+        })
+        .await
+        .map_err(|join| format!("tailnet dial task: {join}"))??;
+        to_tokio(fd)
     }
 
     /// Listen on `port` on the node's tailnet address.
     pub fn listen(self: &Arc<Self>, port: u16) -> Result<TailnetListener, String> {
-        let listener = self.ts.listen("tcp", &format!(":{port}"))?;
+        let bind = cstring(&format!(":{port}"), "bind")?;
+        let tcp = cstring("tcp", "network")?;
+        let mut listener: libtailscale_sys::tailscale_listener = 0;
+        unsafe {
+            check(
+                self.sd,
+                libtailscale_sys::tailscale_listen(self.sd, tcp.as_ptr(), bind.as_ptr(), &mut listener),
+                "listen",
+            )?;
+        }
         Ok(TailnetListener {
-            _node: Arc::clone(self),
-            inner: Arc::new(listener),
+            node: Arc::clone(self),
+            listener,
         })
     }
 
@@ -129,24 +233,63 @@ impl Tailnet {
 }
 
 pub struct TailnetListener {
-    _node: Arc<Tailnet>,
-    inner: Arc<libtailscale::Listener<'static>>,
+    node: Arc<Tailnet>,
+    listener: libtailscale_sys::tailscale_listener,
+}
+
+impl Drop for TailnetListener {
+    fn drop(&mut self) {
+        unsafe { libc::close(self.listener) };
+    }
 }
 
 impl TailnetListener {
     /// Accept the next connection and its remote tailnet address.
     pub async fn accept(&self) -> Result<(TailnetStream, IpAddr), String> {
-        let inner = Arc::clone(&self.inner);
-        let (stream, addr) = tokio::task::spawn_blocking(move || inner.accept_with_addr())
-            .await
-            .map_err(|join| format!("tailnet accept task: {join}"))??;
-        Ok((to_tokio(stream)?, addr))
+        let node = Arc::clone(&self.node);
+        let listener = self.listener;
+        let (fd, remote) = tokio::task::spawn_blocking(move || {
+            let mut conn: libtailscale_sys::tailscale_conn = 0;
+            unsafe {
+                check(
+                    node.sd,
+                    libtailscale_sys::tailscale_accept(listener, &mut conn),
+                    "accept",
+                )?;
+                let mut buffer = [0u8; 256];
+                check(
+                    node.sd,
+                    libtailscale_sys::tailscale_getremoteaddr(
+                        listener,
+                        conn,
+                        buffer.as_mut_ptr().cast(),
+                        buffer.len(),
+                    ),
+                    "remote addr",
+                )?;
+                let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(0);
+                let remote: IpAddr = String::from_utf8_lossy(&buffer[..end])
+                    .parse()
+                    .map_err(|error| format!("remote addr parse: {error}"))?;
+                Ok::<_, String>((conn, remote))
+            }
+        })
+        .await
+        .map_err(|join| format!("tailnet accept task: {join}"))??;
+        Ok((to_tokio(fd)?, remote))
     }
 }
 
-fn to_tokio(stream: std::net::TcpStream) -> Result<TailnetStream, String> {
-    use std::os::fd::{FromRawFd, IntoRawFd};
-    let fd = stream.into_raw_fd();
+impl Drop for Tailnet {
+    fn drop(&mut self) {
+        unsafe { libtailscale_sys::tailscale_close(self.sd) };
+    }
+}
+
+/// The conn fds libtailscale hands out are socketpairs (AF_UNIX) —
+/// a UnixStream is their honest tokio shape.
+fn to_tokio(fd: std::os::raw::c_int) -> Result<TailnetStream, String> {
+    use std::os::fd::FromRawFd;
     let unix = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
     unix.set_nonblocking(true)
         .map_err(|error| format!("tailnet stream nonblocking: {error}"))?;
