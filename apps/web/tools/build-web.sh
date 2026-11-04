@@ -91,6 +91,9 @@ grammar_exports="_main,___stack_pointer,_malloc,_calloc,_realloc,_free,_abort,_m
 grammar_exports+=",_strlen,_strcmp,_strncmp,_strcpy,_strncpy,_strchr,_strrchr,_strstr,_strcat,_strncat,_strtol,_strtoul"
 grammar_exports+=",_iswspace,_iswalpha,_iswalnum,_iswdigit,_iswxdigit,_iswlower,_iswupper,_iswpunct,_towlower,_towupper"
 grammar_exports+=",_isspace,_isalpha,_isalnum,_isdigit,_isxdigit,_islower,_isupper,_ispunct,_tolower,_toupper"
+# The tailnet bridge's callbacks — called from the js-library on the
+# main thread; MAIN_MODULE=2 would strip them without the listing.
+grammar_exports+=",_himark_tailnet_opened,_himark_tailnet_data,_himark_tailnet_closed"
 EMCC="${EMCC:-em++}" \
 RUSTFLAGS="-C panic=abort \
     -C link-arg=-sMAIN_MODULE=2 \
@@ -107,7 +110,8 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-pthread \
     -C link-arg=-sPTHREAD_POOL_SIZE=4 \
     -C link-arg=-sDEFAULT_PTHREAD_STACK_SIZE=8388608 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sSTACK_OVERFLOW_CHECK=2 \
-    -C link-arg=-sMAXIMUM_MEMORY=2147483648 -C link-arg=-lwebsocket.js -C link-arg=-sSUPPORT_LONGJMP=emscripten -C link-arg=-sINITIAL_MEMORY=134217728" \
+    -C link-arg=-sMAXIMUM_MEMORY=2147483648 -C link-arg=-lwebsocket.js -C link-arg=-sSUPPORT_LONGJMP=emscripten -C link-arg=-sINITIAL_MEMORY=134217728 \
+    -C link-arg=--js-library=$repo_root/apps/web/tools/tailnet-library.js" \
     cargo +nightly "$cargo_command" --locked -Zbuild-std=std,panic_abort -p web --release \
     --target wasm32-unknown-emscripten
 
@@ -174,6 +178,20 @@ for worker in "$bin_dir"/web.worker.*js; do
     [[ -f "$worker" ]] && cp "$worker" "$out_dir/"
 done
 cp apps/web/coi-serviceworker.js "$out_dir/coi-serviceworker.js" 2>/dev/null || true
+
+# The in-page tailnet node (docs/ahp/tailnet.md §The browser):
+# Tailscale's Go core as wasm, lazily fetched on Connect Tailscale.
+cp apps/web/tailnet-boot.js "$out_dir/tailnet-boot.js"
+if command -v go >/dev/null 2>&1; then
+    echo "building tailnet.wasm (the in-page tailscale node)"
+    (cd apps/web/tailnet-wasm \
+        && GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o "$repo_root/$out_dir/tailnet.wasm" .)
+    goroot="$(go env GOROOT)"
+    cp "$goroot/lib/wasm/wasm_exec.js" "$out_dir/wasm_exec.js" 2>/dev/null \
+        || cp "$goroot/misc/wasm/wasm_exec.js" "$out_dir/wasm_exec.js"
+else
+    echo "note: go not found — the web bundle ships WITHOUT the tailnet node"
+fi
 
 brotli_available=false
 if command -v brotli >/dev/null 2>&1; then

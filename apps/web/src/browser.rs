@@ -362,6 +362,18 @@ impl ahp_wire::transport::Connector for BrowserConnector {
         dead: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> ahp_wire::transport::Dialing {
         Box::pin(async move {
+            // A tailnet destination rides the IN-PAGE node (the Go
+            // wasm module), not the browser's own sockets — the OS
+            // has no route into the tailnet.
+            #[cfg(target_feature = "atomics")]
+            if let Some(host_port) = url.strip_prefix("tailnet://") {
+                let inner = crate::tailnet::TailnetTransport::connect(host_port)
+                    .await
+                    .map_err(|error| format!("agent host unreachable at {url}: {error}"))?;
+                return Ok(ahp::transport::BoxedTransport::new(
+                    ahp_wire::transport::DeadLatched { inner, dead },
+                ));
+            }
             let inner = BrowserTransport::connect(&url)
                 .await
                 .map_err(|error| format!("agent host unreachable at {url}: {error}"))?;

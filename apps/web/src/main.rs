@@ -12,6 +12,9 @@ fn main() {
 #[cfg(target_os = "emscripten")]
 mod browser;
 
+#[cfg(all(target_os = "emscripten", target_feature = "atomics"))]
+mod tailnet;
+
 #[cfg(target_os = "emscripten")]
 mod app {
     use std::{
@@ -405,6 +408,16 @@ mod app {
                     }));
                     clients.record(host, client);
                     clients.set_local(host);
+
+                    // The in-page tailnet: the command loads the Go
+                    // wasm node and logs in; discovery turns its
+                    // netmap into host rows dialed tailnet://…:7298.
+                    state.register_command(std::sync::Arc::new(crate::tailnet::ConnectTailnet));
+                    crate::tailnet::spawn_discovery(
+                        handle.clone(),
+                        posted.clone(),
+                        Arc::clone(&clients),
+                    );
                     let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
                         Arc::new(ahp_wire::uris::FileUris);
 

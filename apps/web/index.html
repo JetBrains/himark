@@ -14,6 +14,9 @@
       crossorigin
     />
     <link rel="preload" href="./web.js" as="script" />
+    <!-- The in-page tailnet's main-thread half: a few lines now, the
+         Go node lazily on the first Connect Tailscale. -->
+    <script src="./tailnet-boot.js" defer></script>
     <!-- Emscripten fetches web.wasm with `credentials: "same-origin"`.
          `crossorigin` gives this preload the matching CORS and credentials
          modes, so that fetch consumes it instead of downloading twice. -->
