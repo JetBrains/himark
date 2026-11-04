@@ -503,12 +503,21 @@ class HimarkBridgeView: UIView {
 
     /// The embedding scroller moved the viewport: repaint the band
     /// NOW, in the same runloop turn — waiting for the display link
-    /// leaves one frame of the old band riding the scroll. The tick
-    /// skips its own paint when one landed here (one per vsync).
+    /// leaves one frame of the old band riding the scroll. ONE
+    /// paint per vsync from ANY road: touch sampling outruns the
+    /// display (120Hz events on a 60Hz panel), and a second paint
+    /// in the same frame can never reach glass — it only drains the
+    /// drawable pool until nextDrawable blocks and CoreAnimation
+    /// mints fresh IOSurfaces. A superseded offset catches up on
+    /// the next tick.
     func renderNow() {
         guard !parked else { return }
-        paintedSinceTick = true
         link?.isPaused = false
+        if paintedSinceTick {
+            needsRedraw = true
+            return
+        }
+        paintedSinceTick = true
         render()
     }
 
