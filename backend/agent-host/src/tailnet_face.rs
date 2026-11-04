@@ -24,6 +24,12 @@ use crate::server::Host;
 
 pub(crate) const PORT: u16 = 7297;
 
+/// The RAW face for clients that have a tailnet TCP stream but no
+/// browser WebSocket — the in-page wasm node (docs/ahp/tailnet.md,
+/// §The browser). Same newline-JSON AHP the unix socket speaks,
+/// same WhoIs owner gate per accept.
+pub(crate) const RAW_PORT: u16 = 7298;
+
 pub(crate) struct Options {
     pub hostname: Option<String>,
 }
@@ -171,6 +177,20 @@ async fn serve(
     };
 
     let listener = node.listen(PORT)?;
+    match node.listen(RAW_PORT) {
+        Ok(raw) => {
+            tokio::spawn(serve_raw(
+                Arc::clone(host),
+                raw,
+                Arc::clone(&node),
+                owner.clone(),
+            ));
+        }
+        // The raw face is secondary — the ws face serves without it.
+        Err(error) => {
+            tracing::warn!(target: "ahp_tailnet", %error, port = RAW_PORT, "raw listen")
+        }
+    }
     let name = node
         .status()
         .await
@@ -201,9 +221,63 @@ async fn serve(
         .map_err(|error| format!("tailnet server stopped: {error}"))
 }
 
-/// The gate itself: connections are admitted by WHO they are from,
-/// before a byte of HTTP is read. Anyone the tailnet cannot name as
-/// the owner is dropped here.
+/// THE gate: a connection is admitted by WHO it is from, before a
+/// byte of protocol is read. Anyone the tailnet cannot name as the
+/// owner is dropped.
+async fn owner_admits(
+    node: &Arc<tailnet::Tailnet>,
+    owner: &str,
+    remote: std::net::IpAddr,
+) -> bool {
+    let login = match node.whois(remote).await {
+        Ok(whois) => whois.login().map(str::to_owned),
+        Err(error) => {
+            tracing::warn!(target: "ahp_tailnet", %remote, %error, "tailnet whois");
+            None
+        }
+    };
+    match login {
+        Some(login) if login == owner => {
+            tracing::info!(target: "ahp_tailnet", %remote, %login, "tailnet caller admitted");
+            true
+        }
+        refused => {
+            tracing::warn!(
+                target: "ahp_tailnet",
+                %remote,
+                caller = refused.as_deref().unwrap_or("<unidentified>"),
+                "tailnet caller is not the owner — refused"
+            );
+            false
+        }
+    }
+}
+
+/// The raw newline-JSON face: accept, gate, hand the stream to the
+/// same road the unix socket rides.
+async fn serve_raw(
+    host: Arc<Host>,
+    listener: tailnet::TailnetListener,
+    node: Arc<tailnet::Tailnet>,
+    owner: String,
+) {
+    loop {
+        let (stream, remote) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(error) => {
+                tracing::warn!(target: "ahp_tailnet", %error, "raw accept");
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                continue;
+            }
+        };
+        if !owner_admits(&node, &owner, remote).await {
+            continue;
+        }
+        tokio::spawn(Arc::clone(&host).serve_stream(stream));
+    }
+}
+
+/// The ws face's accept loop, gated the same way.
 struct GatedListener {
     listener: tailnet::TailnetListener,
     node: Arc<tailnet::Tailnet>,
@@ -224,26 +298,8 @@ impl axum::serve::Listener for GatedListener {
                     continue;
                 }
             };
-            let login = match self.node.whois(remote).await {
-                Ok(whois) => whois.login().map(str::to_owned),
-                Err(error) => {
-                    tracing::warn!(target: "ahp_tailnet", %remote, %error, "tailnet whois");
-                    None
-                }
-            };
-            match login {
-                Some(login) if login == self.owner => {
-                    tracing::info!(target: "ahp_tailnet", %remote, %login, "tailnet caller admitted");
-                    return (stream, SocketAddr::new(remote, 0));
-                }
-                refused => {
-                    tracing::warn!(
-                        target: "ahp_tailnet",
-                        %remote,
-                        caller = refused.as_deref().unwrap_or("<unidentified>"),
-                        "tailnet caller is not the owner — refused"
-                    );
-                }
+            if owner_admits(&self.node, &self.owner, remote).await {
+                return (stream, SocketAddr::new(remote, 0));
             }
         }
     }
