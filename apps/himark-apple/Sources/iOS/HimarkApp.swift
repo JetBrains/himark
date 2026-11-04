@@ -259,13 +259,6 @@ final class AppHost: NSObject, ObservableObject {
         redraws.removeValue(forKey: ObjectIdentifier(view))
     }
 
-    /// Ask every registered view for a frame — a section switch
-    /// hides views IN PLACE, and only a ticking view sweeps the
-    /// window-level overlays of the hidden ones.
-    func nudgeRedraws() {
-        for redraw in redraws.values { redraw() }
-    }
-
     /// The generic redraw seat — any content host (the stage-road
     /// scroller) rides the same drain fanout.
     func registerRedraw(_ owner: AnyObject, _ fn: @escaping () -> Void) {

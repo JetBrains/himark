@@ -36,6 +36,11 @@ struct RootView: View {
                         .opacity(section == self.section ? 1 : 0)
                         .allowsHitTesting(section == self.section)
                         .zIndex(section == self.section ? 1 : 0)
+                        // The EXPLICIT shown/parked signal: a hidden
+                        // section's bridge views park — link asleep,
+                        // no layout, overlays folded — instead of
+                        // painting unseen behind opacity.
+                        .environment(\.sectionShowing, section == self.section)
                 }
             }
         }
@@ -56,14 +61,21 @@ struct RootView: View {
             host.kickoff()
             host.follow(appearance: scheme)
         }
-        .onChange(of: section) {
-            visited.insert($0)
-            // Wake every view's (possibly sleeping) link: the next
-            // tick reconciles overlays, folding layers whose owner
-            // the switch just hid in place.
-            host.nudgeRedraws()
-        }
+        .onChange(of: section) { visited.insert($0) }
         .onChange(of: scheme) { host.follow(appearance: $0) }
+    }
+}
+
+/// Whether the enclosing section is the one on screen — bridge
+/// representables park their views when it is not.
+private struct SectionShowingKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var sectionShowing: Bool {
+        get { self[SectionShowingKey.self] }
+        set { self[SectionShowingKey.self] = newValue }
     }
 }
 
@@ -412,6 +424,7 @@ struct MintedBridge: UIViewRepresentable {
 
     func updateUIView(_ view: MintedBridgeHost, context: Context) {
         view.sync()
+        view.setParked(!context.environment.sectionShowing)
     }
 
     static func dismantleUIView(_ view: MintedBridgeHost, coordinator: ()) {
@@ -440,6 +453,10 @@ final class MintedBridgeHost: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func setParked(_ parked: Bool) {
+        child?.setParked(parked)
+    }
 
     func sync() {
         let desired = host.current
@@ -505,7 +522,9 @@ struct StagePlaceBridge: UIViewRepresentable {
         StageScrollHost(host: host, place: place)
     }
 
-    func updateUIView(_ view: StageScrollHost, context: Context) {}
+    func updateUIView(_ view: StageScrollHost, context: Context) {
+        view.setParked(!context.environment.sectionShowing)
+    }
 
     static func dismantleUIView(_ view: StageScrollHost, coordinator: ()) {
         view.teardown()

@@ -400,8 +400,28 @@ class HimarkBridgeView: UIView {
     func request() {
         needsRedraw = true
         // The one wake road: a sleeping link rearms on any ask —
-        // engine dirt (the clock fan-out), events, commands.
-        link?.isPaused = false
+        // engine dirt (the clock fan-out), events, commands. A
+        // PARKED view keeps the ask and sleeps on; unparking spends
+        // it.
+        if !parked { link?.isPaused = false }
+    }
+
+    /// Parked = hidden IN PLACE by the shell (an inactive section
+    /// stays in the window): the link sleeps through every wake —
+    /// no layout, no paint, no clock — and the window-level
+    /// overlays FOLD with the view; unparking re-mints them from
+    /// the live exports on the first frame back.
+    private(set) var parked = false
+
+    func setParked(_ parked: Bool) {
+        guard self.parked != parked else { return }
+        self.parked = parked
+        if parked {
+            link?.isPaused = true
+            resolveOverlaysHost()?.closeAll(for: self)
+        } else {
+            request()
+        }
     }
 
     // ─── overlay promotion: in-window layers, reconciled per frame ───
@@ -486,6 +506,7 @@ class HimarkBridgeView: UIView {
     /// leaves one frame of the old band riding the scroll. The tick
     /// skips its own paint when one landed here (one per vsync).
     func renderNow() {
+        guard !parked else { return }
         paintedSinceTick = true
         link?.isPaused = false
         render()

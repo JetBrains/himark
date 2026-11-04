@@ -103,6 +103,10 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
         }
     }
 
+    func setParked(_ parked: Bool) {
+        content?.setParked(parked)
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         content?.renderNow()
     }
@@ -163,6 +167,10 @@ final class MintedScrollHost: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    func setParked(_ parked: Bool) {
+        child?.setParked(parked)
+    }
+
     func sync() {
         let desired = host.current
         if mounted == desired, child != nil { return }
@@ -195,6 +203,7 @@ struct ScrolledMintedBridge: UIViewRepresentable {
 
     func updateUIView(_ view: MintedScrollHost, context: Context) {
         view.sync()
+        view.setParked(!context.environment.sectionShowing)
     }
 
     static func dismantleUIView(_ view: MintedScrollHost, coordinator: ()) {
@@ -226,6 +235,10 @@ final class ComposerHost: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func setParked(_ parked: Bool) {
+        child?.setParked(parked)
+    }
 
     func sync() {
         let desired = host.current
@@ -304,6 +317,7 @@ struct ComposerBridge: UIViewRepresentable {
 
     func updateUIView(_ view: ComposerHost, context: Context) {
         view.sync()
+        view.setParked(!context.environment.sectionShowing)
     }
 
     static func dismantleUIView(_ view: ComposerHost, coordinator: ()) {
