@@ -10195,6 +10195,7 @@ dependencies = [
  "myersdiff",
  "palette 0.1.0",
  "peeker",
+ "serde",
  "serde_json",
  "skia-safe",
  "text",

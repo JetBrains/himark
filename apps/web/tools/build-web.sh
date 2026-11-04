@@ -84,6 +84,11 @@ if [[ -d vendor/skia-bindings-0.99.0/skia ]]; then
     find vendor/skia-bindings-0.99.0/skia -name '*.lock' -delete
 fi
 export EMCC_CFLAGS="-pthread -fPIC"
+# bindgen-at-build-time crates (hb-subset among them) parse the C
+# headers with libclang FOR THE TARGET; without the emscripten
+# sysroot the parse degrades and declarations silently VANISH from
+# the generated bindings (hb_map_reference and 83 friends, 4d9e67c8).
+export BINDGEN_EXTRA_CLANG_ARGS_wasm32_unknown_emscripten="--sysroot=$repo_root/target/emsdk/upstream/emscripten/cache/sysroot -fvisibility=default"
 export CXXFLAGS_wasm32_unknown_emscripten="-fPIC"
 export HIMARK_STRIP_WASM_EXCEPTIONS=1
 export CARGO_TARGET_WASM32_UNKNOWN_EMSCRIPTEN_LINKER="$repo_root/apps/web/tools/emscripten-linker.sh"
