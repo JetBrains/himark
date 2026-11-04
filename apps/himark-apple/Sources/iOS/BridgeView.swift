@@ -250,6 +250,36 @@ class HimarkBridgeView: UIView {
         return convert(sv.bounds, from: sv).intersection(bounds)
     }
 
+    /// The content slice the standing drawable covers (points).
+    /// Null until the first band paint; reset when the band road
+    /// must repaint regardless.
+    private var band: CGRect = .null
+
+    /// Half a viewport of margin each side, position clamped into
+    /// the content so the SIZE stays constant through a scroll —
+    /// a changing drawableSize would re-prime the pool.
+    private func bandTarget(around visible: CGRect) -> CGRect {
+        let margin = visible.height * 0.5
+        var target = visible.insetBy(dx: 0, dy: -margin)
+        target.origin.y = min(target.origin.y, bounds.height - target.height)
+        target.origin.y = max(target.origin.y, 0)
+        return target.intersection(bounds)
+    }
+
+    /// Does the standing band still cover the view, with room to
+    /// spare? Inside the guard, a scrolled frame paints NOTHING.
+    /// The spare-room demand applies only where the band COULD
+    /// extend further — pinned at a content edge, exact coverage
+    /// is as good as it gets.
+    private func bandCovers(_ visible: CGRect) -> Bool {
+        guard !band.isNull, band.contains(visible) else { return false }
+        let guardPt = visible.height * 0.2
+        let topShort = visible.minY - band.minY < guardPt && band.minY > 0.5
+        let bottomShort =
+            band.maxY - visible.maxY < guardPt && band.maxY < bounds.height - 0.5
+        return !topShort && !bottomShort
+    }
+
     private func render() {
         guard surface != nil, UIApplication.shared.applicationState == .active else { return }
         // SwiftUI's platform host can hand a NaN/infinite frame
@@ -268,8 +298,15 @@ class HimarkBridgeView: UIView {
         guard visible.width > 0.5, visible.height > 0.5,
               visible.minY.isFinite
         else { return }
-        let w = Int32(visible.width * scale)
-        let h = Int32(visible.height * scale)
+        // THE BAND RIDES A MARGIN: the layer is glued to content
+        // coordinates, so while the scroller slides it the pixels
+        // stay VALID — they only run out. Painting half a viewport
+        // beyond each edge makes most scrolled frames free (the
+        // compositor slides, we paint nothing); only an approaching
+        // edge (renderNow's cover check) or engine dirt repaints.
+        let target = scrollEmbedded ? bandTarget(around: visible) : visible
+        let w = Int32(target.width * scale)
+        let h = Int32(target.height * scale)
         // Metal's texture ceiling is 16384 — a layer this size is a
         // geometry bug upstream, and asking for the drawable ABORTS
         // the app. Refuse loudly instead.
@@ -285,15 +322,18 @@ class HimarkBridgeView: UIView {
         let wasAt = metalLayer.frame
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if wasAt != visible { metalLayer.frame = visible }
+        if wasAt != target { metalLayer.frame = target }
         let drawable = CGSize(width: CGFloat(w), height: CGFloat(h))
         // Touching drawableSize re-primes the layer's drawable pool;
         // an unchanged size must not — the per-frame churn was fresh
-        // IOSurfaces instead of pool reuse.
+        // IOSurfaces instead of pool reuse. The band's CONSTANT size
+        // keeps this quiet through a whole scroll.
         if metalLayer.drawableSize != drawable { metalLayer.drawableSize = drawable }
 
         if scrollEmbedded {
-            if !renderBand(visible, scale: scale, pixelWidth: w, pixelHeight: h) {
+            if renderBand(target, scale: scale, pixelWidth: w, pixelHeight: h) {
+                band = target
+            } else {
                 // No drawable, nothing painted: a moved band showing
                 // its old contents is the very artifact this exists
                 // to prevent. Put it back and ask for another pass.
@@ -512,6 +552,10 @@ class HimarkBridgeView: UIView {
     /// the next tick.
     func renderNow() {
         guard !parked else { return }
+        // THE FREE FRAME: the band still covers the view with room
+        // to spare — the compositor slides it, nothing paints. Most
+        // scrolled frames take this exit.
+        if bandCovers(visibleContentRect()) { return }
         link?.isPaused = false
         if paintedSinceTick {
             needsRedraw = true
