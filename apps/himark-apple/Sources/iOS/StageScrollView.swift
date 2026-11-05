@@ -255,9 +255,11 @@ final class ComposerHost: UIView {
             frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         // The composer is PROSE: the QuickType bar and autocorrect
-        // belong here (document editors keep them off).
+        // belong here (document editors keep them off), and a flick
+        // down over the band tucks the keyboard away.
         view.autocorrectionType = .default
         view.spellCheckingType = .default
+        view.seatKeyboardFlickDismiss()
         addSubview(view)
         host.register(view)
         child = view

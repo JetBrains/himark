@@ -15,6 +15,14 @@ targets:
     platform: macOS
     sources: [Sources/Shared, Sources/macOS]
     configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
+    # ⌘R builds the Rust staticlib for this SDK first — a stale
+    # libhimark_api.a was the silent failure; build.sh stays the
+    # from-scratch and xcconfig-(re)generation road.
+    preBuildScripts:
+      - name: Build Rust (frontend-host)
+        script: exec "$SRCROOT/xcode-build-rust.sh"
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.himark.mac
@@ -24,6 +32,8 @@ targets:
         # the other slice — build the active arch everywhere.
         ONLY_ACTIVE_ARCH: YES
         SWIFT_VERSION: "5.9"
+        # The Rust pre-build phase writes target/ and himark.h.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
         CLANG_CXX_LANGUAGE_STANDARD: "c++17"
         CLANG_CXX_LIBRARY: "libc++"
@@ -51,11 +61,21 @@ targets:
       - path: ../../frontend/editor/assets/theme-ios-light.json
         buildPhase: resources
     configFiles: { Release: Generated-iOS.xcconfig, Debug: Generated-iOS.xcconfig }
+    # ⌘R builds the Rust staticlib for this SDK first — a stale
+    # libhimark_api.a was the silent failure; build.sh stays the
+    # from-scratch and xcconfig-(re)generation road.
+    preBuildScripts:
+      - name: Build Rust (frontend-host)
+        script: exec "$SRCROOT/xcode-build-rust.sh"
+        shell: /bin/bash
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.himark.ios
         INFOPLIST_FILE: Info-iOS.plist
         SWIFT_VERSION: "5.9"
+        # The Rust pre-build phase writes target/ and himark.h.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
         CLANG_CXX_LANGUAGE_STANDARD: "c++17"
         CLANG_CXX_LIBRARY: "libc++"

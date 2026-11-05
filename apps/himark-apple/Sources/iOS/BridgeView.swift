@@ -43,6 +43,10 @@ class HimarkBridgeView: UIView {
     private var link: CADisplayLink?
     private var needsRedraw = true
 
+    /// The engine-scroll pan of a non-embedded view — held so the
+    /// keyboard flick (below) can outrank it.
+    private var enginePan: UIPanGestureRecognizer?
+
     /// A SUBLAYER sized to the visible band, not the root layer: the
     /// content-sized view must not back its whole (possibly huge)
     /// bounds with a drawable.
@@ -84,6 +88,7 @@ class HimarkBridgeView: UIView {
         if !scrollEmbedded {
             let pan = UIPanGestureRecognizer(target: self, action: #selector(onPan))
             addGestureRecognizer(pan)
+            enginePan = pan
         }
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(onTap))
@@ -632,7 +637,11 @@ class HimarkBridgeView: UIView {
             if isEditableText(at: point) {
                 becomeFirstResponder()
             } else {
-                resignFirstResponder()
+                // Off editable text the keyboard goes — WINDOW-wide:
+                // the responder is usually another bridge (a tap on
+                // the transcript while the COMPOSER composes), and a
+                // same-view resign would no-op.
+                window?.endEditing(false)
             }
             return
         }
@@ -720,6 +729,22 @@ class HimarkBridgeView: UIView {
     var hasText: Bool { (engine.documentLength(bridge: bridgeId) ?? 0) > 0 }
 
     func dismissKeyboard() { resignFirstResponder() }
+
+    /// A downward FLICK over the view tucks the keyboard away — the
+    /// composer band's way out: its every drag otherwise feeds the
+    /// ENGINE as scroll, so the standing keyboard had no gesture off
+    /// this view at all. The engine pan waits for the flick to fail,
+    /// which a slow drag does immediately.
+    func seatKeyboardFlickDismiss() {
+        let flick = UISwipeGestureRecognizer(target: self, action: #selector(flickDismiss))
+        flick.direction = .down
+        addGestureRecognizer(flick)
+        enginePan?.require(toFail: flick)
+    }
+
+    @objc private func flickDismiss() {
+        if isFirstResponder { resignFirstResponder() }
+    }
 
     var autocorrectionType: UITextAutocorrectionType = .no
     var spellCheckingType: UITextSpellCheckingType = .no
