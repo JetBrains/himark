@@ -111,6 +111,11 @@ pub enum AgentsCommand {
 
     Dismiss,
 
+    /// The head's NEW — a fresh session where the open one lives
+    /// (else the first connected host): the affordance a long
+    /// history buried as a "+ New Session…" row below the fold.
+    NewHere,
+
     AddHostInput(EditorCommand),
 
     SubmitAddHost,
@@ -125,6 +130,7 @@ impl std::fmt::Display for AgentsCommand {
             AgentsCommand::AddHostInput(command) => command.fmt(out),
             AgentsCommand::Boot => out.write_str("agents boot"),
             AgentsCommand::Dismiss => out.write_str("agents dismiss"),
+            AgentsCommand::NewHere => out.write_str("agents new here"),
             AgentsCommand::SubmitAddHost => out.write_str("submit add host"),
             AgentsCommand::CancelAddHost => out.write_str("cancel add host"),
         }
@@ -550,6 +556,23 @@ impl View for AgentsPanel {
                 self.seen = Some(generation);
                 self.refresh(store, ui);
             }
+            AgentsCommand::NewHere => {
+                let server = (self.asks.open_session)(store)
+                    .map(|open| open.host)
+                    .or_else(|| {
+                        Agents::list(store)
+                            .into_iter()
+                            .find_map(|(server, record)| {
+                                matches!(record.status, HostStatus::Connected).then_some(server)
+                            })
+                    });
+                let Some(server) = server else {
+                    return;
+                };
+                self.request = Some(ModalRequest::Perform((self.asks.new_session)(
+                    store, server,
+                )));
+            }
             AgentsCommand::Rows(command) => {
                 type Rows = ListKeyboardController<Lines, SessionSearcher>;
                 if let Some((index, trigger)) = Rows::activated(&command) {
@@ -612,11 +635,41 @@ impl View for AgentsPanel {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            // The panel's FLOOR, its header and its width belong to
-            // the window slot that stands this view up
-            // (`hikit::modal::Paneled`) — a mounted host draws its
-            // own island. The drawer lays rows into what it is
-            // given, and that is all it knows.
+            // The panel's FLOOR and its width belong to the window
+            // slot that stands this view up (`hikit::modal::Paneled`)
+            // — a mounted host draws its own island. The drawer draws
+            // its own HEAD: its name at the text edge and NEW at the
+            // trailing edge — the create affordance a long history
+            // buried as a "+ New Session…" row below the fold.
+            let ink = ::editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY);
+            let window = ::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY);
+            let live = hikit::ui::brief(store, ui).colored(ink.live.0);
+            let head = imba::layout::Row::new(arena)
+                .child_by_baseline(hikit::ui::text(&hikit::ui::caps(store, ui), "SESSIONS"))
+                .weighted(1.0, imba::layout::Fill::new().height(0.0))
+                .child_by_baseline(hikit::ui::text(&live, "new").on_event(
+                    |_arena: &Arena, event: &Event<'_>, _size| match event {
+                        Event::MouseDown { .. } => EventResult::command(AgentsCommand::NewHere),
+                        _ => EventResult::Ignored,
+                    },
+                ))
+                .pad_insets(imba::layout::Insets {
+                    left: window.side_text_edge,
+                    right: window.side_trailing,
+                    top: hikit::ui::space::L,
+                    bottom: hikit::ui::space::M,
+                });
+            let head = imba::layout::Layout::layout(
+                head,
+                arena,
+                Constraints {
+                    min: Size::new(size.width, 0.0),
+                    max: Size::new(size.width, f32::INFINITY),
+                },
+            );
+            let head_height = imba::Thunk::size(&head).height;
+            let rows_top = head_height + 1.0;
+
             let mut panel = container(arena, size);
             let adding_height = self.adding_height(store);
             let rows = imba::layout::Layout::layout(
@@ -624,11 +677,21 @@ impl View for AgentsPanel {
                 arena,
                 Constraints::tight(Size::new(
                     size.width,
-                    (size.height - adding_height).max(1.0),
+                    (size.height - rows_top - adding_height).max(1.0),
                 )),
             )
             .map(AgentsCommand::Rows);
-            panel.place(0.0, 0.0, rows);
+            panel.place_boxed(0.0, 0.0, head);
+            panel.place_boxed(
+                0.0,
+                head_height,
+                imba::layout::Layout::layout(
+                    hikit::ui::rule_h(ink.rule.0, size.width),
+                    arena,
+                    Constraints::tight(Size::new(size.width, 1.0)),
+                ),
+            );
+            panel.place(0.0, rows_top, rows);
             if let Some(input) = &self.adding {
                 panel.place(
                     0.0,

@@ -267,7 +267,12 @@ final class AppHost: NSObject, ObservableObject {
         sessions = rows
         let standing = engine.hosts()
         if standing != hosts { hosts = standing }
-        if current == nil, let newest = rows.first {
+        if wantsNewest, let newest = rows.first,
+            newest.uri != current?.uri || newest.host != current?.host
+        {
+            // The asked create landed: the newest row is the newborn.
+            select(newest)
+        } else if current == nil, let newest = rows.first {
             select(newest)
         } else if let selected = current,
                   let row = rows.first(where: { $0.host == selected.host && $0.uri == selected.uri }),
@@ -277,9 +282,16 @@ final class AppHost: NSObject, ObservableObject {
     }
 
     func select(_ row: HimarkEngine.CatalogSession) {
+        wantsNewest = false
         guard engine.enterSession(host: row.host, uri: row.uri) else { return }
         current = Selected(host: row.host, uri: row.uri, title: row.title)
     }
+
+    /// A create was asked: the catalog hears of the newborn through
+    /// the root feed (SessionAdded), and the next catalog change that
+    /// puts a DIFFERENT session on top switches to it — creating
+    /// otherwise changes nothing on screen.
+    private var wantsNewest = false
 
     func newSession() {
         // iOS runs no local backend: 0 ("the local default") creates
@@ -292,7 +304,11 @@ final class AppHost: NSObject, ObservableObject {
             NSLog("himark: new session — no host to create on")
             return
         }
-        engine.newSession(host: host)
+        if engine.newSession(host: host) {
+            wantsNewest = true
+        } else {
+            NSLog("himark: new session — the engine refused the create")
+        }
     }
 
     func mint(_ kind: HimarkEngine.SessionViewKind) -> HimarkBridge {
