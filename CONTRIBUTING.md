@@ -301,6 +301,17 @@ Every push to `main`, and a manual run from the Actions tab, builds the
 same packages and leaves them as workflow artifacts without creating a
 release.
 
+Web and native macOS compilation run in parallel. A separate macOS packaging
+job downloads both artifacts, adds the web assets to the app, re-signs and
+verifies the bundle, then creates the release ZIP. The native app travels as
+a tar archive so artifact uploads preserve executable permissions and symlinks.
+
+CI caches native compiled dependencies, web dependencies and the rebuilt Rust
+standard library, Go modules and build outputs, and the compiled/compressed web
+grammar pack. Grammar packs require an exact cache match covering the compiler,
+Emscripten, lockfile, build scripts, language registration and query sources;
+there is no fallback that could silently reuse an outdated pack.
+
 The packages:
 
 | Package | Contents |
