@@ -39,6 +39,31 @@
         width: 100vw;
         height: 100vh;
         outline: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      /* The TEXT SEAT: the one focused node the browser speaks text
+         through — clipboard events, IME composition, the mobile soft
+         keyboard. Invisible but never display:none (an undisplayed
+         node takes no focus and hears no events), and inside the
+         viewport so focusing it never scrolls the page. */
+      #input {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 2px;
+        height: 2px;
+        padding: 0;
+        border: none;
+        opacity: 0;
+        outline: none;
+        resize: none;
+        overflow: hidden;
+        /* Below the canvas and transparent to the pointer: the seat
+           holds focus and hears events; it is never hit-tested. */
+        z-index: -1;
+        pointer-events: none;
       }
     </style>
   </head>
@@ -63,14 +88,23 @@
         document.head.appendChild(shim);
       }
     </script>
-    <canvas id="canvas" tabindex="0"></canvas>
+    <canvas id="canvas"></canvas>
+    <textarea
+      id="input"
+      inputmode="none"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      wrap="off"
+      aria-hidden="true"
+    ></textarea>
     <script>
       // Everything but Module stays out of global scope: emscripten's
       // web.js declares its own top-level names (`run` among them).
       var Module;
       (() => {
         const canvas = document.getElementById("canvas");
-        canvas.focus();
         // Right-click is the app's context press, not the browser's.
         canvas.addEventListener("contextmenu", (event) => event.preventDefault());
         // The command bridge the app polls once per frame — kept as a
@@ -80,6 +114,113 @@
           canvas,
           himarkPoll: () => (queue.length ? queue.shift() : ""),
         };
+
+        // ─── The text seat ─────────────────────────────────────────
+        // The hidden textarea holds focus for the whole page: the
+        // browser's copy/cut/paste commands, IME composition and the
+        // mobile soft keyboard all speak to the FOCUSED EDITABLE, so
+        // the one node is the canvas app's whole text contract. Each
+        // event calls straight into the engine (Module._himark_*) —
+        // synchronous, so it stays ordered with the keydown stream.
+        const input = document.getElementById("input");
+        let composing = false;
+
+        // Copy and cut are only ENABLED over a non-collapsed editable
+        // selection: a one-space sentinel stays selected so the
+        // browser always fires their events; the handlers substitute
+        // the engine's answer for it.
+        const arm = () => {
+          if (composing) return;
+          input.value = " ";
+          input.select();
+        };
+        arm();
+        input.focus({ preventScroll: true });
+        // The page has no other focusable UI: wherever focus falls
+        // (a canvas click lands it on body), it comes back here.
+        input.addEventListener("blur", () => {
+          setTimeout(() => input.focus({ preventScroll: true }), 0);
+        });
+
+        const intoEngine = (door, text) => {
+          if (!Module[door] || !Module.stringToNewUTF8) return false;
+          const ptr = Module.stringToNewUTF8(text);
+          try {
+            Module[door](ptr);
+          } finally {
+            Module._free(ptr);
+          }
+          return true;
+        };
+
+        const clip = (cut) => (event) => {
+          // preventDefault either way: the sentinel space must never
+          // reach the clipboard. With no setData the clipboard simply
+          // keeps what it held.
+          event.preventDefault();
+          if (!Module._himark_clipboard_take || !Module.UTF8ToString) return;
+          const taken = Module._himark_clipboard_take(cut ? 1 : 0);
+          if (!taken) return;
+          event.clipboardData.setData("text/plain", Module.UTF8ToString(taken));
+          arm();
+        };
+        input.addEventListener("copy", clip(false));
+        input.addEventListener("cut", clip(true));
+
+        input.addEventListener("paste", (event) => {
+          event.preventDefault();
+          const text = event.clipboardData
+            ? event.clipboardData.getData("text/plain")
+            : "";
+          if (!text) return;
+          intoEngine("_himark_clipboard_paste", text);
+          arm();
+        });
+
+        // Soft-keyboard text arrives here, not as key events: desktop
+        // keydowns the engine consumes are prevented and never reach
+        // this node, so the two roads cannot double-type.
+        input.addEventListener("beforeinput", (event) => {
+          if (composing || event.isComposing) return;
+          if (
+            event.inputType === "insertText" ||
+            event.inputType === "insertFromComposition"
+          ) {
+            event.preventDefault();
+            if (event.data) intoEngine("_himark_text_input", event.data);
+            arm();
+          }
+        });
+
+        // The soft keyboard follows the ENGINE's text focus, never
+        // the DOM's: the seat stays focused for clipboard and IME,
+        // and only its inputmode flips — "none" keeps every virtual
+        // keyboard down. The app probes its IME seat after each
+        // input event and calls here on a change, still inside the
+        // user gesture mobile browsers demand for a keyboard raise.
+        Module.himarkTextFocus = (wants) => {
+          if (composing) return;
+          const mode = wants ? "text" : "none";
+          if (input.getAttribute("inputmode") === mode) return;
+          input.setAttribute("inputmode", mode);
+          // The flip only lands on a (re)focus.
+          input.blur();
+          input.focus({ preventScroll: true });
+        };
+
+        // IME: the composition mirrors into the engine's marked text
+        // and commits through the same door the native shells use.
+        input.addEventListener("compositionstart", () => {
+          composing = true;
+        });
+        input.addEventListener("compositionupdate", (event) => {
+          intoEngine("_himark_ime_set", event.data || "");
+        });
+        input.addEventListener("compositionend", (event) => {
+          composing = false;
+          intoEngine("_himark_ime_commit", event.data || "");
+          arm();
+        });
       })();
     </script>
     <script>

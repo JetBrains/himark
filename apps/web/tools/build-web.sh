@@ -99,6 +99,9 @@ grammar_exports+=",_isspace,_isalpha,_isalnum,_isdigit,_isxdigit,_islower,_isupp
 # The tailnet bridge's callbacks — called from the js-library on the
 # main thread; MAIN_MODULE=2 would strip them without the listing.
 grammar_exports+=",_himark_tailnet_opened,_himark_tailnet_data,_himark_tailnet_closed"
+# The text seat's doors — called from index.html's hidden-input
+# handlers (clipboard, typed text, IME composition).
+grammar_exports+=",_himark_clipboard_take,_himark_clipboard_paste,_himark_text_input,_himark_ime_set,_himark_ime_commit"
 EMCC="${EMCC:-em++}" \
 RUSTFLAGS="-C panic=abort \
     -C link-arg=-sMAIN_MODULE=2 \
@@ -106,6 +109,7 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-sFETCH \
     -C link-arg=-Wl,--export=__stack_pointer \
     -C link-arg=-sEXPORTED_FUNCTIONS=$grammar_exports \
+    -C link-arg=-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8 \
     -C link-arg=-sUSE_WEBGL2=1 \
     -C link-arg=-sMIN_WEBGL_VERSION=2 \
     -C link-arg=-sMAX_WEBGL_VERSION=2 \

@@ -208,6 +208,7 @@ mod app {
             target_thread: usize,
         ) -> c_int;
         fn emscripten_run_script_string(script: *const c_char) -> *const c_char;
+        fn emscripten_run_script(script: *const c_char);
         fn emscripten_set_resize_callback_on_thread(
             target: *const c_char,
             user_data: *mut c_void,
@@ -246,7 +247,9 @@ mod app {
             // the JetBrains Mono cuts, Bricolage Grotesque) ships in
             // the wasm — the world seeds them on every platform.
             let world = editor::parley_line::world();
-            let app = Box::into_raw(Box::new(WebApp::new(context, world))).cast::<c_void>();
+            let app = Box::into_raw(Box::new(WebApp::new(context, world)));
+            TEXT_SEAT.store(app, std::sync::atomic::Ordering::Release);
+            let app = app.cast::<c_void>();
             emscripten_request_animation_frame(Some(animation_frame), app);
             install_callbacks(app);
         }
@@ -260,6 +263,9 @@ mod app {
         clicks: crate::clicks::ClickCounter,
         /// Only presses in this canvas can start a selection drag.
         drag_point: Option<gfx::Point>,
+        /// The engine's text focus as last told to the page — the
+        /// soft keyboard's state (`sync_keyboard`).
+        wants_text: bool,
         /// The one browser canvas is one himark window.
         window: workbench::window::WindowId,
         context: DirectContext,
@@ -551,6 +557,7 @@ mod app {
                 last_scroll_ms: None,
                 clicks: crate::clicks::ClickCounter::default(),
                 drag_point: None,
+                wants_text: false,
                 window,
                 context,
                 #[cfg(target_feature = "atomics")]
@@ -942,7 +949,7 @@ mod app {
                 return false;
             };
             app.drag_point = Some(point);
-            app.state.dispatch_timed(
+            let changed = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::MouseDown {
                     mods,
@@ -952,7 +959,9 @@ mod app {
                 },
                 gfx::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
                 event.timestamp / 1000.0,
-            )
+            );
+            sync_keyboard(app);
+            changed
         }
     }
 
@@ -970,12 +979,36 @@ mod app {
         if app.drag_point.take().is_none() {
             return false;
         }
-        app.state.dispatch_timed(
+        let changed = app.state.dispatch_timed(
             app.window,
             imba::event::Event::MouseUp { point },
             app.state.viewport_size(),
             timestamp,
-        )
+        );
+        sync_keyboard(app);
+        changed
+    }
+
+    /// The soft keyboard follows the ENGINE's text focus — the same
+    /// probe the iOS shell's `syncFirstResponder` rides: an IME seat
+    /// in the focused frame means text is wanted. Ran at the tail of
+    /// every input event, still inside the user gesture a keyboard
+    /// raise needs; the page only flips the seat's inputmode, so the
+    /// clipboard road never loses focus. (The mobile nuance — a tap
+    /// in a focused editor should DISMISS, a repeat tap at the caret
+    /// summon — wants imba to know it stands on a touch form; that
+    /// enhancement is postponed, this probe is its transport.)
+    fn sync_keyboard(app: &mut WebApp) {
+        let wants = app.state.with_ime_client(app.window, |_| ()).is_some();
+        if wants == app.wants_text {
+            return;
+        }
+        app.wants_text = wants;
+        let script = match wants {
+            true => c"if (Module.himarkTextFocus) Module.himarkTextFocus(1);",
+            false => c"if (Module.himarkTextFocus) Module.himarkTextFocus(0);",
+        };
+        unsafe { emscripten_run_script(script.as_ptr()) };
     }
 
     extern "C" fn mouse_move(
@@ -1057,6 +1090,126 @@ mod app {
         false
     }
 
+    // ─── The text seat's engine half ─────────────────────────────────
+    // The page keeps one hidden, always-focused textarea (index.html's
+    // #input): the browser's clipboard commands, IME composition and
+    // the mobile soft keyboard all address the focused editable, so
+    // its DOM events are the app's whole text contract. Each handler
+    // calls straight through these doors — synchronous, like the
+    // emscripten key callbacks, so the input stream stays ordered.
+    // One thread (the browser main thread) owns both sides, and a
+    // door only ever runs between wasm turns; the tailnet callbacks
+    // ride the same pattern. The doors are listed in the linkers'
+    // EXPORTED_FUNCTIONS — MAIN_MODULE=2 strips them otherwise.
+
+    /// The app the DOM-side text seat pokes — null until the app stands.
+    static TEXT_SEAT: std::sync::atomic::AtomicPtr<WebApp> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+    unsafe fn seated_app<'a>() -> Option<&'a mut WebApp> {
+        let app = TEXT_SEAT.load(std::sync::atomic::Ordering::Acquire);
+        (!app.is_null()).then(|| &mut *app)
+    }
+
+    unsafe fn seated_text<'a>(text: *const c_char) -> Option<&'a str> {
+        if text.is_null() {
+            return None;
+        }
+        CStr::from_ptr(text).to_str().ok()
+    }
+
+    /// Copy or cut: the engine's clipboard seat answers with the text
+    /// the page's copy/cut handler puts on `event.clipboardData`. The
+    /// answer lives until the next take — the caller reads it before
+    /// returning to the event loop.
+    #[no_mangle]
+    pub unsafe extern "C" fn himark_clipboard_take(cut: c_int) -> *const c_char {
+        thread_local! {
+            static TAKEN: std::cell::RefCell<std::ffi::CString> =
+                std::cell::RefCell::new(std::ffi::CString::default());
+        }
+        let Some(app) = seated_app() else {
+            return std::ptr::null();
+        };
+        let copied = app
+            .state
+            .with_clipboard_client(app.window, |client| match cut != 0 {
+                true => client.cut(),
+                false => client.copy(),
+            })
+            .flatten();
+        let Some(content) = copied else {
+            return std::ptr::null();
+        };
+        let Ok(text) = std::ffi::CString::new(content.text) else {
+            return std::ptr::null();
+        };
+        TAKEN.with(|stash| {
+            *stash.borrow_mut() = text;
+            stash.borrow().as_ptr()
+        })
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn himark_clipboard_paste(text: *const c_char) {
+        let Some(app) = seated_app() else { return };
+        let Some(text) = seated_text(text).filter(|text| !text.is_empty()) else {
+            return;
+        };
+        let _ = app.state.with_clipboard_client(app.window, |client| {
+            client.paste(&imba::clipboard::ClipboardContent {
+                text: text.to_owned(),
+            })
+        });
+    }
+
+    /// Typed text the keydown road never saw — the soft keyboard's,
+    /// a dead key's composed character.
+    #[no_mangle]
+    pub unsafe extern "C" fn himark_text_input(text: *const c_char) {
+        let Some(app) = seated_app() else { return };
+        let Some(text) = seated_text(text).filter(|text| !text.is_empty()) else {
+            return;
+        };
+        let size = app.state.viewport_size();
+        let _ = app
+            .state
+            .dispatch(app.window, imba::event::Event::TextInput { text }, size);
+    }
+
+    /// The composition in flight mirrors into the engine's marked text.
+    #[no_mangle]
+    pub unsafe extern "C" fn himark_ime_set(text: *const c_char) {
+        let Some(app) = seated_app() else { return };
+        let Some(text) = seated_text(text) else { return };
+        let caret = text.encode_utf16().count() as u32;
+        let _ = app.state.with_ime_client(app.window, |client| {
+            client.set_marked_text(text, (caret, 0), None);
+        });
+    }
+
+    /// Composition ended: commit through the marked-text door the
+    /// native shells use, or unmark on a cancel. A commit with no IME
+    /// client standing falls back to plain text input — the words
+    /// must land somewhere.
+    #[no_mangle]
+    pub unsafe extern "C" fn himark_ime_commit(text: *const c_char) {
+        let Some(app) = seated_app() else { return };
+        let Some(text) = seated_text(text) else { return };
+        let committed = app.state.with_ime_client(app.window, |client| {
+            match text.is_empty() {
+                true => client.unmark_text(),
+                false => client.insert_text(text, None),
+            }
+        });
+        if committed.is_none() && !text.is_empty() {
+            let size = app.state.viewport_size();
+            let _ = app
+                .state
+                .dispatch(app.window, imba::event::Event::TextInput { text }, size);
+        }
+    }
+
     extern "C" fn key_down(
         _event_type: c_int,
         event: *const EmscriptenKeyboardEvent,
@@ -1073,6 +1226,25 @@ mod app {
                 command: event.meta_key,
             };
             let size = app.state.viewport_size();
+
+            // A composing input method owns the keyboard — the same
+            // gate every shell keeps. 229 is the processing keyCode
+            // IMEs ride; "Process" its key-value spelling.
+            if event.key_code == 229 || cstr(&event.key).to_bytes() == b"Process" {
+                return false;
+            }
+
+            // Clipboard chords are LEFT to the browser: its copy, cut
+            // and paste commands land as DOM events on the text seat
+            // (index.html's #input), where the engine's clipboard
+            // seat answers — the one road desktop keyboards, mobile
+            // Edit menus and ⌘-chords all share.
+            if (event.meta_key || event.ctrl_key) && !event.alt_key {
+                if let b"c" | b"x" | b"v" = cstr(&event.key).to_bytes() {
+                    return false;
+                }
+            }
+
             let mut key_down = |key: imba::event::Key| {
                 app.state.dispatch_timed(
                     app.window,
@@ -1081,7 +1253,7 @@ mod app {
                     timestamp,
                 )
             };
-            match cstr(&event.key).to_str().unwrap_or_default() {
+            let consumed = match cstr(&event.key).to_str().unwrap_or_default() {
                 "Backspace" => key_down(imba::event::Key::Backspace),
                 "ArrowLeft" => key_down(imba::event::Key::Left),
                 "ArrowRight" => key_down(imba::event::Key::Right),
@@ -1118,7 +1290,9 @@ mod app {
                     timestamp,
                 ),
                 _ => false,
-            }
+            };
+            sync_keyboard(app);
+            consumed
         }
     }
 

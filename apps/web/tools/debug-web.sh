@@ -108,6 +108,9 @@ grammar_exports="_main,___stack_pointer,_malloc,_calloc,_realloc,_free,_abort,_m
 grammar_exports+=",_strlen,_strcmp,_strncmp,_strcpy,_strncpy,_strchr,_strrchr,_strstr,_strcat,_strncat,_strtol,_strtoul"
 grammar_exports+=",_iswspace,_iswalpha,_iswalnum,_iswdigit,_iswxdigit,_iswlower,_iswupper,_iswpunct,_towlower,_towupper"
 grammar_exports+=",_isspace,_isalpha,_isalnum,_isdigit,_isxdigit,_islower,_isupper,_ispunct,_tolower,_toupper"
+# The text seat's doors — called from index.html's hidden-input
+# handlers (clipboard, typed text, IME composition).
+grammar_exports+=",_himark_clipboard_take,_himark_clipboard_paste,_himark_text_input,_himark_ime_set,_himark_ime_commit"
 
 echo "building unoptimized incremental web module"
 EMCC="${EMCC:-em++}" \
@@ -117,6 +120,7 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-sFETCH \
     -C link-arg=-Wl,--export=__stack_pointer \
     -C link-arg=-sEXPORTED_FUNCTIONS=$grammar_exports \
+    -C link-arg=-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8 \
     -C link-arg=-sUSE_WEBGL2=1 \
     -C link-arg=-sMIN_WEBGL_VERSION=2 \
     -C link-arg=-sMAX_WEBGL_VERSION=2 \
