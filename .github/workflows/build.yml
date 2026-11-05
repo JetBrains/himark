@@ -121,6 +121,21 @@ jobs:
           target/emsdk/emsdk install 6.0.7
           target/emsdk/emsdk activate 6.0.7
 
+      - name: Install Go for browser Tailscale
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+          cache: true
+          cache-dependency-path: apps/web/tailnet-wasm/go.sum
+
+      # Exact matches only: build-web.sh trusts a complete existing grammar pack.
+      # Hash frontend sources too: language registration and embedded queries live there.
+      - name: Cache compiled and compressed grammar pack
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/web/grammars
+          key: grammars-v1-${{ runner.os }}-${{ runner.arch }}-emscripten-6.0.7-${{ steps.web-rust.outputs.cache-key }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', '.cargo/config.toml', 'apps/web/tools/**', 'frontend/**', 'vendor/tree-sitter-*/**') }}
+
       - name: Build web application
         env:
           LIBCLANG_PATH: /usr/lib/llvm-22/lib
@@ -212,8 +227,12 @@ jobs:
           # default from this minor ('stable' resolved older on the
           # runner and died on undefined json.v2 names).
           go-version: "1.26"
-          check-latest: true
-          cache: false
+          check-latest: false
+          cache: true
+          # Cargo.lock pins libtailscale-sys and its bundled Go module.
+          cache-dependency-path: |
+            Cargo.lock
+            apps/web/tailnet-wasm/go.sum
 
       - name: Install XcodeGen
         run: brew install xcodegen
