@@ -154,6 +154,7 @@ impl DynamicOnceCommand for Connected {
         match self.result {
             Ok(info) => {
                 Agents::set_agents(store, self.server, info.agents);
+                Agents::set_home(store, self.server, info.default_directory);
                 Agents::set_status(store, self.server, HostStatus::Connected);
                 // The tail lane of THIS batch sees Connected and
                 // starts the listing and the drain.

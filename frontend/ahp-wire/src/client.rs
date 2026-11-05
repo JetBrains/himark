@@ -62,6 +62,10 @@ pub enum ServerEvent {
 #[derive(Clone, Debug)]
 pub struct RootInfo {
     pub agents: Vec<AgentInfo>,
+    /// The host's suggested browse root (`InitializeResult.
+    /// defaultDirectory`) — the user's home on the reference host;
+    /// None when the host offers none. The folder picker opens here.
+    pub default_directory: Option<String>,
 }
 
 #[derive(Clone, Debug)]

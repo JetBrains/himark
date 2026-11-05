@@ -37,6 +37,7 @@ fn the_sessions_subscription_runs_without_any_view() {
         ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>> {
             Box::pin(std::future::ready(Ok(ahp_wire::client::RootInfo {
                 agents: Vec::new(),
+                default_directory: None,
             })))
         }
 

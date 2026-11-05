@@ -4414,6 +4414,31 @@ async fn symbol_locations_without_an_engine_resolve_cut_off() {
 }
 
 #[tokio::test]
+async fn initialize_advertises_the_browse_root() {
+    // The protocol's remote-filesystem-browsing slot: the host's
+    // suggested default directory — the user's home — which the
+    // folder picker opens at (RootInfo.default_directory client-side).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let answer = client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
+        )
+        .await;
+    let home = answer["defaultDirectory"]
+        .as_str()
+        .expect("the browse root");
+    assert!(home.starts_with("file://"), "{home}");
+    let path = home.strip_prefix("file://").unwrap();
+    assert!(
+        std::path::Path::new(path).is_dir(),
+        "the advertised root exists: {home}"
+    );
+}
+
+#[tokio::test]
 async fn fsp_overlays_replay_at_spawn_and_stream_after() {
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path().join("ws");

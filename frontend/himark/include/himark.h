@@ -134,6 +134,13 @@
 
 #define HIMARK_PLACE_SESSIONS 16
 
+/**
+ * The session host's folder picker — BOTH halves speak it: a rust
+ * road navigates it (the add-folder ask on a remote host) and the
+ * native shell may mint it directly.
+ */
+#define HIMARK_PLACE_FOLDER_PICKER 17
+
 typedef struct HimarkEngine HimarkEngine;
 
 /**

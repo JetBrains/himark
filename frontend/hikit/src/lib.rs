@@ -19,5 +19,6 @@ pub mod navigation;
 pub mod pane_row;
 pub mod panel;
 pub mod rows;
+pub mod sheet;
 pub mod tree_item;
 pub mod ui;

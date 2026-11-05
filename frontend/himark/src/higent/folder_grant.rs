@@ -16,11 +16,179 @@ use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
 
 /// The native folder picker, asked from the SHELL (it owns the
-/// window): the effect's handler lives host-side.
+/// window): the effect's handler lives host-side. The LOCAL host's
+/// road only — the system chooser cannot browse a remote machine
+/// (and on macOS it is also the TCC grant, so local keeps it).
 pub struct PickFoldersEffect {
     /// The anchor id the host may sheet the picker to — a window's
     /// or a mounted origin's raw id, 0 for none.
     pub window: u64,
+}
+
+/// Whether the session's host is the DESIGNATED local one — the one
+/// machine the system chooser can actually browse.
+fn host_is_local(store: &Store, server: HostId) -> bool {
+    store
+        .get::<ahp_wire::client::LocalHost>()
+        .and_then(|local| local.0)
+        == Some(server)
+}
+
+/// The session host's filesystem as locations: the authority that
+/// routes `resourceList` to the host's whole-fs world ("local" for
+/// the designated local host, the scoped `ahp:<host>:hihost-fs:/local`
+/// otherwise).
+fn host_fs_authority(store: &Store, server: HostId) -> editor::location::Authority {
+    if host_is_local(store, server) {
+        editor::location::Authority::new("local")
+    } else {
+        editor::location::Authority::new(ahp_wire::client::authority(
+            server,
+            &SessionUri::new(ahp_wire::LOCAL_FS_SESSION),
+        ))
+    }
+}
+
+/// The picker's roots on a host: home (the connect's
+/// `defaultDirectory`) when the host offered one, else the
+/// filesystem root.
+fn host_roots(store: &Store, server: HostId) -> Vec<editor::location::ResourceLocation> {
+    let authority = host_fs_authority(store, server);
+    let home = Hosts::host(store, server)
+        .and_then(|host| host.home)
+        .and_then(|home| {
+            ahp_wire::client::ResourceUriMap::location_of(
+                &ahp_wire::uris::FileUris,
+                &ahp_wire::client::ResourceUri::new(home),
+                editor::location::ResourceType::directory(),
+                &authority,
+            )
+        });
+    match home {
+        Some(home) => vec![home],
+        // No metadata (an older host): the filesystem root — an
+        // empty-path location lists "/" and names itself by its
+        // authority.
+        None => vec![editor::location::ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            authority,
+            Vec::new(),
+        )],
+    }
+}
+
+/// What the picker is opened over for a session's host — the roots,
+/// the caption and the grant; shared by the windowed opener and the
+/// mounted place arm.
+pub(crate) fn folder_pick(
+    store: &Store,
+    server: HostId,
+    session: SessionUri,
+) -> crate::higent::folder_picker::FolderPick {
+    crate::higent::folder_picker::FolderPick {
+        roots: host_roots(store, server),
+        caption: match Hosts::host(store, server) {
+            Some(host) if !host.name.is_empty() => {
+                format!("ADD FOLDER · {}", host.name.to_uppercase())
+            }
+            _ => "ADD FOLDER".to_owned(),
+        },
+        grant: Arc::new(move |folder| {
+            Arc::new(ChatFoldersPicked {
+                server,
+                session: session.clone(),
+                locations: vec![folder],
+            })
+        }),
+    }
+}
+
+/// Open the in-app folder picker for a session: the windowed shell
+/// sheets it on the window showing the session; a mounted shell
+/// navigates `FolderPickerPlace` (iOS presents it natively). Queued
+/// through `AppRequests` so the verb-world roads can ask too.
+pub(crate) struct OpenFolderPicker {
+    pub server: HostId,
+    pub session: SessionUri,
+}
+
+impl crate::commands::HimarkCommand for OpenFolderPicker {
+    fn id(&self) -> &'static str {
+        "session.open-folder-picker"
+    }
+
+    fn name(&self) -> String {
+        "Add Session Folder…".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        _bound: &imba::focus::Bindings,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        use crate::higent::folder_picker::{FolderPicker, FolderPickerCommand};
+        let target = ahp_wire::SessionId {
+            host: self.server,
+            session: self.session.clone(),
+        };
+
+        // A window showing the session: the picker sheets there.
+        let window = store
+            .get::<::workbench::window::Windows>()
+            .and_then(|windows| {
+                windows.ids().into_iter().find(|id| {
+                    windows
+                        .entity(*id)
+                        .is_some_and(|entity| crate::workspace::entity_session(entity) == target)
+                })
+            });
+        if let Some(window) = window {
+            let pick = folder_pick(store, self.server, self.session.clone());
+            let modal: Box<dyn hikit::modal::ModalView> = fx.scope(
+                move |command| {
+                    crate::shell::content(
+                        window,
+                        ::workbench::window::WindowCommand::Modal(command),
+                    )
+                },
+                |fx| {
+                    fx.scope(imba::dyn_view::DynCommand::new::<FolderPickerCommand>, |fx| {
+                        Box::new(FolderPicker::open(store, ui, pick, fx))
+                            as Box<dyn hikit::modal::ModalView>
+                    })
+                },
+            );
+            let mut entity = ::workbench::window::Windows::window(store, window)
+                .expect("the window entity");
+            fx.scope(
+                move |command| crate::app::content(window, command),
+                |fx| entity.show_modal(store, modal, fx),
+            );
+            ::workbench::window::Windows::put(store, window, entity);
+            return;
+        }
+        // No window holds it — a mounted shell: navigate the place;
+        // the native shell presents it (iOS: a sheet).
+        if let Some(origin) = crate::mounts::origin_of(store, &target) {
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
+                crate::shell::navigate_origin(
+                    store,
+                    ui,
+                    origin,
+                    crate::places::FolderPickerPlace(target),
+                    fx,
+                )
+            });
+            return;
+        }
+        eprintln!(
+            "[higent] folder picker DROPPED: nothing shows {} on {:?}",
+            self.session.as_str(),
+            self.server
+        );
+    }
 }
 
 impl std::fmt::Display for PickFoldersEffect {
@@ -49,11 +217,20 @@ impl crate::commands::HimarkCommand for AddSessionFolders {
 
     fn perform(
         &self,
-        _store: &mut Store,
-        _ui: &imba::ui::UiCtx,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        // A remote host: the system chooser browses the WRONG machine
+        // — the in-app picker shows the session host's tree instead.
+        if !host_is_local(store, self.server) {
+            return OpenFolderPicker {
+                server: self.server,
+                session: self.session.clone(),
+            }
+            .perform(store, ui, bound, fx);
+        }
         // The picker needs no window — the host sheets it where it
         // likes; the ORIGIN rides along as the anchor id.
         let anchor = crate::commands::bound_origin(self.id(), bound)
@@ -101,14 +278,38 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
         "Add Session Folder…".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        // The picker needs no window — requiring one killed this
-        // road on every mounted shell. A window SHOWING the session
-        // anchors the sheet when one exists; 0 sheets app-modally.
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let target = ahp_wire::SessionId {
             host: self.server,
             session: self.session.clone(),
         };
+        // A remote host: the in-app picker. A window showing the
+        // session takes it as a sheet (the app lane drains the ask
+        // this same batch); a mounted shell navigates the place and
+        // the native host presents it (iOS: a sheet).
+        if !host_is_local(store, self.server) {
+            if let Some(origin) = crate::mounts::origin_of(store, &target) {
+                return crate::shell::navigate_origin(
+                    store,
+                    ui,
+                    origin,
+                    crate::places::FolderPickerPlace(target),
+                    fx,
+                );
+            }
+            return crate::commands::AppRequests::push(
+                store,
+                Arc::new(OpenFolderPicker {
+                    server: self.server,
+                    session: self.session.clone(),
+                }),
+            );
+        }
+        // The local host: the system chooser (on macOS it is also the
+        // TCC grant). The picker needs no window — requiring one
+        // killed this road on every mounted shell. A window SHOWING
+        // the session anchors the sheet when one exists; 0 sheets
+        // app-modally.
         let anchor = store
             .get::<::workbench::window::Windows>()
             .and_then(|windows| {

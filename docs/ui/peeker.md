@@ -123,6 +123,25 @@ recents. Scratches carry scratch:// identities ([documents.md](../editor/documen
 they list and recur like any open, live through displacement, and die
 only to cmd-w.
 
+## The folder picker
+
+The add-folder road's modal, on the same sheet chrome
+(`hikit::sheet`, where the jump sheet's pieces moved): the system
+chooser can only browse the LOCAL machine, so a session on a remote
+host — and every iOS session — gets the host's OWN tree instead:
+`filetree::SessionTreeView`, whole (lazy listing over `resourceList`
+by authority, watches, the row menu with rename/create — mkdir on
+the remote works), rooted at the host's home. The home arrives as
+host metadata: `initialize.defaultDirectory` → `RootInfo` → the
+`Hosts` row (`home`); a host that offers none falls back to the
+filesystem root. The cursor seeds on the home root; ⏎ walks, ⌘⏎
+grants the cursor's directory (the same `SessionWorkingDirectorySet`
+dispatch the native pick runs) and closes, esc closes. The windowed
+shell sheets it on the window showing the session; a mounted shell
+navigates `FolderPickerPlace` and the native host presents it
+(`HIMARK_PLACE_FOLDER_PICKER`; iOS: a sheet). The LOCAL host keeps
+the system chooser — on macOS it is also the TCC grant.
+
 ## Out of scope
 
 - Cross-window widgets.

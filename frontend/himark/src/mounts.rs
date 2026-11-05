@@ -40,6 +40,16 @@ pub fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId
     store.get::<MountSessions>()?.0.get(&id.raw()).cloned()
 }
 
+/// A mounted origin SHOWING the session — the folder picker's
+/// navigation anchor when no window holds it.
+pub fn origin_of(store: &Store, session: &ahp_wire::SessionId) -> Option<ViewBridgeId> {
+    store
+        .get::<MountSessions>()?
+        .0
+        .iter()
+        .find_map(|(raw, held)| (held == session).then(|| ViewBridgeId::from_raw(*raw)))
+}
+
 /// The session's mounted FILES TREES — the explicit follow targets
 /// `himark_tree_follow` commands when the host lands a navigation —
 /// and the STANDING follow: the active editor's location, kept so a
@@ -818,6 +828,26 @@ fn mount_place_inner(
                 id,
                 view: changesview::changes_view::ChangesPane::new(changes, view),
             }) as Arc<dyn BridgeView>)
+        });
+    }
+    if let Some(place) = place.place::<crate::places::FolderPickerPlace>() {
+        let key = place.0.clone();
+        return app.mount(move |store, ui, id, fx| {
+            remember_session(store, id, key.clone());
+            let pick =
+                crate::higent::folder_grant::folder_pick(store, key.host, key.session.clone());
+            let view = fx.scope(
+                move |command: crate::higent::folder_picker::FolderPickerCommand| {
+                    AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
+                },
+                |fx| {
+                    // The island's glass is the sheet — the picker
+                    // keeps only its hairlines.
+                    crate::higent::folder_picker::FolderPicker::open(store, ui, pick, fx)
+                        .unfloored()
+                },
+            );
+            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
         });
     }
     if let Some(place) = place.place::<crate::places::SearchPlace>() {

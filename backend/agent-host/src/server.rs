@@ -1399,7 +1399,11 @@ impl Host {
                     title: None,
                 }),
                 snapshots,
-                default_directory: None,
+                // The host's suggested browse root (the protocol's
+                // "remote filesystem browsing" slot): the user's home
+                // — the folder picker opens here.
+                default_directory: std::env::var_os("HOME")
+                    .map(|home| crate::uris::file_uri(Path::new(&home))),
                 completion_trigger_characters: None,
                 terminal_command_prefix: None,
                 telemetry: None,

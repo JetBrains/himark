@@ -117,6 +117,15 @@ pub struct PeekerPlace(pub ahp_wire::SessionId);
 
 impl Place for PeekerPlace {}
 
+/// The FOLDER PICKER — the session host's file tree in a modal (the
+/// Files tab's view, rooted at the host's home), for granting a
+/// workspace folder when the system chooser cannot reach the
+/// session's machine (a remote host; every iOS session).
+#[derive(Clone, PartialEq)]
+pub struct FolderPickerPlace(pub ahp_wire::SessionId);
+
+impl Place for FolderPickerPlace {}
+
 /// The COMMAND PALETTE — the registry walk, the query and the
 /// filtered list. The shell mounts the face and paints the glass
 /// around it; the palette itself is the engine's, once.

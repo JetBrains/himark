@@ -35,6 +35,7 @@ impl SessionClient for Seat {
     fn connect(&self) -> ClientFuture<Result<ahp_wire::client::RootInfo, String>> {
         Box::pin(std::future::ready(Ok(ahp_wire::client::RootInfo {
             agents: Vec::new(),
+            default_directory: None,
         })))
     }
 

@@ -63,6 +63,9 @@ final class AppHost: NSObject, ObservableObject {
     /// The pending push per TAB — the navigate callback routes by
     /// the origin bridge's tab.
     @Published var pushes: [HimarkEngine.SessionViewKind: Push] = [:]
+    /// The folder picker the engine asked for (the add-folder road on
+    /// a remote host) — presented as a SHEET over whatever stands.
+    @Published var picker: Push?
     /// The native chrome's theme — the iOS pair's half for the
     /// standing appearance, re-read when the system switches.
     @Published var shell = ShellTheme.load(dark: true)
@@ -107,10 +110,21 @@ final class AppHost: NSObject, ObservableObject {
         // document, a diff, or a commit's canvas each ride the native
         // stage scroller.
         engine.seat.onNavigate = { [weak self] origin, place, kind, title, _ in
+            guard let self else { return false }
+            // The folder picker rides its own SHEET (the add-folder
+            // road on a remote host); the engine's dismiss pops it.
+            if kind == UInt32(HIMARK_PLACE_FOLDER_PICKER) {
+                let push = Push(place: place, kind: kind, title: title, origin: origin.raw)
+                DispatchQueue.main.async { self.landPicker(push) }
+                return true
+            }
+            if kind == UInt32(HIMARK_PLACE_DISMISS), picker != nil {
+                DispatchQueue.main.async { self.dismissPicker() }
+                return true
+            }
             guard kind == UInt32(HIMARK_PLACE_DOCUMENT) || kind == UInt32(HIMARK_PLACE_DIFF)
                 || kind == UInt32(HIMARK_PLACE_CANVAS)
             else { return false }
-            guard let self else { return false }
             let push = Push(place: place, kind: kind, title: title, origin: origin.raw)
             DispatchQueue.main.async { self.land(push) }
             return true
@@ -133,6 +147,26 @@ final class AppHost: NSObject, ObservableObject {
         for (tab, standing) in pushes where standing.id == push.id {
             pushes[tab] = nil
         }
+        engine.release(place: push.place)
+    }
+
+    private func landPicker(_ push: Push) {
+        if let standing = picker { engine.release(place: standing.place) }
+        picker = push
+    }
+
+    /// The engine asked the picker away (escape, the grant landing).
+    private func dismissPicker() {
+        guard let standing = picker else { return }
+        picker = nil
+        engine.release(place: standing.place)
+    }
+
+    /// The SHEET went (a swipe, the binding clearing): drop the
+    /// record and the handle.
+    func pickerDismissed(_ push: Push) {
+        guard picker?.id == push.id else { return }
+        picker = nil
         engine.release(place: push.place)
     }
 

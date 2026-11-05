@@ -25,6 +25,11 @@ pub struct Host {
     pub status: HostStatus,
     pub agents: rpds::VectorSync<AgentInfo>,
 
+    /// The host's suggested browse root (a `file:` uri — the user's
+    /// home on the reference host), as the connect answered it
+    /// (`RootInfo.default_directory`); the folder picker opens here.
+    pub home: Option<String>,
+
     pub sessions: rpds::VectorSync<SessionSummary>,
 
     pub states: rpds::HashTrieMapSync<SessionUri, SessionChannel>,
@@ -242,6 +247,7 @@ impl Host {
             name,
             status: HostStatus::Idle,
             agents: rpds::VectorSync::new_sync(),
+            home: None,
             sessions: rpds::VectorSync::new_sync(),
             states: rpds::HashTrieMapSync::new_sync(),
             rows: rpds::HashTrieMapSync::new_sync(),

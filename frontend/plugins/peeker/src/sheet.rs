@@ -1,15 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The jump sheet's typographic pieces: the SHEET it stands on, the
-//! row label whose typed letters are marked, and the key-hint
-//! footer (the palette crate keeps the same set; both belong in
-//! `hikit::ui`). Each is a named modifier or layout value — the views
-//! compose them, nothing places pixels by hand.
+//! The jump sheet's typographic pieces. The SHEET itself, the text
+//! styles and the key-hint footer moved to `hikit::sheet` (shared
+//! with the folder picker and the palette); what stays is the row
+//! label whose typed letters are marked — the peeker's own.
 
 use editor::theme::TypeRole;
-use gfx::{Paint, Rect, Size};
-use hikit::chrome::SheetChrome;
+use gfx::{Paint, Rect};
 use hikit::ui::TextStyle;
 use imba::{
     arena::Arena,
@@ -17,83 +15,7 @@ use imba::{
     ui::UiCtx,
 };
 
-/// THE one boxed surface the design keeps: a centered sheet — flat
-/// fill, hairline border, soft radius, soft drop shadow. The page
-/// behind dims nothing.
-#[derive(Clone)]
-pub(crate) struct Sheet(pub(crate) SheetChrome);
-
-impl Sheet {
-    /// The sheet's width in a window `room` wide: its own width, or
-    /// the window less a gutter each side.
-    pub(crate) fn width_in(&self, room: Size) -> f32 {
-        self.0.width.min(room.width - 2.0 * self.0.gutter).max(1.0)
-    }
-
-    /// The tallest the sheet may grow in `room`.
-    pub(crate) fn max_height_in(&self, room: Size) -> f32 {
-        (room.height - self.0.top - self.0.bottom).max(1.0)
-    }
-
-    /// The sheet's rect for content `size`, centered under the top.
-    pub(crate) fn rect_in(&self, room: Size, size: Size) -> Rect {
-        Rect::from_xywh(
-            ((room.width - size.width) * 0.5).max(0.0),
-            self.0.top,
-            size.width,
-            size.height,
-        )
-    }
-
-    /// The fill and border, under the content it decorates.
-    pub(crate) fn wrap<'a, Command: 'a>(
-        &self,
-        inner: impl imba::thunk_ext::ThunkExt<'a, Command> + 'a,
-    ) -> impl imba::Thunk<'a, Command> + 'a {
-        hikit::ui::Surface::bordered(self.0.fill.0, self.0.border.0)
-            .radius(self.0.radius)
-            .wrap(inner)
-    }
-
-    /// The soft drop shadow, painted by whatever stands BEHIND the
-    /// sheet — the sheet's own box clips what it paints.
-    pub(crate) fn shadow_painter(&self, sheet: Rect) -> impl Fn(&Arena, &gfx::Canvas<'_>, Rect) {
-        let chrome = self.0.clone();
-        move |_arena, canvas, _rect| {
-            if chrome.shadow_blur <= 0.0 {
-                return;
-            }
-            // A CSS blur radius is twice the gaussian's sigma.
-            canvas.draw_blurred_round_rect(
-                sheet.with_offset((0.0, chrome.shadow_dy)),
-                chrome.radius,
-                chrome.radius,
-                chrome.shadow_blur * 0.5,
-                chrome.shadow.0,
-            );
-        }
-    }
-}
-
-/// A chrome style at a ramp rung, in `color`.
-pub(crate) fn styled(ui: &UiCtx, role: &TypeRole, color: gfx::Color) -> TextStyle {
-    TextStyle {
-        font: hikit::fonts::role_font(ui, role),
-        color,
-        tracking: role.tracking,
-        shaper: imba::layout::TextShaper::of(ui),
-    }
-}
-
-/// The mono face at `size`, in `color` — keys and shortcuts.
-pub(crate) fn mono(ui: &UiCtx, size: f32, color: gfx::Color) -> TextStyle {
-    TextStyle {
-        font: hikit::fonts::mono_font(ui, size),
-        color,
-        tracking: 0.0,
-        shaper: imba::layout::TextShaper::of(ui),
-    }
-}
+pub(crate) use hikit::sheet::{key_hints, mono, styled, Sheet};
 
 /// The typed letters' mark: a heavier cut of the label's face and a
 /// LIVE underline under the run.
@@ -203,32 +125,6 @@ pub(crate) fn marked_label<'a, Command: 'a>(
     }
     if at < name.len() || name.is_empty() {
         row = row.child_by_baseline(hikit::ui::text(plain, &name[at..]));
-    }
-    row
-}
-
-/// The footer's key hints — "↑↓ move   ⏎ run   esc close": each key
-/// in the mono face, its word in the label's, the hints a fixed gap
-/// apart on one baseline.
-pub(crate) fn key_hints<'a, Command: 'a>(
-    arena: &'a Arena,
-    hints: &[(&str, &str)],
-    key: &TextStyle,
-    word: &TextStyle,
-    gap: f32,
-) -> imba::layout::Row<'a, Command> {
-    let mut row = imba::layout::Row::new(arena);
-    for (index, (keys, verb)) in hints.iter().enumerate() {
-        let lead = match index {
-            0 => 0.0,
-            _ => gap,
-        };
-        row = row
-            .child_by_baseline(hikit::ui::text(key, *keys).pad_insets(Insets {
-                left: lead,
-                ..Default::default()
-            }))
-            .child_by_baseline(hikit::ui::text(word, format!(" {verb}")));
     }
     row
 }

@@ -237,6 +237,10 @@ struct Active {
 
     feeds: Mutex<HashMap<Uri, Arc<Feed>>>,
 
+    /// The host's suggested browse root, as `initialize` answered it
+    /// — read into `RootInfo` by `connect`.
+    default_directory: Option<String>,
+
     root: Mutex<Option<Arc<RootFeed>>>,
 
     agents: Mutex<Vec<AgentInfo>>,
@@ -713,11 +717,11 @@ impl WireHost {
                     )
                     .await
                     .map_err(|error| format!("configChanged: {error}"))?;
-                Ok::<_, String>(client)
+                Ok::<_, String>((client, initialized.default_directory))
             })
             .await
         });
-        let client = match client {
+        let (client, default_directory) = match client {
             Ok(outcome) => outcome?,
             Err(_) => {
                 tracing::error!(
@@ -751,6 +755,7 @@ impl WireHost {
             dead,
             died: tokio::sync::Notify::new(),
             feeds: Mutex::new(feeds),
+            default_directory,
             root: Mutex::new(root),
             agents: Mutex::new(agents),
         });
@@ -1223,6 +1228,7 @@ impl SessionClient for WireHost {
                 if root.is_some() {
                     return Ok(RootInfo {
                         agents: active.agents.lock().expect("wire agents").clone(),
+                        default_directory: active.default_directory.clone(),
                     });
                 }
             }
@@ -1239,7 +1245,10 @@ impl SessionClient for WireHost {
                 _ => return Err("the subscribe answered no root snapshot".to_owned()),
             };
             *active.agents.lock().expect("wire agents") = agents.clone();
-            Ok(RootInfo { agents })
+            Ok(RootInfo {
+                agents,
+                default_directory: active.default_directory.clone(),
+            })
         }))
     }
 

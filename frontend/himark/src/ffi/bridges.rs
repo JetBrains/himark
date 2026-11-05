@@ -1162,6 +1162,7 @@ pub unsafe extern "C" fn himark_place_session_view(
         HIMARK_PLACE_PALETTE => |s| NavigationLocation::new(PalettePlace(s)),
         HIMARK_PLACE_SESSIONS => |s| NavigationLocation::new(SessionsPlace(s)),
         HIMARK_PLACE_FILES => |s| NavigationLocation::new(FilesPlace(s)),
+        HIMARK_PLACE_FOLDER_PICKER => |s| NavigationLocation::new(FolderPickerPlace(s)),
         _ => {
             refuse("session view kind", kind as u64);
             return HimarkPlace { raw: 0 };
@@ -1445,6 +1446,10 @@ pub const HIMARK_PLACE_COMMENTS: u32 = 13;
 pub const HIMARK_PLACE_PEEKER: u32 = 14;
 pub const HIMARK_PLACE_PALETTE: u32 = 15;
 pub const HIMARK_PLACE_SESSIONS: u32 = 16;
+/// The session host's folder picker — BOTH halves speak it: a rust
+/// road navigates it (the add-folder ask on a remote host) and the
+/// native shell may mint it directly.
+pub const HIMARK_PLACE_FOLDER_PICKER: u32 = 17;
 
 /// The host's navigate answer: called on the MAIN thread, in the
 /// middle of an engine batch — the host must only RECORD (push the
@@ -1531,6 +1536,10 @@ impl crate::himark::Shell for CallbackShell {
             } else if place.place::<crate::places::ChatPlace>().is_some() {
                 // "Show this session" — the sessions drawer's pick.
                 Some((HIMARK_PLACE_CHAT, String::new()))
+            } else if place.place::<crate::places::FolderPickerPlace>().is_some() {
+                // The add-folder ask on a remote host — the native
+                // shell presents the picker (iOS: a sheet).
+                Some((HIMARK_PLACE_FOLDER_PICKER, "Add Folder".to_owned()))
             } else {
                 None
             };
@@ -1543,6 +1552,11 @@ impl crate::himark::Shell for CallbackShell {
                 let session = place
                     .place::<crate::places::ChatPlace>()
                     .map(|chat| chat.0.clone())
+                    .or_else(|| {
+                        place
+                            .place::<crate::places::FolderPickerPlace>()
+                            .map(|picker| picker.0.clone())
+                    })
                     .or_else(|| crate::mounts::session_of(store, origin));
                 let handle = HimarkPlace {
                     raw: PLACES

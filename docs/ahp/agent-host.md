@@ -180,6 +180,12 @@ The served surface: `initialize`, `subscribe`/`unsubscribe`, `ping`,
 `openDocument`, `storeDocument`, `lsp/*`, `createTerminal`,
 `disposeTerminal`, `httpServe`.
 
+`initialize` fills the protocol's remote-filesystem-browsing slot,
+`defaultDirectory`, with the user's home as a `file:` URI — the
+client keeps it as host metadata (`RootInfo.default_directory` →
+the `Hosts` row's `home`) and the folder picker opens there
+(docs/ui/peeker.md, the folder picker).
+
 ## 4. The providers (the termination)
 
 Two providers exist — Claude and Codex — and the seam is

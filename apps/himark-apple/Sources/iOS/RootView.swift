@@ -56,6 +56,11 @@ struct RootView: View {
             }
         }
         .background(theme.ground.ignoresSafeArea())
+        // The folder picker: the engine's own sheet face (caption,
+        // tree, footer) fills a system sheet edge to edge.
+        .sheet(item: pickerBinding(host)) { push in
+            FolderPickerSheet(host: host, push: push)
+        }
         .onAppear {
             visited.insert(section)
             host.kickoff()
@@ -63,6 +68,86 @@ struct RootView: View {
         }
         .onChange(of: section) { visited.insert($0) }
         .onChange(of: scheme) { host.follow(appearance: $0) }
+    }
+}
+
+/// The picker sheet's presence as a binding: clearing it (a swipe,
+/// the engine's dismiss) releases the place handle.
+private func pickerBinding(_ host: AppHost) -> Binding<AppHost.Push?> {
+    Binding(
+        get: { host.picker },
+        set: { presented in
+            if presented == nil, let standing = host.picker {
+                host.pickerDismissed(standing)
+            }
+        }
+    )
+}
+
+/// The folder picker in its sheet: a plain place bridge — the view
+/// scrolls inside the engine, the sheet is the glass.
+private struct FolderPickerSheet: View {
+    @ObservedObject var host: AppHost
+    let push: AppHost.Push
+
+    var body: some View {
+        PlainPlaceBridge(host: host, place: push.place)
+            .background(host.shell.ground.ignoresSafeArea())
+    }
+}
+
+/// A place-minted bridge WITHOUT the native stage scroller — modal
+/// faces (the folder picker) scroll inside the engine.
+struct PlainPlaceBridge: UIViewRepresentable {
+    let host: AppHost
+    let place: HimarkPlace
+
+    func makeUIView(context: Context) -> PlainPlaceHost {
+        PlainPlaceHost(host: host, place: place)
+    }
+
+    func updateUIView(_ view: PlainPlaceHost, context: Context) {}
+
+    static func dismantleUIView(_ view: PlainPlaceHost, coordinator: ()) {
+        view.teardown()
+    }
+}
+
+/// The UIKit side of a place-minted modal face: owns the bridge's
+/// lifecycle and the `HimarkBridgeView` painting it (the
+/// `MintedBridgeHost` recipe, minted from a HANDLE instead of a
+/// kind; the handle itself is released by whoever landed the push).
+final class PlainPlaceHost: UIView {
+    private let host: AppHost
+    private var bridge = HimarkBridge(raw: 0)
+    private var child: HimarkBridgeView?
+
+    init(host: AppHost, place: HimarkPlace) {
+        self.host = host
+        super.init(frame: .zero)
+        backgroundColor = .clear
+        bridge = host.engine.mint(place: place)
+        guard bridge.raw != 0 else { return }
+        let view = HimarkBridgeView(
+            frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(view)
+        host.register(view)
+        child = view
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func teardown() {
+        if let child {
+            host.unregister(child)
+            child.removeFromSuperview()
+        }
+        child = nil
+        if bridge.raw != 0 {
+            host.unmount(bridge: bridge)
+            bridge = HimarkBridge(raw: 0)
+        }
     }
 }
 

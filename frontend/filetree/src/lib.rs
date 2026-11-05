@@ -654,6 +654,18 @@ impl SessionTreeView {
         Some(self.tree.list.inner().cursor()?.name().to_owned())
     }
 
+    /// The cursor's location — the folder picker reads its choice off
+    /// the same tree the Files tab shows.
+    pub fn selected_location(&self) -> Option<ResourceLocation> {
+        self.tree.list.inner().cursor().cloned()
+    }
+
+    /// An inline rename/create rides — a hosting face must leave the
+    /// keys to it (docs/ui/list-keyboard.md).
+    pub fn editing(&self) -> bool {
+        self.edit.is_some()
+    }
+
     pub fn reveal_pending(&self) -> bool {
         self.pending_reveal.is_some()
     }

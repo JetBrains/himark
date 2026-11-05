@@ -43,6 +43,13 @@ impl Agents {
         });
     }
 
+    /// The host's suggested browse root, as the connect answered it.
+    pub(crate) fn set_home(store: &mut Store, server: HostId, home: Option<String>) {
+        Self::update_record(store, server, |record| {
+            record.home = home.clone();
+        });
+    }
+
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
     pub fn add_sessions(
