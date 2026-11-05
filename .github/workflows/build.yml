@@ -137,7 +137,7 @@ jobs:
           tar -C dist -czf "dist/$stage.tar.gz" "$stage"
           rm -r "dist/$stage"
 
-      # The staged site is bundled into the macOS app by the macos job.
+      # The packaging job bundles this site with the independently built native app.
       - name: Upload web site
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -187,7 +187,7 @@ jobs:
   macos:
     name: macOS (arm64)
     runs-on: macos-15
-    needs: [version, web]
+    needs: version
     timeout-minutes: 120
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -228,12 +228,6 @@ jobs:
           key: zig-${{ env.ZIG_VERSION }}
           cache-targets: true
 
-      - name: Download web site
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: web-site
-          path: target/web
-
       - name: Build application bundle
         working-directory: apps/himark-apple
         env:
@@ -241,11 +235,60 @@ jobs:
           HIMARK_BUILD_NUMBER: ${{ github.run_number }}
         run: ./build.sh mac
 
+      # Archive before uploading to preserve executable permissions and symlinks.
+      - name: Archive native app
+        run: |
+          tar -C apps/himark-apple/build/Build/Products/Release \
+            -cf native-app.tar himark-macOS.app
+
+      - name: Upload native app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-macos
+          path: native-app.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  package-macos:
+    name: Package macOS (arm64)
+    runs-on: macos-15
+    needs: [version, web, macos]
+    timeout-minutes: 15
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Checkout license
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: LICENSE
+          sparse-checkout-cone-mode: false
+
+      - name: Download native app
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-macos
+          path: native
+
+      - name: Extract native app
+        run: tar -xf native/native-app.tar -C native
+
+      - name: Download web site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-site
+          path: native/himark-macOS.app/Contents/Resources/web
+
+      - name: Sign completed bundle
+        run: |
+          codesign --force --sign - native/himark-macOS.app
+          codesign --verify --deep --strict native/himark-macOS.app
+
       - name: Package
         run: |
           stage="himark-${VERSION}-macos-arm64"
           mkdir -p "dist/$stage"
-          ditto apps/himark-apple/build/Build/Products/Release/himark-macOS.app \
+          ditto native/himark-macOS.app \
             "dist/$stage/himark-macOS.app"
           cp LICENSE "dist/$stage/"
           ditto -c -k --keepParent "dist/$stage" "dist/$stage.zip"
@@ -261,7 +304,7 @@ jobs:
   release:
     name: Publish draft release
     runs-on: ubuntu-24.04
-    needs: [version, web, macos]
+    needs: [version, web, package-macos]
     if: github.ref_type == 'tag'
     permissions:
       contents: write
