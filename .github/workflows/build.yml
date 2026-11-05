@@ -164,6 +164,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-web
+          compression-level: 0 # The tarball is already gzip-compressed.
           path: dist/*
           if-no-files-found: error
 
@@ -317,6 +318,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist-macos
+          compression-level: 0 # The package is already a ZIP archive.
           path: dist/*
           if-no-files-found: error
 
