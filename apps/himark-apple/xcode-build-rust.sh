@@ -13,10 +13,17 @@ cd "$(dirname "$0")"
 ROOT="$(cd ../.. && pwd)"
 
 # Xcode's phase environment is minimal and exports an SDKROOT that
-# would poison cargo's HOST-side build scripts — drop it and reach
-# the usual toolchains (rustup, homebrew's go for libtailscale).
+# would poison cargo's HOST-side build scripts (an iOS SDK for a
+# macOS build script). Reach the usual toolchains (rustup, homebrew's
+# go for libtailscale), then pin SDKROOT to the macOS SDK rather
+# than unsetting it: Xcode's PATH resolves `cc` to the toolchain's
+# own clang, which — unlike the /usr/bin xcrun shim — has no default
+# sysroot, so every cc-rs build script (tree-sitter, ring, quickjs…)
+# would die on `TargetConditionals.h not found`. cc-rs and rustc both
+# ignore a MacOSX.platform SDKROOT for iOS targets and ask xcrun.
 export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:$PATH"
 unset SDKROOT
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 
 case "${PLATFORM_NAME:-macosx}" in
   macosx)
