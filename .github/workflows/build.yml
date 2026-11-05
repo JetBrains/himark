@@ -189,6 +189,14 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
+      # libtailscale-sys builds the embedded tailscale node with the
+      # Go toolchain; the macos-15 image stopped shipping one.
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
