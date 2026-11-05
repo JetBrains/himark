@@ -282,7 +282,17 @@ final class AppHost: NSObject, ObservableObject {
     }
 
     func newSession() {
-        engine.newSession()
+        // iOS runs no local backend: 0 ("the local default") creates
+        // nowhere. The current session's host takes it; failing
+        // that, the first connected host, then any cataloged one.
+        let host = current?.host
+            ?? hosts.first(where: { $0.status == 2 })?.id
+            ?? sessions.first?.host
+        guard let host else {
+            NSLog("himark: new session — no host to create on")
+            return
+        }
+        engine.newSession(host: host)
     }
 
     func mint(_ kind: HimarkEngine.SessionViewKind) -> HimarkBridge {

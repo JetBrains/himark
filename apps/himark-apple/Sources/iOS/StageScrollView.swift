@@ -30,6 +30,9 @@ final class StageScrollHost: UIView, UIScrollViewDelegate {
 
         scroll.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scroll.alwaysBounceVertical = true
+        // The standing keyboard follows the finger out — dragging
+        // the transcript down dismisses it, the platform's way.
+        scroll.keyboardDismissMode = .interactive
         scroll.delegate = self
         addSubview(scroll)
         scroll.frame = bounds
@@ -251,6 +254,10 @@ final class ComposerHost: UIView {
         let view = HimarkBridgeView(
             frame: bounds, engine: host.engine, bridge: bridge, device: host.device)
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // The composer is PROSE: the QuickType bar and autocorrect
+        // belong here (document editors keep them off).
+        view.autocorrectionType = .default
+        view.spellCheckingType = .default
         addSubview(view)
         host.register(view)
         child = view

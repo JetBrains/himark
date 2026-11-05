@@ -63,7 +63,11 @@ class HimarkBridgeView: UIView {
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = false
-        if scrollEmbedded { metalLayer.isOpaque = false }
+        // Every bridge sits on a THEMED SwiftUI ground: an opaque
+        // layer composites its undrawn pixels black (the composer
+        // band on the light theme). Transparent everywhere — the
+        // ground behind is the theme's.
+        metalLayer.isOpaque = false
         metalLayer.contentsScale = UIScreen.main.scale
         layer.addSublayer(metalLayer)
 

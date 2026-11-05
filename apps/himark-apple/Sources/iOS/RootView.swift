@@ -57,9 +57,13 @@ struct RootView: View {
         }
         .background(theme.ground.ignoresSafeArea())
         // The folder picker: the engine's own sheet face (caption,
-        // tree, footer) fills a system sheet edge to edge.
+        // tree, footer) fills a system sheet edge to edge. The grab
+        // bar keeps the swipe-down discard reachable over a content
+        // view that owns every other touch.
         .sheet(item: pickerBinding(host)) { push in
             FolderPickerSheet(host: host, push: push)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .onAppear {
             visited.insert(section)

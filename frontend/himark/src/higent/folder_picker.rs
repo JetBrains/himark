@@ -285,25 +285,62 @@ impl View for FolderPicker {
                     bottom: chrome.pad_bottom,
                 })
                 .layout(arena, loose(dialog.height()));
-            let foot = sheet::key_hints(
-                arena,
-                &[
-                    ("↑↓", "move"),
-                    ("⏎", "open folder"),
-                    ("⌘⏎", "add folder"),
-                    ("esc", "close"),
-                ],
-                &sheet::mono(ui, chrome.footer_size, ink.ink_2.0),
-                &hikit::ui::brief(store, ui).sized(chrome.footer_size),
-                chrome.footer_gap,
-            )
-            .pad_insets(Insets {
-                left: chrome.pad_x,
-                right: chrome.pad_x,
-                top: chrome.footer_pad_y,
-                bottom: chrome.footer_pad_y,
-            })
-            .layout(arena, loose(dialog.height()));
+            // The footer: the ACTIONS are BUTTONS — touch has no ⌘⏎
+            // — their words in the live ink, the word itself the
+            // press; the movement hints and the key glyphs ride the
+            // keyboard (floored) face only.
+            let key = sheet::mono(ui, chrome.footer_size, ink.ink_2.0);
+            let word = hikit::ui::brief(store, ui).sized(chrome.footer_size);
+            let live = word.clone().colored(ink.live.0);
+            let gap = chrome.footer_gap;
+            let lead = |first: bool| Insets {
+                left: match first {
+                    true => 0.0,
+                    false => gap,
+                },
+                ..Default::default()
+            };
+            let mut foot_row = imba::layout::Row::new(arena);
+            if self.floored {
+                foot_row = foot_row
+                    .child_by_baseline(hikit::ui::text(&key, "↑↓"))
+                    .child_by_baseline(hikit::ui::text(&word, " move"))
+                    .child_by_baseline(hikit::ui::text(&key, "⏎").pad_insets(lead(false)))
+                    .child_by_baseline(hikit::ui::text(&word, " open"))
+                    .child_by_baseline(hikit::ui::text(&key, "⌘⏎").pad_insets(lead(false)))
+                    .child_by_baseline(hikit::ui::text(&word, " "));
+            }
+            foot_row = foot_row.child_by_baseline(
+                hikit::ui::text(&live, "add folder")
+                    .pad_insets(lead(self.floored))
+                    .on_event(|_arena: &Arena, event: &Event<'_>, _size| match event {
+                        Event::MouseDown { .. } => {
+                            EventResult::command(FolderPickerCommand::Choose)
+                        }
+                        _ => EventResult::Ignored,
+                    }),
+            );
+            if self.floored {
+                foot_row = foot_row
+                    .child_by_baseline(hikit::ui::text(&key, "esc").pad_insets(lead(false)))
+                    .child_by_baseline(hikit::ui::text(&word, " "));
+            }
+            foot_row = foot_row.child_by_baseline(
+                hikit::ui::text(&live, "close")
+                    .pad_insets(lead(self.floored))
+                    .on_event(|_arena: &Arena, event: &Event<'_>, _size| match event {
+                        Event::MouseDown { .. } => EventResult::command(FolderPickerCommand::Close),
+                        _ => EventResult::Ignored,
+                    }),
+            );
+            let foot = foot_row
+                .pad_insets(Insets {
+                    left: chrome.pad_x,
+                    right: chrome.pad_x,
+                    top: chrome.footer_pad_y,
+                    bottom: chrome.footer_pad_y,
+                })
+                .layout(arena, loose(dialog.height()));
             let rows_h = (dialog.height()
                 - head.size().height
                 - foot.size().height
