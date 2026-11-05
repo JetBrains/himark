@@ -250,24 +250,38 @@ jobs:
           sudo /tmp/llvm.sh 22
           sudo apt-get install -y libclang-22-dev
 
-      - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
-        with:
-          toolchain: nightly
-          components: rust-src
-          targets: wasm32-unknown-emscripten
+      - name: Install pinned web Rust toolchain
+        id: web-rust
+        run: |
+          toolchain="$(cat apps/web/rust-toolchain)"
+          rustup toolchain install "$toolchain" --profile minimal \
+            --component rust-src --target wasm32-unknown-emscripten
+          # Host tools (the grammar pack) use the default compiler too.
+          compiler_key="$( { rustc -Vv; rustc +"$toolchain" -Vv; } | sha256sum | cut -d ' ' -f 1)"
+          echo "cache-key=$compiler_key" >> "$GITHUB_OUTPUT"
+          echo "rust-src=$(rustc +"$toolchain" --print sysroot)/lib/rustlib/src" >> "$GITHUB_OUTPUT"
 
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      # Restore before the emsdk lands in target/: on a partial cache match
-      # rust-cache prunes everything in target/ that cargo did not produce.
-      - name: Cache Cargo artifacts
-        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
+      # Keep build-std's sysroot crates and fingerprints, including host build
+      # scripts. Restore rust-src too: freshly installed source timestamps would
+      # otherwise make Cargo rebuild std. Do not cache target/emsdk or the site.
+      - name: Cache web dependencies and rebuilt standard library
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          shared-key: web-emscripten-6.0.7
+          path: |
+            ${{ steps.web-rust.outputs.rust-src }}
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target/release
+            target/wasm32-unknown-emscripten/release
+          key: web-check-v1-${{ runner.os }}-${{ runner.arch }}-emscripten-6.0.7-${{ steps.web-rust.outputs.cache-key }}-${{ hashFiles('apps/web/rust-toolchain', 'apps/web/tools/**', '.cargo/config.toml', 'Cargo.toml') }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            web-check-v1-${{ runner.os }}-${{ runner.arch }}-emscripten-6.0.7-${{ steps.web-rust.outputs.cache-key }}-${{ hashFiles('apps/web/rust-toolchain', 'apps/web/tools/**', '.cargo/config.toml', 'Cargo.toml') }}-
 
       - name: Checkout Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

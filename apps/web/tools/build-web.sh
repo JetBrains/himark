@@ -6,6 +6,7 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$repo_root"
+web_toolchain="$(<apps/web/rust-toolchain)"
 
 rebuild_grammars=false
 cargo_command=build
@@ -117,7 +118,7 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-sDEFAULT_PTHREAD_STACK_SIZE=8388608 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sSTACK_OVERFLOW_CHECK=2 \
     -C link-arg=-sMAXIMUM_MEMORY=2147483648 -C link-arg=-lwebsocket.js -C link-arg=-sSUPPORT_LONGJMP=emscripten -C link-arg=-sINITIAL_MEMORY=134217728 \
     -C link-arg=--js-library=$repo_root/apps/web/tools/tailnet-library.js" \
-    cargo +nightly "$cargo_command" --locked -Zbuild-std=std,panic_abort -p web --release \
+    cargo "+$web_toolchain" "$cargo_command" --locked -Zbuild-std=std,panic_abort -p web --release \
     --target wasm32-unknown-emscripten
 
 if [[ "$cargo_command" == check ]]; then
