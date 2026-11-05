@@ -294,7 +294,10 @@ mod app {
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
             state.register_command(std::sync::Arc::new(himark::diff_pane::OpenDiff));
             state.register_row_minter(canvas::diff_pane::pair_row_minter());
-            state.register_navigator(canvas::faces::CanvasNavigator);
+            // The canvas navigator is a BUILTIN (ScrolledCanvasNavigator);
+            // registering the bare mounted-road one here would shadow it
+            // and leave the faces scroll-less — the browser is a windowed
+            // shell like any other.
             state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
 
             comments::install(&mut state.store_mut());
