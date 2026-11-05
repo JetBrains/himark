@@ -120,7 +120,7 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-sFETCH \
     -C link-arg=-Wl,--export=__stack_pointer \
     -C link-arg=-sEXPORTED_FUNCTIONS=$grammar_exports \
-    -C link-arg=-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8 \
+    -C link-arg=-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8,ENV \
     -C link-arg=-sUSE_WEBGL2=1 \
     -C link-arg=-sMIN_WEBGL_VERSION=2 \
     -C link-arg=-sMAX_WEBGL_VERSION=2 \

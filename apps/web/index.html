@@ -41,6 +41,9 @@
         outline: none;
         user-select: none;
         -webkit-user-select: none;
+        /* The app owns every touch gesture: panning rides the engine's
+           scroll events, taps keep the browser's mouse synthesis. */
+        touch-action: none;
       }
 
       /* The TEXT SEAT: the one focused node the browser speaks text
@@ -113,6 +116,16 @@
         Module = {
           canvas,
           himarkPoll: () => (queue.length ? queue.shift() : ""),
+          // `&trace` in the URL arms the engine's scroll tracing
+          // (IMBA_TRACE_SCROLL) — one console line per scroller per
+          // scroll event, naming heights and the gesture's owner.
+          preRun: [
+            () => {
+              if (new URLSearchParams(location.search).has("trace")) {
+                Module.ENV.IMBA_TRACE_SCROLL = "1";
+              }
+            },
+          ],
         };
 
         // ─── The text seat ─────────────────────────────────────────

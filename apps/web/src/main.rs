@@ -79,6 +79,34 @@ mod app {
     }
 
     #[repr(C)]
+    struct EmscriptenTouchPoint {
+        identifier: c_int,
+        screen_x: c_int,
+        screen_y: c_int,
+        client_x: c_int,
+        client_y: c_int,
+        page_x: c_int,
+        page_y: c_int,
+        is_changed: bool,
+        on_target: bool,
+        target_x: c_int,
+        target_y: c_int,
+        canvas_x: c_int,
+        canvas_y: c_int,
+    }
+
+    #[repr(C)]
+    struct EmscriptenTouchEvent {
+        timestamp: c_double,
+        num_touches: c_int,
+        ctrl_key: bool,
+        shift_key: bool,
+        alt_key: bool,
+        meta_key: bool,
+        touches: [EmscriptenTouchPoint; 32],
+    }
+
+    #[repr(C)]
     struct EmscriptenMouseEvent {
         timestamp: c_double,
         screen_x: c_int,
@@ -170,6 +198,42 @@ mod app {
             use_capture: bool,
             callback: Option<
                 extern "C" fn(c_int, *const EmscriptenKeyboardEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
+        fn emscripten_set_touchstart_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenTouchEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
+        fn emscripten_set_touchmove_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenTouchEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
+        fn emscripten_set_touchend_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenTouchEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
+        fn emscripten_set_touchcancel_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenTouchEvent, *mut c_void) -> bool,
             >,
             target_thread: usize,
         ) -> c_int;
@@ -266,6 +330,15 @@ mod app {
         /// The engine's text focus as last told to the page — the
         /// soft keyboard's state (`sync_keyboard`).
         wants_text: bool,
+        /// The standing one-finger TOUCH PAN, scroll by synthesis:
+        /// taps stay the browser's (it synthesizes the mouse events
+        /// the click road already speaks), a move past the slop
+        /// becomes a scroll gesture.
+        pan: Option<TouchPan>,
+        /// The pan's momentum after the finger lifts — decayed and
+        /// dispatched once per animation frame until it dies or a
+        /// touch catches it.
+        fling: Option<Fling>,
         /// The one browser canvas is one himark window.
         window: workbench::window::WindowId,
         context: DirectContext,
@@ -558,6 +631,8 @@ mod app {
                 clicks: crate::clicks::ClickCounter::default(),
                 drag_point: None,
                 wants_text: false,
+                pan: None,
+                fling: None,
                 window,
                 context,
                 #[cfg(target_feature = "atomics")]
@@ -695,6 +770,55 @@ mod app {
             Some(resize),
             CALLBACK_THREAD_CALLING,
         );
+        // Touch events stay on their start target by the DOM's own
+        // contract — the canvas hears a pan to its end.
+        let touch = [
+            (
+                "start",
+                emscripten_set_touchstart_callback_on_thread(
+                    CANVAS,
+                    app,
+                    true,
+                    Some(touch_start),
+                    CALLBACK_THREAD_CALLING,
+                ),
+            ),
+            (
+                "move",
+                emscripten_set_touchmove_callback_on_thread(
+                    CANVAS,
+                    app,
+                    true,
+                    Some(touch_move),
+                    CALLBACK_THREAD_CALLING,
+                ),
+            ),
+            (
+                "end",
+                emscripten_set_touchend_callback_on_thread(
+                    CANVAS,
+                    app,
+                    true,
+                    Some(touch_end),
+                    CALLBACK_THREAD_CALLING,
+                ),
+            ),
+            (
+                "cancel",
+                emscripten_set_touchcancel_callback_on_thread(
+                    CANVAS,
+                    app,
+                    true,
+                    Some(touch_cancel),
+                    CALLBACK_THREAD_CALLING,
+                ),
+            ),
+        ];
+        for (name, result) in touch {
+            if result != 0 {
+                eprintln!("[touch] registering {name} FAILED: {result}");
+            }
+        }
     }
 
     extern "C" fn animation_frame(time: c_double, user_data: *mut c_void) -> bool {
@@ -712,6 +836,7 @@ mod app {
                 size,
                 time / 1000.0,
             );
+            fling_frame(app, time / 1000.0);
             app.draw();
             emscripten_request_animation_frame(Some(animation_frame), user_data);
         }
@@ -906,6 +1031,244 @@ mod app {
                 size,
                 event.mouse.timestamp / 1000.0,
             )
+        }
+    }
+
+    // ─── Touch: scroll by synthesis ──────────────────────────────────
+    // Mobile browsers synthesize mouse events for TAPS only — a pan is
+    // pure touchmove, which nothing here spoke. The pan becomes the
+    // wheel road's own event: `Event::Scroll` deltas under the START
+    // point, so the gesture-owner lock (`ScrollGesture::claims`) keeps
+    // every delta — and the fling after the lift — on the surface the
+    // finger first landed on, exactly the trackpad contract. Momentum
+    // is the shell's to synthesize (the OS feeds it to wheels for
+    // free): a velocity window at the lift, decayed per frame.
+
+    struct TouchPan {
+        id: c_int,
+        start: gfx::Point,
+        last: gfx::Point,
+        /// Past the slop: the touch is a scroll, never a tap.
+        panning: bool,
+        /// The touch CAUGHT a running fling: it spends itself on the
+        /// stop and never becomes a tap (the UIScrollView contract).
+        caught: bool,
+        /// Recent (seconds, dx, dy) — the lift's velocity window.
+        samples: std::collections::VecDeque<(f64, f32, f32)>,
+    }
+
+    struct Fling {
+        point: gfx::Point,
+        velocity: (f32, f32),
+        last: f64,
+    }
+
+    /// A tap stays a tap under this much finger wobble (CSS px).
+    const PAN_SLOP: f32 = 8.0;
+    /// The velocity window: deltas older than this don't throw.
+    const PAN_WINDOW: f64 = 0.15;
+
+    fn touch_point(app: &WebApp, touch: &EmscriptenTouchPoint) -> gfx::Point {
+        gfx::Point::new(
+            touch.target_x as f32 * app.scale,
+            touch.target_y as f32 * app.scale,
+        )
+    }
+
+    fn touches(event: &EmscriptenTouchEvent) -> &[EmscriptenTouchPoint] {
+        &event.touches[..(event.num_touches.clamp(0, 32) as usize)]
+    }
+
+    extern "C" fn touch_start(
+        _event_type: c_int,
+        event: *const EmscriptenTouchEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            let event = &*event;
+            // Any touch CATCHES a running fling.
+            let caught = app.fling.take().is_some();
+            // One finger pans; a second is ignored (pinch is future).
+            if app.pan.is_none() {
+                if let Some(touch) = touches(event).iter().find(|touch| touch.is_changed) {
+                    let point = touch_point(app, touch);
+                    app.pan = Some(TouchPan {
+                        id: touch.identifier,
+                        start: point,
+                        last: point,
+                        panning: false,
+                        caught,
+                        samples: std::collections::VecDeque::new(),
+                    });
+                }
+            }
+            // Never consumed: a tap must keep the browser's synthetic
+            // mouse events — the click road already speaks them.
+            false
+        }
+    }
+
+    extern "C" fn touch_move(
+        _event_type: c_int,
+        event: *const EmscriptenTouchEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            let event = &*event;
+            let Some(held) = app.pan.as_ref() else {
+                return false;
+            };
+            let id = held.id;
+            let Some(touch) = touches(event).iter().find(|touch| touch.identifier == id)
+            else {
+                return false;
+            };
+            let point = touch_point(app, touch);
+            let now = event.timestamp / 1000.0;
+            let (anchor, delta) = {
+                let pan = app.pan.as_mut().expect("the pan just held");
+                let delta = (pan.last.x - point.x, pan.last.y - point.y);
+                pan.last = point;
+                if !pan.panning {
+                    let wobble = ((point.x - pan.start.x).powi(2)
+                        + (point.y - pan.start.y).powi(2))
+                    .sqrt();
+                    if wobble < PAN_SLOP * app.scale {
+                        return false;
+                    }
+                    pan.panning = true;
+                    app.scroll_gesture.begin();
+                }
+                pan.samples.push_back((now, delta.0, delta.1));
+                while pan
+                    .samples
+                    .front()
+                    .is_some_and(|(stamp, ..)| now - stamp > PAN_WINDOW)
+                {
+                    pan.samples.pop_front();
+                }
+                (pan.start, delta)
+            };
+            if delta != (0.0, 0.0) {
+                let size = app.state.viewport_size();
+                let _ = app.state.dispatch_timed(
+                    app.window,
+                    imba::event::Event::Scroll {
+                        point: anchor,
+                        delta_x: delta.0,
+                        delta_y: delta.1,
+                        gesture: &app.scroll_gesture,
+                    },
+                    size,
+                    now,
+                );
+            }
+            // Consumed: past the slop the browser owes us no taps.
+            true
+        }
+    }
+
+    extern "C" fn touch_end(
+        _event_type: c_int,
+        event: *const EmscriptenTouchEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            let event = &*event;
+            let Some(pan) = app.pan.as_ref() else {
+                return false;
+            };
+            let lifted = touches(event)
+                .iter()
+                .any(|touch| touch.is_changed && touch.identifier == pan.id);
+            if !lifted {
+                return false;
+            }
+            let pan = app.pan.take().expect("the pan just held");
+            if !pan.panning {
+                // A catching tap spent itself stopping the fling; a
+                // plain tap goes to the browser's mouse synthesis.
+                return pan.caught;
+            }
+            let now = event.timestamp / 1000.0;
+            let throw: Vec<_> = pan
+                .samples
+                .iter()
+                .filter(|(stamp, ..)| now - stamp <= PAN_WINDOW)
+                .collect();
+            if let Some((oldest, ..)) = throw.first() {
+                let spread = (now - oldest).max(1.0 / 60.0) as f32;
+                let sum = throw
+                    .iter()
+                    .fold((0.0f32, 0.0f32), |sum, (_, dx, dy)| (sum.0 + dx, sum.1 + dy));
+                let cap = 6000.0 * app.scale;
+                let velocity = (
+                    (sum.0 / spread).clamp(-cap, cap),
+                    (sum.1 / spread).clamp(-cap, cap),
+                );
+                if (velocity.0.powi(2) + velocity.1.powi(2)).sqrt() > 100.0 * app.scale {
+                    app.fling = Some(Fling {
+                        point: pan.start,
+                        velocity,
+                        last: now,
+                    });
+                }
+            }
+            true
+        }
+    }
+
+    extern "C" fn touch_cancel(
+        _event_type: c_int,
+        event: *const EmscriptenTouchEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            let event = &*event;
+            if let Some(pan) = app.pan.as_ref() {
+                let ours = touches(event)
+                    .iter()
+                    .any(|touch| touch.is_changed && touch.identifier == pan.id);
+                if ours {
+                    app.pan = None;
+                }
+            }
+            false
+        }
+    }
+
+    /// One frame of the fling: UIScrollView's normal deceleration
+    /// (×0.998 per millisecond), dead when it slows to a crawl or the
+    /// owning scroller stops moving (its edge).
+    fn fling_frame(app: &mut WebApp, now: f64) {
+        let Some(mut fling) = app.fling.take() else {
+            return;
+        };
+        let dt = ((now - fling.last).clamp(0.0, 0.1)) as f32;
+        fling.last = now;
+        let delta = (fling.velocity.0 * dt, fling.velocity.1 * dt);
+        let decay = 0.998f32.powf(dt * 1000.0);
+        fling.velocity = (fling.velocity.0 * decay, fling.velocity.1 * decay);
+        let size = app.state.viewport_size();
+        let moved = app.state.dispatch_timed(
+            app.window,
+            imba::event::Event::Scroll {
+                point: fling.point,
+                delta_x: delta.0,
+                delta_y: delta.1,
+                gesture: &app.scroll_gesture,
+            },
+            size,
+            now,
+        );
+        let live = (fling.velocity.0.powi(2) + fling.velocity.1.powi(2)).sqrt()
+            > 30.0 * app.scale;
+        if moved && live {
+            app.fling = Some(fling);
         }
     }
 
