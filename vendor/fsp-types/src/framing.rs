@@ -29,10 +29,9 @@ pub fn read_message(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
             .filter(|(name, _)| name.eq_ignore_ascii_case("Content-Length"))
             .map(|(_, v)| v.trim())
         {
-            content_length =
-                Some(value.parse().map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "bad Content-Length")
-                })?);
+            content_length = Some(value.parse().map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "bad Content-Length")
+            })?);
         }
         // Content-Type is accepted and ignored (utf-8 is mandatory anyway).
     }

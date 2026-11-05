@@ -227,6 +227,7 @@ latches).
 | `searchLocations` (text/regex content) | `workspace/textSearch`, `partialResultToken` set | streamed `TextSearchFileResult[]` batches → one `locations/extend` per file; `range.start` → line/column, match length from the range against the shipped line text; `hifind::context_window` (`backend/find/src/lib.rs:324`) reslices the matched line so windows look identical across engines; `maxResults` = the limit; `limitHit` → `truncated` |
 | `search`, `target: "path"`, `kind: "fuzzy"` | `workspace/fileSearch` | quick-open; the server's score order IS the wire and presentation order (ahp-search.md §2.5 — ranking lives in fsp-server: name-position ladder, 2026-09-30); score values stay off the wire |
 | `search`, `target: "content"`, `kind: "text"/"regex"` | `workspace/textSearch` | `maxResultsPerFile: 1`, hits are the matched files, path-ordered |
+| `symbolLocations` | `workspace/symbolSearch`, `matchMode: "fuzzy"` | the go-to-symbol lane (ahp-locations.md §3.2): declarations in the server's score order, one `locations/extend` for the whole answer; the NAME's selection range → line/column/length, `signature` → `context`, re-based by the name's offset inside it; `limitHit` → `truncated`. FSP-only — the walk has no symbol vocabulary: no engine (or a server without `symbolSearchProvider`, `FSP_SYMBOLS=0`) resolves the channel `{done, truncated}` |
 
 Scope never routes: FSP serves every folder set, registered or
 not (§5). What remains on the in-process walk under either engine
@@ -293,9 +294,14 @@ ladder (§7) already turns into the naive path.
   kill-mid-request (`die-now`) → the walk serves the crash window
   and the respawned server serves the next request (two
   `initialize`s in the log); unsubscribe → `$/cancelRequest`
-  reaches the server (`slow` parks until it does). Engine unit
-  tests in `fsp.rs` cover discovery, column conversion, and result
-  mapping.
+  reaches the server (`slow` parks until it does); the symbol lane
+  (`fsp_engine_serves_the_symbol_lane`): the declaration's name
+  span and signature context on the wire, the blank query resolving
+  without an ask, and — engineless
+  (`symbol_locations_without_an_engine_resolve_cut_off`) — the
+  cut-off honesty. Engine unit tests in `fsp.rs` cover discovery,
+  column conversion, and result mapping (text, windowed lines,
+  symbols).
 - **Real binary** (`fsp_real_server_parity`, gated on
   `HIMARK_FSP_E2E=<path>`): a seeded tree with a multibyte line,
   positions asserted EQUAL to a `hifind::scan_locations` oracle —

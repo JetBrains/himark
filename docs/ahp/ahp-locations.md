@@ -4,12 +4,13 @@ This document specifies the Location Lists extension to the Agent
 Host Protocol (AHP). It defines one shared vocabulary — a document
 location carrying its own display context — and one channel scheme,
 `ahp-locations:/`, over which location-producing requests stream
-their results. Two producers are specified here: streaming content
-search (`searchLocations`, a rider on the Search extension) and the
-location-answering LSP asks (`lsp/locations`, a rider on the
-Language Services extension). Both answer a channel URI immediately;
-results arrive as channel actions; **unsubscribing cancels the
-producer**.
+their results. Three producers are specified here: streaming content
+search (`searchLocations`, a rider on the Search extension),
+declaration search (`symbolLocations`, over the reference server's
+FSP symbol index) and the location-answering LSP asks
+(`lsp/locations`, a rider on the Language Services extension). Each
+answers a channel URI immediately; results arrive as channel
+actions; **unsubscribing cancels the producer**.
 
 Types are defined in `protocol/ahp-ext-types` (crate
 `himark-ahp-ext-types`, module `locations`); the reference server is
@@ -149,7 +150,45 @@ empty `query` answers a channel that immediately resolves
 ACROSS files the emission order is unspecified — the walk is
 parallel, and consumers present locations in their own order.
 
-### 3.2 `lsp/locations`
+### 3.2 `symbolLocations`
+
+Declaration search over the session's resources, streamed over the
+same channel shape — the quick-open symbol lane. Scope rules are the
+Search extension's (docs/ahp/ahp-search.md §2.2). The query names a
+declaration the way the FSP symbol index matches it (fuzzy: a
+subsequence over names, ranked by word-boundary alignment,
+contiguity and compactness — docs/file-search.md); the server's
+score order is the emission order, and clients MUST NOT re-rank.
+
+```typescript
+interface SymbolLocationsParams {
+  /** The session's channel URI. */
+  channel: string;
+  folders?: string[];
+  /** The declaration name sought; fuzzy-matched. */
+  query: string;
+  /** Total declaration cap. Default 128; server-capped at 1024. */
+  limit?: number;
+}
+// answers LocationsChannelResult
+```
+
+Each declaration converts to one `Location`: `line`/`column`/`length`
+are the declaration NAME's own span (navigation lands on the name),
+`context` is the declaration's signature line as the index stores it
+(trimmed), `contextColumnStart` re-bases the signature onto the
+line. The whole answer ships as one `locations/extend` action, then
+the `done` action.
+
+Symbols are an indexed-engine capability — there is no naive
+fallback vocabulary. A server without a symbol index (the engine
+demoted, the sidecar absent, `FSP_SYMBOLS=0`) still answers the
+channel and resolves it `{done: true, truncated: true}`: cut off, so
+a client can tell "no index" from "no such symbol" (`truncated`
+false). An empty or whitespace `query` resolves `{done: true}`
+without asking.
+
+### 3.3 `lsp/locations`
 
 The location-answering LSP asks, streamed. Routing, text truth, and
 position/URI semantics are the Language Services extension's
@@ -191,14 +230,15 @@ server).
 
 | condition | answer |
 |---|---|
-| unknown session channel on `searchLocations` | `-32001` (no such channel), as `search` |
+| unknown session channel on `searchLocations` or `symbolLocations` | `-32001` (no such channel), as `search` |
 | unknown session channel on `lsp/locations` | `-32602` (Invalid params), as the LSP extension |
 | `kind: "fuzzy"` on `searchLocations` | `-32602` |
 | invalid regular expression | `-32602` |
 | a `folders` entry that is not a `file:` URI, or outside the roots | `-32602` |
 | `lsp/locations` with a non-whitelisted `method` | `-32602` |
 | subscribe on an unknown locations channel | `-32001` (no such channel) |
-| no matches / no references | **not an error** — the channel resolves `{locations: [], done: true}` |
+| no matches / no references / no such symbol | **not an error** — the channel resolves `{locations: [], done: true}` |
+| `symbolLocations` without a symbol index | **not an error** — the channel resolves `{done: true, truncated: true}` |
 
 ## 5. Client notes (non-normative)
 

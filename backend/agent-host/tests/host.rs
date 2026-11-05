@@ -4314,6 +4314,106 @@ async fn fsp_engine_serves_locations_and_both_search_lanes() {
 }
 
 #[tokio::test]
+async fn fsp_engine_serves_the_symbol_lane() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(root.join(".git")).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let minted = client
+        .request(
+            "symbolLocations",
+            json!({"channel": session, "query": "getLayer"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    let locations = state["locations"].as_array().expect("locations");
+    assert_eq!(locations.len(), 1, "{state}");
+    let hit = &locations[0];
+    assert!(hit["uri"].as_str().expect("uri").ends_with("sym.rs"));
+    // The declaration NAME's own span is the location, its signature
+    // the context (docs/ahp/ahp-locations.md §3.2).
+    assert_eq!(
+        (
+            hit["line"].clone(),
+            hit["column"].clone(),
+            hit["length"].clone()
+        ),
+        (json!(7), json!(7), json!(8)),
+        "{state}"
+    );
+    assert_eq!(hit["context"], "pub fn getLayer() {");
+    assert_eq!(hit["contextColumnStart"], json!(0));
+
+    // A blank query resolves done without asking the engine.
+    let minted = client
+        .request(
+            "symbolLocations",
+            json!({"channel": session, "query": "  "}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    assert_eq!(state["locations"].as_array().expect("locations").len(), 0);
+}
+
+#[tokio::test]
+async fn symbol_locations_without_an_engine_resolve_cut_off() {
+    // No FSP sidecar: the one engine with a symbol vocabulary is
+    // absent — the channel still answers, and resolves CUT OFF so a
+    // client can tell "no index" from "no such symbol"
+    // (docs/ahp/ahp-locations.md §3.2).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(&root).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let minted = client
+        .request(
+            "symbolLocations",
+            json!({"channel": session, "query": "getLayer"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    assert_eq!(state["truncated"], json!(true), "{state}");
+    assert_eq!(state["locations"].as_array().expect("locations").len(), 0);
+}
+
+#[tokio::test]
 async fn fsp_overlays_replay_at_spawn_and_stream_after() {
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path().join("ws");

@@ -438,6 +438,9 @@ send({"jsonrpc": "2.0", "id": msg["id"], "result": {
         "textDocumentSync": 2,
         "textSearchProvider": {"regExp": True, "multiline": True},
         "fileSearchProvider": {"fuzzy": True},
+        "symbolSearchProvider": {"workDoneProgress": False, "kinds": True,
+                                 "matchModes": ["exact", "prefix", "fuzzy"],
+                                 "sourceLines": True, "languages": ["rust"]},
         "workspace": {"searchFolders": {"supported": True, "changeNotifications": True}}},
     "serverInfo": {"name": "fake-fsp", "version": "0"}}})
 
@@ -485,10 +488,12 @@ while True:
             send({"jsonrpc": "2.0", "method": "$/progress",
                   "params": {"token": token, "value": [file_result]}})
             send({"jsonrpc": "2.0", "id": msg["id"],
-                  "result": {"results": [], "limitHit": q == "cut"}})
+                  "result": {"results": [], "limitHit": q == "cut",
+                             "completeness": "indexed"}})
         else:
             send({"jsonrpc": "2.0", "id": msg["id"],
-                  "result": {"results": [file_result], "limitHit": q == "cut"}})
+                  "result": {"results": [file_result], "limitHit": q == "cut",
+                             "completeness": "indexed"}})
         continue
     if method == "workspace/fileSearch":
         p = msg["params"]
@@ -496,7 +501,26 @@ while True:
         base = dirs[0].rstrip("/")
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"results": [
             {"uri": base + "/zeta.rs", "score": 2.0},
-            {"uri": base + "/alpha.rs", "score": 1.0}], "limitHit": False}})
+            {"uri": base + "/alpha.rs", "score": 1.0}],
+            "limitHit": False, "completeness": "indexed"}})
+        continue
+    if method == "workspace/symbolSearch":
+        p = msg["params"]
+        q = p["query"]
+        dirs = p.get("dirs") or folders
+        base = dirs[0].rstrip("/")
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": {
+            "results": [{
+                "name": q, "kind": "function",
+                "uri": base + "/sym.rs",
+                "range": {"start": {"line": 7, "character": 0},
+                          "end": {"line": 9, "character": 1}},
+                "selectionRange": {"start": {"line": 7, "character": 7},
+                                   "end": {"line": 7, "character": 7 + len(q)}},
+                "language": "rust",
+                "signature": "pub fn %s() {" % q}],
+            "total": 1, "completeness": "indexed",
+            "index": {"state": "ready", "files": 3}}})
         continue
 "#;
 

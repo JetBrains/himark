@@ -1347,6 +1347,7 @@ impl Host {
             }
             "search" => self.search(connection, id, params).await,
             "searchLocations" => self.search_locations(connection, id, params),
+            "symbolLocations" => self.symbol_locations(connection, id, params),
             "httpServe" => self.http_serve(id, params).await,
             "tailnetServe" => self.tailnet_serve(id, params),
             "createTerminal" => self.create_terminal(id, params),
@@ -3250,6 +3251,71 @@ impl Host {
         }
     }
 
+    /// `symbolLocations` (docs/ahp/ahp-locations.md §3.2): mint a
+    /// locations channel, answer it, and resolve it with the FSP
+    /// declaration search's answer — one `locations/extend` carrying
+    /// every declaration in score order, then the `done` action. Only
+    /// FSP has a symbol vocabulary: no engine, a server without the
+    /// capability, or a crash mid-ask resolves `{done, truncated}` —
+    /// honesty over a silent empty answer.
+    fn symbol_locations(
+        self: &Arc<Self>,
+        connection: u64,
+        id: u64,
+        params: Value,
+    ) -> JsonRpcMessage {
+        const DEFAULT_LIMIT: usize = 128;
+        const LIMIT_CAP: usize = 1024;
+        let params: himark_ahp_ext_types::locations::SymbolLocationsParams =
+            match serde_json::from_value(params) {
+                Ok(params) => params,
+                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+            };
+        let folders = match self.search_folders(id, &params.channel, params.folders.as_ref()) {
+            Ok(folders) => folders,
+            Err(refusal) => return refusal,
+        };
+        let limit = params
+            .limit
+            .map(|limit| limit as usize)
+            .unwrap_or(DEFAULT_LIMIT)
+            .min(LIMIT_CAP);
+        let query = params.query.trim().to_owned();
+
+        let channel = self.mint_locations(connection);
+        let resolved = |truncated: bool| himark_ahp_ext_types::locations::LocationList {
+            locations: Vec::new(),
+            done: true,
+            truncated,
+        };
+        if query.is_empty() || limit == 0 {
+            self.emit_locations(&channel, resolved(false));
+            return rpc::success(id, serde_json::json!({ "channel": channel }));
+        }
+        let Some(engine) = self.fsp_engine() else {
+            self.emit_locations(&channel, resolved(true));
+            return rpc::success(id, serde_json::json!({ "channel": channel }));
+        };
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watcher = self.leash_locations(channel.clone(), Arc::clone(&cancel));
+        let host = Arc::clone(self);
+        let fan_out = channel.clone();
+        tokio::spawn(async move {
+            let truncated = match engine.symbol_search(&folders, &query, limit, cancel).await {
+                Ok((hits, limit_hit)) => {
+                    if !hits.is_empty() {
+                        host.emit_locations(&fan_out, symbol_locations_of(hits));
+                    }
+                    limit_hit
+                }
+                Err(_) => true,
+            };
+            host.emit_locations(&fan_out, resolved(truncated));
+            watcher.abort();
+        });
+        rpc::success(id, serde_json::json!({ "channel": channel }))
+    }
+
     fn create_terminal(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params: CreateTerminalParams = match serde_json::from_value(params) {
             Ok(params) => params,
@@ -4042,7 +4108,7 @@ impl Host {
         }
     }
 
-    /// `lsp/locations` (docs/ahp/ahp-locations.md §3.2): the
+    /// `lsp/locations` (docs/ahp/ahp-locations.md §3.3): the
     /// location-answering LSP asks, streamed over a locations
     /// channel. Routing mirrors `handle_lsp`; everything after the
     /// mint runs detached, leashed by the channel's token — a flip
@@ -5196,7 +5262,7 @@ type LspRange = (u32, u32, u32, u32);
 
 /// Group a verbatim LSP `Location[] | LocationLink[]` answer per
 /// result URI, first-seen order; a `LocationLink` contributes its
-/// `targetSelectionRange` (docs/ahp/ahp-locations.md §3.2).
+/// `targetSelectionRange` (docs/ahp/ahp-locations.md §3.3).
 fn lsp_location_groups(result: &Value) -> Vec<(String, Vec<LspRange>)> {
     let entries: Vec<&Value> = match result {
         Value::Array(entries) => entries.iter().collect(),
@@ -5673,6 +5739,29 @@ fn path_ordered(
             .map(|(_, _, path)| crate::uris::file_uri(path))
             .collect(),
         truncated,
+    }
+}
+
+/// The declaration hits as one `locations/extend` payload — the symbol
+/// lane's conversion; the hits arrive in the server's score order and
+/// ship in it.
+fn symbol_locations_of(
+    hits: Vec<crate::fsp::SymbolHit>,
+) -> himark_ahp_ext_types::locations::LocationList {
+    himark_ahp_ext_types::locations::LocationList {
+        locations: hits
+            .into_iter()
+            .map(|hit| himark_ahp_ext_types::locations::Location {
+                uri: crate::uris::file_uri(&hit.path),
+                line: hit.line,
+                column: hit.column,
+                length: hit.length,
+                context: hit.context,
+                context_column_start: hit.context_column_start,
+            })
+            .collect(),
+        done: false,
+        truncated: false,
     }
 }
 

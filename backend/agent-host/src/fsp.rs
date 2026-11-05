@@ -121,6 +121,25 @@ pub(crate) struct FileMatches {
     pub(crate) matches: Vec<hifind::LineMatch>,
 }
 
+/// One declaration in the host vocabulary: the name's own span and the
+/// declaration's signature line as the display context — the shape
+/// `locations/extend` ships (docs/ahp/ahp-locations.md §3.2).
+pub(crate) struct SymbolHit {
+    pub(crate) path: PathBuf,
+    /// 0-based line of the declaration's name.
+    pub(crate) line: u32,
+    /// Byte column of the name within its line; 0 when the wire gave
+    /// no byte-exact span.
+    pub(crate) column: u32,
+    /// The name's span in bytes; 0 when unknown.
+    pub(crate) length: u32,
+    /// The declaration's signature line (trimmed by the server).
+    pub(crate) context: String,
+    /// Where `context` begins on the line, in the same unit as
+    /// `column` — the signature lost its indentation to the trim.
+    pub(crate) context_column_start: u32,
+}
+
 /// The engine state: a persistent value swapped under the latch.
 #[derive(Clone)]
 struct EngineState {
@@ -418,6 +437,44 @@ impl Engine {
                     .filter_map(|found| found.uri.to_file_path().ok())
                     .collect();
                 Ok((paths, result.limit_hit.unwrap_or(false)))
+            }
+        }
+    }
+
+    /// `workspace/symbolSearch` (§13): fuzzy over declaration names —
+    /// the quick-open symbol lane. Answers the declarations in the
+    /// server's score order with the truncation flag. The naive engine
+    /// has no symbol vocabulary, so a server without the capability is
+    /// `Invalid` — nothing to fall back to.
+    pub(crate) async fn symbol_search(
+        self: &Arc<Self>,
+        dirs: &[PathBuf],
+        query: &str,
+        max_results: usize,
+        leash: Arc<AtomicBool>,
+    ) -> Result<(Vec<SymbolHit>, bool), FspFailure> {
+        // No capability pre-check: the ask may race a fresh spawn's
+        // handshake (the text_search precedent), and a server without
+        // the provider answers its own error — `Invalid`, the callers'
+        // cut-off case.
+        let connection = self.ensure().ok_or(FspFailure::Gone)?;
+        let params = json!({
+            "query": query,
+            "matchMode": "fuzzy",
+            "dirs": dirs.iter().map(|dir| crate::uris::file_uri(dir)).collect::<Vec<_>>(),
+            "maxResults": max_results as u32,
+        });
+        match call(&connection, "workspace/symbolSearch", params, None, leash).await? {
+            Value::Null => Ok((Vec::new(), true)), // cancelled
+            result => {
+                let result: wire::SymbolSearchResult =
+                    serde_json::from_value(result).map_err(|_| FspFailure::Gone)?;
+                let hits = result
+                    .results
+                    .iter()
+                    .filter_map(|symbol| map_symbol(symbol, connection.utf8()))
+                    .collect();
+                Ok((hits, result.limit_hit.unwrap_or(false)))
             }
         }
     }
@@ -803,20 +860,35 @@ fn map_file_result(file: &wire::TextSearchFileResult, utf8: bool) -> Option<File
         .matches
         .iter()
         .filter_map(|found| {
-            let line_text = &found
+            let line = found
                 .lines
                 .iter()
-                .find(|line| line.is_match && line.line == found.range.start.line)?
-                .text;
-            let start = byte_column(line_text, found.range.start.character, utf8);
-            let end = byte_column(line_text, found.range.end.character, utf8).max(start);
+                .find(|line| line.is_match && line.line == found.range.start.line)?;
+            let line_text = &line.text;
+            // A huge line ships as a WINDOW of itself (PROTOCOL §6.5):
+            // the wire columns are full-line, the text is the window —
+            // re-base onto the window, report full-line columns back
+            // (`start` rides the negotiated encoding, so this is
+            // byte-exact under utf-8).
+            let window = line.start.unwrap_or(0) as usize;
+            let start = byte_column(
+                line_text,
+                found.range.start.character.saturating_sub(window as u32),
+                utf8,
+            );
+            let end = byte_column(
+                line_text,
+                found.range.end.character.saturating_sub(window as u32),
+                utf8,
+            )
+            .max(start);
             let (context, context_column_start) = hifind::context_window(line_text, start);
             Some(hifind::LineMatch {
                 line: found.range.start.line,
-                column: start as u32,
+                column: (window + start) as u32,
                 length: (end - start) as u32,
                 context,
-                context_column_start: context_column_start as u32,
+                context_column_start: (window + context_column_start) as u32,
             })
         })
         .collect();
@@ -824,6 +896,46 @@ fn map_file_result(file: &wire::TextSearchFileResult, utf8: bool) -> Option<File
         return None;
     }
     Some(FileMatches { path, matches })
+}
+
+/// FSP declaration → the host's positioned-hit shape. The name's own
+/// span becomes the location (navigation lands on the name); the
+/// signature line is the display context, re-based onto the line by
+/// the name's offset inside it. Columns are byte-exact only under the
+/// utf-8 negotiation; otherwise the hit points at the line start —
+/// navigation clamps, display renders from `context` either way.
+fn map_symbol(symbol: &wire::SymbolInformation, utf8: bool) -> Option<SymbolHit> {
+    let path = symbol.uri.to_file_path().ok()?;
+    let context = match &symbol.signature {
+        Some(signature) if !signature.is_empty() => signature.clone(),
+        _ => symbol.name.clone(),
+    };
+    let selection = symbol
+        .selection_range
+        .as_ref()
+        .filter(|range| range.start.line == range.end.line);
+    let line = selection
+        .map(|range| range.start.line)
+        .unwrap_or(symbol.range.start.line);
+    let (column, length) = match selection {
+        Some(range) if utf8 => (
+            range.start.character,
+            range.end.character.saturating_sub(range.start.character),
+        ),
+        _ => (0, 0),
+    };
+    let context_column_start = match context.find(&symbol.name) {
+        Some(offset) if length > 0 => column.saturating_sub(offset as u32),
+        _ => 0,
+    };
+    Some(SymbolHit {
+        path,
+        line,
+        column,
+        length,
+        context,
+        context_column_start,
+    })
 }
 
 /// A protocol column → byte offset within the line's text.
@@ -936,6 +1048,7 @@ mod tests {
             uri: fsp_types::uri::Uri::from_file_path(Path::new("/tmp/a.rs")),
             version: None,
             limit_hit: None,
+            count: None,
             matches: vec![wire::TextSearchMatch {
                 range: wire::Range {
                     start: wire::Position {
@@ -947,9 +1060,13 @@ mod tests {
                         character: 10,
                     },
                 },
+                ranges: None,
+                enclosing: None,
                 lines: vec![wire::ContextLine {
                     line: 3,
                     text: "the needle here".to_owned(),
+                    start: None,
+                    truncated: None,
                     is_match: true,
                 }],
             }],
@@ -960,6 +1077,96 @@ mod tests {
         assert_eq!((found.line, found.column, found.length), (3, 4, 6));
         assert_eq!(found.context, "the needle here");
         assert_eq!(found.context_column_start, 0);
+
+        // A huge line's WINDOW (§6.5): wire columns are full-line, the
+        // text is the window — the match re-bases and reports back in
+        // full-line bytes.
+        let windowed = wire::TextSearchFileResult {
+            uri: fsp_types::uri::Uri::from_file_path(Path::new("/tmp/a.rs")),
+            version: None,
+            limit_hit: None,
+            count: None,
+            matches: vec![wire::TextSearchMatch {
+                range: wire::Range {
+                    start: wire::Position {
+                        line: 3,
+                        character: 104,
+                    },
+                    end: wire::Position {
+                        line: 3,
+                        character: 110,
+                    },
+                },
+                ranges: None,
+                enclosing: None,
+                lines: vec![wire::ContextLine {
+                    line: 3,
+                    text: "the needle here".to_owned(),
+                    start: Some(100),
+                    truncated: Some(true),
+                    is_match: true,
+                }],
+            }],
+        };
+        let mapped = map_file_result(&windowed, true).expect("mapped");
+        let found = &mapped.matches[0];
+        assert_eq!((found.line, found.column, found.length), (3, 104, 6));
+        assert_eq!(found.context, "the needle here");
+        assert_eq!(found.context_column_start, 100);
+    }
+
+    #[test]
+    fn symbols_map_to_positioned_hits() {
+        // An indented method: the signature lost 4 columns of indent to
+        // the trim, the name sits at byte 23 on its line, 19 in context.
+        let symbol = wire::SymbolInformation {
+            name: "getLayer".to_owned(),
+            kind: "method".to_owned(),
+            container: Some("LayerInfoImpl".to_owned()),
+            uri: fsp_types::uri::Uri::from_file_path(Path::new("/w/Catalog.java")),
+            range: wire::Range {
+                start: wire::Position {
+                    line: 41,
+                    character: 4,
+                },
+                end: wire::Position {
+                    line: 43,
+                    character: 5,
+                },
+            },
+            selection_range: Some(wire::Range {
+                start: wire::Position {
+                    line: 41,
+                    character: 23,
+                },
+                end: wire::Position {
+                    line: 41,
+                    character: 31,
+                },
+            }),
+            language: "java".to_owned(),
+            signature: Some("public LayerInfo getLayer(String id) {".to_owned()),
+            source: None,
+        };
+        let hit = map_symbol(&symbol, true).expect("maps");
+        assert_eq!(hit.path, PathBuf::from("/w/Catalog.java"));
+        assert_eq!((hit.line, hit.column, hit.length), (41, 23, 8));
+        assert_eq!(hit.context, "public LayerInfo getLayer(String id) {");
+        // column - context_column_start = the name's offset in context.
+        assert_eq!(hit.context_column_start, 23 - 17);
+
+        // A utf-16 server: no byte-exact span — the line start, the
+        // signature still the context.
+        let blunt = map_symbol(&symbol, false).expect("maps");
+        assert_eq!((blunt.line, blunt.column, blunt.length), (41, 0, 0));
+        assert_eq!(blunt.context_column_start, 0);
+
+        // No signature: the name is the context.
+        let bare = wire::SymbolInformation {
+            signature: None,
+            ..symbol.clone()
+        };
+        assert_eq!(map_symbol(&bare, true).expect("maps").context, "getLayer");
     }
 
     #[test]

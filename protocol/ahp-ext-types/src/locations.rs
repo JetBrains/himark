@@ -85,6 +85,22 @@ pub struct SearchLocationsParams {
     pub limit: Option<u64>,
 }
 
+/// `symbolLocations` — the declaration search, streamed over the same
+/// channel shape. The query names a declaration (fuzzy, the quick-open
+/// scorer's rules); each hit's location is the declaration name's own
+/// span and its `context` the declaration's signature line.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolLocationsParams {
+    pub channel: Uri,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folders: Option<Vec<Uri>>,
+    pub query: String,
+    /// Total declaration cap; server-capped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u64>,
+}
+
 /// `lsp/locations` — the location-answering LSP asks (references,
 /// implementations), streamed over the same channel shape.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -150,6 +166,12 @@ mod tests {
         .expect("spec defaults fill in");
         assert_eq!(params.kind, SearchKind::Text);
         assert!(!params.case_sensitive);
+        assert!(params.folders.is_none() && params.limit.is_none());
+
+        let params: SymbolLocationsParams = serde_json::from_value(serde_json::json!({
+            "channel": "hihost:/s1", "query": "Layer",
+        }))
+        .expect("spec defaults fill in");
         assert!(params.folders.is_none() && params.limit.is_none());
     }
 
