@@ -62,6 +62,25 @@ impl imba::effect::Effect for SearchLocationsEffect {
     type Result = Result<LocationsChannel, String>;
 }
 
+/// The streaming declaration search ask — the quick-open symbol lane
+/// (docs/ahp/ahp-locations.md §3.2). Answers the channel; the host's
+/// symbol index resolves it with the declarations in score order.
+pub struct SymbolLocationsEffect {
+    pub folders: Vec<editor::location::ResourceLocation>,
+    pub query: String,
+    pub limit: usize,
+}
+
+impl std::fmt::Display for SymbolLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "symbol locations {}", self.query)
+    }
+}
+
+impl imba::effect::Effect for SymbolLocationsEffect {
+    type Result = Result<LocationsChannel, String>;
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LspLocationsKind {
     References,

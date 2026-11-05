@@ -13,6 +13,7 @@
 
 pub mod chrome;
 pub mod peek;
+pub mod results;
 pub mod search;
 pub mod views;
 
@@ -105,6 +106,10 @@ pub struct LocationsFeedRow {
 pub enum LocationsAsk {
     /// Stream a content search into a feed.
     Search { feed: FeedId, query: String },
+
+    /// Stream a declaration search into a feed — the quick-open
+    /// symbol lane (docs/ahp/ahp-locations.md §3.2).
+    Symbols { feed: FeedId, query: String },
 
     /// Stream an LSP location answer into a feed.
     Lsp {

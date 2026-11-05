@@ -1231,6 +1231,12 @@ impl HimarkEngine {
                         directory: Arc::clone(&self.clients),
                     },
                 );
+            self.app
+                .register_handler::<ahp_locations::SymbolLocationsEffect>(
+                    ahp_locations::routes::RouteSymbolLocations {
+                        directory: Arc::clone(&self.clients),
+                    },
+                );
         }
 
         self.agent_host_filesystem.include(capabilities);

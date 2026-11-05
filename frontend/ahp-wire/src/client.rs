@@ -255,6 +255,19 @@ pub trait LocationsClient: Send + Sync + 'static {
         )))
     }
 
+    /// locations@1 `symbolLocations`: the declaration search, streamed
+    /// the same way (docs/ahp/ahp-locations.md §3.2).
+    fn symbol_locations(
+        &self,
+        session: SessionUri,
+        ask: SymbolsAsk,
+    ) -> ClientFuture<Result<ChannelUri, String>> {
+        let _ = (session, ask);
+        Box::pin(std::future::ready(Err(
+            "locations@1 symbolLocations not served".to_owned(),
+        )))
+    }
+
     /// locations@1 `lsp/locations`: the location-answering LSP asks
     /// (references, implementations), streamed the same way.
     fn lsp_locations(
@@ -549,6 +562,15 @@ pub struct LocationsAsk {
     pub query: String,
     pub kind: SearchKind,
     pub case_sensitive: bool,
+    pub limit: usize,
+}
+
+/// The `symbolLocations` ask — a declaration name, fuzzy-matched by
+/// the host's symbol index (docs/ahp/ahp-locations.md §3.2).
+#[derive(Clone, Debug)]
+pub struct SymbolsAsk {
+    pub folders: Vec<Uri>,
+    pub query: String,
     pub limit: usize,
 }
 

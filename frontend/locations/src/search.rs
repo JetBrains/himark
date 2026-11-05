@@ -22,15 +22,12 @@ use imba::{
     View,
 };
 
-use crate::views::{locations_forest, result_row, ResultRow};
-use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
+use crate::results::{ResultsCommand, ResultsOutcome, ResultsView};
+use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk};
 use editor::{editor_view::EditorCommand, editor_view::EditorView};
 use hikit::modal::ModalRequest;
 use hikit::modal::RequestSlot;
-use hikit::{forest::ForestList, forest::ForestSearcher};
-use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
-use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
-use imba::list::{ActivateTrigger, ListOps};
+use imba::list::ActivateTrigger;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SearchArea {
@@ -38,17 +35,10 @@ pub enum SearchArea {
     Results,
 }
 
-/// The results tree with its key table — the half of the tab that
-/// SCROLLS; the head (query, counts) stands still above it.
-type ResultTree = ListKeyboardController<
-    ForestList<LocationKey, ResultRow>,
-    ForestSearcher<LocationKey, ResultRow>,
->;
-
 #[derive(Clone)]
 pub enum SearchCommand {
     Input(EditorCommand),
-    List(imba::scroll::ScrollCommand<ListKeyCommand<TreeListCommand>>),
+    List(ResultsCommand),
     /// A click landed: move the keyboard to the clicked area, then
     /// forward the click itself.
     Focus(SearchArea, Option<Box<SearchCommand>>),
@@ -80,19 +70,11 @@ pub struct SearchView {
     /// model and NOTES asks; the wire lane does the rest.
     lists: imba::store::Id<LocationLists>,
     input: EditorView,
-    /// The tree in its OWN scroller: the head above it never scrolls,
-    /// and the tree's reveals (cursor steps, door corrections) land
-    /// here instead of dragging the whole panel.
-    search: imba::scroll::ScrollView<ResultTree>,
+    /// The results tree — the shared Find component (`results.rs`);
+    /// this face's policy is selection-IS-navigation.
+    search: ResultsView,
     focus: SearchArea,
     last_query: String,
-
-    /// Pick lookup: a hit key answers its INDEX into the feed (a
-    /// file key its first occurrence) — indices, never copies; the
-    /// feed row is the one holder of the contexts.
-    targets: rpds::HashTrieMapSync<LocationKey, usize>,
-    files: usize,
-    shown: Option<(FeedId, u64)>,
 
     /// The last key SELECTION navigated to — moving the keyboard
     /// cursor over results opens them (the click door), and this is
@@ -111,9 +93,6 @@ impl Clone for SearchView {
             search: self.search.clone(),
             focus: self.focus,
             last_query: self.last_query.clone(),
-            targets: self.targets.clone(),
-            files: self.files,
-            shown: self.shown,
             navigated: self.navigated.clone(),
             request: RequestSlot::default(),
         }
@@ -130,20 +109,9 @@ impl SearchView {
         let mut view = Self {
             lists,
             input: seeded_input(store, ui, &row.query),
-            search: imba::scroll::ScrollView::new(
-                ListKeyboardController::searchable(
-                    ForestList::wrapping(store, result_row(lists)),
-                    ForestSearcher::default(),
-                    store,
-                    ui,
-                )
-                .with_folds(),
-            ),
+            search: ResultsView::new(store, ui, lists),
             focus: SearchArea::Input,
             last_query: row.query.clone(),
-            targets: rpds::HashTrieMapSync::new_sync(),
-            files: 0,
-            shown: None,
             navigated: None,
             request: RequestSlot::default(),
         };
@@ -165,56 +133,18 @@ impl SearchView {
         LocationLists::search(store, self.lists)
     }
 
-    fn tree(&self) -> &ResultTree {
-        self.search.content()
-    }
-
-    fn tree_mut(&mut self) -> &mut ResultTree {
-        self.search.content_mut()
-    }
-
-    fn row(&self, store: &Store) -> LocationsFeedRow {
+    #[cfg(test)]
+    fn row(&self, store: &Store) -> crate::LocationsFeedRow {
         self.feed(store)
             .and_then(|feed| LocationLists::row(store, self.lists, feed))
             .unwrap_or_default()
     }
 
-    /// Rebuild the tree and the pick table from the feed — cursor
-    /// and fold state survive by key. Location keys ride Arc'd
-    /// paths (O(1) clones); the contexts are never copied here.
+    /// Rebuild the tree and the pick table from the feed — the
+    /// component keeps cursor and fold state by key.
     fn rebuild(&mut self, store: &Store, ui: &UiCtx) {
         let feed = self.feed(store);
-        let row = self.row(store);
-        let forest = locations_forest(store, row.locations.iter());
-
-        let mut targets = rpds::HashTrieMapSync::new_sync();
-        let mut files = 0usize;
-        for (index, found) in row.locations.iter().enumerate() {
-            let hit = LocationKey::Hit(found.location.clone(), found.line, found.column);
-            targets.insert_mut(hit, index);
-            let file = LocationKey::Node(found.location.clone());
-            if !targets.contains_key(&file) {
-                files += 1;
-                targets.insert_mut(file, index);
-            }
-        }
-        self.targets = targets;
-        self.files = files;
-        self.shown = feed.map(|feed| (feed, row.generation));
-
-        let cursor = self.tree().inner().list().cursor().cloned();
-        self.tree_mut().inner_mut().set(&forest, store, ui);
-        if let Some(cursor) = cursor {
-            if self.tree().inner().forest.contains(&cursor) {
-                // QUIETLY: a rebuild re-asserts, it never scrolls —
-                // landing batches teleported the tree to the cursor's
-                // row on every landing when this revealed.
-                self.tree_mut()
-                    .inner_mut()
-                    .list_mut()
-                    .reselect_quiet(cursor);
-            }
-        }
+        self.search.rebuild(store, ui, feed);
     }
 
     fn requery(
@@ -246,29 +176,16 @@ impl SearchView {
         // model's own folders (an unlaunchable query resolves the
         // row cut-off there).
         LocationLists::ask(store, self.lists, LocationsAsk::Search { feed, query });
-        // A NEW result set: the old cursor, door anchor and scroll
-        // mean nothing against it — preserving them re-aimed the tree
-        // at whatever row shared an old key. The tree starts at the
-        // top; the first landing re-seeds the cursor, quietly.
-        self.tree_mut().inner_mut().list_mut().clear_selection();
-        self.tree_mut().inner_mut().list_mut().reset_viewport();
-        self.search.set_scroll_y(0.0);
+        // A NEW result set: the component drops cursor, anchor and
+        // scroll — old keys mean nothing against it.
+        let feed = self.feed(store);
+        self.search.reset(store, ui, feed);
         self.navigated = None;
-        self.rebuild(store, ui);
     }
 
     fn pick(&mut self, store: &mut Store, key: LocationKey, focus: bool) {
-        let Some(found) = self
-            .targets
-            .get(&key)
-            .copied()
-            .and_then(|index| {
-                self.feed(store)
-                    .and_then(|feed| LocationLists::row_ref(store, self.lists, feed))
-                    .and_then(|row| row.locations.get(index))
-            })
-            .cloned()
-        else {
+        let feed = self.feed(store);
+        let Some(found) = self.search.found(store, feed, &key) else {
             return;
         };
         self.navigated = Some(key);
@@ -307,7 +224,7 @@ impl SearchView {
     /// keyboard stays in the dock (nothing moves the layer focus).
     /// Directories only fold; standing still is deduped.
     fn navigate_selection(&mut self, store: &mut Store) {
-        let Some(key) = self.tree().inner().list().cursor().cloned() else {
+        let Some(key) = self.search.cursor() else {
             return;
         };
         if matches!(&key, LocationKey::Node(location) if location.kind().is_directory()) {
@@ -330,8 +247,8 @@ impl View for SearchView {
     ) -> imba::focus::FocusData<'w, SearchCommand> {
         use imba::focus::FocusData;
         let focus = self.focus;
-        let searching = self.focus == SearchArea::Results && self.tree().searching();
-        let rows = self.tree().inner().list().len();
+        let searching = self.focus == SearchArea::Results && self.search.searching();
+        let rows = self.search.len();
         // Area moves are the surface's; the movement keys inside the
         // results area are the controller's table.
         let own = FocusData {
@@ -375,55 +292,26 @@ impl View for SearchView {
                 self.requery(store, ui, query, fx);
             }
             SearchCommand::List(command) => {
-                let mut selected = false;
-                // The tree's own commands ride inside the scroller's;
-                // the scroll commands themselves just pass through.
-                if let imba::scroll::ScrollCommand::Content(list_command) = &command {
-                    match list_command {
-                        ListKeyCommand::Fold { expand, .. } => {
-                            self.tree_mut().inner_mut().fold_cursor(*expand, store, ui);
-                            return self.navigate_selection(store);
-                        }
-                        ListKeyCommand::Inner(inner) => {
-                            if let Some(index) = tree_toggle(inner) {
-                                let Some(key) = self.tree().inner().list().key_at(index).cloned()
-                                else {
-                                    return;
-                                };
-                                self.tree_mut()
-                                    .inner_mut()
-                                    .list_mut()
-                                    .select_only(key.clone());
-                                return self.tree_mut().inner_mut().toggle(&key, store, ui);
-                            }
-                        }
-                        _ => {}
-                    }
-                    if let Some((index, trigger)) = ResultTree::activated(list_command) {
-                        if let Some(key) = self.tree().inner().list().key_at(index).cloned() {
-                            let branch = matches!(&key, LocationKey::Node(location)
-                                if location.kind().is_directory());
-                            match (trigger, branch) {
-                                (_, true) => self.tree_mut().inner_mut().toggle(&key, store, ui),
-                                // Enter is the deliberate jump — the
-                                // keyboard moves to the editor; a click
-                                // browses, the keyboard stays here.
-                                (ActivateTrigger::Enter, false) => self.pick(store, key, true),
-                                (ActivateTrigger::Click, false) => self.pick(store, key, false),
-                            }
-                            return;
-                        }
-                    }
-                    selected = ResultTree::selected_index(list_command).is_some();
-                }
-                fx.scope(SearchCommand::List, |fx| {
+                let outcome = fx.scope(SearchCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
-                // Selection IS navigation (docs/ui/location-list.md):
-                // any selection edit — keyboard, click or search step
-                // — shows what the cursor stands on.
-                if selected {
-                    self.navigate_selection(store);
+                match outcome {
+                    // Selection IS navigation (docs/ui/location-list.md):
+                    // any selection edit — keyboard, click, fold or
+                    // search step — shows what the cursor stands on.
+                    ResultsOutcome::Selected => self.navigate_selection(store),
+                    // Enter is the deliberate jump — the keyboard moves
+                    // to the editor; a click browses, the keyboard
+                    // stays here.
+                    ResultsOutcome::Picked {
+                        key,
+                        trigger: ActivateTrigger::Enter,
+                    } => self.pick(store, key, true),
+                    ResultsOutcome::Picked {
+                        key,
+                        trigger: ActivateTrigger::Click,
+                    } => self.pick(store, key, false),
+                    ResultsOutcome::Quiet => {}
                 }
             }
             SearchCommand::Focus(area, then) => {
@@ -465,9 +353,9 @@ impl View for SearchView {
 
             let feed = self.feed(store);
             let row = feed.and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
-            let (hits, done, truncated, generation) = row
-                .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
-                .unwrap_or((0, true, false, 0));
+            let (hits, done, truncated) = row
+                .map(|row| (row.locations.len(), row.done, row.truncated))
+                .unwrap_or((0, true, false));
             let running = feed.is_some() && !done;
 
             // The head, top to bottom (the Find artboard): the caps
@@ -525,7 +413,7 @@ impl View for SearchView {
                     let mut spans = vec![
                         (true, hits.to_string()),
                         (false, " in ".to_owned()),
-                        (true, self.files.to_string()),
+                        (true, self.search.files().to_string()),
                         (false, " files".to_owned()),
                     ];
                     if cut {
@@ -593,11 +481,11 @@ impl View for SearchView {
             let band_size = Size::new(
                 match open.width.is_finite() {
                     true => open.width,
-                    false => self.tree().inner().list().laid_width().max(1.0),
+                    false => self.search.laid_width().max(1.0),
                 },
                 match open.height.is_finite() {
                     true => open.height,
-                    false => self.tree().inner().list().total_height(),
+                    false => self.search.total_height(),
                 },
             );
             let tree = imba::layout::Layout::layout(
@@ -636,7 +524,7 @@ impl View for SearchView {
             // Refresh when the feed moved — the PANEL keeps painting;
             // hijacking its Paint blanked a frame per landed batch
             // (the input caret blinked on every one).
-            let stale = self.shown != feed.map(|feed| (feed, generation));
+            let stale = self.search.stale(store, feed);
             if stale {
                 panel.place(
                     0.0,
@@ -769,6 +657,7 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) ->
 mod tests {
     use super::*;
     use crate::FoundLocation;
+    use imba::list::ListOps;
 
     fn found(path: &[&str], line: u32, column: u32, context: &str) -> FoundLocation {
         FoundLocation {
@@ -835,7 +724,7 @@ mod tests {
             false,
         );
         let mut view = view(&mut store, &ui, lists);
-        let rows = view.tree().inner().forest.rows();
+        let rows = view.search.tree().inner().forest.rows();
         assert_eq!(
             rows.iter()
                 .map(|(depth, label, _)| (*depth, label.as_str()))
@@ -853,12 +742,12 @@ mod tests {
         // survive the rebuild by key — the Refresh the paint-driven
         // shell files when the feed's generation moves.
         let a = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
-        view.tree_mut().inner_mut().toggle(&a, &store, &ui);
-        view.tree_mut()
+        view.search.tree_mut().inner_mut().toggle(&a, &store, &ui);
+        view.search.tree_mut()
             .inner_mut()
             .list_mut()
             .select_only(a.clone());
-        let shown = view.shown;
+        let shown = view.search.shown();
         feed(
             &mut store,
             lists,
@@ -876,9 +765,9 @@ mod tests {
             "the shell would see the staleness"
         );
         view.rebuild(&store, &ui);
-        assert!(view.tree().inner().forest.is_collapsed(&a), "fold kept");
-        assert_eq!(view.tree().inner().list().cursor(), Some(&a), "cursor kept");
-        assert_eq!(view.files, 2);
+        assert!(view.search.tree().inner().forest.is_collapsed(&a), "fold kept");
+        assert_eq!(view.search.tree().inner().list().cursor(), Some(&a), "cursor kept");
+        assert_eq!(view.search.files(), 2);
 
         // Zero fetches anywhere: nothing above registered a document.
         assert!(documents::OpenDocuments::list(&store, imba::store::Id::mint()).is_empty());
@@ -1026,9 +915,9 @@ mod tests {
 
         // Down onto the hit under a.rs: a fresh key, a fresh open —
         // through the same Select command the key table emits.
-        let step = view.tree().step_index(1).expect("a next row");
+        let step = view.search.tree().step_index(1).expect("a next row");
         let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(
-            view.tree().select_command(step),
+            view.search.tree().select_command(step),
         ));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
@@ -1050,9 +939,9 @@ mod tests {
         );
 
         // Down again onto b.rs: navigates too.
-        let step = view.tree().step_index(1).expect("a next row");
+        let step = view.search.tree().step_index(1).expect("a next row");
         let select = SearchCommand::List(imba::scroll::ScrollCommand::Content(
-            view.tree().select_command(step),
+            view.search.tree().select_command(step),
         ));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
@@ -1062,9 +951,9 @@ mod tests {
 
         // Enter on the same row still opens (the deliberate, focusing
         // jump — dedup never swallows an explicit pick).
-        let at = view.tree().cursor_index().expect("a cursor row");
+        let at = view.search.tree().cursor_index().expect("a cursor row");
         let pick = SearchCommand::List(imba::scroll::ScrollCommand::Content(
-            view.tree().activate_command(at, ActivateTrigger::Enter),
+            view.search.tree().activate_command(at, ActivateTrigger::Enter),
         ));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
@@ -1139,7 +1028,7 @@ mod tests {
             &mut batch.effects(),
         );
         let _ = hikit::modal::ModalView::take_request(&mut view);
-        let cursor = view.tree().inner().list().cursor().cloned();
+        let cursor = view.search.tree().inner().list().cursor().cloned();
         assert!(cursor.is_some(), "entering seeded a cursor");
         view.perform(
             &mut store,
@@ -1160,7 +1049,7 @@ mod tests {
 
         assert_eq!(view.search.scroll_y(), 300.0, "the landing kept the scroll");
         assert_eq!(
-            view.tree().inner().list().cursor().cloned(),
+            view.search.tree().inner().list().cursor().cloned(),
             cursor,
             "the landing kept the cursor"
         );
@@ -1221,7 +1110,7 @@ mod tests {
 
         assert_eq!(view.search.scroll_y(), 0.0, "the new set starts at the top");
         assert_eq!(
-            view.tree().inner().list().cursor(),
+            view.search.tree().inner().list().cursor(),
             None,
             "no cursor carries into a result set it never saw"
         );

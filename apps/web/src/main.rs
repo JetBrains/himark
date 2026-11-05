@@ -484,6 +484,11 @@ mod app {
                             directory: Arc::clone(&clients),
                         },
                     );
+                    state.register_handler::<ahp_locations::SymbolLocationsEffect>(
+                        ahp_locations::routes::RouteSymbolLocations {
+                            directory: Arc::clone(&clients),
+                        },
+                    );
                     state.register_command(Arc::new(workbench_shell::hisearch::ToggleSearchView));
                     state.register_command(Arc::new(workbench_shell::hisearch::FocusSearchView));
                     state.register_toolbar_button(workbench_shell::hisearch::toolbar_button());

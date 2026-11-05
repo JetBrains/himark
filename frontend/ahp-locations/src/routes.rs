@@ -50,6 +50,44 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
     }
 }
 
+pub struct RouteSymbolLocations {
+    pub directory: Arc<ClientDirectory>,
+}
+
+impl EffectHandler<crate::SymbolLocationsEffect> for RouteSymbolLocations {
+    async fn handle(
+        &self,
+        effect: crate::SymbolLocationsEffect,
+    ) -> Result<LocationsChannel, String> {
+        let Some(first) = effect.folders.first() else {
+            return Err("no folders to search".to_owned());
+        };
+        let Some((client, session)) = ahp_wire::fs::client_of(&self.directory, first) else {
+            return Err(format!("no client serves {}", first.authority().as_str()));
+        };
+        // A session's folders live on one client; a stray foreign
+        // authority in the list is skipped, not multiplexed.
+        let authority = first.authority().clone();
+        let folders: Vec<String> = effect
+            .folders
+            .iter()
+            .filter(|folder| folder.authority().as_str() == authority.as_str())
+            .map(|folder| ResourceUriMap::uri_of(&ahp_wire::uris::FileUris, folder).into_string())
+            .collect();
+        let ask = ahp_wire::client::SymbolsAsk {
+            folders,
+            query: effect.query,
+            limit: effect.limit,
+        };
+        let channel = client.locations.symbol_locations(session, ask).await?;
+        Ok(LocationsChannel {
+            client: std::sync::Arc::clone(&client.locations),
+            channel,
+            resolve: resolver(authority),
+        })
+    }
+}
+
 pub struct RouteLspLocations {
     pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn ResourceUriMap>,

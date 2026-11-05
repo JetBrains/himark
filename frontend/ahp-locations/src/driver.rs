@@ -354,6 +354,27 @@ pub fn sync(
                     }),
                 );
             }
+            LocationsAsk::Symbols { feed, query } => {
+                let folders = LocationLists::folders(store, lists);
+                if query.trim().len() < 2 || folders.is_empty() {
+                    LocationLists::mark_cut(store, lists, feed);
+                    continue;
+                }
+                let _ = fx.push(
+                    AnyEffect::new(crate::SymbolLocationsEffect {
+                        folders,
+                        query,
+                        limit: 256,
+                    })
+                    .map(move |outcome| {
+                        imba::command::Verb::Dynamic(Arc::new(AttachFeedStream {
+                            wire,
+                            feed,
+                            outcome,
+                        }))
+                    }),
+                );
+            }
             LocationsAsk::Lsp {
                 feed,
                 kind,

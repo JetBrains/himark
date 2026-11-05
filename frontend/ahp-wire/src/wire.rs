@@ -2338,6 +2338,28 @@ impl LocationsClient for WireHost {
         }))
     }
 
+    fn symbol_locations(
+        &self,
+        session: crate::client::SessionUri,
+        ask: crate::client::SymbolsAsk,
+    ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
+        let session = session.into_string();
+        Box::pin(self.run_ask(move |active| async move {
+            let params = himark_ahp_ext_types::locations::SymbolLocationsParams {
+                channel: session,
+                folders: Some(ask.folders),
+                query: ask.query,
+                limit: Some(ask.limit as u64),
+            };
+            let result: himark_ahp_ext_types::locations::LocationsChannelResult = active
+                .client
+                .request("symbolLocations", params)
+                .await
+                .map_err(|error| format!("symbolLocations: {error}"))?;
+            Ok(crate::client::ChannelUri::new(result.channel))
+        }))
+    }
+
     fn lsp_locations(
         &self,
         session: crate::client::SessionUri,

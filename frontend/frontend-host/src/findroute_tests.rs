@@ -178,6 +178,58 @@ fn local_folders_ask_the_designated_backend() {
 }
 
 #[test]
+fn symbol_locations_route_answers_and_resolves_honestly() {
+    let (dir, seat) = wire_backend();
+    std::fs::create_dir_all(dir.path().join("notes")).expect("mkdir");
+    let files = dir.path().join("notes").canonicalize().expect("canonical");
+
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let (server, _) = ahp::parse(&ahp::authority(
+        {
+            let (server, _) = ahp::parse("ahp:1:x").expect("id");
+            server
+        },
+        &ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+    ))
+    .expect("parses");
+    directory.record(server, seat.clone());
+    directory.set_local(server);
+
+    let handler = ahp_locations::routes::RouteSymbolLocations {
+        directory: Arc::clone(&directory),
+    };
+    let effect = ahp_locations::SymbolLocationsEffect {
+        folders: vec![located("local", &files)],
+        query: "Catalog".to_owned(),
+        limit: 100,
+    };
+    let channel = block_on(Box::pin(async move { handler.handle(effect).await })).expect("channel");
+
+    let mut state = {
+        let seat = Arc::clone(&channel.client);
+        let subscribed = channel.channel.clone();
+        block_on(Box::pin(async move {
+            seat.subscribe_locations(subscribed).await
+        }))
+        .expect("snapshot")
+    };
+    while !state.done {
+        let seat = Arc::clone(&channel.client);
+        let polled = channel.channel.clone();
+        let batches = block_on(Box::pin(async move { seat.poll_locations(polled).await }));
+        for batch in batches {
+            state.concat(batch);
+        }
+    }
+    // This harness host runs no FSP sidecar — the one engine with a
+    // symbol vocabulary — so the lane resolves CUT OFF with nothing
+    // (docs/ahp/ahp-locations.md §3.2): "no index", distinguishable
+    // from "no such symbol".
+    assert!(state.truncated, "{state:?}");
+    assert!(state.locations.is_empty(), "{state:?}");
+}
+
+#[test]
 fn search_locations_route_streams_and_cancels_over_the_wire() {
     let (dir, seat) = wire_backend();
     std::fs::create_dir_all(dir.path().join("notes")).expect("mkdir");

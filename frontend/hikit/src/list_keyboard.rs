@@ -264,6 +264,18 @@ where
     T: ListOps,
     S: Searcher<View = T, Key = T::Key>,
 {
+    /// Keys only, in a searchable-typed slot: the table without a
+    /// lane — for a face whose OWN input owns typing (the peeker),
+    /// where a seated speed-search input would steal the keys.
+    pub fn keys_only(inner: T) -> Self {
+        Self {
+            inner,
+            folds: false,
+            search: None,
+            pill: true,
+        }
+    }
+
     /// Keys plus the speed-search lane.
     pub fn searchable(
         inner: T,
