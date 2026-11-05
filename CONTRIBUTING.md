@@ -19,6 +19,9 @@ Design documentation lives in [docs/](docs/) — start from the
   matching `zig` is on PATH or `ZIG` points at one.
 - **A C/C++ toolchain.** Several crates compile C sources (tree-sitter
   grammars, QuickJS).
+- **Go 1.26 on `PATH` for native Unix builds**, including the agent host.
+  `libtailscale-sys` compiles the embedded Tailscale node into a static
+  library. With mise, install it using `mise use --global go@1.26`.
 - **libclang.** The QuickJS bindings are generated at build time with
   `bindgen`, which loads libclang. On macOS the Xcode Command Line Tools
   provide it, on Linux install `libclang-dev`, on Windows install LLVM and set
@@ -82,6 +85,7 @@ To run it manually:
 cargo run -p agent-host                                  # unix socket only
 cargo run -p agent-host -- --http 127.0.0.1:4312         # also serve the web app over HTTP
 cargo run -p agent-host -- --socket /tmp/himark.sock     # custom socket path
+cargo run -p agent-host -- --tailscale                  # also connect through Tailscale
 cargo run -p agent-host -- --http 0.0.0.0:4312 --web-root target/web
 ```
 
@@ -193,12 +197,21 @@ WebSocket.
 
 ### Prerequisites
 
-- Rust **nightly** with the `rust-src` component and the
-  `wasm32-unknown-emscripten` target. The build uses `-Zbuild-std`.
+- The Rust **nightly pinned in `apps/web/rust-toolchain`**, with the
+  `rust-src` component and the `wasm32-unknown-emscripten` target. The build
+  uses `-Zbuild-std` to rebuild the standard library for WebAssembly threads.
 
   ```sh
-  rustup toolchain install nightly --component rust-src --target wasm32-unknown-emscripten
+  rustup toolchain install "$(cat apps/web/rust-toolchain)" --profile minimal \
+    --component rust-src --target wasm32-unknown-emscripten
   ```
+
+  Release, check, and debug web builds use this same pinned nightly. CI
+  caches the rebuilt standard library and Cargo dependencies separately for
+  release builds and checks. The cache also preserves `rust-src` timestamps
+  so a fresh toolchain installation does not force a rebuild. Compiler,
+  Emscripten version, build script, and Cargo configuration changes invalidate
+  those caches. Update the toolchain file deliberately when upgrading Rust.
 
 - **Emscripten 6.0.7**, the version CI pins. Either install the
   [emsdk](https://github.com/emscripten-core/emsdk) and `source emsdk_env.sh`
@@ -324,6 +337,8 @@ Signing with a Developer ID and notarizing are not wired up yet; the
 
 ## Troubleshooting
 
+- **`libtailscale-sys`: "go build command failed to start"**: install Go
+  1.26 and check that `go version` works in the shell running Cargo.
 - **"no himark agent host running"**: the shell could not find or start the
   backend. Build it with `cargo build -p agent-host` so it sits next to the
   shell binary, or start it by hand and try again.

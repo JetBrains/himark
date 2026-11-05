@@ -80,19 +80,33 @@ jobs:
           sudo /tmp/llvm.sh 22
           sudo apt-get install -y libclang-22-dev
 
-      - name: Install Rust nightly
+      - name: Install pinned web Rust toolchain
+        id: web-rust
         run: |
-          rustup toolchain install nightly --profile minimal \
+          toolchain="$(cat apps/web/rust-toolchain)"
+          rustup toolchain install "$toolchain" --profile minimal \
             --component rust-src --target wasm32-unknown-emscripten
+          # Host tools (the grammar pack) use the default compiler too.
+          compiler_key="$( { rustc -Vv; rustc +"$toolchain" -Vv; } | sha256sum | cut -d ' ' -f 1)"
+          echo "cache-key=$compiler_key" >> "$GITHUB_OUTPUT"
+          echo "rust-src=$(rustc +"$toolchain" --print sysroot)/lib/rustlib/src" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Cargo registry
+      # Keep build-std's sysroot crates and fingerprints, including host build
+      # scripts. Restore rust-src too: freshly installed source timestamps would
+      # otherwise make Cargo rebuild std. Do not cache target/emsdk or the site.
+      - name: Cache web dependencies and rebuilt standard library
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
+            ${{ steps.web-rust.outputs.rust-src }}
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: cargo-registry-web-${{ hashFiles('**/Cargo.lock') }}
+            target/release
+            target/wasm32-unknown-emscripten/release
+          key: web-build-v1-${{ runner.os }}-${{ runner.arch }}-emscripten-6.0.7-${{ steps.web-rust.outputs.cache-key }}-${{ hashFiles('apps/web/rust-toolchain', 'apps/web/tools/**', '.cargo/config.toml', 'Cargo.toml') }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            web-build-v1-${{ runner.os }}-${{ runner.arch }}-emscripten-6.0.7-${{ steps.web-rust.outputs.cache-key }}-${{ hashFiles('apps/web/rust-toolchain', 'apps/web/tools/**', '.cargo/config.toml', 'Cargo.toml') }}-
 
       - name: Checkout Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

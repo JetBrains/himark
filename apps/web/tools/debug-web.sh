@@ -6,6 +6,7 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$repo_root"
+web_toolchain="$(<apps/web/rust-toolchain)"
 
 rebuild_grammars=false
 http_bind="${HIMARK_HTTP_BIND:-127.0.0.1:4312}"
@@ -132,7 +133,7 @@ RUSTFLAGS="-C panic=abort \
     -C link-arg=-sPTHREAD_POOL_SIZE=4 \
     -C link-arg=-sDEFAULT_PTHREAD_STACK_SIZE=8388608 -C link-arg=-sSTACK_SIZE=8388608 -C link-arg=-sSTACK_OVERFLOW_CHECK=2 \
     -C link-arg=-sMAXIMUM_MEMORY=2147483648 -C link-arg=-lwebsocket.js -C link-arg=-sSUPPORT_LONGJMP=emscripten -C link-arg=-sINITIAL_MEMORY=134217728" \
-    cargo +nightly "${debug_profile[@]}" build -Zbuild-std=std,panic_abort -p web \
+    cargo "+$web_toolchain" "${debug_profile[@]}" build -Zbuild-std=std,panic_abort -p web \
     --target wasm32-unknown-emscripten
 
 out_dir="$repo_root/target/web"
