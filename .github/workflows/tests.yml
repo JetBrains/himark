@@ -99,15 +99,18 @@ jobs:
       # libtailscale-sys builds the embedded tailscale node with the
       # Go toolchain; the macos-15 image stopped shipping one.
       - name: Install Go
-        if: runner.os == 'macOS'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # 1.26: libtailscale's vendored tree reads encoding/json/v2,
           # default from this minor ('stable' resolved older on the
           # runner and died on undefined json.v2 names).
           go-version: "1.26"
-          check-latest: true
-          cache: false
+          check-latest: false
+          cache: true
+          # Cargo.lock pins libtailscale-sys and its bundled Go module.
+          cache-dependency-path: |
+            Cargo.lock
+            apps/web/tailnet-wasm/go.sum
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
@@ -187,15 +190,18 @@ jobs:
       # libtailscale-sys builds the embedded tailscale node with the
       # Go toolchain; the macos-15 image stopped shipping one.
       - name: Install Go
-        if: runner.os == 'macOS'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           # 1.26: libtailscale's vendored tree reads encoding/json/v2,
           # default from this minor ('stable' resolved older on the
           # runner and died on undefined json.v2 names).
           go-version: "1.26"
-          check-latest: true
-          cache: false
+          check-latest: false
+          cache: true
+          # Cargo.lock pins libtailscale-sys and its bundled Go module.
+          cache-dependency-path: |
+            Cargo.lock
+            apps/web/tailnet-wasm/go.sum
 
       - name: Install sccache
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
