@@ -115,8 +115,9 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
-          cache-targets: false
-          shared-key: ${{ matrix.name }}
+          cache-targets: true
+          shared-key: ${{ github.job }}-${{ matrix.name }}
+          key: zig-${{ env.ZIG_VERSION }}
 
       - name: Run Clippy
         run: cargo clippy ${{ matrix.cargo_args }} --locked --all-targets
@@ -202,8 +203,9 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
-          cache-targets: false
-          shared-key: ${{ matrix.name }}
+          cache-targets: true
+          shared-key: ${{ github.job }}-${{ matrix.name }}
+          key: zig-${{ env.ZIG_VERSION }}
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@0c80bcf54d007ab0e714c95f3bcc43c387707535
