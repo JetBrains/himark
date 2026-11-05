@@ -218,14 +218,15 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Cache Cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+
+      - name: Cache native build dependencies
+        uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-registry-macos-${{ hashFiles('**/Cargo.lock') }}
+          shared-key: macos-release
+          key: zig-${{ env.ZIG_VERSION }}
+          cache-targets: true
 
       - name: Download web site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
