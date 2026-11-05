@@ -743,7 +743,8 @@ mod tests {
         // shell files when the feed's generation moves.
         let a = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
         view.search.tree_mut().inner_mut().toggle(&a, &store, &ui);
-        view.search.tree_mut()
+        view.search
+            .tree_mut()
             .inner_mut()
             .list_mut()
             .select_only(a.clone());
@@ -765,8 +766,15 @@ mod tests {
             "the shell would see the staleness"
         );
         view.rebuild(&store, &ui);
-        assert!(view.search.tree().inner().forest.is_collapsed(&a), "fold kept");
-        assert_eq!(view.search.tree().inner().list().cursor(), Some(&a), "cursor kept");
+        assert!(
+            view.search.tree().inner().forest.is_collapsed(&a),
+            "fold kept"
+        );
+        assert_eq!(
+            view.search.tree().inner().list().cursor(),
+            Some(&a),
+            "cursor kept"
+        );
         assert_eq!(view.search.files(), 2);
 
         // Zero fetches anywhere: nothing above registered a document.
@@ -953,7 +961,9 @@ mod tests {
         // jump — dedup never swallows an explicit pick).
         let at = view.search.tree().cursor_index().expect("a cursor row");
         let pick = SearchCommand::List(imba::scroll::ScrollCommand::Content(
-            view.search.tree().activate_command(at, ActivateTrigger::Enter),
+            view.search
+                .tree()
+                .activate_command(at, ActivateTrigger::Enter),
         ));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(

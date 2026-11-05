@@ -275,9 +275,10 @@ impl Scanner {
             return;
         }
         self.published = state.clone();
-        self.poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(
-            Arc::new(TailnetChanged { state }),
-        )));
+        self.poster
+            .post(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                TailnetChanged { state },
+            ))));
     }
 
     fn digest(&mut self, status: &tailnet::Status) {
@@ -293,15 +294,16 @@ impl Scanner {
                 });
                 save(&self.root, &self.saved);
                 tracing::info!(target: "tailnet_hosts", %label, %url, "discovered");
-                self.poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(
-                    Arc::new(HostDiscovered {
-                        name: label,
-                        url: url.clone(),
-                        runtime: self.runtime.clone(),
-                        connector: Arc::clone(&self.connector),
-                        clients: Arc::clone(&self.clients),
-                    }),
-                )));
+                self.poster
+                    .post(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                        HostDiscovered {
+                            name: label,
+                            url: url.clone(),
+                            runtime: self.runtime.clone(),
+                            connector: Arc::clone(&self.connector),
+                            clients: Arc::clone(&self.clients),
+                        },
+                    ))));
             } else if peer.online && !self.online.get(&url).copied().unwrap_or(false) {
                 // A known host came back — nudge the Failed rows,
                 // which never retry on their own.
@@ -310,9 +312,10 @@ impl Scanner {
             self.online.insert(url, peer.online);
         }
         if wake_failed_rows {
-            self.poster.post(AppCommand::Verb(imba::command::Verb::Dynamic(
-                Arc::new(ahp_session::session::driver::RetryHosts),
-            )));
+            self.poster
+                .post(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                    ahp_session::session::driver::RetryHosts,
+                ))));
         }
     }
 }

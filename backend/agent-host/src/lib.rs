@@ -15,9 +15,9 @@ mod pty;
 mod rpc;
 pub mod server;
 use server::{Host, HostConfig};
+mod store;
 #[cfg(unix)]
 pub(crate) mod tailnet_face;
-mod store;
 pub mod testing;
 mod trace;
 mod uris;
@@ -136,11 +136,9 @@ pub fn run_with_tailnet(
     // serving it across restarts, flag or no flag.
     #[cfg(unix)]
     {
-        let tailnet =
-            tailnet.or_else(|| {
-                crate::tailnet_face::enrolled_state_dir()
-                    .map(|_| TailnetOptions { hostname: None })
-            });
+        let tailnet = tailnet.or_else(|| {
+            crate::tailnet_face::enrolled_state_dir().map(|_| TailnetOptions { hostname: None })
+        });
         if let Some(options) = tailnet {
             let root = host.web_root.lock().ok().and_then(|held| held.clone());
             let _runtime = runtime.enter();

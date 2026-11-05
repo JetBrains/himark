@@ -39,7 +39,8 @@ pub(crate) struct FolderPick {
     /// Builds the grant request for the chosen folder; the picker
     /// pushes it through `imba::command::Requests` and closes —
     /// uniform across the windowed and mounted roads.
-    pub grant: Arc<dyn Fn(ResourceLocation) -> Arc<dyn imba::command::DynamicCommand> + Send + Sync>,
+    pub grant:
+        Arc<dyn Fn(ResourceLocation) -> Arc<dyn imba::command::DynamicCommand> + Send + Sync>,
 }
 
 /// One picker tree per host-fs world, persisted like the dock's
@@ -199,7 +200,11 @@ impl View for FolderPicker {
             })),
             ..FocusData::default()
         };
-        own.merge_under(self.tree.focus_data(store, ui).map(FolderPickerCommand::Tree))
+        own.merge_under(
+            self.tree
+                .focus_data(store, ui)
+                .map(FolderPickerCommand::Tree),
+        )
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -398,13 +403,7 @@ mod tests {
         fn name(&self) -> String {
             "Granted".to_owned()
         }
-        fn perform(
-            &self,
-            _store: &mut Store,
-            _ui: &UiCtx,
-            _fx: &mut imba::command::Fx<'_>,
-        ) {
-        }
+        fn perform(&self, _store: &mut Store, _ui: &UiCtx, _fx: &mut imba::command::Fx<'_>) {}
     }
 
     #[test]

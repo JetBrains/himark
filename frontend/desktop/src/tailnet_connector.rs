@@ -182,9 +182,7 @@ impl ahp::transport::Transport for WsOverTailnet {
                     )))
                 }
                 Some(Ok(Message::Binary(bytes))) => {
-                    return Ok(Some(ahp::transport::TransportMessage::Binary(
-                        bytes.into(),
-                    )))
+                    return Ok(Some(ahp::transport::TransportMessage::Binary(bytes.into())))
                 }
                 Some(Ok(Message::Close(_))) => return Ok(None),
                 // Ping/Pong/raw frames: tungstenite answers these.

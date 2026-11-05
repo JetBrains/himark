@@ -88,7 +88,9 @@ pub unsafe extern "C" fn himark_tailnet_closed(conn: usize, reason: *const std::
     let shared = Arc::from_raw(conn as *const Mutex<Shared>);
     let reason = match reason.is_null() {
         true => String::new(),
-        false => std::ffi::CStr::from_ptr(reason).to_string_lossy().into_owned(),
+        false => std::ffi::CStr::from_ptr(reason)
+            .to_string_lossy()
+            .into_owned(),
     };
     let mut state = shared.lock().expect("tailnet shared");
     state.closed = Some(reason);
@@ -383,14 +385,14 @@ pub fn spawn_discovery(
                     .filter(|short| !short.is_empty())
                     .unwrap_or(&host.name)
                     .to_owned();
-                let _ = posted.send(himark::app::AppCommand::Verb(
-                    imba::command::Verb::Dynamic(Arc::new(TailnetHostDiscovered {
+                let _ = posted.send(himark::app::AppCommand::Verb(imba::command::Verb::Dynamic(
+                    Arc::new(TailnetHostDiscovered {
                         name: label,
                         url,
                         runtime: handle.clone(),
                         clients: Arc::clone(&clients),
-                    })),
-                ));
+                    }),
+                )));
             }
         }
     });

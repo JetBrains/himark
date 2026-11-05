@@ -24,9 +24,12 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
         &test_theme(),
     );
 
+    // `root.language` is CANONICAL — the "rs" the file extension
+    // handed in resolves to "rust" in parse_syntax (the alias
+    // registration of cb70531b).
     assert_eq!(
         document.syntax().map(|root| root.language.as_str()),
-        Some("rs")
+        Some("rust")
     );
     let mut inline = Vec::new();
     let mut hidden = Vec::new();

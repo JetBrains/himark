@@ -224,11 +224,7 @@ async fn serve(
 /// THE gate: a connection is admitted by WHO it is from, before a
 /// byte of protocol is read. Anyone the tailnet cannot name as the
 /// owner is dropped.
-async fn owner_admits(
-    node: &Arc<tailnet::Tailnet>,
-    owner: &str,
-    remote: std::net::IpAddr,
-) -> bool {
+async fn owner_admits(node: &Arc<tailnet::Tailnet>, owner: &str, remote: std::net::IpAddr) -> bool {
     let login = match node.whois(remote).await {
         Ok(whois) => whois.login().map(str::to_owned),
         Err(error) => {

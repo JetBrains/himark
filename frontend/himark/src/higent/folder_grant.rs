@@ -154,14 +154,17 @@ impl crate::commands::HimarkCommand for OpenFolderPicker {
                     )
                 },
                 |fx| {
-                    fx.scope(imba::dyn_view::DynCommand::new::<FolderPickerCommand>, |fx| {
-                        Box::new(FolderPicker::open(store, ui, pick, fx))
-                            as Box<dyn hikit::modal::ModalView>
-                    })
+                    fx.scope(
+                        imba::dyn_view::DynCommand::new::<FolderPickerCommand>,
+                        |fx| {
+                            Box::new(FolderPicker::open(store, ui, pick, fx))
+                                as Box<dyn hikit::modal::ModalView>
+                        },
+                    )
                 },
             );
-            let mut entity = ::workbench::window::Windows::window(store, window)
-                .expect("the window entity");
+            let mut entity =
+                ::workbench::window::Windows::window(store, window).expect("the window entity");
             fx.scope(
                 move |command| crate::app::content(window, command),
                 |fx| entity.show_modal(store, modal, fx),

@@ -6502,7 +6502,7 @@ fn two_engines_sync_a_live_document() {
             subscribe: None,
             unsubscribe: None,
             set_clipboard: None,
-        open_url: None,
+            open_url: None,
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
@@ -6674,7 +6674,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
             subscribe: None,
             unsubscribe: None,
             set_clipboard: None,
-        open_url: None,
+            open_url: None,
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(

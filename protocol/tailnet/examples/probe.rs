@@ -23,10 +23,7 @@ async fn main() {
         if status.running() {
             println!(
                 "client node running as {}",
-                status
-                    .self_node
-                    .map(|own| own.dns_name)
-                    .unwrap_or_default()
+                status.self_node.map(|own| own.dns_name).unwrap_or_default()
             );
             break;
         }

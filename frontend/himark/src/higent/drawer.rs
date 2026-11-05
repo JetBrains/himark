@@ -233,9 +233,7 @@ impl crate::commands::HimarkCommand for ShareHostTailnet {
             imba::effect::AnyEffect::new(ahp_wire::effects::ShareTailnetEffect {
                 client: client.session.clone(),
             })
-            .map(move |result| {
-                crate::shell::windowed(window, Arc::new(SharedTailnet { result }))
-            }),
+            .map(move |result| crate::shell::windowed(window, Arc::new(SharedTailnet { result }))),
         );
     }
 }

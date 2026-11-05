@@ -43,9 +43,8 @@ unsafe impl Sync for Tailnet {}
 
 fn errmsg(sd: libtailscale_sys::tailscale) -> String {
     let mut buffer = [0u8; 256];
-    let read = unsafe {
-        libtailscale_sys::tailscale_errmsg(sd, buffer.as_mut_ptr().cast(), buffer.len())
-    };
+    let read =
+        unsafe { libtailscale_sys::tailscale_errmsg(sd, buffer.as_mut_ptr().cast(), buffer.len()) };
     match read {
         0 => {
             let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(0);
@@ -55,7 +54,11 @@ fn errmsg(sd: libtailscale_sys::tailscale) -> String {
     }
 }
 
-fn check(sd: libtailscale_sys::tailscale, ret: std::os::raw::c_int, what: &str) -> Result<(), String> {
+fn check(
+    sd: libtailscale_sys::tailscale,
+    ret: std::os::raw::c_int,
+    what: &str,
+) -> Result<(), String> {
     match ret {
         0 => Ok(()),
         _ => Err(format!("{what}: {}", errmsg(sd))),
@@ -81,7 +84,11 @@ impl Tailnet {
         let hostname = cstring(hostname, "hostname")?;
         unsafe {
             let sd = libtailscale_sys::tailscale_new();
-            check(sd, libtailscale_sys::tailscale_set_dir(sd, dir.as_ptr()), "set_dir")?;
+            check(
+                sd,
+                libtailscale_sys::tailscale_set_dir(sd, dir.as_ptr()),
+                "set_dir",
+            )?;
             check(
                 sd,
                 libtailscale_sys::tailscale_set_hostname(sd, hostname.as_ptr()),
@@ -187,7 +194,12 @@ impl Tailnet {
         unsafe {
             check(
                 self.sd,
-                libtailscale_sys::tailscale_listen(self.sd, tcp.as_ptr(), bind.as_ptr(), &mut listener),
+                libtailscale_sys::tailscale_listen(
+                    self.sd,
+                    tcp.as_ptr(),
+                    bind.as_ptr(),
+                    &mut listener,
+                ),
                 "listen",
             )?;
         }
@@ -225,7 +237,10 @@ impl Tailnet {
         }
         // Connection: close — chunked bodies still arrive whole;
         // strip the framing if present.
-        if head.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+        if head
+            .to_ascii_lowercase()
+            .contains("transfer-encoding: chunked")
+        {
             return Ok(unchunk(body));
         }
         Ok(body.to_owned())
@@ -504,6 +519,9 @@ mod tests {
 
     #[test]
     fn unchunk_reassembles() {
-        assert_eq!(super::unchunk("5\r\nhello\r\n1\r\n!\r\n0\r\n\r\n"), "hello!");
+        assert_eq!(
+            super::unchunk("5\r\nhello\r\n1\r\n!\r\n0\r\n\r\n"),
+            "hello!"
+        );
     }
 }

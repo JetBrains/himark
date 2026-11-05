@@ -663,9 +663,7 @@ impl Himark {
                     ahp_session::session::state::HostStatus::Failed(_) => 3,
                 },
                 error: match &record.status {
-                    ahp_session::session::state::HostStatus::Failed(error) => {
-                        Some(error.clone())
-                    }
+                    ahp_session::session::state::HostStatus::Failed(error) => Some(error.clone()),
                     _ => None,
                 },
             });

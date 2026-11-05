@@ -1117,8 +1117,7 @@ impl HimarkEngine {
         // "still animating" — the first question a hot idle trace
         // asks is WHO keeps the clock alive.
         static TRACE_ANIM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        let trace =
-            *TRACE_ANIM.get_or_init(|| std::env::var_os("HIMARK_TRACE_ANIM").is_some());
+        let trace = *TRACE_ANIM.get_or_init(|| std::env::var_os("HIMARK_TRACE_ANIM").is_some());
         let mut animating = flushed;
         for (window, size) in windows {
             let moved = self.app.dispatch(

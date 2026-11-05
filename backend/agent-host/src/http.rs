@@ -180,9 +180,7 @@ async fn authenticate_and_set_headers(
         .flat_map(|cookies| cookies.split(';'))
         .find_map(|cookie| cookie.trim().strip_prefix("himark_tkn="));
     if let Some(token) = &state.token {
-        if query_token.as_deref() != Some(token.as_ref())
-            && cookie_token != Some(token.as_ref())
-        {
+        if query_token.as_deref() != Some(token.as_ref()) && cookie_token != Some(token.as_ref()) {
             return (StatusCode::FORBIDDEN, "missing or wrong token").into_response();
         }
     }

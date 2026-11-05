@@ -425,7 +425,10 @@ pub enum ListCommand<C> {
     /// RESTED short of the target (a native scroller's grid may
     /// never meet a fractional row top); past the grace the clock
     /// road goes quiet instead of ticking forever.
-    RevealStalled { top: f32, target: f32 },
+    RevealStalled {
+        top: f32,
+        target: f32,
+    },
 }
 
 impl<C: std::fmt::Display> std::fmt::Display for ListCommand<C> {
