@@ -72,7 +72,7 @@ Each query surface is a standalone overlay that OWNS its input editor:
 
 | surface | entry | input |
 |---------|-------|-------|
-| jump to file (the peeker: documents, widgets, workspace finds) | cmd-P, `peeker.toggle` | its own, top of the sheet |
+| jump to file (the peeker: documents, widgets, workspace finds; `#` symbols, `%` text — ui/peeker.md) | cmd-P, `peeker.toggle` | its own, top of the sheet |
 | command palette | cmd-shift-P, `palette.toggle` | its own, top of the sheet |
 | find | cmd-shift-F | the Find tab's own input ([location-list.md](location-list.md)) |
 

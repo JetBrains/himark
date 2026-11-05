@@ -25,6 +25,9 @@ use imba::{
     ui::UiCtx,
     View,
 };
+use locations::results::{ResultsCommand, ResultsOutcome, ResultsView};
+use locations::{FeedId, LocationLists, LocationsAsk};
+use std::sync::Arc;
 use workbench::workbench_node::EditorPane;
 
 mod sheet;
@@ -32,6 +35,7 @@ use workbench::workbench_node::PaneCommand;
 
 #[derive(Clone)]
 pub struct Peeker {
+    // ------------------------------------------------------- wiring
     /// The peeker's own query input: the overlay owns its text, typed
     /// directly — no omnibox in between.
     input: editor::editor_view::EditorView,
@@ -40,44 +44,128 @@ pub struct Peeker {
     /// at open from the window.s session bundle (docs/entities.md law 3).
     documents: imba::store::Id<documents::OpenDocuments>,
 
-    recents: Vec<ResourceLocation>,
+    /// The session's location-lists collection — the hits lanes are
+    /// FACES over a peeker-owned feed here, the same model the
+    /// Search dock tab fronts (docs/ui/location-list.md).
+    lists: imba::store::Id<LocationLists>,
 
-    workspace: Vec<ResourceLocation>,
+    // ------------------------------------------------------ sources
+    /// Frozen at open — Arc'd, so the modal's per-update clone
+    /// (docs/entities.md: the window entity is a store VALUE) is a
+    /// refcount bump, not a copy.
+    recents: Arc<[ResourceLocation]>,
 
-    found: Vec<ResourceLocation>,
+    /// The workspace folders — the finds' scope and every row's
+    /// shown place. Frozen at open, Arc'd like `recents`.
+    workspace: Arc<[ResourceLocation]>,
 
+    /// The widget handles the files lane lists and previews
+    /// (docs/ui/peeker.md); row titles read off these, not a cache.
+    widgets: Vec<(WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)>,
+
+    // ------------------------------------------------- the master
+    /// The ONE standing master, named by the query's sigil: a lane's
+    /// state lives exactly as long as the query names it — there is
+    /// never a hidden second lane to drift.
+    master: Master,
+
+    /// The find effect's bookkeeping — PEEKER-level like the fetch
+    /// tokens, so a stale answer from a dropped lane still fails the
+    /// serial gate.
     find_serial: u64,
 
     find_token: Option<imba::effect::CancellationToken>,
 
+    // ------------------------------------------------- the preview
     temp_docs: std::collections::HashMap<ResourceLocation, documents::DocumentId>,
 
     pending_fetch: std::collections::HashSet<ResourceLocation>,
 
-    widgets: Vec<(WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)>,
-    widget_titles: Vec<String>,
-
-    filter_query: String,
-
-    rows: Vec<PeekerRow>,
-    labels: Vec<String>,
-    /// Each row's directory, relative to its workspace folder (empty
-    /// for a widget row).
-    dirs: Vec<String>,
-
-    hidden: usize,
-
-    list: Rows,
     preview: Option<PreviewSlot>,
 
     preview_width: f32,
 
+    /// The selected hit's wash on the previewed document — removed
+    /// when the aim moves on.
+    aimed: Option<Aim>,
+
+    // -------------------------------------------------- the chrome
     /// The windowed modal stands on its own SHEET, centered in the
     /// window; the mounted GLASS road (`unfloored`) rides the host's
     /// island backdrop and the dialog fills the island.
     floored: bool,
 
     request: hikit::modal::RequestSlot<ModalRequest>,
+}
+
+/// The master column's state — exactly one lane stands at a time.
+#[derive(Clone)]
+enum Master {
+    /// The flat buffer switcher (a plain query).
+    Files(FilesLane),
+
+    /// The hits tree over a peeker-owned feed (`#` symbols, `%` text).
+    Hits(HitsLane),
+}
+
+/// The flat buffer-switcher master: the filter's product is `rows` —
+/// INDICES into the sources, never copies; a row's name and place
+/// derive on demand, and the one realized copy of the visible rows is
+/// the list view's own slice (the framework's shape).
+#[derive(Clone)]
+struct FilesLane {
+    /// Workspace finds, as the capped find effect answered them —
+    /// replaced whole per answer, never edited: Arc'd, so the lane's
+    /// clone is a refcount bump.
+    found: Arc<[ResourceLocation]>,
+
+    filter_query: String,
+
+    /// Which source each shown row names, capped at `PEEKER_SHOWN` —
+    /// rebuilt whole per filter, never edited: Arc'd like `found`.
+    rows: Arc<[PeekerRow]>,
+
+    /// Matches past the cap — the tail note's count.
+    hidden: usize,
+
+    list: Rows,
+}
+
+/// The files lane's sources, read off the peeker per call — the lane
+/// never copies them.
+#[derive(Clone, Copy)]
+struct Sources<'a> {
+    recents: &'a [ResourceLocation],
+    widgets: &'a [(WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)],
+    workspace: &'a [ResourceLocation],
+}
+
+/// The sigil lanes' master: the shared Find results tree over a
+/// peeker-owned feed — the feed row in `LocationLists` is the one
+/// holder of the hits (docs/ui/location-list.md); this face holds
+/// ids and a dedup.
+#[derive(Clone)]
+struct HitsLane {
+    /// `#` or `%` — which stream the feed rides; the caption's word.
+    kind: HitsKind,
+
+    /// The Find dock's results tree (`locations::results`),
+    /// keys-only: the peeker's input owns typing.
+    results: ResultsView,
+
+    /// The feed the tree fronts; disposed with the overlay and on
+    /// every re-query.
+    feed: Option<FeedId>,
+
+    /// The last (kind, term) streamed — the keystroke dedup; a caret
+    /// move must not re-mint a feed.
+    asked: Option<(HitsKind, String)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HitsKind {
+    Symbols,
+    Text,
 }
 
 pub(crate) type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
@@ -112,6 +200,14 @@ pub enum PeekerCommand {
     Widget(imba::dyn_view::DynCommand),
 
     Rows(RowsCommand),
+
+    /// The hits master (the shared Find results tree) — symbol and
+    /// text modes.
+    Results(ResultsCommand),
+
+    /// The hits master noticed its feed moved (paint-driven, the
+    /// Search dock's refresh-probe recipe).
+    RefreshResults,
 }
 
 impl std::fmt::Display for PeekerCommand {
@@ -121,6 +217,8 @@ impl std::fmt::Display for PeekerCommand {
             PeekerCommand::Preview(command) => command.fmt(out),
             PeekerCommand::Widget(command) => command.fmt(out),
             PeekerCommand::Rows(command) => command.fmt(out),
+            PeekerCommand::Results(command) => command.fmt(out),
+            PeekerCommand::RefreshResults => out.write_str("peeker refresh results"),
             PeekerCommand::Pick(_) => out.write_str("peeker pick"),
             PeekerCommand::Close => out.write_str("peeker close"),
             PeekerCommand::Found { .. } => out.write_str("peeker found"),
@@ -144,6 +242,41 @@ enum PeekerRow {
     Widget(usize),
 
     Found(usize),
+}
+
+/// What the query's first character names (docs/ui/location-list.md):
+/// a plain query jumps to files, `#` to symbols, `%` to text.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum QueryMode {
+    Files,
+    Symbols,
+    Text,
+}
+
+/// The hit wash standing on a previewed document: one `Match`-styled
+/// span, shown on the preview's editor only (the peek card's recipe —
+/// the document may be genuinely open elsewhere and its panes must
+/// not light up).
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Aim {
+    document: documents::DocumentId,
+    markup: editor::markup::MarkupId,
+    span: (u32, u32),
+}
+
+/// How far from the preview's top the aimed hit rests.
+const AIM_HEADROOM: f32 = 160.0;
+
+/// The query with its sigil stripped: `#name` → symbols, `%words` →
+/// text, anything else → the file lane.
+fn sniff(query: &str) -> (QueryMode, &str) {
+    match query.strip_prefix('#') {
+        Some(term) => (QueryMode::Symbols, term.trim()),
+        None => match query.strip_prefix('%') {
+            Some(term) => (QueryMode::Text, term.trim()),
+            None => (QueryMode::Files, query),
+        },
+    }
 }
 
 #[derive(Clone)]
@@ -273,22 +406,200 @@ fn rows_list() -> Rows {
     ))
 }
 
+impl FilesLane {
+    fn new() -> Self {
+        Self {
+            found: Vec::new().into(),
+            filter_query: String::new(),
+            rows: Vec::new().into(),
+            hidden: 0,
+            list: rows_list(),
+        }
+    }
+
+    fn selected(&self) -> usize {
+        use imba::list::ListOps;
+        self.list.cursor_index().unwrap_or(0)
+    }
+
+    fn location_at<'a>(&'a self, sources: Sources<'a>, row: usize) -> Option<&'a ResourceLocation> {
+        match self.rows.get(row) {
+            Some(PeekerRow::Recent(index)) => sources.recents.get(*index),
+            Some(PeekerRow::Found(index)) => self.found.get(*index),
+            _ => None,
+        }
+    }
+
+    fn widget_at(&self, row: usize) -> Option<usize> {
+        match self.rows.get(row) {
+            Some(PeekerRow::Widget(index)) => Some(*index),
+            _ => None,
+        }
+    }
+
+    /// The `row`th row's name, read off its source.
+    fn row_label(&self, store: &Store, sources: Sources<'_>, row: usize) -> String {
+        match self.rows.get(row) {
+            Some(PeekerRow::Widget(index)) => sources
+                .widgets
+                .get(*index)
+                .map(|(_, widget)| widget.title(store))
+                .unwrap_or_default(),
+            Some(_) => self
+                .location_at(sources, row)
+                .map(|location| location.name().to_owned())
+                .unwrap_or_default(),
+            None => String::new(),
+        }
+    }
+
+    /// The `row`th match as a row, selected or not — derived from its
+    /// source; the list slice is the one realized copy.
+    fn file_row(&self, store: &Store, sources: Sources<'_>, row: usize, selected: bool) -> FileRow {
+        let name = self.row_label(store, sources, row);
+        let dir = self
+            .location_at(sources, row)
+            .map(|location| place_of(sources.workspace, location).1)
+            .unwrap_or_default();
+        FileRow {
+            marks: sheet::match_runs(&name, &self.filter_query),
+            name,
+            dir,
+            selected,
+            note: false,
+        }
+    }
+
+    fn refilter(&mut self, store: &Store, ui: &UiCtx, sources: Sources<'_>) {
+        let query = self.filter_query.to_lowercase();
+        let mut rows = Vec::new();
+        let mut hidden = 0usize;
+        let mut push = |row: PeekerRow, matched: bool| {
+            if !matched {
+                return;
+            }
+            if rows.len() < PEEKER_SHOWN {
+                rows.push(row);
+            } else {
+                hidden += 1;
+            }
+        };
+        for (index, location) in sources.recents.iter().enumerate() {
+            push(
+                PeekerRow::Recent(index),
+                subsequence_match(&location.name().to_lowercase(), &query),
+            );
+        }
+        for (index, (_, widget)) in sources.widgets.iter().enumerate() {
+            push(
+                PeekerRow::Widget(index),
+                subsequence_match(&widget.title(store).to_lowercase(), &query),
+            );
+        }
+        for index in 0..self.found.len() {
+            push(PeekerRow::Found(index), true);
+        }
+        self.rows = rows.into();
+        self.hidden = hidden;
+        let selected = self.selected().min(self.rows.len().saturating_sub(1));
+        let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
+        for row in 0..self.rows.len() {
+            slice.push_keyed(
+                row,
+                self.file_row(store, sources, row, row == selected),
+                store,
+                ui,
+            );
+        }
+        if self.hidden > 0 {
+            let note = FileRow {
+                name: format!("… {} more — narrow the filter", self.hidden),
+                marks: Vec::new(),
+                dir: String::new(),
+                selected: false,
+                note: true,
+            };
+            slice.push(note, store, ui);
+        }
+        let scroll_y = self.list.inner().scroll_y();
+        let mut list =
+            imba::list::ListView::from_slice(slice).with_selection(selection_style(store));
+        if !self.rows.is_empty() {
+            list.select_only(selected);
+        }
+        *self.list.inner_mut() = imba::scroll::ScrollView::new(list);
+        self.list.inner_mut().set_scroll_y(scroll_y);
+    }
+
+    /// The selection moved: the row it left shrinks back and the row
+    /// it reached grows — two rows re-laid, in place.
+    fn restyle(
+        &mut self,
+        store: &Store,
+        ui: &UiCtx,
+        sources: Sources<'_>,
+        left: Option<usize>,
+        reached: Option<usize>,
+    ) {
+        for (row, selected) in [(left, false), (reached, true)] {
+            let Some(row) = row.filter(|&row| row < self.rows.len()) else {
+                continue;
+            };
+            let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
+            slice.push_keyed(row, self.file_row(store, sources, row, selected), store, ui);
+            self.list
+                .inner_mut()
+                .content_mut()
+                .splice_slice(row..row + 1, slice);
+        }
+    }
+}
+
+impl HitsLane {
+    fn new(store: &Store, lists: imba::store::Id<LocationLists>, kind: HitsKind) -> Self {
+        Self {
+            kind,
+            results: ResultsView::keys_only(store, lists),
+            feed: None,
+            asked: None,
+        }
+    }
+}
+
+/// Where a file sits: its workspace folder shown from home
+/// ("~/Projects/himark-jb/", empty outside every folder) and its
+/// directory under that folder ("tools/grammar-pack/src").
+fn place_of(workspace: &[ResourceLocation], location: &ResourceLocation) -> (String, String) {
+    let path = location.path();
+    let parent = &path[..path.len().saturating_sub(1)];
+    match workspace
+        .iter()
+        .find(|folder| parent.starts_with(folder.path()))
+    {
+        Some(folder) => (
+            format!("{}/", shown_path(folder.path())),
+            parent[folder.path().len()..].join("/"),
+        ),
+        None => (String::new(), parent.join("/")),
+    }
+}
+
 impl Peeker {
     pub fn open(
         store: &mut Store,
         ui: &UiCtx,
         documents: imba::store::Id<documents::OpenDocuments>,
+        lists: imba::store::Id<LocationLists>,
         viewport: Size,
         recents: Vec<ResourceLocation>,
         widgets: Vec<(WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)>,
         folders: Vec<editor::location::ResourceLocation>,
         fx: &mut PeekerEffects<'_>,
     ) -> Self {
-        let workspace = folders;
-        let widget_titles: Vec<String> = widgets
-            .iter()
-            .map(|(_, widget)| widget.title(store))
-            .collect();
+        let workspace: Arc<[ResourceLocation]> = folders.into();
+        // The symbol and text lanes search the model's own folders —
+        // the same stamp the Search dock mount makes.
+        LocationLists::adopt_folders(store, lists, &workspace);
         let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::PeekerChrome::KEY);
         let mut input = editor::editor_view::EditorView::input_styled(
             600.0,
@@ -301,21 +612,16 @@ impl Peeker {
         let mut peeker = Self {
             input,
             documents,
-            recents,
+            recents: recents.into(),
             workspace,
-            found: Vec::new(),
+            lists,
+            master: Master::Files(FilesLane::new()),
             find_serial: 0,
             find_token: None,
+            aimed: None,
             temp_docs: std::collections::HashMap::new(),
             pending_fetch: std::collections::HashSet::new(),
             widgets,
-            widget_titles,
-            filter_query: String::new(),
-            rows: Vec::new(),
-            labels: Vec::new(),
-            dirs: Vec::new(),
-            hidden: 0,
-            list: rows_list(),
             preview: None,
             // The windowed sheet's preview: the dialog's width in
             // this viewport, less the matches column.
@@ -346,179 +652,146 @@ impl Peeker {
 
     fn apply_query(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut PeekerEffects<'_>) {
         let query = self.query();
-        let query = query.trim();
-        self.filter(store, ui, query);
-        self.launch_find(store, ui, query, fx);
+        let query = query.trim().to_owned();
+        match sniff(&query) {
+            (QueryMode::Files, term) => self.enter_files(store, ui, term, fx),
+            (QueryMode::Symbols, term) => self.enter_hits(store, ui, HitsKind::Symbols, term),
+            (QueryMode::Text, term) => self.enter_hits(store, ui, HitsKind::Text, term),
+        }
         self.ensure_preview(store, ui, fx);
+        self.aim_preview(store, ui, fx);
     }
 
-    fn location_at(&self, row: usize) -> Option<&ResourceLocation> {
-        match self.rows.get(row) {
-            Some(PeekerRow::Recent(index)) => self.recents.get(*index),
-            Some(PeekerRow::Found(index)) => self.found.get(*index),
-            _ => None,
-        }
-    }
-
-    fn widget_at(&self, row: usize) -> Option<usize> {
-        match self.rows.get(row) {
-            Some(PeekerRow::Widget(index)) => Some(*index),
-            _ => None,
-        }
-    }
-
-    fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn refilter(&mut self, store: &Store, ui: &UiCtx) {
-        let query = self.filter_query.to_lowercase();
-        self.rows.clear();
-        self.labels.clear();
-        self.hidden = 0;
-        let push = |rows: &mut Vec<PeekerRow>,
-                    labels: &mut Vec<String>,
-                    hidden: &mut usize,
-                    row: PeekerRow,
-                    label: String| {
-            if rows.len() < PEEKER_SHOWN {
-                rows.push(row);
-                labels.push(label);
-            } else {
-                *hidden += 1;
+    /// The plain query's lane: a standing hits lane dies with its
+    /// feed, then the filter and the find run as ever.
+    fn enter_files(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        term: &str,
+        fx: &mut PeekerEffects<'_>,
+    ) {
+        if let Master::Hits(hits) = &mut self.master {
+            if let Some(feed) = hits.feed.take() {
+                LocationLists::ask(store, self.lists, LocationsAsk::Dispose(feed));
             }
+            self.master = Master::Files(FilesLane::new());
+        }
+        self.filter(store, ui, term);
+        self.launch_find(store, ui, term, fx);
+    }
+
+    /// A sigil lane: swap the master in when the files lane stood
+    /// (its in-flight find resolves into the serial gate), then
+    /// re-query — dispose the standing feed, open a new one and NOTE
+    /// the ask; the wire lane launches it (the Search dock tab's
+    /// requery, over a peeker-owned feed).
+    fn enter_hits(&mut self, store: &mut Store, ui: &UiCtx, kind: HitsKind, term: &str) {
+        if matches!(self.master, Master::Files(_)) {
+            self.master = Master::Hits(HitsLane::new(store, self.lists, kind));
+        }
+        let lists = self.lists;
+        let Master::Hits(hits) = &mut self.master else {
+            unreachable!("just ensured");
         };
-        for (index, location) in self.recents.iter().enumerate() {
-            let name = location.name().to_owned();
-            if subsequence_match(&name.to_lowercase(), &query) {
-                push(
-                    &mut self.rows,
-                    &mut self.labels,
-                    &mut self.hidden,
-                    PeekerRow::Recent(index),
-                    name,
-                );
-            }
-        }
-        for (index, title) in self.widget_titles.iter().enumerate() {
-            if subsequence_match(&title.to_lowercase(), &query) {
-                push(
-                    &mut self.rows,
-                    &mut self.labels,
-                    &mut self.hidden,
-                    PeekerRow::Widget(index),
-                    title.clone(),
-                );
-            }
-        }
-        for (index, location) in self.found.iter().enumerate() {
-            push(
-                &mut self.rows,
-                &mut self.labels,
-                &mut self.hidden,
-                PeekerRow::Found(index),
-                location.name().to_owned(),
-            );
-        }
-        self.dirs = (0..self.rows.len())
-            .map(|row| {
-                self.location_at(row)
-                    .map(|location| self.place_of(location).1)
-                    .unwrap_or_default()
-            })
-            .collect();
-        let selected = self.selected().min(self.row_count().saturating_sub(1));
-        let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
-        for row in 0..self.rows.len() {
-            slice.push_keyed(row, self.file_row(row, row == selected), store, ui);
-        }
-        if self.hidden > 0 {
-            let note = FileRow {
-                name: format!("… {} more — narrow the filter", self.hidden),
-                marks: Vec::new(),
-                dir: String::new(),
-                selected: false,
-                note: true,
-            };
-            slice.push(note, store, ui);
-        }
-        let scroll_y = self.list.inner().scroll_y();
-        let mut list =
-            imba::list::ListView::from_slice(slice).with_selection(selection_style(store));
-        if !self.labels.is_empty() {
-            list.select_only(selected);
-        }
-        *self.list.inner_mut() = imba::scroll::ScrollView::new(list);
-        self.list.inner_mut().set_scroll_y(scroll_y);
-    }
-
-    /// The `row`th match as a row, selected or not.
-    fn file_row(&self, row: usize, selected: bool) -> FileRow {
-        let name = self.labels[row].clone();
-        FileRow {
-            marks: sheet::match_runs(&name, &self.filter_query),
-            name,
-            dir: self.dirs.get(row).cloned().unwrap_or_default(),
-            selected,
-            note: false,
-        }
-    }
-
-    /// The selection moved: the row it left shrinks back and the row
-    /// it reached grows — two rows re-laid, in place.
-    fn restyle(&mut self, store: &Store, ui: &UiCtx, left: Option<usize>, reached: Option<usize>) {
-        for (row, selected) in [(left, false), (reached, true)] {
-            let Some(row) = row.filter(|&row| row < self.rows.len()) else {
-                continue;
-            };
-            let mut slice: imba::list::ListSlice<FileRow, usize> = imba::list::ListSlice::new();
-            slice.push_keyed(row, self.file_row(row, selected), store, ui);
-            self.list
-                .inner_mut()
-                .content_mut()
-                .splice_slice(row..row + 1, slice);
-        }
-    }
-
-    /// Where a file sits: its workspace folder shown from home
-    /// ("~/Projects/himark-jb/", empty outside every folder) and its
-    /// directory under that folder ("tools/grammar-pack/src").
-    fn place_of(&self, location: &ResourceLocation) -> (String, String) {
-        let path = location.path();
-        let parent = &path[..path.len().saturating_sub(1)];
-        match self
-            .workspace
-            .iter()
-            .find(|folder| parent.starts_with(folder.path()))
+        hits.kind = kind;
+        if hits
+            .asked
+            .as_ref()
+            .is_some_and(|(asked, held)| *asked == kind && held == term)
         {
-            Some(folder) => (
-                format!("{}/", shown_path(folder.path())),
-                parent[folder.path().len()..].join("/"),
-            ),
-            None => (String::new(), parent.join("/")),
+            return;
+        }
+        hits.asked = Some((kind, term.to_owned()));
+        if let Some(previous) = hits.feed.take() {
+            LocationLists::ask(store, lists, LocationsAsk::Dispose(previous));
+        }
+        if term.len() < 2 {
+            hits.results.reset(store, ui, None);
+            return;
+        }
+        let feed = FeedId::mint();
+        let title = match kind {
+            HitsKind::Symbols => format!("Symbols: {term}"),
+            HitsKind::Text => format!("Search: {term}"),
+        };
+        locations::open_feed(store, lists, feed, title, term.to_owned());
+        let query = term.to_owned();
+        LocationLists::ask(
+            store,
+            lists,
+            match kind {
+                HitsKind::Symbols => LocationsAsk::Symbols { feed, query },
+                HitsKind::Text => LocationsAsk::Search { feed, query },
+            },
+        );
+        let Master::Hits(hits) = &mut self.master else {
+            unreachable!("just ensured");
+        };
+        hits.feed = Some(feed);
+        hits.results.reset(store, ui, Some(feed));
+    }
+
+    fn sources(&self) -> Sources<'_> {
+        Sources {
+            recents: &self.recents,
+            widgets: &self.widgets,
+            workspace: &self.workspace,
+        }
+    }
+
+    /// What the master's selection names: the flat file row, or the
+    /// hits tree's cursor (a directory names nothing).
+    fn current_location(&self, store: &Store) -> Option<ResourceLocation> {
+        match &self.master {
+            Master::Files(files) => files.location_at(self.sources(), files.selected()).cloned(),
+            Master::Hits(hits) => {
+                let key = hits.results.cursor()?;
+                Some(hits.results.found(store, hits.feed, &key)?.location)
+            }
         }
     }
 
     /// The sheet's caps label: what it does, and in which repo.
     fn caption(&self) -> String {
+        let what = match &self.master {
+            Master::Files(_) => "JUMP TO FILE",
+            Master::Hits(hits) => match hits.kind {
+                HitsKind::Symbols => "JUMP TO SYMBOL",
+                HitsKind::Text => "JUMP TO TEXT",
+            },
+        };
         match self.workspace.first() {
-            Some(folder) => format!("JUMP TO FILE · {}", folder.name().to_uppercase()),
-            None => "JUMP TO FILE".to_owned(),
+            Some(folder) => format!("{what} · {}", folder.name().to_uppercase()),
+            None => what.to_owned(),
         }
     }
 
-    fn selected(&self) -> usize {
-        use imba::list::ListOps;
-        self.list.cursor_index().unwrap_or(0)
-    }
-
-    pub fn labels(&self) -> &[String] {
-        &self.labels
+    /// The shown rows' names, derived off their sources (the files
+    /// lane's; a hits master lists through its tree instead).
+    pub fn labels(&self, store: &Store) -> Vec<String> {
+        match &self.master {
+            Master::Files(files) => (0..files.rows.len())
+                .map(|row| files.row_label(store, self.sources(), row))
+                .collect(),
+            Master::Hits(_) => Vec::new(),
+        }
     }
 
     #[cfg(test)]
     pub(crate) fn hidden_count(&self) -> usize {
-        self.hidden
+        match &self.master {
+            Master::Files(files) => files.hidden,
+            Master::Hits(_) => 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hits_lane(&self) -> Option<&HitsLane> {
+        match &self.master {
+            Master::Hits(hits) => Some(hits),
+            Master::Files(_) => None,
+        }
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
@@ -533,33 +806,202 @@ impl Peeker {
     }
 
     #[cfg(test)]
-    pub(crate) fn previewed_widget_title(&self) -> Option<String> {
+    pub(crate) fn previewed_widget_title(&self, store: &Store) -> Option<String> {
         match self.preview.as_ref()? {
-            PreviewSlot::Widget(index) => self.widget_titles.get(*index).cloned(),
+            PreviewSlot::Widget(index) => self
+                .widgets
+                .get(*index)
+                .map(|(_, widget)| widget.title(store)),
             PreviewSlot::Editor(_) => None,
         }
     }
 
     fn filter(&mut self, store: &Store, ui: &UiCtx, query: &str) {
-        self.filter_query = query.to_owned();
-        self.refilter(store, ui);
+        let sources = Sources {
+            recents: &self.recents,
+            widgets: &self.widgets,
+            workspace: &self.workspace,
+        };
+        let Master::Files(files) = &mut self.master else {
+            return;
+        };
+        files.filter_query = query.to_owned();
+        files.refilter(store, ui, sources);
+    }
+
+    fn refilter(&mut self, store: &Store, ui: &UiCtx) {
+        let sources = Sources {
+            recents: &self.recents,
+            widgets: &self.widgets,
+            workspace: &self.workspace,
+        };
+        let Master::Files(files) = &mut self.master else {
+            return;
+        };
+        files.refilter(store, ui, sources);
     }
 
     fn launch_find(&mut self, store: &Store, ui: &UiCtx, query: &str, fx: &mut PeekerEffects<'_>) {
         self.find_serial += 1;
         if self.workspace.is_empty() || query.len() < 2 {
-            self.found.clear();
+            if let Master::Files(files) = &mut self.master {
+                files.found = Vec::new().into();
+            }
             self.refilter(store, ui);
             return;
         }
         let serial = self.find_serial;
 
         let effect = imba::effect::AnyEffect::new(FindEffect {
-            folders: self.workspace.clone(),
+            folders: self.workspace.to_vec(),
             term: query.to_owned(),
         })
         .map(move |locations| PeekerCommand::Found { serial, locations });
         fx.relaunch_erased(&mut self.find_token, effect);
+    }
+
+    /// In the hits lanes, aim the standing preview at the selected
+    /// hit: a one-range editor wash and the scroll to the hit's line
+    /// (the peek card's recipe, over the pane's shared document). A
+    /// move to another hit of the same file re-aims in place; another
+    /// file's hit lands here after `ensure_preview` swapped the pane.
+    fn aim_preview(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut PeekerEffects<'_>) {
+        let found = match &self.master {
+            Master::Files(_) => return self.unaim(store, ui, fx),
+            Master::Hits(hits) => hits
+                .results
+                .cursor()
+                .and_then(|key| hits.results.found(store, hits.feed, &key)),
+        };
+        let Some(found) = found else {
+            return;
+        };
+        let Some(PreviewSlot::Editor(preview)) = &self.preview else {
+            return;
+        };
+        let entity = *preview.pane.content();
+        let documents = entity.documents();
+        if documents::OpenDocuments::location(store, documents, entity.document()).as_ref()
+            != Some(&found.location)
+        {
+            return; // the pane still shows another file; its swap re-aims
+        }
+        // A wash standing on ANOTHER document leaves through its own
+        // handle first.
+        if self
+            .aimed
+            .as_ref()
+            .is_some_and(|aim| aim.document != entity.document())
+        {
+            self.unaim(store, ui, fx);
+        }
+        let Some(mut document) =
+            documents::OpenDocuments::document(store, documents, entity.document())
+        else {
+            return;
+        };
+        let (hit, span) = {
+            let mut view = document.text().view();
+            let hit = documents::text_ext::offset_at(&mut view, found.target().start) as u32;
+            (hit, (hit, hit + found.length.max(1)))
+        };
+        if self
+            .aimed
+            .as_ref()
+            .is_some_and(|aim| aim.document == entity.document() && aim.span == span)
+        {
+            documents::OpenDocuments::put_document(store, documents, entity.document(), document);
+            return;
+        }
+        let theme = ::editor::env::Themes::of(store);
+        let scoped = |command| PeekerCommand::Preview(PaneCommand::Content(command));
+        let mut tints = editor::markup::Markup::new();
+        tints.push_styled(
+            span.0..span.1,
+            editor::theme::StyleId::Match,
+            editor::markup::StyleWeight::OVERLAY,
+        );
+        let markup = match self.aimed.take() {
+            // The same document's wash moves: old ∪ new is the change
+            // set — no re-add, no re-show.
+            Some(aim) => {
+                let changed = vec![span.0..span.1, aim.span.0..aim.span.1];
+                fx.scope(scoped, |fx| {
+                    document.replace_markup(aim.markup, tints, &changed, store, ui, &theme, fx)
+                });
+                aim.markup
+            }
+            None => {
+                let markup = document.add_markup();
+                fx.scope(scoped, |fx| {
+                    document.replace_markup(markup, tints, &[span.0..span.1], store, ui, &theme, fx)
+                });
+                document.show_markup(entity.editor(), markup);
+                markup
+            }
+        };
+        fx.scope(scoped, |fx| {
+            document.reveal_at_instant(entity.editor(), hit, store, ui, &theme, fx)
+        });
+        let reveal = document
+            .caret_content_rect(entity.editor(), hit, store, ui, &theme)
+            .map(|(_, y, _, _)| (y - AIM_HEADROOM).max(0.0));
+        documents::OpenDocuments::put_document(store, documents, entity.document(), document);
+        self.aimed = Some(Aim {
+            document: entity.document(),
+            markup,
+            span,
+        });
+        if let Some(reveal) = reveal {
+            if let Some(PreviewSlot::Editor(preview)) = &mut self.preview {
+                preview.pane.set_scroll_y(reveal);
+            }
+        }
+    }
+
+    /// The standing hit wash leaves its document (when it still
+    /// stands) — aim teardown on mode exits, pane swaps and the
+    /// overlay's end.
+    fn unaim(&mut self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut PeekerEffects<'_>) {
+        let Some(aim) = self.aimed.take() else {
+            return;
+        };
+        let Some(mut document) =
+            documents::OpenDocuments::document(store, self.documents, aim.document)
+        else {
+            return;
+        };
+        let theme = ::editor::env::Themes::of(store);
+        let changed = vec![aim.span.0..aim.span.1];
+        fx.scope(
+            |command| PeekerCommand::Preview(PaneCommand::Content(command)),
+            |fx| document.remove_markup(aim.markup, &changed, store, ui, &theme, fx),
+        );
+        documents::OpenDocuments::put_document(store, self.documents, aim.document, document);
+    }
+
+    /// A hit picked: the deliberate jump — the overlay closes and the
+    /// shell opens the file at the hit's span.
+    fn open_hit(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        key: locations::LocationKey,
+        fx: &mut PeekerEffects<'_>,
+    ) {
+        let Master::Hits(hits) = &self.master else {
+            return;
+        };
+        let Some(found) = hits.results.found(store, hits.feed, &key) else {
+            return;
+        };
+        let target = found.target();
+        self.cleanup_temps(store, ui, None, fx);
+        self.request.file(ModalRequest::OpenAt {
+            location: found.location,
+            target: Some(target),
+            focus: true,
+        });
     }
 
     fn cleanup_temps(
@@ -569,6 +1011,14 @@ impl Peeker {
         keep: Option<documents::DocumentId>,
         fx: &mut PeekerEffects<'_>,
     ) {
+        self.unaim(store, ui, fx);
+        let lists = self.lists;
+        if let Master::Hits(hits) = &mut self.master {
+            hits.asked = None;
+            if let Some(feed) = hits.feed.take() {
+                LocationLists::ask(store, lists, LocationsAsk::Dispose(feed));
+            }
+        }
         let documents = self.documents;
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
@@ -594,6 +1044,7 @@ impl Peeker {
         ui: &imba::ui::UiCtx,
         fx: &mut PeekerEffects<'_>,
     ) {
+        self.unaim(store, ui, fx);
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
             documents::lifecycle::close_editor(
@@ -631,12 +1082,14 @@ impl Peeker {
             &::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY),
         );
 
-        if let Some(index) = self.widget_at(self.selected()) {
-            self.preview = Some(PreviewSlot::Widget(index));
-            return;
+        if let Master::Files(files) = &self.master {
+            if let Some(index) = files.widget_at(files.selected()) {
+                self.preview = Some(PreviewSlot::Widget(index));
+                return;
+            }
         }
 
-        let document_id = match self.location_at(self.selected()).cloned() {
+        let document_id = match self.current_location(store) {
             Some(location) => {
                 match documents::OpenDocuments::by_location(store, documents, &location) {
                     Some(id) => Some(id),
@@ -729,7 +1182,10 @@ impl View for Peeker {
         use imba::event::EventResult;
         // Movement and Enter are the controller's table; the peeker
         // keeps its own close (and Enter-with-nothing closes too).
-        let empty = self.row_count() == 0;
+        let empty = match &self.master {
+            Master::Files(files) => files.rows.is_empty(),
+            Master::Hits(hits) => hits.results.is_empty(),
+        };
         let own = imba::focus::FocusData {
             commands: vec![imba::PresentableCommand::new(
                 "peeker.close",
@@ -743,7 +1199,14 @@ impl View for Peeker {
             })),
             ..imba::focus::FocusData::default()
         };
-        own.merge_under(self.list.focus_data(_store, _ui).map(PeekerCommand::Rows))
+        let master = match &self.master {
+            Master::Files(files) => files.list.focus_data(_store, _ui).map(PeekerCommand::Rows),
+            Master::Hits(hits) => hits
+                .results
+                .focus_data(_store, _ui)
+                .map(PeekerCommand::Results),
+        };
+        own.merge_under(master)
             .merge_under(self.input.focus_data(_store, _ui).map(PeekerCommand::Input))
     }
 
@@ -787,38 +1250,91 @@ impl View for Peeker {
                     }
                 }
             }
+            PeekerCommand::Results(command) => {
+                let outcome = {
+                    let Master::Hits(hits) = &mut self.master else {
+                        return; // a stale tree command after the lane left
+                    };
+                    fx.scope(PeekerCommand::Results, |fx| {
+                        hits.results.perform(store, ui, command, fx)
+                    })
+                };
+                match outcome {
+                    // Moving the selection returns the preview, aimed
+                    // at the hit.
+                    ResultsOutcome::Selected => {
+                        self.ensure_preview(store, ui, fx);
+                        self.aim_preview(store, ui, fx);
+                    }
+                    // Enter and click both open: the overlay is modal —
+                    // there is no browse-behind-it, unlike the dock.
+                    ResultsOutcome::Picked { key, .. } => self.open_hit(store, ui, key, fx),
+                    ResultsOutcome::Quiet => {}
+                }
+            }
+            PeekerCommand::RefreshResults => {
+                {
+                    let Master::Hits(hits) = &mut self.master else {
+                        return;
+                    };
+                    let feed = hits.feed;
+                    hits.results.rebuild(store, ui, feed);
+                }
+                self.ensure_preview(store, ui, fx);
+                self.aim_preview(store, ui, fx);
+            }
             PeekerCommand::Rows(command) => {
                 use imba::list::ListOps;
-                if let Some((row, _trigger)) = Rows::activated(&command) {
-                    // Enter and click both pick; the note row is
-                    // unkeyed and never answers.
-                    if self.list.inner().content().key_at(row).is_some() {
-                        return self.perform(store, ui, PeekerCommand::Pick(row), fx);
+                let selected = {
+                    let sources = Sources {
+                        recents: &self.recents,
+                        widgets: &self.widgets,
+                        workspace: &self.workspace,
+                    };
+                    let Master::Files(files) = &mut self.master else {
+                        return; // a stale list command after the lane left
+                    };
+                    if let Some((row, _trigger)) = Rows::activated(&command) {
+                        // Enter and click both pick; the note row is
+                        // unkeyed and never answers.
+                        if files.list.inner().content().key_at(row).is_some() {
+                            return self.perform(store, ui, PeekerCommand::Pick(row), fx);
+                        }
                     }
-                }
-                let selected = Rows::selected_index(&command).is_some();
-                let left = imba::list::ListOps::cursor_index(&self.list);
-                fx.scope(PeekerCommand::Rows, |fx| {
-                    imba::View::perform(&mut self.list, store, ui, command, fx)
-                });
-                let reached = imba::list::ListOps::cursor_index(&self.list);
-                if reached != left {
-                    self.restyle(store, ui, left, reached);
-                }
+                    let selected = Rows::selected_index(&command).is_some();
+                    let left = ListOps::cursor_index(&files.list);
+                    fx.scope(PeekerCommand::Rows, |fx| {
+                        imba::View::perform(&mut files.list, store, ui, command, fx)
+                    });
+                    let reached = ListOps::cursor_index(&files.list);
+                    if reached != left {
+                        // The row it left shrinks back, the row it
+                        // reached grows — two rows re-laid, in place.
+                        files.restyle(store, ui, sources, left, reached);
+                    }
+                    selected
+                };
                 // Moving the selection returns the preview.
                 if selected {
                     self.ensure_preview(store, ui, fx);
                 }
             }
             PeekerCommand::Pick(row) => {
-                if let Some(index) = self.widget_at(row) {
+                let (widget, location) = match &self.master {
+                    Master::Files(files) => (
+                        files.widget_at(row),
+                        files.location_at(self.sources(), row).cloned(),
+                    ),
+                    // Hits picks ride the Results outcome, never this.
+                    Master::Hits(_) => return,
+                };
+                if let Some(index) = widget {
                     let (_, widget) = self.widgets.remove(index);
-                    self.widget_titles.remove(index);
                     self.cleanup_temps(store, ui, None, fx);
                     self.request.file(ModalRequest::SelectWidget(widget));
                     return;
                 }
-                let request = if let Some(location) = self.location_at(row).cloned() {
+                let request = if let Some(location) = location {
                     let documents = self.documents;
                     if let Some(document) =
                         documents::OpenDocuments::by_location(store, documents, &location)
@@ -852,11 +1368,15 @@ impl View for Peeker {
                 if serial != self.find_serial {
                     return;
                 }
-
-                self.found = locations
-                    .into_iter()
-                    .filter(|location| !self.recents.contains(location))
-                    .collect();
+                {
+                    let Master::Files(files) = &mut self.master else {
+                        return; // the lane left while the find flew
+                    };
+                    files.found = locations
+                        .into_iter()
+                        .filter(|location| !self.recents.contains(location))
+                        .collect();
+                }
                 self.refilter(store, ui);
                 self.ensure_preview(store, ui, fx)
             }
@@ -892,8 +1412,9 @@ impl View for Peeker {
                     )
                 };
                 self.temp_docs.insert(location.clone(), id);
-                if self.location_at(self.selected()) == Some(&location) {
+                if self.current_location(store).as_ref() == Some(&location) {
                     self.ensure_preview(store, ui, fx);
+                    self.aim_preview(store, ui, fx);
                 }
             }
         }
@@ -944,7 +1465,28 @@ impl View for Peeker {
                 Constraints::tight(Size::new(input_width, self.input.content_height().max(1.0))),
             )
             .map(PeekerCommand::Input);
-            let count = format!("{} matched", self.labels.len() + self.hidden);
+            let count = match &self.master {
+                Master::Files(files) => {
+                    format!("{} matched", files.rows.len() + files.hidden)
+                }
+                // The hits lane reads its feed: landing batches move
+                // the number, the stream's end settles the words.
+                Master::Hits(hits) => {
+                    let row = hits
+                        .feed
+                        .and_then(|feed| LocationLists::row_ref(store, self.lists, feed));
+                    let (hits, done, truncated) = row
+                        .map(|row| (row.locations.len(), row.done, row.truncated))
+                        .unwrap_or((0, true, false));
+                    let mut count = format!("{hits} matched");
+                    if !done {
+                        count.push_str(" — searching…");
+                    } else if truncated {
+                        count.push_str(" (cut off)");
+                    }
+                    count
+                }
+            };
             let head = Column::new(arena)
                 .child(hikit::ui::text(&hikit::ui::caps(store, ui), self.caption()))
                 .child(fixed(input).pad_insets(Insets {
@@ -984,12 +1526,31 @@ impl View for Peeker {
                 - 2.0
                 - 2.0 * chrome.list_pad_y)
                 .max(chrome.row_height);
-            let rows = imba::layout::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(list_w, rows_h)),
-            )
-            .map(PeekerCommand::Rows);
+            // The master band: the flat file rows, or the shared Find
+            // results tree (symbol and text lanes).
+            let rows: imba::ThunkBox<'a, PeekerCommand> = match &self.master {
+                Master::Files(files) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        files.list.display(arena, store, ui),
+                        arena,
+                        Constraints::tight(Size::new(list_w, rows_h)),
+                    )
+                    .map(PeekerCommand::Rows),
+                ),
+                Master::Hits(hits) => imba::ThunkBox::new(
+                    arena,
+                    imba::layout::Layout::layout(
+                        hits.results.display(arena, store, ui),
+                        arena,
+                        Constraints::tight(Size::new(list_w, rows_h)),
+                    )
+                    .map(PeekerCommand::Results)
+                    // The sticky bands plant on the tree's own scroll
+                    // (the Search dock's parity law).
+                    .overlay_host(imba::list::STICKY_HOST),
+                ),
+            };
             let matches = Column::new(arena)
                 .child(fixed(head))
                 .child(hikit::ui::rule_h(ink.rule.0, list_w))
@@ -1077,7 +1638,10 @@ impl View for Peeker {
             }
 
             // Movement and Enter live in the controller's overlay.
-            let empty = self.labels.is_empty();
+            let empty = match &self.master {
+                Master::Files(files) => files.rows.is_empty(),
+                Master::Hits(hits) => hits.results.is_empty(),
+            };
             let keymap = leaf::<PeekerCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
@@ -1090,6 +1654,28 @@ impl View for Peeker {
                 },
             );
             container.place(0.0, 0.0, keymap);
+
+            // The refresh probe: a 1px leaf whose own paint files
+            // RefreshResults when the hits feed moved — the Search
+            // dock's recipe; the overlay keeps painting.
+            let stale = match &self.master {
+                Master::Files(_) => false,
+                Master::Hits(hits) => hits.results.stale(store, hits.feed),
+            };
+            if stale {
+                container.place(
+                    0.0,
+                    0.0,
+                    leaf::<PeekerCommand>(1.0, 1.0).event(
+                        move |_arena, event, _size| match event {
+                            Event::Paint { .. } => {
+                                EventResult::command(PeekerCommand::RefreshResults)
+                            }
+                            _ => EventResult::Ignored,
+                        },
+                    ),
+                );
+            }
 
             container
         })
@@ -1113,16 +1699,15 @@ impl Peeker {
         let ink = themes.part(::editor::theme::InkChrome::KEY);
         let title = sheet::styled(ui, &chrome.preview_title, ink.ink_bright.0);
         let path = |color| sheet::mono(ui, chrome.path_size, color);
-        let selected = self.selected();
         let mut row = imba::layout::Row::new(arena);
-        if let Some(location) = self.location_at(selected) {
-            let (folder, dir) = self.place_of(location);
+        if let Some(location) = self.current_location(store) {
+            let (folder, dir) = place_of(&self.workspace, &location);
             let dir = match dir.is_empty() {
                 true => dir,
                 false => format!("{dir}/"),
             };
             row = row
-                .child_by_baseline(hikit::ui::text(&title, location.name()))
+                .child_by_baseline(hikit::ui::text(&title, location.name().to_owned()))
                 .child_by_baseline(
                     hikit::ui::text(&path(ink.ink_4.0), folder).pad_insets(Insets {
                         left: chrome.preview_gap,
@@ -1130,10 +1715,19 @@ impl Peeker {
                     }),
                 )
                 .child_by_baseline(hikit::ui::text(&path(ink.ink_3.0), dir))
-                .child_by_baseline(hikit::ui::text(&path(ink.ink.0), location.name()));
-        } else if let Some(index) = self.widget_at(selected) {
-            let name = self.widget_titles.get(index).cloned().unwrap_or_default();
-            row = row.child_by_baseline(hikit::ui::text(&title, name));
+                .child_by_baseline(hikit::ui::text(
+                    &path(ink.ink.0),
+                    location.name().to_owned(),
+                ));
+        } else if let Master::Files(files) = &self.master {
+            if let Some(index) = files.widget_at(files.selected()) {
+                let name = self
+                    .widgets
+                    .get(index)
+                    .map(|(_, widget)| widget.title(store))
+                    .unwrap_or_default();
+                row = row.child_by_baseline(hikit::ui::text(&title, name));
+            }
         }
         row = row.weighted(1.0, imba::layout::Fill::new().height(0.0));
         let lines = match &self.preview {
@@ -1279,11 +1873,13 @@ pub fn build(
             &himark::workspace::entity_session(&entity),
         );
 
-        let documents = himark::workspace::entity_state(&entity).documents();
+        let state = himark::workspace::entity_state(&entity);
+        let documents = state.documents();
+        let lists = state.lists();
         let peeker = fx.scope(workbench_shell::modal::modal_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<PeekerCommand>, |fx| {
                 Peeker::open(
-                    store, ui, documents, viewport, recents, widgets, folders, fx,
+                    store, ui, documents, lists, viewport, recents, widgets, folders, fx,
                 )
             })
         });
@@ -1308,6 +1904,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
             let key = place.0.clone();
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let documents = state.documents();
+            let lists = state.lists();
             let recents = recents::RecentLocations::list(store, state.recents());
             let folders = ahp_session::session::folders::session_folders(store, &key);
             let view = fx.scope(
@@ -1319,6 +1916,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
                         store,
                         ui,
                         documents,
+                        lists,
                         // The desktop go-to sheet's viewport (engine
                         // pixels) — near-full-window glass; display
                         // relays out live, this seeds the preview's
@@ -1384,7 +1982,7 @@ impl himark::commands::HimarkCommand for TogglePeeker {
 }
 
 pub fn labels(app: &Himark) -> Option<Vec<String>> {
-    Some(peeker_of(app)?.labels().to_vec())
+    Some(peeker_of(app)?.labels(app.store()))
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
@@ -1395,7 +1993,7 @@ pub fn preview_height(app: &Himark, store: &Store) -> Option<f32> {
 
 #[cfg(test)]
 pub(crate) fn previewed_widget(app: &Himark) -> Option<String> {
-    peeker_of(app)?.previewed_widget_title()
+    peeker_of(app)?.previewed_widget_title(app.store())
 }
 
 fn peeker_of(app: &Himark) -> Option<&Peeker> {

@@ -90,6 +90,25 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     assert!(labels(&app).is_some());
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(labels(&app).is_none());
+
+    // The sigil lanes: '#' swaps the master to the hits tree and the
+    // sheet keeps drawing (the caption and counts read the feed).
+    assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
+    assert!(himark::test_driver::type_text(&mut app, "#lay"));
+    app.draw_window(
+        app.sole_window(),
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+    );
+    assert!(
+        labels(&app).is_some(),
+        "the peeker stands in the symbol lane"
+    );
+    assert!(himark::test_driver::key(
+        &mut app,
+        imba::event::Key::Escape,
+        Default::default()
+    ));
+    assert!(labels(&app).is_none(), "escape closes the hits lane too");
 }
 
 #[test]
@@ -98,11 +117,13 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
     let mut store = Store::new();
     let ui = ::editor::test_document::test_ui();
     let home = ahp_wire::SessionId::local_default(&store);
-    let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();
+    let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &home);
+    let (documents, lists) = (state.documents(), state.lists());
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
         documents,
+        lists,
         Size::new(800.0, 600.0),
         Vec::new(),
         Vec::new(),
@@ -148,11 +169,13 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     let mut store = Store::new();
     let ui = ::editor::test_document::test_ui();
     let home = ahp_wire::SessionId::local_default(&store);
-    let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();
+    let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &home);
+    let (documents, lists) = (state.documents(), state.lists());
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
         documents,
+        lists,
         Size::new(800.0, 600.0),
         Vec::new(),
         Vec::new(),
@@ -187,7 +210,11 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
         &mut Batch::new().effects(),
     );
 
-    assert_eq!(peeker.labels().len(), 200, "the list stops at the cap");
+    assert_eq!(
+        peeker.labels(&store).len(),
+        200,
+        "the list stops at the cap"
+    );
     assert_eq!(peeker.hidden_count(), 50, "the note counts the rest");
 }
 
@@ -265,4 +292,138 @@ fn dump_jump_screenshot() {
         .expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
     std::fs::write(format!("{dir}/jump.png"), data.as_bytes()).expect("write");
+}
+
+#[test]
+fn sigil_queries_name_their_lane() {
+    assert_eq!(sniff("#Catalog"), (QueryMode::Symbols, "Catalog"));
+    assert_eq!(sniff("# Catalog "), (QueryMode::Symbols, "Catalog"));
+    assert_eq!(sniff("%needle words"), (QueryMode::Text, "needle words"));
+    assert_eq!(sniff("main.rs"), (QueryMode::Files, "main.rs"));
+    assert_eq!(sniff(""), (QueryMode::Files, ""));
+}
+
+#[test]
+fn the_hits_lanes_ride_a_peeker_owned_feed() {
+    use imba::effect::Batch;
+    let mut store = Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let home = ahp_wire::SessionId::local_default(&store);
+    let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &home);
+    let (documents, lists) = (state.documents(), state.lists());
+    let mut peeker = Peeker::open(
+        &mut store,
+        &ui,
+        documents,
+        lists,
+        Size::new(800.0, 600.0),
+        Vec::new(),
+        Vec::new(),
+        vec![ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            editor::location::Authority::new("test"),
+            vec!["project".to_owned()],
+        )],
+        &mut Batch::new().effects(),
+    );
+    let _ = locations::LocationLists::take_asks(&mut store, lists);
+
+    // The symbol lane swaps the master in, mints a feed and NOTES
+    // the ask once; a caret move with the same term re-asks nothing.
+    peeker.enter_hits(&mut store, &ui, HitsKind::Symbols, "Catalog");
+    let feed = peeker
+        .hits_lane()
+        .expect("the hits master stands")
+        .feed
+        .expect("a feed fronts the master");
+    let asks = locations::LocationLists::take_asks(&mut store, lists);
+    assert!(
+        matches!(asks.as_slice(),
+            [locations::LocationsAsk::Symbols { feed: asked, query }]
+                if *asked == feed && query == "Catalog"),
+        "one symbols ask"
+    );
+    peeker.enter_hits(&mut store, &ui, HitsKind::Symbols, "Catalog");
+    assert!(
+        locations::LocationLists::take_asks(&mut store, lists).is_empty(),
+        "the dedup holds"
+    );
+
+    // Switching sigils disposes the standing feed and asks the stream.
+    peeker.enter_hits(&mut store, &ui, HitsKind::Text, "Catalog");
+    let asks = locations::LocationLists::take_asks(&mut store, lists);
+    assert!(
+        matches!(asks.as_slice(),
+            [locations::LocationsAsk::Dispose(disposed), locations::LocationsAsk::Search { query, .. }]
+                if *disposed == feed && query == "Catalog"),
+        "dispose, then the text ask"
+    );
+
+    // A landed hit renders in the shared results tree, and picking it
+    // opens AT the hit's span.
+    let feed = peeker
+        .hits_lane()
+        .expect("still the hits master")
+        .feed
+        .expect("the text feed");
+    let hit = ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("test"),
+        vec!["project".to_owned(), "hit.md".to_owned()],
+    );
+    locations::LocationLists::fold_locations(
+        &mut store,
+        lists,
+        feed,
+        vec![locations::FoundLocation {
+            location: hit.clone(),
+            line: 3,
+            column: 2,
+            length: 6,
+            context: "a needle here".to_owned(),
+            context_column_start: 0,
+        }],
+        true,
+        false,
+    );
+    let mut batch: Batch<PeekerCommand> = Batch::new();
+    imba::View::perform(
+        &mut peeker,
+        &mut store,
+        &ui,
+        PeekerCommand::RefreshResults,
+        &mut batch.effects(),
+    );
+    assert!(
+        !peeker.hits_lane().expect("hits").results.is_empty(),
+        "the hit landed in the tree"
+    );
+
+    let mut batch: Batch<PeekerCommand> = Batch::new();
+    peeker.open_hit(
+        &mut store,
+        &ui,
+        locations::LocationKey::Hit(hit.clone(), 3, 2),
+        &mut batch.effects(),
+    );
+    let request = hikit::modal::ModalView::take_request(&mut peeker);
+    match request {
+        Some(hikit::modal::ModalRequest::OpenAt {
+            location,
+            target: Some(target),
+            focus,
+        }) => {
+            assert_eq!(location, hit);
+            assert!(focus, "a pick is the deliberate jump");
+            assert_eq!((target.start.line, target.start.col), (3, 2));
+            assert_eq!(target.end.col, 8, "start + length");
+        }
+        _ => panic!("expected OpenAt"),
+    }
+    // The pick disposed the feed with the overlay's end.
+    let asks = locations::LocationLists::take_asks(&mut store, lists);
+    assert!(
+        matches!(asks.as_slice(), [locations::LocationsAsk::Dispose(disposed)] if *disposed == feed),
+        "the feed dies with the pick"
+    );
 }

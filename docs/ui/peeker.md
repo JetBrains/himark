@@ -49,6 +49,39 @@ like the document preview's do. Moving the selection returns the
 widget where it came from (pane or list); closing the peeker restores
 everything.
 
+## The query sigils: go-to-symbol and go-to-text
+
+The query's first character names the lane (`sniff`): a plain query
+is the buffer/file switcher above; `#name` searches DECLARATIONS
+(the FSP symbol index, `symbolLocations`); `%words` searches text
+(`searchLocations`). The master is ONE enum — `Master::Files` or
+`Master::Hits`, exactly one standing; a lane's state lives exactly
+as long as the query names it, and switching sigils IS the teardown
+(no hidden second lane to drift; a stale command for the other
+master is dropped, not applied to an invisible list). The hits lane
+is a FACE over a peeker-owned feed in the session's `LocationLists`
+— the same model the Search dock tab fronts — rendering the Find
+dock's results tree, extracted as `locations::results::ResultsView`
+and mounted KEYS-ONLY (the peeker's input owns typing; a seated
+speed-search lane would steal it). The files lane holds sources and
+INDEX rows only: names and places derive on demand, the list view's
+slice is the one realized copy — the peeker clones with the window
+entity every update, so nothing denormalized rides it.
+
+- The feed is the peeker's: minted per (lane, term) — a caret move
+  never re-mints — disposed on re-query, lane switch, pick and
+  dismissal. The landing batches repaint through the dock's
+  refresh-probe recipe.
+- Selection previews the hit's file through the standing fetch
+  machinery and AIMS the preview: a one-range `Match` wash shown on
+  the preview's editor only (the peek card's recipe — the document
+  may be genuinely open elsewhere and its panes must not light up),
+  and the scroll to the hit's line.
+- Enter and click both open at the hit's span
+  (`ModalRequest::OpenAt`, focused) — the overlay is modal; there
+  is no browse-behind-it, unlike the dock's selection-is-navigation.
+- The caps label follows the lane: JUMP TO FILE / SYMBOL / TEXT.
+
 ## Picking
 
 The previewed widget mounts into the FOCUSED pane:
