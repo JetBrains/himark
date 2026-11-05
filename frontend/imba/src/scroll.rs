@@ -410,11 +410,18 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
                 if !matches!(inner, EventResult::Ignored) {
                     return self.reveal_intercepted(inner);
                 }
-                if std::env::var_os("IMBA_TRACE_ROUTE").is_some() {
+                // IMBA_TRACE_SCROLL is the PER-EVENT half of the route
+                // trace: one line per scroller per scroll — readable,
+                // where IMBA_TRACE_ROUTE's clock lines flood per frame.
+                if std::env::var_os("IMBA_TRACE_SCROLL").is_some()
+                    || std::env::var_os("IMBA_TRACE_ROUTE").is_some()
+                {
                     eprintln!(
-                        "[scrollview] content h {} viewport h {} owned_by_other {} owned_by {} d({delta_x},{delta_y})",
+                        "[scrollview] content h {} viewport h {} y {} glide {:?} owned_by_other {} owned_by {} d({delta_x},{delta_y})",
                         self.content.size().height,
                         self.viewport.height,
+                        self.scroll_y,
+                        self.glide.map(|glide| glide.target),
                         gesture.owned_by_other(self.surface),
                         gesture.owned_by(self.surface),
                     );

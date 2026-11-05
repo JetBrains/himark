@@ -65,6 +65,18 @@ pub fn mouse_move_with_mods(
 
 pub fn scroll_at(app: &mut Himark, x: f32, y: f32, delta_y: f32) -> bool {
     let gesture = imba::event::ScrollGesture::default();
+    scroll_with(app, &gesture, x, y, delta_y)
+}
+
+/// A scroll riding a CALLER-HELD gesture — the touch-pan shape: one
+/// gesture spans the whole pan, the first claim owns every delta.
+pub fn scroll_with(
+    app: &mut Himark,
+    gesture: &imba::event::ScrollGesture,
+    x: f32,
+    y: f32,
+    delta_y: f32,
+) -> bool {
     let size = app.viewport_size();
     app.dispatch_timed(
         app.sole_window(),
@@ -72,7 +84,7 @@ pub fn scroll_at(app: &mut Himark, x: f32, y: f32, delta_y: f32) -> bool {
             delta_x: 0.0,
             point: Point::new(x, y),
             delta_y,
-            gesture: &gesture,
+            gesture,
         },
         size,
         0.0,

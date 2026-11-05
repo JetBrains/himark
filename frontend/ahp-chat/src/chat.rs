@@ -1343,6 +1343,16 @@ impl ChatPanel {
     /// Point a view at an area. Fronting the chat (⌘I) must land the
     /// keyboard in the composer — without this the view keeps whatever
     /// area a transcript click left it on.
+    /// The transcript scroll positions across mounted views — the
+    /// scroll tests' oracle.
+    #[doc(hidden)]
+    pub fn rows_scroll_probe(&self) -> Vec<f32> {
+        self.views
+            .iter()
+            .map(|(_, view)| view.rows.scroll_y())
+            .collect()
+    }
+
     pub(crate) fn focus_view(&mut self, id: ChatViewId, area: ChatArea) {
         if let Some(mut view) = self.views.get(&id).cloned() {
             view.focus = area;

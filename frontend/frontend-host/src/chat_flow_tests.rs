@@ -1264,3 +1264,80 @@ fn a_scroll_tick_builds_one_tree() {
     imba::perf::record("chat-scroll", "tick_max_ms", worst);
     imba::perf::record("chat-scroll", "trees_per_tick", trees as f64 / TICKS as f64);
 }
+
+/// The TOUCH PAN's shape, exactly as the web shell dispatches it: one
+/// gesture spans the pan (`begin` once, the first claim owns every
+/// delta) and every delta rides the FIRST finger's point. The
+/// transcript must actually move — the web regression showed the
+/// ScrollView consuming every delta while its scroll never budged.
+#[test]
+fn a_panned_gesture_scrolls_the_chat_up() {
+    let reply: String = (0..24)
+        .map(|line| format!("reply line {line} with a little text to wrap on\n"))
+        .collect();
+    let (mut engine, window, _script) = boot(chat_page(
+        CHAT,
+        (0..48)
+            .map(|at| completed_turn(&format!("t{at}"), &format!("prompt {at}"), &reply))
+            .collect(),
+        None,
+    ));
+    paint(&mut engine, window);
+
+    // Settle: heights land, the clock glides the opened chat to its
+    // tail — the clock ticks because the shells tick it every frame.
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut now = 0.0f64;
+    for _ in 0..60 {
+        engine.worker().run_pending();
+        now += 16.0;
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(now),
+        );
+        let _ = engine.draw(
+            window,
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
+        engine.drain();
+    }
+
+    let before = chat_record(&engine)
+        .expect("the chat record")
+        .rows_scroll_probe();
+    let tail = before.iter().cloned().fold(0.0f32, f32::max);
+    assert!(tail > 1000.0, "the transcript opened pinned to a tall tail: {before:?}");
+
+    // The pan: ten upward finger steps, one gesture, anchored point,
+    // a draw between steps — the web shell's frame shape.
+    let gesture = imba::event::ScrollGesture::default();
+    gesture.begin();
+    for _ in 0..10 {
+        let _ = himark::test_driver::scroll_with(&mut engine.app, &gesture, 550.0, 400.0, -60.0);
+        now += 16.0;
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(now),
+        );
+        let _ = engine.draw(
+            window,
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
+        engine.drain();
+    }
+
+    let after = chat_record(&engine)
+        .expect("the chat record")
+        .rows_scroll_probe();
+    let panned = after.iter().cloned().fold(f32::MAX, f32::min);
+    assert!(
+        panned < tail - 300.0,
+        "ten 60px pan deltas moved the transcript from {tail} to {after:?} — the scroll was consumed but never applied"
+    );
+}

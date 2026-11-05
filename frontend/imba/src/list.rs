@@ -2664,7 +2664,24 @@ where
                 // (growth moves the strip, which resets the stall).
                 // It dies only superseded (the hand) or cancelled;
                 // a stalled ask goes quiet WITHOUT dying.
-                if !crate::event::reveal_satisfied(viewport, strip) && !stalled_at(strip.top) {
+                //
+                // The HAND is read HERE, at the clock, not only at the
+                // paint's viewport report: in a shell that ticks the
+                // clock between the scroll and the paint, re-asking
+                // first would snap the view back to the tail before
+                // the report could ever carry the lower top — the
+                // follow becomes unbeatable (the 2026-11-05 frozen web
+                // chat). A live viewport above the last report rides
+                // the same supersede door the report rides, with the
+                // same escapes (own correction, resize, still-at-tail).
+                if viewport.top + 0.5 < list.viewport_top {
+                    let mine = EventResult::command(ListCommand::ViewportTop(
+                        viewport.top,
+                        viewport.height(),
+                    ));
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+                } else if !crate::event::reveal_satisfied(viewport, strip) && !stalled_at(strip.top)
+                {
                     if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                         eprintln!("[reveal] list clock: tail ask {strip:?} viewport {viewport:?}");
                     }
