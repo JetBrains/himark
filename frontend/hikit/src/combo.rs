@@ -58,6 +58,12 @@ pub struct ComboOption {
     pub label: String,
 
     pub trail: Option<String>,
+
+    /// A GROUP HEADING: never pickable, drawn dim — the tree's
+    /// branch row (a harness over its models).
+    pub heading: bool,
+    /// The row indents under its group heading.
+    pub indent: bool,
 }
 
 impl ComboOption {
@@ -66,7 +72,27 @@ impl ComboOption {
             id: id.into(),
             label: label.into(),
             trail: None,
+            heading: false,
+            indent: false,
         }
+    }
+
+    /// A group heading row — unpickable, skipped by the keyboard.
+    pub fn heading(label: impl Into<String>) -> Self {
+        let label = label.into();
+        Self {
+            id: format!("\u{0}heading-{label}"),
+            label,
+            trail: None,
+            heading: true,
+            indent: false,
+        }
+    }
+
+    /// The row indents under its group heading.
+    pub fn indented(mut self) -> Self {
+        self.indent = true;
+        self
     }
 }
 
@@ -89,8 +115,14 @@ impl View for ComboOption {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
-        let mut row = crate::ui::ListRow::new(arena, crate::ui::RowStyle::standard(store, ui))
-            .label(self.label.clone());
+        let mut style = crate::ui::RowStyle::standard(store, ui);
+        if self.heading {
+            // The branch row wears the trail's dress: dim, small.
+            style.label = style.trail.clone();
+        } else if self.indent {
+            style.inset += crate::ui::space::L;
+        }
+        let mut row = crate::ui::ListRow::new(arena, style).label(self.label.clone());
         if let Some(trail) = &self.trail {
             row = row.trail(trail.clone());
         }
@@ -105,6 +137,10 @@ impl ComboItem for ComboOption {
 
     fn cell_label(&self) -> String {
         self.label.clone()
+    }
+
+    fn selectable(&self) -> bool {
+        !self.heading
     }
 }
 

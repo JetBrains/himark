@@ -2537,7 +2537,15 @@ impl Host {
             .and_then(|config| config.get("thinkingLevel"))
             .and_then(|value| value.as_str())
             .map(str::to_owned);
-        let (session, changed) = {
+        // The model names its HARNESS: a pick from another provider's
+        // branch of the model tree re-homes the whole session.
+        let provider = self
+            .config
+            .agents
+            .iter()
+            .find(|agent| agent.models.iter().any(|model| model.id == selection.id))
+            .map(|agent| agent.provider.clone());
+        let (session, changed, flipped) = {
             let state = self.snapshot();
             let Some(entry) = state.chats.get(chat) else {
                 return;
@@ -2546,10 +2554,14 @@ impl Host {
                 return;
             };
             let manifest = &held.manifest;
+            let flipped = provider.filter(|provider| *provider != manifest.provider);
             let changed = manifest.model.as_deref() != Some(&selection.id)
                 || (thinking.is_some() && manifest.thinking_level != thinking);
-            (entry.session.clone(), changed)
+            (entry.session.clone(), changed, flipped)
         };
+        if let Some(provider) = flipped {
+            self.switch_provider(&session, &provider);
+        }
         if !changed {
             return;
         }
@@ -2560,6 +2572,51 @@ impl Host {
                 manifest.thinking_level = thinking;
             }
         });
+    }
+
+    /// The model pick crossed HARNESSES: the session re-homes on the
+    /// other provider. The transcript is ours and stays; the
+    /// provider-side conversation starts over — a fresh minted id for
+    /// claude (`--session-id` refuses a used one), none for codex (it
+    /// mints its own). Agents retire so the next prompt spawns the
+    /// new CLI.
+    fn switch_provider(&self, session: &Uri, provider: &str) {
+        self.update(|state| {
+            let Some(entry) = state.sessions.get(session) else {
+                return;
+            };
+            let mut entry = entry.clone();
+            entry.manifest.provider = provider.to_owned();
+            entry.manifest.provider_session_id = None;
+            let _ = self.store.write_manifest(&entry.manifest);
+            state.sessions.insert_mut(session.clone(), entry);
+            let chats: Vec<Uri> = state
+                .chats
+                .iter()
+                .filter(|(_, chat)| chat.session == *session)
+                .map(|(uri, _)| uri.clone())
+                .collect();
+            for chat in chats {
+                if let Some(held) = state.chats.get(&chat) {
+                    let mut held = held.clone();
+                    held.provider_session_id = (provider == "claude").then(crate::uuid_v4);
+                    held.spoken = false;
+                    state.chats.insert_mut(chat.clone(), held);
+                }
+                Self::retire_locked(state, &chat);
+            }
+        });
+        self.notify_root(
+            "root/sessionSummaryChanged",
+            serde_json::json!({
+                "channel": ROOT,
+                "session": session,
+                "changes": PartialSessionSummary {
+                    provider: Some(provider.to_owned()),
+                    ..Default::default()
+                },
+            }),
+        );
     }
 
     fn retire_locked(state: &mut State, chat: &Uri) {

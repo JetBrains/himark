@@ -476,6 +476,157 @@ async fn codex_streams_natively_and_resumes_its_thread() {
     assert_eq!(turn["params"]["sandboxPolicy"]["type"], "workspaceWrite");
 }
 
+/// The model combo is a TREE, harness → model: a pick from the other
+/// provider's branch rides the message and re-homes the session — the
+/// transcript stays, the provider-side conversation starts over.
+#[tokio::test]
+async fn a_model_pick_from_the_other_harness_switches_provider() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Both harnesses live, and the DEFAULT agent cards name their
+    // models — the flip resolves the picked id to its provider there.
+    let host = agent_host::server::Host::new(agent_host::server::HostConfig {
+        data_dir: dir.path().join("data"),
+        claude_binary: agent_host::testing::fake_cli_command(dir.path()),
+        codex_binary: agent_host::testing::fake_codex_command(dir.path()),
+        claude_home: dir.path().join("dot-claude"),
+        codex_home: dir.path().join("dot-codex"),
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+        fsp_binary: None,
+        ..agent_host::server::HostConfig::default()
+    });
+    let mut client = Client::connect(host).await;
+    let (session, chat) = open_session(&mut client, dir.path()).await;
+
+    client.dispatch(&chat, turn_started("t-1", "hello")).await;
+    client.actions_until(&chat, "chat/turnComplete").await;
+
+    let spawns = || -> Vec<Value> {
+        std::fs::read_to_string(dir.path().join("spawn-log.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("spawn log json"))
+            .collect()
+    };
+    let argv = |spawn: &Value| -> Vec<String> {
+        spawn["argv"]
+            .as_array()
+            .expect("argv")
+            .iter()
+            .map(|arg| arg.as_str().unwrap_or_default().to_owned())
+            .collect()
+    };
+    let log = spawns();
+    assert_eq!(log.len(), 1, "claude spoke first");
+    let first = argv(&log[0]);
+    let born_id = first
+        .windows(2)
+        .find(|pair| pair[0] == "--session-id")
+        .map(|pair| pair[1].clone())
+        .expect("the first spawn mints a session id");
+
+    // A codex model crosses the tree: the session re-homes on codex.
+    client
+        .dispatch(
+            &chat,
+            json!({
+                "type": "chat/turnStarted",
+                "turnId": "t-2",
+                "startedAt": "2026-11-05T12:00:00.000Z",
+                "message": {
+                    "text": "hello",
+                    "origin": {"kind": "user"},
+                    "model": {"id": "gpt-5.6-terra", "config": {"thinkingLevel": "high"}},
+                },
+            }),
+        )
+        .await;
+    client.actions_until(&chat, "chat/turnComplete").await;
+    let requests: Vec<Value> = std::fs::read_to_string(dir.path().join("codex-log.jsonl"))
+        .expect("codex request log")
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    assert!(
+        requests
+            .iter()
+            .any(|request| request["method"] == "thread/start"),
+        "codex starts a FRESH thread: {requests:?}"
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|request| request["method"] == "thread/resume"),
+        "nothing of claude's to resume: {requests:?}"
+    );
+    let turn = requests
+        .iter()
+        .find(|request| request["method"] == "turn/start")
+        .expect("turn/start");
+    assert_eq!(turn["params"]["model"], "gpt-5.6-terra");
+    assert_eq!(turn["params"]["effort"], "high");
+    assert_eq!(spawns().len(), 1, "claude was not consulted");
+
+    let manifest_of = || -> Value {
+        let sessions_dir = dir.path().join("data").join("sessions");
+        let path = std::fs::read_dir(&sessions_dir)
+            .expect("sessions dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("session.json"))
+            .find(|path| path.exists())
+            .expect("a persisted manifest");
+        serde_json::from_str(&std::fs::read_to_string(path).expect("manifest read"))
+            .expect("manifest json")
+    };
+    let manifest = manifest_of();
+    assert_eq!(manifest["provider"], "codex");
+    assert_eq!(manifest["model"], "gpt-5.6-terra");
+
+    // And back: a claude model returns the session home — on a fresh
+    // claude conversation, never a resume of the pre-flip one.
+    client
+        .dispatch(
+            &chat,
+            json!({
+                "type": "chat/turnStarted",
+                "turnId": "t-3",
+                "startedAt": "2026-11-05T12:01:00.000Z",
+                "message": {
+                    "text": "hello again",
+                    "origin": {"kind": "user"},
+                    "model": {"id": "claude-fable-5", "config": {"thinkingLevel": "low"}},
+                },
+            }),
+        )
+        .await;
+    client.actions_until(&chat, "chat/turnComplete").await;
+    let log = spawns();
+    assert_eq!(log.len(), 2, "claude speaks again");
+    let back = argv(&log[1]);
+    assert!(
+        back.windows(2)
+            .any(|pair| pair == ["--model", "claude-fable-5"]),
+        "{back:?}"
+    );
+    assert!(
+        !back.iter().any(|arg| arg.starts_with("--resume")),
+        "a fresh conversation, not a resume: {back:?}"
+    );
+    let reborn_id = back
+        .windows(2)
+        .find(|pair| pair[0] == "--session-id")
+        .map(|pair| pair[1].clone())
+        .expect("the return spawn minted its own id");
+    assert_ne!(
+        reborn_id, born_id,
+        "the pre-flip claude id is spent — the return mints a new one"
+    );
+    let manifest = manifest_of();
+    assert_eq!(manifest["provider"], "claude");
+    assert_eq!(manifest["model"], "claude-fable-5");
+    let _ = session;
+}
+
 #[tokio::test]
 async fn codex_approval_round_trips() {
     let dir = tempfile::tempdir().expect("tempdir");

@@ -128,19 +128,25 @@ impl SessionToolbar {
             .unwrap_or_default();
 
         let provider = (!session.provider.is_empty()).then_some(session.provider.as_str());
-        let models = agent_models(agents, provider);
+        let models = agent_models(agents);
         let fresh = self.model.is_empty();
-        self.model.set_options(
-            store,
-            ui,
-            models
-                .iter()
-                .map(|model| ComboOption::plain(model.id.clone(), model.name.clone()))
-                .collect(),
-        );
+        self.model.set_options(store, ui, model_tree(agents));
         if fresh {
-            if let Some(current) = values.get("model").and_then(|value| value.as_str()) {
-                self.model.pick_id(current);
+            // The config's word first; a bare session falls to its own
+            // harness's first model, never another branch of the tree.
+            let seeded = values
+                .get("model")
+                .and_then(|value| value.as_str())
+                .map(str::to_owned)
+                .or_else(|| {
+                    agents
+                        .iter()
+                        .find(|agent| provider == Some(agent.provider.as_str()))
+                        .and_then(|agent| agent.models.first())
+                        .map(|model| model.id.clone())
+                });
+            if let Some(id) = seeded {
+                self.model.pick_id(&id);
             }
         }
         let seed = values
@@ -430,13 +436,34 @@ impl SessionToolbar {
 
 pub(crate) fn agent_models(
     agents: &[ahp_types::state::AgentInfo],
-    provider: Option<&str>,
 ) -> Vec<ahp_types::state::SessionModelInfo> {
     agents
         .iter()
-        .filter(|agent| provider.is_none_or(|provider| agent.provider == provider))
         .flat_map(|agent| agent.models.iter().cloned())
         .collect()
+}
+
+/// The MODEL menu is a TREE: a dim harness heading (Claude, Codex),
+/// its models indented beneath — the one combo picks both, and the
+/// host re-homes the session on the model's harness. With a lone
+/// harness the heading would be noise, so the list stays flat.
+pub(crate) fn model_tree(agents: &[ahp_types::state::AgentInfo]) -> Vec<ComboOption> {
+    let staffed = || agents.iter().filter(|agent| !agent.models.is_empty());
+    let lone = staffed().count() < 2;
+    let mut options = Vec::new();
+    for agent in staffed() {
+        if !lone {
+            options.push(ComboOption::heading(agent.display_name.clone()));
+        }
+        for model in &agent.models {
+            let option = ComboOption::plain(model.id.clone(), model.name.clone());
+            options.push(match lone {
+                true => option,
+                false => option.indented(),
+            });
+        }
+    }
+    options
 }
 
 pub(crate) fn sync_effort(
@@ -482,6 +509,92 @@ pub fn sync_effort_for_model(
         if let Some(id) = seed.map(str::to_owned).or(default) {
             effort.pick_id(&id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent(provider: &str, name: &str, models: &[&str]) -> ahp_types::state::AgentInfo {
+        ahp_types::state::AgentInfo {
+            provider: provider.to_owned(),
+            display_name: name.to_owned(),
+            description: String::new(),
+            models: models
+                .iter()
+                .map(|id| ahp_types::state::SessionModelInfo {
+                    id: (*id).to_owned(),
+                    provider: provider.to_owned(),
+                    name: (*id).to_owned(),
+                    max_context_window: None,
+                    max_output_tokens: None,
+                    max_prompt_tokens: None,
+                    supports_vision: None,
+                    policy_state: None,
+                    config_schema: None,
+                    meta: None,
+                })
+                .collect(),
+            protected_resources: None,
+            customizations: None,
+            capabilities: None,
+        }
+    }
+
+    #[test]
+    fn two_harnesses_make_a_tree() {
+        let agents = [
+            agent("claude", "Claude", &["claude-fable-5", "claude-opus-5"]),
+            agent("codex", "Codex", &["gpt-6-astra"]),
+        ];
+        let options = model_tree(&agents);
+        let shape: Vec<(bool, bool, &str)> = options
+            .iter()
+            .map(|option| (option.heading, option.indent, option.label.as_str()))
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                (true, false, "Claude"),
+                (false, true, "claude-fable-5"),
+                (false, true, "claude-opus-5"),
+                (true, false, "Codex"),
+                (false, true, "gpt-6-astra"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_lone_harness_stays_flat() {
+        // The second card offers no models — a heading over the only
+        // real branch would be noise.
+        let agents = [
+            agent("claude", "Claude", &["claude-fable-5"]),
+            agent("codex", "Codex", &[]),
+        ];
+        let shape: Vec<(bool, bool)> = model_tree(&agents)
+            .iter()
+            .map(|option| (option.heading, option.indent))
+            .collect();
+        assert_eq!(shape, vec![(false, false)]);
+    }
+
+    #[test]
+    fn headings_never_take_the_pick() {
+        let store = imba::store::Store::new();
+        let ui = imba::ui::UiCtx::dont_use_too_slow();
+        let mut combo = Combo::new(&store, &ui, "MODEL");
+        let agents = [
+            agent("claude", "Claude", &["claude-fable-5"]),
+            agent("codex", "Codex", &["gpt-6-astra"]),
+        ];
+        combo.set_options(&store, &ui, model_tree(&agents));
+        // The default pick skips the heading to the first model, and
+        // picking into the other branch lands on its model row.
+        assert_eq!(combo.value().expect("picked").id, "claude-fable-5");
+        combo.pick_id("gpt-6-astra");
+        assert_eq!(combo.value().expect("picked").id, "gpt-6-astra");
     }
 }
 
