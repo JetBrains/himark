@@ -10078,3 +10078,126 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         frame_births.get()
     );
 }
+
+/// The LIBRARY acid test: a BARE engine — no workbench boot, no
+/// windows, no agent host — registers a document and mounts one
+/// scrolled editor bridge, and the bridge takes focus, typing and
+/// paint through the engine's typed roads alone. This is the gpui
+/// example (`himark-gpui/examples/editor.rs`), headless.
+#[test]
+fn a_bare_engine_mounts_a_scrolled_editor() {
+    struct NoShell;
+    impl himark::app::Shell for NoShell {
+        fn navigate(
+            &self,
+            _origin: himark::bridge::ViewBridgeId,
+            _place: hikit::navigation::NavigationLocation,
+            _store: &mut imba::store::Store,
+            _ui: &imba::ui::UiCtx,
+            _fx: &mut imba::command::Fx<'_>,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut app = himark::app::Himark::bare(AppFonts::embedded(), Arc::new(NoShell));
+    app.install_host_loop();
+    let wired = himark::plugin::install_all(
+        &mut app,
+        Arc::new(myersdiff::Myers),
+        Arc::new(ahp_wire::fs::ClientDirectory::new(Arc::new(
+            |_subscription| {},
+        ))),
+        Arc::new(ahp_wire::uris::FileUris),
+        &himark_plugins::engine_plugins(),
+    );
+    let languages = wired.languages;
+
+    let documents = imba::store::Id::<::documents::OpenDocuments>::mint();
+    let ui = app.ui_ctx();
+    let mut registered = None;
+    app.setup(|store| {
+        let theme = ::editor::env::Themes::of(store).clone();
+        let body = text::text::Text::from_string_exact("fn main() {\n    let answer = 42;\n}\n");
+        let document = ::editor::document::Document::from_language(
+            body, "rs", &languages, store, &ui, &theme,
+        );
+        registered = Some(::documents::OpenDocuments::register(
+            store,
+            documents,
+            document,
+            None,
+            "example.rs".to_owned(),
+            0,
+        ));
+    });
+    let document = registered.expect("the registered document");
+
+    let bridge = himark::mounts::mount_scrolling_editor(&mut app, documents, document)
+        .expect("the editor bridge");
+    let size = gfx::Size::new(800.0, 600.0);
+
+    // A click lands focus on the editor; typing then rides the
+    // text-input road like any shell delivers it.
+    app.dispatch_bridge_timed(
+        bridge,
+        imba::event::Event::MouseDown {
+            point: gfx::Point::new(200.0, 30.0),
+            button: imba::event::MouseButton::Left,
+            mods: imba::event::Modifiers::default(),
+            count: 1,
+        },
+        Some(size),
+        0.0,
+    );
+    app.dispatch_bridge_timed(
+        bridge,
+        imba::event::Event::MouseUp {
+            point: gfx::Point::new(200.0, 30.0),
+        },
+        Some(size),
+        0.0,
+    );
+    let typed = app.dispatch_bridge_timed(
+        bridge,
+        imba::event::Event::TextInput { text: "x" },
+        Some(size),
+        0.0,
+    );
+    assert!(typed, "the mounted editor takes typing");
+
+    // The IME seat answers through the same focus walk.
+    let text = app
+        .with_ime_client(bridge, |client| client.substring_utf16(0, 1000))
+        .expect("the mounted editor holds the IME seat")
+        .expect("the document answers its text");
+    assert!(
+        text.contains('x'),
+        "the typed character landed in the document: {text:?}"
+    );
+
+    // And the bridge paints: real ink on a raster surface.
+    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
+    app.flush_scroll(bridge);
+    let _ = app.draw_mounted(
+        bridge,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        size,
+    );
+    let image = surface.image_snapshot();
+    let pixels = image.peek_pixels().expect("pixels");
+    let mut inked = 0usize;
+    for y in 0..200 {
+        for x in 0..700 {
+            let color: skia_safe::Color = pixels.get_color((x, y));
+            if color.r() < 200 || color.g() < 200 || color.b() < 200 {
+                inked += 1;
+            }
+        }
+    }
+    assert!(
+        inked > 200,
+        "the bare-mounted editor paints its text: {inked} inked pixels"
+    );
+}

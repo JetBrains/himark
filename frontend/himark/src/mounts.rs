@@ -1067,6 +1067,109 @@ fn mount_place_inner(
 /// A single editor over a registered document, as a mounted view —
 /// the pushed "file" screen. The view is BARE: the host's scroller
 /// owns the viewport (the stage road); the document and its
+/// The LIBRARY consumer's editor mount: a SCROLLED editor over a
+/// registered document — no session, no window, and the mount owns
+/// its scroll physics (the place mounts ride the stage road
+/// instead, where the host's native scroller owns the viewport).
+/// This is the one-call door an embedding shell mounts a document
+/// editor through.
+pub fn mount_scrolling_editor(
+    app: &mut crate::himark::Himark,
+    documents: imba::store::Id<::documents::OpenDocuments>,
+    document: ::documents::DocumentId,
+) -> Option<ViewBridgeId> {
+    app.mount(move |store, ui, id, fx| {
+        let mut held = ::documents::OpenDocuments::document(store, documents, document)?;
+        let width = fallback_editor_width(store);
+        let editor = fx.scope(
+            move |command: ::editor::editor_view::EditorCommand| {
+                AppCommand::Verb(imba::command::Verb::at(
+                    documents,
+                    ::documents::DocumentsCommand::Editor(document, command),
+                ))
+            },
+            |fx| ::documents::lifecycle::mount_editor(store, ui, &mut held, width, None, fx),
+        );
+        ::documents::OpenDocuments::put_document(store, documents, document, held);
+        ::documents::OpenDocuments::touch(store, documents, document);
+        let view = imba::scroll::ScrollView::new(
+            ::documents::entity_view::EditorIdView::new(documents, document, editor).with_gutter(),
+        );
+        Some(Arc::new(ScrolledEditorMount { id, view }) as Arc<dyn BridgeView>)
+    })
+}
+
+/// A scrolled editor pane as a mounted view — the workbench's
+/// `EditorPane` shape (`ScrollView<EditorIdView>`), minted without
+/// a window.
+struct ScrolledEditorMount {
+    id: ViewBridgeId,
+    view: imba::scroll::ScrollView<::documents::entity_view::EditorIdView>,
+}
+
+type ScrolledEditorCommand = imba::scroll::ScrollCommand<::editor::editor_view::EditorCommand>;
+
+impl BridgeView for ScrolledEditorMount {
+    fn frame_store(&self, store: &Store, _ui: &UiCtx) -> Store {
+        store.clone()
+    }
+
+    fn focus<'a>(
+        &'a self,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> Option<imba::focus::FocusData<'a, AppCommand>> {
+        let id = self.id;
+        Some(
+            imba::dyn_view::DynView::focus_data_dyn(&self.view, store, ui)
+                .map(move |command| AppCommand::ToView(id, command)),
+        )
+    }
+
+    fn layout<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> ThunkBox<'a, AppCommand> {
+        let id = self.id;
+        // The scroller fills the HOST's constraints — the viewport
+        // is the mount's size, the content scrolls inside it (no
+        // loose-measure container like the stage-road mounts).
+        let content = imba::layout::Layout::layout(
+            imba::View::display(&self.view, arena, store, ui),
+            arena,
+            constraints,
+        );
+        ThunkBox::new(
+            arena,
+            content.map(move |command| AppCommand::ToView(id, DynCommand::new(command))),
+        )
+    }
+
+    fn perform(
+        &mut self,
+        command: DynCommand,
+        _origin: ViewBridgeId,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut AppFx<'_>,
+    ) {
+        let Some(command) = command.downcast::<ScrolledEditorCommand>() else {
+            eprintln!("[mount] a foreign command was dropped by the scrolled editor mount");
+            return;
+        };
+        let origin = self.id;
+        fx.scope(
+            move |command: ScrolledEditorCommand| {
+                AppCommand::ToView(origin, DynCommand::new(command))
+            },
+            |fx| imba::View::perform(&mut self.view, store, ui, command, fx),
+        );
+    }
+}
+
 /// editors live in the collection, exactly as a workbench editor
 /// pane holds them.
 pub(crate) struct EditorMount {

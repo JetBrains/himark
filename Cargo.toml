@@ -61,6 +61,7 @@ members = [
     "apps/web",
     "apps/macos",
     "apps/web/tools/grammar-pack",
+    "examples/editor-gpui",
     "vendor/difftastic-core",
     "vendor/fsp-types",
     "vendor/ghostty-sys",

@@ -2222,6 +2222,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "editor-gpui"
+version = "0.1.0"
+dependencies = [
+ "ahp-wire",
+ "documents",
+ "editor",
+ "hikit",
+ "himark",
+ "himark-gpui",
+ "himark-plugins",
+ "imba",
+ "myersdiff",
+ "text",
+]
+
+[[package]]
 name = "either"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
