@@ -272,7 +272,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
 fn sending_never_consumes_what_it_cannot_deliver() {
     let (mut app, window) = app_with_located_document("hello brave new world\n");
 
-    let server = app.register_client(ahp_wire::client::inert());
+    let server = hiahp::engine::register_client(&mut app, ahp_wire::client::inert());
     app.store_mut()
         .update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(server));
     comments::install(&mut app.store_mut());

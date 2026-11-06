@@ -569,7 +569,7 @@ impl HimarkEngine {
         let installed = self.agent_host_filesystem;
 
         if capabilities.fetch_document && !installed.fetch_document {
-            himark::hiahp::install_open_handlers(
+            hiahp::install_open_handlers(
                 &mut self.app,
                 Arc::clone(&self.languages),
                 Arc::new(myersdiff::Myers),
@@ -633,7 +633,7 @@ impl HimarkEngine {
                 )));
 
             self.app
-                .register_handler::<himark::higent::folder_grant::PickFoldersEffect>(
+                .register_handler::<hiahp::higent::folder_grant::PickFoldersEffect>(
                     host::PickFoldersHandler(Arc::clone(&bridge)),
                 );
             if let Some(chrome) = self.app.store().get::<host::HostChrome>().cloned() {
@@ -917,7 +917,7 @@ impl HimarkEngine {
         name: &str,
         client: ahp_wire::client::Client,
     ) -> ahp_wire::client::HostId {
-        let id = self.app.register_client(client.clone());
+        let id = hiahp::engine::register_client(&mut self.app, client.clone());
         let clients = Arc::clone(&self.clients);
         self.app.setup(|store| {
             ahp_session::session::agents::Agents::seed(store, id, name);
@@ -933,7 +933,7 @@ impl HimarkEngine {
 
     pub fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
         self.clients.set_local(server);
-        self.app.set_local_host(server);
+        hiahp::engine::set_local_host(&mut self.app, server);
     }
 
     /// The wire client directory and the uri map — the HOST's late

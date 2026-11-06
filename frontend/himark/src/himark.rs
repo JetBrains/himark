@@ -149,6 +149,11 @@ pub struct Himark {
     /// `sweep` runs beside its own frame invalidation.
     sweep_hooks: Vec<Arc<dyn Fn(&mut Store)>>,
 
+    /// The registered UNMOUNT hooks — per-bridge bookkeeping a
+    /// feature half forgets when a slot dies (the AHP plugin drops
+    /// the mount's session note).
+    unmount_hooks: Vec<Arc<dyn Fn(&mut Store, ViewBridgeId)>>,
+
     /// The stage tables (docs/ui/imba-ffi.md): layouts and frames
     /// a host holds by handle. Engine-owned so the `ToView` road
     /// can quiesce a view's stages before mutating it.
@@ -176,6 +181,8 @@ pub struct Himark {
     pub(crate) palette: Option<crate::mounts::PaletteFactory>,
 
     pub(crate) modal_place_arms: Vec<crate::mounts::ModalPlaceArm>,
+
+    pub(crate) bridge_place_arms: Vec<crate::mounts::BridgePlaceArm>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
@@ -224,30 +231,6 @@ impl<F: FnMut(&mut Himark, &str, bool) + 'static> BatchTail for F {
     }
 }
 
-/// One catalog snapshot — plain rows, cloned out, immutable.
-pub struct Catalog {
-    pub hosts: Vec<HostRow>,
-    pub sessions: Vec<SessionRow>,
-}
-
-pub struct HostRow {
-    pub host: ahp_wire::client::HostId,
-    pub name: String,
-    /// 0 idle · 1 connecting · 2 connected · 3 failed.
-    pub status: u32,
-    /// The connect error when failed — what the native chrome shows
-    /// under the row.
-    pub error: Option<String>,
-}
-
-pub struct SessionRow {
-    pub host: ahp_wire::client::HostId,
-    pub uri: String,
-    pub provider: String,
-    pub title: String,
-    pub status: i64,
-    pub modified_at: String,
-}
 
 /// THE FONT WORLD the app shapes with, built once at boot. Every
 /// `UiCtx` the engine mints is handed this one — the UI thread's
@@ -310,24 +293,6 @@ impl Himark {
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
-        // What `@` completes against in a located document: the
-        // session the document lives in.
-        ::editor::completion::Mentions::install(&mut store, |store, location| {
-            let state = ahp_session::session::state::Hosts::states(store)
-                .into_iter()
-                .find(|state| {
-                    documents::OpenDocuments::by_location(store, state.documents(), location)
-                        .is_some()
-                })?;
-            let (session, state) =
-                ahp_session::session::state::Hosts::home_of_documents(store, state.documents())?;
-            Some(::editor::completion::MentionContext {
-                folders: Arc::new(ahp_session::session::folders::session_folders(
-                    store, &session,
-                )),
-                recents: recents::RecentLocations::list(store, state.recents()),
-            })
-        });
 
         let workshop = Arc::new(::editor::env::Workshop::new(
             fonts.world(),
@@ -336,8 +301,6 @@ impl Himark {
         let handlers = Arc::new(crate::effects::Handlers::default());
         crate::effects::register_builtins(&handlers, &workshop);
         store.put(ShellSeat(shell));
-        store.put(ahp_session::session::state::Hosts::default());
-        store.put(ahp_wire::client::Servers::default());
         let engine = Self {
             store,
             ui,
@@ -357,6 +320,7 @@ impl Himark {
             pending_reveals: Vec::new(),
             palette: None,
             modal_place_arms: Vec::new(),
+            bridge_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
             scroll_states: std::collections::HashMap::new(),
@@ -366,6 +330,7 @@ impl Himark {
             tails: Vec::new(),
             batch_lanes: Vec::new(),
             sweep_hooks: Vec::new(),
+            unmount_hooks: Vec::new(),
         };
         crate::startup_profile::log("Himark::bare", total_started);
         engine
@@ -614,66 +579,6 @@ impl Himark {
         self.revision
     }
 
-    /// The session catalog, cloned out whole for native chrome —
-    /// the QUERY half of the session surface
-    /// (docs/ui/himark-ffi.md): a picker, nav titles, badges.
-    pub fn catalog(&self) -> Catalog {
-        let mut hosts = Vec::new();
-        let mut sessions = Vec::new();
-        for (host, record) in ahp_session::session::agents::Agents::list(&self.store) {
-            hosts.push(HostRow {
-                host,
-                name: record.name.clone(),
-                status: match record.status {
-                    ahp_session::session::state::HostStatus::Idle => 0,
-                    ahp_session::session::state::HostStatus::Connecting => 1,
-                    ahp_session::session::state::HostStatus::Connected => 2,
-                    ahp_session::session::state::HostStatus::Failed(_) => 3,
-                },
-                error: match &record.status {
-                    ahp_session::session::state::HostStatus::Failed(error) => Some(error.clone()),
-                    _ => None,
-                },
-            });
-            for summary in record.sessions.iter() {
-                sessions.push(SessionRow {
-                    host,
-                    uri: summary.resource.clone(),
-                    provider: summary.provider.clone(),
-                    title: summary.title.clone(),
-                    status: summary.status as i64,
-                    modified_at: summary.modified_at.clone(),
-                });
-            }
-        }
-        Catalog { hosts, sessions }
-    }
-
-    /// Enter a session HEADLESSLY — subscribe, adopt, ensure the
-    /// wires, relaunch the poll; no window switches, no chat
-    /// opens. The native shell's selection road: after this, the
-    /// session's views are mintable.
-    pub fn enter_session(
-        &mut self,
-        host: ahp_wire::client::HostId,
-        session: ahp_wire::client::SessionUri,
-    ) -> bool {
-        self.perform_batch(vec![crate::perform::AppCommand::Verb(
-            imba::command::Verb::once(crate::higent::open_session::EnterHeadless {
-                server: host,
-                session,
-            }),
-        )])
-    }
-
-    /// Create a session HEADLESSLY on the given host (or the local
-    /// default); the landing enters it, and the catalog carries
-    /// the rest — the shell watches the epoch.
-    pub fn create_session(&mut self, host: Option<ahp_wire::client::HostId>) -> bool {
-        self.perform_batch(vec![crate::perform::AppCommand::Verb(
-            imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host }),
-        )])
-    }
 
     /// A MOUNTED slot's current frame at its size — rebuilt
     /// lazily off the revision, exactly the window client's memo
@@ -1220,36 +1125,6 @@ impl Himark {
         Some((id, reveal))
     }
 
-    /// Every command the SESSION can run. A mounted road has no
-    /// focused window to walk — it has a WORKSPACE, the session,
-    /// and the views mounted into it. Himark holds those views, so
-    /// Himark does the walk: ask each view of this session what it
-    /// offers and concatenate. The global registry rides on top at
-    /// the call site, bound to the asking bridge.
-    pub fn session_commands(
-        &self,
-        session: &ahp_wire::SessionId,
-    ) -> Vec<imba::PresentableCommand<crate::app::AppCommand>> {
-        let ui = self.ui.clone();
-        let mut collected = Vec::new();
-        for id in self.mounted_ids() {
-            let mine = crate::mounts::session_of(&self.store, id).as_ref() == Some(session);
-            if let (true, Some(slot)) = (mine, self.bridges.get(&id)) {
-                // The view's own store, and only its COMMANDS out of
-                // the walk — the rest of the focus data borrows that
-                // store, which dies with this scope.
-                let offered = {
-                    let view = slot.bridge.view();
-                    let store = view.frame_store(&self.store, ui.as_ref());
-                    view.focus(&store, ui.as_ref())
-                        .map(|data| data.commands)
-                        .unwrap_or_default()
-                };
-                collected.extend(offered);
-            }
-        }
-        collected
-    }
 
     /// Perform a REGISTERED command at an origin bridge — the C
     /// door's and the palette's shared road: the origin view's own
@@ -1303,7 +1178,13 @@ impl Himark {
         self.modal_place_arms.push(arm);
     }
 
-    pub(crate) fn palette_factory(&self) -> Option<crate::mounts::PaletteFactory> {
+    /// Register a BRIDGE place arm — a plugin's answer to a place,
+    /// any mount shape (see `mounts::BridgePlaceArm`).
+    pub fn register_bridge_arm(&mut self, arm: crate::mounts::BridgePlaceArm) {
+        self.bridge_place_arms.push(arm);
+    }
+
+    pub fn palette_factory(&self) -> Option<crate::mounts::PaletteFactory> {
         self.palette.clone()
     }
 
@@ -1330,6 +1211,29 @@ impl Himark {
     /// `sweep` after every non-quiet batch.
     pub fn register_sweep_hook(&mut self, hook: Arc<dyn Fn(&mut Store)>) {
         self.sweep_hooks.push(hook);
+    }
+
+    /// Register an UNMOUNT hook — run when a bridge slot dies.
+    pub fn register_unmount_hook(&mut self, hook: Arc<dyn Fn(&mut Store, ViewBridgeId)>) {
+        self.unmount_hooks.push(hook);
+    }
+
+    /// One bridge's offered commands — its view's own walk,
+    /// commands only (the rest of the focus data borrows the
+    /// walk's store, which dies with this call). The session
+    /// plugin concatenates these across a workspace's mounts.
+    pub fn bridge_commands(
+        &self,
+        id: ViewBridgeId,
+    ) -> Vec<imba::PresentableCommand<crate::app::AppCommand>> {
+        let Some(slot) = self.bridges.get(&id) else {
+            return Vec::new();
+        };
+        let view = slot.bridge.view();
+        let store = view.frame_store(&self.store, self.ui.as_ref());
+        view.focus(&store, self.ui.as_ref())
+            .map(|data| data.commands)
+            .unwrap_or_default()
     }
 
     /// The engine's own batch tail: the theme, file-event and
@@ -1456,7 +1360,10 @@ impl Himark {
             &mut self.stage_layouts,
             &mut self.stage_frames,
         );
-        crate::mounts::forget_session(&mut self.store, id);
+        let hooks = self.unmount_hooks.clone();
+        for hook in &hooks {
+            hook(&mut self.store, id);
+        }
         true
     }
 
@@ -1560,35 +1467,6 @@ impl Himark {
         true
     }
 
-    /// Designate the LOCAL host — the store half: the `LocalHost`
-    /// cell, the session rekey, the uri stamp. The workbench adds
-    /// its windows' workspace adoption on top.
-    pub fn set_local_host(&mut self, host: ahp_wire::client::HostId) {
-        self.setup(|store| {
-            let previous = store
-                .get::<ahp_wire::client::LocalHost>()
-                .and_then(|local| local.0);
-            store.update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(host));
-            store.update::<ahp_session::session::state::Hosts>(|hosts| {
-                hosts.rekey_local_sessions(previous, host);
-            });
-            // Families minted under the LOCAL placeholder carried no
-            // uri map; now that they live under the real host, stamp
-            // its map onto them (docs/entities.md law 4).
-            ahp_session::session::state::Hosts::stamp_host_uris(store, host);
-        });
-    }
-
-    pub fn register_client(
-        &mut self,
-        client: ahp_wire::client::Client,
-    ) -> ahp_wire::client::HostId {
-        let mut minted = ahp_wire::client::HostId::LOCAL;
-        self.store
-            .update::<ahp_wire::client::Servers>(|servers| minted = servers.mint(client));
-        self.invalidate_frames();
-        minted
-    }
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     pub fn attach_host(

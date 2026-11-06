@@ -1,8 +1,25 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The adapter moved to the `hiahp` crate; the shell keeps the path
-//! alive plus the WINDOW rims the crate cannot hold.
+//! The AHP PLUGIN — the agent-protocol half of the app over the
+//! himark engine's registered seams: the wire handlers, the session
+//! lanes and sweep, the mount binder and file route, the session
+//! place arms, the session residents. himark keeps no ahp-*
+//! dependency; this crate owns the half.
+
+pub mod arms;
+pub mod engine;
+pub mod places;
+pub mod sessions;
+pub mod higent;
+pub mod save;
+pub mod watch;
+pub mod hipeek;
+pub mod hichanges;
+pub mod hifiles;
+pub mod hicomments;
+
+pub use engine::{bound_session, catalog, Catalog, HostRow, SessionRow};
 
 // ---------------------------------------------------------------
 // The WINDOW rims of the open roads: fetch-then-open lands an
@@ -16,9 +33,9 @@ use editor::location::ResourceLocation;
 use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
-use crate::app::AppCommand;
-use crate::commands::HimarkCommand;
-use crate::opening::OpenByLocationEffect;
+use himark::app::AppCommand;
+use himark::commands::HimarkCommand;
+use himark::opening::OpenByLocationEffect;
 
 /// The AHP wiring as a plugin: the wire handlers, the build road,
 /// and the LSP edit sink — everything the protocol registers
@@ -26,8 +43,8 @@ use crate::opening::OpenByLocationEffect;
 /// routes stay the HOST's (they close over its client directory).
 pub struct AhpPlugin;
 
-impl crate::plugin::Plugin for AhpPlugin {
-    fn install(&self, app: &mut crate::app::Himark, cx: &crate::plugin::PluginContext) {
+impl himark::plugin::Plugin for AhpPlugin {
+    fn install(&self, app: &mut himark::app::Himark, cx: &himark::plugin::PluginContext) {
         register_all(app);
         install_build_handler(app, Arc::clone(&cx.languages), Arc::clone(&cx.diff_policy));
         app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
@@ -44,7 +61,7 @@ impl crate::plugin::Plugin for AhpPlugin {
 /// filesystem capability — the chat's cells build off-thread with no host
 /// in sight. It installs at boot, on its own.
 pub fn install_build_handler(
-    app: &mut crate::app::Himark,
+    app: &mut himark::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
@@ -66,7 +83,7 @@ pub fn install_build_handler(
 
 
 pub fn install_open_handlers(
-    app: &mut crate::app::Himark,
+    app: &mut himark::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn editor::diff::DiffPolicy>,
 ) {
@@ -83,7 +100,7 @@ pub fn install_open_handlers(
         workshop,
         languages,
     };
-    app.register_handler::<crate::opening::OpenDiffByLocationsEffect>(
+    app.register_handler::<himark::opening::OpenDiffByLocationsEffect>(
         OpenDiffByLocationsHandler(shop.clone()),
     );
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
@@ -93,8 +110,8 @@ pub fn install_open_handlers(
 
 struct OpenDiffByLocationsHandler(::ahp_chat::open::DiffOpenShop);
 
-impl EffectHandler<crate::opening::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
-    async fn handle(&self, effect: crate::opening::OpenDiffByLocationsEffect) -> AppCommand {
+impl EffectHandler<himark::opening::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
+    async fn handle(&self, effect: himark::opening::OpenDiffByLocationsEffect) -> AppCommand {
         // The pane's editor width is resolved by `install_opened_pair`
         // (non-embedded → OPEN_HALF_WIDTH); the carried width is unused.
         let pair = self.0.open_pair(effect.old, effect.new, 0.0).await;
@@ -110,9 +127,9 @@ impl EffectHandler<crate::opening::OpenDiffByLocationsEffect> for OpenDiffByLoca
                     documents::diff_views::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
-            return crate::perform::AppCommand::AtOrigin(effect.origin, Arc::new(FetchFailed { location }));
+            return himark::perform::AppCommand::AtOrigin(effect.origin, Arc::new(FetchFailed { location }));
         }
-        crate::perform::AppCommand::AtOrigin(
+        himark::perform::AppCommand::AtOrigin(
             effect.origin,
             Arc::new(OpenDiffPair {
                 documents: effect.documents,
@@ -141,13 +158,13 @@ impl HimarkCommand for OpenDiffPair {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // ONE road for every shell: install the pair and hand the
         // SEATED SHELL a READY place — the workbench's arm opens the
         // split-diff panel, the native shell pushes a screen and
         // mints the standalone split-diff over it.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
         if !self.open_at(store, ui, origin, fx) {
@@ -161,8 +178,8 @@ impl OpenDiffPair {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        origin: crate::bridge::ViewBridgeId,
-        fx: &mut crate::app::AppFx<'_>,
+        origin: himark::bridge::ViewBridgeId,
+        fx: &mut himark::app::AppFx<'_>,
     ) -> bool {
         let Some(view) = documents::diff_views::install_opened_pair(
             store,
@@ -182,11 +199,11 @@ impl OpenDiffPair {
         fx.scope(AppCommand::Verb, |fx| {
             documents::lanes::sync_document_watches(store, self.documents, fx);
             documents::lanes::sync_stripe_bases(store, self.documents, ui, fx);
-            crate::shell::navigate_origin(
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DiffViewPlace {
+                himark::places::DiffViewPlace {
                     documents: self.documents,
                     view,
                     title: title.clone(),
@@ -224,9 +241,9 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                         &self.workshop.theme(),
                     )
                 });
-                crate::opening::opened(
+                himark::opening::opened(
                     effect.origin,
-                    crate::opening::OpenedDocument {
+                    himark::opening::OpenedDocument {
                         documents: effect.documents,
                         name: effect.location.name().to_owned(),
                         document,
@@ -238,7 +255,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 )
             }
 
-            None => crate::perform::AppCommand::AtOrigin(
+            None => himark::perform::AppCommand::AtOrigin(
                 effect.origin,
                 Arc::new(FetchFailed {
                     location: effect.location,
@@ -264,13 +281,13 @@ impl HimarkCommand for FetchFailed {
         _store: &mut Store,
         _ui: &imba::ui::UiCtx,
         _bound: &imba::focus::Bindings,
-        _fx: &mut crate::app::AppFx<'_>,
+        _fx: &mut himark::app::AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
     }
 }
 
-pub fn register_all(app: &mut crate::app::Himark) {
+pub fn register_all(app: &mut himark::app::Himark) {
     app.register_handler::<ahp_wire::effects::ConnectServerEffect>(
         ::ahp_wire::registry::HandleConnectServer,
     );
@@ -366,7 +383,7 @@ pub fn register_all(app: &mut crate::app::Himark) {
 /// housekeeping on every batch, quiet or not. Registered by the
 /// workbench boot today; moves to the AHP plugin with the rest of
 /// this module.
-pub fn session_lanes() -> crate::himark::BatchLane {
+pub fn session_lanes() -> himark::himark::BatchLane {
     Arc::new(|store, ui, all_quiet, fx| {
         // A QUIET batch (every arm display-neutral) skips the
         // session lanes whole: they react to landings and edits,
@@ -493,15 +510,15 @@ pub fn session_sweep() -> Arc<dyn Fn(&mut imba::store::Store)> {
 /// registered facts, not engine wiring: a mounted origin gains its
 /// session and `SessionState`, and a watch subscription's change
 /// refetches the owning session's documents collection.
-pub fn install_session_binding(app: &mut crate::himark::Himark) {
+pub fn install_session_binding(app: &mut himark::himark::Himark) {
     app.setup(|store| {
         let mut binders = store
-            .get::<crate::perform::MountBinders>()
+            .get::<himark::perform::MountBinders>()
             .cloned()
             .unwrap_or_default();
         binders.0.push(Arc::new(|store, id| {
             let mut bag = imba::focus::Bindings::new();
-            if let Some(session) = crate::mounts::session_of(store, id) {
+            if let Some(session) = crate::sessions::session_of(store, id) {
                 if let Some(state) =
                     ahp_session::session::state::Hosts::state(store, &session).cloned()
                 {
@@ -514,18 +531,33 @@ pub fn install_session_binding(app: &mut crate::himark::Himark) {
         store.put(binders);
 
         let mut routes = store
-            .get::<crate::perform::FileRoutes>()
+            .get::<himark::perform::FileRoutes>()
             .cloned()
             .unwrap_or_default();
         routes.0.push(Arc::new(|store, subscription, fx| {
             if let Some(documents) =
                 ahp_session::session::state::Hosts::documents_of_watch(store, subscription)
             {
-                fx.scope(crate::app::AppCommand::Verb, |fx| {
+                fx.scope(himark::app::AppCommand::Verb, |fx| {
                     documents::lanes::refetch_watched(store, documents, subscription, fx)
                 });
             }
         }));
         store.put(routes);
     });
+}
+
+/// The SESSION HALF's seams, seated once per boot: the batch lanes
+/// and sweep, the mount binder and file route, the place arms, the
+/// unmount bookkeeping, the residents — everything the engine used
+/// to hardwire. The workbench boot calls this today (every real
+/// boot passes it); it moves into the plugin when install gains a
+/// once-guard.
+pub fn install_session_half(app: &mut himark::app::Himark) {
+    app.register_batch_lane(session_lanes());
+    app.register_sweep_hook(session_sweep());
+    app.register_unmount_hook(Arc::new(crate::sessions::forget_session));
+    install_session_binding(app);
+    crate::arms::install_arms(app);
+    crate::engine::install_residents(app);
 }

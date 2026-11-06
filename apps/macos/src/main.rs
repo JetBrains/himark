@@ -63,7 +63,7 @@ fn compose() -> (Himark, himark_plugins::Wires) {
 
     // The agent-host filesystem routes — every capability, like the
     // desktop C shell asks for.
-    himark::hiahp::install_open_handlers(
+    hiahp::install_open_handlers(
         &mut app,
         Arc::clone(&wires.languages),
         Arc::new(myersdiff::Myers),

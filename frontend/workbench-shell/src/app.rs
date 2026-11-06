@@ -177,12 +177,12 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
             next: WorkbenchFrontend,
         }),
     );
-    // The SESSION LANES and sweep — registered reactions, not
-    // engine wiring (a bare library boot runs none). Seated here
-    // until the AHP plugin owns its whole module.
-    app.register_batch_lane(himark::hiahp::session_lanes());
-    app.register_sweep_hook(himark::hiahp::session_sweep());
-    himark::hiahp::install_session_binding(&mut app);
+    // The SESSION HALF — lanes, sweep, binder, file route, place
+    // arms, residents: registered reactions, not engine wiring (a
+    // bare library boot runs none). Seated here because every real
+    // boot passes this fn; moves into the AHP plugin's install
+    // when it gains a once-guard.
+    hiahp::install_session_half(&mut app);
     app.setup(|store| {
         store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
         crate::builtins::register_builtins(store);
@@ -248,7 +248,7 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
     // The drawer's fold-back after a host lands: only a WINDOW
     // gesture re-opens the side slot; a mounted origin no-ops.
     app.setup(|store| {
-        himark::higent::flows::AgentFlows::install_refold(
+        hiahp::higent::flows::AgentFlows::install_refold(
             store,
             std::sync::Arc::new(crate::higent::drawer::DrawerRefold),
         )
@@ -378,7 +378,7 @@ impl WorkbenchShell for Himark {
     }
 
     fn designate_local_host(&mut self, host: ahp_wire::client::HostId) {
-        self.set_local_host(host);
+        hiahp::engine::set_local_host(self, host);
         self.with_store(|store| {
             store.update::<::workbench::window::Windows>(|windows| {
                 windows.adopt_workspaces_all(&crate::workspace::AdoptLocalHost(host))
@@ -810,7 +810,7 @@ impl himark::himark::Shell for MountFrontend {
         }
         let rides = ::workbench::window::WindowId::from_raw(origin.raw());
         if let Some(place) = place.place::<himark::places::DocumentPlace>() {
-            let session = himark::mounts::session_of(store, origin);
+            let session = hiahp::sessions::session_of(store, origin);
             if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
                 eprintln!(
                     "[nav] MountFrontend DocumentPlace '{}' origin {} session? {}",
@@ -838,7 +838,7 @@ impl himark::himark::Shell for MountFrontend {
             return true;
         }
         if let Some(place) = place.place::<himark::places::DiffPlace>() {
-            let Some(session) = himark::mounts::session_of(store, origin) else {
+            let Some(session) = hiahp::sessions::session_of(store, origin) else {
                 return false;
             };
             let documents =

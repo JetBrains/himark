@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::commands::HimarkCommand;
+use himark::commands::HimarkCommand;
 use ahp_wire::client::ChatUri;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
@@ -156,7 +156,7 @@ impl imba::command::DynamicOnceCommand for HeadlessFailed {
 }
 
 pub struct ShowSession {
-    pub origin: crate::bridge::ViewBridgeId,
+    pub origin: himark::bridge::ViewBridgeId,
     pub server: ahp_wire::client::HostId,
     pub session: ahp_wire::client::SessionUri,
 }
@@ -177,7 +177,7 @@ impl imba::command::DynamicOnceCommand for ShowSession {
             session: self.session,
         })
         .perform(store, ui, fx);
-        crate::shell::navigate_origin(store, ui, self.origin, crate::places::ChatPlace(key), fx);
+        himark::shell::navigate_origin(store, ui, self.origin, crate::places::ChatPlace(key), fx);
     }
 }
 

@@ -6,16 +6,16 @@ use imba::store::Store;
 /// The reload command as a plugin.
 pub struct WatchPlugin;
 
-impl crate::plugin::Plugin for WatchPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
-        use crate::app_ext::AppExt;
+impl himark::plugin::Plugin for WatchPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
         app.register_command(std::sync::Arc::new(ReloadDocument));
     }
 }
 
 pub struct ReloadDocument;
 
-impl crate::commands::HimarkCommand for ReloadDocument {
+impl himark::commands::HimarkCommand for ReloadDocument {
     fn id(&self) -> &'static str {
         "file.reload"
     }
@@ -29,7 +29,7 @@ impl crate::commands::HimarkCommand for ReloadDocument {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // The focused document and its session both ride the walk —
         // the reload works from any shell.
@@ -40,10 +40,10 @@ impl crate::commands::HimarkCommand for ReloadDocument {
             );
             return;
         };
-        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+        let Some(state) = crate::engine::bound_session(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
             documents::lanes::refetch_document(store, state.documents(), document, fx)
         });
     }

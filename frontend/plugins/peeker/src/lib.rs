@@ -1910,7 +1910,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
         use himark::app_ext::AppExt;
         app.register_command(std::sync::Arc::new(TogglePeeker));
         app.register_place_arm(std::sync::Arc::new(|store, ui, id, fx, place| {
-            let place = place.place::<himark::places::PeekerPlace>()?;
+            let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();
             let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
             let documents = state.documents();

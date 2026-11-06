@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use imba::store::Store;
 
-use himark::watch::*;
+use hiahp::watch::*;
 use himark::app::AppFonts;
 
 use workbench_shell::app::OpenedDocument;

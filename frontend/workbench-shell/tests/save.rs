@@ -13,7 +13,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use imba::event::{Key, Modifiers};
 
 use editor::location::ResourceLocation;
-use himark::save::*;
+use hiahp::save::*;
 
 
 
@@ -48,7 +48,7 @@ fn setup(
 ) {
     let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     app.add_window();
-    app.register_document_command(Arc::new(himark::save::save_document(false)));
+    app.register_document_command(Arc::new(hiahp::save::save_document(false)));
     let writes = Writes::default();
     app.register_handler::<StoreDocumentEffect>(StoreHandler {
         writes: writes.clone(),

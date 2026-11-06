@@ -4,7 +4,7 @@
 //! The panel builder (`crate::hifiles::open_panel`) stays with the
 //! engine — the mounted files place mints through it too.
 
-use ::himark::hifiles::open_panel;
+use ::hiahp::hifiles::open_panel;
 
 use ::filetree::TreeCommand;
 

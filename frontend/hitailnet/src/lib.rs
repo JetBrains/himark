@@ -397,7 +397,7 @@ impl imba::command::DynamicCommand for HostDiscovered {
             Arc::clone(&self.connector),
             self.url.clone(),
         );
-        himark::higent::flows::mint_agent_server(
+        hiahp::higent::flows::mint_agent_server(
             store,
             &self.clients,
             &self.name,

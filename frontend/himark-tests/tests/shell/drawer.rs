@@ -95,7 +95,7 @@ fn the_sessions_subscription_runs_without_any_view() {
     use himark::app::Himark;
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    himark::hiahp::register_all(&mut app);
+    hiahp::register_all(&mut app);
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -105,7 +105,7 @@ fn the_sessions_subscription_runs_without_any_view() {
         std::sync::Arc::new(|| {}),
     );
 
-    let host = app.register_client(ahp_wire::client::Client {
+    let host = hiahp::engine::register_client(&mut app, ahp_wire::client::Client {
         session: std::sync::Arc::new(Seat),
         ..ahp_wire::client::inert()
     });
@@ -152,7 +152,7 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     let received = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
     {
         let received = received.clone();
-        himark::higent::flows::AgentFlows::install_add_host(
+        hiahp::higent::flows::AgentFlows::install_add_host(
             &mut app.store_mut(),
             std::sync::Arc::new(move |_store, url| {
                 *received.lock().expect("recorder") = Some(url.to_owned());
@@ -276,7 +276,7 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let offline = app.register_client(ahp_wire::client::inert());
+    let offline = hiahp::engine::register_client(&mut app, ahp_wire::client::inert());
     let mut store = app.store_mut().clone();
     let host = ahp_wire::SessionId::local_default(&store).host;
     ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
@@ -580,7 +580,7 @@ fn dump_sessions_drawer_screenshot() {
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let offline = app.register_client(ahp_wire::client::inert());
+    let offline = hiahp::engine::register_client(&mut app, ahp_wire::client::inert());
     let host = ahp_wire::SessionId::local_default(app.store()).host;
     const JB: &str = "file:///Users/dev/himark-jb";
     const KIT: &str = "file:///Users/dev/hikit";

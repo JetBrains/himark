@@ -365,7 +365,7 @@ mod app {
             // the plugin; this shell assembles by hand): without the
             // build handler every chat body's BuildDocumentEffect
             // orphans and the transcript paints empty cells.
-            himark::hiahp::install_build_handler(
+            hiahp::install_build_handler(
                 &mut state,
                 std::sync::Arc::new(web_languages()),
                 std::sync::Arc::new(myersdiff::Myers),
@@ -389,15 +389,15 @@ mod app {
             ));
             state.register_toolbar_button(workbench_shell::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(
-                himark::higent::drawer::ToggleAgentsView,
+                hiahp::higent::drawer::ToggleAgentsView,
             ));
-            state.register_command(std::sync::Arc::new(himark::higent::new_chat::NewChat));
-            state.register_toolbar_button(himark::higent::drawer::toolbar_button());
+            state.register_command(std::sync::Arc::new(hiahp::higent::new_chat::NewChat));
+            state.register_toolbar_button(hiahp::higent::drawer::toolbar_button());
             state.register_command(std::sync::Arc::new(
                 workbench_shell::hichanges::ToggleChangesView,
             ));
             state.register_command(std::sync::Arc::new(
-                himark::hichanges::RefetchChanges::default(),
+                hiahp::hichanges::RefetchChanges::default(),
             ));
             state.register_toolbar_button(workbench_shell::hichanges::toolbar_button());
             state.register_command(std::sync::Arc::new(
@@ -440,7 +440,7 @@ mod app {
                         })
                         .expect("wire thread");
                     let handle = handle_rx.recv().expect("wire handle");
-                    himark::hiahp::register_all(&mut state);
+                    hiahp::register_all(&mut state);
 
                     use std::sync::Arc;
                     let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
@@ -523,7 +523,7 @@ mod app {
                             channels: Arc::clone(&document_channels),
                         },
                     );
-                    state.register_document_command(Arc::new(himark::save::save_document(false)));
+                    state.register_document_command(Arc::new(hiahp::save::save_document(false)));
                     state.register_handler::<documents::ListDirectoryEffect>(
                         ahp_session::fsroute::RouteList {
                             directory: Arc::clone(&clients),
@@ -587,7 +587,7 @@ mod app {
 
                     state.observe_stripe_bases(Arc::new(ahp_session::fsroute::resolve_base));
 
-                    himark::hiahp::install_open_handlers(
+                    hiahp::install_open_handlers(
                         &mut state,
                         Arc::new(web_languages()),
                         Arc::new(myersdiff::Myers),
@@ -598,7 +598,7 @@ mod app {
 
             state.perform_command(himark::app::windowed(
                 window,
-                std::sync::Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(hiahp::higent::open_session::OpenNewSession { host: None }),
             ));
 
             #[cfg(target_feature = "atomics")]

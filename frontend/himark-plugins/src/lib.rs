@@ -86,13 +86,13 @@ pub fn engine_plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
     vec![
         Box::new(LanguagePack),
         Box::new(himarkdown::MarkdownPlugin),
-        Box::new(himark::higent::SessionsPlugin),
-        Box::new(himark::hiahp::AhpPlugin),
-        Box::new(himark::hicomments::CommentsPlugin),
-        Box::new(himark::hichanges::ChangesPlugin),
-        Box::new(himark::save::SavePlugin),
-        Box::new(himark::watch::WatchPlugin),
-        Box::new(himark::hipeek::PeekPlugin),
+        Box::new(hiahp::higent::SessionsPlugin),
+        Box::new(hiahp::AhpPlugin),
+        Box::new(hiahp::hicomments::CommentsPlugin),
+        Box::new(hiahp::hichanges::ChangesPlugin),
+        Box::new(hiahp::save::SavePlugin),
+        Box::new(hiahp::watch::WatchPlugin),
+        Box::new(hiahp::hipeek::PeekPlugin),
         Box::new(hicode::CodePlugin),
     ]
 }
@@ -116,7 +116,7 @@ pub fn register_agent_server(
     name: &str,
     client: ahp_wire::client::Client,
 ) -> ahp_wire::client::HostId {
-    let id = app.register_client(client.clone());
+    let id = hiahp::engine::register_client(app, client.clone());
     app.setup(|store| {
         ahp_session::session::agents::Agents::seed(store, id, name);
         ahp_session::session::state::Hosts::install_uris(
@@ -224,7 +224,7 @@ pub fn install_host(
         let handle = runtime.clone();
         let connector = Arc::clone(&connector);
         app.setup(|store| {
-            himark::higent::flows::AgentFlows::install_add_host(
+            hiahp::higent::flows::AgentFlows::install_add_host(
                 store,
                 Arc::new(move |store, url| {
                     let client =
@@ -237,7 +237,7 @@ pub fn install_host(
                     // a batch, where the application's store is taken
                     // out; a mint through the app would be clobbered
                     // by the put-back.
-                    Some(himark::higent::flows::mint_agent_server(
+                    Some(hiahp::higent::flows::mint_agent_server(
                         store,
                         &clients,
                         url.trim(),

@@ -17,9 +17,9 @@ use imba::store::Store;
 /// toolbar button are the workbench-shell crate's.
 pub struct ChangesPlugin;
 
-impl crate::plugin::Plugin for ChangesPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
-        use crate::app_ext::AppExt;
+impl himark::plugin::Plugin for ChangesPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
         app.register_command(Arc::new(RefetchChanges::default()));
         app.register_document_command(Arc::new(OpenWorkingCopy));
     }
@@ -30,7 +30,7 @@ pub struct OpenDiffForPair {
     pub new: ResourceLocation,
 }
 
-impl crate::commands::HimarkCommand for OpenDiffForPair {
+impl himark::commands::HimarkCommand for OpenDiffForPair {
     fn id(&self) -> &'static str {
         "changes.open-diff"
     }
@@ -42,20 +42,20 @@ impl crate::commands::HimarkCommand for OpenDiffForPair {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // The SEATED SHELL resolves and places the pair — the
         // workbench arm resolves against the window's session, the
         // mounted arm against the origin's.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DiffPlace {
+                himark::places::DiffPlace {
                     old: self.old.clone(),
                     new: self.new.clone(),
                 },
@@ -76,7 +76,7 @@ pub struct RefetchChanges {
     pub folder: Option<ResourceLocation>,
 }
 
-impl crate::commands::HimarkCommand for RefetchChanges {
+impl himark::commands::HimarkCommand for RefetchChanges {
     fn id(&self) -> &'static str {
         "changes.refetch"
     }
@@ -88,7 +88,7 @@ impl crate::commands::HimarkCommand for RefetchChanges {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let _ = fx;
         let Some(changes) = bound
@@ -143,7 +143,7 @@ impl documents::dynamic::DocumentCommand for OpenWorkingCopy {
         let byte = document.caret_byte(editor);
         let mut view = document.text().view();
         let at = documents::text_ext::line_col_at(&mut view, byte as usize);
-        crate::commands::AppRequests::push(
+        himark::commands::AppRequests::push(
             store,
             Arc::new(ShowWorkingCopy {
                 location: working,
@@ -158,7 +158,7 @@ struct ShowWorkingCopy {
     target: std::ops::Range<documents::text_ext::LineCol>,
 }
 
-impl crate::commands::HimarkCommand for ShowWorkingCopy {
+impl himark::commands::HimarkCommand for ShowWorkingCopy {
     fn id(&self) -> &'static str {
         "vcs.apply-open-working-copy"
     }
@@ -170,19 +170,19 @@ impl crate::commands::HimarkCommand for ShowWorkingCopy {
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // The SEATED SHELL opens the located document — the open
         // effect reuses a registered document and honors the caret.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DocumentPlace {
+                himark::places::DocumentPlace {
                     location: self.location.clone(),
                     target: Some(self.target.clone()),
                     focus: true,

@@ -3,8 +3,8 @@
 
 use imba::{effect::AnyEffect, store::Store};
 
-use crate::app::AppFx;
-use crate::commands::HimarkCommand;
+use himark::app::AppFx;
+use himark::commands::HimarkCommand;
 use documents::StoreDocumentEffect;
 use editor::location::ResourceLocation;
 
@@ -21,7 +21,7 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
             {
                 recents::RecentLocations::replace(store, recents, from, to);
             }
-            crate::commands::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
+            himark::commands::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
         }),
     )
 }
@@ -30,9 +30,9 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
 /// save command.
 pub struct SavePlugin;
 
-impl crate::plugin::Plugin for SavePlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
-        use crate::app_ext::AppExt;
+impl himark::plugin::Plugin for SavePlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use himark::app_ext::AppExt;
         app.register_command(std::sync::Arc::new(SaveAll));
         app.register_document_command(std::sync::Arc::new(save_document(true)));
     }
@@ -55,11 +55,11 @@ impl HimarkCommand for SaveAll {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // The SESSION road: the UI bound the session into the walk,
         // so the save works from any shell — no window needed.
-        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+        let Some(state) = crate::engine::bound_session(self.id(), bound) else {
             return;
         };
         save_all(store, &state, fx);
@@ -94,7 +94,7 @@ pub(crate) fn save_all(
         let previous = entity.save_token();
         let token = fx.push(AnyEffect::new(StoreDocumentEffect { location, text }).map(
             move |stored| {
-                crate::app::AppCommand::at(
+                himark::app::AppCommand::at(
                     documents,
                     documents::DocumentsCommand::Stored {
                         document: id,
@@ -126,15 +126,15 @@ impl HimarkCommand for SyncWatches {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+        let Some(state) = crate::engine::bound_session(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
             documents::lanes::sync_document_watches(store, state.documents(), fx)
         });
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
             documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
         });
     }

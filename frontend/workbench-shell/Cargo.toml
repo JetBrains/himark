@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 himark = { path = "../himark" }
+hiahp = { path = "../hiahp" }
 himark-ffi = { path = "../himark-ffi", optional = true }
 ahp-chat = { path = "../ahp-chat" }
 ahp-types = "0.9"

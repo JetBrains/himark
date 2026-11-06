@@ -56,20 +56,6 @@ pub fn bound_origin(
     origin
 }
 
-/// The session prelude: the session state the UI bound, or a loud
-/// drop.
-pub fn bound_session(
-    command: &str,
-    bound: &imba::focus::Bindings,
-) -> Option<ahp_session::session::state::SessionState> {
-    let state = bound
-        .bound::<ahp_session::session::state::SessionState>()
-        .cloned();
-    if state.is_none() {
-        eprintln!("[shell] a session command landed with no session bound — dropped: {command}");
-    }
-    state
-}
 
 #[derive(Clone, Default)]
 pub struct Commands(pub(crate) Vec<Arc<dyn HimarkCommand>>);

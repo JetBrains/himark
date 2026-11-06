@@ -31,3 +31,8 @@ ahp-locations = { path = "../ahp-locations" }
 ahp-docsync = { path = "../ahp-docsync" }
 ahp-lsp = { path = "../ahp-lsp" }
 ahp-session = { path = "../ahp-session" }
+rpds = "1"
+recents = { path = "../recents" }
+
+[dev-dependencies]
+serde_json = "1"

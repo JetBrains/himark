@@ -183,7 +183,7 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 /// engine (`Himark`), where the `ToView` road can quiesce them.
 #[derive(Default)]
 pub(crate) struct Stages {
-    catalogs: Handles<himark::himark::Catalog>,
+    catalogs: Handles<hiahp::Catalog>,
 }
 
 /// The place table is process-wide like the event table: places
@@ -745,7 +745,7 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
     let Some(location) = location else {
         return false;
     };
-    himark::mounts::follow_session_tree(&mut engine.app, &session, location)
+    hiahp::sessions::follow_session_tree(&mut engine.app, &session, location)
 }
 
 /// Drain the reveal a mounted road parked — a caret-follow or a
@@ -907,7 +907,7 @@ pub unsafe extern "C" fn himark_sessions_copy(engine: *mut HimarkEngine) -> Hima
     let Some(engine) = engine.as_mut() else {
         return HimarkCatalog { raw: 0 };
     };
-    let snapshot = engine.app.catalog();
+    let snapshot = hiahp::engine::catalog(&engine.app);
     HimarkCatalog {
         raw: engine.stages.catalogs.mint(snapshot),
     }
@@ -1026,7 +1026,7 @@ unsafe fn with_catalog<R>(
     engine: *mut HimarkEngine,
     catalog: HimarkCatalog,
     missing: R,
-    read: impl FnOnce(&himark::himark::Catalog) -> R,
+    read: impl FnOnce(&hiahp::Catalog) -> R,
 ) -> R {
     let Some(engine) = engine.as_ref() else {
         return missing;
@@ -1146,7 +1146,7 @@ unsafe fn catalog_session_string(
     index: usize,
     out: *mut c_char,
     cap: usize,
-    read: impl Fn(&himark::himark::SessionRow) -> String,
+    read: impl Fn(&hiahp::SessionRow) -> String,
 ) -> usize {
     with_catalog(engine, catalog, 0, |snapshot| {
         copy_optional_utf8(snapshot.sessions.get(index).map(read), out, cap)
@@ -1194,7 +1194,7 @@ pub unsafe extern "C" fn himark_session_enter(
     let Some(uri) = str_from(uri, len) else {
         return false;
     };
-    engine.app.enter_session(
+    hiahp::engine::enter_session(&mut engine.app, 
         ahp_wire::client::HostId::from_raw(host),
         ahp_wire::client::SessionUri::new(uri.to_owned()),
     )
@@ -1211,7 +1211,7 @@ pub unsafe extern "C" fn himark_session_new(engine: *mut HimarkEngine, host: u64
         0 => None,
         raw => Some(ahp_wire::client::HostId::from_raw(raw)),
     };
-    engine.app.create_session(host)
+    hiahp::engine::create_session(&mut engine.app, host)
 }
 
 // ─── places and the minting door (docs/ui/himark-ffi.md) ───
@@ -1254,6 +1254,7 @@ pub unsafe extern "C" fn himark_place_session_view(
     uri: *const c_char,
     len: usize,
 ) -> HimarkPlace {
+    use hiahp::places::*;
     use himark::places::*;
     use hikit::navigation::NavigationLocation;
     let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
@@ -1523,7 +1524,7 @@ pub unsafe extern "C" fn himark_bridge_mint(
         return HimarkBridge { raw: 0 };
     };
     let (place, session) = place;
-    match himark::mounts::mount_place(&mut engine.app, &place, session) {
+    match hiahp::arms::mount_place(&mut engine.app, &place, session) {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
     }
@@ -1640,10 +1641,10 @@ impl himark::himark::Shell for CallbackShell {
                 ))
             } else if place.place::<himark::places::DismissPlace>().is_some() {
                 Some((HIMARK_PLACE_DISMISS, String::new()))
-            } else if place.place::<himark::places::ChatPlace>().is_some() {
+            } else if place.place::<hiahp::places::ChatPlace>().is_some() {
                 // "Show this session" — the sessions drawer's pick.
                 Some((HIMARK_PLACE_CHAT, String::new()))
-            } else if place.place::<himark::places::FolderPickerPlace>().is_some() {
+            } else if place.place::<hiahp::places::FolderPickerPlace>().is_some() {
                 // The add-folder ask on a remote host — the native
                 // shell presents the picker (iOS: a sheet).
                 Some((HIMARK_PLACE_FOLDER_PICKER, "Add Folder".to_owned()))
@@ -1657,14 +1658,14 @@ impl himark::himark::Shell for CallbackShell {
                 // place that NAMES a session (the drawer's pick)
                 // carries its own — that is the whole message.
                 let session = place
-                    .place::<himark::places::ChatPlace>()
+                    .place::<hiahp::places::ChatPlace>()
                     .map(|chat| chat.0.clone())
                     .or_else(|| {
                         place
-                            .place::<himark::places::FolderPickerPlace>()
+                            .place::<hiahp::places::FolderPickerPlace>()
                             .map(|picker| picker.0.clone())
                     })
-                    .or_else(|| himark::mounts::session_of(store, origin));
+                    .or_else(|| hiahp::sessions::session_of(store, origin));
                 let handle = HimarkPlace {
                     raw: PLACES
                         .lock()

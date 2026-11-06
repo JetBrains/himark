@@ -171,7 +171,7 @@ fn squiggles(document: &Document) -> Vec<(std::ops::Range<u32>, StyleId)> {
 fn the_snapshot_squiggles_the_open_document() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    himark::hiahp::register_all(&mut app);
+    hiahp::register_all(&mut app);
 
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -189,7 +189,7 @@ fn the_snapshot_squiggles_the_open_document() {
             diagnostics: vec![error_at(0, 3, 7)],
         },
     );
-    let host = app.register_client(Client {
+    let host = hiahp::engine::register_client(&mut app, Client {
         session: Arc::new(Seat),
         lsp: Arc::new(Lsp {
             snapshot: DiagnosticsState { items },

@@ -3811,7 +3811,7 @@ fn real_claude_answers_through_the_agent_host() {
     let servers = ahp_wire::client::Servers::list(engine.app.store());
     let vscode = servers[0];
     let repo = std::env::current_dir().expect("cwd");
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4140,7 +4140,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     let entity = engine.app.sole_window();
     assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
         entity,
-        std::sync::Arc::new(himark::higent::flows::AddHost { url: ws.clone() }),
+        std::sync::Arc::new(hiahp::higent::flows::AddHost { url: ws.clone() }),
     )]));
 
     let mut rows = Vec::new();
@@ -4830,7 +4830,7 @@ fn the_drawer_connects_to_the_himark_host() {
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4893,7 +4893,7 @@ fn dump_chat_pane_snapshot() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -5083,7 +5083,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -5327,7 +5327,7 @@ fn the_chat_runs_through_the_himark_host() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -5709,7 +5709,7 @@ fn real_claude_answers_through_the_himark_host() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -5824,7 +5824,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = work.clone();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -7344,7 +7344,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
-    himark::higent::flows::AgentFlows::install_new_session(
+    hiahp::higent::flows::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -9410,61 +9410,61 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
         (
             "transcript",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::ChatTranscriptPlace(session.clone()),
+                hiahp::places::ChatTranscriptPlace(session.clone()),
             )),
         ),
         (
             "composer",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::ChatComposerPlace(session.clone()),
+                hiahp::places::ChatComposerPlace(session.clone()),
             )),
         ),
         (
             "changes",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::ChangesPlace(session.clone()),
+                hiahp::places::ChangesPlace(session.clone()),
             )),
         ),
         (
             "changes-canvas",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::ChangesCanvasPlace(session.clone()),
+                hiahp::places::ChangesCanvasPlace(session.clone()),
             )),
         ),
         (
             "history",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::HistoryPlace(session.clone()),
+                hiahp::places::HistoryPlace(session.clone()),
             )),
         ),
         (
             "search",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::SearchPlace(session.clone()),
+                hiahp::places::SearchPlace(session.clone()),
             )),
         ),
         (
             "comments",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::CommentsPlace(session.clone()),
+                hiahp::places::CommentsPlace(session.clone()),
             )),
         ),
         (
             "files",
             open(hikit::navigation::NavigationLocation::new(
-                himark::places::FilesPlace(session.clone()),
+                hiahp::places::FilesPlace(session.clone()),
             )),
         ),
         (
             "chat",
             framed(hikit::navigation::NavigationLocation::new(
-                himark::places::ChatPlace(session.clone()),
+                hiahp::places::ChatPlace(session.clone()),
             )),
         ),
         (
             "peeker",
             framed(hikit::navigation::NavigationLocation::new(
-                himark::places::PeekerPlace(session.clone()),
+                hiahp::places::PeekerPlace(session.clone()),
             )),
         ),
     ];
@@ -9474,7 +9474,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
     let mut measured = Vec::new();
     for (name, (place, how)) in places {
         let Some(bridge) =
-            himark::mounts::mount_place(&mut engine.app, &place, Some(session.clone()))
+            hiahp::arms::mount_place(&mut engine.app, &place, Some(session.clone()))
         else {
             panic!("{name}: the place refused to mount");
         };
@@ -9538,15 +9538,15 @@ fn a_late_files_tree_stands_on_the_followed_file() {
 
     // The follow arrives FIRST, with no tree anywhere.
     assert!(
-        himark::mounts::follow_session_tree(&mut engine.app, &session, followed),
+        hiahp::sessions::follow_session_tree(&mut engine.app, &session, followed),
         "a follow with no live tree parks as standing — not dropped"
     );
     settle(&mut engine);
 
     // The tree mounts LATE and must replay the standing follow.
     let place =
-        hikit::navigation::NavigationLocation::new(himark::places::FilesPlace(session.clone()));
-    let tree = himark::mounts::mount_place(&mut engine.app, &place, Some(session))
+        hikit::navigation::NavigationLocation::new(hiahp::places::FilesPlace(session.clone()));
+    let tree = hiahp::arms::mount_place(&mut engine.app, &place, Some(session))
         .expect("the files tree mounts");
     // Reveals park on the mounted PAINT road — drive it the way
     // the shell does.

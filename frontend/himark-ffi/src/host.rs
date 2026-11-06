@@ -340,10 +340,10 @@ impl EffectHandler<ahp_wire::effects::ShareTailnetEffect> for ShareTailnetHandle
 
 pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
 
-impl EffectHandler<himark::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
+impl EffectHandler<hiahp::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
     async fn handle(
         &self,
-        effect: himark::higent::folder_grant::PickFoldersEffect,
+        effect: hiahp::higent::folder_grant::PickFoldersEffect,
     ) -> Vec<ResourceLocation> {
         let Some(pick) = self.0.callbacks.pick_files else {
             return Vec::new();

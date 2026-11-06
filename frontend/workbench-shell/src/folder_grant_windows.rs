@@ -10,7 +10,7 @@ use std::sync::Arc;
 use ahp_session::session::state::Hosts;
 use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
 use ahp_wire::client::{HostId, SessionUri};
-use himark::higent::folder_grant::*;
+use hiahp::higent::folder_grant::*;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -35,7 +35,7 @@ impl himark::commands::HimarkCommand for OpenFolderPicker {
         _bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        use himark::higent::folder_picker::{FolderPicker, FolderPickerCommand};
+        use hiahp::higent::folder_picker::{FolderPicker, FolderPickerCommand};
         let target = ahp_wire::SessionId {
             host: self.server,
             session: self.session.clone(),
@@ -52,7 +52,7 @@ impl himark::commands::HimarkCommand for OpenFolderPicker {
                 })
             });
         if let Some(window) = window {
-            let pick = himark::higent::folder_grant::folder_pick(store, self.server, self.session.clone());
+            let pick = hiahp::higent::folder_grant::folder_pick(store, self.server, self.session.clone());
             let modal: Box<dyn hikit::modal::ModalView> = fx.scope(
                 move |command| {
                     crate::shell::content(
@@ -81,13 +81,13 @@ impl himark::commands::HimarkCommand for OpenFolderPicker {
         }
         // No window holds it — a mounted shell: navigate the place;
         // the native shell presents it (iOS: a sheet).
-        if let Some(origin) = himark::mounts::origin_of(store, &target) {
+        if let Some(origin) = hiahp::sessions::origin_of(store, &target) {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 himark::shell::navigate_origin(
                     store,
                     ui,
                     origin,
-                    himark::places::FolderPickerPlace(target),
+                    hiahp::places::FolderPickerPlace(target),
                     fx,
                 )
             });
@@ -189,12 +189,12 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
         // this same batch); a mounted shell navigates the place and
         // the native host presents it (iOS: a sheet).
         if !host_is_local(store, self.server) {
-            if let Some(origin) = himark::mounts::origin_of(store, &target) {
+            if let Some(origin) = hiahp::sessions::origin_of(store, &target) {
                 return himark::shell::navigate_origin(
                     store,
                     ui,
                     origin,
-                    himark::places::FolderPickerPlace(target),
+                    hiahp::places::FolderPickerPlace(target),
                     fx,
                 );
             }

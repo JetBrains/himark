@@ -13,7 +13,7 @@ use imba::store::Store;
 use ahp_wire::client::HostId;
 
 pub type NewSessionFlow =
-    Arc<dyn Fn(HostId) -> Arc<dyn crate::commands::HimarkCommand> + Send + Sync>;
+    Arc<dyn Fn(HostId) -> Arc<dyn himark::commands::HimarkCommand> + Send + Sync>;
 
 /// The store-in-hand host mint — what the Add Host flow and embedder
 /// discovery share. The SEAT IS MINTED BEFORE THE ROW IS SEEDED: a
@@ -43,7 +43,7 @@ pub struct AgentFlows {
     /// workbench re-opens its drawer when the gesture rode a window;
     /// a mounted origin's catalog refreshes itself and this stays
     /// `None` or a no-op.
-    refold: Option<Arc<dyn crate::commands::HimarkCommand>>,
+    refold: Option<Arc<dyn himark::commands::HimarkCommand>>,
 }
 
 impl AgentFlows {
@@ -61,11 +61,11 @@ impl AgentFlows {
         store.update::<AgentFlows>(|flows| flows.add_host = Some(flow));
     }
 
-    pub fn install_refold(store: &mut Store, refold: Arc<dyn crate::commands::HimarkCommand>) {
+    pub fn install_refold(store: &mut Store, refold: Arc<dyn himark::commands::HimarkCommand>) {
         store.update::<AgentFlows>(|flows| flows.refold = Some(refold));
     }
 
-    pub(crate) fn refold(store: &Store) -> Option<Arc<dyn crate::commands::HimarkCommand>> {
+    pub(crate) fn refold(store: &Store) -> Option<Arc<dyn himark::commands::HimarkCommand>> {
         store.get::<AgentFlows>()?.refold.clone()
     }
 
@@ -79,7 +79,7 @@ pub struct AddHost {
     pub url: String,
 }
 
-impl crate::commands::HimarkCommand for AddHost {
+impl himark::commands::HimarkCommand for AddHost {
     fn id(&self) -> &'static str {
         "agent.add-host"
     }
@@ -93,7 +93,7 @@ impl crate::commands::HimarkCommand for AddHost {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
             eprintln!("[higent] no add-host capability installed — url dropped");

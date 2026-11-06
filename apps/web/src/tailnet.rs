@@ -336,7 +336,7 @@ impl imba::command::DynamicCommand for TailnetHostDiscovered {
             Arc::new(crate::browser::BrowserConnector),
             self.url.clone(),
         );
-        himark::higent::flows::mint_agent_server(
+        hiahp::higent::flows::mint_agent_server(
             store,
             &self.clients,
             &self.name,

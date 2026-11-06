@@ -47,7 +47,7 @@ impl himark::commands::HimarkCommand for OpenDiff {
         let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        let Some(state) = himark::commands::bound_session(self.id(), bound) else {
+        let Some(state) = hiahp::bound_session(self.id(), bound) else {
             return;
         };
         let documents = state.documents();

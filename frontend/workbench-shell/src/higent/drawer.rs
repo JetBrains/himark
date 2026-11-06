@@ -261,7 +261,7 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
         }),
         new_session: Arc::new(move |store, server| {
             let command: Arc<dyn himark::commands::HimarkCommand> =
-                match himark::higent::flows::AgentFlows::new_session_flow(store) {
+                match hiahp::higent::flows::AgentFlows::new_session_flow(store) {
                     Some(flow) => flow(server),
                     None => {
                         Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) })
@@ -270,7 +270,7 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
             himark::app::shell_verb(crate::shell::windowed(window, command))
         }),
         add_host: Arc::new(move |url| {
-            himark::app::shell_verb(crate::shell::windowed(window, Arc::new(himark::higent::flows::AddHost { url })))
+            himark::app::shell_verb(crate::shell::windowed(window, Arc::new(hiahp::higent::flows::AddHost { url })))
         }),
     })
 }

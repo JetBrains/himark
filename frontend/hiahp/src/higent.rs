@@ -19,8 +19,8 @@ use std::sync::Arc;
 /// shell the place naming it.
 pub struct SessionsPlugin;
 
-impl crate::plugin::Plugin for SessionsPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+impl himark::plugin::Plugin for SessionsPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         use std::sync::Arc;
         app.register_place_arm(Arc::new(|store, ui, id, _fx, place| {
             let place = place.place::<crate::places::SessionsPlace>()?;
@@ -38,7 +38,7 @@ impl crate::plugin::Plugin for SessionsPlugin {
                     imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host: Some(server) })
                 }),
                 add_host: Arc::new(move |url| {
-                    crate::app::shell_verb(crate::perform::AppCommand::AtOrigin(
+                    himark::app::shell_verb(himark::perform::AppCommand::AtOrigin(
                         id,
                         Arc::new(crate::higent::flows::AddHost { url }),
                     ))

@@ -623,7 +623,7 @@ fn dump_chat_transcript_screenshot() {
     let mut languages = ::editor::reparse::SyntaxLanguages::new();
     himark::plugin::Plugin::languages(&himarkdown::MarkdownPlugin, &mut languages);
     app.register_syntax_languages(languages.clone());
-    himark::hiahp::install_build_handler(
+    hiahp::install_build_handler(
         &mut app,
         Arc::new(languages),
         Arc::new(::editor::diff::ReplaceAll),

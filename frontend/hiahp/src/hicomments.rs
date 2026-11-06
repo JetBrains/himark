@@ -17,8 +17,8 @@ use imba::store::Store;
 /// crate's.
 pub struct CommentsPlugin;
 
-impl crate::plugin::Plugin for CommentsPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+impl himark::plugin::Plugin for CommentsPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         app.setup(|store| ::comments::install(store));
     }
 }

@@ -11,7 +11,7 @@
 pub(crate) mod chat_roads;
 pub mod drawer;
 
-pub use ::himark::higent::folder_grant;
+pub use ::hiahp::higent::folder_grant;
 pub(crate) use crate::higent::folder_grant as folder_picker_gone;
 
 pub mod new_chat;

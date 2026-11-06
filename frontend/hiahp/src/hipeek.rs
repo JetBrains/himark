@@ -17,8 +17,8 @@ use imba::store::Store;
 /// The peek feature's document command as a plugin.
 pub struct PeekPlugin;
 
-impl crate::plugin::Plugin for PeekPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+impl himark::plugin::Plugin for PeekPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         app.register_document_command(go_to_reference());
     }
 }
@@ -30,7 +30,7 @@ pub fn go_to_reference() -> Arc<locations::peek::GoToReference> {
                 .map(|state| state.lists())
         }),
         open: Arc::new(|store, location, target| {
-            crate::commands::AppRequests::push(
+            himark::commands::AppRequests::push(
                 store,
                 Arc::new(OpenPicked {
                     location,
@@ -46,7 +46,7 @@ pub fn go_to_reference() -> Arc<locations::peek::GoToReference> {
             {
                 return;
             }
-            crate::commands::AppRequests::push(store, Arc::new(PromoteFeed { lists, feed }));
+            himark::commands::AppRequests::push(store, Arc::new(PromoteFeed { lists, feed }));
         }),
     })
 }
@@ -58,7 +58,7 @@ struct OpenPicked {
     target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::commands::HimarkCommand for OpenPicked {
+impl himark::commands::HimarkCommand for OpenPicked {
     fn id(&self) -> &'static str {
         "peek.open-picked"
     }
@@ -70,18 +70,18 @@ impl crate::commands::HimarkCommand for OpenPicked {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         // The SEATED SHELL opens the pick — any shell's.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DocumentPlace {
+                himark::places::DocumentPlace {
                     location: self.location.clone(),
                     target: self.target.clone(),
                     focus: true,
@@ -99,7 +99,7 @@ struct PromoteFeed {
     feed: locations::FeedId,
 }
 
-impl crate::commands::HimarkCommand for PromoteFeed {
+impl himark::commands::HimarkCommand for PromoteFeed {
     fn id(&self) -> &'static str {
         "peek.promote-feed"
     }
@@ -111,17 +111,17 @@ impl crate::commands::HimarkCommand for PromoteFeed {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+        fx.scope(himark::app::AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::FeedPlace {
+                himark::places::FeedPlace {
                     lists: self.lists,
                     feed: self.feed,
                 },

@@ -24,112 +24,6 @@ use crate::bridge::{BridgeView, ViewBridgeId};
 use crate::perform::{AppCommand, AppFx};
 use crate::shell::navigate_origin;
 
-/// Which SESSION each mounted bridge belongs to — the windowless
-/// twin of "the window's session": the navigate resolver reads it
-/// to bind a mounted origin's opens to the right collections.
-#[derive(Clone, Default)]
-pub(crate) struct MountSessions(pub(crate) rpds::HashTrieMapSync<u64, ahp_wire::SessionId>);
-
-pub(crate) fn remember_session(store: &mut Store, id: ViewBridgeId, session: ahp_wire::SessionId) {
-    let mut map = store.get::<MountSessions>().cloned().unwrap_or_default();
-    map.0.insert_mut(id.raw(), session);
-    store.put(map);
-}
-
-pub fn session_of(store: &Store, id: ViewBridgeId) -> Option<ahp_wire::SessionId> {
-    store.get::<MountSessions>()?.0.get(&id.raw()).cloned()
-}
-
-/// A mounted origin SHOWING the session — the folder picker's
-/// navigation anchor when no window holds it.
-pub fn origin_of(store: &Store, session: &ahp_wire::SessionId) -> Option<ViewBridgeId> {
-    store
-        .get::<MountSessions>()?
-        .0
-        .iter()
-        .find_map(|(raw, held)| (held == session).then(|| ViewBridgeId::from_raw(*raw)))
-}
-
-/// The session's mounted FILES TREES — the explicit follow targets
-/// `himark_tree_follow` commands when the host lands a navigation —
-/// and the STANDING follow: the active editor's location, kept so a
-/// tree that mounts LATER (the rail was closed, another tab showed)
-/// stands on it at birth. Fire-and-forget lost every follow that
-/// arrived while no tree was live.
-#[derive(Clone, Default)]
-pub(crate) struct FollowTargets {
-    trees: rpds::HashTrieMapSync<ahp_wire::SessionId, ViewBridgeId>,
-    standing: rpds::HashTrieMapSync<ahp_wire::SessionId, editor::location::ResourceLocation>,
-    generation: u64,
-}
-
-/// Register the mounted tree and answer the standing follow it
-/// should replay (with a fresh generation), if the session has one.
-pub(crate) fn remember_files_tree(
-    store: &mut Store,
-    session: ahp_wire::SessionId,
-    id: ViewBridgeId,
-) -> Option<(editor::location::ResourceLocation, u64)> {
-    let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
-    map.trees.insert_mut(session.clone(), id);
-    let standing = map.standing.get(&session).cloned();
-    if standing.is_some() {
-        map.generation += 1;
-    }
-    let generation = map.generation;
-    store.put(map);
-    standing.map(|location| (location, generation))
-}
-
-/// The EXPLICIT tree-follow: the host landed a navigation and
-/// commands the session's files tree to stand on the location —
-/// the same `TreeCommand::Follow` the workbench pushes from its
-/// focus walk. One API, both shells (docs/mounted-parity.md).
-pub fn follow_session_tree(
-    app: &mut crate::himark::Himark,
-    session: &ahp_wire::SessionId,
-    location: editor::location::ResourceLocation,
-) -> bool {
-    // The follow STANDS regardless of who is mounted: a tree that
-    // arrives later replays it from `remember_files_tree`.
-    let tree = app
-        .store()
-        .get::<FollowTargets>()
-        .and_then(|map| map.trees.get(session).copied());
-    let generation = {
-        let session = session.clone();
-        let location_kept = location.clone();
-        let mut generation = 0;
-        app.setup(|store| {
-            let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
-            map.standing.insert_mut(session, location_kept);
-            map.generation += 1;
-            generation = map.generation;
-            store.put(map);
-        });
-        generation
-    };
-    let Some(tree) = tree else {
-        // Parked as standing — applied at the next tree mount.
-        return true;
-    };
-    app.perform_batch(vec![AppCommand::ToView(
-        tree,
-        DynCommand::new(filetree::TreeCommand::Follow {
-            location,
-            generation,
-        }),
-    )]);
-    true
-}
-
-pub(crate) fn forget_session(store: &mut Store, id: ViewBridgeId) {
-    let Some(mut map) = store.get::<MountSessions>().cloned() else {
-        return;
-    };
-    map.0.remove_mut(&id.raw());
-    store.put(map);
-}
 
 /// An erased panel (`DynPanelView`) as a mounted view.
 pub(crate) struct PanelMount {
@@ -277,45 +171,6 @@ where
     }
 }
 
-/// The mounted changes tree's canvas ask: a ONCE verb, because the
-/// modal-request channel refuses Shell verbs (that guard predates
-/// the windowless fork) — this one performs the windowless open
-/// directly: commit changeset ask, then the CanvasPlace to the
-/// seated shell.
-struct OpenCanvasFromChanges {
-    origin: ViewBridgeId,
-    changes: imba::store::Id<changesview::hichanges::Changes>,
-    source: changesview::hichanges::CanvasSource,
-    reveal: Option<editor::location::ResourceLocation>,
-}
-
-impl imba::command::DynamicOnceCommand for OpenCanvasFromChanges {
-    fn perform(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
-        if let changesview::hichanges::CanvasSource::Commit { folder, id } = &self.source {
-            if let Some(history) =
-                changesview::hichanges::Changes::of(store, self.changes).map(|held| held.history())
-            {
-                changesview::hihistory::History::ask(
-                    store,
-                    history,
-                    changesview::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
-                );
-            }
-        }
-        crate::shell::navigate_origin(
-            store,
-            ui,
-            self.origin,
-            ::canvas::diff_canvas::CanvasPlace {
-                changes: self.changes,
-                source: self.source,
-                reveal: self.reveal,
-            },
-            fx,
-        );
-    }
-}
-
 /// The palette's view, built by the plugin that owns it from the
 /// commands the engine walked (`Himark::session_commands`).
 pub type PaletteFactory = std::sync::Arc<
@@ -343,6 +198,51 @@ pub type ModalPlaceArm = std::sync::Arc<
         + Send
         + Sync,
 >;
+
+/// An EXTERNAL BRIDGE arm: a plugin answers a place with a mounted
+/// view of ANY shape — it mints through `Himark::mount` itself
+/// (the AHP plugin's whole session vocabulary registers here).
+/// Registered at boot (`Himark::register_bridge_arm`);
+/// `mount_place` consults these before the modal arms.
+pub type BridgePlaceArm = std::sync::Arc<
+    dyn Fn(
+        &mut crate::himark::Himark,
+        &hikit::navigation::NavigationLocation,
+    ) -> Option<ViewBridgeId>,
+>;
+
+/// An erased PANEL as a mounted view — the wrapper a bridge arm
+/// answers with for panel-shaped content (the chat pane).
+pub fn panel_mount(id: ViewBridgeId, panel: Box<dyn hikit::panel::DynPanelView>) -> Arc<dyn BridgeView> {
+    Arc::new(PanelMount { id, panel })
+}
+
+/// A typed dock view (`View` + `ModalView`) as a mounted view.
+pub fn modal_mount<V>(id: ViewBridgeId, view: V) -> Arc<dyn BridgeView>
+where
+    V: imba::View + hikit::modal::ModalView + 'static,
+{
+    Arc::new(ModalMount { id, view })
+}
+
+/// An erased MODAL as a mounted view (the palette's factory
+/// answers one).
+pub fn dyn_modal_mount(
+    id: ViewBridgeId,
+    view: Box<dyn hikit::modal::ModalView>,
+) -> Arc<dyn BridgeView> {
+    Arc::new(DynModalMount { id, view })
+}
+
+/// A BARE single-document editor as a mounted view — the stage
+/// road's pushed "file" screen (the host's scroller owns the
+/// viewport).
+pub fn editor_mount(
+    id: ViewBridgeId,
+    view: ::documents::entity_view::EditorIdView,
+) -> Arc<dyn BridgeView> {
+    Arc::new(EditorMount { id, view })
+}
 
 /// The POPOVER's bridge: re-derives the parent's frame in its own
 /// arena and stands overlay #index's content alone. The parent's
@@ -653,400 +553,15 @@ fn route_modal_request(
 pub fn mount_place(
     app: &mut crate::himark::Himark,
     place: &hikit::navigation::NavigationLocation,
-    session: Option<ahp_wire::SessionId>,
 ) -> Option<ViewBridgeId> {
-    let minted = mount_place_inner(app, place)?;
-    // The READY places (a document, a diff view, a canvas) carry no
-    // session key of their own — the ORIGIN's session rode the place
-    // handle instead. Without it the mount answered `session_of`
-    // with nothing, and every open FROM it (goto-definition, a
-    // diff's walk-back) was declined by every shell.
-    if let Some(session) = session {
-        app.setup(|store| remember_session(store, minted, session));
-    }
-    Some(minted)
-}
-
-fn mount_place_inner(
-    app: &mut crate::himark::Himark,
-    place: &hikit::navigation::NavigationLocation,
-) -> Option<ViewBridgeId> {
-    if let Some(place) = place.place::<crate::places::ChatPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
-            let panel = ahp_chat::chats::Chats::open_with(
-                store,
-                ui,
-                state.chats(),
-                key.host,
-                key.session.clone(),
-                chat,
-                None,
-            );
-            Some(Arc::new(PanelMount { id, panel }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::ChatTranscriptPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
-            ahp_chat::chats::Chats::ensure_chat(
-                store,
-                ui,
-                state.chats(),
-                key.host,
-                key.session.clone(),
-                chat.clone(),
-                None,
-            );
-            Some(Arc::new(PanelMount {
-                id,
-                panel: Box::new(ahp_chat::transcript::TranscriptPane::new(
-                    state.chats(),
-                    chat,
-                )),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::ChatComposerPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let chat = ahp_session::session::agents::Agents::channel(store, &key)?.default_chat?;
-            ahp_chat::chats::Chats::ensure_chat(
-                store,
-                ui,
-                state.chats(),
-                key.host,
-                key.session.clone(),
-                chat.clone(),
-                None,
-            );
-            Some(Arc::new(PanelMount {
-                id,
-                panel: Box::new(ahp_chat::composer::ComposerPane::new(state.chats(), chat)),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::ChangesPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let changes = state.changes();
-            // A row tap opens THAT ROW'S DIFF — no canvas on the
-            // mounted road (the desktop's multi-diff canvas stays a
-            // workbench face); the shell pushes one split-diff.
-            let row_key = key.clone();
-            let opener: changesview::changes_view::CanvasOpener =
-                Arc::new(move |source, location| {
-                    imba::command::Verb::once(OpenDiffFromChanges {
-                        origin: id,
-                        session: row_key.clone(),
-                        changes,
-                        source,
-                        reveal: location,
-                    })
-                });
-            let view = changesview::changes_view::ChangesView::open(
-                store,
-                ui,
-                changes,
-                changesview::changes_view::ViewSets::WorkingCopies,
-                opener,
-            );
-            let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Arc::new(ModalMount {
-                id,
-                view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::ChangesCanvasPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let changes = state.changes();
-            // The DESKTOP flavor: a row opens the MULTI-DIFF CANVAS
-            // (user law — iOS keeps one inline diff per row). The
-            // windowed verb forks windowless at the missing entity
-            // and hands the shell a CanvasPlace.
-            let opener: changesview::changes_view::CanvasOpener =
-                Arc::new(move |source, reveal| {
-                    imba::command::Verb::once(OpenCanvasFromChanges {
-                        origin: id,
-                        changes,
-                        source,
-                        reveal,
-                    })
-                });
-            let view = changesview::changes_view::ChangesView::open(
-                store,
-                ui,
-                changes,
-                changesview::changes_view::ViewSets::WorkingCopies,
-                opener,
-            );
-            let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Arc::new(ModalMount {
-                id,
-                view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::HistoryPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let changes = state.changes();
-            let opener: changesview::changes_view::CanvasOpener =
-                Arc::new(move |source, reveal| {
-                    imba::command::Verb::once(OpenCanvasFromChanges {
-                        origin: id,
-                        changes,
-                        source,
-                        reveal,
-                    })
-                });
-            let view = changesview::changes_view::ChangesView::open(
-                store,
-                ui,
-                changes,
-                changesview::changes_view::ViewSets::History,
-                opener,
-            );
-            let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(Arc::new(ModalMount {
-                id,
-                view: changesview::changes_view::ChangesPane::new(changes, view),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::FolderPickerPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, fx| {
-            remember_session(store, id, key.clone());
-            let pick =
-                crate::higent::folder_grant::folder_pick(store, key.host, key.session.clone());
-            let view = fx.scope(
-                move |command: crate::higent::folder_picker::FolderPickerCommand| {
-                    AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
-                },
-                |fx| {
-                    // The island's glass is the sheet — the picker
-                    // keeps only its hairlines.
-                    crate::higent::folder_picker::FolderPicker::open(store, ui, pick, fx)
-                        .unfloored()
-                },
-            );
-            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::SearchPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, _fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let lists = state.lists();
-            let folders = ahp_session::session::folders::session_folders(store, &key);
-            ::locations::LocationLists::adopt_folders(store, lists, &folders);
-            let view = ::locations::search::SearchView::open(store, ui, lists);
-            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::CommentsPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, fx| {
-            remember_session(store, id, key.clone());
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let comments = state.comments();
-            let wire = state.comments_wire();
-            let folders = ahp_session::session::folders::session_folders(store, &key);
-            fx.scope(crate::perform::AppCommand::Verb, |fx| {
-                for folder in folders {
-                    ahp_comments::ensure(store, wire, &folder, fx);
-                }
-            });
-            let view = ::comments::panel::CommentsView::open(store, ui, comments);
-            Some(Arc::new(ModalMount { id, view }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<::canvas::diff_canvas::CanvasPlace>() {
-        let place = place.clone();
-        return app.mount(move |store, ui, id, fx| {
-            // The canvas mints through ITS navigator — the same
-            // road a workbench pane rides.
-            let panel = fx.scope(crate::perform::AppCommand::Verb, |fx| {
-                hikit::navigation::Navigator::navigate(
-                    &::canvas::faces::CanvasNavigator,
-                    store,
-                    ui,
-                    &place,
-                    fx,
-                )
-            })?;
-            Some(Arc::new(PanelMount { id, panel }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::FilesPlace>() {
-        let key = place.0.clone();
-        return app.mount(move |store, ui, id, fx| {
-            remember_session(store, id, key.clone());
-            // A tree born while a follow STANDS replays it — the
-            // active editor is revealed however late the tree shows.
-            if let Some((location, generation)) = remember_files_tree(store, key.clone(), id) {
-                if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
-                    eprintln!(
-                        "[follow] tree {} mounts with standing follow {location:?} gen {generation}",
-                        id.raw()
-                    );
-                }
-                fx.follow_up(AppCommand::ToView(
-                    id,
-                    DynCommand::new(filetree::TreeCommand::Follow {
-                        location,
-                        generation,
-                    }),
-                ));
-            }
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let tree = fx.scope(
-                move |command: filetree::TreeCommand| {
-                    AppCommand::ToView(id, DynCommand::new(command))
-                },
-                |fx| crate::hifiles::open_panel(store, ui, key.clone(), state.trees(), None, fx),
-            );
-            Some(Arc::new(ModalMount { id, view: tree }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::OpenDocumentPlace>() {
-        let document = place.document;
-        let target = place.target.clone();
-        return app.mount(move |store, ui, id, fx| {
-            let target = target.clone();
-            // Mounted places carry no window to ask for a session: a
-            // registered document lives in exactly one collection —
-            // find it across the (few) session states.
-            let collection = ahp_session::session::state::Hosts::states(store)
-                .into_iter()
-                .map(|state| state.documents())
-                .collect::<Vec<_>>()
-                .into_iter()
-                .find(|collection| {
-                    ::documents::OpenDocuments::document(store, *collection, document).is_some()
-                })?;
-            let mut held = ::documents::OpenDocuments::document(store, collection, document)?;
-            let width = fallback_editor_width(store);
-            let editor = fx.scope(
-                move |command: ::editor::editor_view::EditorCommand| {
-                    AppCommand::Verb(imba::command::Verb::at(
-                        collection,
-                        ::documents::DocumentsCommand::Editor(document, command),
-                    ))
-                },
-                // The TARGET rides into the mount, exactly as the
-                // windowed road's `show_document` passes it — a
-                // goto-definition landed at the top of the file
-                // while this said `None`.
-                |fx| ::documents::lifecycle::mount_editor(store, ui, &mut held, width, target, fx),
-            );
-            ::documents::scroll_stripes::enable_scroll_stripes(
-                store, collection, document, &mut held, editor,
-            );
-            ::documents::OpenDocuments::put_document(store, collection, document, held);
-            ::documents::OpenDocuments::touch(store, collection, document);
-            // Remembered to its session: the palette's command walk
-            // and the dispatch fork's session binding reach this
-            // pane — comments.add, save-all and friends work from
-            // the document pane, not just the chat's.
-            if let Some(key) =
-                ahp_session::session::state::Hosts::owner_key_of_documents(store, collection)
-            {
-                remember_session(store, id, key);
-            }
-            // BARE — no imba scroller: the editor screen rides the
-            // stage road, and the native scroller owns the physics
-            // (docs/ui/imba-ffi.md, touch section).
-            let view = ::documents::entity_view::EditorIdView::new(collection, document, editor)
-                .with_gutter();
-            Some(Arc::new(EditorMount { id, view }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::DiffViewPlace>() {
-        let documents = place.documents;
-        let view = place.view;
-        return app.mount(move |store, ui, id, fx| {
-            if let Some(key) =
-                ahp_session::session::state::Hosts::owner_key_of_documents(store, documents)
-            {
-                remember_session(store, id, key);
-            }
-            let mut panel = ::canvas::diff_pane::DiffPanelView::over(documents, view);
-            // One file, one column: the phone shows diffs INLINE —
-            // the pane's own layout road, persisted in the view
-            // state (a no-op when already inline).
-            fx.scope(
-                move |command: ::editor::unified_diff::UnifiedDiffCommand| {
-                    AppCommand::ToView(id, DynCommand::new(command))
-                },
-                |fx| {
-                    imba::View::perform(
-                        &mut panel,
-                        store,
-                        ui,
-                        ::editor::unified_diff::UnifiedDiffCommand::SetLayout(
-                            ::editor::unified_diff::DiffLayout::Inline,
-                        ),
-                        fx,
-                    )
-                },
-            );
-            Some(Arc::new(PanelMount {
-                id,
-                panel: Box::new(panel),
-            }) as Arc<dyn BridgeView>)
-        });
-    }
-    if let Some(place) = place.place::<crate::places::PalettePlace>() {
-        // The command walk runs BEFORE the mount, with the app in
-        // hand: the session's mounted views answer what they offer,
-        // and the global registry rides on top bound to the palette
-        // itself — a windowed command landing on a mount forks to
-        // its windowless road.
-        let make = app.palette_factory()?;
-        let session = place.0.clone();
-        let mut commands = app.session_commands(&session);
-        return app.mount(move |store, ui, id, _fx| {
-            // The mount's facts, bound at mint: the origin bridge
-            // and the session this palette was opened over — the
-            // registry's session commands work from the native
-            // palette exactly as from a window's.
-            let mut bound = imba::focus::Bindings::new().bind(id);
-            if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned()
-            {
-                bound = bound.bind(state);
-            }
-            bound = bound.bind(session.clone());
-            commands.extend(crate::commands::Commands::of(store).iter().map(|command| {
-                imba::PresentableCommand::new(
-                    command.id(),
-                    command.name(),
-                    crate::perform::AppCommand::Bound(bound.clone(), command.clone()),
-                )
-            }));
-            Some(Arc::new(DynModalMount {
-                id,
-                view: make(store, ui, commands),
-            }) as Arc<dyn BridgeView>)
-        });
+    // The EXTERNAL BRIDGE arms — plugins answering with any mount
+    // shape (the AHP plugin's session vocabulary).
+    let bridge_arms = app.bridge_place_arms.clone();
+    for arm in bridge_arms {
+        let minted = arm(app, place);
+        if minted.is_some() {
+            return minted;
+        }
     }
     // The EXTERNAL arms — plugins registered above this crate.
     let arms = app.modal_place_arms.clone();
@@ -1247,54 +762,10 @@ impl BridgeView for EditorMount {
     }
 }
 
-/// The changes tree asked to open a row: find THAT ROW'S pair in
-/// the set's listing (the same normalization the canvas rows use)
-/// and launch the pair-open with the MOUNTED origin — the landing
-/// installs the view and hands the shell a ready `DiffViewPlace`.
-struct OpenDiffFromChanges {
-    origin: ViewBridgeId,
-    session: ahp_wire::SessionId,
-    changes: imba::store::Id<changesview::hichanges::ChangeSets>,
-    source: changesview::hichanges::CanvasSource,
-    reveal: Option<editor::location::ResourceLocation>,
-}
-
-impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
-    fn perform(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
-        let Some(reveal) = self.reveal else {
-            eprintln!("[mount] changes open: no reveal (a folder row?)");
-            return;
-        };
-        let (_, listing) = ::canvas::diff_canvas::canvas_files(store, self.changes, &self.source);
-        let ::canvas::diff_canvas::CanvasListing::Ready(files) = listing else {
-            eprintln!("[mount] changes open: listing not ready");
-            return;
-        };
-        let Some(file) = files.into_iter().find(|file| file.new == reveal) else {
-            eprintln!("[mount] a changes row vanished before its diff opened — dropped");
-            return;
-        };
-        // The seated shell owns the diff's opening: hand it the
-        // place (MountFrontend resolves the sides against the
-        // origin's session and launches the same effect this arm
-        // used to push by hand).
-        crate::shell::navigate_origin(
-            store,
-            ui,
-            self.origin,
-            crate::places::DiffPlace {
-                old: file.old,
-                new: file.new,
-            },
-            fx,
-        );
-    }
-}
-
 /// The width a mounted editor wraps at before its host measures it
 /// — the same theme-derived fallback a workbench pane uses, read
 /// from the window chrome part (a THEME fact, no window needed).
-pub(crate) fn fallback_editor_width(store: &imba::store::Store) -> f32 {
+pub fn fallback_editor_width(store: &imba::store::Store) -> f32 {
     let theme = ::editor::env::Themes::of(store);
     let window = theme.part(::editor::theme::WindowChrome::KEY);
     let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
