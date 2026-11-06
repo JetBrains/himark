@@ -1,12 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-#[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
-use workbench_shell::app::WorkbenchShell as _;
-#[allow(unused_imports)]
-use workbench_shell::app_ext::AppExt as _;
 use std::future::Future;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -16,11 +10,20 @@ use std::sync::{
 use himark::app::AppCommand;
 use himark::app::AppFx;
 use himark::commands::HimarkCommand;
-use workbench_shell::workspace::open_locations;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
+
+/// The CAPABILITY-GATED chrome seats: what the composition layer
+/// registers when the host's callbacks carry a capability (the
+/// workbench's Open… command for a file picker, its share commands
+/// for a clipboard). Seated before `set_host` runs.
+#[derive(Clone, Default)]
+pub struct HostChrome {
+    pub on_pick_files: Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark) + Send + Sync>>,
+    pub on_clipboard: Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark) + Send + Sync>>,
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -279,7 +282,7 @@ impl HostBridge {
 }
 
 pub struct FilePickerEffect {
-    window: workbench::window::WindowId,
+    pub origin: himark::bridge::ViewBridgeId,
 }
 
 impl std::fmt::Display for FilePickerEffect {
@@ -357,156 +360,12 @@ impl EffectHandler<FilePickerEffect> for FilePickerHandler {
             return Vec::new();
         };
         let request = self.0.requests.begin();
-        unsafe { pick(self.0.callbacks.ctx, request, effect.window.raw()) };
+        unsafe { pick(self.0.callbacks.ctx, request, effect.origin.raw()) };
         self.0.requests.response(request).await
     }
 }
 
-pub(crate) struct OpenFilePicker;
 
-impl HimarkCommand for OpenFilePicker {
-    fn id(&self) -> &'static str {
-        "file.open"
-    }
-    fn name(&self) -> String {
-        "Open…".to_owned()
-    }
-    fn perform(
-        &self,
-        _store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
-        bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
-        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
-            return;
-        };
-        let _ = fx.push(
-            AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
-                workbench_shell::shell::windowed(window, Arc::new(OpenPicked { locations }))
-            }),
-        );
-    }
-}
-
-struct OpenPicked {
-    locations: Vec<ResourceLocation>,
-}
-
-fn open_folder_session(
-    store: &mut Store,
-    window: workbench::window::WindowId,
-    folders: &[ResourceLocation],
-    fx: &mut AppFx<'_>,
-) -> bool {
-    let Some((host, client, _)) = ahp_wire::client::route_client(store, "local") else {
-        return false;
-    };
-    let Some(uris) = ahp_session::session::state::Hosts::uris(store, host) else {
-        return false;
-    };
-    let dirs: Vec<String> = folders
-        .iter()
-        .map(|folder| uris.uri_of(folder).into_string())
-        .collect();
-    let existing = ahp_session::session::agents::Agents::record(store, host).and_then(|record| {
-        record
-            .sessions
-            .iter()
-            .find(|summary| {
-                summary.working_directories.as_ref().is_some_and(|held| {
-                    held.len() == dirs.len() && dirs.iter().all(|dir| held.contains(dir))
-                })
-            })
-            .map(|summary| ahp_wire::client::SessionUri::new(summary.resource.clone()))
-    });
-    match existing {
-        Some(session) => {
-            workbench_shell::higent::open_session::open_session(store, window, host, session, false, fx)
-        }
-        None => {
-            let _ = fx.push(
-                AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
-                    options: ahp_wire::client::SessionOptions::default(),
-                    client: client.session.clone(),
-                    working_directories: dirs,
-                })
-                .map(move |result| {
-                    workbench_shell::shell::windowed(
-                        window,
-                        Arc::new(workbench_shell::higent::open_session::OpenCreatedSession {
-                            initial_prompt: None,
-                            server: host,
-                            open_chat: false,
-                            result,
-                        }),
-                    )
-                }),
-            );
-        }
-    }
-    true
-}
-
-impl HimarkCommand for OpenPicked {
-    fn id(&self) -> &'static str {
-        "file.open-picked"
-    }
-    fn name(&self) -> String {
-        "Open Picked".to_owned()
-    }
-    fn perform(
-        &self,
-        store: &mut imba::store::Store,
-        ui: &imba::ui::UiCtx,
-        bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
-        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
-            return;
-        };
-        let ui = ui;
-        let (folders, documents): (Vec<_>, Vec<_>) = self
-            .locations
-            .iter()
-            .cloned()
-            .partition(|location| location.kind().is_directory());
-        if !folders.is_empty() {
-            let workspace = workbench::window::Windows::window_ref(store, window)
-                .map(|entity| workbench_shell::workspace::entity_session(&entity))
-                .unwrap_or_else(|| ahp_wire::SessionId::local_default(store));
-            let state = workbench_shell::workspace::session_state(store, window);
-            if let (true, Some(state)) = (workspace.names_session(), state) {
-                let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
-                let diagnostics_wire = state.diagnostics_wire();
-                for folder in folders {
-                    let spelled = editor::location::ResourceLocation::new(
-                        folder.kind().clone(),
-                        editor::location::Authority::new(ahp_wire::client::authority(
-                            workspace.host,
-                            &workspace.session,
-                        )),
-                        folder.path().to_vec(),
-                    );
-                    fx.scope(AppCommand::Verb, |fx| {
-                        ahp_changes::changes::ensure_folder(store, wire, spelled.clone(), fx)
-                    });
-                    fx.scope(AppCommand::Verb, |fx| {
-                        ahp_comments::ensure(store, comments_wire, &spelled, fx)
-                    });
-                    fx.scope(AppCommand::Verb, |fx| {
-                        ahp_lsp::diagnostics::ensure(store, diagnostics_wire, &spelled, fx)
-                    });
-                }
-            } else if !open_folder_session(store, window, &folders, fx) {
-                eprintln!("[host] folder pick dropped: no local agent host to session it");
-            }
-        }
-        if !documents.is_empty() {
-            open_locations(store, ui, window, &documents, fx);
-        }
-    }
-}
 
 pub(crate) struct PickSaveHandler(pub(crate) Arc<HostBridge>);
 
@@ -529,7 +388,7 @@ impl EffectHandler<documents::PickSaveEffect> for PickSaveHandler {
 
 #[cfg(test)]
 mod request_tests {
-    use super::*;
+    use crate::host::*;
 
     #[test]
     fn a_dropped_response_future_cleans_its_slot_and_fulfill_answers_false() {

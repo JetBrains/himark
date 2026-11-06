@@ -1,0 +1,26 @@
+[package]
+name = "himark-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+himark = { path = "../himark" }
+imba = { path = "../imba" }
+gfx = { path = "../gfx" }
+editor = { path = "../editor" }
+documents = { path = "../documents" }
+hikit = { path = "../hikit" }
+canvas = { path = "../canvas" }
+myersdiff = { path = "../myersdiff" }
+ahp-wire = { path = "../ahp-wire" }
+ahp-session = { path = "../ahp-session" }
+ahp-docsync = { path = "../ahp-docsync" }
+ahp-lsp = { path = "../ahp-lsp" }
+ahp-locations = { path = "../ahp-locations" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+gfx-skia = { path = "../gfx-skia", optional = true }
+skia-safe = { version = "0.153", optional = true }
+
+[features]
+skia-shell = ["dep:skia-safe", "dep:gfx-skia"]

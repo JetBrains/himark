@@ -60,11 +60,11 @@ rustup target list --installed | grep -qx "$RUST_TARGET" || {
 # compiles its own runtime/cgo with -Werror (see build.sh).
 export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }-Wno-sign-compare"
 
-echo "==> cargo build -p frontend-host --release --target $RUST_TARGET"
-( cd "$ROOT" && cargo build -p frontend-host --release --target "$RUST_TARGET" )
+echo "==> cargo build -p himark-capi --release --target $RUST_TARGET"
+( cd "$ROOT" && cargo build -p himark-capi --release --target "$RUST_TARGET" )
 
 # The FFI header the bridging header includes — keep it the build's.
-cp "$ROOT/frontend/frontend-host/include/himark.h" ./himark.h
+cp "$ROOT/frontend/himark-capi/include/himark.h" ./himark.h
 
 # The skia-bindings out-dir rotates with dependency bumps, and the
 # xcconfig's link paths were evaluated BEFORE this phase ran: when
@@ -73,7 +73,7 @@ cp "$ROOT/frontend/frontend-host/include/himark.h" ./himark.h
 # against a stale skia).
 # (The reader DRAINS stdin — an early break would SIGPIPE cargo and
 # pipefail would read that as the build failing.)
-SKIA="$(cd "$ROOT" && cargo build -p frontend-host --release --target "$RUST_TARGET" \
+SKIA="$(cd "$ROOT" && cargo build -p himark-capi --release --target "$RUST_TARGET" \
   --message-format=json 2>/dev/null | python3 -c "
 import sys, json
 out = None

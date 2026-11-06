@@ -1,0 +1,67 @@
+[package]
+name = "himark-plugins"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+himark = { path = "../himark" }
+editor = { path = "../editor" }
+documents = { path = "../documents" }
+hisitter = { path = "../hisitter" }
+myersdiff = { path = "../myersdiff" }
+ahp-wire = { path = "../ahp-wire" }
+ahp-session = { path = "../ahp-session" }
+ahp-docsync = { path = "../ahp-docsync" }
+host-discovery = { path = "../../protocol/host-discovery" }
+himarkdown = { path = "../plugins/himarkdown" }
+himermaid = { path = "../plugins/himermaid" }
+hicode = { path = "../plugins/hicode" }
+hirust = { path = "../plugins/lang/hirust" }
+hipython = { path = "../plugins/lang/hipython" }
+hijavascript = { path = "../plugins/lang/hijavascript" }
+hitypescript = { path = "../plugins/lang/hitypescript" }
+higo = { path = "../plugins/lang/higo" }
+hijava = { path = "../plugins/lang/hijava" }
+hic = { path = "../plugins/lang/hic" }
+hicpp = { path = "../plugins/lang/hicpp" }
+hicsharp = { path = "../plugins/lang/hicsharp" }
+hiruby = { path = "../plugins/lang/hiruby" }
+hiphp = { path = "../plugins/lang/hiphp" }
+hibash = { path = "../plugins/lang/hibash" }
+hilua = { path = "../plugins/lang/hilua" }
+hiswift = { path = "../plugins/lang/hiswift" }
+hikotlin = { path = "../plugins/lang/hikotlin" }
+hiscala = { path = "../plugins/lang/hiscala" }
+hihaskell = { path = "../plugins/lang/hihaskell" }
+hielixir = { path = "../plugins/lang/hielixir" }
+hiocaml = { path = "../plugins/lang/hiocaml" }
+hizig = { path = "../plugins/lang/hizig" }
+hisql = { path = "../plugins/lang/hisql" }
+hijson = { path = "../plugins/lang/hijson" }
+hicss = { path = "../plugins/lang/hicss" }
+hihtml = { path = "../plugins/lang/hihtml" }
+hiyaml = { path = "../plugins/lang/hiyaml" }
+hitoml = { path = "../plugins/lang/hitoml" }
+hicmake = { path = "../plugins/lang/hicmake" }
+hid = { path = "../plugins/lang/hid" }
+hidart = { path = "../plugins/lang/hidart" }
+hielm = { path = "../plugins/lang/hielm" }
+hierlang = { path = "../plugins/lang/hierlang" }
+hifortran = { path = "../plugins/lang/hifortran" }
+hifsharp = { path = "../plugins/lang/hifsharp" }
+higleam = { path = "../plugins/lang/higleam" }
+higlsl = { path = "../plugins/lang/higlsl" }
+higraphql = { path = "../plugins/lang/higraphql" }
+higroovy = { path = "../plugins/lang/higroovy" }
+hihcl = { path = "../plugins/lang/hihcl" }
+hijulia = { path = "../plugins/lang/hijulia" }
+himake = { path = "../plugins/lang/himake" }
+hinix = { path = "../plugins/lang/hinix" }
+hiobjc = { path = "../plugins/lang/hiobjc" }
+hiodin = { path = "../plugins/lang/hiodin" }
+hiperl = { path = "../plugins/lang/hiperl" }
+hipowershell = { path = "../plugins/lang/hipowershell" }
+hir = { path = "../plugins/lang/hir" }
+hisolidity = { path = "../plugins/lang/hisolidity" }
+hixml = { path = "../plugins/lang/hixml" }

@@ -11,6 +11,10 @@ use std::sync::Arc;
 
 pub mod app;
 pub mod builtins;
+#[cfg(feature = "capi")]
+pub mod capi;
+#[cfg(feature = "capi")]
+pub mod pickers;
 pub mod diff_pane;
 pub mod folder_grant_windows;
 pub mod app_ext;

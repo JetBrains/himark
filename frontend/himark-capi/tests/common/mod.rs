@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Shared helpers of the frontend-host integration tests.
+//! Shared helpers of the himark-capi integration tests.
 #![allow(dead_code)]
 
 use std::sync::Arc;

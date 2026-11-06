@@ -1,19 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-// The C surface never compiles for the web shell — the inner gate
-// keeps cbindgen reading the items while rustc skips them on wasm.
-// ALL of wasm: the threaded (atomics) web build is still the web
-// shell, with its own emscripten entry — and the runtime here rides
-// tokio's net driver, which has no wasm port (mio).
-#![cfg(not(target_arch = "wasm32"))]
+//! The C BRIDGE to himark — sessions, minted bridges, the stage
+//! road, IME, overlays: the surface a native shell (the iOS app)
+//! consumes. Window-free by construction: the workbench's own C
+//! half lives in `workbench-shell::capi`.
 
-#[allow(unused_imports)]
 use himark::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use workbench_shell::app::WorkbenchShell as _;
-#[allow(unused_imports)]
-use workbench_shell::app_ext::AppExt as _;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
 use std::sync::{Arc, Mutex};
@@ -29,7 +23,6 @@ pub use host::{HimarkHostCallbacks, HimarkLocation};
 
 use himark::app::AppCommand;
 use himark::app::Himark;
-use workbench_shell::app_ext::AppExt;
 use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
 pub use imba::event::PointerShape;
@@ -48,9 +41,7 @@ use gfx::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
-pub fn wid(window: u64) -> workbench::window::WindowId {
-    workbench::window::WindowId::from_raw(window)
-}
+
 
 #[derive(Clone, Copy, Default)]
 pub struct AgentHostFilesystemCapabilities {
@@ -83,15 +74,7 @@ pub struct HimarkEngine {
     languages: Arc<editor::reparse::SyntaxLanguages>,
 
     /// The normalized surface's stage tables (`bridges`).
-    pub(crate) stages: bridges::Stages,
-
-    /// Per-window: a touch beginning in one window must not break the
-    /// gesture — momentum included — still flowing in another.
-    scroll_states: std::collections::HashMap<u64, WindowScroll>,
-
-    /// Per STAGE FRAME: the gesture stream behind `offer_stage_scroll`
-    /// — keyed by frame handle, a different space than bridge ids.
-    stage_wheels: std::collections::HashMap<u64, WindowScroll>,
+    pub(crate) stages: crate::bridges::Stages,
 
     pub compose_new_windows: bool,
 
@@ -101,16 +84,11 @@ pub struct HimarkEngine {
 
     clients: Arc<ahp_wire::fs::ClientDirectory>,
 
-    shared: Arc<Shared>,
-
     _document_channels: Arc<docsync::DocumentChannels>,
-
-    drain_chunk: usize,
-    drain_budget: std::time::Duration,
 
     resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 
-    clicks: ClickCounter,
+    pub clicks: ClickCounter,
 
     /// The cut text between the host's two sized-string calls
     /// (`himark_cut`): the sizing probe performs the cut — it deletes
@@ -118,35 +96,10 @@ pub struct HimarkEngine {
     /// drains this stash.
     pending_cut: Option<String>,
 
-    runtime: tokio::runtime::Runtime,
-}
-
-/// One window's scroll-gesture stream: the capture cell scroll events
-/// ride, the time of the last event for the phaseless pause
-/// heuristic, and the deltas accumulated since the last flush.
-#[derive(Default)]
-struct WindowScroll {
-    gesture: imba::event::ScrollGesture,
-    last: Option<std::time::Instant>,
-    pending: Option<PendingScroll>,
-}
-
-/// Wheel deltas coalesced between flushes: the batch behind a scroll
-/// (frame invalidation, the settle pulse, the focus walk) runs once
-/// per display tick, not once per host event. Only same-point deltas
-/// merge — a moved point, a gesture boundary or any other input
-/// flushes first, so routing stays event-exact.
-struct PendingScroll {
-    point: Point,
-    delta_x: f32,
-    delta_y: f32,
-    /// The OLDEST unflushed event's start — latency is measured from
-    /// the input that has waited longest.
-    event_started_at: f64,
 }
 
 #[derive(Default)]
-struct ClickCounter {
+pub struct ClickCounter {
     last: Option<std::time::Instant>,
     point: (f32, f32),
     count: u8,
@@ -155,7 +108,7 @@ struct ClickCounter {
 impl ClickCounter {
     const SLACK: f32 = 6.0;
 
-    fn count(&mut self, x: f32, y: f32) -> u8 {
+    pub fn count(&mut self, x: f32, y: f32) -> u8 {
         let now = std::time::Instant::now();
         let run = self
             .last
@@ -169,40 +122,9 @@ impl ClickCounter {
     }
 }
 
-fn register_agent_server(
-    app: &mut Himark,
-    clients: &ahp_wire::fs::ClientDirectory,
-    name: &str,
-    client: ahp_wire::client::Client,
-) -> ahp_wire::client::HostId {
-    let id = app.register_client(client.clone());
-    app.setup(|store| {
-        ahp_session::session::agents::Agents::seed(store, id, name);
-        ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
-    });
-    clients.record(id, client);
-    id
-}
 
-#[derive(Clone)]
-pub struct HimarkWorker {
-    shared: Arc<Shared>,
-}
 
-struct Shared {
-    inbox: Arc<Mutex<VecDeque<AppCommand>>>,
-
-    wake: Arc<WakeSlot>,
-
-    effect_wake: Arc<WakeSlot>,
-
-    runner: BackgroundRunner,
-}
-
-#[derive(Default)]
-struct WakeSlot {
-    callback: Mutex<Option<WakeCallback>>,
-}
+pub use himark::host::Worker as HimarkWorker;
 
 #[derive(Clone, Copy)]
 struct Wake {
@@ -215,17 +137,6 @@ unsafe impl Send for Wake {}
 impl Wake {
     fn fire(self) {
         (self.callback)(self.context);
-    }
-}
-
-impl WakeSlot {
-    fn fire(&self) {
-        if let Some(wake) = self.callback.lock().expect("wake slot").as_ref() {
-            wake();
-        }
-    }
-    fn set(&self, callback: impl Fn() + Send + 'static) {
-        *self.callback.lock().expect("wake slot") = Some(Box::new(callback));
     }
 }
 
@@ -310,6 +221,21 @@ pub const HIMARK_SCROLL_PHASE_MOMENTUM_ENDED: u32 = 7;
 /// spawned it. Phaseless events and bare `changed` streams (hosts that
 /// never report a `began`) fall back to the pause heuristic so a stale
 /// owner cannot wedge the routing forever.
+pub(crate) fn scroll_phase(phase: u32) -> himark::host::ScrollPhase {
+    use himark::host::ScrollPhase as P;
+    match phase {
+        HIMARK_SCROLL_PHASE_MAY_BEGIN => P::MayBegin,
+        HIMARK_SCROLL_PHASE_BEGAN => P::Began,
+        HIMARK_SCROLL_PHASE_CHANGED => P::Changed,
+        HIMARK_SCROLL_PHASE_ENDED => P::Ended,
+        HIMARK_SCROLL_PHASE_CANCELLED => P::Cancelled,
+        HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN => P::MomentumBegan,
+        HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED => P::MomentumChanged,
+        HIMARK_SCROLL_PHASE_MOMENTUM_ENDED => P::MomentumEnded,
+        _ => P::None,
+    }
+}
+
 pub fn scroll_gesture_boundary(phase: u32, paused: bool) -> bool {
     match phase {
         HIMARK_SCROLL_PHASE_MAY_BEGIN | HIMARK_SCROLL_PHASE_BEGAN => true,
@@ -353,9 +279,7 @@ pub fn map_mods(mods: u32) -> imba::event::Modifiers {
     }
 }
 
-fn app_fonts() -> AppFonts {
-    AppFonts::platform()
-}
+
 
 /// Everything the engine needs from its host, taken AT CREATION —
 /// no half-wired engine ever exists, and the effects a boot batch
@@ -371,8 +295,8 @@ pub struct HimarkEngineCallbacks {
     pub on_navigate: Option<
         unsafe extern "C" fn(
             ctx: *mut c_void,
-            origin: bridges::HimarkBridge,
-            place: bridges::HimarkPlace,
+            origin: crate::bridges::HimarkBridge,
+            place: crate::bridges::HimarkPlace,
             kind: u32,
             title: *const c_char,
             title_len: usize,
@@ -382,300 +306,43 @@ pub struct HimarkEngineCallbacks {
 }
 
 impl HimarkEngine {
-    /// Boot the engine over the HOST'S plugin list — the one
-    /// construction every shell shares. The callbacks apply before
-    /// the first batch can launch an effect.
-    pub fn with_plugins(
-        fonts: AppFonts,
-        plugins: &[Box<dyn himark::plugin::Plugin>],
-        connector: Arc<dyn ahp_wire::transport::Connector>,
-        callbacks: Option<HimarkEngineCallbacks>,
-    ) -> Self {
-        let mut app = workbench_shell::app::workbench_app(fonts);
-        let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(uris::FileUris);
-
-        let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
-        let wake = Arc::new(WakeSlot::default());
-        let effect_wake = Arc::new(WakeSlot::default());
-
-        let dispatcher = {
-            let inbox = inbox.clone();
-            let wake = wake.clone();
-            Arc::new(move |command: AppCommand| {
-                inbox.lock().expect("inbox").push_back(command);
-                wake.fire();
-            })
-        };
-
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .thread_name("himark-runtime")
-            .build()
-            .expect("the engine runtime");
-
-        let document_channels = docsync::DocumentChannels::new(
-            runtime.handle().clone(),
-            {
-                let dispatcher = dispatcher.clone();
-                Arc::new(move |verb| dispatcher(himark::app::AppCommand::Verb(verb)))
-            },
-            Arc::clone(&resource_uris),
-        );
-
-        // The docsync hook installs after the client directory exists (below).
-
-        let scheduler = {
-            let effect_wake = effect_wake.clone();
-            Arc::new(move || effect_wake.fire())
-        };
-        let runner = app.attach_host(dispatcher, scheduler);
-
-        let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
-            let inbox = inbox.clone();
-            let wake = wake.clone();
-            Arc::new(move |subscription| {
-                inbox
-                    .lock()
-                    .expect("inbox")
-                    .push_back(AppCommand::FileChanged(documents::watch::Subscription(
-                        subscription,
-                    )));
-                wake.fire();
-            })
-        }));
-
-        // The plugins install HERE, with the wire doors in hand: the
-        // ONE policy (Myers — what the diff view computes with is
-        // what the chat's cells are built with, time-bounded where
-        // the structural engine's per-region search stalled the
-        // worker) and the directory a route closes over.
-        let installed = himark::plugin::install_all(
-            &mut app,
-            Arc::new(myersdiff::Myers),
-            Arc::clone(&clients),
-            Arc::clone(&resource_uris),
-            plugins,
-        );
-        let languages = Arc::clone(&installed.languages);
-
-        // The composer button is WORKBENCH furniture, not a feature's
-        // — it stays the shell's own registration.
-        app.register_toolbar_button(workbench::toolbar::composer_button());
-
-        {
-            let clients = clients.clone();
-            let handle = runtime.handle().clone();
-            let connector = Arc::clone(&connector);
-            app.setup(|store| himark::higent::flows::AgentFlows::install_add_host(
-                store,
-                Arc::new(move |store, url| {
-                    let client =
-                        ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::at(
-                            handle.clone(),
-                            Arc::clone(&connector),
-                            url.to_owned(),
-                        )));
-                    // Minted into the STORE IN HAND — this runs inside
-                    // a batch, where the application's store is taken
-                    // out; a mint through the app would be clobbered
-                    // by the put-back.
-                    Some(himark::higent::flows::mint_agent_server(
-                        store,
-                        &clients,
-                        url.trim(),
-                        client,
-                    ))
-                }),
-            ));
-        }
-
-        app.setup(|store| {
-            documents::OpenDocuments::install_hook(
-                store,
-                Arc::new(docsync::DocsyncHook {
-                    channels: Arc::clone(&document_channels),
-                    directory: Arc::clone(&clients),
-                }),
-            )
-        });
-        app.register_handler::<documents::FetchDocumentEffect>(fsroute::RouteFetch {
-            uris: Arc::clone(&resource_uris),
-            directory: Arc::clone(&clients),
-        });
-        app.register_handler::<documents::FetchResourceBytesEffect>(fsroute::RouteFetchBytes {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::StoreDocumentEffect>(fsroute::RouteStore {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-            channels: Arc::clone(&document_channels),
-        });
-        app.register_handler::<documents::ListDirectoryEffect>(fsroute::RouteList {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::CreateDocumentEffect>(fsroute::RouteCreate {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::DeleteResourceEffect>(fsroute::RouteDelete {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::MoveResourceEffect>(fsroute::RouteMove {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::watch::SubscribeEffect>(fsroute::RouteSubscribe {
-            directory: Arc::clone(&clients),
-            uris: Arc::clone(&resource_uris),
-        });
-        app.register_handler::<documents::watch::UnsubscribeEffect>(fsroute::RouteUnsubscribe {
-            directory: Arc::clone(&clients),
-        });
-        app.observe_file_changes();
-
-        let mut engine = Self {
-            app,
-            languages,
-            compose_new_windows: false,
-            scroll_states: std::collections::HashMap::new(),
-            stage_wheels: std::collections::HashMap::new(),
-            drain_chunk: Self::DRAIN_CHUNK,
-            drain_budget: Self::DRAIN_BUDGET,
-            clicks: ClickCounter::default(),
-            stages: Default::default(),
-            pending_cut: None,
-            host: None,
-            agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
-            clients,
-            _document_channels: document_channels,
-            resource_uris,
-            shared: Arc::new(Shared {
-                inbox,
-                wake,
-                effect_wake,
-                runner,
-            }),
-            runtime,
-        };
-        // The host's callbacks, before any further batch can launch
-        // an effect into empty slots.
-        if let Some(callbacks) = callbacks {
-            engine.set_wake_raw(callbacks.wake, callbacks.ctx);
-            engine.set_effect_wake_raw(callbacks.effect_wake, callbacks.ctx);
-            if let Some(on_navigate) = callbacks.on_navigate {
-                bridges::seat_callback_shell(&mut engine, callbacks.ctx, on_navigate);
-            }
-        }
-        engine
-    }
-
-    pub fn add_window(&mut self) -> u64 {
-        let window = self.app.add_window();
-        if self.compose_new_windows {
-            self.app.perform_command(workbench_shell::shell::windowed(
-                window,
-                std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
-            ));
-        }
-        window.raw()
-    }
-
-    // The committed store is gathered for the PRIMARY window only, so a
-    // sibling window's entity is projected out of it — sizes must come
-    // from the live window state or every non-primary window hit-tests
-    // against a 1x1 layout.
-    fn window_size(&self, window: u64) -> Size {
-        self.app
-            .window_viewport(wid(window))
-            .unwrap_or_else(|| Size::new(1.0, 1.0))
-    }
-
     pub fn worker(&self) -> HimarkWorker {
-        HimarkWorker {
-            shared: self.shared.clone(),
-        }
+        self.app.worker()
     }
 
     pub fn set_wake(&self, callback: impl Fn() + Send + 'static) {
-        self.shared.wake.set(callback);
+        self.app.set_wake(callback);
     }
 
-    fn set_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
+    pub fn set_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
         let wake = Wake { callback, context };
         self.set_wake(move || wake.fire());
     }
 
     pub fn set_effect_wake(&self, callback: impl Fn() + Send + 'static) {
-        self.shared.effect_wake.set(callback);
+        self.app.set_effect_wake(callback);
     }
 
-    fn set_effect_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
+    pub fn set_effect_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
         let wake = Wake { callback, context };
         self.set_effect_wake(move || wake.fire());
     }
 
-    pub fn run_pending(&self) {
-        self.worker().run_pending();
-    }
-
-    const DRAIN_CHUNK: usize = 32;
-
-    const DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
-
     #[doc(hidden)]
     pub fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
-        self.drain_chunk = chunk;
-        self.drain_budget = budget;
+        self.app.set_drain_pacing(chunk, budget);
     }
 
     #[doc(hidden)]
     pub fn queued_landings(&self) -> usize {
-        self.shared.inbox.lock().expect("inbox").len()
+        self.app.queued_landings()
     }
 
     pub fn drain(&mut self) -> bool {
-        let started = std::time::Instant::now();
-        let mut needs_redraw = false;
-        loop {
-            let chunk: Vec<AppCommand> = {
-                let mut inbox = self.shared.inbox.lock().expect("inbox");
-                let take = inbox.len().min(self.drain_chunk.max(1));
-                inbox.drain(..take).collect()
-            };
-            if chunk.is_empty() {
-                break;
-            }
-            needs_redraw |= self.app.perform_batch(chunk);
-            if started.elapsed() >= self.drain_budget {
-                break;
-            }
-        }
-
-        if !self.shared.inbox.lock().expect("inbox").is_empty() {
-            self.shared.wake.fire();
-        }
-        needs_redraw
+        self.app.drain()
     }
 
-    pub fn draw(
-        &mut self,
-        window: u64,
-        canvas: &Canvas<'_>,
-        width: f32,
-        height: f32,
-        _scale: f32,
-    ) -> bool {
-        // A shell that draws without ticking (tests, direct renders)
-        // still applies the standing deltas before the frame.
-        let flushed = self.flush_scroll(window);
-        self.app
-            .draw_window_sized(wid(window), canvas, Size::new(width, height))
-            || flushed
-    }
+
 
     pub fn record_latency(&mut self, now_secs: f64) {
         let latency_ns = self.app.stats().latency_ns();
@@ -689,46 +356,13 @@ impl HimarkEngine {
         }
     }
 
-    pub fn key_down(&mut self, window: u64, key: u32, mods: u32) -> bool {
-        self.key_down_at(window, key, mods, 0.0)
-    }
 
-    pub fn key_down_at(&mut self, window: u64, key: u32, mods: u32, event_started_at: f64) -> bool {
-        self.flush_scroll(window);
-        match map_key(key) {
-            Some(key) => {
-                let size = self.window_size(window);
-                self.app.dispatch_timed(
-                    wid(window),
-                    Event::KeyDown {
-                        key,
-                        mods: map_mods(mods),
-                    },
-                    size,
-                    event_started_at,
-                )
-            }
-            None => false,
-        }
-    }
 
-    pub fn text_input(&mut self, window: u64, text: &str) -> bool {
-        self.text_input_at(window, text, 0.0)
-    }
 
-    pub fn text_input_at(&mut self, window: u64, text: &str, event_started_at: f64) -> bool {
-        if text.is_empty() {
-            return false;
-        }
-        self.flush_scroll(window);
-        let size = self.window_size(window);
-        self.app.dispatch_timed(
-            wid(window),
-            Event::TextInput { text },
-            size,
-            event_started_at,
-        )
-    }
+
+
+
+
 
     pub fn clipboard_copy(&mut self, window: u64) -> Option<String> {
         self.app
@@ -774,117 +408,23 @@ impl HimarkEngine {
             .is_some()
     }
 
-    pub fn mouse_down(&mut self, window: u64, x: f32, y: f32, mods: u32, click_count: u32) -> bool {
-        self.mouse_down_at(window, x, y, mods, click_count, 0.0)
-    }
 
-    pub fn mouse_down_at(
-        &mut self,
-        window: u64,
-        x: f32,
-        y: f32,
-        mods: u32,
-        click_count: u32,
-        event_started_at: f64,
-    ) -> bool {
-        self.flush_scroll(window);
-        let count = match click_count {
-            0 => self.clicks.count(x, y),
-            real => real.min(3) as u8,
-        };
-        let size = self.window_size(window);
-        self.app.dispatch_timed(
-            wid(window),
-            Event::MouseDown {
-                point: Point::new(x, y),
-                button: MouseButton::Left,
-                mods: map_mods(mods),
-                count,
-            },
-            size,
-            event_started_at,
-        )
-    }
 
-    /// The secondary (context) press. Shells that can tell buttons
-    /// apart route their right-button downs here; the others reach
-    /// the same rows via control-click.
-    pub fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
-        self.flush_scroll(window);
-        let size = self.window_size(window);
-        self.app.dispatch_timed(
-            wid(window),
-            Event::MouseDown {
-                point: Point::new(x, y),
-                button: MouseButton::Right,
-                mods: map_mods(mods),
-                count: 1,
-            },
-            size,
-            0.0,
-        )
-    }
 
-    pub fn toolbar_height(&self) -> f32 {
-        editor::env::Themes::of(self.app.store())
-            .part(::hikit::chrome::ToolbarChrome::KEY)
-            .height
-    }
 
-    pub fn mouse_drag(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
-        let size = self.window_size(window);
-        self.app.dispatch(
-            wid(window),
-            Event::MouseDrag {
-                point: Point::new(x, y),
-                mods: map_mods(mods),
-            },
-            size,
-        )
-    }
 
-    pub fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
-        self.flush_scroll(window);
-        let size = self.window_size(window);
-        let (changed, shape) = self.app.dispatch_pointed(
-            wid(window),
-            Event::MouseMove {
-                point: Point::new(x, y),
-                mods: map_mods(mods),
-            },
-            size,
-        );
-        Pointed { changed, shape }
-    }
 
-    /// The shell's modifiers report (macOS `flagsChanged`, winit
-    /// `ModifiersChanged`): a mouse move at the standing pointer's
-    /// position, so modifier-gated hover looks (the cmd-hover link
-    /// underline) re-hit-test without pointer motion.
-    pub fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
-        self.mouse_move(window, x, y, mods)
-    }
 
-    pub fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool {
-        self.flush_scroll(window);
-        let size = self.window_size(window);
-        self.app.dispatch(
-            wid(window),
-            Event::MouseUp {
-                point: Point::new(x, y),
-            },
-            size,
-        )
-    }
 
-    /// The cursor left the window: a HitTest beyond any component's
-    /// reach (missing, far off-screen), so hover state — tooltips,
-    /// hover popups — lets go instead of sticking to the last point
-    /// the window ever heard about.
-    pub fn mouse_left(&mut self, window: u64) -> bool {
-        let size = self.window_size(window);
-        self.app.dispatch(wid(window), Event::window_left(), size)
-    }
+
+
+
+
+
+
+
+
+
 
     pub fn scroll(&mut self, window: u64, x: f32, y: f32, delta_x: f32, delta_y: f32) -> bool {
         self.scroll_at_time(window, x, y, delta_x, delta_y, 0.0)
@@ -926,65 +466,15 @@ impl HimarkEngine {
         phase: u32,
         event_started_at: f64,
     ) -> bool {
-        let now = std::time::Instant::now();
-        let boundary = {
-            let state = self.scroll_states.entry(window).or_default();
-            let paused = state
-                .last
-                .is_none_or(|last| now.duration_since(last).as_millis() > 250);
-            state.last = Some(now);
-            scroll_gesture_boundary(phase, paused)
-        };
-        if boundary {
-            // The old gesture's deltas route under ITS claim: flush
-            // before the owner resets.
-            self.flush_scroll(window);
-            self.scroll_states
-                .entry(window)
-                .or_default()
-                .gesture
-                .begin();
-        }
-        if delta_x == 0.0
-            && delta_y == 0.0
-            && !matches!(
-                phase,
-                HIMARK_SCROLL_PHASE_NONE | HIMARK_SCROLL_PHASE_CHANGED
-            )
-        {
-            // A bookkeeping edge (mayBegin, began, ended, momentum edges)
-            // with nothing to scroll: the surface under the pointer must
-            // not claim the fresh gesture before its direction is known.
-            return false;
-        }
-        let point = Point::new(x, y);
-        if self
-            .scroll_states
-            .get(&window)
-            .and_then(|state| state.pending.as_ref())
-            .is_some_and(|pending| pending.point != point)
-        {
-            // The pointer moved mid-stream (a momentum drift over
-            // another pane): the standing deltas route from the OLD
-            // point, the new ones start fresh.
-            self.flush_scroll(window);
-        }
-        let state = self.scroll_states.entry(window).or_default();
-        match &mut state.pending {
-            Some(pending) => {
-                pending.delta_x += delta_x;
-                pending.delta_y += delta_y;
-            }
-            None => {
-                state.pending = Some(PendingScroll {
-                    point,
-                    delta_x,
-                    delta_y,
-                    event_started_at,
-                })
-            }
-        }
-        true
+        self.app.scroll_phased_at_time(
+            himark::bridge::ViewBridgeId::from_raw(window),
+            x,
+            y,
+            delta_x,
+            delta_y,
+            scroll_phase(phase),
+            event_started_at,
+        )
     }
 
     /// A synchronous wheel OFFER to a stage frame: the overlays that
@@ -1003,57 +493,8 @@ impl HimarkEngine {
         phase: u32,
         viewport: gfx::Rect,
     ) -> bool {
-        // Frames are one-pass handles — the gesture stream keys by
-        // the frame's ORIGIN bridge, which outlives them all.
-        let Some(origin) = self.app.stage_frame_origin(frame) else {
-            return false;
-        };
-        let now = std::time::Instant::now();
-        let state = self.stage_wheels.entry(origin.raw()).or_default();
-        let paused = state
-            .last
-            .is_none_or(|last| now.duration_since(last).as_millis() > 250);
-        state.last = Some(now);
-        if scroll_gesture_boundary(phase, paused) {
-            state.gesture.begin();
-        }
-        let result = {
-            let Some(stage) = self.app.stage_frame(frame) else {
-                return false;
-            };
-            stage.handle(
-                &Event::Scroll {
-                    point: Point::new(x, y),
-                    delta_x,
-                    delta_y,
-                    gesture: &state.gesture,
-                },
-                viewport,
-            )
-        };
-        let trace = std::env::var_os("HIMARK_TRACE_OFFER").is_some();
-        let imba::event::EventResult::Handled(handled) = result else {
-            if trace {
-                eprintln!("[offer] ({x},{y}) d({delta_x},{delta_y}) -> IGNORED (host keeps it)");
-            }
-            return false;
-        };
-        if trace {
-            eprintln!(
-                "[offer] ({x},{y}) d({delta_x},{delta_y}) -> consumed: {} commands, reveal? {}",
-                handled.commands.len(),
-                handled.reveal.is_some()
-            );
-        }
-        if let Some(reveal) = handled.reveal {
-            if let Some(id) = self.app.stage_frame_origin(frame) {
-                self.app.park_reveal(id, reveal);
-            }
-        }
-        if !handled.commands.is_empty() {
-            self.app.perform_batch(handled.commands);
-        }
-        true
+        self.app
+            .offer_stage_scroll(frame, x, y, delta_x, delta_y, scroll_phase(phase), viewport)
     }
 
     /// Dispatch the window's accumulated wheel deltas: the per-tick
@@ -1062,134 +503,19 @@ impl HimarkEngine {
     /// content, and before a gesture boundary or a moved point, so
     /// claims resolve exactly as they would have per event.
     pub fn flush_scroll(&mut self, window: u64) -> bool {
-        let Some(pending) = self
-            .scroll_states
-            .get_mut(&window)
-            .and_then(|state| state.pending.take())
-        else {
-            return false;
-        };
-        // A window answers with its viewport; a mounted bridge
-        // routes against its standing frame (the passed size is
-        // ignored there), so its deltas must not die here.
-        let viewport = self.app.window_viewport(wid(window)).or_else(|| {
-            self.app
-                .mounted_viewport(himark::bridge::ViewBridgeId::from_raw(window))
-        });
-        let Some(size) = viewport else {
-            // The bridge is gone; its deltas die with it.
-            if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
-                eprintln!("[scroll] flush {window}: NO viewport — deltas die");
-            }
-            return false;
-        };
-        let changed = self.app.dispatch_timed(
-            wid(window),
-            Event::Scroll {
-                point: pending.point,
-                delta_x: pending.delta_x,
-                delta_y: pending.delta_y,
-                gesture: &self.scroll_states[&window].gesture,
-            },
-            size,
-            pending.event_started_at,
-        );
-        if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
-            eprintln!(
-                "[scroll] flush {window}: dy {} at {:?} viewport {size:?} -> changed {changed}",
-                pending.delta_y, pending.point
-            );
-        }
-        changed
+        self.app
+            .flush_scroll(himark::bridge::ViewBridgeId::from_raw(window))
     }
 
     pub fn animation_tick(&mut self, now_ms: f64) -> bool {
-        // The per-tick scroll application: every window's coalesced
-        // deltas land in ONE batch each, right before the clock.
-        let pending: Vec<u64> = self
-            .scroll_states
-            .iter()
-            .filter(|(_, state)| state.pending.is_some())
-            .map(|(window, _)| *window)
-            .collect();
-        let mut flushed = false;
-        for window in pending {
-            flushed |= self.flush_scroll(window);
-        }
-        let windows: Vec<_> = self
-            .app
-            .window_ids()
-            .into_iter()
-            .filter_map(|id| self.app.window_viewport(id).map(|size| (id, size)))
-            .collect();
-        // HIMARK_TRACE_ANIM names every dispatch that answered
-        // "still animating" — the first question a hot idle trace
-        // asks is WHO keeps the clock alive.
-        static TRACE_ANIM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        let trace = *TRACE_ANIM.get_or_init(|| std::env::var_os("HIMARK_TRACE_ANIM").is_some());
-        let mut animating = flushed;
-        for (window, size) in windows {
-            let moved = self.app.dispatch(
-                window,
-                Event::AnimationClock {
-                    now: AnimationClock::from_millis(now_ms),
-                },
-                size,
-            );
-            if moved && trace {
-                eprintln!("[anim] window {window:?} still animating");
-            }
-            animating |= moved;
-        }
-        // Mounted bridges tick too — their scrollers and fades ride
-        // the same clock; the mounted road ignores the passed size.
-        for id in self.app.mounted_ids() {
-            let size = self.app.mounted_viewport(id).unwrap_or_default();
-            let moved = self.app.dispatch(
-                wid(id.raw()),
-                Event::AnimationClock {
-                    now: AnimationClock::from_millis(now_ms),
-                },
-                size,
-            );
-            if moved && trace {
-                eprintln!("[anim] mounted {} still animating", id.raw());
-            }
-            animating |= moved;
-        }
-        animating
+        self.app.animation_tick(now_ms)
     }
 
-    pub fn perform_command(&mut self, window: u64, id: &str) -> bool {
-        self.app.perform_registered(wid(window), id)
-    }
 
-    pub fn set_chrome_clearance(&mut self, width: f32) {
-        self.app.set_chrome_clearance(width);
-    }
 
-    /// The shell's form, set once at boot (`HIMARK_FORM_*`): the
-    /// appearance commands pick the form's theme pair from here on,
-    /// and the standing appearance re-applies in the new pair — through
-    /// the registered command, so the change propagates like any
-    /// theme switch. Answers whether the form was known.
-    pub fn set_form(&mut self, form: u32) -> bool {
-        let form = match form {
-            HIMARK_FORM_DESKTOP => workbench_shell::builtins::Form::Desktop,
-            HIMARK_FORM_PHONE => workbench_shell::builtins::Form::Phone,
-            other => {
-                eprintln!("[ffi] form {other} is not one this engine knows — refused");
-                return false;
-            }
-        };
-        if workbench_shell::builtins::Form::of(self.app.store()) == form {
-            return true;
-        }
-        self.app
-            .setup(|store| workbench_shell::builtins::Form::set(store, form));
-        let dark = workbench_shell::builtins::theme_is_dark(self.app.store());
-        self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
-    }
+
+
+
 
     pub fn install_agent_host_filesystem(&mut self, capabilities: AgentHostFilesystemCapabilities) {
         let installed = self.agent_host_filesystem;
@@ -1262,21 +588,26 @@ impl HimarkEngine {
                 .register_handler::<himark::higent::folder_grant::PickFoldersEffect>(
                     host::PickFoldersHandler(Arc::clone(&bridge)),
                 );
-            self.app.register_command(Arc::new(host::OpenFilePicker));
+            if let Some(chrome) = self.app.store().get::<host::HostChrome>().cloned() {
+                if let Some(on_pick_files) = chrome.on_pick_files {
+                    on_pick_files(&mut self.app);
+                }
+            }
         }
         if callbacks.set_clipboard.is_some() {
             self.app
                 .register_handler::<ahp_wire::effects::ShareHostEffect>(host::ShareHostHandler(
                     Arc::clone(&bridge),
                 ));
-            self.app
-                .register_command(Arc::new(workbench_shell::higent::drawer::ShareHost));
+            if let Some(chrome) = self.app.store().get::<host::HostChrome>().cloned() {
+                if let Some(on_clipboard) = chrome.on_clipboard {
+                    on_clipboard(&mut self.app);
+                }
+            }
             self.app
                 .register_handler::<ahp_wire::effects::ShareTailnetEffect>(
                     host::ShareTailnetHandler(Arc::clone(&bridge)),
                 );
-            self.app
-                .register_command(Arc::new(workbench_shell::higent::drawer::ShareHostTailnet));
         }
 
         self.install_agent_host_filesystem(AgentHostFilesystemCapabilities {
@@ -1324,14 +655,11 @@ impl HimarkEngine {
         if subscription == 0 {
             return false;
         }
-        self.shared
-            .inbox
-            .lock()
-            .expect("inbox")
-            .push_back(himark::app::AppCommand::FileChanged(
+        self.app
+            .poster()
+            .post(himark::app::AppCommand::FileChanged(
                 documents::watch::Subscription(subscription),
             ));
-        self.shared.wake.fire();
         true
     }
 
@@ -1351,23 +679,7 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(entries)))
     }
 
-    pub fn open_document(
-        &mut self,
-        window: u64,
-        name: impl Into<String>,
-        source: impl Into<String>,
-        primary: bool,
-    ) -> bool {
-        let name = name.into();
-        let source = source.into();
-        let document_name = name.clone();
-        let languages = Arc::clone(&self.languages);
-        self.app
-            .open_async(wid(window), name, primary, None, move |store, ui, theme| {
-                ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
-            });
-        true
-    }
+
 
     pub fn has_text_focus(&mut self, window: u64) -> bool {
         self.app.with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ()).is_some()
@@ -1526,22 +838,63 @@ impl HimarkEngine {
 }
 
 impl HimarkEngine {
+    /// Assemble the C engine over a BOOTED app and its wires — the
+    /// composition root (himark-capi, an app crate) builds the app
+    /// (plugins, host loop, connector) and hands it in whole.
+    #[allow(clippy::too_many_arguments)]
+    pub fn assemble(
+        app: Himark,
+        languages: Arc<editor::reparse::SyntaxLanguages>,
+        clients: Arc<ahp_wire::fs::ClientDirectory>,
+        document_channels: Arc<docsync::DocumentChannels>,
+        resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
+    ) -> Self {
+        Self {
+            app,
+            languages,
+            compose_new_windows: false,
+            clicks: ClickCounter::default(),
+            stages: Default::default(),
+            pending_cut: None,
+            host: None,
+            agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
+            clients,
+            _document_channels: document_channels,
+            resource_uris,
+        }
+    }
+
     pub fn register_agent_server(
         &mut self,
         name: &str,
         client: ahp_wire::client::Client,
     ) -> ahp_wire::client::HostId {
-        register_agent_server(&mut self.app, &self.clients, name, client)
+        let id = self.app.register_client(client.clone());
+        let clients = Arc::clone(&self.clients);
+        self.app.setup(|store| {
+            ahp_session::session::agents::Agents::seed(store, id, name);
+            ahp_session::session::state::Hosts::install_uris(
+                store,
+                id,
+                Arc::new(uris::FileUris),
+            );
+        });
+        clients.record(id, client);
+        id
     }
 
     pub fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
         self.clients.set_local(server);
-        self.app.designate_local_host(server);
+        self.app.set_local_host(server);
     }
 
     /// The wire client directory and the uri map — the HOST's late
     /// registrations (routes for effects whose types sit above this
     /// crate) close over them.
+    pub fn languages(&self) -> Arc<editor::reparse::SyntaxLanguages> {
+        Arc::clone(&self.languages)
+    }
+
     pub fn clients(&self) -> Arc<ahp_wire::fs::ClientDirectory> {
         Arc::clone(&self.clients)
     }
@@ -1551,22 +904,13 @@ impl HimarkEngine {
     }
 
     pub fn runtime(&self) -> tokio::runtime::Handle {
-        self.runtime.handle().clone()
+        self.app.runtime()
     }
 }
 
-impl HimarkWorker {
-    pub fn run_pending(&self) {
-        self.shared.runner.run();
-    }
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> bridges::HimarkWindow {
-    bridges::HimarkWindow {
-        raw: engine.as_mut().map_or(0, HimarkEngine::add_window),
-    }
-}
+
+
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_destroy(engine: *mut HimarkEngine) {
@@ -1578,7 +922,7 @@ pub unsafe extern "C" fn himark_destroy(engine: *mut HimarkEngine) {
 #[no_mangle]
 pub unsafe extern "C" fn himark_run_pending(engine: *mut HimarkEngine) {
     if let Some(engine) = engine.as_ref() {
-        engine.run_pending();
+        engine.worker().run_pending();
     }
 }
 
@@ -1590,7 +934,7 @@ pub unsafe extern "C" fn himark_drain(engine: *mut HimarkEngine) -> bool {
 #[no_mangle]
 pub unsafe extern "C" fn himark_copy(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
@@ -1602,7 +946,7 @@ pub unsafe extern "C" fn himark_copy(
 #[no_mangle]
 pub unsafe extern "C" fn himark_cut(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     out: *mut c_char,
     cap: usize,
 ) -> usize {
@@ -1623,7 +967,7 @@ pub unsafe extern "C" fn himark_cut(
 #[no_mangle]
 pub unsafe extern "C" fn himark_paste(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
 ) -> bool {
@@ -1639,7 +983,7 @@ pub unsafe extern "C" fn himark_paste(
 #[no_mangle]
 pub unsafe extern "C" fn himark_text_input_replacing(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
     replacement: HimarkRange,
@@ -1653,12 +997,7 @@ pub unsafe extern "C" fn himark_text_input_replacing(
     engine.text_input_replacing(bridge.raw, text, replacement)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32 {
-    engine
-        .as_mut()
-        .map_or(0.0, |engine| engine.toolbar_height())
-}
+
 
 /// The pointer event's answer across the FFI: `changed` owes a frame;
 /// `shape` is 0 for the platform default arrow, 1 for the pointing
@@ -1690,30 +1029,9 @@ pub unsafe extern "C" fn himark_animation_tick(engine: *mut HimarkEngine, now_ms
         .map_or(false, |engine| engine.animation_tick(now_ms))
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_perform_command(
-    engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
-    id: *const c_char,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    if id.is_null() {
-        return false;
-    }
-    let Ok(id) = std::ffi::CStr::from_ptr(id).to_str() else {
-        return false;
-    };
-    engine.perform_command(bridge.raw, id)
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, width: f32) {
-    if let Some(engine) = engine.as_mut() {
-        engine.set_chrome_clearance(width);
-    }
-}
+
+
 
 /// The desktop form: the workbench's theme pair (theme.json,
 /// theme-light.json) — the engine's own default.
@@ -1722,17 +1040,7 @@ pub const HIMARK_FORM_DESKTOP: u32 = 0;
 /// — 3x metrics, rows that are tap targets, the phone's insets.
 pub const HIMARK_FORM_PHONE: u32 = 1;
 
-/// Tell the engine what it runs in — once, at boot, before the first
-/// paint. The appearance commands (`theme.dark`, `theme.light`,
-/// `theme.toggle`) pick the form's pair from then on; the standing
-/// appearance re-applies in the new pair at once. Answers false for
-/// an unknown form.
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.set_form(form))
-}
+
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_host(
@@ -1846,71 +1154,19 @@ pub unsafe extern "C" fn himark_host_listed(
     engine.host_listed(request, entries)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_document(
-    engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
-    name: *const c_char,
-    name_len: usize,
-    utf8: *const c_char,
-    len: usize,
-    primary: bool,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let Some(name) = str_from(name, name_len) else {
-        return false;
-    };
-    let Some(source) = str_from(utf8, len) else {
-        return false;
-    };
-    engine.open_document(bridge.raw, name, source, primary)
-}
+
 
 /// DEMO documents, registered by name — the demo plugin owns the
 /// builders (the crate sits above this one); the door only looks
 pub use himark::demo_docs::DemoDocs;
 
 
-/// Open a registered demo document into the bridge — the debug
-/// harness road.
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_demo(
-    engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
-    name: *const c_char,
-    len: usize,
-) {
-    let Some(engine) = engine.as_mut() else {
-        return;
-    };
-    let Some(name) = str_from(name, len) else {
-        return;
-    };
-    let Some((location, build)) = engine
-        .app
-        .store()
-        .get::<DemoDocs>()
-        .and_then(|docs| docs.0.get(name).cloned())
-    else {
-        eprintln!("[himark] no demo document registered as '{name}'");
-        return;
-    };
-    use workbench_shell::app_ext::AppExt as _;
-    engine.app.open_async(
-        wid(bridge.raw),
-        name.to_owned(),
-        true,
-        Some(location),
-        move |store, ui, theme| build(store, ui, theme),
-    );
-}
+
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_has_text_focus(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
 ) -> bool {
     engine
         .as_mut()
@@ -1920,7 +1176,7 @@ pub unsafe extern "C" fn himark_has_text_focus(
 #[no_mangle]
 pub unsafe extern "C" fn himark_has_marked_text(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
 ) -> bool {
     engine
         .as_mut()
@@ -1930,7 +1186,7 @@ pub unsafe extern "C" fn himark_has_marked_text(
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_marked_text(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     utf8: *const c_char,
     len: usize,
     selected: HimarkRange,
@@ -1950,7 +1206,7 @@ pub unsafe extern "C" fn himark_set_marked_text(
 #[no_mangle]
 pub unsafe extern "C" fn himark_unmark_text(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
 ) -> bool {
     engine
         .as_mut()
@@ -1960,7 +1216,7 @@ pub unsafe extern "C" fn himark_unmark_text(
 #[no_mangle]
 pub unsafe extern "C" fn himark_marked_range(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
     engine
@@ -1971,7 +1227,7 @@ pub unsafe extern "C" fn himark_marked_range(
 #[no_mangle]
 pub unsafe extern "C" fn himark_selected_range(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
     engine
@@ -1982,7 +1238,7 @@ pub unsafe extern "C" fn himark_selected_range(
 #[no_mangle]
 pub unsafe extern "C" fn himark_set_selected_range(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     range: HimarkRange,
 ) -> bool {
     engine
@@ -1993,7 +1249,7 @@ pub unsafe extern "C" fn himark_set_selected_range(
 #[no_mangle]
 pub unsafe extern "C" fn himark_document_length(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     out: *mut u32,
 ) -> bool {
     engine
@@ -2004,7 +1260,7 @@ pub unsafe extern "C" fn himark_document_length(
 #[no_mangle]
 pub unsafe extern "C" fn himark_reveal_selection(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
 ) -> bool {
     engine
         .as_mut()
@@ -2014,7 +1270,7 @@ pub unsafe extern "C" fn himark_reveal_selection(
 #[no_mangle]
 pub unsafe extern "C" fn himark_selection_rects(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut HimarkRect,
     cap: usize,
@@ -2027,7 +1283,7 @@ pub unsafe extern "C" fn himark_selection_rects(
 #[no_mangle]
 pub unsafe extern "C" fn himark_first_rect(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut HimarkRect,
 ) -> bool {
@@ -2039,7 +1295,7 @@ pub unsafe extern "C" fn himark_first_rect(
 #[no_mangle]
 pub unsafe extern "C" fn himark_char_index_at(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     x: f32,
     y: f32,
 ) -> i64 {
@@ -2054,7 +1310,7 @@ pub unsafe extern "C" fn himark_char_index_at(
 #[no_mangle]
 pub unsafe extern "C" fn himark_substring(
     engine: *mut HimarkEngine,
-    bridge: bridges::HimarkBridge,
+    bridge: crate::bridges::HimarkBridge,
     range: HimarkRange,
     out: *mut c_char,
     cap: usize,

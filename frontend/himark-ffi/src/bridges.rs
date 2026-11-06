@@ -25,12 +25,6 @@
 //! Coexists with the legacy whole-window entries until the mac
 //! port retires them (docs/himark-core.md, plan step 5).
 
-#[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
-use workbench_shell::app::WorkbenchShell as _;
-#[allow(unused_imports)]
-use workbench_shell::app_ext::AppExt as _;
 use std::collections::HashMap;
 use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
@@ -39,8 +33,8 @@ use himark::bridge::ViewBridgeId;
 use gfx::{Canvas, Point, Rect, Size};
 use imba::event::{Event, EventResult, MouseButton};
 
-use crate::ffi::{
-    copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed,
+use crate::{
+    copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed, Pointed,
 };
 
 /// The handle NEWTYPES: single-field structs, so C and Swift see
@@ -337,23 +331,98 @@ pub unsafe extern "C" fn himark_bridge_event(
             return missed;
         }
     };
-    let bridge = bridge.raw;
+    let id = himark::bridge::ViewBridgeId::from_raw(bridge.raw);
     let changed = |changed: bool| HimarkPointed { changed, shape: 0 };
+    let app = &mut engine.app;
+    // Every input flushes the standing scroll first (claims resolve
+    // against scrolled content), then rides the ONE dispatch road.
     match owned {
         OwnedEvent::MouseDown { x, y, mods, count } => {
-            changed(engine.mouse_down(bridge, x, y, mods, count))
+            let flushed = app.flush_scroll(id);
+            let count = match count {
+                0 => engine.clicks.count(x, y),
+                n => n.min(u8::MAX as u32) as u8,
+            };
+            changed(
+                app.dispatch_bridge_timed(
+                    id,
+                    Event::MouseDown {
+                        point: Point::new(x, y),
+                        mods: map_mods(mods),
+                        button: MouseButton::Left,
+                        count,
+                    },
+                    None,
+                    0.0,
+                ) || flushed,
+            )
         }
         OwnedEvent::SecondaryDown { x, y, mods } => {
-            changed(engine.secondary_down(bridge, x, y, mods))
+            let flushed = app.flush_scroll(id);
+            changed(
+                app.dispatch_bridge_timed(
+                    id,
+                    Event::MouseDown {
+                        point: Point::new(x, y),
+                        mods: map_mods(mods),
+                        button: MouseButton::Right,
+                        count: 1,
+                    },
+                    None,
+                    0.0,
+                ) || flushed,
+            )
         }
-        OwnedEvent::MouseDrag { x, y, mods } => changed(engine.mouse_drag(bridge, x, y, mods)),
-        OwnedEvent::MouseUp { x, y } => changed(engine.mouse_up(bridge, x, y)),
+        OwnedEvent::MouseDrag { x, y, mods } => changed(app.dispatch_bridge_timed(
+            id,
+            Event::MouseDrag {
+                point: Point::new(x, y),
+                mods: map_mods(mods),
+            },
+            None,
+            0.0,
+        )),
+        OwnedEvent::MouseUp { x, y } => {
+            let flushed = app.flush_scroll(id);
+            changed(
+                app.dispatch_bridge_timed(
+                    id,
+                    Event::MouseUp {
+                        point: Point::new(x, y),
+                    },
+                    None,
+                    0.0,
+                ) || flushed,
+            )
+        }
         OwnedEvent::MouseMove { x, y, mods } => {
-            pointed(Some(engine.mouse_move(bridge, x, y, mods)))
+            let (moved, shape) = app.dispatch_bridge(
+                id,
+                Event::MouseMove {
+                    point: Point::new(x, y),
+                    mods: map_mods(mods),
+                },
+                None,
+            );
+            pointed(Some(Pointed {
+                changed: moved,
+                shape,
+            }))
         }
-        OwnedEvent::MouseLeft => changed(engine.mouse_left(bridge)),
+        OwnedEvent::MouseLeft => changed(app.dispatch_bridge(id, Event::window_left(), None).0),
         OwnedEvent::ModifiersChanged { x, y, mods } => {
-            pointed(Some(engine.modifiers_changed(bridge, x, y, mods)))
+            let (moved, shape) = app.dispatch_bridge(
+                id,
+                Event::MouseMove {
+                    point: Point::new(x, y),
+                    mods: map_mods(mods),
+                },
+                None,
+            );
+            pointed(Some(Pointed {
+                changed: moved,
+                shape,
+            }))
         }
         OwnedEvent::Scroll {
             x,
@@ -361,9 +430,39 @@ pub unsafe extern "C" fn himark_bridge_event(
             delta_x,
             delta_y,
             phase,
-        } => changed(engine.scroll_phased_at_time(bridge, x, y, delta_x, delta_y, phase, 0.0)),
-        OwnedEvent::KeyDown { key, mods } => changed(engine.key_down(bridge, key, mods)),
-        OwnedEvent::TextInput { text } => changed(engine.text_input(bridge, &text)),
+        } => changed(app.scroll_phased_at_time(
+            id,
+            x,
+            y,
+            delta_x,
+            delta_y,
+            crate::scroll_phase(phase),
+            0.0,
+        )),
+        OwnedEvent::KeyDown { key, mods } => {
+            let flushed = app.flush_scroll(id);
+            let Some(key) = map_key(key) else {
+                return changed(flushed);
+            };
+            changed(
+                app.dispatch_bridge_timed(
+                    id,
+                    Event::KeyDown {
+                        key,
+                        mods: map_mods(mods),
+                    },
+                    None,
+                    0.0,
+                ) || flushed,
+            )
+        }
+        OwnedEvent::TextInput { text } => {
+            let flushed = app.flush_scroll(id);
+            changed(
+                app.dispatch_bridge_timed(id, Event::TextInput { text: &text }, None, 0.0)
+                    || flushed,
+            )
+        }
     }
 }
 
@@ -1340,7 +1439,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_host(
     let Some((_, host, _)) = anchors.get(index) else {
         return 0;
     };
-    crate::ffi::copy_optional_utf8(Some(host.0.to_owned()), out, cap)
+    crate::copy_optional_utf8(Some(host.0.to_owned()), out, cap)
 }
 
 /// A POPOVER bridge's content slice, in the PARENT'S coordinates
@@ -1477,7 +1576,7 @@ pub type HimarkNavigateFn = unsafe extern "C" fn(
     focus: bool,
 ) -> bool;
 
-pub(crate) fn seat_callback_shell(
+pub fn seat_callback_shell(
     engine: &mut HimarkEngine,
     ctx: *mut c_void,
     on_navigate: HimarkNavigateFn,

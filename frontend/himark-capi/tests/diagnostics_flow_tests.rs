@@ -7,6 +7,8 @@
 //! gets dressed with the snapshot's squiggles at the batch tail.
 
 #[allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;

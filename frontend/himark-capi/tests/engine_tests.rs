@@ -3,6 +3,8 @@
 
 #[allow(unused_imports)]
 #[allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 use std::sync::Arc;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
@@ -2287,7 +2289,7 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
     let clock = std::cell::Cell::new(0.0f64);
     let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
-            engine.run_pending();
+            engine.worker().run_pending();
             let _ = engine.drain();
             clock.set(clock.get() + 8.33);
             let _ = engine.animation_tick(clock.get());

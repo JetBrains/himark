@@ -7,6 +7,7 @@
 //! as drains on the ui thread; a changed drain repaints every
 //! mounted [`crate::BridgeView`].
 
+use workbench_shell::capi::WindowEngine as _;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;

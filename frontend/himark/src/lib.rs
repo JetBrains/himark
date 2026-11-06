@@ -13,6 +13,7 @@ pub mod hicomments;
 pub mod hifiles;
 pub mod higent;
 pub mod himark;
+pub mod host;
 pub mod hipeek;
 pub mod keymap;
 pub mod mounts;

@@ -19,7 +19,7 @@ targets:
     # libhimark_api.a was the silent failure; build.sh stays the
     # from-scratch and xcconfig-(re)generation road.
     preBuildScripts:
-      - name: Build Rust (frontend-host)
+      - name: Build Rust (himark-capi)
         script: exec "$SRCROOT/xcode-build-rust.sh"
         shell: /bin/bash
         basedOnDependencyAnalysis: false
@@ -65,7 +65,7 @@ targets:
     # libhimark_api.a was the silent failure; build.sh stays the
     # from-scratch and xcconfig-(re)generation road.
     preBuildScripts:
-      - name: Build Rust (frontend-host)
+      - name: Build Rust (himark-capi)
         script: exec "$SRCROOT/xcode-build-rust.sh"
         shell: /bin/bash
         basedOnDependencyAnalysis: false

@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 himark = { path = "../himark" }
+himark-ffi = { path = "../himark-ffi", optional = true }
 ahp-chat = { path = "../ahp-chat" }
 ahp-types = "0.9"
 rpds = "1"
@@ -48,6 +49,7 @@ ahp-types = "0.9"
 serde_json = "1"
 
 [features]
+capi = ["dep:himark-ffi"]
 test-support = [
     "himark/test-support",
     "editor/test-support",

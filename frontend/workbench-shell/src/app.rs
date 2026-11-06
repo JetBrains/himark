@@ -228,6 +228,8 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
             },
         )));
     });
+    // The composer button is WORKBENCH furniture, not a feature's.
+    app.register_toolbar_button(::workbench::toolbar::composer_button());
     // The workbench's batch tail: slot reaping, pane validation,
     // the dock tree-follow — registered like any frame layer's.
     app.register_batch_tail(|app: &mut Himark, label: &str, _theme_changed: bool| {
@@ -371,19 +373,7 @@ impl WorkbenchShell for Himark {
     }
 
     fn designate_local_host(&mut self, host: ahp_wire::client::HostId) {
-        self.setup(|store| {
-            let previous = store
-                .get::<ahp_wire::client::LocalHost>()
-                .and_then(|local| local.0);
-            store.update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(host));
-            store.update::<ahp_session::session::state::Hosts>(|hosts| {
-                hosts.rekey_local_sessions(previous, host);
-            });
-            // Families minted under the LOCAL placeholder carried no
-            // uri map; now that they live under the real host, stamp
-            // its map onto them (docs/entities.md law 4).
-            ahp_session::session::state::Hosts::stamp_host_uris(store, host);
-        });
+        self.set_local_host(host);
         self.with_store(|store| {
             store.update::<::workbench::window::Windows>(|windows| {
                 windows.adopt_workspaces_all(&crate::workspace::AdoptLocalHost(host))

@@ -34,7 +34,7 @@ const SCAN_SECONDS: u64 = 15;
 /// What a shell renders of the tailnet. Immutable value, replaced
 /// whole.
 #[derive(Clone, PartialEq, Default, Debug)]
-pub(crate) enum TailnetState {
+pub enum TailnetState {
     #[default]
     Off,
     Starting,
@@ -48,7 +48,7 @@ pub(crate) enum TailnetState {
 impl TailnetState {
     /// The C ABI encoding — integers exist ONLY at this edge.
     /// Append-only once a header ships.
-    fn code(&self) -> u32 {
+    pub fn code(&self) -> u32 {
         match self {
             TailnetState::Off => 0,
             TailnetState::Starting => 1,
@@ -62,19 +62,19 @@ impl TailnetState {
 /// The store component the C face reads. Written only by
 /// [`TailnetChanged`].
 #[derive(Clone, PartialEq, Default, Debug)]
-pub(crate) struct TailnetFaceState {
-    state: TailnetState,
+pub struct TailnetFaceState {
+    pub state: TailnetState,
 }
 
 /// The shell's tailnet verbs, installed in the store at boot —
 /// the closures carry what they captured there (the scanner's
 /// channel, the connector, the poster).
 #[derive(Clone)]
-pub(crate) struct TailnetFlows {
-    connect: Arc<dyn Fn() + Send + Sync>,
+pub struct TailnetFlows {
+    pub connect: Arc<dyn Fn() + Send + Sync>,
     /// The foregrounding kick: revive a suspension-wedged engine
     /// and nudge the Failed rows to redial.
-    resume: Arc<dyn Fn() + Send + Sync>,
+    pub resume: Arc<dyn Fn() + Send + Sync>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -85,7 +85,7 @@ struct SavedHost {
 
 /// The data root: the shell's choice, threaded from `himark_create`;
 /// the desktop default is the dotdir.
-pub(crate) fn data_root(from_shell: Option<PathBuf>) -> Option<PathBuf> {
+pub fn data_root(from_shell: Option<PathBuf>) -> Option<PathBuf> {
     if from_shell.is_some() {
         return from_shell;
     }
@@ -96,7 +96,7 @@ pub(crate) fn data_root(from_shell: Option<PathBuf>) -> Option<PathBuf> {
 /// The client node's state dir under the root — handed to the
 /// connector at boot; its existence is the "tailnet is enabled"
 /// latch.
-pub(crate) fn client_node_dir(root: &Option<PathBuf>) -> Option<PathBuf> {
+pub fn client_node_dir(root: &Option<PathBuf>) -> Option<PathBuf> {
     Some(root.as_ref()?.join("tailnet-client"))
 }
 
@@ -129,8 +129,9 @@ fn save(root: &Option<PathBuf>, hosts: &[SavedHost]) {
 
 /// Register the saved rows (between batches, before any window),
 /// install the flows, and start the discovery scanner.
-pub(crate) fn install(
-    engine: &mut crate::HimarkEngine,
+pub fn install(
+    app: &mut himark::app::Himark,
+    clients: &Arc<ahp_wire::fs::ClientDirectory>,
     tailnet_connector: Arc<desktop::tailnet_connector::TailnetConnector>,
     connector: Arc<dyn ahp_wire::transport::Connector>,
     root: Option<PathBuf>,
@@ -142,18 +143,18 @@ pub(crate) fn install(
             continue;
         }
         let seat = ahp_wire::wire::WireHost::at(
-            engine.runtime(),
+            app.runtime(),
             Arc::clone(&connector),
             host.url.clone(),
         );
-        engine.register_agent_server(&host.name, ahp_wire::client::Client::of(Arc::new(seat)));
+        himark_plugins::register_agent_server(app, clients, &host.name, ahp_wire::client::Client::of(Arc::new(seat)));
     }
 
     let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();
     let resume = {
         let connector = Arc::clone(&tailnet_connector);
-        let runtime = engine.runtime();
-        let poster = engine.app.poster();
+        let runtime = app.runtime();
+        let poster = app.poster();
         Arc::new(move || {
             connector.resume(&runtime);
             // Failed rows never redial on their own — the return
@@ -163,7 +164,7 @@ pub(crate) fn install(
             ))));
         })
     };
-    engine.app.setup(|store| {
+    app.setup(|store| {
         store.put(TailnetFaceState::default());
         store.put(TailnetFlows {
             connect: Arc::new(move || {
@@ -174,9 +175,9 @@ pub(crate) fn install(
     });
 
     let scanner = Scanner {
-        poster: engine.app.poster(),
-        runtime: engine.runtime(),
-        clients: engine.clients(),
+        poster: app.poster(),
+        runtime: app.runtime(),
+        clients: Arc::clone(clients),
         node_source: tailnet_connector,
         connector,
         root,
@@ -187,7 +188,7 @@ pub(crate) fn install(
         connect_requests,
         connect_requested: false,
     };
-    engine.runtime().spawn(scanner.run());
+    app.runtime().spawn(scanner.run());
 }
 
 struct Scanner {
@@ -400,67 +401,6 @@ impl imba::command::DynamicCommand for HostDiscovered {
             ahp_wire::client::Client::of(Arc::new(seat)),
         );
     }
-}
-
-// ---- The C surface (hand-declared in himark's cbindgen trailer) --
-// Reads go through the engine's store between batches — the thread
-// the shell already drains on.
-
-/// 0 off · 1 starting · 2 needs login · 3 waiting approval ·
-/// 4 running. Append-only.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_state(engine: *mut crate::HimarkEngine) -> u32 {
-    read_state(engine).code()
-}
-
-/// UTF-8, no NUL; returns the byte length, copies when it fits.
-/// Non-empty only in the needs-login state.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_auth_url(
-    engine: *mut crate::HimarkEngine,
-    out: *mut std::os::raw::c_char,
-    cap: usize,
-) -> usize {
-    let url = match read_state(engine) {
-        TailnetState::NeedsLogin { auth_url } => Some(auth_url),
-        _ => None,
-    };
-    crate::ffi::copy_optional_utf8(url, out, cap)
-}
-
-/// The shell's "Connect Tailscale" action.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_login(engine: *mut crate::HimarkEngine) {
-    let Some(engine) = engine.as_ref() else {
-        return;
-    };
-    if let Some(flows) = engine.app.store().get::<TailnetFlows>() {
-        (flows.connect)();
-    }
-}
-
-/// The shell came back to the foreground: kick the embedded node (a
-/// suspension can wedge its engine) and retry the failed hosts.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tailnet_resume(engine: *mut crate::HimarkEngine) {
-    let Some(engine) = engine.as_ref() else {
-        return;
-    };
-    if let Some(flows) = engine.app.store().get::<TailnetFlows>() {
-        (flows.resume)();
-    }
-}
-
-unsafe fn read_state(engine: *mut crate::HimarkEngine) -> TailnetState {
-    let Some(engine) = engine.as_ref() else {
-        return TailnetState::Off;
-    };
-    engine
-        .app
-        .store()
-        .get::<TailnetFaceState>()
-        .map(|held| held.state.clone())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

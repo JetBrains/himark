@@ -173,6 +173,22 @@ pub struct Himark {
     pub(crate) settle_requested: bool,
     pub(crate) settling: bool,
 
+    /// The per-bridge scroll-gesture streams (`crate::host`): a
+    /// touch beginning on one bridge must not break the gesture —
+    /// momentum included — still flowing on another.
+    pub(crate) scroll_states:
+        std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
+
+    /// Per STAGE-FRAME origin: the gesture stream behind
+    /// `offer_stage_scroll`.
+    pub(crate) stage_wheels:
+        std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
+
+    /// The installed host loop (`install_host_loop`): inbox, wakes,
+    /// the owned runtime, drain pacing.
+    #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
+    pub(crate) host: Option<crate::host::HostLoop>,
+
     /// The registered batch TAILS: each frame-composition layer's
     /// reaction to a finished batch (the workbench reaps dead
     /// window slots, validates panes, follows the dock tree). They
@@ -326,6 +342,10 @@ impl Himark {
             modal_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
+            scroll_states: std::collections::HashMap::new(),
+            stage_wheels: std::collections::HashMap::new(),
+            #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
+            host: None,
             tails: Vec::new(),
         };
         crate::startup_profile::log("Himark::bare", total_started);
@@ -1563,6 +1583,25 @@ impl Himark {
             slot.spare_arena = Some(arena);
         }
         true
+    }
+
+    /// Designate the LOCAL host — the store half: the `LocalHost`
+    /// cell, the session rekey, the uri stamp. The workbench adds
+    /// its windows' workspace adoption on top.
+    pub fn set_local_host(&mut self, host: ahp_wire::client::HostId) {
+        self.setup(|store| {
+            let previous = store
+                .get::<ahp_wire::client::LocalHost>()
+                .and_then(|local| local.0);
+            store.update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(host));
+            store.update::<ahp_session::session::state::Hosts>(|hosts| {
+                hosts.rekey_local_sessions(previous, host);
+            });
+            // Families minted under the LOCAL placeholder carried no
+            // uri map; now that they live under the real host, stamp
+            // its map onto them (docs/entities.md law 4).
+            ahp_session::session::state::Hosts::stamp_host_uris(store, host);
+        });
     }
 
     pub fn register_client(

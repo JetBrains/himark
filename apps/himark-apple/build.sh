@@ -46,14 +46,14 @@ ensure_skia_headers() {
 
 resolve() {
   local target_flag="$1" lib_dir="$2" out="$3" qualifier="${4:-}" append="${5:-}" xcode_arch="${6:-}"
-  echo "==> cargo build -p frontend-host --release $target_flag"
-  ( cd "$ROOT" && cargo build -p frontend-host --release $target_flag >/dev/null )
+  echo "==> cargo build -p himark-capi --release $target_flag"
+  ( cd "$ROOT" && cargo build -p himark-capi --release $target_flag >/dev/null )
 
   local SKIA EXTRA
   {
     read -r SKIA
     read -r EXTRA
-  } < <( cd "$ROOT" && cargo build -p frontend-host --release $target_flag \
+  } < <( cd "$ROOT" && cargo build -p himark-capi --release $target_flag \
            --message-format=json 2>/dev/null | python3 -c "
 import sys, json
 out=None; extra=[]
@@ -87,7 +87,7 @@ XC
   echo "    wrote $out$qualifier (skia: $SKIA)"
 }
 
-cp "$ROOT/frontend/frontend-host/include/himark.h" ./himark.h
+cp "$ROOT/frontend/himark-capi/include/himark.h" ./himark.h
 ACTION="${1:-gen}"
 ensure_skia_headers
 ensure_rust_target

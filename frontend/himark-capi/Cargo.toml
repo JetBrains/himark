@@ -1,5 +1,5 @@
 [package]
-name = "frontend-host"
+name = "himark-capi"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -10,6 +10,9 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 workbench = { path = "../workbench" }
+himark-plugins = { path = "../himark-plugins" }
+himark-ffi = { path = "../himark-ffi" }
+hitailnet = { path = "../hitailnet" }
 hikit = { path = "../hikit" }
 recents = { path = "../recents" }
 filetree = { path = "../filetree" }
@@ -28,7 +31,7 @@ ahp-comments = { path = "../ahp-comments" }
 text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark", default-features = false }
-workbench-shell = { path = "../workbench-shell" }
+workbench-shell = { path = "../workbench-shell", features = ["capi"] }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }
 himarkdown = { path = "../plugins/himarkdown" }

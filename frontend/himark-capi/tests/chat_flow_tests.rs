@@ -11,6 +11,8 @@
 //! the stream (an overlapping subscription must fold to one copy).
 
 #[allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;

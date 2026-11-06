@@ -7,6 +7,7 @@
 //! `gfx_gpui::GpuiPainter`; the engine's scroll coalescer and
 //! animation clock pace the roads that need pacing.
 
+use workbench_shell::capi::WindowEngine as _;
 use workbench_shell::app::WorkbenchShell as _;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

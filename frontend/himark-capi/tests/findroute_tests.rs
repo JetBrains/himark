@@ -1,4 +1,6 @@
 mod common;
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 use common::{bind_backend, block_on};
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0

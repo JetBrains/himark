@@ -18,6 +18,8 @@
 //! connection's inbound, or cut its socket — the things a host, a
 //! network or a scheduler do to a wire.
 
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
