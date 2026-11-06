@@ -207,16 +207,17 @@ pub fn install_host(
         })
     }));
 
-    // The plugins install HERE, with the wire doors in hand: the ONE
-    // diff policy, and the directory a route closes over.
-    let installed = himark::plugin::install_all(
-        app,
-        Arc::new(myersdiff::Myers),
-        Arc::clone(&clients),
-        Arc::clone(&resource_uris),
-        plugins,
-    );
+    // The plugins install HERE; the wire-closed routes register
+    // right after, where the directory lives.
+    let installed = himark::plugin::install_all(app, Arc::new(myersdiff::Myers), plugins);
     let languages = Arc::clone(&installed.languages);
+
+    // hicode's definition ask routes over the wire — the HOST
+    // registers it, closed over its client directory.
+    app.register_handler::<hicode::FindDefinitionEffect>(hicode::lsproute::DefinitionRoute {
+        directory: Arc::clone(&clients),
+        uris: Arc::clone(&resource_uris),
+    });
 
     {
         let clients = clients.clone();

@@ -64,17 +64,7 @@ fn main() {
     // The engine plugin set — grammars and language facts collect
     // into the one languages set every document parses against.
     let plugins = himark_plugins::engine_plugins();
-    let clients = Arc::new(ahp_wire::fs::ClientDirectory::new(Arc::new(
-        |_subscription| {},
-    )));
-    let uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(ahp_wire::uris::FileUris);
-    let wired = himark::plugin::install_all(
-        &mut app,
-        Arc::new(myersdiff::Myers),
-        clients,
-        uris,
-        &plugins,
-    );
+    let wired = himark::plugin::install_all(&mut app, Arc::new(myersdiff::Myers), &plugins);
     let languages = wired.languages;
 
     // Register the document into a FRESH collection — no session

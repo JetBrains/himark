@@ -10105,10 +10105,6 @@ fn a_bare_engine_mounts_a_scrolled_editor() {
     let wired = himark::plugin::install_all(
         &mut app,
         Arc::new(myersdiff::Myers),
-        Arc::new(ahp_wire::fs::ClientDirectory::new(Arc::new(
-            |_subscription| {},
-        ))),
-        Arc::new(ahp_wire::uris::FileUris),
         &himark_plugins::engine_plugins(),
     );
     let languages = wired.languages;

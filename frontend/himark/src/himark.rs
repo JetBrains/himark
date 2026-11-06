@@ -138,6 +138,17 @@ pub struct Himark {
 
     pub(crate) workshop: Arc<::editor::env::Workshop>,
 
+    /// The registered BATCH LANES — reactions that run after every
+    /// batch's queue drains, store in hand (the AHP session syncs
+    /// register here; an engine with no plugin runs none). The lane
+    /// reads `all_quiet` itself: a quiet batch certified it made no
+    /// landings or edits, and each lane decides what still runs.
+    batch_lanes: Vec<BatchLane>,
+
+    /// The registered SWEEP hooks — the empty-entity housekeeping
+    /// `sweep` runs beside its own frame invalidation.
+    sweep_hooks: Vec<Arc<dyn Fn(&mut Store)>>,
+
     /// The stage tables (docs/ui/imba-ffi.md): layouts and frames
     /// a host holds by handle. Engine-owned so the `ToView` road
     /// can quiesce a view's stages before mutating it.
@@ -195,6 +206,12 @@ pub struct Himark {
     /// run after the engine's own fan-outs; registration order.
     tails: Vec<Box<dyn BatchTail>>,
 }
+
+/// One registered batch LANE — see [`Himark::register_batch_lane`].
+/// Runs after every batch's queue drains, before the commit:
+/// `(store, ui, all_quiet, fx)`.
+pub type BatchLane =
+    Arc<dyn Fn(&mut Store, &std::rc::Rc<UiCtx>, bool, &mut crate::perform::AppFx<'_>)>;
 
 /// One registered batch-tail — see [`Himark::register_batch_tail`].
 pub trait BatchTail: 'static {
@@ -347,6 +364,8 @@ impl Himark {
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
             host: None,
             tails: Vec::new(),
+            batch_lanes: Vec::new(),
+            sweep_hooks: Vec::new(),
         };
         crate::startup_profile::log("Himark::bare", total_started);
         engine
@@ -388,10 +407,14 @@ impl Himark {
         self.frames_built
     }
 
-    /// The empty-session housekeeping, run after every batch — the
-    /// one thing the old gather/scatter rite still did.
+    /// The empty-entity housekeeping, run after every batch — the
+    /// one thing the old gather/scatter rite still did. The hooks
+    /// are registered (the AHP plugin sweeps its empty sessions).
     pub fn sweep(&mut self) {
-        ahp_session::session::state::Hosts::sweep_empty(&mut self.store);
+        let hooks = self.sweep_hooks.clone();
+        for hook in &hooks {
+            hook(&mut self.store);
+        }
         self.invalidate_frames();
     }
 
@@ -483,119 +506,18 @@ impl Himark {
             }
         }
 
-        // A QUIET batch (every arm display-neutral) skips the
-        // session lanes whole: they react to landings and edits,
-        // and a quiet batch certified it made none — this is most
-        // of what a per-frame observation batch used to cost.
-        if !all_quiet {
+        // The registered BATCH LANES (the AHP session syncs among
+        // them): they react to landings and edits; each lane reads
+        // `all_quiet` — a quiet batch certified it made none — and
+        // decides what it still owes (housekeeping like enrich's
+        // drop-unclaimed runs regardless).
+        {
+            let lanes = self.batch_lanes.clone();
             let mut fx = batch.effects();
-            // The resident sessions subscription: hosts connect, list
-            // and drain whether or not any view shows them — the
-            // catalog stays true at all times (views only dress it).
-            fx.scope(AppCommand::Verb, |fx| {
-                ahp_session::session::driver::sync_sessions_lane(&mut store, fx)
-            });
-            // The lanes run over EVERY session: each drains its own
-            // pending queue, so a clean session costs map reads — and a
-            // landing's session gets its sweep THIS batch whatever the
-            // batch's scope (the old tail served only the LAST scope's
-            // session, so a cross-session batch starved the others).
-            let probe_lanes = std::env::var_os("HIMARK_TRACE_DIFF").is_some();
-            for state in ahp_session::session::state::Hosts::states(&store) {
-                let documents = state.documents();
-                let started = probe_lanes.then(std::time::Instant::now);
-                fx.scope(AppCommand::Verb, |fx| {
-                    documents::lanes::sync_diff_lanes(&mut store, documents, fx)
-                });
-                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
-                {
-                    eprintln!("[lanes] sync_diff_lanes: {:?}", started.elapsed());
-                }
-                let started = probe_lanes.then(std::time::Instant::now);
-                fx.scope(AppCommand::Verb, |fx| {
-                    documents::lanes::sync_scroll_stripe_lanes(&mut store, documents, fx)
-                });
-                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
-                {
-                    eprintln!("[lanes] sync_scroll_stripe_lanes: {:?}", started.elapsed());
-                }
-                // The DRESSING sweep: any view whose basis lags its
-                // pair resyncs NOW, id-routed — a normalize landing
-                // and its re-dress share a batch, and no face waits
-                // for paint.
-                let started = probe_lanes.then(std::time::Instant::now);
-                fx.scope(AppCommand::Verb, |fx| {
-                    documents::lanes::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), fx)
-                });
-                if let Some(started) = started.filter(|started| started.elapsed().as_millis() >= 1)
-                {
-                    eprintln!("[lanes] sync_diff_dressing: {:?}", started.elapsed());
-                }
-                // The dock tree views ride the push road too: a
-                // changes / history feed landing refreshes a mounted
-                // stale view in the SAME batch — no paint probe.
-                changesview::changes_view::sync_changes_views(
-                    &mut store,
-                    state.changes(),
-                    &self.ui_ctx(),
-                );
-                // The canvases sync against the fresh document/diff/
-                // changeset state — the SAME batch a feed landed in, a
-                // direct lane over the sets that own them. The
-                // dressed-views queue drains here: the session's own
-                // note (id-routed landings appended mid-batch), taken
-                // by the one lane that reads it.
-                let dressed = documents::OpenDocuments::take_dressed(&mut store, documents);
-                fx.scope(AppCommand::Verb, |fx| {
-                    canvas::canvases::sync_canvases(
-                        &mut store,
-                        state.canvas_router(),
-                        &self.ui_ctx(),
-                        &dressed,
-                        fx,
-                    )
-                });
-                // The comments lane: the model's announce and card
-                // notes drain onto the wire — a clean collection
-                // costs a map read.
-                fx.scope(AppCommand::Verb, |fx| {
-                    ahp_comments::sync(&mut store, state.comments_wire(), &self.ui_ctx(), fx)
-                });
-                // The diagnostics lane: dirty resources land their
-                // squiggle markups into the session's open documents.
-                fx.scope(AppCommand::Verb, |fx| {
-                    ahp_lsp::diagnostics::sync(
-                        &mut store,
-                        state.diagnostics_wire(),
-                        &self.ui_ctx(),
-                        fx,
-                    )
-                });
-                // The language-services pull lane: edited and newly
-                // opened documents re-ask their semantic tokens and
-                // inlay hints.
-                fx.scope(AppCommand::Verb, |fx| {
-                    ahp_lsp::enrich::sync(&mut store, state.enrich_wire(), fx)
-                });
-                // The gesture-ask lanes: the views noted onto their
-                // MODELS (grow, commit fetches, refetches); the
-                // drivers drain the notes onto the wires here — no
-                // view carries a wire or a window for these.
-                fx.scope(AppCommand::Verb, |fx| {
-                    ahp_changes::history::sync(&mut store, state.history_wire(), fx);
-                    ahp_changes::changes::sync(&mut store, state.changes_wire(), fx);
-                    ahp_locations::driver::sync(
-                        &mut store,
-                        &self.ui_ctx(),
-                        state.locations_wire(),
-                        fx,
-                    );
-                });
+            for lane in &lanes {
+                lane(&mut store, &ui, all_quiet, &mut fx);
             }
         }
-        // Every session's lane claimed its own edit notes above; what
-        // is left names documents open nowhere.
-        ahp_lsp::enrich::drop_unclaimed(&store);
         // The safety net for a tail lane's follow-up: the queue loop
         // is over, so perform them here — late but never lost.
         let mut performer = crate::perform::Performer {
@@ -1393,6 +1315,21 @@ impl Himark {
     /// them).
     pub fn register_batch_tail(&mut self, tail: impl BatchTail) {
         self.tails.push(Box::new(tail));
+    }
+
+    /// Register a batch LANE — a reaction that runs after every
+    /// batch's queue drains, store in hand (the AHP session syncs:
+    /// comments, diagnostics, changes, the diff/dressing sweeps).
+    /// Lanes run in registration order; each reads `all_quiet` and
+    /// decides what a certified-quiet batch still owes it.
+    pub fn register_batch_lane(&mut self, lane: BatchLane) {
+        self.batch_lanes.push(lane);
+    }
+
+    /// Register a SWEEP hook — empty-entity housekeeping run by
+    /// `sweep` after every non-quiet batch.
+    pub fn register_sweep_hook(&mut self, hook: Arc<dyn Fn(&mut Store)>) {
+        self.sweep_hooks.push(hook);
     }
 
     /// The engine's own batch tail: the theme, file-event and

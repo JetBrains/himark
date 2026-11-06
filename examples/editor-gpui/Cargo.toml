@@ -17,7 +17,6 @@ documents = { path = "../../frontend/documents" }
 editor = { path = "../../frontend/editor" }
 text = { path = "../../frontend/text" }
 myersdiff = { path = "../../frontend/myersdiff" }
-ahp-wire = { path = "../../frontend/ahp-wire" }
 
 [[bin]]
 name = "editor-gpui"

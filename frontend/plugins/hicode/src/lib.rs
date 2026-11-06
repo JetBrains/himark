@@ -130,19 +130,16 @@ pub mod lsproute;
 pub struct CodePlugin;
 
 impl himark::plugin::Plugin for CodePlugin {
-    fn install(&self, app: &mut himark::app::Himark, cx: &himark::plugin::PluginContext) {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         app.register_handler::<CodeNavigationEffect>(CodeNavigationHandler {
             caller: app.effect_caller(),
         });
         app.register_document_command(std::sync::Arc::new(GoDefinition));
         app.register_document_command(std::sync::Arc::new(GoReferences));
         app.register_document_command(std::sync::Arc::new(GoImplementations));
-        // The definition ask's wire route — closed over the host's
-        // client directory, registered where the effect lives.
-        app.register_handler::<FindDefinitionEffect>(lsproute::DefinitionRoute {
-            directory: std::sync::Arc::clone(&cx.clients),
-            uris: std::sync::Arc::clone(&cx.resource_uris),
-        });
+        // The definition ask's WIRE route is the host's — it closes
+        // over the client directory, which only the composition
+        // root holds (`himark_plugins::install_host` registers it).
     }
 }
 

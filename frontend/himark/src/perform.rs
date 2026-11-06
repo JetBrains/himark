@@ -75,6 +75,47 @@ impl AppCommand {
     }
 }
 
+/// Registered MOUNT BINDERS: the typed facts a feature half adds
+/// to a mounted origin's bindings (the AHP plugin binds the
+/// mount's session and its state). Each answers a BAG to merge —
+/// never a bare `ViewBridgeId` (that bind is the engine's signal).
+#[derive(Clone, Default)]
+pub struct MountBinders(
+    #[allow(clippy::type_complexity)]
+    pub  Vec<
+        Arc<
+            dyn Fn(&Store, crate::bridge::ViewBridgeId) -> imba::focus::Bindings + Send + Sync,
+        >,
+    >,
+);
+
+pub(crate) fn mount_bindings(
+    store: &Store,
+    origin: crate::bridge::ViewBridgeId,
+) -> imba::focus::Bindings {
+    let Some(binders) = store.get::<MountBinders>() else {
+        return imba::focus::Bindings::new();
+    };
+    let mut bag = imba::focus::Bindings::new();
+    for binder in binders.0.iter() {
+        bag = bag.merge_under(binder(store, origin));
+    }
+    bag
+}
+
+/// Registered FILE ROUTES: where a watch subscription's change
+/// lands (the AHP plugin routes it to the owning session's
+/// documents collection and refetches).
+#[derive(Clone, Default)]
+pub struct FileRoutes(
+    #[allow(clippy::type_complexity)]
+    pub  Vec<
+        Arc<
+            dyn Fn(&mut Store, documents::watch::Subscription, &mut AppFx<'_>) + Send + Sync,
+        >,
+    >,
+);
+
 /// The seated ORIGIN-BINDINGS resolver: whoever owns richer origins
 /// (the workbench: a window rides the same raw id, and its walk
 /// binds the window and the focused document) answers the walk's
@@ -110,16 +151,10 @@ pub(crate) fn origin_bindings(
             return bound.bind(crate::commands::BoundOrigin(origin));
         }
     }
-    let mut bound = imba::focus::Bindings::new()
+    imba::focus::Bindings::new()
         .bind(origin)
-        .bind(crate::commands::BoundOrigin(origin));
-    if let Some(session) = crate::mounts::session_of(store, origin) {
-        if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned() {
-            bound = bound.bind(state);
-        }
-        bound = bound.bind(session);
-    }
-    bound
+        .bind(crate::commands::BoundOrigin(origin))
+        .merge_under(mount_bindings(store, origin))
 }
 
 /// Perform a registered command at its origin: resolve the
@@ -308,14 +343,13 @@ impl Performer<'_> {
                 }
             }
             AppCommand::FileChanged(subscription) => {
-                // The border road: the event names only a subscription;
-                // its documents collection is found once, by content.
-                if let Some(documents) =
-                    ahp_session::session::state::Hosts::documents_of_watch(store, subscription)
-                {
-                    fx.scope(AppCommand::Verb, |fx| {
-                        documents::lanes::refetch_watched(store, documents, subscription, fx)
-                    });
+                // The border road: the event names only a
+                // subscription; the registered routes decide where
+                // it lands (the AHP plugin: the owning session's
+                // documents collection, refetched).
+                let routes = store.get::<FileRoutes>().cloned().unwrap_or_default();
+                for route in routes.0.iter() {
+                    route(store, subscription, fx);
                 }
 
                 self.pending_file_events.push(subscription);

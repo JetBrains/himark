@@ -23,12 +23,8 @@ pub(crate) fn bind_mounted<'a>(
     if id.is_mounted() {
         data = data.bind(id);
     }
-    if let Some(session) = crate::mounts::session_of(store, id) {
-        if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned() {
-            data = data.bind(state);
-        }
-        data = data.bind(session);
-    }
+    data.bindings = std::mem::take(&mut data.bindings)
+        .merge_under(crate::perform::mount_bindings(store, id));
     data
 }
 

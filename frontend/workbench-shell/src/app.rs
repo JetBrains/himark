@@ -177,6 +177,12 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
             next: WorkbenchFrontend,
         }),
     );
+    // The SESSION LANES and sweep — registered reactions, not
+    // engine wiring (a bare library boot runs none). Seated here
+    // until the AHP plugin owns its whole module.
+    app.register_batch_lane(himark::hiahp::session_lanes());
+    app.register_sweep_hook(himark::hiahp::session_sweep());
+    himark::hiahp::install_session_binding(&mut app);
     app.setup(|store| {
         store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
         crate::builtins::register_builtins(store);

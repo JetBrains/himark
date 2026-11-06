@@ -2225,7 +2225,6 @@ dependencies = [
 name = "editor-gpui"
 version = "0.1.0"
 dependencies = [
- "ahp-wire",
  "documents",
  "editor",
  "hikit",
