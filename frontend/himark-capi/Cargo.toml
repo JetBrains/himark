@@ -12,7 +12,7 @@ crate-type = ["rlib", "staticlib"]
 workbench = { path = "../workbench" }
 himark-plugins = { path = "../himark-plugins" }
 himark-ffi = { path = "../himark-ffi" }
-hitailnet = { path = "../hitailnet" }
+hitailnet = { path = "../hitailnet", features = ["capi"] }
 hikit = { path = "../hikit" }
 recents = { path = "../recents" }
 filetree = { path = "../filetree" }

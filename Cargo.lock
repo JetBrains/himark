@@ -4023,6 +4023,7 @@ dependencies = [
  "ahp-session",
  "ahp-wire",
  "canvas",
+ "cbindgen 0.29.4",
  "documents",
  "editor",
  "gfx",
@@ -4414,8 +4415,10 @@ version = "0.1.0"
 dependencies = [
  "ahp-session",
  "ahp-wire",
+ "cbindgen 0.29.4",
  "desktop",
  "himark",
+ "himark-ffi",
  "himark-plugins",
  "host-discovery",
  "imba",

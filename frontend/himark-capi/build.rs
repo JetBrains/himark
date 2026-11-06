@@ -1,9 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! One header over FOUR crates: the engine bridge (himark-ffi), the
-//! workbench's window surface, the tailnet face and this crate's own
-//! door — cbindgen runs once per crate and the passes concatenate.
+//! The SHELL header: what the workbench's C surface and this
+//! assembly crate add beyond the engine header (himark-ffi's
+//! `himark.h`). The REVIEW FILE — the target is for it to shrink
+//! to nothing as the window road retires.
 
 fn generate(crate_dir: &str, with_header: bool) -> String {
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
@@ -39,20 +40,10 @@ fn generate(crate_dir: &str, with_header: bool) -> String {
 fn main() {
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
     let own = generate(".", true);
-    let ffi = generate("../himark-ffi", false);
     let windows = generate("../workbench-shell", false);
-    let tailnet = generate("../hitailnet", false);
-    // The trailer (the tailnet state defines) must stay LAST; the
-    // own pass carries header + trailer, so splice the dep passes in
-    // before the trailer's marker.
-    let assembled = match own.rfind("#define HIMARK_TAILNET_OFF") {
-        Some(at) => format!("{}{}\n{}\n{}\n{}", &own[..at], ffi, windows, tailnet, &own[at..]),
-        None => format!("{own}\n{ffi}\n{windows}\n{tailnet}"),
-    };
-    std::fs::write(format!("{root}/include/himark.h"), assembled).expect("write header");
+    let assembled = format!("{own}\n{windows}");
+    std::fs::write(format!("{root}/include/himark-shell.h"), assembled).expect("write header");
     println!("cargo:rerun-if-changed=src");
-    println!("cargo:rerun-if-changed=../himark-ffi/src");
     println!("cargo:rerun-if-changed=../workbench-shell/src");
-    println!("cargo:rerun-if-changed=../hitailnet/src");
     println!("cargo:rerun-if-changed=cbindgen.toml");
 }

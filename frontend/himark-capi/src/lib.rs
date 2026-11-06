@@ -19,8 +19,6 @@ pub use himark::app_ext::AppExt;
 pub use himark_ffi::*;
 pub use workbench_shell::capi::*;
 
-#[cfg(unix)]
-mod tailnet_capi;
 
 /// Boot the engine over the HOST'S plugin list — the one
 /// construction every shell shares. The callbacks apply before

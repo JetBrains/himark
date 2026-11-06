@@ -2,5 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "himark.h"
+#include "himark-shell.h"
+#include "himark-tailnet.h"
 #include <util.h>
 #include "SkiaMetalBridge.h"

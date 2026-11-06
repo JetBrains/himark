@@ -22,5 +22,8 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 gfx-skia = { path = "../gfx-skia", optional = true }
 skia-safe = { version = "0.153", optional = true }
 
+[build-dependencies]
+cbindgen = "0.29.4"
+
 [features]
 skia-shell = ["dep:skia-safe", "dep:gfx-skia"]

@@ -87,7 +87,9 @@ XC
   echo "    wrote $out$qualifier (skia: $SKIA)"
 }
 
-cp "$ROOT/frontend/himark-capi/include/himark.h" ./himark.h
+cp "$ROOT/frontend/himark-ffi/include/himark.h" ./himark.h
+cp "$ROOT/frontend/himark-capi/include/himark-shell.h" ./himark-shell.h
+cp "$ROOT/frontend/hitailnet/include/himark-tailnet.h" ./himark-tailnet.h
 ACTION="${1:-gen}"
 ensure_skia_headers
 ensure_rust_target

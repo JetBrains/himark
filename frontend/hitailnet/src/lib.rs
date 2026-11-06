@@ -23,6 +23,9 @@
 //! root is THREADED from `himark_create`; the shell that knows the
 //! right place (the iOS container) passes it there.
 
+#[cfg(feature = "capi")]
+pub mod capi;
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
