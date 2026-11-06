@@ -2,4 +2,6 @@ Generated-macOS.xcconfig
 Generated-iOS.xcconfig
 himark.xcodeproj/
 himark.h
+himark-shell.h
+himark-tailnet.h
 build/

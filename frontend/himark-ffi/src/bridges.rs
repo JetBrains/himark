@@ -472,14 +472,21 @@ pub unsafe extern "C" fn himark_bridge_draw(
     canvas: *mut c_void,
     width: f32,
     height: f32,
-    scale: f32,
+    _scale: f32,
 ) -> bool {
     if engine.is_null() || canvas.is_null() {
         return false;
     }
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     engine.as_mut().map_or(false, |engine| {
-        engine.draw(bridge.raw, canvas, width, height, scale)
+        let id = ViewBridgeId::from_raw(bridge.raw);
+        // A shell that draws without ticking (tests, direct renders)
+        // still applies the standing deltas before the frame.
+        let flushed = engine.app.flush_scroll(id);
+        engine
+            .app
+            .draw_mounted(id, canvas, gfx::Size::new(width, height))
+            || flushed
     })
 }
 

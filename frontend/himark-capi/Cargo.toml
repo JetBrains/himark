@@ -137,7 +137,7 @@ editor = { path = "../editor" }
 # through skia canvases crossing the C ABI. A shell with its own
 # painter (gpui) opts out and skia never links.
 default = ["skia-shell"]
-skia-shell = ["dep:skia-safe", "dep:gfx-skia"]
+skia-shell = ["dep:skia-safe", "dep:gfx-skia", "himark-ffi/skia-shell"]
 test-support = ["himark/test-support"]
 
 [target.'cfg(unix)'.dependencies]
