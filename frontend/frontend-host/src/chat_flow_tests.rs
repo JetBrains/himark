@@ -1341,3 +1341,61 @@ fn a_panned_gesture_scrolls_the_chat_up() {
         "ten 60px pan deltas moved the transcript from {tail} to {after:?} — the scroll was consumed but never applied"
     );
 }
+
+/// IDLE must be quiet: once the chat settles, clock ticks answer
+/// "unchanged" and no trees build — the web shell draws only on a
+/// changed tick, so a tick that cries wolf every frame is a 100%-CPU
+/// browser (the 2026-11-06 report).
+#[test]
+fn idle_clock_ticks_are_quiet() {
+    let reply: String = (0..24)
+        .map(|line| format!("reply line {line} with a little text to wrap on\n"))
+        .collect();
+    let (mut engine, window, _script) = boot(chat_page(
+        CHAT,
+        (0..48)
+            .map(|at| completed_turn(&format!("t{at}"), &format!("prompt {at}"), &reply))
+            .collect(),
+        None,
+    ));
+    paint(&mut engine, window);
+
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut now = 0.0f64;
+    for _ in 0..90 {
+        engine.worker().run_pending();
+        now += 16.0;
+        let _ = himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(now),
+        );
+        let _ = engine.draw(
+            window,
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
+        engine.drain();
+    }
+
+    // Settled. A quiet minute of ticks: count the liars.
+    let built = engine.app.frames_built();
+    let mut changed_ticks = 0;
+    for _ in 0..120 {
+        now += 16.0;
+        if himark::test_driver::animate(
+            &mut engine.app,
+            imba::anim::AnimationClock::from_millis(now),
+        ) {
+            changed_ticks += 1;
+        }
+    }
+    let trees = engine.app.frames_built() - built;
+    assert!(
+        changed_ticks <= 2 && trees <= 2,
+        "a settled chat answered {changed_ticks}/120 idle ticks as changed and built {trees} trees — \
+         something re-arms every frame"
+    );
+
+}

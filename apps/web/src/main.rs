@@ -330,6 +330,10 @@ mod app {
         /// The engine's text focus as last told to the page — the
         /// soft keyboard's state (`sync_keyboard`).
         wants_text: bool,
+        /// Command performed → you render: every entry point ORs its
+        /// dispatch's answer in; the next animation frame paints and
+        /// clears it (the paint's own answer re-arms — belts perform).
+        needs_redraw: bool,
         /// The standing one-finger TOUCH PAN, scroll by synthesis:
         /// taps stay the browser's (it synthesizes the mouse events
         /// the click road already speaks), a move past the slop
@@ -631,6 +635,7 @@ mod app {
                 clicks: crate::clicks::ClickCounter::default(),
                 drag_point: None,
                 wants_text: false,
+                needs_redraw: true,
                 pan: None,
                 fling: None,
                 window,
@@ -648,14 +653,14 @@ mod app {
         #[cfg(target_feature = "atomics")]
         fn drain_worker(&mut self) {
             while let Ok(command) = self.arriving.try_recv() {
-                let _ = self.state.perform_batch(vec![command]);
+                self.needs_redraw |= self.state.perform_batch(vec![command]);
             }
         }
 
         #[cfg(not(target_feature = "atomics"))]
         fn drain_worker(&mut self) {}
 
-        fn draw(&mut self) {
+        fn draw(&mut self) -> bool {
             self.resize_canvas();
             let fb_info = gl::FramebufferInfo {
                 fboid: 0,
@@ -680,7 +685,7 @@ mod app {
 
             let canvas = gfx_skia::SkiaCanvas::new(surface.canvas());
             canvas.save();
-            self.state.draw_window_sized(
+            let reconciling = self.state.draw_window_sized(
                 self.window,
                 &canvas,
                 gfx::Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
@@ -688,6 +693,7 @@ mod app {
             canvas.restore();
 
             self.context.flush_and_submit_surface(&mut surface, None);
+            reconciling
         }
 
         fn resize_canvas(&mut self) {
@@ -707,6 +713,10 @@ mod app {
                 }
                 self.width = width;
                 self.height = height;
+                self.needs_redraw = true;
+            }
+            if scale != self.scale {
+                self.needs_redraw = true;
             }
             self.scale = scale;
         }
@@ -828,7 +838,7 @@ mod app {
             drain_host_commands(app, time / 1000.0);
 
             let size = app.state.viewport_size();
-            let _ = app.state.dispatch_timed(
+            let ticked = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::AnimationClock {
                     now: imba::anim::AnimationClock::from_millis(time),
@@ -836,8 +846,16 @@ mod app {
                 size,
                 time / 1000.0,
             );
+            app.needs_redraw |= ticked;
             fling_frame(app, time / 1000.0);
-            app.draw();
+            // Command performed → you render — and nothing performed,
+            // nothing painted: the quiet 60fps loop stops burning a
+            // core repainting the same pixels. The paint's own answer
+            // re-arms the gate (its belts perform too).
+            app.resize_canvas();
+            if app.needs_redraw {
+                app.needs_redraw = app.draw();
+            }
             emscripten_request_animation_frame(Some(animation_frame), user_data);
         }
         true
@@ -859,6 +877,7 @@ mod app {
             if command.is_empty() {
                 return;
             }
+            app.needs_redraw = true;
             let mut fields = command.splitn(3, '\u{1}');
             match fields.next().unwrap_or_default() {
                 "open" => {
@@ -1017,7 +1036,7 @@ mod app {
                 _ => 1.0,
             } * scale;
             let size = app.state.viewport_size();
-            app.state.dispatch_timed(
+            let changed = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::Scroll {
                     delta_x: (event.delta_x * multiplier) as f32,
@@ -1030,7 +1049,9 @@ mod app {
                 },
                 size,
                 event.mouse.timestamp / 1000.0,
-            )
+            );
+            app.needs_redraw |= changed;
+            changed
         }
     }
 
@@ -1153,7 +1174,7 @@ mod app {
             };
             if delta != (0.0, 0.0) {
                 let size = app.state.viewport_size();
-                let _ = app.state.dispatch_timed(
+                let changed = app.state.dispatch_timed(
                     app.window,
                     imba::event::Event::Scroll {
                         point: anchor,
@@ -1164,6 +1185,7 @@ mod app {
                     size,
                     now,
                 );
+                app.needs_redraw |= changed;
             }
             // Consumed: past the slop the browser owes us no taps.
             true
@@ -1265,6 +1287,7 @@ mod app {
             size,
             now,
         );
+        app.needs_redraw |= moved;
         let live = (fling.velocity.0.powi(2) + fling.velocity.1.powi(2)).sqrt()
             > 30.0 * app.scale;
         if moved && live {
@@ -1293,7 +1316,7 @@ mod app {
             // The secondary button skips the click run — a context
             // press never double-clicks.
             if event.button == 2 {
-                return app.state.dispatch_timed(
+                let changed = app.state.dispatch_timed(
                     app.window,
                     imba::event::Event::MouseDown {
                         mods,
@@ -1304,6 +1327,8 @@ mod app {
                     gfx::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
                     event.timestamp / 1000.0,
                 );
+                app.needs_redraw |= changed;
+                return changed;
             }
             let Some(count) = app
                 .clicks
@@ -1323,6 +1348,7 @@ mod app {
                 gfx::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
                 event.timestamp / 1000.0,
             );
+            app.needs_redraw |= changed;
             sync_keyboard(app);
             changed
         }
@@ -1348,6 +1374,7 @@ mod app {
             app.state.viewport_size(),
             timestamp,
         );
+        app.needs_redraw |= changed;
         sync_keyboard(app);
         changed
     }
@@ -1392,7 +1419,7 @@ mod app {
                 return end_drag(app, point, timestamp);
             }
             app.drag_point = Some(point);
-            app.state.dispatch_timed(
+            let changed = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::MouseDrag {
                     point,
@@ -1405,7 +1432,9 @@ mod app {
                 },
                 app.state.viewport_size(),
                 timestamp,
-            )
+            );
+            app.needs_redraw |= changed;
+            changed
         }
     }
 
@@ -1434,11 +1463,13 @@ mod app {
             let app = &mut *user_data.cast::<WebApp>();
             // A HitTest beyond any component's reach, or hover popups
             // stick to the last in-canvas point.
-            app.state.dispatch(
+            let changed = app.state.dispatch(
                 app.window,
                 imba::event::Event::window_left(),
                 app.state.viewport_size(),
-            )
+            );
+            app.needs_redraw |= changed;
+            changed
         }
     }
 
@@ -1501,6 +1532,9 @@ mod app {
                 false => client.copy(),
             })
             .flatten();
+        if cut != 0 && copied.is_some() {
+            app.needs_redraw = true;
+        }
         let Some(content) = copied else {
             return std::ptr::null();
         };
@@ -1519,11 +1553,14 @@ mod app {
         let Some(text) = seated_text(text).filter(|text| !text.is_empty()) else {
             return;
         };
-        let _ = app.state.with_clipboard_client(app.window, |client| {
-            client.paste(&imba::clipboard::ClipboardContent {
-                text: text.to_owned(),
+        app.needs_redraw |= app
+            .state
+            .with_clipboard_client(app.window, |client| {
+                client.paste(&imba::clipboard::ClipboardContent {
+                    text: text.to_owned(),
+                })
             })
-        });
+            .unwrap_or(false);
     }
 
     /// Typed text the keydown road never saw — the soft keyboard's,
@@ -1535,9 +1572,10 @@ mod app {
             return;
         };
         let size = app.state.viewport_size();
-        let _ = app
+        let typed = app
             .state
             .dispatch(app.window, imba::event::Event::TextInput { text }, size);
+        app.needs_redraw |= typed;
     }
 
     /// The composition in flight mirrors into the engine's marked text.
@@ -1546,9 +1584,12 @@ mod app {
         let Some(app) = seated_app() else { return };
         let Some(text) = seated_text(text) else { return };
         let caret = text.encode_utf16().count() as u32;
-        let _ = app.state.with_ime_client(app.window, |client| {
-            client.set_marked_text(text, (caret, 0), None);
-        });
+        app.needs_redraw |= app
+            .state
+            .with_ime_client(app.window, |client| {
+                client.set_marked_text(text, (caret, 0), None);
+            })
+            .is_some();
     }
 
     /// Composition ended: commit through the marked-text door the
@@ -1565,11 +1606,13 @@ mod app {
                 false => client.insert_text(text, None),
             }
         });
+        app.needs_redraw |= committed.is_some();
         if committed.is_none() && !text.is_empty() {
             let size = app.state.viewport_size();
-            let _ = app
+            let typed = app
                 .state
                 .dispatch(app.window, imba::event::Event::TextInput { text }, size);
+            app.needs_redraw |= typed;
         }
     }
 
@@ -1654,6 +1697,7 @@ mod app {
                 ),
                 _ => false,
             };
+            app.needs_redraw |= consumed;
             sync_keyboard(app);
             consumed
         }
