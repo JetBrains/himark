@@ -5,7 +5,24 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+himark = { path = "../../frontend/himark" }
 himark-gpui = { path = "../../frontend/himark-gpui" }
+himark-plugins = { path = "../../frontend/himark-plugins" }
+workbench-shell = { path = "../../frontend/workbench-shell" }
+hitailnet = { path = "../../frontend/hitailnet" }
+desktop = { path = "../../frontend/desktop" }
+editor = { path = "../../frontend/editor" }
+myersdiff = { path = "../../frontend/myersdiff" }
+ahp-wire = { path = "../../frontend/ahp-wire" }
+ahp-session = { path = "../../frontend/ahp-session" }
+ahp-chat = { path = "../../frontend/ahp-chat" }
+ahp-lsp = { path = "../../frontend/ahp-lsp" }
+ahp-locations = { path = "../../frontend/ahp-locations" }
+host-discovery = { path = "../../protocol/host-discovery" }
+palette = { path = "../../frontend/plugins/palette" }
+peeker = { path = "../../frontend/plugins/peeker" }
+demo = { path = "../../frontend/plugins/demo" }
+hiscript = { path = "../../frontend/hiscript" }
 
 [[bin]]
 name = "macos"

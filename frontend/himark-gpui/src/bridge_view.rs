@@ -3,12 +3,10 @@
 
 //! One bridge as one gpui view — the `HimarkBridgeView` of the
 //! macOS shell, in Rust. Input lands as `imba::event::Event`s
-//! through Himark's own dispatch; frames go out through
+//! through Himark's own bridge dispatch; frames go out through
 //! `gfx_gpui::GpuiPainter`; the engine's scroll coalescer and
 //! animation clock pace the roads that need pacing.
 
-use workbench_shell::capi::WindowEngine as _;
-use workbench_shell::app::WorkbenchShell as _;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
@@ -19,19 +17,25 @@ use gpui::{
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollDelta,
     ScrollWheelEvent, TouchPhase, Window,
 };
+use himark::bridge::ViewBridgeId;
+use himark::host::ScrollPhase;
 use imba::event::Event;
+use imba::ime::ImeClient;
 use imba_gpui::events::{cursor_style_of, device_point, key_of, modifiers_of};
-use workbench::window::WindowId;
 
-use crate::engine::{Bridge, Engine};
+use crate::engine::Engine;
 
 pub struct BridgeView {
     engine: Engine,
-    bridge: Bridge,
+    bridge: ViewBridgeId,
     caches: Rc<RefCell<PainterCaches>>,
     focus: FocusHandle,
     started_at: Instant,
     modifiers: gpui::Modifiers,
+    /// Where the pointer last was, in device pixels — what a
+    /// modifier change re-hit-tests at (gpui's `ModifiersChangedEvent`
+    /// carries no position).
+    pointer: Cell<gfx::Point>,
     /// The shape the last hit test answered. Only RECORDED here:
     /// `set_window_cursor_style` is a paint-phase API (it panics
     /// anywhere else), so the canvas paint applies it each frame.
@@ -42,7 +46,7 @@ pub struct BridgeView {
 }
 
 impl BridgeView {
-    pub fn new(engine: Engine, bridge: Bridge, cx: &mut Context<Self>) -> Self {
+    pub fn new(engine: Engine, bridge: ViewBridgeId, cx: &mut Context<Self>) -> Self {
         engine.attach(cx.weak_entity());
         Self {
             engine,
@@ -51,54 +55,36 @@ impl BridgeView {
             focus: cx.focus_handle(),
             started_at: Instant::now(),
             modifiers: gpui::Modifiers::default(),
+            pointer: Cell::new(gfx::Point::new(-1.0e6, -1.0e6)),
             cursor: Rc::new(Cell::new(gpui::CursorStyle::Arrow)),
             origin: Rc::new(Cell::new(gpui::Point::default())),
         }
-    }
-
-    fn wid(&self) -> WindowId {
-        WindowId::from_raw(self.bridge.0)
     }
 
     fn now(&self) -> f64 {
         self.started_at.elapsed().as_secs_f64()
     }
 
-    /// The viewport this bridge last laid out at — what an event
-    /// dispatch measures against.
-    fn viewport(&self) -> gfx::Size {
-        self.engine
-            .raw()
-            .borrow()
-            .app
-            .window_viewport(self.wid())
-            .unwrap_or_else(|| gfx::Size::new(1.0, 1.0))
-    }
-
     /// One event into this bridge, through Himark's own dispatch —
-    /// no key codes, no masks.
+    /// no key codes, no masks, the slot's standing size.
     fn dispatch(&self, event: Event<'_>, cx: &mut Context<Self>) {
-        let size = self.viewport();
         let at = self.now();
-        let changed =
-            self.engine
-                .raw()
-                .borrow_mut()
-                .app
-                .dispatch_timed(self.wid(), event, size, at);
+        let changed = self
+            .engine
+            .raw()
+            .borrow_mut()
+            .dispatch_bridge_timed(self.bridge, event, None, at);
         if changed {
             cx.notify();
         }
     }
 
     fn dispatch_pointed(&self, event: Event<'_>, cx: &mut Context<Self>) {
-        let size = self.viewport();
-        let (changed, shape) =
-            self.engine
-                .raw()
-                .borrow_mut()
-                .app
-                .dispatch_pointed(self.wid(), event, size);
+        let (changed, shape) = self
+            .engine
+            .raw()
+            .borrow_mut()
+            .dispatch_bridge(self.bridge, event, None);
         let style = cursor_style_of(shape);
         if self.cursor.replace(style) != style || changed {
             cx.notify();
@@ -123,10 +109,8 @@ impl BridgeView {
         // method sees every stroke first, the same gate every
         // shell keeps.
         if self
-            .engine
-            .raw()
-            .borrow_mut()
-            .has_marked_text(self.bridge.0)
+            .with_ime(|client| client.has_marked_text())
+            .unwrap_or(false)
         {
             return;
         }
@@ -174,14 +158,15 @@ impl BridgeView {
         let (key, _insertable) = key_of(keystroke);
         let mods = modifiers_of(self.modifiers);
         if let Some(key) = key {
-            let size = self.viewport();
             let at = self.now();
-            let changed = self.engine.raw().borrow_mut().app.dispatch_timed(
-                self.wid(),
-                Event::KeyDown { key, mods },
-                size,
-                at,
-            );
+            let changed = {
+                let mut app = self.engine.raw().borrow_mut();
+                // A shell that types without ticking still applies
+                // the standing scroll before the stroke lands.
+                let flushed = app.flush_scroll(self.bridge);
+                app.dispatch_bridge_timed(self.bridge, Event::KeyDown { key, mods }, None, at)
+                    || flushed
+            };
             if changed {
                 cx.notify();
             }
@@ -195,8 +180,14 @@ impl BridgeView {
         self.engine
             .raw()
             .borrow_mut()
-            .app
-            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(self.bridge.0), act)
+            .with_clipboard_client(self.bridge, act)
+    }
+
+    fn with_ime<R>(&self, act: impl FnOnce(&mut dyn ImeClient) -> R) -> Option<R> {
+        self.engine
+            .raw()
+            .borrow_mut()
+            .with_ime_client(self.bridge, act)
     }
 }
 
@@ -213,7 +204,7 @@ impl Render for BridgeView {
         let focus = self.focus.clone();
         let entity = cx.entity();
         let started_at = self.started_at;
-        let bridge_raw = self.bridge.0;
+        let bridge = self.bridge;
 
         div()
             .size_full()
@@ -225,12 +216,12 @@ impl Render for BridgeView {
                 |this, event: &ModifiersChangedEvent, _window, cx| {
                     this.modifiers = event.modifiers;
                     // The workbench re-derives hover affordances
-                    // under the new chord; no position rides a
-                    // modifier change, so a far-off point serves,
-                    // like a leave.
+                    // under the new chord — a re-hit-test at the
+                    // pointer's standing position (the cmd-hover
+                    // link underline follows without motion).
                     this.dispatch_pointed(
                         Event::MouseMove {
-                            point: gfx::Point::new(-1.0e6, -1.0e6),
+                            point: this.pointer.get(),
                             mods: modifiers_of(event.modifiers),
                         },
                         cx,
@@ -240,9 +231,11 @@ impl Render for BridgeView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    let point = device_point(event.position, window.scale_factor());
+                    this.pointer.set(point);
                     this.dispatch(
                         Event::MouseDown {
-                            point: device_point(event.position, window.scale_factor()),
+                            point,
                             button: imba::event::MouseButton::Left,
                             mods: modifiers_of(this.modifiers),
                             count: event.click_count.min(3) as u8,
@@ -254,9 +247,11 @@ impl Render for BridgeView {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    let point = device_point(event.position, window.scale_factor());
+                    this.pointer.set(point);
                     this.dispatch(
                         Event::MouseDown {
-                            point: device_point(event.position, window.scale_factor()),
+                            point,
                             button: imba::event::MouseButton::Right,
                             mods: modifiers_of(this.modifiers),
                             count: 1,
@@ -268,16 +263,14 @@ impl Render for BridgeView {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseUpEvent, window, cx| {
-                    this.dispatch(
-                        Event::MouseUp {
-                            point: device_point(event.position, window.scale_factor()),
-                        },
-                        cx,
-                    );
+                    let point = device_point(event.position, window.scale_factor());
+                    this.pointer.set(point);
+                    this.dispatch(Event::MouseUp { point }, cx);
                 }),
             )
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
                 let point = device_point(event.position, window.scale_factor());
+                this.pointer.set(point);
                 let mods = modifiers_of(this.modifiers);
                 if event.pressed_button == Some(MouseButton::Left) {
                     this.dispatch(Event::MouseDrag { point, mods }, cx);
@@ -288,6 +281,7 @@ impl Render for BridgeView {
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
                 let scale = window.scale_factor();
                 let point = device_point(event.position, scale);
+                this.pointer.set(point);
                 // The ENGINE's scroll road, not a direct dispatch:
                 // its coalescer folds a trackpad's event rate into
                 // one batch per tick — machinery, not marshaling.
@@ -300,24 +294,21 @@ impl Render for BridgeView {
                         -f32::from(delta.x) * scale,
                         -f32::from(delta.y) * scale,
                         match event.touch_phase {
-                            TouchPhase::Started => himark_api::HIMARK_SCROLL_PHASE_BEGAN,
-                            TouchPhase::Moved => himark_api::HIMARK_SCROLL_PHASE_CHANGED,
-                            TouchPhase::Ended => himark_api::HIMARK_SCROLL_PHASE_ENDED,
+                            TouchPhase::Started => ScrollPhase::Began,
+                            TouchPhase::Moved => ScrollPhase::Changed,
+                            TouchPhase::Ended => ScrollPhase::Ended,
                         },
                     ),
                     ScrollDelta::Lines(lines) => (
                         -lines.x * LINE_SCROLL_PX * scale,
                         -lines.y * LINE_SCROLL_PX * scale,
-                        himark_api::HIMARK_SCROLL_PHASE_NONE,
+                        ScrollPhase::None,
                     ),
                 };
-                if delta_x != 0.0
-                    || delta_y != 0.0
-                    || phase == himark_api::HIMARK_SCROLL_PHASE_BEGAN
-                {
+                if delta_x != 0.0 || delta_y != 0.0 || phase == ScrollPhase::Began {
                     let at = this.now();
                     let changed = this.engine.raw().borrow_mut().scroll_phased_at_time(
-                        this.bridge.0,
+                        this.bridge,
                         point.x,
                         point.y,
                         delta_x,
@@ -345,17 +336,21 @@ impl Render for BridgeView {
                         );
                         let scale = window.scale_factor();
                         let now_ms = started_at.elapsed().as_secs_f64() * 1000.0;
-                        let mut raw = engine.raw().borrow_mut();
-                        let animating = raw.animation_tick(now_ms);
+                        let animating = engine.tick(now_ms);
 
                         let width = (f32::from(bounds.size.width) * scale).max(1.0);
                         let height = (f32::from(bounds.size.height) * scale).max(1.0);
                         let painter =
                             GpuiPainter::new(window, cx, bounds.origin, scale, caches.clone());
-                        // The engine's draw, not a bare
-                        // draw_window_sized: it applies the standing
-                        // coalesced scroll before the frame.
-                        let reconciling = raw.draw(bridge_raw, &painter, width, height, scale);
+                        let reconciling = {
+                            let mut app = engine.raw().borrow_mut();
+                            // A shell that draws without ticking
+                            // still applies the standing coalesced
+                            // scroll before the frame.
+                            let flushed = app.flush_scroll(bridge);
+                            app.draw_mounted(bridge, &painter, gfx::Size::new(width, height))
+                                || flushed
+                        };
                         drop(painter);
 
                         // The one line a headless check can read:
@@ -389,11 +384,8 @@ impl gpui::EntityInputHandler for BridgeView {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
-        let text = self
-            .engine
-            .raw()
-            .borrow_mut()
-            .substring(self.bridge.0, himark_range(&range))?;
+        let (start, length) = utf16_of(&range);
+        let text = self.with_ime(|client| client.substring_utf16(start, length))??;
         *adjusted_range = Some(range);
         Some(text)
     }
@@ -404,13 +396,9 @@ impl gpui::EntityInputHandler for BridgeView {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<gpui::UTF16Selection> {
-        let range = self
-            .engine
-            .raw()
-            .borrow_mut()
-            .selected_range(self.bridge.0)?;
+        let (start, end) = self.with_ime(|client| client.selected_range())??;
         Some(gpui::UTF16Selection {
-            range: utf16_range(range),
+            range: start as usize..end as usize,
             reversed: false,
         })
     }
@@ -420,12 +408,12 @@ impl gpui::EntityInputHandler for BridgeView {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<std::ops::Range<usize>> {
-        let range = self.engine.raw().borrow_mut().marked_range(self.bridge.0)?;
-        Some(utf16_range(range))
+        let (start, end) = self.with_ime(|client| client.marked_range())??;
+        Some(start as usize..end as usize)
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if self.engine.raw().borrow_mut().unmark_text(self.bridge.0) {
+        if self.with_ime(|client| client.unmark_text()).is_some() {
             cx.notify();
         }
     }
@@ -438,17 +426,17 @@ impl gpui::EntityInputHandler for BridgeView {
         cx: &mut Context<Self>,
     ) {
         let changed = match range {
-            Some(range) => self.engine.raw().borrow_mut().text_input_replacing(
-                self.bridge.0,
-                text,
-                himark_range(&range),
-            ),
+            Some(range) => {
+                let replacement = utf16_of(&range);
+                self.with_ime(|client| client.insert_text(text, Some(replacement)))
+                    .is_some()
+            }
             None if !text.is_empty() => {
                 let at = self.now();
-                self.engine
-                    .raw()
-                    .borrow_mut()
-                    .text_input_at(self.bridge.0, text, at)
+                let mut app = self.engine.raw().borrow_mut();
+                let flushed = app.flush_scroll(self.bridge);
+                app.dispatch_bridge_timed(self.bridge, Event::TextInput { text }, None, at)
+                    || flushed
             }
             None => false,
         };
@@ -466,18 +454,12 @@ impl gpui::EntityInputHandler for BridgeView {
         cx: &mut Context<Self>,
     ) {
         let selected = new_selected_range
-            .map(|range| himark_range(&range))
-            .unwrap_or(himark_api::HimarkRange {
-                start: new_text.encode_utf16().count() as u32,
-                length: 0,
-            });
-        let replacement = range.map(|range| himark_range(&range));
-        let changed = self.engine.raw().borrow_mut().set_marked_text(
-            self.bridge.0,
-            new_text,
-            selected,
-            replacement,
-        );
+            .map(|range| utf16_of(&range))
+            .unwrap_or((new_text.encode_utf16().count() as u32, 0));
+        let replacement = range.map(|range| utf16_of(&range));
+        let changed = self
+            .with_ime(|client| client.set_marked_text(new_text, selected, replacement))
+            .is_some();
         if changed {
             cx.notify();
         }
@@ -490,18 +472,15 @@ impl gpui::EntityInputHandler for BridgeView {
         window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<gpui::Bounds<gpui::Pixels>> {
-        let rect = self
-            .engine
-            .raw()
-            .borrow_mut()
-            .first_rect(self.bridge.0, himark_range(&range_utf16))?;
+        let (start, length) = utf16_of(&range_utf16);
+        let (x, y, width, height) = self.with_ime(|client| client.first_rect(start, length))??;
         let scale = window.scale_factor();
         Some(gpui::Bounds {
             origin: gpui::point(
-                element_bounds.origin.x + gpui::px(rect.x / scale),
-                element_bounds.origin.y + gpui::px(rect.y / scale),
+                element_bounds.origin.x + gpui::px(x / scale),
+                element_bounds.origin.y + gpui::px(y / scale),
             ),
-            size: gpui::size(gpui::px(rect.width / scale), gpui::px(rect.height / scale)),
+            size: gpui::size(gpui::px(width / scale), gpui::px(height / scale)),
         })
     }
 
@@ -513,22 +492,16 @@ impl gpui::EntityInputHandler for BridgeView {
     ) -> Option<usize> {
         let scale = window.scale_factor();
         let origin = self.origin.get();
-        let index = self.engine.raw().borrow_mut().char_index_at(
-            self.bridge.0,
-            f32::from(point.x - origin.x) * scale,
-            f32::from(point.y - origin.y) * scale,
-        )?;
+        let index = self.with_ime(|client| {
+            client.char_index_at(
+                f32::from(point.x - origin.x) * scale,
+                f32::from(point.y - origin.y) * scale,
+            )
+        })??;
         Some(index as usize)
     }
 }
 
-fn himark_range(range: &std::ops::Range<usize>) -> himark_api::HimarkRange {
-    himark_api::HimarkRange {
-        start: range.start as u32,
-        length: range.len() as u32,
-    }
-}
-
-fn utf16_range(range: himark_api::HimarkRange) -> std::ops::Range<usize> {
-    range.start as usize..(range.start + range.length) as usize
+fn utf16_of(range: &std::ops::Range<usize>) -> (u32, u32) {
+    (range.start as u32, range.len() as u32)
 }
