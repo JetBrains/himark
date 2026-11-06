@@ -33,7 +33,6 @@ pub mod hicomments;
 pub mod hifiles;
 pub mod hihistory;
 pub mod hisearch;
-pub mod hiterminal;
 pub mod modal;
 
 /// The chrome's shell DECORATOR: places only a workbench can show
@@ -94,6 +93,5 @@ pub fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
         Box::new(hicomments::ChromePlugin),
         Box::new(hisearch::ChromePlugin),
         Box::new(hifiles::ChromePlugin),
-        Box::new(hiterminal::ChromePlugin),
     ]
 }

@@ -5,12 +5,9 @@
 //! `DiffPlace`; the engine half (handlers, landings) is
 //! `himark::hiahp`.
 
-use std::sync::Arc;
 
 use imba::effect::AnyEffect;
 use imba::store::Store;
-use himark::app::AppFx;
-use himark::commands::HimarkCommand;
 
 pub struct DiffNavigator;
 

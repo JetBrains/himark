@@ -11,10 +11,8 @@ use imba::dyn_view::DynCommand;
 use imba::store::Store;
 use imba::ui::UiCtx;
 
-use himark::app::{AppCommand, AppFx, Himark};
-use himark::bridge::{BridgeView, ViewBridgeId};
-
-use crate::sessions::remember_session as _keep_import; // (alias below)
+use himark::app::{AppCommand, Himark};
+use himark::bridge::ViewBridgeId;
 
 /// Register the session vocabulary with the engine.
 pub fn install_arms(app: &mut Himark) {

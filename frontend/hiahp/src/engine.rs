@@ -7,10 +7,8 @@
 
 use std::sync::Arc;
 
-use imba::store::Store;
 
 use himark::app::Himark;
-use himark::bridge::ViewBridgeId;
 
 /// One catalog snapshot — plain rows, cloned out, immutable.
 pub struct Catalog {

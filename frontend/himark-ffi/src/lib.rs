@@ -10,7 +10,7 @@ use himark::app_ext::AppExt as _;
 #[allow(unused_imports)]
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use ahp_docsync as docsync;
 use ahp_locations::find;
@@ -18,16 +18,12 @@ use ahp_session::fsroute;
 pub mod bridges;
 pub use crate::bridges::himark_perform_command;
 pub mod host;
-use himark::app::AppFonts;
 use ahp_wire::uris;
 pub use host::{HimarkHostCallbacks, HimarkLocation};
 
-use himark::app::AppCommand;
 use himark::app::Himark;
-use himark::effects::BackgroundRunner;
-use imba::anim::AnimationClock;
 pub use imba::event::PointerShape;
-use imba::event::{Event, Key, MouseButton};
+use imba::event::Key;
 
 /// A pointer event's answer: whether a frame is owed, and the shape
 /// the pointer takes over what the hit test found. Derived from this
@@ -38,7 +34,6 @@ pub struct Pointed {
     pub changed: bool,
     pub shape: PointerShape,
 }
-use gfx::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
@@ -229,7 +224,7 @@ pub(crate) fn scroll_phase(phase: u32) -> himark::host::ScrollPhase {
         HIMARK_SCROLL_PHASE_BEGAN => P::Began,
         HIMARK_SCROLL_PHASE_CHANGED => P::Changed,
         HIMARK_SCROLL_PHASE_ENDED => P::Ended,
-        HIMARK_SCROLL_PHASE_CANCELLED => P::Cancelled,
+        HIMARK_SCROLL_PHASE_CHANGED => P::Cancelled,
         HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN => P::MomentumBegan,
         HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED => P::MomentumChanged,
         HIMARK_SCROLL_PHASE_MOMENTUM_ENDED => P::MomentumEnded,

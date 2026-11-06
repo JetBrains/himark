@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use crate::higent::open_session::OpenSessionRow;
 use ahp_session::session::drawer::{AgentsPanel, DrawerAsks};
 use gfx::Rect;
 use imba::store::Store;

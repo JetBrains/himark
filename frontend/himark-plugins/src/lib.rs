@@ -93,6 +93,7 @@ pub fn engine_plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
         Box::new(hiahp::save::SavePlugin),
         Box::new(hiahp::watch::WatchPlugin),
         Box::new(hiahp::hipeek::PeekPlugin),
+        Box::new(hiterminal::TerminalPlugin),
         Box::new(hicode::CodePlugin),
     ]
 }

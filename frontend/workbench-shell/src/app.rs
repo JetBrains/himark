@@ -15,7 +15,7 @@ use imba::{
     arena::Arena,
     constraints::Constraints,
     effect::Effect,
-    event::{Event, EventResult},
+    event::Event,
     scroll::ScrollView,
     store::Store,
     thunk_ext::ThunkExt,
@@ -808,7 +808,7 @@ impl himark::himark::Shell for MountFrontend {
         if !origin.is_mounted() {
             return self.next.navigate(origin, place, store, ui, fx);
         }
-        let rides = ::workbench::window::WindowId::from_raw(origin.raw());
+        let _rides = ::workbench::window::WindowId::from_raw(origin.raw());
         if let Some(place) = place.place::<himark::places::DocumentPlace>() {
             let session = hiahp::sessions::session_of(store, origin);
             if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
@@ -972,6 +972,30 @@ impl himark::himark::Shell for WorkbenchFrontend {
             let opened =
                 entity.open_panel(store, ui, Box::new(hikit::modal::Scrolled::new(panel)), fx);
             ::workbench::window::Windows::put(store, window, entity);
+            return opened;
+        }
+        if let Some(place) = place.place::<hiterminal::TerminalViewPlace>() {
+            // The READY terminal: a panel over the filed session —
+            // a refused panel hangs the pty up and unfiles it, the
+            // old open_panel contract.
+            let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+                return false;
+            };
+            let opened = entity.open_panel(
+                store,
+                ui,
+                Box::new(terminals::pane::TerminalView::new(place.terminals, place.id)),
+                fx,
+            );
+            ::workbench::window::Windows::put(store, window, entity);
+            if !opened {
+                if let Some(session) =
+                    terminals::Terminals::session(store, place.terminals, place.id)
+                {
+                    session.hangup();
+                }
+                terminals::Terminals::remove(store, place.terminals, place.id);
+            }
             return opened;
         }
         if let Some(place) = place.place::<himark::places::LocationsPlace>() {

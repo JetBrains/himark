@@ -10,7 +10,6 @@ pub mod folder_grant;
 pub mod folder_picker;
 pub mod open_session;
 
-use std::sync::Arc;
 
 /// The SESSIONS browser as a plugin: hosts, their folders, their
 /// sessions and the speed search over them — the engine's drawer,

@@ -1,10 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
 
 use himark::commands::HimarkCommand;
-use ahp_wire::client::ChatUri;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
 use ahp_wire::effects::SubscribeSessionEffect;

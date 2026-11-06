@@ -1,12 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
 
 use crate::app::WorkbenchShell;
 use himark::app_ext::AppExt as _;
 
-use crate::app::AppCommand;
 use himark::app::Himark;
 use crate::app::OpenedDocument;
 use himark::commands::HimarkCommand;

@@ -9,7 +9,6 @@ use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 
 use std::sync::Arc;
 
-use gfx::{Paint, PathBuilder};
 use imba::effect::AnyEffect;
 use imba::store::Store;
 

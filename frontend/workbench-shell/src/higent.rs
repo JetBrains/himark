@@ -12,7 +12,6 @@ pub(crate) mod chat_roads;
 pub mod drawer;
 
 pub use ::hiahp::higent::folder_grant;
-pub(crate) use crate::higent::folder_grant as folder_picker_gone;
 
 pub mod new_chat;
 
@@ -25,7 +24,7 @@ pub struct AgentsPlugin;
 impl himark::plugin::Plugin for AgentsPlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
-        use crate::app_ext::AppExt;
+        
         use himark::app_ext::AppExt as _;
         app.register_command(std::sync::Arc::new(drawer::ToggleAgentsView));
         app.register_command(std::sync::Arc::new(new_chat::NewChat));

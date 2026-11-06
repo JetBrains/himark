@@ -6,11 +6,8 @@
 //! comment-pick navigation drain. Everything else — the collection,
 //! the cards, the dock panel — lives in the `comments` crate.
 
-use ::comments::panel::CommentsView;
 
-use std::sync::Arc;
 
-use imba::store::Store;
 
 /// The comments feature's ENGINE half as a plugin: the model hook —
 /// the dock toggle and its toolbar button are the workbench-shell

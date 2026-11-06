@@ -7,13 +7,10 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use himark::app::AppCommand;
-use himark::app::AppFx;
 use himark::commands::HimarkCommand;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
-use imba::effect::{AnyEffect, Effect, EffectHandler};
-use imba::store::Store;
+use imba::effect::{Effect, EffectHandler};
 
 /// The CAPABILITY-GATED chrome seats: what the composition layer
 /// registers when the host's callbacks carry a capability (the

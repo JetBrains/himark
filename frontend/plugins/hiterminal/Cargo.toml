@@ -1,0 +1,20 @@
+[package]
+name = "hiterminal"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# The terminal as a PLUGIN: the open command rides the bound
+# session (no window anywhere), the landing navigates the origin to
+# a ready TerminalViewPlace, and the pane mounts through the place
+# arms — the workbench places it in a panel, a native shell mounts
+# the bridge.
+[dependencies]
+himark = { path = "../../himark" }
+hiahp = { path = "../../hiahp" }
+terminals = { path = "../../terminals" }
+imba = { path = "../../imba" }
+hikit = { path = "../../hikit" }
+ahp-wire = { path = "../../ahp-wire" }
+ahp-session = { path = "../../ahp-session" }
+host-discovery = { path = "../../../protocol/host-discovery" }

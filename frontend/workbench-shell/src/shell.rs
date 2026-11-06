@@ -19,11 +19,10 @@ use imba::store::{Entity, Id};
 use imba::{store::Store, ui::UiCtx, View};
 
 use ::workbench::window::WindowId;
-use documents::OpenDocuments;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 
-use crate::app::{open_effect, DocumentBuild, OpenedDocument};
+use crate::app::{open_effect, DocumentBuild};
 use himark::perform::{AppCommand, AppFx};
 
 pub use imba::command::OneShot;

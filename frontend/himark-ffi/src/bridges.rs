@@ -30,7 +30,7 @@ use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
 
 use himark::bridge::ViewBridgeId;
-use gfx::{Canvas, Point, Rect, Size};
+use gfx::{Point, Rect, Size};
 use imba::event::{Event, EventResult, MouseButton};
 
 use crate::{
@@ -1255,7 +1255,7 @@ pub unsafe extern "C" fn himark_place_session_view(
     len: usize,
 ) -> HimarkPlace {
     use hiahp::places::*;
-    use himark::places::*;
+    
     use hikit::navigation::NavigationLocation;
     let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
         HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),

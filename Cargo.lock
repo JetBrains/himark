@@ -4138,6 +4138,7 @@ dependencies = [
  "hisolidity",
  "hisql",
  "hiswift",
+ "hiterminal",
  "hitoml",
  "hitypescript",
  "hixml",
@@ -4457,6 +4458,20 @@ dependencies = [
  "tailnet",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "hiterminal"
+version = "0.1.0"
+dependencies = [
+ "ahp-session",
+ "ahp-wire",
+ "hiahp",
+ "hikit",
+ "himark",
+ "host-discovery",
+ "imba",
+ "terminals",
 ]
 
 [[package]]
@@ -11072,6 +11087,7 @@ dependencies = [
  "himark-ahp-ext-types",
  "himark-ffi",
  "himarkdown",
+ "hiterminal",
  "host-discovery",
  "imba",
  "locations",

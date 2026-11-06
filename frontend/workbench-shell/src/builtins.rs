@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use himark::app::{AppCommand, AppFx};
+use himark::app::AppCommand;
 use himark::commands::{Commands, HimarkCommand};
 use imba::store::Store;
 

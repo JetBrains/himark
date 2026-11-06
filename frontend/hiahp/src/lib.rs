@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use documents::FetchDocumentEffect;
 use editor::location::ResourceLocation;
-use imba::effect::{AnyEffect, EffectHandler};
+use imba::effect::EffectHandler;
 use imba::store::Store;
 
 use himark::app::AppCommand;

@@ -1,41 +1,63 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The terminal feature: the open command, the AHP-backed pty
-//! session, and the pane that shows it. Moved here from the host —
-//! the one host service it needs (posting a refresh from the pty's
-//! event thread) rides the engine's [`himark::effects::Poster`].
+//! The terminal feature OFF the window road: the open command
+//! resolves its session from the BINDINGS (window and mounted
+//! walks both bind it), the pty handler posts its repaints as
+//! plain engine verbs, and the landing navigates the ORIGIN to a
+//! ready [`TerminalViewPlace`] — the workbench's arm opens a
+//! panel, the plugin's bridge arm mounts the pane for a native
+//! shell.
 
 use std::sync::Arc;
 
 use imba::effect::{AnyEffect, Effect, EffectHandler};
+use imba::store::Store;
+use imba::ui::UiCtx;
 
-use himark::commands::HimarkCommand;
+use himark::app::{AppCommand, AppFx};
+use himark::commands::{bound_origin, HimarkCommand};
 
-/// The terminal feature as a plugin: the command and the pty
-/// handler. The pane the landing opens is WINDOW furniture — the
-/// command stays on the window road until a terminal place exists
-/// for the mounted shells.
-pub struct ChromePlugin;
+/// A minted terminal, ready to show — the ready place the open's
+/// landing hands the shell (the terminal twin of `DiffViewPlace`).
+#[derive(Clone, PartialEq)]
+pub struct TerminalViewPlace {
+    pub terminals: imba::store::Id<terminals::Terminals>,
+    pub id: terminals::TerminalId,
+}
 
-impl himark::plugin::Plugin for ChromePlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use crate::app::WorkbenchShell as _;
-        use crate::app_ext::AppExt;
+impl hikit::navigation::Place for TerminalViewPlace {}
+
+/// The terminal feature as a plugin: the command, the pty handler,
+/// and the mounted arm for the ready place.
+pub struct TerminalPlugin;
+
+impl himark::plugin::Plugin for TerminalPlugin {
+    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         use himark::app_ext::AppExt as _;
         app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
             poster: app.poster(),
         });
         app.register_command(Arc::new(OpenTerminal));
+        // The MOUNTED arm: a native shell shows the ready terminal
+        // as its own bridge.
+        app.register_bridge_arm(Arc::new(|app, place| {
+            let place = place.place::<TerminalViewPlace>()?.clone();
+            app.mount(move |_store, _ui, id, _fx| {
+                Some(himark::mounts::panel_mount(
+                    id,
+                    Box::new(terminals::pane::TerminalView::new(place.terminals, place.id)),
+                ))
+            })
+        }));
     }
 }
 
 pub struct NewTerminalEffect {
-    pub(crate) client: Arc<dyn ahp_wire::client::TerminalClient>,
+    client: Arc<dyn ahp_wire::client::TerminalClient>,
     /// The session the terminal is spawned IN — the wire's address.
-    pub(crate) home: ahp_wire::SessionId,
-    pub(crate) cwd: Option<String>,
-    pub(crate) window: ::workbench::window::WindowId,
+    home: ahp_wire::SessionId,
+    cwd: Option<String>,
 }
 
 impl std::fmt::Display for NewTerminalEffect {
@@ -48,10 +70,10 @@ impl Effect for NewTerminalEffect {
     type Result = Option<Arc<terminals::Session>>;
 }
 
-pub(crate) struct SessionTerminalHandler {
+struct SessionTerminalHandler {
     /// The pty's events arrive on the wire's thread — the repaint
     /// ask crosses to the UI loop through the engine's poster.
-    pub(crate) poster: himark::effects::Poster,
+    poster: himark::effects::Poster,
 }
 
 struct AhpBackend {
@@ -84,7 +106,6 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
         let events = {
             let session = Arc::clone(&session);
             let poster = self.poster.clone();
-            let window = effect.window;
             let pending = Arc::clone(&pending);
             Arc::new(move |event: ahp_wire::client::TerminalEvent| {
                 match event {
@@ -101,11 +122,13 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
                     }
                 }
 
+                // The post itself is the repaint ask: the drain that
+                // carries it redraws every view — a plain engine
+                // verb, no window, no origin.
                 if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                    poster.post(crate::shell::windowed(
-                        window,
-                        Arc::new(RefreshTerminal(Arc::clone(&pending))),
-                    ));
+                    poster.post(AppCommand::Verb(imba::command::Verb::once(
+                        RefreshTerminal(Arc::clone(&pending)),
+                    )));
                 }
             }) as Arc<dyn Fn(ahp_wire::client::TerminalEvent) + Send + Sync>
         };
@@ -124,7 +147,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
     }
 }
 
-pub(crate) struct OpenTerminal;
+struct OpenTerminal;
 
 impl HimarkCommand for OpenTerminal {
     fn id(&self) -> &'static str {
@@ -135,22 +158,21 @@ impl HimarkCommand for OpenTerminal {
     }
     fn perform(
         &self,
-        store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
+        store: &mut Store,
+        _ui: &UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut AppFx<'_>,
     ) {
-        // The pane the landing opens is WINDOW furniture — this
-        // command stays on the window road until a terminal place
-        // exists for the mounted shells.
-        let Some(window) = crate::app::bound_window(self.id(), bound) else {
+        // The workspace rides the BINDINGS — the window walk binds
+        // its entity's session, the mounted binder binds the
+        // mount's: one road, no window anywhere.
+        let Some(workspace) = bound.bound::<ahp_wire::SessionId>().cloned() else {
+            eprintln!("[terminal] no session bound — dropped: terminal.open");
             return;
         };
-        let Some(entity) = ::workbench::window::Windows::window(store, window) else {
+        let Some(origin) = bound_origin(self.id(), bound) else {
             return;
         };
-        let workspace = crate::workspace::entity_session(&entity);
-        ::workbench::window::Windows::put(store, window, entity);
         let resolved = ahp_session::session::agents::Agents::live_session(store, &workspace)
             .and_then(|key| {
                 let client = ahp_wire::client::Servers::client(store, key.host)?;
@@ -190,10 +212,9 @@ impl HimarkCommand for OpenTerminal {
         let Some((client, home, cwd)) = resolved else {
             return;
         };
-        // The terminal files into the WINDOW's session — the collection
-        // the pane is minted against, carried from here to the landing.
-        let Some(terminals) =
-            crate::workspace::session_state(store, window).map(|state| state.terminals())
+        // The terminal files into the WORKSPACE's session — the
+        // collection the pane is minted against.
+        let Some(terminals) = hiahp::bound_session(self.id(), bound).map(|state| state.terminals())
         else {
             return;
         };
@@ -202,10 +223,9 @@ impl HimarkCommand for OpenTerminal {
                 client: client.terminals.clone(),
                 home,
                 cwd,
-                window,
             })
             .map(move |session| {
-                crate::shell::windowed(window, Arc::new(ShowTerminal { session, terminals }))
+                AppCommand::AtOrigin(origin, Arc::new(ShowTerminal { session, terminals }))
             }),
         );
     }
@@ -225,55 +245,43 @@ impl HimarkCommand for ShowTerminal {
     }
     fn perform(
         &self,
-        store: &mut imba::store::Store,
-        ui: &imba::ui::UiCtx,
+        store: &mut Store,
+        ui: &UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut AppFx<'_>,
     ) {
-        let Some(window) = crate::app::bound_window(self.id(), bound) else {
+        let Some(origin) = bound_origin(self.id(), bound) else {
             return;
         };
         let Some(session) = &self.session else {
             return;
         };
-        let mut entity =
-            ::workbench::window::Windows::window(store, window).expect("the window entity");
-
         let terminals = self.terminals;
         let id = terminals::TerminalId::mint();
         terminals::Terminals::put(store, terminals, id, session.clone());
-        if !entity.open_panel(
-            store,
-            ui,
-            Box::new(terminals::pane::TerminalView::new(terminals, id)),
-            fx,
-        ) {
-            session.hangup();
-            terminals::Terminals::remove(store, terminals, id);
-        }
-        ::workbench::window::Windows::put(store, window, entity);
+        // The READY place to the seated shell: the workbench's arm
+        // opens the panel, a native shell mints the bridge. A shell
+        // that declines leaves a filed terminal behind — the reap
+        // follows the collection, not this landing.
+        fx.scope(AppCommand::Verb, |fx| {
+            himark::shell::navigate_origin(
+                store,
+                ui,
+                origin,
+                TerminalViewPlace { terminals, id },
+                fx,
+            )
+        });
     }
 }
 
-pub(crate) struct RefreshTerminal(pub(crate) Arc<std::sync::atomic::AtomicBool>);
+/// The repaint ask, as a once-verb: performing it IS the redraw
+/// (the drain invalidates); clearing the flag re-arms the pty's
+/// coalescing.
+struct RefreshTerminal(Arc<std::sync::atomic::AtomicBool>);
 
-impl HimarkCommand for RefreshTerminal {
-    fn id(&self) -> &'static str {
-        "terminal.refresh"
-    }
-    fn name(&self) -> String {
-        String::new()
-    }
-    fn perform(
-        &self,
-        _store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
-        _bound: &imba::focus::Bindings,
-        _fx: &mut crate::app::AppFx<'_>,
-    ) {
-        // The post itself is the repaint ask: the drain that carries
-        // this command redraws every view. Clearing the flag re-arms
-        // the pty's coalescing.
+impl imba::command::DynamicOnceCommand for RefreshTerminal {
+    fn perform(self: Box<Self>, _store: &mut Store, _ui: &UiCtx, _fx: &mut imba::command::Fx<'_>) {
         self.0.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }

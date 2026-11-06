@@ -1,9 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use documents::diff_views::DiffSideInput;
 
-use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
 use crate::app::{AppCommand, AppFx};

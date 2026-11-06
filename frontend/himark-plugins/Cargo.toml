@@ -18,6 +18,7 @@ host-discovery = { path = "../../protocol/host-discovery" }
 himarkdown = { path = "../plugins/himarkdown" }
 himermaid = { path = "../plugins/himermaid" }
 hicode = { path = "../plugins/hicode" }
+hiterminal = { path = "../plugins/hiterminal" }
 hirust = { path = "../plugins/lang/hirust" }
 hipython = { path = "../plugins/lang/hipython" }
 hijavascript = { path = "../plugins/lang/hijavascript" }

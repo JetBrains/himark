@@ -6,7 +6,6 @@
 //! targets. Store residents the arms write and the binder reads.
 
 use imba::dyn_view::DynCommand;
-use imba::store::Id;
 use imba::store::Store;
 
 use himark::app::AppCommand;
