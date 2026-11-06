@@ -31,6 +31,10 @@ use std::sync::{LazyLock, Mutex};
 
 use himark::bridge::ViewBridgeId;
 use gfx::{Point, Rect, Size};
+// Only the skia-shell feature's paint doors speak the canvas —
+// keep the import with them, not the default build.
+#[cfg(feature = "skia-shell")]
+use gfx::Canvas;
 use imba::event::{Event, EventResult, MouseButton};
 
 use crate::{
