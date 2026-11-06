@@ -4845,15 +4845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indoc"
-version = "2.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "inotify"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7903,12 +7894,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smallbitvec"
-version = "2.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b0e903ee191d8f7a8fbf0d712c3a1699d19e04ceba5ad1eb673053c7d938a09"
-
-[[package]]
 name = "smallvec"
 version = "1.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9139,21 +9124,20 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-generate"
-version = "0.26.11"
+version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a893a6cd8730c4cbafcd4a04f56747a7a6ae91e8a391bc2b6499c251032e142a"
+checksum = "60418c249e4317a2fc9a3959dab47e50ca60910460b8a82a7f73d6e28a73470d"
 dependencies = [
  "bitflags 2.13.2",
  "dunce",
+ "hashbrown 0.17.1",
  "indexmap",
- "indoc",
  "log",
  "regex",
  "regex-syntax",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
- "smallbitvec",
  "thiserror 2.0.18",
  "topological-sort",
 ]
