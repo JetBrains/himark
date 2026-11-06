@@ -1,22 +1,31 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
 fn the_at_completion_opens_finds_and_picks() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::test_driver;
+    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let folder = editor::location::ResourceLocation::new(
         editor::location::ResourceType::directory(),
         editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
-    let session = himark::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
+    let session = workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
@@ -163,20 +172,20 @@ fn the_at_completion_serves_markdown_panes() {
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app::OpenedDocument;
-    use himark::test_driver;
+    use himark::opening::OpenedDocument;
+    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let folder = editor::location::ResourceLocation::new(
         editor::location::ResourceType::directory(),
         editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
-    let session = himark::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
+    let session = workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
@@ -220,13 +229,13 @@ fn the_at_completion_serves_markdown_panes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            himark::app::switch_session(store, window, self.0.clone(), fx)
+            workbench_shell::app::switch_session(store, window, self.0.clone(), fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(EnterSeeded(session.clone()))
     )));
@@ -239,7 +248,7 @@ fn the_at_completion_serves_markdown_panes() {
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -330,7 +339,7 @@ fn the_at_completion_serves_markdown_panes() {
     ));
     assert!(!completion_open(&app), "Escape closed the popup");
 
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -359,13 +368,13 @@ fn lsp_completion_serves_code_panes() {
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app::OpenedDocument;
-    use himark::test_driver;
+    use himark::opening::OpenedDocument;
+    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
 
     struct StubLsp(Arc<std::sync::Mutex<Vec<documents::text_ext::LineCol>>>);
@@ -415,7 +424,7 @@ fn lsp_completion_serves_code_panes() {
         std::sync::Arc::new(|| {}),
     );
 
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -519,7 +528,7 @@ fn lsp_completion_serves_code_panes() {
     ));
     assert!(!completion_open(&app));
 
-    let trigger = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")

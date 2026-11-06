@@ -140,5 +140,3 @@ impl HimarkCommand for SyncWatches {
     }
 }
 
-#[cfg(test)]
-mod tests;

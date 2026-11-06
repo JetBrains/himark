@@ -1,6 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use gfx::{Paint, PathBuilder, Rect, Size};
 use hikit::panel::PanelView;
 use imba::{
@@ -331,7 +341,7 @@ impl himark::commands::HimarkCommand for OpenTreeDemo {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let ui = ui;

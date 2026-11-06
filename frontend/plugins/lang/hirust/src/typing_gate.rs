@@ -66,7 +66,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
          batch: &mut imba::effect::Batch<editor::editor_view::EditorCommand>| {
             let mut rounds = 0;
             loop {
-                let pending = himark::test_support::surviving_launches(std::mem::replace(
+                let pending = workbench_shell::test_support::surviving_launches(std::mem::replace(
                     batch,
                     imba::effect::Batch::new(),
                 ));
@@ -76,7 +76,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
                 for effect in pending {
                     rounds += 1;
                     assert!(rounds < 10_000, "the tail must converge");
-                    let command = himark::test_support::handle_effect(effect, &workshop);
+                    let command = workbench_shell::test_support::handle_effect(effect, &workshop);
                     imba::View::perform(view, store, &ui, command, &mut batch.effects());
                 }
             }

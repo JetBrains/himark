@@ -6,6 +6,15 @@
 //! batch-tail lane dresses the open document with severity squiggles.
 
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use ahp_wire::client::{ChannelUri, Client, ClientFuture, LspClient, SessionClient, SessionUri};
 use editor::location::{Authority, ResourceLocation, ResourceType};
@@ -160,7 +169,7 @@ fn squiggles(document: &Document) -> Vec<(std::ops::Range<u32>, StyleId)> {
 
 #[test]
 fn the_snapshot_squiggles_the_open_document() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     himark::hiahp::register_all(&mut app);
 

@@ -7,6 +7,7 @@
 //! `gfx_gpui::GpuiPainter`; the engine's scroll coalescer and
 //! animation clock pace the roads that need pacing.
 
+use workbench_shell::app::WorkbenchShell as _;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
@@ -194,7 +195,7 @@ impl BridgeView {
             .raw()
             .borrow_mut()
             .app
-            .with_clipboard_client(self.wid(), act)
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(self.bridge.0), act)
     }
 }
 

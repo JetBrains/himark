@@ -66,7 +66,7 @@ fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
         None,
         &mut batch.effects(),
     );
-    let mut launches = himark::test_support::surviving_launches(batch);
+    let mut launches = workbench_shell::test_support::surviving_launches(batch);
     assert_eq!(launches.len(), 1, "one run, one lane, one launch");
     *launches
         .pop()
@@ -183,7 +183,7 @@ fn an_unopened_target_stores_through_the_host() {
     let landing = ran(launched(&mut store, script));
     assert_eq!(landing.error, None, "log: {:?}", landing.log);
     let batch = landed(&mut store, &ui, script, landing);
-    let mut launches = himark::test_support::surviving_launches(batch);
+    let mut launches = workbench_shell::test_support::surviving_launches(batch);
     assert_eq!(launches.len(), 1, "one store-through");
     let effect = launches
         .pop()

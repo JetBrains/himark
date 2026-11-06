@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
@@ -24,7 +33,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = match self.target.clone() {
@@ -32,7 +41,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
                 None => ahp_wire::SessionId::mint_scratch(store),
             };
             *self.made.lock().unwrap() = Some(target.clone());
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
     let switch = |app: &mut himark::app::Himark,
@@ -40,7 +49,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
      -> ahp_wire::SessionId {
         let window = app.sole_window();
         let made = Arc::new(std::sync::Mutex::new(None));
-        app.perform_batch(vec![himark::app::windowed(
+        app.perform_batch(vec![workbench_shell::shell::windowed(
             window,
             Arc::new(Switch {
                 target,
@@ -52,23 +61,23 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     };
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = himark::workspace::entity_session(
+    let first = workbench_shell::workspace::entity_session(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
     );
 
     assert!(app.perform_registered(window, "workbench.split-pane"));
     assert_eq!(app.pane_count(), 2);
-    assert!(himark::test_driver::type_text(&mut app, "hello A"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "hello A"));
     let a_text = app.focused_document_text().expect("A text");
     assert!(a_text.contains("hello A"));
     let documents_before = app.document_count();
 
     let second = switch(&mut app, None);
     assert_eq!(
-        himark::workspace::entity_session(
+        workbench_shell::workspace::entity_session(
             ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
         ),
         second
@@ -106,7 +115,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(app.pane_count(), 2);
     assert_eq!(
-        himark::workspace::entity_session(
+        workbench_shell::workspace::entity_session(
             ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
         ),
         first
@@ -175,24 +184,24 @@ fn switching_dismisses_the_overlays_first() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId::mint_scratch(store);
             *self.0.lock().unwrap() = Some(target.clone());
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     assert!(app.open_modal(window, Box::new(NullModal)));
     assert!(app.plugin_modal().is_some());
 
     let made = Arc::new(std::sync::Mutex::new(None));
-    app.perform_batch(vec![himark::app::windowed(
+    app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(SwitchFresh(Arc::clone(&made))),
     )]);
@@ -202,5 +211,5 @@ fn switching_dismisses_the_overlays_first() {
         entity.plugin_modal().is_none() && entity.side_panel().is_none(),
         "the switch dismissed the overlays"
     );
-    assert_eq!(himark::workspace::entity_session(&entity), second);
+    assert_eq!(workbench_shell::workspace::entity_session(&entity), second);
 }

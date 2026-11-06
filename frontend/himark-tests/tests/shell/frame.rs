@@ -4,6 +4,15 @@
 //! the chat, the tree, the side column — rendered at the design's
 //! size (1440×900 at 2x) for a look at the chrome itself.
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::Arc;
 
 use imba::store::Store;
@@ -19,7 +28,7 @@ fn dump_frame_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     // The leftmost header's tabs are the app's registrations: the
     // chat word (the shell's) and the Sessions word (the agent host's).
@@ -50,17 +59,17 @@ fn dump_frame_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -98,11 +107,11 @@ fn dump_frame_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            let state = himark::workspace::session_state(store, window).expect("state");
-            let document = himark::app::markdown_scratch();
+            let state = workbench_shell::workspace::session_state(store, window).expect("state");
+            let document = workbench_shell::app::markdown_scratch();
             let location = editor::location::ResourceLocation::new(
                 editor::location::ResourceType::document(),
                 editor::location::Authority::new("local"),
@@ -128,7 +137,7 @@ fn dump_frame_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
     super::dock::settle(&mut app, &mut surface);
     // The side column's tabs, as the shell registers them.
     for (order, (label, command)) in [
@@ -161,16 +170,16 @@ fn dump_frame_screenshot() {
     // The chat column mid-slide: MaximizeTree rolls it off the left
     // edge over the dock's slide time; a frame 64ms in shows it
     // partly gone and the tree widened to where it shows.
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
         ),
     )));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(64.0));
+    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(64.0));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     let data = surface
         .image_snapshot()

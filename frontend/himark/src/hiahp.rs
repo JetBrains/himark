@@ -18,7 +18,7 @@ use imba::store::Store;
 
 use crate::app::AppCommand;
 use crate::commands::HimarkCommand;
-use crate::workspace::OpenByLocationEffect;
+use crate::opening::OpenByLocationEffect;
 
 /// The AHP wiring as a plugin: the wire handlers, the build road,
 /// and the LSP edit sink — everything the protocol registers
@@ -64,6 +64,7 @@ pub fn install_build_handler(
     );
 }
 
+
 pub fn install_open_handlers(
     app: &mut crate::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
@@ -82,19 +83,18 @@ pub fn install_open_handlers(
         workshop,
         languages,
     };
-    app.register_handler::<crate::workspace::OpenDiffByLocationsEffect>(
+    app.register_handler::<crate::opening::OpenDiffByLocationsEffect>(
         OpenDiffByLocationsHandler(shop.clone()),
     );
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
         ::ahp_chat::open::OpenDiffPairHandler(shop),
     );
-    app.register_windowed_navigator(DiffNavigator);
 }
 
 struct OpenDiffByLocationsHandler(::ahp_chat::open::DiffOpenShop);
 
-impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
-    async fn handle(&self, effect: crate::workspace::OpenDiffByLocationsEffect) -> AppCommand {
+impl EffectHandler<crate::opening::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
+    async fn handle(&self, effect: crate::opening::OpenDiffByLocationsEffect) -> AppCommand {
         // The pane's editor width is resolved by `install_opened_pair`
         // (non-embedded → OPEN_HALF_WIDTH); the carried width is unused.
         let pair = self.0.open_pair(effect.old, effect.new, 0.0).await;
@@ -110,10 +110,10 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
                     documents::diff_views::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
-            return crate::shell::windowed(effect.window, Arc::new(FetchFailed { location }));
+            return crate::perform::AppCommand::AtOrigin(effect.origin, Arc::new(FetchFailed { location }));
         }
-        crate::shell::windowed(
-            effect.window,
+        crate::perform::AppCommand::AtOrigin(
+            effect.origin,
             Arc::new(OpenDiffPair {
                 documents: effect.documents,
                 pair,
@@ -122,41 +122,7 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
     }
 }
 
-pub(crate) struct DiffNavigator;
 
-impl ::workbench::navigation::WindowedNavigator for DiffNavigator {
-    type Place = canvas::diff_pane::DiffPlace;
-
-    fn navigate(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        window: ::workbench::window::WindowId,
-        place: &canvas::diff_pane::DiffPlace,
-        fx: &mut imba::command::Fx<'_>,
-    ) -> Option<::workbench::workbench_node::Panel> {
-        // Resolve both sides on the UI thread — an open side hands over
-        // its live snapshot; the prep runs off-thread and the landing
-        // opens the dressed pane. Diffing never runs here.
-        let documents = crate::workspace::session_state(store, window)
-            .expect("a diff opens from a window with a session")
-            .documents();
-        let old =
-            documents::diff_views::DiffSideInput::resolve(store, documents, place.old.clone());
-        let new =
-            documents::diff_views::DiffSideInput::resolve(store, documents, place.new.clone());
-        fx.push(
-            AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
-                window,
-                documents,
-                old,
-                new,
-            })
-            .map(crate::app::shell_verb),
-        );
-        None
-    }
-}
 
 pub struct OpenDiffPair {
     documents: imba::store::Id<documents::OpenDocuments>,
@@ -258,9 +224,9 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                         &self.workshop.theme(),
                     )
                 });
-                crate::shell::opened(
-                    effect.window,
-                    crate::app::OpenedDocument {
+                crate::opening::opened(
+                    effect.origin,
+                    crate::opening::OpenedDocument {
                         documents: effect.documents,
                         name: effect.location.name().to_owned(),
                         document,
@@ -272,8 +238,8 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 )
             }
 
-            None => crate::shell::windowed(
-                effect.window,
+            None => crate::perform::AppCommand::AtOrigin(
+                effect.origin,
                 Arc::new(FetchFailed {
                     location: effect.location,
                 }),

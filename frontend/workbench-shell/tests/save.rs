@@ -1,16 +1,25 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use himark::app::Himark;
+use himark::app_ext::AppExt as _;
+use workbench_shell::app::WorkbenchShell as _;
+use workbench_shell::app_ext::AppExt as _;
+use workbench_shell::test_driver;
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::{mpsc, Arc, Mutex};
 
 use imba::event::{Key, Modifiers};
 
-use super::*;
-use crate::app::Himark;
-use crate::app_ext::AppExt;
-use crate::test_driver;
+use editor::location::ResourceLocation;
+use himark::save::*;
+
+
+
 use ::editor::test_document::plain_document;
 use documents::OpenDocuments;
+use documents::StoreDocumentEffect;
 
 type Writes = Arc<Mutex<Vec<(ResourceLocation, String)>>>;
 
@@ -33,13 +42,13 @@ fn setup(
     succeeds: bool,
 ) -> (
     Himark,
-    crate::effects::BackgroundRunner,
-    mpsc::Receiver<crate::app::AppCommand>,
+    himark::effects::BackgroundRunner,
+    mpsc::Receiver<himark::app::AppCommand>,
     Writes,
 ) {
-    let mut app = Himark::new(crate::app::AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     app.add_window();
-    app.register_document_command(Arc::new(crate::save::save_document(false)));
+    app.register_document_command(Arc::new(himark::save::save_document(false)));
     let writes = Writes::default();
     app.register_handler::<StoreDocumentEffect>(StoreHandler {
         writes: writes.clone(),
@@ -69,9 +78,9 @@ fn location() -> ResourceLocation {
 }
 
 fn open_file(app: &mut Himark) -> documents::DocumentId {
-    app.perform_command(crate::shell::opened(
+    app.perform_command(workbench_shell::shell::opened(
         app.sole_window(),
-        crate::app::OpenedDocument {
+        workbench_shell::app::OpenedDocument {
             documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: plain_document("original"),
@@ -89,7 +98,7 @@ fn open_file(app: &mut Himark) -> documents::DocumentId {
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
 
-fn land(app: &mut Himark, arriving: &mpsc::Receiver<crate::app::AppCommand>) {
+fn land(app: &mut Himark, arriving: &mpsc::Receiver<himark::app::AppCommand>) {
     for command in arriving.try_iter() {
         app.perform_batch(vec![command]);
     }
@@ -190,9 +199,9 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         )
     };
     let open = |app: &mut Himark, name: &str| -> documents::DocumentId {
-        app.perform_command(crate::shell::opened(
+        app.perform_command(workbench_shell::shell::opened(
             app.sole_window(),
-            crate::app::OpenedDocument {
+            workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document("original"),

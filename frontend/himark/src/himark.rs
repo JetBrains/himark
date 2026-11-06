@@ -172,6 +172,23 @@ pub struct Himark {
     /// (docs/editor/viewport-preservation.md §3.2).
     pub(crate) settle_requested: bool,
     pub(crate) settling: bool,
+
+    /// The registered batch TAILS: each frame-composition layer's
+    /// reaction to a finished batch (the workbench reaps dead
+    /// window slots, validates panes, follows the dock tree). They
+    /// run after the engine's own fan-outs; registration order.
+    tails: Vec<Box<dyn BatchTail>>,
+}
+
+/// One registered batch-tail — see [`Himark::register_batch_tail`].
+pub trait BatchTail: 'static {
+    fn run(&mut self, app: &mut Himark, label: &str, theme_changed: bool);
+}
+
+impl<F: FnMut(&mut Himark, &str, bool) + 'static> BatchTail for F {
+    fn run(&mut self, app: &mut Himark, label: &str, theme_changed: bool) {
+        self(app, label, theme_changed)
+    }
 }
 
 /// One catalog snapshot — plain rows, cloned out, immutable.
@@ -309,6 +326,7 @@ impl Himark {
             modal_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
+            tails: Vec::new(),
         };
         crate::startup_profile::log("Himark::bare", total_started);
         engine
@@ -352,7 +370,7 @@ impl Himark {
 
     /// The empty-session housekeeping, run after every batch — the
     /// one thing the old gather/scatter rite still did.
-    pub(crate) fn sweep(&mut self) {
+    pub fn sweep(&mut self) {
         ahp_session::session::state::Hosts::sweep_empty(&mut self.store);
         self.invalidate_frames();
     }
@@ -364,10 +382,18 @@ impl Himark {
         self.invalidate_frames();
     }
 
+    /// `setup` with an answer — the composition layers' door when a
+    /// boot road mints ids it needs back.
+    pub fn with_store<R>(&mut self, mutate: impl FnOnce(&mut Store) -> R) -> R {
+        let answer = mutate(&mut self.store);
+        self.invalidate_frames();
+        answer
+    }
+
     /// The store moved on: every standing frame is now stale. The
     /// bump is the whole invalidation — each bridge rebuilds
     /// lazily, against the store as it stands when next asked.
-    pub(crate) fn invalidate_frames(&mut self) {
+    pub fn invalidate_frames(&mut self) {
         self.revision = self.revision.wrapping_add(1);
     }
 
@@ -601,7 +627,7 @@ impl Himark {
         if !all_quiet {
             let theme_changed =
                 theme_before.name() != ::editor::env::Themes::of(&self.store).name();
-            self.batch_tail(&label, theme_changed);
+            self.run_tails(&label, theme_changed);
         }
 
         if crate::app::trace_stalls_enabled() && probe.elapsed().as_millis() >= 10 {
@@ -764,6 +790,7 @@ impl Himark {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());
             }
+            self.frames_built += 1;
             let arena = slot.spare_arena.take().unwrap_or_default();
             let layout = slot.bridge.layout(
                 &self.store,
@@ -789,11 +816,209 @@ impl Himark {
         slot.frame.as_mut().map(|frame| (frame, size))
     }
 
-    /// One event into a mounted view, against its standing frame.
+    /// One timed event into a bridge — the shell entry point: the
+    /// dispatch, and the latency stamp when it answered.
+    pub fn dispatch_bridge_timed(
+        &mut self,
+        id: ViewBridgeId,
+        event: imba::event::Event<'_>,
+        size: Option<gfx::Size>,
+        event_started_at: f64,
+    ) -> bool {
+        let handled = self.dispatch_bridge(id, event, size).0;
+        if handled {
+            self.stats.mark_latency_event_start(event_started_at);
+        }
+        handled
+    }
+
+    /// Dispatch, and beside the redraw flag the shape the pointer
+    /// takes: a move hit-tests first and the hit's answer IS the
+    /// shape — derived per event; the shell applies it and nothing
+    /// stores it.
+    pub fn dispatch_bridge(
+        &mut self,
+        id: ViewBridgeId,
+        event: imba::event::Event<'_>,
+        size: Option<gfx::Size>,
+    ) -> (bool, imba::event::PointerShape) {
+        let (hit, shape) = match &event {
+            imba::event::Event::MouseMove { point, mods } => self.dispatch_bridge_event(
+                id,
+                imba::event::Event::HitTest {
+                    point: *point,
+                    miss: false,
+                    mods: *mods,
+                },
+                size,
+            ),
+            _ => (false, imba::event::PointerShape::Default),
+        };
+        let (changed, _) = self.dispatch_bridge_event(id, event, size);
+        (changed || hit, shape)
+    }
+
+    fn dispatch_bridge_event(
+        &mut self,
+        id: ViewBridgeId,
+        event: imba::event::Event<'_>,
+        size: Option<gfx::Size>,
+    ) -> (bool, imba::event::PointerShape) {
+        use imba::event::{Event, EventResult};
+        let clock = matches!(event, Event::AnimationClock { .. });
+        let key_down = match event {
+            Event::KeyDown { key, mods } => Some((key, mods)),
+            _ => None,
+        };
+        let store = self.store.clone();
+        let (result, fallback) = match &event {
+            // Keyboard input routes through the SEMANTIC focus chain
+            // — a state walk over the views. No tree is built for a
+            // keystroke.
+            Event::KeyDown { .. } | Event::TextInput { .. } => {
+                let ui = self.ui.clone();
+                let result = {
+                    // The chain is the BRIDGE's view's walk — the
+                    // workbench root walks its window, a mounted
+                    // view walks itself.
+                    let chain = self
+                        .bridges
+                        .get(&id)
+                        .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()));
+                    match (&event, chain) {
+                        (Event::KeyDown { key, mods }, Some(mut data)) => data.key(*key, *mods),
+                        (Event::TextInput { text }, Some(mut data)) => data.text(text),
+                        _ => EventResult::Ignored,
+                    }
+                };
+                if std::env::var_os("HIMARK_TRACE_KEYS").is_some() {
+                    if let Some((key, mods)) = key_down {
+                        eprintln!(
+                            "[keys] {key:?} {mods:?}: chain says {}; binding {:?}",
+                            match &result {
+                                EventResult::Ignored => "ignored",
+                                EventResult::Handled(handled) => {
+                                    match (handled.commands.is_empty(), handled.reveal.is_some()) {
+                                        (true, true) => "reveal",
+                                        (true, false) => "handled",
+                                        (false, _) => "command",
+                                    }
+                                }
+                            },
+                            crate::keymap::Keymaps::binding_of(&store, key, mods)
+                        );
+                    }
+                }
+                let empty_handed = match &result {
+                    EventResult::Ignored => true,
+                    EventResult::Handled(handled) => handled.commands.is_empty(),
+                };
+                let fallback = match (key_down, empty_handed) {
+                    (Some((key, mods)), true) => {
+                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|binding| {
+                            // The chain source mirrors the dispatch
+                            // above; bound EDITING keys (backspace,
+                            // enter, arrows) resolve through
+                            // presentables either way.
+                            let chain = self
+                                .bridges
+                                .get(&id)
+                                .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                                .map(|data| crate::focus::bind_mounted(&store, id, data));
+                            let bound = chain.as_ref().map(|data| data.bindings.clone());
+                            chain
+                                .map(|data| data.commands)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .find(|presentable| presentable.id == binding.as_ref())
+                                .map(|presentable| presentable.command)
+                                .or_else(|| {
+                                    // The registry resolves on EVERY
+                                    // shell: the walk's bindings ride
+                                    // the mint; a chain-less origin
+                                    // resolves at dispatch instead.
+                                    crate::commands::Commands::of(&store)
+                                        .find(binding.as_ref())
+                                        .map(|command| match &bound {
+                                            Some(bound) => crate::perform::AppCommand::Bound(
+                                                bound.clone(),
+                                                command.clone(),
+                                            ),
+                                            None => crate::perform::AppCommand::AtOrigin(
+                                                id,
+                                                command.clone(),
+                                            ),
+                                        })
+                                })
+                        })
+                    }
+                    _ => None,
+                };
+                (result, fallback)
+            }
+            _ => (self.handle_mounted(id, &event, size), None),
+        };
+
+        if let Some(command) = fallback {
+            if std::env::var_os("HIMARK_TRACE_KEYS").is_some() {
+                eprintln!("[keys] fallback performs the bound command");
+            }
+            return (
+                self.perform_batch(vec![command]),
+                imba::event::PointerShape::Default,
+            );
+        }
+
+        match result {
+            EventResult::Ignored => (false, imba::event::PointerShape::Default),
+            EventResult::Handled(handled) => {
+                let shape = handled.pointer.unwrap_or_default();
+                // A mounted view's reveal is the HOST's to scroll —
+                // park it for `take_reveal`; a window root's dies
+                // here as it always did (its scroller consumes en
+                // route).
+                let mut parked = false;
+                if let Some(reveal) = handled.reveal {
+                    if id.is_mounted() {
+                        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+                            let slot = self.bridges.get(&id);
+                            eprintln!(
+                                "[reveal] parked (mounted dispatch) bridge {} {:?} band {:?} size {:?}",
+                                id.raw(),
+                                reveal,
+                                slot.and_then(|slot| slot.stage_viewport),
+                                slot.map(|slot| slot.size),
+                            );
+                        }
+                        self.park_reveal(id, reveal);
+                        parked = true;
+                    }
+                }
+                let changed = match handled.commands.is_empty() {
+                    // An empty answer on a clock tick is NOT a
+                    // change — but a parked reveal is.
+                    true => parked || !clock,
+                    false => {
+                        if clock {
+                            crate::app::trace_reconcile("clock", &handled.commands);
+                        }
+                        self.perform_batch(handled.commands) || parked
+                    }
+                };
+                (changed, shape)
+            }
+        }
+    }
+
+    /// One event into a bridge, against its standing frame. `size`
+    /// is the host's live viewport when it knows one (the window
+    /// road's dispatch passes it; geometry events rebuild at it);
+    /// `None` rides the last drawn size.
     pub(crate) fn handle_mounted(
         &mut self,
         id: ViewBridgeId,
         event: &imba::event::Event<'_>,
+        size: Option<gfx::Size>,
     ) -> imba::event::EventResult<crate::perform::AppCommand> {
         let trace = std::env::var_os("HIMARK_TRACE_MOUNT").is_some();
         // The HONEST viewport is the host scroller's band (stamped
@@ -810,7 +1035,7 @@ impl Himark {
         );
         let frame_and_size = match stale_ok {
             true => self.mounted_frame_standing(id),
-            false => self.mounted_frame(id, None),
+            false => self.mounted_frame(id, size),
         };
         let Some((frame, size)) = frame_and_size else {
             if trace {
@@ -841,8 +1066,8 @@ impl Himark {
         result
     }
 
-    /// Paint a mounted view into the host's canvas at the host's
-    /// size — the mounted twin of the window draw.
+    /// Paint a bridge into the host's canvas at the host's size —
+    /// one road for windows and mounts alike.
     pub fn draw_mounted(
         &mut self,
         id: ViewBridgeId,
@@ -850,9 +1075,16 @@ impl Himark {
         size: gfx::Size,
     ) -> bool {
         // TRANSPARENT floor, like the stage road: the HOST behind
-        // the mounted view owns the background (a glass island, the
-        // document floor's color).
-        canvas.clear(gfx::Color::TRANSPARENT);
+        // a mounted view owns the background (a glass island, the
+        // document floor's color). A window root paints its own
+        // ground and declines the clear (`clears_backdrop`).
+        let clears = self
+            .bridges
+            .get(&id)
+            .is_none_or(|slot| slot.bridge.view().clears_backdrop());
+        if clears {
+            canvas.clear(gfx::Color::TRANSPARENT);
+        }
         let result = {
             let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
                 return false;
@@ -868,7 +1100,10 @@ impl Himark {
         let imba::event::EventResult::Handled(handled) = result else {
             return false;
         };
-        let parked = match handled.reveal {
+        // A mounted view's reveal is the HOST's to scroll — park it.
+        // A window root's scroller consumed reveals en route; one
+        // that reached the top dies as it always did.
+        let parked = match handled.reveal.filter(|_| id.is_mounted()) {
             Some(reveal) => {
                 self.park_reveal(id, reveal);
                 true
@@ -879,6 +1114,77 @@ impl Himark {
             true => parked,
             false => self.perform_batch(handled.commands) || parked,
         }
+    }
+
+    /// Every bridge id, windows-as-bridges included — the fan-outs
+    /// below iterate this; ids are collected first because a
+    /// handled command's batch may mount or unmount mid-loop.
+    pub(crate) fn bridge_ids(&self) -> Vec<ViewBridgeId> {
+        self.bridges.keys().copied().collect()
+    }
+
+    /// Run one handled answer from a fan-out dispatch: park a
+    /// mounted reveal, perform the commands.
+    fn run_fanned(
+        &mut self,
+        id: ViewBridgeId,
+        result: imba::event::EventResult<crate::perform::AppCommand>,
+    ) {
+        let imba::event::EventResult::Handled(handled) = result else {
+            return;
+        };
+        if let Some(reveal) = handled.reveal.filter(|_| id.is_mounted()) {
+            self.park_reveal(id, reveal);
+        }
+        if !handled.commands.is_empty() {
+            self.perform_batch(handled.commands);
+        }
+    }
+
+    /// The theme fan-out: refresh the engine-owned chrome, then
+    /// tell EVERY bridge — windows and mounts alike (the mounted
+    /// bridges used to be deaf to this; docs/himark-core.md calls
+    /// for each frame holder reacting itself).
+    pub(crate) fn fan_theme_changed(&mut self) {
+        let theme = ::editor::env::Themes::of(&self.store);
+        self.refresh_chrome(&theme);
+        self.workshop.set_theme(theme);
+        for id in self.bridge_ids() {
+            let result = self.handle_mounted(id, &imba::event::Event::ThemeChanged, None);
+            self.run_fanned(id, result);
+        }
+    }
+
+    /// The file-event fan-out, to every bridge.
+    pub(crate) fn fan_file_events(&mut self, event: &documents::watch::FilesChanged) {
+        for id in self.bridge_ids() {
+            let result = self.handle_mounted(id, &imba::event::Event::UserEvent(event), None);
+            self.run_fanned(id, result);
+        }
+    }
+
+    /// The settle loop, at the END of the bit-raising batch — not
+    /// deferred to paint. The ordering is what buys exactness: a
+    /// scroll batch pulses BEFORE any later batch performs, so a
+    /// door never anchors on a top older than the last move; a
+    /// door batch pulses before its frame, so no wrong frame
+    /// paints (docs/editor/viewport-preservation.md §3.2). Bounded; the
+    /// guard keeps the pulse's own performs from recursing.
+    pub(crate) fn settle_rounds(&mut self) {
+        if self.settling {
+            return;
+        }
+        self.settling = true;
+        let mut rounds = 0;
+        while self.settle_requested && rounds < 3 {
+            self.settle_requested = false;
+            for id in self.bridge_ids() {
+                let result = self.handle_mounted(id, &imba::event::Event::Settle, None);
+                self.run_fanned(id, result);
+            }
+            rounds += 1;
+        }
+        self.settling = false;
     }
 
     /// A bridge's exported overlay PRESENCE: the epoch, and the
@@ -1021,6 +1327,42 @@ impl Himark {
         self.palette.clone()
     }
 
+    /// Register a batch TAIL — a frame-composition layer's reaction
+    /// to a finished batch (the workbench's: reap dead window
+    /// slots, validate panes, follow the dock tree). Tails run
+    /// after the engine's own fan-outs, in registration order; a
+    /// batch a tail performs skips the tails (the outer pass owns
+    /// them).
+    pub fn register_batch_tail(&mut self, tail: impl BatchTail) {
+        self.tails.push(Box::new(tail));
+    }
+
+    /// The engine's own batch tail: the theme, file-event and
+    /// settle fan-outs over every bridge, then the registered
+    /// tails.
+    fn run_tails(&mut self, label: &str, theme_changed: bool) {
+        if theme_changed {
+            self.fan_theme_changed();
+        }
+        let changed: std::collections::HashSet<documents::watch::Subscription> =
+            std::mem::take(&mut self.pending_file_events)
+                .into_iter()
+                .collect();
+        if !changed.is_empty() {
+            let event = documents::watch::FilesChanged(std::sync::Arc::new(changed));
+            self.fan_file_events(&event);
+        }
+        self.settle_rounds();
+        // Taken out while they run: a batch a tail performs finds
+        // the seat empty and skips — the OUTER pass owns the tails.
+        let mut tails = std::mem::take(&mut self.tails);
+        for tail in &mut tails {
+            tail.run(self, label, theme_changed);
+        }
+        let late = std::mem::replace(&mut self.tails, tails);
+        self.tails.extend(late);
+    }
+
     /// Re-seat the shell, wrapping the one seated now — the native
     /// callback DECORATES the chain (claim some place kinds, pass
     /// the rest through), it never replaces it.
@@ -1032,15 +1374,6 @@ impl Himark {
             .expect("a shell is seated at boot");
         let wrapped = wrap(seated);
         self.setup(|store| store.put(ShellSeat(wrapped)));
-    }
-
-    /// Whether this bridge id is a WINDOW — the dispatch roads
-    /// fork on it: windows ride the workbench paths, mounts ride
-    /// their own frames.
-    pub fn is_window(&self, id: ViewBridgeId) -> bool {
-        self.windows()
-            .entity(::workbench::window::WindowId::from_raw(id.raw()))
-            .is_some()
     }
 
     /// A mounted slot's last drawn size — the event roads'
@@ -1062,6 +1395,28 @@ impl Himark {
             .copied()
             .filter(|id| id.is_mounted())
             .collect()
+    }
+
+    /// Mount a view AT a caller-chosen id, idempotently — the
+    /// window-pun compat door: the workbench adapter keys a
+    /// window's bridge by the window's own raw id, so the C
+    /// surface's handles stay stable. New composition layers use
+    /// [`Himark::mount`]; this door exists for the adapter alone.
+    pub fn mount_as(&mut self, id: ViewBridgeId, view: std::sync::Arc<dyn crate::bridge::BridgeView>) {
+        self.bridges.entry(id).or_insert_with(|| Mounted::new(view));
+    }
+
+    /// Whether a bridge stands at this id.
+    pub fn has_bridge(&self, id: ViewBridgeId) -> bool {
+        self.bridges.contains_key(&id)
+    }
+
+    /// Drop every bridge slot the keeper declines — the
+    /// composition layer's REAP (the workbench drops slots whose
+    /// window closed this batch; mounted slots are host-owned and
+    /// the keeper must spare them).
+    pub fn retain_bridges(&mut self, keep: impl Fn(ViewBridgeId) -> bool) {
+        self.bridges.retain(|id, _| keep(*id));
     }
 
     /// Mount a view as a bridge: the build closure gets the store,

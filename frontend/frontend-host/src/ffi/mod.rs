@@ -8,6 +8,12 @@
 // tokio's net driver, which has no wasm port (mio).
 #![cfg(not(target_arch = "wasm32"))]
 
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
 use std::sync::{Arc, Mutex};
@@ -17,14 +23,14 @@ use ahp_locations::find;
 use ahp_session::fsroute;
 pub mod bridges;
 pub mod host;
-use crate::app::AppFonts;
+use himark::app::AppFonts;
 use ahp_wire::uris;
 pub use host::{HimarkHostCallbacks, HimarkLocation};
 
-use crate::app::AppCommand;
-use crate::app::Himark;
-use crate::app_ext::AppExt;
-use crate::effects::BackgroundRunner;
+use himark::app::AppCommand;
+use himark::app::Himark;
+use workbench_shell::app_ext::AppExt;
+use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
 pub use imba::event::PointerShape;
 use imba::event::{Event, Key, MouseButton};
@@ -170,9 +176,10 @@ fn register_agent_server(
     client: ahp_wire::client::Client,
 ) -> ahp_wire::client::HostId {
     let id = app.register_client(client.clone());
-    ahp_session::session::agents::Agents::seed(&mut app.store, id, name);
-
-    ahp_session::session::state::Hosts::install_uris(&mut app.store, id, Arc::new(uris::FileUris));
+    app.setup(|store| {
+        ahp_session::session::agents::Agents::seed(store, id, name);
+        ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
+    });
     clients.record(id, client);
     id
 }
@@ -380,11 +387,11 @@ impl HimarkEngine {
     /// the first batch can launch an effect.
     pub fn with_plugins(
         fonts: AppFonts,
-        plugins: &[Box<dyn crate::plugin::Plugin>],
+        plugins: &[Box<dyn himark::plugin::Plugin>],
         connector: Arc<dyn ahp_wire::transport::Connector>,
         callbacks: Option<HimarkEngineCallbacks>,
     ) -> Self {
-        let mut app = Himark::new(fonts);
+        let mut app = workbench_shell::app::workbench_app(fonts);
         let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(uris::FileUris);
 
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
@@ -411,7 +418,7 @@ impl HimarkEngine {
             runtime.handle().clone(),
             {
                 let dispatcher = dispatcher.clone();
-                Arc::new(move |verb| dispatcher(crate::app::AppCommand::Verb(verb)))
+                Arc::new(move |verb| dispatcher(himark::app::AppCommand::Verb(verb)))
             },
             Arc::clone(&resource_uris),
         );
@@ -443,7 +450,7 @@ impl HimarkEngine {
         // what the chat's cells are built with, time-bounded where
         // the structural engine's per-region search stalled the
         // worker) and the directory a route closes over.
-        let installed = crate::plugin::install_all(
+        let installed = himark::plugin::install_all(
             &mut app,
             Arc::new(myersdiff::Myers),
             Arc::clone(&clients),
@@ -460,8 +467,8 @@ impl HimarkEngine {
             let clients = clients.clone();
             let handle = runtime.handle().clone();
             let connector = Arc::clone(&connector);
-            crate::higent::flows::AgentFlows::install_add_host(
-                &mut app.store,
+            app.setup(|store| himark::higent::flows::AgentFlows::install_add_host(
+                store,
                 Arc::new(move |store, url| {
                     let client =
                         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::at(
@@ -473,23 +480,25 @@ impl HimarkEngine {
                     // a batch, where the application's store is taken
                     // out; a mint through the app would be clobbered
                     // by the put-back.
-                    Some(crate::higent::flows::mint_agent_server(
+                    Some(himark::higent::flows::mint_agent_server(
                         store,
                         &clients,
                         url.trim(),
                         client,
                     ))
                 }),
-            );
+            ));
         }
 
-        documents::OpenDocuments::install_hook(
-            &mut app.store,
-            Arc::new(docsync::DocsyncHook {
-                channels: Arc::clone(&document_channels),
-                directory: Arc::clone(&clients),
-            }),
-        );
+        app.setup(|store| {
+            documents::OpenDocuments::install_hook(
+                store,
+                Arc::new(docsync::DocsyncHook {
+                    channels: Arc::clone(&document_channels),
+                    directory: Arc::clone(&clients),
+                }),
+            )
+        });
         app.register_handler::<documents::FetchDocumentEffect>(fsroute::RouteFetch {
             uris: Arc::clone(&resource_uris),
             directory: Arc::clone(&clients),
@@ -567,9 +576,9 @@ impl HimarkEngine {
     pub fn add_window(&mut self) -> u64 {
         let window = self.app.add_window();
         if self.compose_new_windows {
-            self.app.perform_command(crate::app::windowed(
+            self.app.perform_command(workbench_shell::shell::windowed(
                 window,
-                std::sync::Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
             ));
         }
         window.raw()
@@ -617,13 +626,13 @@ impl HimarkEngine {
 
     const DRAIN_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
         self.drain_chunk = chunk;
         self.drain_budget = budget;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn queued_landings(&self) -> usize {
         self.shared.inbox.lock().expect("inbox").len()
     }
@@ -723,7 +732,7 @@ impl HimarkEngine {
 
     pub fn clipboard_copy(&mut self, window: u64) -> Option<String> {
         self.app
-            .with_clipboard_client(wid(window), |client| {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.copy().map(|content| content.text)
             })
             .flatten()
@@ -731,7 +740,7 @@ impl HimarkEngine {
 
     pub fn clipboard_cut(&mut self, window: u64) -> Option<String> {
         self.app
-            .with_clipboard_client(wid(window), |client| {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.cut().map(|content| content.text)
             })
             .flatten()
@@ -742,7 +751,7 @@ impl HimarkEngine {
             return false;
         }
         self.app
-            .with_clipboard_client(wid(window), |client| {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.paste(&imba::clipboard::ClipboardContent {
                     text: text.to_owned(),
                 })
@@ -759,7 +768,7 @@ impl HimarkEngine {
         replacement: HimarkRange,
     ) -> bool {
         self.app
-            .with_ime_client(wid(window), |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.insert_text(text, Some((replacement.start, replacement.length)))
             })
             .is_some()
@@ -1065,7 +1074,7 @@ impl HimarkEngine {
         // ignored there), so its deltas must not die here.
         let viewport = self.app.window_viewport(wid(window)).or_else(|| {
             self.app
-                .mounted_viewport(crate::bridge::ViewBridgeId::from_raw(window))
+                .mounted_viewport(himark::bridge::ViewBridgeId::from_raw(window))
         });
         let Some(size) = viewport else {
             // The bridge is gone; its deltas die with it.
@@ -1166,19 +1175,19 @@ impl HimarkEngine {
     /// theme switch. Answers whether the form was known.
     pub fn set_form(&mut self, form: u32) -> bool {
         let form = match form {
-            HIMARK_FORM_DESKTOP => crate::commands::Form::Desktop,
-            HIMARK_FORM_PHONE => crate::commands::Form::Phone,
+            HIMARK_FORM_DESKTOP => workbench_shell::builtins::Form::Desktop,
+            HIMARK_FORM_PHONE => workbench_shell::builtins::Form::Phone,
             other => {
                 eprintln!("[ffi] form {other} is not one this engine knows — refused");
                 return false;
             }
         };
-        if crate::commands::Form::of(self.app.store()) == form {
+        if workbench_shell::builtins::Form::of(self.app.store()) == form {
             return true;
         }
         self.app
-            .setup(|store| crate::commands::Form::set(store, form));
-        let dark = crate::commands::theme_is_dark(self.app.store());
+            .setup(|store| workbench_shell::builtins::Form::set(store, form));
+        let dark = workbench_shell::builtins::theme_is_dark(self.app.store());
         self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
     }
 
@@ -1186,7 +1195,7 @@ impl HimarkEngine {
         let installed = self.agent_host_filesystem;
 
         if capabilities.fetch_document && !installed.fetch_document {
-            crate::hiahp::install_open_handlers(
+            himark::hiahp::install_open_handlers(
                 &mut self.app,
                 Arc::clone(&self.languages),
                 Arc::new(myersdiff::Myers),
@@ -1250,7 +1259,7 @@ impl HimarkEngine {
                 )));
 
             self.app
-                .register_handler::<crate::higent::folder_grant::PickFoldersEffect>(
+                .register_handler::<himark::higent::folder_grant::PickFoldersEffect>(
                     host::PickFoldersHandler(Arc::clone(&bridge)),
                 );
             self.app.register_command(Arc::new(host::OpenFilePicker));
@@ -1261,13 +1270,13 @@ impl HimarkEngine {
                     Arc::clone(&bridge),
                 ));
             self.app
-                .register_command(Arc::new(crate::higent::drawer::ShareHost));
+                .register_command(Arc::new(workbench_shell::higent::drawer::ShareHost));
             self.app
                 .register_handler::<ahp_wire::effects::ShareTailnetEffect>(
                     host::ShareTailnetHandler(Arc::clone(&bridge)),
                 );
             self.app
-                .register_command(Arc::new(crate::higent::drawer::ShareHostTailnet));
+                .register_command(Arc::new(workbench_shell::higent::drawer::ShareHostTailnet));
         }
 
         self.install_agent_host_filesystem(AgentHostFilesystemCapabilities {
@@ -1310,7 +1319,7 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
     pub fn file_changed(&mut self, subscription: u64) -> bool {
         if subscription == 0 {
             return false;
@@ -1319,7 +1328,7 @@ impl HimarkEngine {
             .inbox
             .lock()
             .expect("inbox")
-            .push_back(crate::app::AppCommand::FileChanged(
+            .push_back(himark::app::AppCommand::FileChanged(
                 documents::watch::Subscription(subscription),
             ));
         self.shared.wake.fire();
@@ -1361,18 +1370,18 @@ impl HimarkEngine {
     }
 
     pub fn has_text_focus(&mut self, window: u64) -> bool {
-        self.app.with_ime_client(wid(window), |_| ()).is_some()
+        self.app.with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ()).is_some()
     }
 
     pub fn has_marked_text(&mut self, window: u64) -> bool {
         self.app
-            .with_ime_client(wid(window), |client| client.has_marked_text())
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.has_marked_text())
             .unwrap_or(false)
     }
 
     pub fn marked_range(&mut self, window: u64) -> Option<HimarkRange> {
         self.app
-            .with_ime_client(wid(window), |client| client.marked_range())?
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.marked_range())?
             .map(|(start, end)| HimarkRange {
                 start,
                 length: end.saturating_sub(start),
@@ -1381,7 +1390,7 @@ impl HimarkEngine {
 
     pub fn selected_range(&mut self, window: u64) -> Option<HimarkRange> {
         self.app
-            .with_ime_client(wid(window), |client| client.selected_range())?
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.selected_range())?
             .map(|(start, end)| HimarkRange {
                 start,
                 length: end.saturating_sub(start),
@@ -1397,7 +1406,7 @@ impl HimarkEngine {
     ) -> bool {
         let replacement = replacement.map(|range| (range.start, range.length));
         self.app
-            .with_ime_client(wid(window), |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.set_marked_text(text, (selected.start, selected.length), replacement)
             })
             .is_some()
@@ -1405,13 +1414,13 @@ impl HimarkEngine {
 
     pub fn unmark_text(&mut self, window: u64) -> bool {
         self.app
-            .with_ime_client(wid(window), |client| client.unmark_text())
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.unmark_text())
             .is_some()
     }
 
     pub fn set_selected_range(&mut self, window: u64, range: HimarkRange) -> bool {
         self.app
-            .with_ime_client(wid(window), |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.set_selected_range(range.start, range.length)
             })
             .is_some()
@@ -1419,18 +1428,18 @@ impl HimarkEngine {
 
     pub fn document_length(&mut self, window: u64) -> Option<u32> {
         self.app
-            .with_ime_client(wid(window), |client| client.document_length())
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.document_length())
     }
 
     pub fn reveal_selection(&mut self, window: u64) -> bool {
         self.app
-            .with_ime_client(wid(window), |client| client.reveal_selection())
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.reveal_selection())
             .is_some()
     }
 
     pub fn selection_rects(&mut self, window: u64, range: HimarkRange) -> Vec<HimarkRect> {
         self.app
-            .with_ime_client(wid(window), |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client
                     .selection_rects(range.start, range.length)
                     .into_iter()
@@ -1447,7 +1456,7 @@ impl HimarkEngine {
 
     pub fn first_rect(&mut self, window: u64, range: HimarkRange) -> Option<HimarkRect> {
         self.app
-            .with_ime_client(wid(window), |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
                 client.first_rect(range.start, range.length)
             })?
             .map(|(x, y, width, height)| HimarkRect {
@@ -1460,11 +1469,11 @@ impl HimarkEngine {
 
     pub fn char_index_at(&mut self, window: u64, x: f32, y: f32) -> Option<u32> {
         self.app
-            .with_ime_client(wid(window), |client| client.char_index_at(x, y))?
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| client.char_index_at(x, y))?
     }
 
     pub fn substring(&mut self, window: u64, range: HimarkRange) -> Option<String> {
-        self.app.with_ime_client(wid(window), |client| {
+        self.app.with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |client| {
             client.substring_utf16(range.start, range.length)
         })?
     }
@@ -1861,46 +1870,8 @@ pub unsafe extern "C" fn himark_open_document(
 
 /// DEMO documents, registered by name — the demo plugin owns the
 /// builders (the crate sits above this one); the door only looks
-/// them up.
-#[derive(Clone, Default)]
-pub struct DemoDocs(
-    rpds::HashTrieMapSync<
-        String,
-        (
-            editor::location::ResourceLocation,
-            Arc<
-                dyn Fn(
-                        &imba::store::Store,
-                        &imba::ui::UiCtx,
-                        &editor::theme::Theme,
-                    ) -> editor::document::Document
-                    + Send
-                    + Sync,
-            >,
-        ),
-    >,
-);
+pub use himark::demo_docs::DemoDocs;
 
-impl DemoDocs {
-    pub fn register(
-        store: &mut imba::store::Store,
-        name: &str,
-        location: editor::location::ResourceLocation,
-        build: Arc<
-            dyn Fn(
-                    &imba::store::Store,
-                    &imba::ui::UiCtx,
-                    &editor::theme::Theme,
-                ) -> editor::document::Document
-                + Send
-                + Sync,
-        >,
-    ) {
-        store.update::<DemoDocs>(|docs| {
-            docs.0.insert_mut(name.to_owned(), (location, build));
-        });
-    }
-}
 
 /// Open a registered demo document into the bridge — the debug
 /// harness road.
@@ -1926,7 +1897,7 @@ pub unsafe extern "C" fn himark_open_demo(
         eprintln!("[himark] no demo document registered as '{name}'");
         return;
     };
-    use crate::app_ext::AppExt as _;
+    use workbench_shell::app_ext::AppExt as _;
     engine.app.open_async(
         wid(bridge.raw),
         name.to_owned(),

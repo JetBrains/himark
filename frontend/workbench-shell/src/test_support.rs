@@ -1,6 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::app::WorkbenchShell as _;
 use imba::store::Store;
 
 use crate::app::Himark;
@@ -103,8 +104,46 @@ fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
     )
 }
 
-impl Himark {
-    pub fn sole_window(&self) -> ::workbench::window::WindowId {
+
+/// Test-support probes over the engine, method syntax preserved
+/// across the crate split.
+pub trait TestSupport {
+    /// The sole window AS the origin bridge — the ime/clipboard roads'
+    /// currency.
+    fn sole_origin(&self) -> himark::bridge::ViewBridgeId;
+
+    fn sole_window(&self) -> ::workbench::window::WindowId;
+    fn sole_window_session(&self) -> ahp_wire::SessionId;
+    fn sole_family(&self) -> ahp_session::session::state::SessionState;
+    fn sole_documents(&self) -> imba::store::Id<documents::OpenDocuments>;
+    fn workbench(&self) -> &::workbench::workbench::Workbench;
+    fn viewport_size(&self) -> gfx::Size;
+    fn plugin_modal(&self) -> Option<&dyn hikit::modal::ModalView>;
+    fn focused_document_text(&self) -> Option<String>;
+    fn first_pane_heights_vs_fresh(&self) -> (Vec<(u32, f32)>, Vec<(u32, f32)>, String);
+    fn focused_document_is_header_at(&self, byte: u32) -> bool;
+    fn unconverged_panes(&self) -> Vec<(usize, f32, f32)>;
+    fn first_inlay_probe_point(&self) -> Option<(f32, f32)>;
+    fn focused_caret_byte(&self) -> Option<u32>;
+    fn focused_reveal_pending(&self) -> Option<bool>;
+    fn focused_pane_scroll_y(&self) -> f32;
+    fn focused_top_visible_line(&self) -> Option<usize>;
+    fn focused_pane_content_height(&self) -> f32;
+    fn styled_pane_count(&self) -> usize;
+    fn pane_widths(&self) -> Vec<f32>;
+    fn focused_document_header_at_start(&self) -> Option<Option<u8>>;
+    fn document_count(&self) -> usize;
+    fn pane_count(&self) -> usize;
+    fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn hikit::panel::DynPanelView));
+    fn focused_editor_id(&self) -> (documents::DocumentId, ::editor::editor::EditorId);
+}
+
+impl TestSupport for Himark {
+    fn sole_origin(&self) -> himark::bridge::ViewBridgeId {
+        himark::bridge::ViewBridgeId::from_raw(self.sole_window().raw())
+    }
+
+    fn sole_window(&self) -> ::workbench::window::WindowId {
         let windows = self.window_ids();
         assert!(windows.len() <= 1, "multiple windows: tests must name one");
         *windows.first().expect("a window")
@@ -113,7 +152,7 @@ impl Himark {
     /// The session the sole window is working in — the owner a test
     /// names when it reaches session-addressed state.
     #[doc(hidden)]
-    pub fn sole_window_session(&self) -> ahp_wire::SessionId {
+    fn sole_window_session(&self) -> ahp_wire::SessionId {
         crate::workspace::entity_session(
             ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
                 .expect("the window entity"),
@@ -122,14 +161,14 @@ impl Himark {
 
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
-    pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
+    fn sole_family(&self) -> ahp_session::session::state::SessionState {
         crate::workspace::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
 
     /// The sole window session's documents collection.
     #[doc(hidden)]
-    pub fn sole_documents(&self) -> imba::store::Id<documents::OpenDocuments> {
+    fn sole_documents(&self) -> imba::store::Id<documents::OpenDocuments> {
         self.sole_family().documents()
     }
 
@@ -139,19 +178,19 @@ impl Himark {
             .workbench()
     }
 
-    pub fn viewport_size(&self) -> gfx::Size {
+    fn viewport_size(&self) -> gfx::Size {
         ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .viewport_size()
     }
 
-    pub fn plugin_modal(&self) -> Option<&dyn hikit::modal::ModalView> {
+    fn plugin_modal(&self) -> Option<&dyn hikit::modal::ModalView> {
         ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_document_text(&self) -> Option<String> {
+    fn focused_document_text(&self) -> Option<String> {
         let document = documents::OpenDocuments::document_ref(
             self.store(),
             self.sole_documents(),
@@ -164,7 +203,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn first_pane_heights_vs_fresh(&self) -> (Vec<(u32, f32)>, Vec<(u32, f32)>, String) {
+    fn first_pane_heights_vs_fresh(&self) -> (Vec<(u32, f32)>, Vec<(u32, f32)>, String) {
         let mut first = None;
         self.workbench().root.for_each_pane(&mut |panel| {
             if first.is_none() {
@@ -202,7 +241,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
+    fn focused_document_is_header_at(&self, byte: u32) -> bool {
         let Some(document) =
             ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
                 .and_then(|window| window.focused_document_id())
@@ -226,7 +265,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn unconverged_panes(&self) -> Vec<(usize, f32, f32)> {
+    fn unconverged_panes(&self) -> Vec<(usize, f32, f32)> {
         let ui = ::editor::test_document::test_ui();
         let mut offenders = Vec::new();
         let mut index = 0usize;
@@ -271,7 +310,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn first_inlay_probe_point(&self) -> Option<(f32, f32)> {
+    fn first_inlay_probe_point(&self) -> Option<(f32, f32)> {
         let columns = self.workbench().columns(self.store(), self.viewport_size());
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = *pane.content();
@@ -306,7 +345,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_caret_byte(&self) -> Option<u32> {
+    fn focused_caret_byte(&self) -> Option<u32> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
         let document = documents::OpenDocuments::document_ref(
@@ -319,7 +358,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_reveal_pending(&self) -> Option<bool> {
+    fn focused_reveal_pending(&self) -> Option<bool> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
         let document = documents::OpenDocuments::document_ref(
@@ -332,7 +371,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_pane_scroll_y(&self) -> f32 {
+    fn focused_pane_scroll_y(&self) -> f32 {
         self.workbench()
             .root
             .focused_pane()
@@ -344,7 +383,7 @@ impl Himark {
     /// edge — what viewport preservation must hold still across a
     /// rewrap (docs/editor/viewport-preservation.md §5).
     #[doc(hidden)]
-    pub fn focused_top_visible_line(&self) -> Option<usize> {
+    fn focused_top_visible_line(&self) -> Option<usize> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let scroll_y = pane.scroll_y();
         let entity = pane.content();
@@ -360,7 +399,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_pane_content_height(&self) -> f32 {
+    fn focused_pane_content_height(&self) -> f32 {
         let Some(pane) = self.workbench().root.focused_pane().editor() else {
             return 0.0;
         };
@@ -369,7 +408,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn styled_pane_count(&self) -> usize {
+    fn styled_pane_count(&self) -> usize {
         let store = self.store();
         let mut styled = 0;
         self.workbench().root.for_each_pane(&mut |panel| {
@@ -388,7 +427,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn pane_widths(&self) -> Vec<f32> {
+    fn pane_widths(&self) -> Vec<f32> {
         let mut widths = Vec::new();
         let store = self.store();
         self.workbench().root.for_each_pane(&mut |panel| {
@@ -401,7 +440,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
+    fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
         let view = self.workbench().root.focused_pane().editor()?.content();
         let document = documents::OpenDocuments::document_ref(
             self.store(),
@@ -424,13 +463,13 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn document_count(&self) -> usize {
+    fn document_count(&self) -> usize {
         documents::OpenDocuments::list(self.store(), self.sole_documents()).len()
     }
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn pane_count(&self) -> usize {
+    fn pane_count(&self) -> usize {
         let mut count = 0;
         self.workbench().root.for_each_pane(&mut |_| count += 1);
         count
@@ -438,7 +477,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn hikit::panel::DynPanelView)) {
+    fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn hikit::panel::DynPanelView)) {
         // The chat slot is a workbench panel too — always open, just
         // not a tree citizen.
         if let Some(chat) = self.workbench().chat() {
@@ -455,7 +494,7 @@ impl Himark {
 
     /// TEST SUPPORT: no production caller outside this crate.
     #[doc(hidden)]
-    pub fn focused_editor_id(&self) -> (documents::DocumentId, ::editor::editor::EditorId) {
+    fn focused_editor_id(&self) -> (documents::DocumentId, ::editor::editor::EditorId) {
         let view = self
             .workbench()
             .root

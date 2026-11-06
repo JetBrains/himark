@@ -5,7 +5,8 @@ use gfx::{Point, Size};
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, Modifiers, MouseButton};
 
-use crate::app::Himark;
+use crate::app::{Himark, WorkbenchShell as _};
+use crate::test_support::TestSupport as _;
 
 pub fn click(app: &mut Himark, x: f32, y: f32, width: f32, height: f32) -> bool {
     app.dispatch_timed(

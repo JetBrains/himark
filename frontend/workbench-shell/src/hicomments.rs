@@ -17,8 +17,10 @@ mod tests;
 pub struct ChromePlugin;
 
 impl himark::plugin::Plugin for ChromePlugin {
-    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
+    fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use crate::app::WorkbenchShell as _;
+        use crate::app_ext::AppExt;
+        use himark::app_ext::AppExt as _;
         app.register_command(Arc::new(ToggleCommentsView));
         app.register_toolbar_button(toolbar_button());
     }
@@ -38,9 +40,9 @@ impl himark::commands::HimarkCommand for ToggleCommentsView {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let mut entity =
@@ -50,24 +52,24 @@ impl himark::commands::HimarkCommand for ToggleCommentsView {
             ::workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let workspace = himark::workspace::entity_session(&entity);
-        let comments = himark::workspace::entity_state(&entity).comments();
-        let wire = himark::workspace::entity_state(&entity).comments_wire();
+        let workspace = crate::workspace::entity_session(&entity);
+        let comments = crate::workspace::entity_state(&entity).comments();
+        let wire = crate::workspace::entity_state(&entity).comments_wire();
         let folders = ahp_session::session::folders::session_folders(store, &workspace);
-        fx.scope(himark::app::AppCommand::Verb, |fx| {
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
             for folder in folders {
                 ahp_comments::ensure(store, wire, &folder, fx);
             }
         });
 
         fx.scope(
-            move |command| himark::shell::content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = CommentsView::open(store, ui, comments);
         let owner = self.id();
         fx.scope(
-            move |command| himark::shell::content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);

@@ -1,13 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::{
     env,
     time::{Duration, Instant},
 };
 
 use editor::markup::InlayMode;
-use himark::app_ext::AppExt;
+use workbench_shell::app_ext::AppExt;
 
 use himark::app::AppCommand;
 use himark::app::AppFonts;
@@ -55,7 +64,7 @@ fn attach_test_host() -> (Himark, TestHost) {
 
 fn attach_bare_host() -> (Himark, TestHost) {
     use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc, Arc};
-    let mut app = Himark::new(app_fonts());
+    let mut app = workbench_shell::app::workbench_app(app_fonts());
     let _ = app.add_window();
 
     app.register_command(Arc::new(peeker::TogglePeeker));
@@ -170,11 +179,11 @@ fn typing_markdown_into_the_startup_scratch_styles_it() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(
-        app.with_ime_client(app.sole_window(), |_| ()).is_some(),
+        app.with_ime_client(app.sole_origin(), |_| ()).is_some(),
         "the startup scratch has focus"
     );
     for ch in ["#", " ", "h", "i"] {
-        assert!(himark::test_driver::type_text(&mut app, ch));
+        assert!(workbench_shell::test_driver::type_text(&mut app, ch));
     }
 
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -289,9 +298,9 @@ fn dump_workbench_screenshots() {
     };
 
     shoot(&mut app, "top.png");
-    himark::test_driver::scroll(&mut app, 1100.0);
+    workbench_shell::test_driver::scroll(&mut app, 1100.0);
     shoot(&mut app, "mid.png");
-    himark::test_driver::scroll(&mut app, 1300.0);
+    workbench_shell::test_driver::scroll(&mut app, 1300.0);
     shoot(&mut app, "deep.png");
 
     let mut probe = gfx_skia::raster_tuple((1920, 1080)).expect("probe surface");
@@ -313,7 +322,7 @@ fn dump_workbench_screenshots() {
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(probe.canvas()),
             );
-            if !himark::test_driver::animate(
+            if !workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
             ) && tick > 1
@@ -351,7 +360,7 @@ fn dump_peeker_screenshot() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     app.perform_registered(app.sole_window(), "peeker.toggle");
-    himark::test_driver::type_text(&mut app, "s");
+    workbench_shell::test_driver::type_text(&mut app, "s");
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -462,7 +471,7 @@ fn window_resize_reflows_panes_around_their_viewports() {
     );
     let widths_before = app.pane_widths();
 
-    himark::test_driver::scroll_at(&mut app, 300.0, 400.0, 20_000.0);
+    workbench_shell::test_driver::scroll_at(&mut app, 300.0, 400.0, 20_000.0);
     let mut small = gfx_skia::raster_tuple((900, 700)).expect("raster surface");
     app.draw_window(
         app.sole_window(),
@@ -517,14 +526,14 @@ fn split_then_peek_a_file_into_the_focused_pane() {
         "the sample document is listed under its open name: {labels:?}"
     );
 
-    assert!(himark::test_driver::type_text(&mut app, "torture"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "torture"));
     let labels = peeker::labels(&app).expect("peeker is open");
     assert!(!labels.is_empty());
     assert!(labels.iter().all(|label| {
         let label = label.to_lowercase();
         "torture".chars().all(|wanted| label.contains(wanted))
     }));
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         Default::default()
@@ -543,7 +552,7 @@ fn split_then_peek_a_file_into_the_focused_pane() {
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Escape,
         Default::default()
@@ -561,7 +570,7 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    himark::test_driver::click(&mut app, 200.0, 200.0, 1280.0, 900.0);
+    workbench_shell::test_driver::click(&mut app, 200.0, 200.0, 1280.0, 900.0);
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -579,18 +588,18 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
             0 | 1 => {
                 let x = (rand() % 1200) as f32 + 40.0;
                 let y = (rand() % 800) as f32 + 60.0;
-                himark::test_driver::click(&mut app, x, y, 1280.0, 900.0);
+                workbench_shell::test_driver::click(&mut app, x, y, 1280.0, 900.0);
             }
             2 | 3 | 4 => {
                 let texts = ["# é😀", "x", "\n\n", "*emé*", "🚀", "```\n"];
-                himark::test_driver::type_text(&mut app, texts[(rand() % 6) as usize]);
+                workbench_shell::test_driver::type_text(&mut app, texts[(rand() % 6) as usize]);
             }
             5 => {
-                himark::test_driver::backspace(&mut app);
+                workbench_shell::test_driver::backspace(&mut app);
             }
             6 | 7 | 8 => {
                 let delta = if rand() % 3 == 0 { -1500.0 } else { 2500.0 };
-                himark::test_driver::scroll_at(
+                workbench_shell::test_driver::scroll_at(
                     &mut app,
                     (rand() % 1200) as f32 + 40.0,
                     (rand() % 800) as f32 + 60.0,
@@ -700,15 +709,15 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
         .expect("the showcase has inlays");
     let height_before = app.focused_pane_content_height();
     assert!(
-        himark::test_driver::click(&mut app, x, y, 1280.0, 900.0),
+        workbench_shell::test_driver::click(&mut app, x, y, 1280.0, 900.0),
         "the click must land"
     );
 
     assert!(
-        himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0)),
+        workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0)),
         "a running inlay animation must answer the clock"
     );
-    assert!(himark::test_driver::animate(
+    assert!(workbench_shell::test_driver::animate(
         &mut app,
         imba::anim::AnimationClock::from_millis(90.0)
     ));
@@ -718,17 +727,17 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
         "mid-animation the inlay's size shifts the document layout"
     );
 
-    assert!(himark::test_driver::animate(
+    assert!(workbench_shell::test_driver::animate(
         &mut app,
         imba::anim::AnimationClock::from_millis(200.0)
     ));
     for _ in 0..3 {
-        if !himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(400.0)) {
+        if !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(400.0)) {
             break;
         }
     }
     assert!(
-        !himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(500.0)),
+        !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(500.0)),
         "a settled animation must be silent"
     );
 }
@@ -745,7 +754,7 @@ fn an_idle_app_answers_the_animation_clock_with_silence() {
 
     for ms in [0.0, 16.7, 33.4, 50.1] {
         assert!(
-            !himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
+            !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
             "an idle app must not answer the clock"
         );
     }
@@ -764,7 +773,7 @@ fn types_into_the_editor_and_reports_latency() {
     );
 
     for _ in 0..20 {
-        himark::test_driver::type_text(&mut app, "x");
+        workbench_shell::test_driver::type_text(&mut app, "x");
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -777,7 +786,7 @@ fn types_into_the_editor_and_reports_latency() {
     let mut samples = Vec::new();
     for step in 0..300 {
         let started = Instant::now();
-        himark::test_driver::type_text(&mut app, if step % 7 == 0 { " " } else { "y" });
+        workbench_shell::test_driver::type_text(&mut app, if step % 7 == 0 { " " } else { "y" });
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -825,7 +834,7 @@ fn reparse_landings_during_typing_report_latency() {
     for _ in 0..300 {
         std::thread::sleep(Duration::from_millis(20));
         let started = Instant::now();
-        himark::test_driver::type_text(&mut app, "y");
+        workbench_shell::test_driver::type_text(&mut app, "y");
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -917,7 +926,7 @@ fn scroll_pass(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) -> 
 
     let mut samples = Vec::new();
     for _ in 0..scroll_steps(app, 4096.0) {
-        let _ = himark::test_driver::scroll(app, 4096.0);
+        let _ = workbench_shell::test_driver::scroll(app, 4096.0);
 
         let started = Instant::now();
         app.draw_window(
@@ -930,7 +939,7 @@ fn scroll_pass(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) -> 
 }
 
 fn scroll_to_top(app: &mut Himark, surface: &mut gfx_skia::skia_safe::Surface) {
-    himark::test_driver::scroll(app, f32::MIN);
+    workbench_shell::test_driver::scroll(app, f32::MIN);
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -964,7 +973,7 @@ trait RunReparse {
 
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
-        editor::reparse::ReparseHandler(himark::test_support::test_workshop(test_theme()))
+        editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(test_theme()))
             .reparse(self)
     }
 }
@@ -1010,7 +1019,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
         for _ in 0..60 {
             std::thread::sleep(Duration::from_millis(10));
             let started = Instant::now();
-            himark::test_driver::type_text(app, "y");
+            workbench_shell::test_driver::type_text(app, "y");
             app.draw_window(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1068,7 +1077,7 @@ fn scroll_frame_breakdown() {
     let mut paints = Vec::new();
     for _ in 0..scroll_steps(&app, 4096.0) {
         let started = Instant::now();
-        let _ = himark::test_driver::scroll(&mut app, 4096.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 4096.0);
         scrolls.push(started.elapsed());
         paints.push(app.draw_window_profiled(
             app.sole_window(),
@@ -1204,12 +1213,12 @@ fn the_wall_of_text_opens_and_types() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    himark::test_driver::click(&mut app, 400.0, 300.0, 1280.0, 900.0);
+    workbench_shell::test_driver::click(&mut app, 400.0, 300.0, 1280.0, 900.0);
 
     let mut samples = Vec::new();
     for _ in 0..24 {
         let started = Instant::now();
-        himark::test_driver::type_text(&mut app, "x");
+        workbench_shell::test_driver::type_text(&mut app, "x");
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1246,10 +1255,10 @@ fn resize_repair_matches_fresh_layout() {
     );
     let mut batch = imba::effect::Batch::new();
     document.resize(editor, 1128.0, 0, store, ui, &theme, &mut batch.effects());
-    let workshop = himark::test_support::test_workshop(theme.clone());
-    for effect in himark::test_support::surviving_launches(batch) {
+    let workshop = workbench_shell::test_support::test_workshop(theme.clone());
+    for effect in workbench_shell::test_support::surviving_launches(batch) {
         if let editor::editor_view::EditorCommand::ApplyRepair(items) =
-            himark::test_support::handle_effect(effect, &workshop)
+            workbench_shell::test_support::handle_effect(effect, &workshop)
         {
             for item in items {
                 document.apply_repair(item, &theme);
@@ -1335,7 +1344,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     let window = app.sole_window();
     let mut surface = gfx_skia::raster_tuple((800, 600)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    assert!(himark::app_ext::AppExt::perform_registered(
+    assert!(workbench_shell::app_ext::AppExt::perform_registered(
         &mut app,
         window,
         "demo.tree"
@@ -1513,9 +1522,9 @@ fn rust_document_settles_and_stops_reconciling() {
             ui,
             &theme,
         );
-        app.perform_batch(vec![himark::app::opened(
+        app.perform_batch(vec![workbench_shell::app::opened(
             app.sole_window(),
-            himark::app::OpenedDocument {
+            workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: "document-target.rs".to_owned(),
                 document,
@@ -1589,7 +1598,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
         for _ in 0..40 {
             std::thread::sleep(Duration::from_millis(10));
             let started = Instant::now();
-            himark::test_driver::type_text(app, "y");
+            workbench_shell::test_driver::type_text(app, "y");
             app.draw_window(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1610,7 +1619,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     let monster = measure(&mut app, &mut surface);
 
     assert!(app.perform_registered(app.sole_window(), "editor.select-all"));
-    assert!(himark::test_driver::backspace(&mut app));
+    assert!(workbench_shell::test_driver::backspace(&mut app));
     for _ in 0..8 {
         std::thread::sleep(Duration::from_millis(250));
         while let Ok(command) = arriving.try_recv() {

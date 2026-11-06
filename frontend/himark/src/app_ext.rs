@@ -1,55 +1,17 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The engine's convenience extension over [`Himark`]: one-command
+//! batches and the environment registrations. The window-shaped
+//! openers live in the workbench shell's own extension.
+
 use std::sync::Arc;
 
-use crate::app::AppCommand;
-use crate::app::Himark;
-use crate::app::OpenedDocument;
+use crate::app::{AppCommand, Himark};
 use crate::commands::HimarkCommand;
-use editor::document::Document;
-use hikit::modal::ModalView;
 
 pub trait AppExt {
     fn perform_command(&mut self, command: AppCommand) -> bool;
-
-    fn perform_registered(&mut self, window: ::workbench::window::WindowId, id: &str) -> bool;
-
-    fn add_document(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        document: Document,
-        name: String,
-        primary: bool,
-    ) -> bool;
-
-    fn new_scratch(&mut self, window: ::workbench::window::WindowId) -> bool;
-
-    fn open_async(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        name: String,
-        primary: bool,
-        location: Option<editor::location::ResourceLocation>,
-        build: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx, &::editor::theme::Theme) -> Document
-            + Send
-            + Sync
-            + 'static,
-    ) -> bool;
-
-    fn open_panel(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        panel: Box<dyn hikit::panel::DynPanelView>,
-    ) -> bool;
-
-    fn open_modal(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        modal: Box<dyn ModalView>,
-    ) -> bool;
-
-    fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool;
 
     fn register_command(&mut self, command: Arc<dyn HimarkCommand>) -> bool;
 
@@ -68,100 +30,8 @@ impl AppExt for Himark {
         self.perform_batch(vec![command])
     }
 
-    fn perform_registered(&mut self, window: ::workbench::window::WindowId, id: &str) -> bool {
-        let store = self.window_store(window);
-        let ui = self.ui_handle();
-        let Some(command) = crate::commands::palette_commands(&store, &ui, window)
-            .into_iter()
-            .find(|presentable| presentable.id == id)
-            .map(|presentable| presentable.command)
-        else {
-            return false;
-        };
-        self.perform_command(command)
-    }
-
-    fn add_document(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        document: Document,
-        name: String,
-        primary: bool,
-    ) -> bool {
-        // Bind the window's session HERE, at the gesture — the landing
-        // consumes the id and never re-asks the window.
-        let documents = {
-            let store = self.window_store(window);
-            let Some(state) = crate::workspace::session_state(&store, window) else {
-                return false;
-            };
-            state.documents()
-        };
-        self.perform_command(crate::shell::opened(
-            window,
-            OpenedDocument {
-                documents,
-                name,
-                document,
-                location: None,
-                primary,
-                target: None,
-                focus: false,
-            },
-        ))
-    }
-
-    fn new_scratch(&mut self, window: ::workbench::window::WindowId) -> bool {
-        self.add_document(
-            window,
-            crate::app::markdown_scratch(),
-            "scratch".to_owned(),
-            true,
-        )
-    }
-
-    fn open_async(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        name: String,
-        primary: bool,
-        location: Option<editor::location::ResourceLocation>,
-        build: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx, &::editor::theme::Theme) -> Document
-            + Send
-            + Sync
-            + 'static,
-    ) -> bool {
-        self.perform_command(crate::shell::open_async(
-            window,
-            name,
-            primary,
-            location,
-            Box::new(build),
-        ))
-    }
-
-    fn open_panel(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        panel: Box<dyn hikit::panel::DynPanelView>,
-    ) -> bool {
-        self.perform_command(crate::shell::open_panel(window, panel))
-    }
-
-    fn open_modal(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        modal: Box<dyn ModalView>,
-    ) -> bool {
-        self.perform_command(crate::shell::open_modal(window, modal))
-    }
-
-    fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool {
-        self.perform_command(crate::shell::close_modal(window))
-    }
-
     fn register_command(&mut self, command: Arc<dyn HimarkCommand>) -> bool {
-        self.perform_command(crate::shell::register(command))
+        self.perform_command(AppCommand::Register(command))
     }
 
     fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool {

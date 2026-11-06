@@ -10,6 +10,7 @@ hikit = { path = "../../hikit" }
 ahp-session = { path = "../../ahp-session" }
 editor = { path = "../../editor" }
 himark = { path = "../../himark" }
+workbench-shell = { path = "../../workbench-shell" }
 imba = { path = "../../imba" }
 gfx = { path = "../../gfx" }
 text = { path = "../../text" }

@@ -1,14 +1,23 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use ::editor::test_document::plain_document;
 use editor::location::Authority;
 use editor::location::ResourceType;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app::OpenedDocument;
-use himark::app_ext::AppExt;
+use workbench_shell::app::OpenedDocument;
+use workbench_shell::app_ext::AppExt;
 use imba::effect::EffectHandler;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
@@ -58,13 +67,13 @@ impl EffectHandler<BuildDocumentEffect> for StubBuild {
 
 struct StubOpenByLocation;
 
-impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocation {
+impl EffectHandler<workbench_shell::workspace::OpenByLocationEffect> for StubOpenByLocation {
     async fn handle(
         &self,
-        effect: himark::workspace::OpenByLocationEffect,
+        effect: workbench_shell::workspace::OpenByLocationEffect,
     ) -> himark::app::AppCommand {
-        himark::app::opened(
-            effect.window,
+        himark::opening::opened(
+            effect.origin,
             OpenedDocument {
                 documents: effect.documents,
                 name: effect.location.name().to_owned(),
@@ -94,11 +103,11 @@ impl himark::commands::HimarkCommand for AddFolder {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        let id = himark::test_support::seed_session_folders(store, &[folder_location()]);
-        himark::app::switch_session(store, window, id, fx);
+        let id = workbench_shell::test_support::seed_session_folders(store, &[folder_location()]);
+        workbench_shell::app::switch_session(store, window, id, fx);
     }
 }
 
@@ -109,13 +118,13 @@ fn boot(
     mpsc::Receiver<himark::app::AppCommand>,
     himark::effects::BackgroundRunner,
 ) {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(Arc::new(TogglePeeker));
     app.register_handler::<FindEffect>(StubFind);
     app.register_handler::<FetchDocumentEffect>(StubFetch(Arc::clone(fetches)));
     app.register_handler::<BuildDocumentEffect>(StubBuild);
-    app.register_handler::<himark::workspace::OpenByLocationEffect>(StubOpenByLocation);
+    app.register_handler::<workbench_shell::workspace::OpenByLocationEffect>(StubOpenByLocation);
 
     struct StubWatch;
     impl imba::effect::EffectHandler<documents::watch::SubscribeEffect> for StubWatch {
@@ -166,7 +175,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "alpha".to_owned(),
         false
     ));
-    assert!(app.perform_batch(vec![himark::app::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -177,7 +186,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "no"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
 
     let listed = labels(&app).expect("the peeker is the modal");
@@ -199,7 +208,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "the fetched preview registered at display"
     );
 
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         Default::default()
@@ -254,7 +263,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(app.perform_batch(vec![himark::app::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -265,7 +274,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "no"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
     assert!(
@@ -277,7 +286,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         baseline_docs + 1,
         "the fetched preview registered at display"
     );
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Escape,
         Default::default()
@@ -297,13 +306,13 @@ fn temps_clean_up_and_early_picks_fall_back() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "no"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "no"));
 
     runner.run();
     while let Ok(command) = arriving.try_recv() {
         app.perform_batch(vec![command]);
     }
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         Default::default()
@@ -329,7 +338,7 @@ fn outside_dismissal_releases_glanced_documents() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(app.perform_batch(vec![himark::app::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::app::windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -340,7 +349,7 @@ fn outside_dismissal_releases_glanced_documents() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "no"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
     assert_eq!(

@@ -34,7 +34,6 @@ documents = { path = "../documents" }
 locations = { path = "../locations" }
 terminals = { path = "../terminals" }
 toc = { path = "../toc" }
-workbench = { path = "../workbench" }
 editor = { path = "../editor" }
 filetree = { path = "../filetree" }
 myersdiff = { path = "../myersdiff" }
@@ -57,7 +56,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }
 # default so no other shell links skia through this crate.
 skia-shell = ["dep:skia-safe", "dep:gfx-skia"]
 test-support = [
-    "workbench/test-support", 
     "editor/test-support", 
     "hikit/test-support", 
     "changesview/test-support", 
@@ -77,5 +75,3 @@ toc = { path = "../toc", features = ["test-support"] }
 ahp-session = { path = "../ahp-session", features = ["test-support"] }
 himarkdown = { path = "../plugins/himarkdown" }
 
-[build-dependencies]
-cbindgen = "0.29.4"

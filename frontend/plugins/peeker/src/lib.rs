@@ -1,6 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use ahp_locations::FindEffect;
 use documents::entity_view::EditorIdView;
 use documents::BuildDocumentEffect;
@@ -805,7 +815,7 @@ impl Peeker {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn previewed_widget_title(&self, store: &Store) -> Option<String> {
         match self.preview.as_ref()? {
             PreviewSlot::Widget(index) => self
@@ -1853,7 +1863,7 @@ pub fn build(
 
         let recents = recents::RecentLocations::list(
             store,
-            himark::workspace::entity_state(&entity).recents(),
+            workbench_shell::workspace::entity_state(&entity).recents(),
         );
 
         let mut widgets = entity.unmount_all_widgets();
@@ -1862,18 +1872,18 @@ pub fn build(
             .filter_map(|(_, widget)| widget.pane_row())
             .collect();
 
-        let state = himark::workspace::entity_state(&entity).clone();
+        let state = workbench_shell::workspace::entity_state(&entity).clone();
         widgets.extend(
-            himark::pane_rows::mint_unfronted(store, &state, &fronted)
+            workbench_shell::pane_rows::mint_unfronted(store, &state, &fronted)
                 .into_iter()
                 .map(|widget| (WidgetOrigin::Row, widget)),
         );
         let folders = ahp_session::session::folders::session_folders(
             store,
-            &himark::workspace::entity_session(&entity),
+            &workbench_shell::workspace::entity_session(&entity),
         );
 
-        let state = himark::workspace::entity_state(&entity);
+        let state = workbench_shell::workspace::entity_state(&entity);
         let documents = state.documents();
         let lists = state.lists();
         let peeker = fx.scope(workbench_shell::modal::modal_scope(window), |fx| {
@@ -1953,7 +1963,7 @@ impl himark::commands::HimarkCommand for TogglePeeker {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let entity =
@@ -1963,7 +1973,7 @@ impl himark::commands::HimarkCommand for TogglePeeker {
             // opens only over a clear window.
             let mut entity = entity.clone();
             fx.scope(
-                move |command| himark::app::content(window, command),
+                move |command| workbench_shell::app::content(window, command),
                 |fx| entity.dismiss_modal(store, fx),
             );
             workbench::window::Windows::put(store, window, entity);
@@ -1974,30 +1984,33 @@ impl himark::commands::HimarkCommand for TogglePeeker {
         let mut entity =
             workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::app::content(window, command),
             |fx| entity.show_modal(store, modal, fx),
         );
         workbench::window::Windows::put(store, window, entity);
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 pub fn labels(app: &Himark) -> Option<Vec<String>> {
     Some(peeker_of(app)?.labels(app.store()))
 }
 
 /// TEST SUPPORT: no production caller outside this crate.
 #[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn preview_height(app: &Himark, store: &Store) -> Option<f32> {
     peeker_of(app)?.preview_height(store)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn previewed_widget(app: &Himark) -> Option<String> {
     peeker_of(app)?.previewed_widget_title(app.store())
 }
 
+#[cfg(any(test, feature = "test-support"))]
 fn peeker_of(app: &Himark) -> Option<&Peeker> {
-    app.plugin_modal()?.as_any().downcast_ref::<Peeker>()
+    { use workbench_shell::test_support::TestSupport as _; app.plugin_modal() }?.as_any().downcast_ref::<Peeker>()
 }
 
 #[cfg(test)]

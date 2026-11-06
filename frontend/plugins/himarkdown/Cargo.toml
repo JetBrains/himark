@@ -10,6 +10,7 @@ ahp-wire = { path = "../../ahp-wire" }
 documents = { path = "../../documents" }
 ahp-session = { path = "../../ahp-session" }
 himark = { path = "../../himark", features = ["test-support"] }
+workbench-shell = { path = "../../workbench-shell" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 mdparser = { path = "../../mdparser" }

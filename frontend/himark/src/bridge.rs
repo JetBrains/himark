@@ -112,7 +112,7 @@ impl ViewBridgeId {
 /// DynView`'s layout half with the app's concrete command type; it
 /// collapses into `DynView` itself once commands erase too
 /// (docs/himark-core.md, commands section).
-pub(crate) trait BridgeView: Send + Sync {
+pub trait BridgeView: Send + Sync {
     /// The snapshot a frame realizes against. A view that stamps
     /// frame-scoped environment does it here — the workbench
     /// stamps its window's focused seat (`FrameFocus`), so editors
@@ -183,6 +183,23 @@ pub(crate) trait BridgeView: Send + Sync {
     /// (after its frames quiesce) before the parent is taken
     /// mutably. A no-op everywhere but `OverlayMount`.
     fn overlay_release_parent(&mut self) {}
+
+    /// The LIVE viewport the view's host composition tracks, when
+    /// the view owns one — the workbench window answers its
+    /// entity's; a bare mount answers `None` and rides its last
+    /// drawn size. The engine's IME fold keys its rebuild on it.
+    fn live_viewport(&self, store: &Store) -> Option<gfx::Size> {
+        let _ = store;
+        None
+    }
+
+    /// Whether the engine clears the canvas to TRANSPARENT before
+    /// painting this view — a mounted island composes over the
+    /// host's backdrop; a window root paints its own ground and
+    /// keeps the surface opaque.
+    fn clears_backdrop(&self) -> bool {
+        true
+    }
 }
 
 /// One mounted view: the state carrier, retained. Everything else

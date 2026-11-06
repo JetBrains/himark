@@ -9,6 +9,21 @@
 
 use std::sync::Arc;
 
+pub mod app;
+pub mod builtins;
+pub mod diff_pane;
+pub mod folder_grant_windows;
+pub mod app_ext;
+pub mod diff_navigator;
+pub mod higent;
+pub mod pane_rows;
+pub mod shell;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_driver;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+pub mod toc;
+pub mod workspace;
 pub mod hichanges;
 pub mod hicomments;
 pub mod hifiles;
@@ -39,7 +54,7 @@ impl himark::himark::Shell for ChromeFrontend {
                 // The feed fronts in the search dock — the windowed
                 // vehicle rides the follow-up lane for its own scope.
                 fx.follow_up(imba::command::Verb::shell(Box::new(
-                    himark::shell::windowed(
+                    crate::shell::windowed(
                         window,
                         Arc::new(hisearch::ShowFeedInDock {
                             lists: place.lists,

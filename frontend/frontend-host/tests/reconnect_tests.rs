@@ -34,7 +34,8 @@ use ahp_wire::client::SessionClient as _;
 use ahp_wire::client::SessionOptions;
 use ahp_wire::client::SessionUri;
 
-use crate::findroute_tests::{bind_backend, block_on};
+mod common;
+use common::{bind_backend, block_on};
 use ahp_wire::transport::{Connector, DeadLatched, Dialing};
 use ahp_wire::wire::WireHost;
 
@@ -215,7 +216,7 @@ impl Bench {
     fn other(&self) -> Arc<WireHost> {
         Arc::new(WireHost::at(
             ahp_wire::wire::test_runtime(),
-            crate::test_connector(),
+            himark_api::test_connector(),
             self.url.clone(),
         ))
     }
@@ -1142,7 +1143,7 @@ fn a_restarted_host_does_not_lose_the_next_gap() {
     );
     let c = Arc::new(WireHost::at(
         ahp_wire::wire::test_runtime(),
-        crate::test_connector(),
+        himark_api::test_connector(),
         url.clone(),
     ));
     block_on(c.subscribe_annotations(session.clone())).expect("c's feed on the reborn host");

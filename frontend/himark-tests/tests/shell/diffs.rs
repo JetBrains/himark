@@ -16,10 +16,19 @@ fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<changesview::hi
         .into_iter()
         .next()
         .expect("a window");
-    himark::workspace::session_state(store, window)
+    workbench_shell::workspace::session_state(store, window)
         .expect("the window's state")
         .changes()
 }
+
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
 
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
 use ::canvas::changes_face::ChangesFace;
@@ -29,7 +38,7 @@ use changesview::hichanges::CanvasSource;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app_ext::AppExt;
-use himark::diff_pane::*;
+use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
 
 /// The panel a test opens over a seeded canvas: its source's face,
@@ -97,7 +106,7 @@ fn prepared_pair(
 fn the_diff_panel_opens_edits_and_dismantles() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -160,7 +169,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     });
     assert!(panel_open, "the diff panel took the focused pane");
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -168,7 +177,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     );
     let right_before = document_text(&app, "right.md");
     for _ in 0..3 {
-        let _ = himark::test_driver::type_text(&mut app, "é");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "é");
         settle(&mut app, &mut surface);
     }
     let right_after = document_text(&app, "right.md");
@@ -181,7 +190,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         "the typed run landed intact: {right_after:?}"
     );
 
-    himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -190,7 +199,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     let left_before = document_text(&app, "left.md");
     let right_frozen = document_text(&app, "right.md");
     for _ in 0..2 {
-        let _ = himark::test_driver::type_text(&mut app, "ø");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "ø");
         settle(&mut app, &mut surface);
     }
     assert_ne!(
@@ -214,7 +223,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 fn the_optimizer_landing_cancels_matching_edits() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -262,24 +271,24 @@ fn the_optimizer_landing_cancels_matching_edits() {
     );
     settle(&mut app, &mut surface);
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..4 {
-        let _ = himark::test_driver::type_text(&mut app, "x");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface);
     }
-    himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..4 {
-        let _ = himark::test_driver::type_text(&mut app, "x");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface);
     }
 
@@ -320,7 +329,7 @@ fn identical_documents_settle_spacer_free() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -399,7 +408,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -438,7 +447,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -450,7 +459,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         .iter()
         .enumerate()
     {
-        let _ = himark::test_driver::type_text(&mut app, text);
+        let _ = workbench_shell::test_driver::type_text(&mut app, text);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -493,7 +502,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -596,7 +605,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     // The keystroke's own batch (any batch) runs the diff lanes and
     // the dressing sweep; the pane hears nothing through its panel.
     let window = app.sole_window();
-    app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
+    app.perform_batch(vec![workbench_shell::shell::viewport_resized(window, size)]);
 
     settle(&mut app, &mut surface, 40);
     assert_pair_aligned(&app);
@@ -617,7 +626,7 @@ fn typed_insertions_paint_washes() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -691,14 +700,14 @@ fn typed_insertions_paint_washes() {
         "identical documents paint no wash"
     );
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
 
-    let _ = himark::test_driver::type_text(&mut app, "a freshly added right-side line\n");
+    let _ = workbench_shell::test_driver::type_text(&mut app, "a freshly added right-side line\n");
     settle(&mut app, &mut surface, 3);
     let (added_now, _) = wash_pixels(&mut surface);
     assert!(
@@ -712,13 +721,13 @@ fn typed_insertions_paint_washes() {
         "the added wash survives the landings ({added} pixels)"
     );
 
-    himark::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 150.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
-    let _ = himark::test_driver::type_text(&mut app, "a left-only line typed here\n");
+    let _ = workbench_shell::test_driver::type_text(&mut app, "a left-only line typed here\n");
     settle(&mut app, &mut surface, 3);
     let (_, deleted_now) = wash_pixels(&mut surface);
     assert!(
@@ -734,7 +743,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -854,7 +863,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -941,7 +950,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     );
 
     for _ in 0..40 {
-        let _ = himark::test_driver::scroll(&mut app, 400.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 400.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -980,7 +989,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
 
     for frame in 0..90u32 {
         let clock = imba::anim::AnimationClock::from_millis(f64::from(frame) * 16.6);
-        let _ = himark::test_driver::animate(&mut app, clock);
+        let _ = workbench_shell::test_driver::animate(&mut app, clock);
         let width = 1160.0 + (frame as f32) * 10.0;
         let frame_size = gfx::Size::new(width.min(2000.0), 800.0);
 
@@ -1017,7 +1026,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     );
 
     for _ in 0..30 {
-        let _ = himark::test_driver::scroll(&mut app, 500.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 500.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1121,7 +1130,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1216,7 +1225,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     );
 
     for _ in 0..400 {
-        let _ = himark::test_driver::scroll(&mut app, 2000.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 2000.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1243,7 +1252,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1297,18 +1306,18 @@ fn scrolling_after_a_theme_toggle_converges() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     for _ in 0..3 {
-        let _ = himark::test_driver::type_text(&mut app, "x");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
     }
-    himark::test_driver::click(&mut app, 150.0, 500.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 150.0, 500.0, 1100.0, 800.0);
     for _ in 0..2 {
-        let _ = himark::test_driver::type_text(&mut app, "é");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "é");
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1319,8 +1328,8 @@ fn scrolling_after_a_theme_toggle_converges() {
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
 
     for step in 0..40 {
-        let _ = himark::test_driver::scroll(&mut app, 600.0);
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::scroll(&mut app, 600.0);
+        let _ = workbench_shell::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(step as f64 * 16.0),
         );
@@ -1337,7 +1346,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut app, -1_000_000.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1365,7 +1374,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     'probe: for dy in (0..=10).map(|step| step * 30) {
         for x in [620, 680, 740, 800, 860, 920, 1000] {
             let y = 60.0 + dy as f32;
-            himark::test_driver::click(&mut app, x as f32, y, 1100.0, 800.0);
+            workbench_shell::test_driver::click(&mut app, x as f32, y, 1100.0, 800.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1379,7 +1388,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     }
     assert!(focused, "a table cell took focus post-toggle");
     for _ in 0..6 {
-        let _ = himark::test_driver::type_text(&mut app, "grow the row after the switch ");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "grow the row after the switch ");
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1454,7 +1463,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let mut perform = |document: &mut editor::document::Document, command| {
         let mut batch = imba::effect::Batch::new();
         document.perform(&mut store, &ui, editor, command, &mut batch.effects());
-        himark::test_support::surviving_launches(batch)
+        workbench_shell::test_support::surviving_launches(batch)
     };
 
     let _ = perform(
@@ -1497,16 +1506,16 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     );
 
     let mut pending = Vec::new();
-    let workshop = himark::test_support::test_workshop(theme.clone());
+    let workshop = workbench_shell::test_support::test_workshop(theme.clone());
     for effect in held {
-        let command = himark::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
         pending.extend(perform(&mut document, command));
     }
     let mut rounds = 0;
     while let Some(effect) = pending.pop() {
         rounds += 1;
         assert!(rounds < 200, "repairs must quiesce");
-        let command = himark::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
         pending.extend(perform(&mut document, command));
     }
 
@@ -1531,7 +1540,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1574,7 +1583,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     // The table's first rows sit under the column header (104).
     'probe: for x in [760, 800, 840, 880] {
         for y in [130, 145, 160, 175, 190] {
-            himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
+            workbench_shell::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1623,7 +1632,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let (right_table_before, _) = table_heights(&app, "right.md");
 
     for _ in 0..6 {
-        let _ = himark::test_driver::type_text(&mut app, "grow the row ");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "grow the row ");
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1644,7 +1653,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     assert_pair_aligned(&app);
 
     for step in 0..3 {
-        let _ = himark::test_driver::type_text(&mut app, "\n");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "\n");
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1804,7 +1813,7 @@ fn an_edited_markdown_pair_settles_aligned() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -1868,14 +1877,14 @@ fn an_edited_markdown_pair_settles_aligned() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    himark::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 800.0, 300.0, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
     for _ in 0..3 {
-        let _ = himark::test_driver::type_text(&mut app, "x");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         settle(&mut app, &mut surface, 4);
     }
     settle(&mut app, &mut surface, 20);
@@ -2004,7 +2013,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         }
     }
 
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -2018,9 +2027,9 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         )
     };
     for (name, body) in [("left.md", "left body\n"), ("right.md", "right body\n")] {
-        assert!(app.perform_command(himark::app::opened(
+        assert!(app.perform_command(workbench_shell::shell::opened(
             window,
-            himark::app::OpenedDocument {
+            himark::opening::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: ::editor::test_document::plain_document(body),
@@ -2033,7 +2042,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
     }
     assert!(app.perform_registered(window, "diff.open"));
 
-    let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == "test.probe")
         .expect("the diff half offers the registered command")
@@ -2165,7 +2174,7 @@ fn a_settled_diff_pane_goes_quiet() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = himark::app::AppFonts::embedded();
-    let mut app = himark::app::Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(OpenDiff));
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -2212,7 +2221,7 @@ fn a_settled_diff_pane_goes_quiet() {
 
     for ms in [0.0, 8.3, 16.7, 25.0, 33.4] {
         assert!(
-            !himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
+            !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
             "a settled diff pane must not answer the clock at {ms}ms"
         );
     }
@@ -2234,7 +2243,7 @@ fn a_settled_diff_pane_goes_quiet() {
 fn the_unified_view_switches_between_split_and_inline() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -2318,7 +2327,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 
     let toggle = |app: &mut Himark| {
         let command =
-            himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
                 .into_iter()
                 .find(|presentable| presentable.id == "diff.toggle-layout")
                 .expect("the pane offers the layout toggle")
@@ -2382,7 +2391,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     let header = editor::env::Themes::of(app.store())
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
-    himark::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
+    workbench_shell::test_driver::click(&mut app, 550.0, header + 14.0 + hole, 1100.0, 800.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -2399,7 +2408,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         );
     }
     let before = document_text(&app, "right.md");
-    let _ = himark::test_driver::type_text(&mut app, "Z");
+    let _ = workbench_shell::test_driver::type_text(&mut app, "Z");
     settle(&mut app, &mut surface);
     assert_ne!(
         document_text(&app, "right.md"),
@@ -2426,7 +2435,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -2484,7 +2493,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     settle(&mut app, &mut surface);
 
     let toggle =
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .into_iter()
             .find(|presentable| presentable.id == "diff.toggle-layout")
             .expect("the pane offers the layout toggle")
@@ -2518,7 +2527,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
 
     // One decisive fling to the very bottom, then let it settle.
     for _ in 0..4 {
-        let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 10_000_000.0);
         settle(&mut app, &mut surface);
     }
     let bottom = paint_floor_ms(&mut app, &mut surface);
@@ -2538,7 +2547,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
 #[test]
 fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let theme = editor::theme::embedded();
 
@@ -2624,7 +2633,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..6 {
-            let _ = himark::test_driver::animate(
+            let _ = workbench_shell::test_driver::animate(
                 &mut *app,
                 imba::anim::AnimationClock::from_millis(0.0),
             );
@@ -2661,7 +2670,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
 
     let top = paint_floor_ms(&mut app, &mut surface);
     for _ in 0..4 {
-        let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 10_000_000.0);
         settle(&mut app, &mut surface);
     }
     let bottom = paint_floor_ms(&mut app, &mut surface);
@@ -2685,7 +2694,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
 fn folded_squash_paint_cost_is_size_independent() {
     let floor_for = |line_count: usize| -> f64 {
         let fonts = AppFonts::embedded();
-        let mut app = Himark::new(fonts);
+        let mut app = workbench_shell::app::workbench_app(fonts);
         let _ = app.add_window();
 
         let mut old_body = String::new();
@@ -2764,7 +2773,7 @@ fn folded_squash_paint_cost_is_size_independent() {
         let size = gfx::Size::new(1100.0, 800.0);
         let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
         for _ in 0..6 {
-            let _ = himark::test_driver::animate(
+            let _ = workbench_shell::test_driver::animate(
                 &mut app,
                 imba::anim::AnimationClock::from_millis(0.0),
             );
@@ -2810,7 +2819,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     // Small diff: a changed head, unchanged middle, changed tail —
@@ -2878,7 +2887,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     for _ in 0..40 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -2911,8 +2920,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         shot.expect("the built row")
     };
     let full_click = |app: &mut Himark, y: f32| {
-        let _ = himark::test_driver::click(app, 550.0, y, 1100.0, 1500.0);
-        let _ = himark::test_driver::mouse_up(app, 550.0, y);
+        let _ = workbench_shell::test_driver::click(app, 550.0, y, 1100.0, 1500.0);
+        let _ = workbench_shell::test_driver::mouse_up(app, 550.0, y);
     };
 
     // REGRESSION (the focus-trace hunt, 2026-09-18): MouseUp is
@@ -2944,7 +2953,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     full_click(&mut app, text_y);
     assert_eq!(host_focus(&app), "Text", "…and stays on EVERY later click");
 
-    let _ = himark::test_driver::mouse_move(&mut app, 550.0, card_y);
+    let _ = workbench_shell::test_driver::mouse_move(&mut app, 550.0, card_y);
     assert_eq!(host_focus(&app), "Text", "hovering the card moves nothing");
 
     // REGRESSION (2026-09-25): typing in the inline face composes an
@@ -2972,10 +2981,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         shot.expect("the built row's inline face")
     };
     let standing = inline_of(&app);
-    assert!(himark::test_driver::type_text(&mut app, "x"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     for _ in 0..20 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -3003,7 +3012,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -3066,7 +3075,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3099,8 +3108,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         shot.expect("the canvas panel")
     };
     let click = |app: &mut Himark, x: f32, y: f32| {
-        let _ = himark::test_driver::click(app, x, y, 1100.0, 1500.0);
-        let _ = himark::test_driver::mouse_up(app, x, y);
+        let _ = workbench_shell::test_driver::click(app, x, y, 1100.0, 1500.0);
+        let _ = workbench_shell::test_driver::mouse_up(app, x, y);
     };
 
     let (rows, layouts, _) = probe(&app);
@@ -3184,7 +3193,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     // the planted chevron folds the file exactly like the real one.
     // Past the commit control above the list, then 400 more.
     let past_head = ::canvas::changes_face::composer_band_height(app.store(), &app.ui_ctx());
-    let _ = himark::test_driver::scroll(&mut app, 400.0 + past_head);
+    let _ = workbench_shell::test_driver::scroll(&mut app, 400.0 + past_head);
     settle(&mut app);
     let (_, _, scrolled) = probe(&app);
     assert!(scrolled > 0.0, "the canvas scrolled: {scrolled}");
@@ -3199,7 +3208,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     // The focused row offers the open roads on the focus chain —
     // cmd-enter ("workbench.open-in-full") needs nothing more.
     let offered =
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
     for id in ["workbench.open-in-full", "diff.open-pane"] {
         assert!(
             offered.iter().any(|presentable| presentable.id == id),
@@ -3220,7 +3229,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3298,7 +3307,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let mut trace: Vec<f32> = vec![reserved];
     for _ in 0..40 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -3332,7 +3341,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3393,7 +3402,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let draw_settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             let mut drained = false;
             while let Ok(command) = arriving.try_recv() {
@@ -3404,7 +3413,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
                 // A quiet round still runs a batch: the batch-tail
                 // lanes (diff, dressing, canvas) are what converge the
                 // state now — paint no longer carries probes.
-                app.perform_batch(vec![himark::app::viewport_resized(app.sole_window(), size)]);
+                app.perform_batch(vec![workbench_shell::shell::viewport_resized(app.sole_window(), size)]);
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
@@ -3475,7 +3484,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
@@ -3537,7 +3546,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..40 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3583,8 +3592,8 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     let (face_x, band_y) = working_band_word(&app, 1100.0, "Side by side");
-    let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
-    let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
+    let _ = workbench_shell::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
+    let _ = workbench_shell::test_driver::mouse_up(&mut app, face_x, band_y);
     settle(&mut app);
     settle(&mut app);
 
@@ -3609,8 +3618,8 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     // Back to inline: the row-level rewrap returns all editors to the
     // full row width, so the pair sync engages again.
     let (face_x, band_y) = working_band_word(&app, 1100.0, "Inline");
-    let _ = himark::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
-    let _ = himark::test_driver::mouse_up(&mut app, face_x, band_y);
+    let _ = workbench_shell::test_driver::click(&mut app, face_x, band_y, 1100.0, 800.0);
+    let _ = workbench_shell::test_driver::mouse_up(&mut app, face_x, band_y);
     settle(&mut app);
     settle(&mut app);
     settle(&mut app);
@@ -3637,7 +3646,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
 #[test]
 fn reconcile_follows_the_change_set_without_flashing() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let location = |name: &str, kind| {
@@ -3761,7 +3770,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 fn typing_in_a_canvas_row_updates_its_diff() {
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     // The seed is the whole-replace; the diff is dressed by the normalize
@@ -3778,7 +3787,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let settle = |app: &mut Himark| {
         for _ in 0..8 {
             let window = app.sole_window();
-            app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
+            app.perform_batch(vec![workbench_shell::shell::viewport_resized(window, size)]);
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3911,7 +3920,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -3971,7 +3980,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -4050,7 +4059,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             drained = true;
         }
         if !drained {
-            app.perform_batch(vec![himark::app::viewport_resized(window, size)]);
+            app.perform_batch(vec![workbench_shell::shell::viewport_resized(window, size)]);
         }
     }
     assert!(
@@ -4068,7 +4077,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
 #[test]
 fn canvases_sync_is_a_safe_no_op_when_current() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let doc_loc = |name: &str| {
@@ -4122,7 +4131,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     // The tick driver runs against every set-owned canvas — the real
     // batch tail (the sweep is a direct lane now).
     let window = app.sole_window();
-    app.perform_batch(vec![himark::app::viewport_resized(
+    app.perform_batch(vec![workbench_shell::shell::viewport_resized(
         window,
         gfx::Size::new(800.0, 600.0),
     )]);
@@ -4145,7 +4154,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
 #[test]
 fn reconcile_keeps_the_sticky_cover() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let (view, key, built2) = seeded_working_canvas(&mut app);
@@ -4185,7 +4194,7 @@ fn reconcile_keeps_the_sticky_cover() {
 #[test]
 fn a_committed_change_set_empties_the_canvas() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let (view, key, _built2) = seeded_working_canvas(&mut app);
@@ -4244,7 +4253,7 @@ fn a_committed_change_set_empties_the_canvas() {
 #[test]
 fn releasing_the_last_view_frees_the_rows_documents() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let location = |name: &str| {
@@ -4357,7 +4366,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
 #[test]
 fn an_armed_row_prefetches_a_bounded_horizon() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let location = |name: &str| {
@@ -4543,7 +4552,7 @@ fn seeded_working_canvas(
 #[test]
 fn a_retired_file_leaves_no_orphan_row() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let loc = |name: &str| {
@@ -4640,7 +4649,7 @@ fn a_retired_file_leaves_no_orphan_row() {
 #[test]
 fn membership_follows_every_adopted_listing() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let pool: Vec<editor::location::ResourceLocation> = (0..8)
@@ -4740,7 +4749,7 @@ fn membership_follows_every_adopted_listing() {
 #[test]
 fn membership_minimal_repro() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let key = |name: &str| {
         editor::location::ResourceLocation::new(
@@ -4796,7 +4805,7 @@ fn membership_minimal_repro() {
 #[test]
 fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let (view, key, built2) = seeded_working_canvas(&mut app);
 
@@ -4834,7 +4843,7 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
 #[test]
 fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     use documents::OpenDocuments;
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
     app.register_document_command(Arc::new(hicode::GoDefinition));
     let (posted, arriving) = mpsc::channel();
@@ -4921,7 +4930,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -4986,7 +4995,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         editor::location::ResourceLocation,
         editor::document::Document,
     )>| {
-        assert!(app.perform_command(himark::app::windowed(
+        assert!(app.perform_command(workbench_shell::shell::windowed(
             window,
             Arc::new(hicode::ApplyNavigation {
                 outcome: hicode::NavigationOutcome {
@@ -5072,7 +5081,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
 fn completion_serves_a_canvas_diff_face() {
     use documents::OpenDocuments;
     use imba::event::{Key, Modifiers};
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
     struct StubLsp(Arc<std::sync::atomic::AtomicUsize>);
     impl imba::effect::EffectHandler<::editor::completion::CompletionEffect> for StubLsp {
@@ -5146,7 +5155,7 @@ fn completion_serves_a_canvas_diff_face() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5193,8 +5202,8 @@ fn completion_serves_a_canvas_diff_face() {
     let face_y = working_band_word(&app, 1100.0, "Side by side").1
         + ::canvas::diff_header::file_band_height(app.store()) * 0.5
         + 90.0;
-    let _ = himark::test_driver::click(&mut app, 900.0, face_y, 1100.0, 1500.0);
-    let _ = himark::test_driver::mouse_up(&mut app, 900.0, face_y);
+    let _ = workbench_shell::test_driver::click(&mut app, 900.0, face_y, 1100.0, 1500.0);
+    let _ = workbench_shell::test_driver::mouse_up(&mut app, 900.0, face_y);
     settle(&mut app, &mut surface);
     let focus = OpenDocuments::document_ref(app.store(), documents, right)
         .expect("right")
@@ -5225,7 +5234,7 @@ fn completion_serves_a_canvas_diff_face() {
         pixels
     };
     let quiet = frame(&mut surface);
-    let trigger = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")
@@ -5270,7 +5279,7 @@ fn completion_serves_a_canvas_diff_face() {
     );
 
     let before = text(&app);
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         Key::Enter,
         Modifiers::default()
@@ -5288,7 +5297,7 @@ fn completion_serves_a_canvas_diff_face() {
 /// x 0 across the gutter at narrow panes.)
 #[test]
 fn a_wrapped_canvas_line_stays_off_the_gutter() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -5357,7 +5366,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..16 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5373,7 +5382,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     // Slam the panel's scroller to the clamp: the long line lives at
     // the very tail, past the rewrap's sync budget.
     for _ in 0..6 {
-        let _ = himark::test_driver::scroll_at(&mut app, 215.0, 300.0, 4000.0);
+        let _ = workbench_shell::test_driver::scroll_at(&mut app, 215.0, 300.0, 4000.0);
         settle(&mut app, &mut surface);
     }
     if std::env::var_os("HIMARK_SHOT").is_some() {
@@ -5450,7 +5459,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
 #[test]
 fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     use documents::OpenDocuments;
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -5577,7 +5586,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(Land(documents, right)),
     )));
@@ -5590,7 +5599,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
     let started = std::time::Instant::now();
     let mut rounds = 0;
     while !dressed(&app) && started.elapsed() < std::time::Duration::from_secs(10) {
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(rounds as f64 * 16.0),
         );
@@ -5647,7 +5656,7 @@ fn dump_commit_canvas_screenshot() {
     };
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -5762,7 +5771,7 @@ fn dump_commit_canvas_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5790,7 +5799,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -5899,7 +5908,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5918,10 +5927,10 @@ fn dump_multi_file_commit_canvas_screenshot() {
 
     // Scrolled into the first diff: the band pins under the chrome,
     // bare — its air is the diff row's tail, not the band's head.
-    let _ = himark::test_driver::scroll_at(&mut app, 1440.0, 900.0, 700.0);
+    let _ = workbench_shell::test_driver::scroll_at(&mut app, 1440.0, 900.0, 700.0);
     for _ in 0..12 {
         let _ =
-            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5955,7 +5964,7 @@ fn dump_commit_control_screenshots() {
     };
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -6021,7 +6030,7 @@ fn dump_commit_control_screenshots() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
-            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -6045,10 +6054,10 @@ fn dump_commit_control_screenshots() {
 
     // A press beside the byline (under the header and the summary
     // strip) hands the subject the keyboard.
-    assert!(himark::test_driver::click(
+    assert!(workbench_shell::test_driver::click(
         &mut app, 1200.0, 245.0, 2880.0, 1800.0
     ));
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "perf: record diff-open, typing and resize timings"
     ));
@@ -6056,12 +6065,12 @@ fn dump_commit_control_screenshots() {
     dump(&mut surface, "commit-control-subject");
 
     // Enter leaves the subject for the body.
-    let _ = himark::test_driver::key(
+    let _ = workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         imba::event::Modifiers::default(),
     );
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "The csv gains the three diff probes the perf campaign reads."
     ));

@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::dock::{entity, located, settle, show_dock};
 use super::*;
 use hikit::modal::ModalRequest;
@@ -7,7 +16,7 @@ use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app_ext::AppExt;
-use himark::test_driver;
+use workbench_shell::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -84,7 +93,7 @@ fn the_sessions_subscription_runs_without_any_view() {
 
     use himark::app::AppFonts;
     use himark::app::Himark;
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     himark::hiahp::register_all(&mut app);
 
@@ -137,7 +146,7 @@ fn the_sessions_subscription_runs_without_any_view() {
 
 #[test]
 fn the_add_host_row_takes_a_url_and_dispatches() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let received = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
@@ -157,7 +166,7 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     let mut panel = ahp_session::session::drawer::AgentsPanel::open(
         &store,
         &ui,
-        himark::higent::drawer::drawer_asks(window),
+        workbench_shell::higent::drawer::drawer_asks(window),
     );
     {
         let mut boot: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
@@ -205,7 +214,7 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     let hikit::modal::ModalRequest::Perform(verb) = request else {
         panic!("Enter dispatches a Perform request");
     };
-    let command = himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command = workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_batch(vec![command]));
     assert_eq!(
         received.lock().expect("recorder").as_deref(),
@@ -264,7 +273,7 @@ fn stamp_ago(ago: std::time::Duration) -> String {
 /// nudges a connect.
 #[test]
 fn the_drawer_lists_sessions_by_recency_with_their_repo() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let offline = app.register_client(ahp_wire::client::inert());
@@ -310,7 +319,7 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
     let mut panel = ahp_session::session::drawer::AgentsPanel::open(
         &store,
         &ui,
-        himark::higent::drawer::drawer_asks(window),
+        workbench_shell::higent::drawer::drawer_asks(window),
     );
     let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
         imba::effect::Batch::new();
@@ -361,7 +370,7 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
 
 #[test]
 fn the_drawer_lands_on_the_window_s_open_session() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut store = app.store_mut().clone();
@@ -399,14 +408,14 @@ fn the_drawer_lands_on_the_window_s_open_session() {
         session: ahp_wire::client::SessionUri::new("test-session:/beta"),
     };
     let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &beta);
-    let _ = entity.switch_to(himark::workspace::SessionWorkspace::boxed(beta, state));
+    let _ = entity.switch_to(workbench_shell::workspace::SessionWorkspace::boxed(beta, state));
     ::workbench::window::Windows::put(&mut store, window, entity);
 
     let ui = ::editor::test_document::test_ui();
     let mut panel = ahp_session::session::drawer::AgentsPanel::open(
         &store,
         &ui,
-        himark::higent::drawer::drawer_asks(window),
+        workbench_shell::higent::drawer::drawer_asks(window),
     );
     let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
         imba::effect::Batch::new();
@@ -434,7 +443,7 @@ fn the_drawer_lands_on_the_window_s_open_session() {
 fn the_drawer_speed_search_filters_sessions() {
     use imba::effect::{block_on, EffectHandler, Message};
 
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut store = app.store_mut().clone();
@@ -471,7 +480,7 @@ fn the_drawer_speed_search_filters_sessions() {
     let mut panel = ahp_session::session::drawer::AgentsPanel::open(
         &store,
         &ui,
-        himark::higent::drawer::drawer_asks(window),
+        workbench_shell::higent::drawer::drawer_asks(window),
     );
     use imba::View;
     let mut drive = |panel: &mut ahp_session::session::drawer::AgentsPanel,
@@ -556,7 +565,7 @@ fn dump_sessions_drawer_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     // The leftmost header's tabs are the app's registrations: the
     // chat word (the shell's) and the Sessions word (the agent host's).
@@ -645,15 +654,15 @@ fn dump_sessions_drawer_screenshot() {
         let mut store = app.store_mut();
         let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
         let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &open);
-        let _ = entity.switch_to(himark::workspace::SessionWorkspace::boxed(
+        let _ = entity.switch_to(workbench_shell::workspace::SessionWorkspace::boxed(
             open.clone(),
             state,
         ));
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
-        Arc::new(himark::higent::drawer::ToggleAgentsView),
+        Arc::new(workbench_shell::higent::drawer::ToggleAgentsView),
     )));
     super::dock::settle(&mut app, &mut surface);
     // Opening the drawer nudges every host; the seeded states stand

@@ -64,7 +64,7 @@ echo "==> cargo build -p frontend-host --release --target $RUST_TARGET"
 ( cd "$ROOT" && cargo build -p frontend-host --release --target "$RUST_TARGET" )
 
 # The FFI header the bridging header includes — keep it the build's.
-cp "$ROOT/frontend/himark/include/himark.h" ./himark.h
+cp "$ROOT/frontend/frontend-host/include/himark.h" ./himark.h
 
 # The skia-bindings out-dir rotates with dependency bumps, and the
 # xcconfig's link paths were evaluated BEFORE this phase ran: when

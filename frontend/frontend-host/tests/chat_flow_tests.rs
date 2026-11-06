@@ -10,6 +10,15 @@
 //! windows), displacement + ⌘I mid-stream, and a verbatim REPLAY of
 //! the stream (an overlapping subscription must fold to one copy).
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::{Arc, Mutex};
 
 use ahp_types::actions::{
@@ -28,7 +37,7 @@ use ahp_wire::client::TurnId;
 use ahp_chat::cell::Cell;
 use himark::app_ext::AppExt;
 
-use crate::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
+use himark_api::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
 /// The scripted wire side of ONE chat: the snapshot to answer, the
 /// poll batches the test feeds, the older pages behind the cursor.
@@ -470,10 +479,10 @@ impl himark::commands::HimarkCommand for OpenScripted {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        himark::higent::open_session::open_session(
+        workbench_shell::higent::open_session::open_session(
             store,
             window,
             self.host,
@@ -489,7 +498,7 @@ impl himark::commands::HimarkCommand for OpenScripted {
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
-    himark::workspace::entity_state(
+    workbench_shell::workspace::entity_state(
         workbench::window::Windows::window_ref(engine.app.store(), window)
             .expect("the window entity"),
     )
@@ -530,7 +539,7 @@ const CHAT: &str = "ahp-chat:/scripted";
 const SESSION: &str = "ahp-session:/scripted";
 
 fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
-    let mut engine = crate::with_fonts(AppFonts::embedded());
+    let mut engine = himark_api::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let expected_turns = snapshot.turns.len();
     let script = Script::new(CHAT, SESSION, snapshot);
@@ -545,7 +554,7 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
         workbench::window::WindowId::from_raw(window),
         Arc::new(OpenScripted {
             host,
@@ -610,7 +619,7 @@ fn a_scripted_stream_lands_whole() {
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
         workbench::window::WindowId::from_raw(second),
         Arc::new(OpenScripted {
             host: script_host(&engine),
@@ -1174,7 +1183,7 @@ fn a_scroll_tick_builds_one_tree() {
     // (a fling culls the middle — unpainted rows never wake), the
     // worker landing builds between steps.
     for _ in 0..90 {
-        let _ = himark::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 600.0);
+        let _ = workbench_shell::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 600.0);
         engine.worker().run_pending();
         let _ = engine.draw(
             window,
@@ -1198,7 +1207,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.drain();
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    let _ = himark::test_driver::scroll(&mut engine.app, -10_000_000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut engine.app, -10_000_000.0);
     for _ in 0..30 {
         engine.worker().run_pending();
         let _ = engine.draw(
@@ -1220,8 +1229,8 @@ fn a_scroll_tick_builds_one_tree() {
     let mut ticks: Vec<std::time::Duration> = Vec::new();
     for at in 0..TICKS {
         let started = std::time::Instant::now();
-        let _ = himark::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 90.0);
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 90.0);
+        let _ = workbench_shell::test_driver::animate(
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(60_000.0 + at as f64 * 8.0),
         );
@@ -1291,7 +1300,7 @@ fn a_panned_gesture_scrolls_the_chat_up() {
     for _ in 0..60 {
         engine.worker().run_pending();
         now += 16.0;
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::animate(
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(now),
         );
@@ -1316,9 +1325,9 @@ fn a_panned_gesture_scrolls_the_chat_up() {
     let gesture = imba::event::ScrollGesture::default();
     gesture.begin();
     for _ in 0..10 {
-        let _ = himark::test_driver::scroll_with(&mut engine.app, &gesture, 550.0, 400.0, -60.0);
+        let _ = workbench_shell::test_driver::scroll_with(&mut engine.app, &gesture, 550.0, 400.0, -60.0);
         now += 16.0;
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::animate(
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(now),
         );
@@ -1365,7 +1374,7 @@ fn idle_clock_ticks_are_quiet() {
     for _ in 0..90 {
         engine.worker().run_pending();
         now += 16.0;
-        let _ = himark::test_driver::animate(
+        let _ = workbench_shell::test_driver::animate(
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(now),
         );
@@ -1384,7 +1393,7 @@ fn idle_clock_ticks_are_quiet() {
     let mut changed_ticks = 0;
     for _ in 0..120 {
         now += 16.0;
-        if himark::test_driver::animate(
+        if workbench_shell::test_driver::animate(
             &mut engine.app,
             imba::anim::AnimationClock::from_millis(now),
         ) {

@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
@@ -365,14 +374,14 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     pane.view = EditorIdView::new(test_docs(), document_b_id, new_editor);
     documents::OpenDocuments::put_document(&mut pane.store, test_docs(), document_b_id, document_b);
     assert!(
-        himark::test_support::surviving_launches(fresh).is_empty(),
+        workbench_shell::test_support::surviving_launches(fresh).is_empty(),
         "the tiny document opens fully repaired"
     );
 
-    for effect in himark::test_support::surviving_launches(stale) {
-        let command = himark::test_support::handle_effect(
+    for effect in workbench_shell::test_support::surviving_launches(stale) {
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -428,10 +437,10 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         batch
     };
 
-    for effect in himark::test_support::surviving_launches(first) {
-        let command = himark::test_support::handle_effect(
+    for effect in workbench_shell::test_support::surviving_launches(first) {
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -446,11 +455,11 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         "a stale repair discards itself; the tail stays pending"
     );
 
-    let mut pending = himark::test_support::surviving_launches(second);
+    let mut pending = workbench_shell::test_support::surviving_launches(second);
     while let Some(effect) = pending.pop() {
-        let command = himark::test_support::handle_effect(
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
@@ -459,7 +468,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
             command,
             &mut batch.effects(),
         );
-        pending.extend(himark::test_support::surviving_launches(batch));
+        pending.extend(workbench_shell::test_support::surviving_launches(batch));
     }
     let view = pane.view.gathered(&pane.store).expect("editor");
     assert!(view.document_layout().repair_pending().is_none());
@@ -682,10 +691,10 @@ fn a_repair_from_before_a_resize_discards_itself() {
     let _ = pane.resize(420.0, 0);
 
     let before = pane.gathered().document_layout().height();
-    for effect in himark::test_support::surviving_launches(edit_effects) {
-        let command = himark::test_support::handle_effect(
+    for effect in workbench_shell::test_support::surviving_launches(edit_effects) {
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
@@ -726,7 +735,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         &mut open_batch.effects(),
     );
     documents::OpenDocuments::put_document(&mut store, test_docs(), document_id, document.clone());
-    let effects = himark::test_support::surviving_launches(open_batch);
+    let effects = workbench_shell::test_support::surviving_launches(open_batch);
 
     let reference = EditorView::complete(
         document.clone(),
@@ -745,9 +754,9 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     let mut node = EditorIdView::new(test_docs(), document_id, editor_id);
     let mut chain = Vec::new();
     for effect in effects {
-        let command = himark::test_support::handle_effect(
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         chain.extend({
             let mut batch = imba::effect::Batch::new();
@@ -757,13 +766,13 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
                 command,
                 &mut batch.effects(),
             );
-            himark::test_support::surviving_launches(batch)
+            workbench_shell::test_support::surviving_launches(batch)
         });
     }
     while let Some(effect) = chain.pop() {
-        let command = himark::test_support::handle_effect(
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         chain.extend({
             let mut batch = imba::effect::Batch::new();
@@ -773,7 +782,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
                 command,
                 &mut batch.effects(),
             );
-            himark::test_support::surviving_launches(batch)
+            workbench_shell::test_support::surviving_launches(batch)
         });
     }
 
@@ -789,7 +798,7 @@ fn ime_composition_reaches_the_focused_editor() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -797,25 +806,25 @@ fn ime_composition_reaches_the_focused_editor() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    let set = app.with_ime_client(app.sole_window(), |client| {
+    let set = app.with_ime_client(app.sole_origin(), |client| {
         client.set_marked_text("\u{306B}\u{307B}", (2, 0), None);
     });
     assert!(set.is_some(), "the startup editor answers the IME event");
     let (marked, range) = app
-        .with_ime_client(app.sole_window(), |client| {
+        .with_ime_client(app.sole_origin(), |client| {
             (client.has_marked_text(), client.marked_range())
         })
         .expect("still focused");
     assert!(marked, "the composition is live");
     assert_eq!(range, Some((0, 2)), "two UTF-16 units marked");
     let rect = app
-        .with_ime_client(app.sole_window(), |client| client.first_rect(0, 2))
+        .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 2))
         .expect("still focused");
     assert!(rect.is_some(), "the candidate window has a caret rect");
 
-    let _ = app.with_ime_client(app.sole_window(), |client| client.unmark_text());
+    let _ = app.with_ime_client(app.sole_origin(), |client| client.unmark_text());
     let marked = app
-        .with_ime_client(app.sole_window(), |client| client.has_marked_text())
+        .with_ime_client(app.sole_origin(), |client| client.has_marked_text())
         .expect("still focused");
     assert!(!marked, "unmark commits the composition");
     assert_eq!(
@@ -830,14 +839,14 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("hello", None);
     });
     app.draw_window(
@@ -846,25 +855,25 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
     );
 
     let (x, y, _, height) = app
-        .with_ime_client(app.sole_window(), |client| client.first_rect(0, 0))
+        .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 0))
         .expect("focused")
         .expect("a caret rect");
     let inside = app
-        .with_ime_client(app.sole_window(), |client| {
+        .with_ime_client(app.sole_origin(), |client| {
             client.char_index_at(x + 1.0, y + height * 0.5)
         })
         .expect("focused");
     assert!(inside.is_some(), "the caret's own point hits text");
 
     let below = app
-        .with_ime_client(app.sole_window(), |client| {
+        .with_ime_client(app.sole_origin(), |client| {
             client.char_index_at(x + 1.0, y + 4000.0)
         })
         .expect("focused");
     assert!(below.is_none(), "past the painted band is not text");
 
     let left = app
-        .with_ime_client(app.sole_window(), |client| {
+        .with_ime_client(app.sole_origin(), |client| {
             client.char_index_at(-64.0, y + height * 0.5)
         })
         .expect("focused");
@@ -876,7 +885,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -884,7 +893,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("hello brave world", None);
     });
     app.draw_window(
@@ -892,19 +901,19 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let length = app
-        .with_ime_client(app.sole_window(), |client| client.document_length())
+        .with_ime_client(app.sole_origin(), |client| client.document_length())
         .expect("focused");
     assert_eq!(length, 17, "the document's UTF-16 length");
 
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.set_selected_range(6, 5);
     });
     let selected = app
-        .with_ime_client(app.sole_window(), |client| client.selected_range())
+        .with_ime_client(app.sole_origin(), |client| client.selected_range())
         .expect("focused");
     assert_eq!(selected, Some((6, 11)), "the selection round-trips");
     assert_eq!(
-        app.with_ime_client(app.sole_window(), |client| client.substring_utf16(6, 5))
+        app.with_ime_client(app.sole_origin(), |client| client.substring_utf16(6, 5))
             .expect("focused")
             .as_deref(),
         Some("brave"),
@@ -912,7 +921,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     );
 
     let rects = app
-        .with_ime_client(app.sole_window(), |client| client.selection_rects(6, 5))
+        .with_ime_client(app.sole_origin(), |client| client.selection_rects(6, 5))
         .expect("focused");
     assert_eq!(
         rects.len(),
@@ -922,7 +931,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     let (x, y, width, height) = rects[0];
     assert!(width > 0.0 && height > 0.0, "a real rect: {rects:?}");
     let caret = app
-        .with_ime_client(app.sole_window(), |client| client.first_rect(6, 0))
+        .with_ime_client(app.sole_origin(), |client| client.first_rect(6, 0))
         .expect("focused")
         .expect("the caret rect");
     assert!(
@@ -937,7 +946,7 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     );
 
     assert!(app
-        .with_ime_client(app.sole_window(), |client| client.selection_rects(6, 0))
+        .with_ime_client(app.sole_origin(), |client| client.selection_rects(6, 0))
         .expect("focused")
         .is_empty());
 }
@@ -947,7 +956,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -959,13 +968,13 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     for line in 0..80 {
         text.push_str(&format!("line {line} with some words on it\n"));
     }
-    assert!(himark::test_driver::type_text(&mut app, &text));
+    assert!(workbench_shell::test_driver::type_text(&mut app, &text));
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
+    let _ = workbench_shell::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -982,17 +991,17 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
             toolbar.height + 60.0,
         )
     };
-    let _ = himark::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
+    let _ = workbench_shell::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.set_marked_text("\u{306B}", (1, 0), None);
     });
     let rect = app
-        .with_ime_client(app.sole_window(), |client| client.first_rect(0, 1))
+        .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 1))
         .expect("the clicked editor answers the IME")
         .expect("the composition has a caret rect");
     let (x, y, _w, h) = rect;
@@ -1009,7 +1018,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     );
 
     let delta = 120.0;
-    assert!(himark::test_driver::scroll_at(
+    assert!(workbench_shell::test_driver::scroll_at(
         &mut app, 400.0, 300.0, delta
     ));
     app.draw_window(
@@ -1017,7 +1026,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let scrolled = app
-        .with_ime_client(app.sole_window(), |client| client.first_rect(0, 1))
+        .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 1))
         .expect("still focused")
         .expect("still composing");
     assert!(
@@ -1026,11 +1035,11 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
         scrolled.1
     );
 
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("\u{306B}", None)
     });
     let marked = app
-        .with_ime_client(app.sole_window(), |client| client.has_marked_text())
+        .with_ime_client(app.sole_origin(), |client| client.has_marked_text())
         .expect("still focused");
     assert!(
         !marked,
@@ -1043,7 +1052,7 @@ fn accent_popup_replaces_the_held_character() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -1051,11 +1060,11 @@ fn accent_popup_replaces_the_held_character() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    assert!(himark::test_driver::type_text(&mut app, "so"));
-    assert!(himark::test_driver::type_text(&mut app, "u"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "so"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "u"));
     assert_eq!(app.focused_document_text().as_deref(), Some("sou"));
 
-    let replaced = app.with_ime_client(app.sole_window(), |client| {
+    let replaced = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("\u{fc}", Some((2, 1)));
     });
     assert!(replaced.is_some(), "the focused editor answers");
@@ -1065,7 +1074,7 @@ fn accent_popup_replaces_the_held_character() {
         "the accent replaces the base character"
     );
 
-    let _ = app.with_ime_client(app.sole_window(), |client| client.insert_text("!", None));
+    let _ = app.with_ime_client(app.sole_origin(), |client| client.insert_text("!", None));
     assert_eq!(app.focused_document_text().as_deref(), Some("so\u{fc}!"));
 }
 
@@ -1074,7 +1083,7 @@ fn typing_into_the_empty_startup_document_inserts() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -1082,10 +1091,10 @@ fn typing_into_the_empty_startup_document_inserts() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert!(
-        app.with_ime_client(app.sole_window(), |_| ()).is_some(),
+        app.with_ime_client(app.sole_origin(), |_| ()).is_some(),
         "the startup editor should have text focus"
     );
-    let handled = himark::test_driver::type_text(&mut app, "a");
+    let handled = workbench_shell::test_driver::type_text(&mut app, "a");
     assert!(handled, "typing into the empty document must be handled");
     assert_eq!(app.focused_document_text().as_deref(), Some("a"));
 }
@@ -1168,11 +1177,11 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         "identical geometry across themes ({switched_band} vs {dark_band})"
     );
 
-    let mut pending = himark::test_support::surviving_launches(effects);
+    let mut pending = workbench_shell::test_support::surviving_launches(effects);
     while let Some(effect) = pending.pop() {
-        let command = himark::test_support::handle_effect(
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(light.clone()),
+            &workbench_shell::test_support::test_workshop(light.clone()),
         );
         pending.extend({
             let mut batch = imba::effect::Batch::new();
@@ -1182,7 +1191,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
                 command,
                 &mut batch.effects(),
             );
-            himark::test_support::surviving_launches(batch)
+            workbench_shell::test_support::surviving_launches(batch)
         });
     }
     let converged = pane.document();
@@ -1245,10 +1254,10 @@ fn a_stale_theme_repair_landing_discards_itself() {
     assert!(pending(&pane).is_some(), "the tail is pending");
 
     let mut requeued = Vec::new();
-    for effect in himark::test_support::surviving_launches(stale_round) {
-        let command = himark::test_support::handle_effect(
+    for effect in workbench_shell::test_support::surviving_launches(stale_round) {
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(::editor::theme::embedded()),
+            &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
         );
         requeued.extend({
             let mut batch = imba::effect::Batch::new();
@@ -1258,7 +1267,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
                 command,
                 &mut batch.effects(),
             );
-            himark::test_support::surviving_launches(batch)
+            workbench_shell::test_support::surviving_launches(batch)
         });
     }
     assert!(
@@ -1268,9 +1277,9 @@ fn a_stale_theme_repair_landing_discards_itself() {
 
     let mut pending_effects = requeued;
     while let Some(effect) = pending_effects.pop() {
-        let command = himark::test_support::handle_effect(
+        let command = workbench_shell::test_support::handle_effect(
             effect,
-            &himark::test_support::test_workshop(light.clone()),
+            &workbench_shell::test_support::test_workshop(light.clone()),
         );
         pending_effects.extend({
             let mut batch = imba::effect::Batch::new();
@@ -1280,7 +1289,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
                 command,
                 &mut batch.effects(),
             );
-            himark::test_support::surviving_launches(batch)
+            workbench_shell::test_support::surviving_launches(batch)
         });
     }
     let converged =
@@ -1304,14 +1313,14 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "# A title\n\nSome body text to shape, long enough to wrap around.",
     ));
@@ -1355,12 +1364,12 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 fn caret_commands_glide_the_pane_to_the_caret() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::test_driver;
+    use workbench_shell::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
 
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -1427,12 +1436,12 @@ fn caret_commands_glide_the_pane_to_the_caret() {
 fn a_manual_scroll_cancels_the_reveal_in_flight() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::test_driver;
+    use workbench_shell::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -1502,15 +1511,15 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     use himark::app::AppCommand;
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app::OpenedDocument;
+    use himark::opening::OpenedDocument;
     use himark::app_ext::AppExt;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
 
     let source: String = (0..200).map(|n| format!("line {n}\n")).collect();
     let target = LineCol { line: 150, col: 5 }..LineCol { line: 150, col: 7 };
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -1540,7 +1549,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
         "the scroll-to-caret is armed on mount"
     );
 
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -1561,7 +1570,7 @@ fn clipboard_reaches_the_focused_editor() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -1577,7 +1586,7 @@ fn clipboard_reaches_the_focused_editor() {
     );
 
     let copied = app
-        .with_clipboard_client(window, |client| client.copy().map(|content| content.text))
+        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.copy().map(|content| content.text))
         .expect("the focused editor answers");
     assert_eq!(copied, None, "no selection, nothing to copy");
 
@@ -1593,20 +1602,20 @@ fn clipboard_reaches_the_focused_editor() {
         size,
     );
     let copied = app
-        .with_clipboard_client(window, |client| client.copy().map(|content| content.text))
+        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.copy().map(|content| content.text))
         .expect("still focused");
     assert_eq!(copied.as_deref(), Some("hello world"));
     assert_eq!(app.focused_document_text().as_deref(), Some("hello world"));
 
     let cut = app
-        .with_clipboard_client(window, |client| client.cut().map(|content| content.text))
+        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.cut().map(|content| content.text))
         .expect("still focused");
     assert_eq!(cut.as_deref(), Some("hello world"));
     assert_eq!(app.focused_document_text().as_deref(), Some(""));
 
     for _ in 0..2 {
         let pasted = app
-            .with_clipboard_client(window, |client| {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| {
                 client.paste(&imba::clipboard::ClipboardContent {
                     text: "again ".to_owned(),
                 })
@@ -1815,7 +1824,7 @@ fn ime_hit_test_covers_an_empty_document() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -1823,7 +1832,7 @@ fn ime_hit_test_covers_an_empty_document() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     assert_eq!(
-        app.with_ime_client(app.sole_window(), |client| client.document_length()),
+        app.with_ime_client(app.sole_origin(), |client| client.document_length()),
         Some(0),
         "the startup document is empty"
     );
@@ -1831,7 +1840,7 @@ fn ime_hit_test_covers_an_empty_document() {
     // Below the column header (the band is 104 physical px now).
     for y in [150.0, 300.0, 500.0] {
         assert_eq!(
-            app.with_ime_client(app.sole_window(), |client| client.char_index_at(400.0, y))
+            app.with_ime_client(app.sole_origin(), |client| client.char_index_at(400.0, y))
                 .expect("focused"),
             Some(0),
             "the empty pane is editable at y={y}"
@@ -1839,7 +1848,7 @@ fn ime_hit_test_covers_an_empty_document() {
     }
 
     assert!(app
-        .with_ime_client(app.sole_window(), |client| client
+        .with_ime_client(app.sole_origin(), |client| client
             .char_index_at(60.0, 300.0))
         .expect("focused")
         .is_none());
@@ -1850,7 +1859,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -1861,7 +1870,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     for line in 0..80 {
         text.push_str(&format!("line number {line}\n"));
     }
-    let _ = app.with_ime_client(app.sole_window(), |client| {
+    let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text(&text, None);
     });
     app.draw_window(
@@ -1870,11 +1879,11 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     );
 
     let hit = |app: &mut Himark, y: f32| {
-        app.with_ime_client(app.sole_window(), |client| client.char_index_at(400.0, y))
+        app.with_ime_client(app.sole_origin(), |client| client.char_index_at(400.0, y))
             .expect("focused")
     };
     for scroll in [-100_000.0, 900.0] {
-        let _ = himark::test_driver::scroll_at(&mut app, 400.0, 300.0, scroll);
+        let _ = workbench_shell::test_driver::scroll_at(&mut app, 400.0, 300.0, scroll);
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -1899,7 +1908,7 @@ fn a_window_resize_keeps_the_top_visible_line() {
     // the editor's top visible line. A width change rewraps every
     // line — preservation must re-aim the scroll so the line at the
     // top edge stays the line at the top edge.
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let wide = gfx::Size::new(1100.0, 800.0);
@@ -1913,14 +1922,14 @@ fn a_window_resize_keeps_the_top_visible_line() {
     // A long, WRAPPING document: every paragraph long enough that a
     // narrower window changes its row count.
     for index in 0..120 {
-        let _ = himark::test_driver::type_text(
+        let _ = workbench_shell::test_driver::type_text(
             &mut app,
             &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
         );
     }
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
         for tick in 0..10 {
-            let _ = himark::test_driver::animate(
+            let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
@@ -1935,7 +1944,7 @@ fn a_window_resize_keeps_the_top_visible_line() {
 
     // Scroll deep enough that wrap changes above the viewport move
     // the pixel prefix.
-    let _ = himark::test_driver::scroll(&mut app, -2000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut app, -2000.0);
     settle(&mut app, &mut surface, wide);
     let before = app
         .focused_top_visible_line()
@@ -1970,7 +1979,7 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
     // A real window resize is not one jump: the shell draws once per
     // width step, and every step's anchor is captured from the
     // previous frame's viewport. The drift, if any, compounds here.
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 800)).expect("surface");
     let wide = gfx::Size::new(1300.0, 800.0);
@@ -1981,14 +1990,14 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
         wide,
     );
     for index in 0..120 {
-        let _ = himark::test_driver::type_text(
+        let _ = workbench_shell::test_driver::type_text(
             &mut app,
             &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
         );
     }
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
         for tick in 0..10 {
-            let _ = himark::test_driver::animate(
+            let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
@@ -2000,7 +2009,7 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
         }
     };
     settle(&mut app, &mut surface, wide);
-    let _ = himark::test_driver::scroll(&mut app, -2000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut app, -2000.0);
     settle(&mut app, &mut surface, wide);
     let before = app
         .focused_top_visible_line()
@@ -2044,12 +2053,12 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
 
 #[test]
 fn a_markdown_pane_resize_keeps_the_top_visible_line() {
-    use himark::app::OpenedDocument;
+    use himark::opening::OpenedDocument;
     use himark::app::{AppFonts, Himark};
     // The markdown shell: a real document opened through the app
     // road (header styles, wrapping prose, the centered column) —
     // closest to the reported window.
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 900)).expect("surface");
     let wide = gfx::Size::new(1300.0, 900.0);
@@ -2070,7 +2079,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
         text::text::Text::from_string_exact(&source),
         editor::markup::Markup::new(),
     );
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -2084,7 +2093,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
     )));
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
         for tick in 0..10 {
-            let _ = himark::test_driver::animate(
+            let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
@@ -2096,7 +2105,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
         }
     };
     settle(&mut app, &mut surface, wide);
-    let _ = himark::test_driver::scroll_at(&mut app, 660.0, 450.0, 2000.0);
+    let _ = workbench_shell::test_driver::scroll_at(&mut app, 660.0, 450.0, 2000.0);
     settle(&mut app, &mut surface, wide);
     let before = app
         .focused_top_visible_line()

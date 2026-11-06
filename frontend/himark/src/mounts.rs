@@ -944,7 +944,7 @@ fn mount_place_inner(
                     ::documents::OpenDocuments::document(store, *collection, document).is_some()
                 })?;
             let mut held = ::documents::OpenDocuments::document(store, collection, document)?;
-            let width = ::workbench::workbench::fallback_pane_editor_width(store);
+            let width = fallback_editor_width(store);
             let editor = fx.scope(
                 move |command: ::editor::editor_view::EditorCommand| {
                     AppCommand::Verb(imba::command::Verb::at(
@@ -1039,7 +1039,7 @@ fn mount_place_inner(
                 imba::PresentableCommand::new(
                     command.id(),
                     command.name(),
-                    crate::shell::bound(bound.clone(), command.clone()),
+                    crate::perform::AppCommand::Bound(bound.clone(), command.clone()),
                 )
             }));
             Some(Arc::new(DynModalMount {
@@ -1157,7 +1157,7 @@ struct OpenDiffFromChanges {
 }
 
 impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
-    fn perform(self: Box<Self>, store: &mut Store, _ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(self: Box<Self>, store: &mut Store, ui: &UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(reveal) = self.reveal else {
             eprintln!("[mount] changes open: no reveal (a folder row?)");
             return;
@@ -1171,18 +1171,29 @@ impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
             eprintln!("[mount] a changes row vanished before its diff opened — dropped");
             return;
         };
-        let documents =
-            ahp_session::session::state::Hosts::ensure_state(store, &self.session).documents();
-        let old = documents::diff_views::DiffSideInput::resolve(store, documents, file.old);
-        let new = documents::diff_views::DiffSideInput::resolve(store, documents, file.new);
-        fx.push(
-            imba::effect::AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
-                window: ::workbench::window::WindowId::from_raw(self.origin.raw()),
-                documents,
-                old,
-                new,
-            })
-            .map(|command| imba::command::Verb::shell(Box::new(command))),
+        // The seated shell owns the diff's opening: hand it the
+        // place (MountFrontend resolves the sides against the
+        // origin's session and launches the same effect this arm
+        // used to push by hand).
+        crate::shell::navigate_origin(
+            store,
+            ui,
+            self.origin,
+            crate::places::DiffPlace {
+                old: file.old,
+                new: file.new,
+            },
+            fx,
         );
     }
+}
+
+/// The width a mounted editor wraps at before its host measures it
+/// — the same theme-derived fallback a workbench pane uses, read
+/// from the window chrome part (a THEME fact, no window needed).
+pub(crate) fn fallback_editor_width(store: &imba::store::Store) -> f32 {
+    let theme = ::editor::env::Themes::of(store);
+    let window = theme.part(::editor::theme::WindowChrome::KEY);
+    let gutter = theme.part(::editor::theme::EditorGutterChrome::KEY).width;
+    (window.first_pane_width - gutter).max(window.min_editor_width)
 }

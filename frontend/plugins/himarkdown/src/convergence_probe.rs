@@ -120,8 +120,8 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     document.apply_reparse_outcome(outcome, store, ui, &theme(), &mut batch.effects());
 
     let cx = test_cx_for_probe();
-    for effect in himark::test_support::surviving_launches(batch) {
-        let command = himark::test_support::handle_effect(effect, &cx);
+    for effect in workbench_shell::test_support::surviving_launches(batch) {
+        let command = workbench_shell::test_support::handle_effect(effect, &cx);
         if let editor::editor_view::EditorCommand::ApplyRepair(items) = command {
             for item in items {
                 document.apply_repair(item, &theme());

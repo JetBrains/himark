@@ -3,11 +3,20 @@ use std::sync::{
     Arc,
 };
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use imba::store::Store;
 
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::test_driver;
+use workbench_shell::test_driver;
 
 struct Mark {
     id: &'static str,
@@ -65,7 +74,7 @@ fn word_width(app: &Himark, style: &hikit::ui::TextStyle, label: &str) -> f32 {
 /// a press.
 #[test]
 fn a_right_button_press_dispatches_its_own_command() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let left_hits = Arc::new(AtomicUsize::new(0));
     let right_hits = Arc::new(AtomicUsize::new(0));

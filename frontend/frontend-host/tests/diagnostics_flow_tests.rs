@@ -6,6 +6,15 @@
 //! diagnostics channel; a document opened under the session's folder
 //! gets dressed with the snapshot's squiggles at the batch tail.
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::Arc;
 
 use ahp_types::state::{SessionLifecycle, SessionState};
@@ -14,7 +23,7 @@ use editor::location::{Authority, ResourceLocation, ResourceType};
 use editor::theme::StyleId;
 use himark_ahp_ext_types::lsp::{DiagnosticsPublished, DiagnosticsState, PublishedDiagnostics};
 
-use crate::{AppFonts, HimarkEngine};
+use himark_api::{AppFonts, HimarkEngine};
 
 const SESSION: &str = "ahp-session:/diagnosed";
 const CHANNEL: &str = "ahp-lsp-diagnostics:/one";
@@ -303,10 +312,10 @@ impl himark::commands::HimarkCommand for OpenScripted {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        himark::higent::open_session::open_session(
+        workbench_shell::higent::open_session::open_session(
             store,
             window,
             self.host,
@@ -335,11 +344,11 @@ impl himark::commands::HimarkCommand for OpenMain {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        let key = himark::workspace::window_session(store, window).expect("a session");
-        let state = himark::workspace::session_state(store, window).expect("a state");
+        let key = workbench_shell::workspace::window_session(store, window).expect("a session");
+        let state = workbench_shell::workspace::session_state(store, window).expect("a state");
         let location = ResourceLocation::new(
             ResourceType::document(),
             Authority::new(ahp_wire::client::authority(key.host, &key.session)),
@@ -349,9 +358,9 @@ impl himark::commands::HimarkCommand for OpenMain {
                 "main.rs".to_owned(),
             ],
         );
-        fx.follow_up(himark::app::opened(
+        fx.follow_up(workbench_shell::shell::opened(
             window,
-            himark::app::OpenedDocument {
+            himark::opening::OpenedDocument {
                 documents: state.documents(),
                 name: "main.rs".to_owned(),
                 document: editor::test_document::plain_document("fn main() {}\n"),
@@ -398,9 +407,9 @@ fn settle_until(
 
 fn squiggles(engine: &HimarkEngine, window: u64) -> Option<Vec<(std::ops::Range<u32>, StyleId)>> {
     let store = engine.app.store();
-    let state = himark::workspace::session_state(store, crate::wid(window))?;
+    let state = workbench_shell::workspace::session_state(store, himark_api::wid(window))?;
     let location = {
-        let key = himark::workspace::window_session(store, crate::wid(window))?;
+        let key = workbench_shell::workspace::window_session(store, himark_api::wid(window))?;
         ResourceLocation::new(
             ResourceType::document(),
             Authority::new(ahp_wire::client::authority(key.host, &key.session)),
@@ -438,7 +447,7 @@ fn error_at(line: u64, from: u64, to: u64) -> serde_json::Value {
 
 #[test]
 fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
-    let mut engine = crate::with_fonts(AppFonts::embedded());
+    let mut engine = himark_api::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut items = std::collections::HashMap::new();
     items.insert(
@@ -462,17 +471,17 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
     );
     engine.set_local_backend(host);
 
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenScripted { host }),
     )]));
     settle_until(&mut engine, window, "the session came up", |engine| {
-        himark::workspace::window_session(engine.app.store(), crate::wid(window))
+        workbench_shell::workspace::window_session(engine.app.store(), himark_api::wid(window))
             .is_some_and(|key| key.session.as_str() == SESSION)
     });
 
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenMain),
     )]));
     settle_until(&mut engine, window, "the document opened", |engine| {
@@ -551,7 +560,7 @@ impl himark::commands::HimarkCommand for OpenLivePath {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let location = ResourceLocation::new(
@@ -559,7 +568,7 @@ impl himark::commands::HimarkCommand for OpenLivePath {
             Authority::new("local"),
             self.path.clone(),
         );
-        himark::workspace::open_locations(store, ui, window, &[location], fx);
+        workbench_shell::workspace::open_locations(store, ui, window, &[location], fx);
     }
 }
 
@@ -582,10 +591,10 @@ impl himark::commands::HimarkCommand for OpenLiveSession {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        himark::higent::open_session::open_session(
+        workbench_shell::higent::open_session::open_session(
             store,
             window,
             self.host,
@@ -602,8 +611,8 @@ fn live_squiggles(
     path: &[String],
 ) -> Option<Vec<(std::ops::Range<u32>, StyleId)>> {
     let store = engine.app.store();
-    let state = himark::workspace::session_state(store, crate::wid(window))?;
-    let key = himark::workspace::window_session(store, crate::wid(window))?;
+    let state = workbench_shell::workspace::session_state(store, himark_api::wid(window))?;
+    let key = workbench_shell::workspace::window_session(store, himark_api::wid(window))?;
     let location = ResourceLocation::new(
         ResourceType::document(),
         Authority::new(ahp_wire::client::authority(key.host, &key.session)),
@@ -637,13 +646,13 @@ fn live_host_squiggles_the_opened_file() {
         .map(str::to_owned)
         .collect();
 
-    let mut engine = crate::production_engine(None);
+    let mut engine = himark_api::production_engine(None);
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
     eprintln!("[live] local host {host:?}");
 
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenLiveSession {
             host,
             session: session.clone(),
@@ -651,7 +660,7 @@ fn live_host_squiggles_the_opened_file() {
     )]));
     let started = std::time::Instant::now();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    while !himark::workspace::window_session(engine.app.store(), crate::wid(window))
+    while !workbench_shell::workspace::window_session(engine.app.store(), himark_api::wid(window))
         .is_some_and(|key| key.session.as_str() == session)
     {
         assert!(
@@ -670,8 +679,8 @@ fn live_host_squiggles_the_opened_file() {
     }
     eprintln!("[live] session entered after {:?}", started.elapsed());
 
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenLivePath { path: path.clone() }),
     )]));
     let started = std::time::Instant::now();
@@ -749,7 +758,7 @@ fn live_host_squiggles_the_opened_file() {
 /// and both land as document-scoped markups that reach the pixels.
 #[test]
 fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
-    let mut engine = crate::with_fonts(AppFonts::embedded());
+    let mut engine = himark_api::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let mut answers = std::collections::HashMap::new();
     // "main" at 0:3, four long, token type 0 = function.
@@ -783,16 +792,16 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
     );
     engine.set_local_backend(host);
 
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenScripted { host }),
     )]));
     settle_until(&mut engine, window, "the session came up", |engine| {
-        himark::workspace::window_session(engine.app.store(), crate::wid(window))
+        workbench_shell::workspace::window_session(engine.app.store(), himark_api::wid(window))
             .is_some_and(|key| key.session.as_str() == SESSION)
     });
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenMain),
     )]));
 
@@ -800,8 +809,8 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
                  markup: editor::markup::MarkupId|
      -> Option<editor::markup::Markup> {
         let store = engine.app.store();
-        let state = himark::workspace::session_state(store, crate::wid(window))?;
-        let key = himark::workspace::window_session(store, crate::wid(window))?;
+        let state = workbench_shell::workspace::session_state(store, himark_api::wid(window))?;
+        let key = workbench_shell::workspace::window_session(store, himark_api::wid(window))?;
         let location = ResourceLocation::new(
             ResourceType::document(),
             Authority::new(ahp_wire::client::authority(key.host, &key.session)),
@@ -881,11 +890,11 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            let state = himark::workspace::session_state(store, window).expect("a state");
-            let key = himark::workspace::window_session(store, window).expect("a session");
+            let state = workbench_shell::workspace::session_state(store, window).expect("a state");
+            let key = workbench_shell::workspace::window_session(store, window).expect("a session");
             let location = ResourceLocation::new(
                 ResourceType::document(),
                 Authority::new(ahp_wire::client::authority(key.host, &key.session)),
@@ -916,8 +925,8 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
             documents::OpenDocuments::put_document(store, documents, id, document);
         }
     }
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(ClearHints),
     )]));
     let without_hint = frame(&mut engine, &mut surface);
@@ -931,13 +940,13 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
 #[test]
 #[ignore = "talks to the live agent host; set HIMARK_LIVE_SESSION"]
 fn live_canvas_face_serves_completion_and_hover() {
-    use crate::HIMARK_MOD_CONTROL;
+    use himark_api::HIMARK_MOD_CONTROL;
     let session = std::env::var("HIMARK_LIVE_SESSION").expect("HIMARK_LIVE_SESSION");
-    let mut engine = crate::production_engine(None);
+    let mut engine = himark_api::production_engine(None);
     let window = engine.add_window();
     let host = ahp_wire::SessionId::local_default(engine.app.store()).host;
-    assert!(engine.app.perform_batch(vec![himark::app::windowed(
-        crate::wid(window),
+    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_api::wid(window),
         Arc::new(OpenLiveSession {
             host,
             session: session.clone(),
@@ -945,7 +954,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let started = std::time::Instant::now();
-    while !himark::workspace::window_session(engine.app.store(), crate::wid(window))
+    while !workbench_shell::workspace::window_session(engine.app.store(), himark_api::wid(window))
         .is_some_and(|key| key.session.as_str() == session)
     {
         assert!(
@@ -964,8 +973,8 @@ fn live_canvas_face_serves_completion_and_hover() {
     }
     {
         let store = engine.app.store();
-        let key = himark::workspace::window_session(store, crate::wid(window)).expect("session");
-        let changes = himark::workspace::session_state(store, crate::wid(window))
+        let key = workbench_shell::workspace::window_session(store, himark_api::wid(window)).expect("session");
+        let changes = workbench_shell::workspace::session_state(store, himark_api::wid(window))
             .expect("state")
             .changes();
         let folder = ahp_session::session::folders::session_folders(store, &key)
@@ -986,8 +995,8 @@ fn live_canvas_face_serves_completion_and_hover() {
                 .chain(["frontend", "imba", "src", "list.rs"].map(str::to_owned))
                 .collect::<Vec<String>>(),
         );
-        assert!(engine.app.perform_batch(vec![himark::app::windowed(
-            crate::wid(window),
+        assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+            himark_api::wid(window),
             Arc::new(himark::diff_canvas::OpenDiffCanvas {
                 changes,
                 source: changesview::hichanges::CanvasSource::WorkingCopy { folder },
@@ -1064,14 +1073,14 @@ fn live_canvas_face_serves_completion_and_hover() {
 
     // Click down the column until the window's focus chain offers the
     // completion trigger — that is the face holding the keyboard.
-    let documents = himark::workspace::session_state(engine.app.store(), crate::wid(window))
+    let documents = workbench_shell::workspace::session_state(engine.app.store(), himark_api::wid(window))
         .expect("state")
         .documents();
     let roster = |engine: &HimarkEngine| -> Vec<String> {
-        himark::commands::palette_commands(
+        workbench_shell::app::palette_commands(
             engine.app.store(),
             &engine.app.ui_handle(),
-            crate::wid(window),
+            himark_api::wid(window),
         )
         .into_iter()
         .map(|presentable| presentable.id.to_string())
@@ -1208,7 +1217,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     // the opened popup, the rows are reported.
     assert!(open, "ctrl-space opened the popup on the face");
 
-    let _ = engine.key_down(window, crate::HIMARK_KEY_ESCAPE, 0);
+    let _ = engine.key_down(window, himark_api::HIMARK_KEY_ESCAPE, 0);
     settle(&mut engine);
     eprintln!(
         "[live] after escape completion open {:?}",

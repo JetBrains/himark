@@ -125,11 +125,11 @@ impl TestPane {
     }
 
     fn finish(&mut self, batch: imba::effect::Batch<EditorCommand>) {
-        let mut pending = himark::test_support::surviving_launches(batch);
+        let mut pending = workbench_shell::test_support::surviving_launches(batch);
         while let Some(effect) = pending.pop() {
-            let command = himark::test_support::handle_effect(
+            let command = workbench_shell::test_support::handle_effect(
                 effect,
-                &himark::test_support::test_workshop(::editor::theme::embedded()),
+                &workbench_shell::test_support::test_workshop(::editor::theme::embedded()),
             );
             let mut batch = imba::effect::Batch::new();
             self.view.perform(
@@ -138,7 +138,7 @@ impl TestPane {
                 command,
                 &mut batch.effects(),
             );
-            pending.extend(himark::test_support::surviving_launches(batch));
+            pending.extend(workbench_shell::test_support::surviving_launches(batch));
         }
     }
 

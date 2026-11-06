@@ -358,7 +358,7 @@ mod app {
 
     impl WebApp {
         fn new(context: DirectContext, world: editor::parley_line::FontWorld) -> Self {
-            let mut state = Himark::new(AppFonts::over(world));
+            let mut state = workbench_shell::app::workbench_app(AppFonts::over(world));
             state.register_syntax_languages(web_languages());
 
             // The boot-time halves of AhpPlugin (frontend-host installs
@@ -1389,7 +1389,7 @@ mod app {
     /// summon — wants imba to know it stands on a touch form; that
     /// enhancement is postponed, this probe is its transport.)
     fn sync_keyboard(app: &mut WebApp) {
-        let wants = app.state.with_ime_client(app.window, |_| ()).is_some();
+        let wants = app.state.with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |_| ()).is_some();
         if wants == app.wants_text {
             return;
         }
@@ -1527,7 +1527,7 @@ mod app {
         };
         let copied = app
             .state
-            .with_clipboard_client(app.window, |client| match cut != 0 {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| match cut != 0 {
                 true => client.cut(),
                 false => client.copy(),
             })
@@ -1555,7 +1555,7 @@ mod app {
         };
         app.needs_redraw |= app
             .state
-            .with_clipboard_client(app.window, |client| {
+            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
                 client.paste(&imba::clipboard::ClipboardContent {
                     text: text.to_owned(),
                 })
@@ -1586,7 +1586,7 @@ mod app {
         let caret = text.encode_utf16().count() as u32;
         app.needs_redraw |= app
             .state
-            .with_ime_client(app.window, |client| {
+            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
                 client.set_marked_text(text, (caret, 0), None);
             })
             .is_some();
@@ -1600,7 +1600,7 @@ mod app {
     pub unsafe extern "C" fn himark_ime_commit(text: *const c_char) {
         let Some(app) = seated_app() else { return };
         let Some(text) = seated_text(text) else { return };
-        let committed = app.state.with_ime_client(app.window, |client| {
+        let committed = app.state.with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
             match text.is_empty() {
                 true => client.unmark_text(),
                 false => client.insert_text(text, None),

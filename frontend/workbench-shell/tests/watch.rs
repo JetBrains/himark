@@ -1,14 +1,21 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use himark::app::Himark;
+use himark::app_ext::AppExt as _;
+use workbench_shell::app::WorkbenchShell as _;
+use workbench_shell::app_ext::AppExt as _;
+use workbench_shell::test_driver;
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::{Arc, Mutex};
 
 use imba::store::Store;
 
-use super::*;
-use crate::app::AppFonts;
-use crate::app::Himark;
-use crate::app::OpenedDocument;
+use himark::watch::*;
+use himark::app::AppFonts;
+
+use workbench_shell::app::OpenedDocument;
 use ::editor::test_document::plain_document;
 use documents::watch::{
     RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect, Subscription, UnsubscribeEffect,
@@ -66,7 +73,7 @@ fn apply_refetched(
 
 fn landed_rebase<R: 'static>(batch: imba::effect::Batch<R>) -> documents::watch::RefetchRebase {
     use imba::effect::EffectHandler;
-    let mut launches = crate::test_support::surviving_launches(batch);
+    let mut launches = workbench_shell::test_support::surviving_launches(batch);
     assert_eq!(launches.len(), 1, "one merge launch");
     let effect = launches
         .pop()
@@ -247,7 +254,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
         &operation,
         &mut batch.effects(),
     );
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = workbench_shell::test_support::surviving_launches(batch);
     assert!(
         launches
             .iter()
@@ -650,7 +657,7 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
         &mut batch.effects(),
     );
     assert!(
-        crate::test_support::surviving_launches(batch).is_empty(),
+        workbench_shell::test_support::surviving_launches(batch).is_empty(),
         "a superseded fetch launches nothing"
     );
     let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
@@ -740,7 +747,7 @@ fn opens_watch_and_events_refetch() {
     }
 
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     app.register_handler::<SubscribeEffect>(StubWatch);
     app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     app.observe_file_changes();
@@ -762,9 +769,9 @@ fn opens_watch_and_events_refetch() {
     };
 
     let documents = app.sole_documents();
-    assert!(crate::app_ext::AppExt::perform_command(
+    assert!(himark::app_ext::AppExt::perform_command(
         &mut app,
-        crate::shell::opened(
+        workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -790,9 +797,9 @@ fn opens_watch_and_events_refetch() {
     );
 
     *disk.lock().expect("disk") = "alpha\nexternal\n".to_owned();
-    assert!(crate::app_ext::AppExt::perform_command(
+    assert!(himark::app_ext::AppExt::perform_command(
         &mut app,
-        crate::app::AppCommand::FileChanged(Subscription(7))
+        himark::app::AppCommand::FileChanged(Subscription(7))
     ));
     settle(&mut app);
     let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0)
@@ -810,7 +817,7 @@ fn the_palette_reload_follows_the_disk() {
     }
 
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     let window = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -830,9 +837,9 @@ fn the_palette_reload_follows_the_disk() {
     };
 
     let documents = app.sole_documents();
-    assert!(crate::app_ext::AppExt::perform_command(
+    assert!(himark::app_ext::AppExt::perform_command(
         &mut app,
-        crate::shell::opened(
+        workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -848,9 +855,9 @@ fn the_palette_reload_follows_the_disk() {
     settle(&mut app);
 
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
-    assert!(crate::app_ext::AppExt::perform_command(
+    assert!(himark::app_ext::AppExt::perform_command(
         &mut app,
-        crate::shell::windowed(window, Arc::new(ReloadDocument)),
+        workbench_shell::shell::windowed(window, Arc::new(ReloadDocument)),
     ));
     settle(&mut app);
 
@@ -1267,9 +1274,9 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     OpenDocuments::set_watch(&mut store, docs(), id, Some(Subscription(7)));
 
     // The channel goes live: the watch is released...
-    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
+    let mut batch: imba::effect::Batch<himark::app::AppCommand> = imba::effect::Batch::new();
     OpenDocuments::set_host_synced(&mut store, docs(), id, true, &mut batch.effects());
-    let released = crate::test_support::surviving_launches(batch);
+    let released = workbench_shell::test_support::surviving_launches(batch);
     assert!(
         released
             .iter()
@@ -1284,12 +1291,12 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     );
 
     // ...the sweep leaves it alone...
-    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
-    batch.effects().scope(crate::app::AppCommand::Verb, |fx| {
+    let mut batch: imba::effect::Batch<himark::app::AppCommand> = imba::effect::Batch::new();
+    batch.effects().scope(himark::app::AppCommand::Verb, |fx| {
         documents::lanes::sync_document_watches(&mut store, docs(), fx)
     });
     assert!(
-        crate::test_support::surviving_launches(batch).is_empty(),
+        workbench_shell::test_support::surviving_launches(batch).is_empty(),
         "a host-synced document never re-subscribes"
     );
 
@@ -1328,13 +1335,13 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     );
 
     // The channel dies: mode two re-arms the client's own watching.
-    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
+    let mut batch: imba::effect::Batch<himark::app::AppCommand> = imba::effect::Batch::new();
     OpenDocuments::set_host_synced(&mut store, docs(), id, false, &mut batch.effects());
-    batch.effects().scope(crate::app::AppCommand::Verb, |fx| {
+    batch.effects().scope(himark::app::AppCommand::Verb, |fx| {
         documents::lanes::sync_document_watches(&mut store, docs(), fx)
     });
     assert!(
-        crate::test_support::surviving_launches(batch)
+        workbench_shell::test_support::surviving_launches(batch)
             .iter()
             .any(|effect| effect.is::<SubscribeEffect>()),
         "the fallback subscribes the resource again"

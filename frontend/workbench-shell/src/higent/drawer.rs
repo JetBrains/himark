@@ -15,72 +15,10 @@ use gfx::Rect;
 use imba::store::Store;
 
 /// The shell's answers to the panel's gestures, each closed over the
-/// window the drawer stands in.
-#[doc(hidden)]
-pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
-    Arc::new(DrawerAsks {
-        open_session: Arc::new(move |store| Some(crate::workspace::window_session(store, window)?)),
-        open_row: Arc::new(move |server, session| {
-            crate::app::shell_verb(crate::shell::windowed(
-                window,
-                Arc::new(OpenSessionRow { server, session }),
-            ))
-        }),
-        new_session: Arc::new(move |store, server| {
-            let command: Arc<dyn crate::commands::HimarkCommand> =
-                match crate::higent::flows::AgentFlows::new_session_flow(store) {
-                    Some(flow) => flow(server),
-                    None => {
-                        Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) })
-                    }
-                };
-            crate::app::shell_verb(crate::shell::windowed(window, command))
-        }),
-        add_host: Arc::new(move |url| {
-            crate::app::shell_verb(crate::shell::windowed(window, Arc::new(AddHost { url })))
-        }),
-    })
-}
-
-pub struct AddHost {
-    pub url: String,
-}
-
-impl crate::commands::HimarkCommand for AddHost {
-    fn id(&self) -> &'static str {
-        "agent.add-host"
-    }
-
-    fn name(&self) -> String {
-        "Add Host".to_owned()
-    }
-
-    fn perform(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
-            eprintln!("[higent] no add-host capability installed — url dropped");
-            return;
-        };
-        if flow(store, &self.url).is_none() {
-            return;
-        }
-        // The flow is the whole verb on a mounted origin; a WINDOW
-        // bound means the drawer stands in a side slot — fold it
-        // back to show the fresh host.
-        if bound.bound::<::workbench::window::WindowId>().is_some() {
-            ToggleAgentsView.perform(store, ui, bound, fx);
-        }
-    }
-}
 
 pub struct ToggleAgentsView;
 
-impl crate::commands::HimarkCommand for ToggleAgentsView {
+impl himark::commands::HimarkCommand for ToggleAgentsView {
     fn id(&self) -> &'static str {
         "agent.toggle-agents"
     }
@@ -96,7 +34,7 @@ impl crate::commands::HimarkCommand for ToggleAgentsView {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let mut entity =
@@ -164,7 +102,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 pub struct ShareHost;
 
-impl crate::commands::HimarkCommand for ShareHost {
+impl himark::commands::HimarkCommand for ShareHost {
     fn id(&self) -> &'static str {
         "host.share"
     }
@@ -180,7 +118,7 @@ impl crate::commands::HimarkCommand for ShareHost {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let client = store
@@ -202,7 +140,7 @@ impl crate::commands::HimarkCommand for ShareHost {
 
 pub struct ShareHostTailnet;
 
-impl crate::commands::HimarkCommand for ShareHostTailnet {
+impl himark::commands::HimarkCommand for ShareHostTailnet {
     fn id(&self) -> &'static str {
         "host.share-tailnet"
     }
@@ -218,7 +156,7 @@ impl crate::commands::HimarkCommand for ShareHostTailnet {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let client = store
@@ -242,7 +180,7 @@ struct SharedTailnet {
     result: Result<ahp_wire::client::TailnetShare, String>,
 }
 
-impl crate::commands::HimarkCommand for SharedTailnet {
+impl himark::commands::HimarkCommand for SharedTailnet {
     fn id(&self) -> &'static str {
         "host.shared-tailnet"
     }
@@ -286,7 +224,7 @@ struct SharedHost {
     result: Result<String, String>,
 }
 
-impl crate::commands::HimarkCommand for SharedHost {
+impl himark::commands::HimarkCommand for SharedHost {
     fn id(&self) -> &'static str {
         "host.shared"
     }
@@ -305,6 +243,60 @@ impl crate::commands::HimarkCommand for SharedHost {
         match &self.result {
             Ok(url) => eprintln!("[himark] sharing at {url} (copied to clipboard)"),
             Err(error) => eprintln!("[himark] share failed: {error}"),
+        }
+    }
+}
+
+/// The asks of the drawer standing in a side slot — bound to the
+/// window the drawer stands in.
+#[doc(hidden)]
+pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
+    Arc::new(DrawerAsks {
+        open_session: Arc::new(move |store| Some(crate::workspace::window_session(store, window)?)),
+        open_row: Arc::new(move |server, session| {
+            himark::app::shell_verb(crate::shell::windowed(
+                window,
+                Arc::new(crate::higent::open_session::OpenSessionRow { server, session }),
+            ))
+        }),
+        new_session: Arc::new(move |store, server| {
+            let command: Arc<dyn himark::commands::HimarkCommand> =
+                match himark::higent::flows::AgentFlows::new_session_flow(store) {
+                    Some(flow) => flow(server),
+                    None => {
+                        Arc::new(crate::higent::open_session::OpenNewSession { host: Some(server) })
+                    }
+                };
+            himark::app::shell_verb(crate::shell::windowed(window, command))
+        }),
+        add_host: Arc::new(move |url| {
+            himark::app::shell_verb(crate::shell::windowed(window, Arc::new(himark::higent::flows::AddHost { url })))
+        }),
+    })
+}
+
+
+/// The drawer's FOLD-BACK, seated into `AgentFlows::install_refold`:
+/// a WINDOW gesture re-opens the side slot to show the fresh host; a
+/// mounted origin (no window bound) no-ops.
+pub(crate) struct DrawerRefold;
+
+impl himark::commands::HimarkCommand for DrawerRefold {
+    fn id(&self) -> &'static str {
+        "agent.drawer-refold"
+    }
+    fn name(&self) -> String {
+        "Refold Agents Drawer".to_owned()
+    }
+    fn perform(
+        &self,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
+        if bound.bound::<::workbench::window::WindowId>().is_some() {
+            ToggleAgentsView.perform(store, ui, bound, fx);
         }
     }
 }

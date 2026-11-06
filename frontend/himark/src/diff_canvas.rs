@@ -71,7 +71,7 @@ impl crate::commands::HimarkCommand for OpenDiffCanvas {
 
 /// Open a canvas file's live side in an ordinary pane — the header's
 /// click (and `workbench.open-in-full` on a focused row).
-pub(crate) struct OpenCanvasFile {
+pub struct OpenCanvasFile {
     pub location: ResourceLocation,
     /// The caret to land on — carried from the row's diff editor so
     /// cmd-enter opens at the position being read, matching the

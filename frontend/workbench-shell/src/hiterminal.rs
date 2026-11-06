@@ -19,8 +19,10 @@ use himark::commands::HimarkCommand;
 pub struct ChromePlugin;
 
 impl himark::plugin::Plugin for ChromePlugin {
-    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
+    fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use crate::app::WorkbenchShell as _;
+        use crate::app_ext::AppExt;
+        use himark::app_ext::AppExt as _;
         app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
             poster: app.poster(),
         });
@@ -100,7 +102,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
                 }
 
                 if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                    poster.post(himark::shell::windowed(
+                    poster.post(crate::shell::windowed(
                         window,
                         Arc::new(RefreshTerminal(Arc::clone(&pending))),
                     ));
@@ -136,18 +138,18 @@ impl HimarkCommand for OpenTerminal {
         store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         // The pane the landing opens is WINDOW furniture — this
         // command stays on the window road until a terminal place
         // exists for the mounted shells.
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let Some(entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-        let workspace = himark::workspace::entity_session(&entity);
+        let workspace = crate::workspace::entity_session(&entity);
         ::workbench::window::Windows::put(store, window, entity);
         let resolved = ahp_session::session::agents::Agents::live_session(store, &workspace)
             .and_then(|key| {
@@ -191,7 +193,7 @@ impl HimarkCommand for OpenTerminal {
         // The terminal files into the WINDOW's session — the collection
         // the pane is minted against, carried from here to the landing.
         let Some(terminals) =
-            himark::workspace::session_state(store, window).map(|state| state.terminals())
+            crate::workspace::session_state(store, window).map(|state| state.terminals())
         else {
             return;
         };
@@ -203,7 +205,7 @@ impl HimarkCommand for OpenTerminal {
                 window,
             })
             .map(move |session| {
-                himark::shell::windowed(window, Arc::new(ShowTerminal { session, terminals }))
+                crate::shell::windowed(window, Arc::new(ShowTerminal { session, terminals }))
             }),
         );
     }
@@ -226,9 +228,9 @@ impl HimarkCommand for ShowTerminal {
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let Some(session) = &self.session else {
@@ -267,7 +269,7 @@ impl HimarkCommand for RefreshTerminal {
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
         _bound: &imba::focus::Bindings,
-        _fx: &mut himark::app::AppFx<'_>,
+        _fx: &mut crate::app::AppFx<'_>,
     ) {
         // The post itself is the repaint ask: the drain that carries
         // this command redraws every view. Clearing the flag re-arms

@@ -425,7 +425,7 @@ pub unsafe extern "C" fn himark_tailnet_auth_url(
         TailnetState::NeedsLogin { auth_url } => Some(auth_url),
         _ => None,
     };
-    himark::ffi::copy_optional_utf8(url, out, cap)
+    crate::ffi::copy_optional_utf8(url, out, cap)
 }
 
 /// The shell's "Connect Tailscale" action.

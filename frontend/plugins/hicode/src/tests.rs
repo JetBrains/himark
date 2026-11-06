@@ -1,13 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 use ::editor::test_document::plain_document;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app::OpenedDocument;
-use himark::app_ext::AppExt;
+use workbench_shell::app::OpenedDocument;
+use workbench_shell::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
 
 fn document_location(name: &str) -> ResourceLocation {
@@ -49,11 +58,11 @@ impl imba::effect::EffectHandler<CodeNavigationEffect> for StubNavigation {
 }
 
 fn app_with_located_document(source: &str) -> (Himark, workbench::window::WindowId) {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
     let window = app.add_window();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -69,7 +78,7 @@ fn app_with_located_document(source: &str) -> (Himark, workbench::window::Window
 }
 
 fn invoke(app: &mut Himark, window: workbench::window::WindowId, id: &str) {
-    let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
@@ -79,16 +88,16 @@ fn invoke(app: &mut Himark, window: workbench::window::WindowId, id: &str) {
 
 #[test]
 fn located_editors_offer_the_commands_on_the_focus_path() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     let window = app.add_window();
     let listed = |app: &Himark| {
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
             .iter()
             .any(|presentable| presentable.id == "code.definition")
     };
     assert!(!listed(&app), "the startup scratch has no location");
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -307,7 +316,7 @@ fn references_stream_into_the_search_dock() {
         Some(workbench_shell::hisearch::OWNER),
         "the Search tab activated"
     );
-    let lists = himark::workspace::entity_state(&entity).lists();
+    let lists = workbench_shell::workspace::entity_state(&entity).lists();
     let feed =
         locations::LocationLists::search(app.store(), lists).expect("the session fronts the feed");
     let row = locations::LocationLists::row(app.store(), lists, feed).expect("the feed row");

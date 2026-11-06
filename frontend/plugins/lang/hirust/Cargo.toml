@@ -14,6 +14,7 @@ tree-sitter-rust = "0.24.2"
 [dev-dependencies]
 gfx-skia = { path = "../../../gfx-skia" }
 himark = { path = "../../../himark", features = ["test-support"] }
+workbench-shell = { path = "../../../workbench-shell", features = ["test-support"] }
 himarkdown = { path = "../../himarkdown" }
 imba = { path = "../../../imba" }
 operation = { path = "../../../operation" }

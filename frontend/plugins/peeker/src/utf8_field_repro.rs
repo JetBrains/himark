@@ -1,16 +1,26 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
+use workbench_shell::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
 
 #[test]
 fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     let mut languages = editor::reparse::SyntaxLanguages::new();
@@ -76,7 +86,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
             0 | 1 | 2 => imba::event::Key::Down,
             _ => imba::event::Key::Up,
         };
-        let _ = himark::test_driver::key(&mut app, key, Default::default());
+        let _ = workbench_shell::test_driver::key(&mut app, key, Default::default());
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -99,7 +109,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     for _ in 0..12 {
-        let _ = himark::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
+        let _ = workbench_shell::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),

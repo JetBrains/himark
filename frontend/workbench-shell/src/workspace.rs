@@ -9,68 +9,9 @@ use imba::store::Store;
 use crate::app::{AppCommand, AppFx};
 use editor::location::ResourceLocation;
 
-pub struct OpenByLocationEffect {
-    pub window: ::workbench::window::WindowId,
-    /// The collection the open lands into — stamped at launch.
-    pub documents: imba::store::Id<documents::OpenDocuments>,
-    pub location: ResourceLocation,
-    pub primary: bool,
-
-    pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
-
-    /// Focus the opened editor (a deliberate jump) or just show it.
-    pub focus: bool,
-}
-
-impl std::fmt::Display for OpenByLocationEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "open by location /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for OpenByLocationEffect {
-    type Result = AppCommand;
-}
-
-/// The pane road's boundary type (himark → hiahp): the changes view's
-/// "Open Diff" and the diff navigator resolve the two sides on the UI
-/// thread and launch this; the handler opens both sides and lands the
-/// pane-open command.
-pub struct OpenDiffByLocationsEffect {
-    pub window: ::workbench::window::WindowId,
-    /// The collection both sides register into — stamped at launch.
-    pub documents: imba::store::Id<documents::OpenDocuments>,
-    pub old: DiffSideInput,
-    pub new: DiffSideInput,
-}
-
-impl std::fmt::Display for OpenDiffByLocationsEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.write_str("open diff by locations")
-    }
-}
-
-impl Effect for OpenDiffByLocationsEffect {
-    type Result = AppCommand;
-}
-
-pub fn open_by_location_effect(
-    window: ::workbench::window::WindowId,
-    documents: imba::store::Id<documents::OpenDocuments>,
-    location: ResourceLocation,
-    primary: bool,
-    focus: bool,
-    target: Option<std::ops::Range<documents::text_ext::LineCol>>,
-) -> crate::effects::AppEffect {
-    AnyEffect::new(OpenByLocationEffect {
-        window,
-        documents,
-        location,
-        primary,
-        target,
-        focus,
-    })
-}
+pub use himark::opening::{
+    open_by_location_effect, OpenByLocationEffect, OpenDiffByLocationsEffect,
+};
 
 pub fn open_locations(
     store: &mut Store,
@@ -127,7 +68,7 @@ pub fn open_locations(
             continue;
         }
         fx.push(open_by_location_effect(
-            window,
+            himark::bridge::ViewBridgeId::from_raw(window.raw()),
             documents,
             location.clone(),
             primary,
@@ -160,7 +101,7 @@ impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
             // the shell escape carries it over the Verb lane.
             fx.push(
                 open_by_location_effect(
-                    window,
+                    himark::bridge::ViewBridgeId::from_raw(window.raw()),
                     documents,
                     place.location.clone(),
                     true,

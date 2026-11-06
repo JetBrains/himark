@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
@@ -7,7 +16,7 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
     use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -30,12 +39,12 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
         }
     };
 
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "alpha one\nalpha two\n"
     ));
     assert!(app.perform_registered(window, "find.open"));
-    assert!(himark::test_driver::type_text(&mut app, "alpha"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "alpha"));
     settle(&mut app);
 
     let matches_now = |app: &Himark| -> Vec<std::ops::Range<u32>> {
@@ -60,12 +69,12 @@ fn find_bar_rescans_in_the_background_after_document_edits() {
         );
     }
 
-    assert!(himark::test_driver::type_text(&mut app, "alpha"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "alpha"));
     settle(&mut app);
     assert_eq!(matches_now(&app), vec![0..5, 10..15, 20..25]);
 
     for _ in 0..5 {
-        assert!(himark::test_driver::key(
+        assert!(workbench_shell::test_driver::key(
             &mut app,
             imba::event::Key::Backspace,
             Default::default()
@@ -81,7 +90,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -96,14 +105,14 @@ fn find_bar_highlights_and_walks_occurrences() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "alpha beta\nalpha gamma\nALPHA tail\n"
     ));
     let text_before = app.focused_document_text();
 
     assert!(app.perform_registered(window, "find.open"));
-    assert!(himark::test_driver::type_text(&mut app, "alpha"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "alpha"));
 
     for _ in 0..3 {
         runner.run();
@@ -168,7 +177,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     assert!(app.perform_registered(window, "find.previous"));
     assert_eq!(selection(&app), 0..5, "and back");
 
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Escape,
         imba::event::Modifiers::default()
@@ -229,7 +238,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
     use himark::app::Himark;
     use imba::event::{Key, Modifiers};
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -237,20 +246,20 @@ fn keymap_backspace_edits_the_find_bar_query() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    assert!(himark::test_driver::type_text(&mut app, "hello"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "hello"));
     let cmd = Modifiers {
         command: true,
         ..Default::default()
     };
     assert!(
-        himark::test_driver::key(&mut app, Key::Char('f'), cmd),
+        workbench_shell::test_driver::key(&mut app, Key::Char('f'), cmd),
         "cmd-F opens the find bar"
     );
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "ab"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "ab"));
 
     let query = |app: &Himark| -> Option<String> {
         let (document, editor) = app.focused_editor_id();
@@ -264,7 +273,7 @@ fn keymap_backspace_edits_the_find_bar_query() {
         "the query took the typing"
     );
     assert!(
-        himark::test_driver::backspace(&mut app),
+        workbench_shell::test_driver::backspace(&mut app),
         "backspace resolves through the keymap"
     );
     assert_eq!(query(&app).as_deref(), Some("a"), "the QUERY shrank");

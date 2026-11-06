@@ -539,7 +539,7 @@ pub fn build(
             .sheet
             .clone(),
     );
-    let commands = himark::commands::palette_commands(store, ui, window);
+    let commands = workbench_shell::app::palette_commands(store, ui, window);
     Box::new(sheet::Sheeted::new(
         bare(store, ui, commands),
         sheet,
@@ -593,7 +593,7 @@ impl himark::commands::HimarkCommand for TogglePalette {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let entity =
@@ -601,7 +601,7 @@ impl himark::commands::HimarkCommand for TogglePalette {
         if entity.has_modal() {
             let mut entity = entity.clone();
             fx.scope(
-                move |command| himark::app::content(window, command),
+                move |command| workbench_shell::app::content(window, command),
                 |fx| entity.dismiss_modal(store, fx),
             );
             workbench::window::Windows::put(store, window, entity);
@@ -612,7 +612,7 @@ impl himark::commands::HimarkCommand for TogglePalette {
         let mut entity =
             workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::app::content(window, command),
             |fx| entity.show_modal(store, modal, fx),
         );
         workbench::window::Windows::put(store, window, entity);

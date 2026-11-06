@@ -52,13 +52,13 @@ impl himark::plugin::Plugin for DemoPlugin {
         // with the door.
         #[cfg(not(target_arch = "wasm32"))]
         app.setup(|store| {
-            himark::ffi::DemoDocs::register(
+            himark::demo_docs::DemoDocs::register(
                 store,
                 "torture sample",
                 demo_location("torture sample"),
                 std::sync::Arc::new(monster_document),
             );
-            himark::ffi::DemoDocs::register(
+            himark::demo_docs::DemoDocs::register(
                 store,
                 "wall of text",
                 demo_location("wall of text"),
@@ -84,13 +84,13 @@ impl himark::commands::HimarkCommand for OpenMonsterDemo {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        let documents = himark::workspace::session_state(store, window)
+        let documents = workbench_shell::workspace::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
-        fx.push(himark::app::open_effect(
+        fx.push(workbench_shell::app::open_effect(
             window,
             documents,
             "torture sample".to_owned(),
@@ -117,13 +117,13 @@ impl himark::commands::HimarkCommand for OpenWallOfTextDemo {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
-        let documents = himark::workspace::session_state(store, window)
+        let documents = workbench_shell::workspace::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
-        fx.push(himark::app::open_effect(
+        fx.push(workbench_shell::app::open_effect(
             window,
             documents,
             "wall of text".to_owned(),

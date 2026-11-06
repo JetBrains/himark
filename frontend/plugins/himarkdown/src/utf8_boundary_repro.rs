@@ -173,9 +173,9 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         document,
                     );
                     pending_commands.extend(
-                        himark::test_support::surviving_launches(local)
+                        workbench_shell::test_support::surviving_launches(local)
                             .into_iter()
-                            .map(|effect| himark::test_support::handle_effect(effect, &test_cx())),
+                            .map(|effect| workbench_shell::test_support::handle_effect(effect, &test_cx())),
                     );
                 } else if !pending_commands.is_empty() {
                     let index = (rand() % pending_commands.len() as u64) as usize;
@@ -190,8 +190,8 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 }
             }
         }
-        for effect in himark::test_support::surviving_launches(batch) {
-            pending_commands.push(himark::test_support::handle_effect(effect, &test_cx()));
+        for effect in workbench_shell::test_support::surviving_launches(batch) {
+            pending_commands.push(workbench_shell::test_support::handle_effect(effect, &test_cx()));
         }
 
         for (name, id) in [("narrow", narrow), ("wide", wide)] {
@@ -241,7 +241,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         base: None,
     };
     let mut store = imba::store::Store::new();
-    let mut pending = himark::test_support::surviving_launches(std::mem::replace(
+    let mut pending = workbench_shell::test_support::surviving_launches(std::mem::replace(
         &mut batch,
         imba::effect::Batch::new(),
     ));
@@ -249,7 +249,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     while let Some(effect) = pending.pop() {
         rounds += 1;
         assert!(rounds < 10_000, "the tail must converge");
-        let command = himark::test_support::handle_effect(effect, &cx);
+        let command = workbench_shell::test_support::handle_effect(effect, &cx);
         imba::View::perform(
             &mut view,
             &mut store,
@@ -257,7 +257,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
             command,
             &mut batch.effects(),
         );
-        pending.extend(himark::test_support::surviving_launches(std::mem::replace(
+        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
             &mut batch,
             imba::effect::Batch::new(),
         )));

@@ -79,7 +79,6 @@ impl Engine {
     /// Boot the production engine and wire its wakes into gpui.
     pub fn boot(cx: &mut App) -> Self {
         let mut engine = himark_api::production_engine(None);
-        engine.set_host(himark_api::host::HimarkHostCallbacks::agent_host_filesystem());
 
         let worker = Worker::start(engine.worker());
         engine.set_effect_wake({

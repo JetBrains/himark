@@ -1,10 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 //! The Files dock tab's CHROME: the toggle and the toolbar button.
-//! The panel builder (`himark::hifiles::open_panel`) stays with the
+//! The panel builder (`crate::hifiles::open_panel`) stays with the
 //! engine — the mounted files place mints through it too.
 
-use himark::hifiles::open_panel;
+use ::himark::hifiles::open_panel;
 
 use ::filetree::TreeCommand;
 
@@ -18,8 +18,10 @@ use imba::store::Store;
 pub struct ChromePlugin;
 
 impl himark::plugin::Plugin for ChromePlugin {
-    fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
+    fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use crate::app::WorkbenchShell as _;
+        use crate::app_ext::AppExt;
+        use himark::app_ext::AppExt as _;
         app.register_command(std::sync::Arc::new(ToggleSessionTree));
         app.register_toolbar_button(toolbar_button());
     }
@@ -39,15 +41,15 @@ impl himark::commands::HimarkCommand for ToggleSessionTree {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         // The focused location is a state walk over the views now —
         // nothing is laid to answer it.
         let reveal = {
-            himark::focus::window_focus_data(store, &ui, window)
+            crate::app::window_focus_data(store, &ui, window)
                 .and_then(|mut data| himark::focus::focused_location(&mut data))
         };
         let mut entity =
@@ -59,12 +61,12 @@ impl himark::commands::HimarkCommand for ToggleSessionTree {
         }
 
         fx.scope(
-            move |command| himark::shell::content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
-        let workspace = himark::workspace::entity_session(&entity);
-        let trees = himark::workspace::entity_state(&entity).trees();
+        let workspace = crate::workspace::entity_session(&entity);
+        let trees = crate::workspace::entity_state(&entity).trees();
         let panel = fx.scope(crate::modal::dock_scope(window), |fx| {
             // The dock modal is the SCROLLED wrapper now: the
             // landings wrap into its content layer.
@@ -77,7 +79,7 @@ impl himark::commands::HimarkCommand for ToggleSessionTree {
         });
         let owner = self.id();
         fx.scope(
-            move |command| himark::shell::content(window, command),
+            move |command| crate::shell::content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
@@ -143,7 +145,7 @@ mod tests {
     fn opened_roots_join_the_workspace_once() {
         let mut store = Store::new();
         let root = directory(&["project"]);
-        let session = himark::test_support::seed_session_folders(
+        let session = crate::test_support::seed_session_folders(
             &mut store,
             &[root.clone(), root.clone(), directory(&["other"])],
         );

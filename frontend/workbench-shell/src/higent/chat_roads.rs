@@ -15,7 +15,7 @@ use ahp_chat::chat::OpenEditedRoad;
 /// window hold for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
-    crate::higent::folder_grant::install_chat_road(store);
+    crate::folder_grant_windows::install_chat_road(store);
     // The chat ROW's minter: the row carries its collection, a pane
     // is minted off the id — and a dismantled chat has no home to
     // walk back to, so the holds-check gates the mint.
@@ -37,7 +37,7 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
     )));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
-            crate::commands::AppRequests::push(
+            himark::commands::AppRequests::push(
                 store,
                 Arc::new(ApplyChannelActions {
                     home: home.clone(),
@@ -49,7 +49,7 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
     OpenEditedRoad::install(
         store,
         OpenEditedRoad(Arc::new(|store, server, session, uri| {
-            crate::commands::AppRequests::push(
+            himark::commands::AppRequests::push(
                 store,
                 Arc::new(OpenEditedFile {
                     server,
@@ -70,7 +70,7 @@ pub(crate) struct OpenEditedFile {
     uri: String,
 }
 
-impl crate::commands::HimarkCommand for OpenEditedFile {
+impl himark::commands::HimarkCommand for OpenEditedFile {
     fn id(&self) -> &'static str {
         "chat.open-edited-file"
     }
@@ -88,7 +88,7 @@ impl crate::commands::HimarkCommand for OpenEditedFile {
     ) {
         // The SEATED SHELL opens the file — the chat's edit chips
         // work from any shell.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
         let Some(uris) = ahp_session::session::state::Hosts::uris(store, self.server) else {
@@ -106,11 +106,11 @@ impl crate::commands::HimarkCommand for OpenEditedFile {
             return;
         };
         fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DocumentPlace {
+                himark::places::DocumentPlace {
                     location,
                     target: None,
                     focus: true,
@@ -128,7 +128,7 @@ struct ApplyChannelActions {
     actions: Vec<ahp_types::actions::StateAction>,
 }
 
-impl crate::commands::HimarkCommand for ApplyChannelActions {
+impl himark::commands::HimarkCommand for ApplyChannelActions {
     fn id(&self) -> &'static str {
         "higent.apply-channel-actions"
     }
@@ -142,7 +142,7 @@ impl crate::commands::HimarkCommand for ApplyChannelActions {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let _ = window;

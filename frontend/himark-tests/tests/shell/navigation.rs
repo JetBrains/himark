@@ -1,7 +1,16 @@
 use super::plain_document;
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app::OpenedDocument;
+use himark::opening::OpenedDocument;
 use himark::app_ext::AppExt;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
@@ -13,7 +22,7 @@ fn located(name: &str) -> editor::location::ResourceLocation {
 }
 
 fn app() -> (Himark, ::workbench::window::WindowId) {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -31,7 +40,7 @@ fn land(
     text: &str,
     col: Option<u32>,
 ) {
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -105,7 +114,7 @@ fn back_and_forward_walk_a_three_deep_chain() {
     for (name, text) in [("a.md", "alpha\n"), ("b.md", "beta\n"), ("c.md", "gamma\n")] {
         land(&mut app, window, name, text, None);
 
-        assert!(himark::test_driver::type_text(&mut app, "x"));
+        assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     }
     assert_eq!(focused_text(&app), "xgamma\n");
     assert_eq!(depths(&app), (2, 0));
@@ -199,7 +208,7 @@ fn a_new_navigation_clears_forward() {
     let (mut app, window) = app();
     for (name, text) in [("a.md", "alpha\n"), ("b.md", "beta\n")] {
         land(&mut app, window, name, text, None);
-        assert!(himark::test_driver::type_text(&mut app, "x"));
+        assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     }
     assert!(app.perform_registered(window, "navigation.back"));
     assert_eq!(depths(&app), (0, 1), "b.md on forward");
@@ -238,7 +247,7 @@ fn close_reveals_the_previous_place_with_its_caret() {
 fn close_reveals_a_dirty_previous_place_instantly() {
     let (mut app, window) = app();
     land(&mut app, window, "a.md", "alpha\n", None);
-    assert!(himark::test_driver::type_text(&mut app, "zz"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "zz"));
     land(&mut app, window, "b.md", "beta\n", None);
     assert!(app.perform_registered(window, "workbench.close"));
     assert_eq!(focused_text(&app), "zzalpha\n", "instant remount");
@@ -251,7 +260,7 @@ fn split_copies_history_and_walks_independently() {
     let (mut app, window) = app();
     for (name, text) in [("a.md", "alpha\n"), ("b.md", "beta\n")] {
         land(&mut app, window, name, text, None);
-        assert!(himark::test_driver::type_text(&mut app, "x"));
+        assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     }
     assert_eq!(depths(&app), (1, 0));
     assert!(app.perform_registered(window, "workbench.split-pane"));

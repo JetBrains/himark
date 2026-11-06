@@ -39,6 +39,11 @@ pub(crate) type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + S
 pub struct AgentFlows {
     new_session: Option<NewSessionFlow>,
     add_host: Option<AddHostFlow>,
+    /// The composition layer's FOLD-BACK after a host lands: the
+    /// workbench re-opens its drawer when the gesture rode a window;
+    /// a mounted origin's catalog refreshes itself and this stays
+    /// `None` or a no-op.
+    refold: Option<Arc<dyn crate::commands::HimarkCommand>>,
 }
 
 impl AgentFlows {
@@ -48,7 +53,7 @@ impl AgentFlows {
         store.update::<AgentFlows>(|flows| flows.new_session = Some(flow));
     }
 
-    pub(crate) fn new_session_flow(store: &Store) -> Option<NewSessionFlow> {
+    pub fn new_session_flow(store: &Store) -> Option<NewSessionFlow> {
         store.get::<AgentFlows>()?.new_session.clone()
     }
 
@@ -56,7 +61,52 @@ impl AgentFlows {
         store.update::<AgentFlows>(|flows| flows.add_host = Some(flow));
     }
 
+    pub fn install_refold(store: &mut Store, refold: Arc<dyn crate::commands::HimarkCommand>) {
+        store.update::<AgentFlows>(|flows| flows.refold = Some(refold));
+    }
+
+    pub(crate) fn refold(store: &Store) -> Option<Arc<dyn crate::commands::HimarkCommand>> {
+        store.get::<AgentFlows>()?.refold.clone()
+    }
+
     pub(crate) fn add_host_flow(store: &Store) -> Option<AddHostFlow> {
         store.get::<AgentFlows>()?.add_host.clone()
+    }
+}
+
+
+pub struct AddHost {
+    pub url: String,
+}
+
+impl crate::commands::HimarkCommand for AddHost {
+    fn id(&self) -> &'static str {
+        "agent.add-host"
+    }
+
+    fn name(&self) -> String {
+        "Add Host".to_owned()
+    }
+
+    fn perform(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
+            eprintln!("[higent] no add-host capability installed — url dropped");
+            return;
+        };
+        if flow(store, &self.url).is_none() {
+            return;
+        }
+        // The composition layer's fold-back (the workbench re-opens
+        // its drawer when a window is bound); a mounted origin's
+        // catalog refreshes itself.
+        if let Some(refold) = AgentFlows::refold(store) {
+            refold.perform(store, ui, bound, fx);
+        }
     }
 }

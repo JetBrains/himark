@@ -1,7 +1,16 @@
 use super::*;
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app::OpenedDocument;
+use himark::opening::OpenedDocument;
 use himark::app_ext::AppExt;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
@@ -54,7 +63,7 @@ fn run_outline(batch: imba::effect::Batch<::toc::OutlineCommand>) -> Option<::to
 
 #[test]
 fn the_outline_derives_lands_and_jumps() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -63,7 +72,7 @@ fn the_outline_derives_lands_and_jumps() {
     );
     let window = app.sole_window();
     let (source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -111,10 +120,10 @@ fn the_outline_derives_lands_and_jumps() {
 
     assert!(app.perform_registered(window, "toc.toggle"));
 
-    let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
     let _ =
-        himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(1_000.0));
-    assert!(himark::test_driver::type_text(&mut app, "x"));
+        workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(1_000.0));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     let mut store = app.store().clone();
     {
         use imba::list::{ActivateTrigger, ListOps};
@@ -141,7 +150,7 @@ fn the_outline_derives_lands_and_jumps() {
     else {
         panic!("the pick performs the jump");
     };
-    let command = himark::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command = workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_command(command));
     let (document_id, editor_id) = app.focused_editor_id();
     let caret =
@@ -161,7 +170,7 @@ fn the_outline_derives_lands_and_jumps() {
 
 #[test]
 fn a_structureless_pane_offers_no_toc() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -370,7 +379,7 @@ fn result_directories_fold_and_unfold() {
 fn outline_speedsearch_filters_steps_and_clears() {
     use imba::effect::{block_on, EffectHandler, Message};
 
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -379,7 +388,7 @@ fn outline_speedsearch_filters_steps_and_clears() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -484,7 +493,7 @@ fn speedsearch_arrows_step_the_matches() {
     use imba::event::{Event, EventResult, Key, Modifiers};
     use imba::Widget as _;
 
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -493,7 +502,7 @@ fn speedsearch_arrows_step_the_matches() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -634,7 +643,7 @@ fn speedsearch_arrows_step_the_matches() {
 
 #[test]
 fn outline_folds_survive_relandings() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -643,7 +652,7 @@ fn outline_folds_survive_relandings() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -777,7 +786,7 @@ fn dump_contents_drawer_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(
@@ -786,7 +795,7 @@ fn dump_contents_drawer_screenshot() {
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -873,12 +882,12 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
             fx.scope(
-                move |command| himark::shell::content(window, command),
+                move |command| workbench_shell::shell::content(window, command),
                 |fx| {
                     entity.show_side_panel(
                         store,
@@ -891,7 +900,7 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         std::sync::Arc::new(StandDrawer(view.clone())),
     )));
@@ -900,7 +909,7 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
 
 #[test]
 fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -909,7 +918,7 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),

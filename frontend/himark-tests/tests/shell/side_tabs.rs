@@ -4,6 +4,15 @@
 //! size (1440×900 at 2x) over seeded content shaped like the
 //! artboards — a look at the tabs' own chrome.
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::Arc;
 
 use imba::store::Store;
@@ -85,7 +94,7 @@ impl himark::commands::HimarkCommand for ShowFiles {
         fx: &mut himark::app::AppFx<'_>,
     ) {
         use imba::View as _;
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let root = dir(&["himark-jb"]);
@@ -190,7 +199,7 @@ impl himark::commands::HimarkCommand for ShowFiles {
             return;
         };
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::shell::content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
@@ -211,13 +220,13 @@ fn dump_files_tab_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(ShowFiles { filter: None }),
     )));
@@ -234,13 +243,13 @@ fn dump_files_tab_filtering_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(ShowFiles {
             filter: Some("carg"),
@@ -268,13 +277,13 @@ impl himark::commands::HimarkCommand for ShowFind {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-        let lists = himark::workspace::entity_state(&entity).lists();
+        let lists = workbench_shell::workspace::entity_state(&entity).lists();
         locations::LocationLists::adopt_folders(store, lists, &[dir(&["himark-jb"])]);
         let feed = locations::FeedId::mint();
         let mut row = locations::LocationsFeedRow {
@@ -380,12 +389,12 @@ impl himark::commands::HimarkCommand for ShowFind {
         locations::LocationLists::put(store, lists, feed, row);
         locations::LocationLists::set_search(store, lists, feed);
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::shell::content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = locations::search::SearchView::open(store, ui, lists);
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), "search.view", fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -399,13 +408,13 @@ fn dump_find_tab_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(ShowFind))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(ShowFind))));
     super::dock::settle(&mut app, &mut surface);
     write_png(&mut surface, format!("{dir}/find-tab.png"));
 }

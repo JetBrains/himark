@@ -38,7 +38,7 @@ impl Poster {
     }
 }
 
-pub(crate) type AppEffect = imba::effect::AnyEffect<AppCommand>;
+pub type AppEffect = imba::effect::AnyEffect<AppCommand>;
 
 pub(crate) fn trace_effects(message: impl FnOnce() -> String) {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -163,7 +163,6 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
         hikit::list_keyboard::AnnounceSelectHandler,
     );
     handlers.register::<documents::watch::RefetchDiffEffect>(documents::watch::RefetchDiffHandler);
-    handlers.register::<crate::app::OpenEffect>(crate::app::OpenHandler(Arc::clone(workshop)));
 }
 
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]

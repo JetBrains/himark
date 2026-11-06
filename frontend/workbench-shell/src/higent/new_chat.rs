@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::commands::HimarkCommand;
+use himark::commands::HimarkCommand;
 use ::workbench::window::Windows;
 use ahp_session::session::agents::Agents;
 use ahp_wire::client::HostId;
@@ -82,7 +82,7 @@ impl HimarkCommand for OpenCreatedChat {
         bound: &imba::focus::Bindings,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = crate::app::bound_window(self.id(), bound) else {
             return;
         };
         let ui = ui;

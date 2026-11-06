@@ -11,9 +11,11 @@ use documents::OpenDocuments;
 /// chat's diff-pair row minter.
 pub struct DiffPanePlugin;
 
-impl crate::plugin::Plugin for DiffPanePlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
+impl himark::plugin::Plugin for DiffPanePlugin {
+    fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
+        use crate::app::WorkbenchShell as _;
         use crate::app_ext::AppExt;
+        use himark::app_ext::AppExt as _;
         app.register_command(std::sync::Arc::new(OpenDiff));
         app.register_row_minter(::canvas::diff_pane::pair_row_minter());
     }
@@ -25,7 +27,7 @@ impl crate::plugin::Plugin for DiffPanePlugin {
 
 pub struct OpenDiff;
 
-impl crate::commands::HimarkCommand for OpenDiff {
+impl himark::commands::HimarkCommand for OpenDiff {
     fn id(&self) -> &'static str {
         "diff.open"
     }
@@ -42,10 +44,10 @@ impl crate::commands::HimarkCommand for OpenDiff {
         // The SESSION road picks the pair; the SEATED SHELL places
         // the ready view — panel in a workbench, pushed screen on
         // the native side.
-        let Some(origin) = crate::commands::bound_origin(self.id(), bound) else {
+        let Some(origin) = himark::commands::bound_origin(self.id(), bound) else {
             return;
         };
-        let Some(state) = crate::commands::bound_session(self.id(), bound) else {
+        let Some(state) = himark::commands::bound_session(self.id(), bound) else {
             return;
         };
         let documents = state.documents();
@@ -66,11 +68,11 @@ impl crate::commands::HimarkCommand for OpenDiff {
         };
         let title = OpenDocuments::name(store, documents, newest.0).unwrap_or_default();
         fx.scope(crate::app::AppCommand::Verb, |fx| {
-            crate::shell::navigate_origin(
+            himark::shell::navigate_origin(
                 store,
                 ui,
                 origin,
-                crate::places::DiffViewPlace {
+                himark::places::DiffViewPlace {
                     documents,
                     view,
                     title,

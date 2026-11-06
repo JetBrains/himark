@@ -16,8 +16,6 @@ use std::sync::Arc;
 
 use imba::{effect::Effects, store::Store, ui::UiCtx};
 
-use ::workbench::window::WindowId;
-
 #[derive(Clone)]
 pub enum AppCommand {
     /// The app-level erased vocabulary (imba::command) — windowless:
@@ -39,6 +37,27 @@ pub enum AppCommand {
     /// happens under a borrow a host still holds.
     ToView(crate::bridge::ViewBridgeId, imba::dyn_view::DynCommand),
 
+    /// A REGISTERED command at its gesture's ORIGIN bridge — the
+    /// bindings resolve at dispatch, through the seated
+    /// [`OriginBindings`] resolver (the workbench answers for the
+    /// origins that ride a window's raw id) or the engine's own
+    /// fallback (the origin and its session). The engine never
+    /// learns what the origin shows.
+    AtOrigin(
+        crate::bridge::ViewBridgeId,
+        Arc<dyn crate::commands::HimarkCommand>,
+    ),
+
+    /// A registered command with the focus walk's facts captured at
+    /// mint — the palette and keymap road on every shell.
+    Bound(
+        imba::focus::Bindings,
+        Arc<dyn crate::commands::HimarkCommand>,
+    ),
+
+    /// Register a command into the engine's registry.
+    Register(Arc<dyn crate::commands::HimarkCommand>),
+
     FileChanged(documents::watch::Subscription),
 
     RegisterLanguages(::editor::reparse::SyntaxLanguages),
@@ -56,13 +75,98 @@ impl AppCommand {
     }
 }
 
+/// The seated ORIGIN-BINDINGS resolver: whoever owns richer origins
+/// (the workbench: a window rides the same raw id, and its walk
+/// binds the window and the focused document) answers the walk's
+/// bindings for one. `None` falls to the engine's own resolution —
+/// the origin id and its session.
+#[derive(Clone)]
+pub struct OriginBindings(
+    #[allow(clippy::type_complexity)]
+    pub  Arc<
+        dyn Fn(&Store, &UiCtx, crate::bridge::ViewBridgeId) -> Option<imba::focus::Bindings>
+            + Send
+            + Sync,
+    >,
+);
+
+/// The origin's bindings, resolved at dispatch — the seated
+/// resolver first, the engine's fallback otherwise. The fallback
+/// binds the origin id itself; a resolver's answer must NOT gain
+/// one unasked: a bound `ViewBridgeId` is the SIGNAL commands read
+/// as "windowless origin" (hicode's ApplyNavigation forks on it),
+/// and the resolver's walk binds what its views chose to bind.
+pub(crate) fn origin_bindings(
+    store: &Store,
+    ui: &UiCtx,
+    origin: crate::bridge::ViewBridgeId,
+) -> imba::focus::Bindings {
+    if let Some(resolver) = store.get::<OriginBindings>().cloned() {
+        if let Some(bound) = (resolver.0)(store, ui, origin) {
+            // The origin rides along as the NON-SIGNAL fact
+            // (`BoundOrigin`): `bound_origin` reads it; a bare bound
+            // `ViewBridgeId` would flip commands into their
+            // windowless fork.
+            return bound.bind(crate::commands::BoundOrigin(origin));
+        }
+    }
+    let mut bound = imba::focus::Bindings::new()
+        .bind(origin)
+        .bind(crate::commands::BoundOrigin(origin));
+    if let Some(session) = crate::mounts::session_of(store, origin) {
+        if let Some(state) = ahp_session::session::state::Hosts::state(store, &session).cloned() {
+            bound = bound.bind(state);
+        }
+        bound = bound.bind(session);
+    }
+    bound
+}
+
+/// Perform a registered command at its origin: resolve the
+/// bindings, run it, and re-wrap what it deferred — requests keep
+/// the SAME origin, so a landing chain never re-derives a scope
+/// that was never lost.
+pub fn perform_at_origin(
+    store: &mut Store,
+    ui: &UiCtx,
+    origin: crate::bridge::ViewBridgeId,
+    command: Arc<dyn crate::commands::HimarkCommand>,
+    fx: &mut AppFx<'_>,
+) {
+    let bound = origin_bindings(store, ui, origin);
+    command.perform(store, ui, &bound, fx);
+    for request in crate::commands::AppRequests::drain(store) {
+        fx.follow_up(AppCommand::AtOrigin(origin, request));
+    }
+    for request in imba::command::Requests::drain(store) {
+        fx.follow_up(AppCommand::Verb(Verb::Dynamic(request)));
+    }
+}
+
+/// Perform a registered command with bindings captured at mint.
+pub fn perform_bound(
+    store: &mut Store,
+    ui: &UiCtx,
+    bound: imba::focus::Bindings,
+    command: Arc<dyn crate::commands::HimarkCommand>,
+    fx: &mut AppFx<'_>,
+) {
+    command.perform(store, ui, &bound, fx);
+    for request in crate::commands::AppRequests::drain(store) {
+        fx.follow_up(AppCommand::Bound(bound.clone(), request));
+    }
+    for request in imba::command::Requests::drain(store) {
+        fx.follow_up(AppCommand::Verb(Verb::Dynamic(request)));
+    }
+}
+
 impl std::fmt::Display for AppCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.write_str(&command_label(self))
     }
 }
 
-pub(crate) type AppEffects = imba::effect::Batch<AppCommand>;
+pub type AppEffects = imba::effect::Batch<AppCommand>;
 pub type AppFx<'a> = Effects<'a, AppCommand>;
 
 /// Wrap a shell command for the verb lane — the opaque escape a kit
@@ -72,35 +176,7 @@ pub fn shell_verb(command: AppCommand) -> Verb {
     Verb::shell(Box::new(command))
 }
 
-/// A drained verb back into the app stream: shell payloads unwrap
-/// (an `AppCommand`, or a deferred dynamic ask that takes the
-/// draining window); everything else rides the Verb arm.
-#[doc(hidden)]
-pub fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
-    match verb {
-        Verb::Shell(payload) => {
-            let Some(payload) = payload.take() else {
-                eprintln!("[app] a spent shell verb was drained again — dropped");
-                return None;
-            };
-            match payload.downcast::<AppCommand>() {
-                Ok(command) => Some(*command),
-                Err(payload) => {
-                    match payload.downcast::<std::sync::Arc<dyn crate::commands::HimarkCommand>>() {
-                        Ok(command) => Some(crate::shell::windowed(window, *command)),
-                        Err(_) => {
-                            eprintln!("[app] an unknown shell verb payload was dropped");
-                            None
-                        }
-                    }
-                }
-            }
-        }
-        verb => Some(AppCommand::Verb(verb)),
-    }
-}
-
-pub(crate) fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
+pub fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
     // The addressed and shell commands print themselves (`Display`
     // through the erasure) — the type is gone by the time the trace
     // reads one.
@@ -108,6 +184,9 @@ pub(crate) fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, s
         AppCommand::At(addressed) => addressed.to_string().into(),
         AppCommand::ToView(_, command) => command.to_string().into(),
         AppCommand::Verb(..) => std::borrow::Cow::Borrowed("verb"),
+        AppCommand::AtOrigin(_, command) => format!("at origin: {}", command.id()).into(),
+        AppCommand::Bound(_, command) => format!("bound: {}", command.id()).into(),
+        AppCommand::Register(..) => std::borrow::Cow::Borrowed("register"),
         AppCommand::FileChanged(..) => std::borrow::Cow::Borrowed("file changed"),
         AppCommand::RegisterLanguages(_) => std::borrow::Cow::Borrowed("register languages"),
         AppCommand::RegisterDiffPolicy(_) => std::borrow::Cow::Borrowed("register diff policy"),
@@ -167,6 +246,15 @@ impl Performer<'_> {
             AppCommand::Verb(verb) => {
                 fx.scope(AppCommand::Verb, |fx| verb.run(store, ui, fx));
             }
+            AppCommand::AtOrigin(origin, command) => {
+                perform_at_origin(store, ui, origin, command, fx);
+            }
+            AppCommand::Bound(bound, command) => {
+                perform_bound(store, ui, bound, command, fx);
+            }
+            AppCommand::Register(command) => {
+                crate::commands::Commands::register(store, command);
+            }
             AppCommand::ToView(id, command) => {
                 // A POPOVER's view pins this parent to lay against:
                 // quiesce each child's frames (they borrow the
@@ -216,10 +304,7 @@ impl Performer<'_> {
                             id.raw()
                         );
                     }
-                    fx.follow_up(crate::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        request,
-                    ));
+                    fx.follow_up(AppCommand::AtOrigin(id, request));
                 }
             }
             AppCommand::FileChanged(subscription) => {

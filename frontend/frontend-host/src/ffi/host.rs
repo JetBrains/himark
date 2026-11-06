@@ -1,16 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
 use std::future::Future;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
 
-use crate::app::AppCommand;
-use crate::app::AppFx;
-use crate::commands::HimarkCommand;
-use crate::workspace::open_locations;
+use himark::app::AppCommand;
+use himark::app::AppFx;
+use himark::commands::HimarkCommand;
+use workbench_shell::workspace::open_locations;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
@@ -331,10 +337,10 @@ impl EffectHandler<ahp_wire::effects::ShareTailnetEffect> for ShareTailnetHandle
 
 pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
 
-impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
+impl EffectHandler<himark::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
     async fn handle(
         &self,
-        effect: crate::higent::folder_grant::PickFoldersEffect,
+        effect: himark::higent::folder_grant::PickFoldersEffect,
     ) -> Vec<ResourceLocation> {
         let Some(pick) = self.0.callbacks.pick_files else {
             return Vec::new();
@@ -370,14 +376,14 @@ impl HimarkCommand for OpenFilePicker {
         _store: &mut imba::store::Store,
         _ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let _ = fx.push(
             AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
-                crate::app::windowed(window, Arc::new(OpenPicked { locations }))
+                workbench_shell::shell::windowed(window, Arc::new(OpenPicked { locations }))
             }),
         );
     }
@@ -416,7 +422,7 @@ fn open_folder_session(
     });
     match existing {
         Some(session) => {
-            crate::higent::open_session::open_session(store, window, host, session, false, fx)
+            workbench_shell::higent::open_session::open_session(store, window, host, session, false, fx)
         }
         None => {
             let _ = fx.push(
@@ -426,9 +432,9 @@ fn open_folder_session(
                     working_directories: dirs,
                 })
                 .map(move |result| {
-                    crate::app::windowed(
+                    workbench_shell::shell::windowed(
                         window,
-                        Arc::new(crate::higent::open_session::OpenCreatedSession {
+                        Arc::new(workbench_shell::higent::open_session::OpenCreatedSession {
                             initial_prompt: None,
                             server: host,
                             open_chat: false,
@@ -454,9 +460,9 @@ impl HimarkCommand for OpenPicked {
         store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         bound: &imba::focus::Bindings,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = crate::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let ui = ui;
@@ -467,9 +473,9 @@ impl HimarkCommand for OpenPicked {
             .partition(|location| location.kind().is_directory());
         if !folders.is_empty() {
             let workspace = workbench::window::Windows::window_ref(store, window)
-                .map(|entity| crate::workspace::entity_session(&entity))
+                .map(|entity| workbench_shell::workspace::entity_session(&entity))
                 .unwrap_or_else(|| ahp_wire::SessionId::local_default(store));
-            let state = crate::workspace::session_state(store, window);
+            let state = workbench_shell::workspace::session_state(store, window);
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 let diagnostics_wire = state.diagnostics_wire();

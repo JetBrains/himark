@@ -525,7 +525,6 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
 
     let mut store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
-    let _window = ::workbench::window::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
     let history_wire: imba::store::Id<ahp_changes::history::HistoryWire> = imba::store::Id::mint();
     store.put_entity(changes_id(), wired());

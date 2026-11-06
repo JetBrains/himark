@@ -49,5 +49,3 @@ impl crate::commands::HimarkCommand for ReloadDocument {
     }
 }
 
-#[cfg(test)]
-mod tests;

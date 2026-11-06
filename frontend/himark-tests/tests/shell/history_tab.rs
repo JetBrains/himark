@@ -5,6 +5,15 @@
 //! artboard's right column — the newest commit open with its files,
 //! the second one HERE.
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::Arc;
 
 use imba::store::Store;
@@ -131,13 +140,13 @@ impl himark::commands::HimarkCommand for ShowHistory {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-        let changes = himark::workspace::entity_state(&entity).changes();
+        let changes = workbench_shell::workspace::entity_state(&entity).changes();
         let history = Changes::of(store, changes).expect("the changes").history();
         let folder = located(editor::location::ResourceType::directory(), &["himark-jb"]);
         Changes::adopt_folders(store, changes, &[folder.clone()]);
@@ -229,7 +238,7 @@ impl himark::commands::HimarkCommand for ShowHistory {
         );
         let view = Changes::mint_view(store, changes, view);
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::shell::content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
@@ -252,13 +261,13 @@ fn dump_history_tab_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(ShowHistory))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(ShowHistory))));
     super::dock::settle(&mut app, &mut surface);
     let image = surface.image_snapshot();
     let data = image

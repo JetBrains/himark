@@ -122,17 +122,17 @@ fn perform_pumped(store: &mut Store, view: EditorIdView, command: EditorCommand)
     let mut node = view;
     let mut batch = imba::effect::Batch::new();
     let _ = node.perform(store, &ui, command, &mut batch.effects());
-    let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(batch)
+    let mut pending: Vec<EditorCommand> = workbench_shell::test_support::surviving_launches(batch)
         .into_iter()
-        .map(|effect| himark::test_support::handle_effect(effect, &cx))
+        .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx))
         .collect();
     while let Some(command) = pending.pop() {
         let mut more = imba::effect::Batch::new();
         node.perform(store, &ui, command, &mut more.effects());
         pending.extend(
-            himark::test_support::surviving_launches(more)
+            workbench_shell::test_support::surviving_launches(more)
                 .into_iter()
-                .map(|effect| himark::test_support::handle_effect(effect, &cx)),
+                .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx)),
         );
     }
 }
@@ -153,17 +153,17 @@ fn apply_outcome(store: &mut Store, document_id: documents::DocumentId, outcome:
     let mut node = EditorIdView::new(test_docs(), document_id, editor);
     let cx = test_cx();
     let ui = ::editor::test_document::test_ui();
-    let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(batch)
+    let mut pending: Vec<EditorCommand> = workbench_shell::test_support::surviving_launches(batch)
         .into_iter()
-        .map(|effect| himark::test_support::handle_effect(effect, &cx))
+        .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx))
         .collect();
     while let Some(command) = pending.pop() {
         let mut more = imba::effect::Batch::new();
         node.perform(store, &ui, command, &mut more.effects());
         pending.extend(
-            himark::test_support::surviving_launches(more)
+            workbench_shell::test_support::surviving_launches(more)
                 .into_iter()
-                .map(|effect| himark::test_support::handle_effect(effect, &cx)),
+                .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx)),
         );
     }
 }
@@ -206,10 +206,10 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     );
 
     let cx = test_cx();
-    let effect = himark::test_support::surviving_launches(batch)
+    let effect = workbench_shell::test_support::surviving_launches(batch)
         .pop()
         .expect("the viewport report queues the repair chain");
-    let command = himark::test_support::handle_effect(effect, &cx);
+    let command = workbench_shell::test_support::handle_effect(effect, &cx);
     node.perform(
         &mut store,
         &ui,
@@ -305,9 +305,9 @@ fn resize_repair_timing_probe() {
 
     let mut node = editor_id;
     let cx = test_cx();
-    for effect in himark::test_support::surviving_launches(effects) {
+    for effect in workbench_shell::test_support::surviving_launches(effects) {
         let started = std::time::Instant::now();
-        let command = himark::test_support::handle_effect(effect, &cx);
+        let command = workbench_shell::test_support::handle_effect(effect, &cx);
         eprintln!("repair effect run: {:?}", started.elapsed());
         imba::perf::record(
             "monster-resize",
@@ -329,7 +329,7 @@ fn resize_repair_timing_probe() {
         started.elapsed()
     );
     assert_eq!(
-        himark::test_support::surviving_launches(effects).len(),
+        workbench_shell::test_support::surviving_launches(effects).len(),
         1,
         "a top-anchored resize must leave the tail as an effect"
     );
@@ -1778,7 +1778,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let entity_id = EditorIdView::new(test_docs(), document_id, editor_id);
     documents::OpenDocuments::put_document(&mut store, test_docs(), document_id, document.clone());
 
-    let mut effects = himark::test_support::surviving_launches(std::mem::replace(
+    let mut effects = workbench_shell::test_support::surviving_launches(std::mem::replace(
         &mut batch,
         imba::effect::Batch::new(),
     ));
@@ -1798,7 +1798,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     );
 
     let command =
-        himark::test_support::handle_effect(effects.pop().expect("repair effect"), &test_cx());
+        workbench_shell::test_support::handle_effect(effects.pop().expect("repair effect"), &test_cx());
     assert!(
         matches!(command, EditorCommand::ApplyRepair(ref items) if !items.is_empty()),
         "the repair effect must yield a non-empty ApplyRepair"
@@ -1811,19 +1811,19 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         command,
         &mut batch.effects(),
     );
-    let mut pending = himark::test_support::surviving_launches(std::mem::replace(
+    let mut pending = workbench_shell::test_support::surviving_launches(std::mem::replace(
         &mut batch,
         imba::effect::Batch::new(),
     ));
     while let Some(effect) = pending.pop() {
-        let command = himark::test_support::handle_effect(effect, &test_cx());
+        let command = workbench_shell::test_support::handle_effect(effect, &test_cx());
         view.perform(
             &mut store,
             ::editor::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );
-        pending.extend(himark::test_support::surviving_launches(std::mem::replace(
+        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
             &mut batch,
             imba::effect::Batch::new(),
         )));
@@ -1872,9 +1872,9 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let styled_reference =
         editor::editor_view::EditorView::complete(styled.clone(), 600.0, &store, ui, &test_theme());
     let cx = test_cx();
-    let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(parse_batch)
+    let mut pending: Vec<EditorCommand> = workbench_shell::test_support::surviving_launches(parse_batch)
         .into_iter()
-        .map(|effect| himark::test_support::handle_effect(effect, &cx))
+        .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx))
         .collect();
     while let Some(command) = pending.pop() {
         view.perform(
@@ -1884,12 +1884,12 @@ fn demo_open_pipeline_applies_markup_and_layout() {
             &mut batch.effects(),
         );
         pending.extend(
-            himark::test_support::surviving_launches(std::mem::replace(
+            workbench_shell::test_support::surviving_launches(std::mem::replace(
                 &mut batch,
                 imba::effect::Batch::new(),
             ))
             .into_iter()
-            .map(|effect| himark::test_support::handle_effect(effect, &cx)),
+            .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx)),
         );
     }
     let gathered = view.gathered(&store).expect("entity");
@@ -1949,7 +1949,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
             },
             &mut batch.effects(),
         );
-        let effects = himark::test_support::surviving_launches(batch);
+        let effects = workbench_shell::test_support::surviving_launches(batch);
 
         for command in late.drain(..) {
             let mut followup_batch = imba::effect::Batch::new();
@@ -1960,8 +1960,8 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
                 &mut followup_batch.effects(),
             );
 
-            for effect in himark::test_support::surviving_launches(followup_batch) {
-                let command = himark::test_support::handle_effect(effect, &test_cx());
+            for effect in workbench_shell::test_support::surviving_launches(followup_batch) {
+                let command = workbench_shell::test_support::handle_effect(effect, &test_cx());
                 view.perform(
                     &mut store,
                     ::editor::test_document::test_ui(),
@@ -1973,7 +1973,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
         saw_late_result |= !effects.is_empty();
         late = effects
             .into_iter()
-            .map(|effect| himark::test_support::handle_effect(effect, &test_cx()))
+            .map(|effect| workbench_shell::test_support::handle_effect(effect, &test_cx()))
             .collect();
 
         let gathered = view.gathered(&store).expect("editor");
@@ -2116,9 +2116,9 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         document,
                     );
                     pending_commands.extend(
-                        himark::test_support::surviving_launches(local)
+                        workbench_shell::test_support::surviving_launches(local)
                             .into_iter()
-                            .map(|effect| himark::test_support::handle_effect(effect, &test_cx())),
+                            .map(|effect| workbench_shell::test_support::handle_effect(effect, &test_cx())),
                     );
                 } else if !pending_commands.is_empty() {
                     let index = (rand() % pending_commands.len() as u64) as usize;
@@ -2133,8 +2133,8 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 }
             }
         }
-        for effect in himark::test_support::surviving_launches(batch) {
-            pending_commands.push(himark::test_support::handle_effect(effect, &test_cx()));
+        for effect in workbench_shell::test_support::surviving_launches(batch) {
+            pending_commands.push(workbench_shell::test_support::handle_effect(effect, &test_cx()));
         }
 
         for (name, id) in [("narrow", narrow), ("wide", wide)] {

@@ -1914,6 +1914,7 @@ dependencies = [
  "peeker",
  "text",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -2674,6 +2675,7 @@ dependencies = [
  "ahp-types",
  "ahp-wire",
  "canvas",
+ "cbindgen 0.29.4",
  "changesview",
  "comments",
  "demo",
@@ -3969,7 +3971,6 @@ dependencies = [
  "ahp-types",
  "ahp-wire",
  "canvas",
- "cbindgen 0.29.4",
  "changesview",
  "comments",
  "documents",
@@ -3997,7 +3998,6 @@ dependencies = [
  "text",
  "toc",
  "tokio",
- "workbench",
 ]
 
 [[package]]
@@ -4020,9 +4020,11 @@ dependencies = [
  "gfx",
  "gfx-gpui",
  "gpui",
+ "himark",
  "imba",
  "imba-gpui",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -4062,6 +4064,7 @@ dependencies = [
  "text",
  "toc",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -4082,6 +4085,7 @@ dependencies = [
  "serde",
  "text",
  "tree-sitter",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -4099,6 +4103,7 @@ dependencies = [
  "merman",
  "operation",
  "text",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -4227,6 +4232,7 @@ dependencies = [
  "operation",
  "text",
  "tree-sitter-rust",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -4259,6 +4265,7 @@ dependencies = [
  "serde_json",
  "text",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -6106,6 +6113,7 @@ dependencies = [
  "peeker",
  "text",
  "workbench",
+ "workbench-shell",
 ]
 
 [[package]]
@@ -10880,8 +10888,11 @@ name = "workbench-shell"
 version = "0.1.0"
 dependencies = [
  "ahp-changes",
+ "ahp-chat",
  "ahp-comments",
+ "ahp-docsync",
  "ahp-locations",
+ "ahp-lsp",
  "ahp-session",
  "ahp-types",
  "ahp-wire",
@@ -10892,6 +10903,7 @@ dependencies = [
  "editor",
  "filetree",
  "gfx",
+ "gfx-skia",
  "hikit",
  "himark",
  "himark-ahp-ext-types",
@@ -10899,9 +10911,15 @@ dependencies = [
  "host-discovery",
  "imba",
  "locations",
+ "myersdiff",
+ "operation",
+ "rebase",
+ "recents",
  "rpds",
  "serde_json",
  "terminals",
+ "text",
+ "toc",
  "workbench",
 ]
 

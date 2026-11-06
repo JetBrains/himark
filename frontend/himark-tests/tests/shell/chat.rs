@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::dock::{entity, located, settle, show_dock};
 use super::*;
 use hikit::modal::ModalRequest;
@@ -7,7 +16,7 @@ use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app_ext::AppExt;
-use himark::test_driver;
+use workbench_shell::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -40,7 +49,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = match self.target.clone() {
@@ -48,7 +57,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
                 None => ahp_wire::SessionId::mint_scratch(store),
             };
             *self.made.lock().unwrap() = Some(target.clone());
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
     let switch = |app: &mut himark::app::Himark,
@@ -56,7 +65,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
      -> ahp_wire::SessionId {
         let window = app.sole_window();
         let made = Arc::new(std::sync::Mutex::new(None));
-        app.perform_batch(vec![himark::app::windowed(
+        app.perform_batch(vec![workbench_shell::shell::windowed(
             window,
             Arc::new(Switch {
                 target,
@@ -68,10 +77,10 @@ fn switching_workspaces_stashes_the_chat_panel() {
     };
 
     let fonts = AppFonts::embedded();
-    let mut app = himark::app::Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let first = himark::workspace::entity_session(
+    let first = workbench_shell::workspace::entity_session(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("window"),
     );
     let first_chats =
@@ -125,7 +134,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
 /// lands in the split tree or closes.
 #[test]
 fn the_composer_command_fronts_the_chat_panel() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -146,17 +155,17 @@ fn the_composer_command_fronts_the_chat_panel() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -271,7 +280,7 @@ fn the_composer_command_fronts_the_chat_panel() {
 /// panel hands it all back.
 #[test]
 fn the_chat_docks_left_when_the_window_is_wide() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     // House units are 2x pixels: 3200 here is a 1600pt window.
@@ -293,17 +302,17 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -375,14 +384,14 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            let state = himark::workspace::session_state(store, window).expect("state");
+            let state = workbench_shell::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
                 state.documents(),
-                himark::app::markdown_scratch(),
+                workbench_shell::app::markdown_scratch(),
                 None,
                 "doc".to_owned(),
                 0,
@@ -394,7 +403,7 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut wide);
     assert!(!vacant(&app), "the document fills the vacant leaf");
     assert!(slot_filled(&app), "the chat stays beside it");
@@ -415,7 +424,7 @@ fn dump_chat_narrow_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     // The user's real squeezed window: 1392pt at 2x = 2784 device px.
@@ -437,17 +446,17 @@ fn dump_chat_narrow_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -485,11 +494,11 @@ fn dump_chat_narrow_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            let state = himark::workspace::session_state(store, window).expect("state");
-            let document = himark::app::markdown_scratch();
+            let state = workbench_shell::workspace::session_state(store, window).expect("state");
+            let document = workbench_shell::app::markdown_scratch();
             let id = documents::OpenDocuments::register(
                 store,
                 state.documents(),
@@ -505,7 +514,7 @@ fn dump_chat_narrow_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
 
     let image = narrow.image_snapshot();
@@ -522,7 +531,7 @@ fn dump_chat_column_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     // The leftmost header's tabs are the app's registrations: the
     // chat word (the shell's) and the Sessions word (the agent host's).
@@ -553,17 +562,17 @@ fn dump_chat_column_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -606,7 +615,7 @@ fn dump_chat_transcript_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     // The cells build off-thread through the AHP build road, with
@@ -644,17 +653,17 @@ fn dump_chat_transcript_screenshot() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -774,7 +783,7 @@ fn dump_chat_transcript_screenshot() {
 /// never block it. Closing the last panel returns the chat.
 #[test]
 fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -795,17 +804,17 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -853,14 +862,14 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
-            let state = himark::workspace::session_state(store, window).expect("state");
+            let state = workbench_shell::workspace::session_state(store, window).expect("state");
             let id = documents::OpenDocuments::register(
                 store,
                 state.documents(),
-                himark::app::markdown_scratch(),
+                workbench_shell::app::markdown_scratch(),
                 None,
                 "doc".to_owned(),
                 0,
@@ -872,7 +881,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
     assert!(!held(&app).workbench().root.is_vacant());
     assert!(
@@ -889,7 +898,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     );
 
     // Opening a panel hands the window back.
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
     settle(&mut app, &mut narrow);
     assert!(
         !held(&app).workbench().chat_fronted(),
@@ -915,7 +924,7 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
 /// minimize button bring it back.
 #[test]
 fn maximize_hides_the_chat_and_restore_brings_it_back() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
@@ -936,17 +945,17 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -973,7 +982,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         ::workbench::window::Windows::window_ref(app.store(), app.sole_window()).expect("window")
     }
 
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
@@ -992,7 +1001,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
         "\u{2318}I brings the chat back"
     );
 
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
@@ -1000,7 +1009,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
     )));
     settle(&mut app, &mut wide);
     assert!(held(&app).workbench().chat_minimized());
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::RestoreChat
@@ -1017,7 +1026,7 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
 /// down the generic `open_panel` lands there, never in the tree.
 #[test]
 fn any_open_road_lands_the_chat_in_the_slot() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -1072,7 +1081,7 @@ fn any_open_road_lands_the_chat_in_the_slot() {
 
 #[test]
 fn new_session_without_a_host_keeps_the_current_chat() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -1093,17 +1102,17 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/live");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -1149,7 +1158,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             })
     };
     let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
-    assert!(himark::workspace::entity_session(&entity).names_session());
+    assert!(workbench_shell::workspace::entity_session(&entity).names_session());
     assert!(chat_mounted(&app), "the chat panel stands");
 
     // `session.new` creates a REAL session on a host now (the
@@ -1157,14 +1166,14 @@ fn new_session_without_a_host_keeps_the_current_chat() {
     // create on, so the command is a no-op and the current session
     // keeps its chat. The live road is covered end-to-end in
     // frontend-host (a_new_session_is_a_live_chat_from_the_first_frame).
-    let _ = app.perform_command(himark::app::windowed(
+    let _ = app.perform_command(workbench_shell::shell::windowed(
         window,
-        Arc::new(himark::higent::open_session::OpenNewSession { host: None }),
+        Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
     ));
     settle(&mut app, &mut surface);
     let entity = ::workbench::window::Windows::window_ref(app.store(), window).expect("window");
     assert!(
-        himark::workspace::entity_session(&entity).names_session(),
+        workbench_shell::workspace::entity_session(&entity).names_session(),
         "no host: the current session stays"
     );
     assert!(chat_mounted(&app), "no host: the chat panel stays");
@@ -1174,7 +1183,7 @@ fn new_session_without_a_host_keeps_the_current_chat() {
 /// standing, a click rolls it away; gone, a click brings it back.
 #[test]
 fn the_chat_tab_toggles_the_column() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     app.register_toolbar_button(::workbench::toolbar::composer_button());
     app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
@@ -1205,17 +1214,17 @@ fn the_chat_tab_toggles_the_column() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -1287,7 +1296,7 @@ fn the_chat_tab_toggles_the_column() {
 /// hides and the Chat tab brings it over the panels.
 #[test]
 fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     app.register_toolbar_button(::workbench::toolbar::composer_button());
     app.register_toolbar_button(::workbench::toolbar::ToolbarButton {
@@ -1318,17 +1327,17 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = ahp_wire::SessionId {
                 host: ahp_wire::client::HostId::LOCAL,
                 session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
             };
-            himark::app::switch_session(store, window, target, fx)
+            workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,

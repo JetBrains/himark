@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
@@ -85,7 +94,7 @@ fn palette_commands_follow_the_modal_focus() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -93,7 +102,7 @@ fn palette_commands_follow_the_modal_focus() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let ids = |app: &Himark| -> Vec<&'static str> {
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .iter()
             .map(|command| command.id)
             .collect()
@@ -184,7 +193,7 @@ fn palette_commands_follow_the_modal_focus() {
     );
 
     let close =
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .remove(0)
             .command;
     app.perform_batch(vec![close]);
@@ -201,7 +210,7 @@ fn palette_commands_follow_the_modal_focus() {
             request: Default::default(),
         })
     ));
-    app.perform_batch(vec![himark::app::content(
+    app.perform_batch(vec![workbench_shell::shell::content(
         app.sole_window(),
         ::workbench::window::WindowCommand::Modal(imba::dyn_view::DynCommand::new(
             TestModalCommand::Show,
@@ -216,7 +225,7 @@ fn palette_commands_follow_the_modal_focus() {
 
     assert_eq!(app.pane_count(), 1);
     let split =
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .into_iter()
             .find(|command| command.id == "workbench.split-pane")
             .expect("the split action")
@@ -253,7 +262,7 @@ fn registered_commands_present_and_dispatch_by_id() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -263,7 +272,7 @@ fn registered_commands_present_and_dispatch_by_id() {
 
     app.register_command(std::sync::Arc::new(Probe));
     let ids: Vec<&str> =
-        himark::commands::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
             .iter()
             .map(|command| command.id)
             .collect();
@@ -343,7 +352,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     use himark::app::Himark;
     use imba::event::{Key, Modifiers};
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -356,10 +365,10 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         ..Default::default()
     };
 
-    assert!(himark::test_driver::type_text(&mut app, "typed"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "typed"));
     assert_eq!(app.focused_document_text().as_deref(), Some("typed"));
     assert!(
-        himark::test_driver::key(&mut app, Key::Char('z'), cmd),
+        workbench_shell::test_driver::key(&mut app, Key::Char('z'), cmd),
         "the chord consumed"
     );
     assert_eq!(
@@ -373,7 +382,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         ..Default::default()
     };
 
-    assert!(himark::test_driver::key(&mut app, Key::Char('Z'), shifted));
+    assert!(workbench_shell::test_driver::key(&mut app, Key::Char('Z'), shifted));
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some("typed"),
@@ -385,7 +394,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         himark::keymap::Keymap::from_json(r#"{ "cmd-9": "no.such-command" }"#).expect("parses"),
     );
     assert!(
-        !himark::test_driver::key(&mut app, Key::Char('9'), cmd),
+        !workbench_shell::test_driver::key(&mut app, Key::Char('9'), cmd),
         "an unoffered id leaves the key unconsumed"
     );
 
@@ -393,7 +402,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         &mut app.store_mut(),
         himark::keymap::Keymap::from_json(r#"{ "backspace": "editor.undo" }"#).expect("parses"),
     );
-    assert!(himark::test_driver::backspace(&mut app));
+    assert!(workbench_shell::test_driver::backspace(&mut app));
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some(""),
@@ -401,9 +410,9 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     );
 
     himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::embedded());
-    assert!(himark::test_driver::key(&mut app, Key::Char('Z'), shifted));
+    assert!(workbench_shell::test_driver::key(&mut app, Key::Char('Z'), shifted));
     assert_eq!(app.focused_document_text().as_deref(), Some("typed"));
-    assert!(himark::test_driver::backspace(&mut app));
+    assert!(workbench_shell::test_driver::backspace(&mut app));
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some("type"),

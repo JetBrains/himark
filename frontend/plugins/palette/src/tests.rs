@@ -1,6 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 struct DummyCommand;
@@ -21,7 +30,7 @@ impl himark::commands::HimarkCommand for DummyCommand {
     }
 }
 fn dummy_command() -> AppCommand {
-    himark::app::windowed(
+    workbench_shell::app::windowed(
         workbench::window::WindowId::from_raw(0),
         std::sync::Arc::new(DummyCommand),
     )
@@ -107,11 +116,11 @@ fn escape_asks_to_close() {
 #[test]
 #[ignore]
 fn dump_palette_screenshot() {
-    use himark::app_ext::AppExt;
+    use workbench_shell::app_ext::AppExt;
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = himark::app::Himark::new(himark::app::AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePalette));
     let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
@@ -119,7 +128,7 @@ fn dump_palette_screenshot() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(
+    assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "the document feed is an ordered lane — the servers hear edits in mirror order"
     ));
@@ -128,13 +137,13 @@ fn dump_palette_screenshot() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "sel"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "sel"));
     for tick in 0..30 {
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
-        let busy = himark::test_driver::animate(
+        let busy = workbench_shell::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
         );

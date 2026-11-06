@@ -1,6 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use std::sync::Arc;
 
 use himark::app::AppFonts;
@@ -99,20 +108,20 @@ fn dock_seeded_comments(app: &mut Himark) -> imba::store::Id<::comments::Comment
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let mut entity =
                 ::workbench::window::Windows::window(store, window).expect("the window entity");
             let panel = ::comments::panel::CommentsView::open(store, ui, self.0);
             fx.scope(
-                move |command| himark::shell::content(window, command),
+                move |command| workbench_shell::shell::content(window, command),
                 |fx| entity.show_dock(store, Box::new(panel), "comments.view", fx),
             );
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(ShowComments(comments)),
     )));
@@ -121,7 +130,7 @@ fn dock_seeded_comments(app: &mut Himark) -> imba::store::Id<::comments::Comment
 
 #[test]
 fn the_comments_dock_lists_files_and_lines() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1440, 900)).expect("surface");
     app.draw_window(
@@ -161,7 +170,7 @@ fn dump_comments_dock_screenshot() {
     let Ok(dir) = std::env::var("HIMARK_SHOT") else {
         return;
     };
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");

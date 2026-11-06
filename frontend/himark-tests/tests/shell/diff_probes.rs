@@ -6,11 +6,20 @@
 
 #![allow(unused_imports, dead_code)]
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::app_ext::AppExt;
-use himark::diff_pane::*;
+use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
@@ -78,7 +87,7 @@ fn idle_diff_goes_quiet() {
 
 fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -177,7 +186,7 @@ fn probe(repetitions: usize) {
 
 fn probe_pair(left: String, right: String) {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -228,7 +237,7 @@ fn probe_pair(left: String, right: String) {
     );
     eprintln!("[probe] first frame: {:?}", started.elapsed());
 
-    himark::test_driver::click(&mut app, 900.0, 400.0, 1200.0, 900.0);
+    workbench_shell::test_driver::click(&mut app, 900.0, 400.0, 1200.0, 900.0);
     let _ = app.draw_window_sized(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -237,7 +246,7 @@ fn probe_pair(left: String, right: String) {
     let mut keystrokes = Vec::new();
     for _ in 0..12 {
         let started = Instant::now();
-        let _ = himark::test_driver::type_text(&mut app, "x");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         keystrokes.push(started.elapsed());
         let _ = app.draw_window_sized(
             app.sole_window(),
@@ -257,7 +266,7 @@ fn probe_pair(left: String, right: String) {
     }
     let started = Instant::now();
     for _ in 0..40 {
-        let _ = himark::test_driver::scroll(&mut app, 400.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 400.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -316,7 +325,7 @@ fn probe_pair(left: String, right: String) {
     let has_table = right.contains("| Persistent store |");
     if has_table {
         for _ in 0..80 {
-            let _ = himark::test_driver::scroll(&mut app, -2000.0);
+            let _ = workbench_shell::test_driver::scroll(&mut app, -2000.0);
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -389,13 +398,13 @@ fn probe_pair(left: String, right: String) {
                 .unwrap_or(0.0)
         };
 
-        let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, -1_000_000.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
             size,
         );
-        let _ = himark::test_driver::scroll(&mut app, table_y - 300.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, table_y - 300.0);
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -409,7 +418,7 @@ fn probe_pair(left: String, right: String) {
                 if !(0.0..890.0).contains(&y) {
                     continue;
                 }
-                himark::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
+                workbench_shell::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
                 let _ = app.draw_window_sized(
                     app.sole_window(),
                     &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -427,7 +436,7 @@ fn probe_pair(left: String, right: String) {
             viewport_start(&app)
         );
         for _ in 0..8 {
-            let _ = himark::test_driver::type_text(&mut app, "grow the row substantially ");
+            let _ = workbench_shell::test_driver::type_text(&mut app, "grow the row substantially ");
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -436,7 +445,7 @@ fn probe_pair(left: String, right: String) {
             super::diffs::assert_pair_aligned(&app);
         }
         for _ in 0..2 {
-            let _ = himark::test_driver::type_text(&mut app, "\n");
+            let _ = workbench_shell::test_driver::type_text(&mut app, "\n");
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -460,7 +469,7 @@ fn probe_pair(left: String, right: String) {
     super::diffs::assert_pair_aligned(&app);
 
     for _ in 0..6 {
-        let _ = himark::test_driver::type_text(&mut app, "z");
+        let _ = workbench_shell::test_driver::type_text(&mut app, "z");
         for _ in 0..4 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
@@ -507,7 +516,7 @@ fn diff_panel_survives_a_medium_monster() {
 #[ignore = "profiling soak; run with --ignored --nocapture and sample it"]
 fn scroll_soak_for_profiling() {
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     app.register_command(Arc::new(OpenDiff));
     himarkdown::register_handlers(&mut app);
@@ -550,7 +559,7 @@ fn scroll_soak_for_profiling() {
     eprintln!("[soak] converged; scrolling — sample now");
     let mut paints = Vec::new();
     for frame in 0..3000 {
-        let _ = himark::test_driver::scroll(&mut app, 60.0);
+        let _ = workbench_shell::test_driver::scroll(&mut app, 60.0);
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -593,7 +602,7 @@ fn canvas_landing_breakdown_probe() {
         .unwrap_or(8);
     let (left, right) = monster_pair(repetitions);
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
@@ -606,7 +615,7 @@ fn canvas_landing_breakdown_probe() {
     let theme = editor::theme::embedded();
     eprintln!("[landing] sides: {} / {} bytes", left.len(), right.len());
 
-    let documents = himark::workspace::session_state(app.store(), app.sole_window())
+    let documents = workbench_shell::workspace::session_state(app.store(), app.sole_window())
         .expect("the window's session")
         .documents();
     let location = |name: &str| {

@@ -19,6 +19,7 @@ ahp-chat = { path = "../ahp-chat" }
 rquickjs = { version = "0.14", features = ["bindgen"] }
 text = { path = "../text" }
 himark = { path = "../himark", optional = true }
+workbench-shell = { path = "../workbench-shell" }
 editor = { path = "../editor" }
 imba = { path = "../imba", optional = true }
 operation = { path = "../operation", optional = true }

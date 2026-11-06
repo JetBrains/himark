@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 
 #[test]
@@ -8,7 +17,7 @@ fn two_windows_edit_independently() {
     use himark::app::Himark;
     use imba::event::Event;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let first = app.add_window();
     let second = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
@@ -25,7 +34,7 @@ fn two_windows_edit_independently() {
 
     let focused_text = |app: &Himark, window: ::workbench::window::WindowId| -> Option<String> {
         let store = &app.window_store(window);
-        let session = himark::workspace::window_session(store, window)?;
+        let session = workbench_shell::workspace::window_session(store, window)?;
         let documents = ahp_session::session::state::Hosts::state(store, &session)?.documents();
         let document = documents::OpenDocuments::document_ref(
             store,
@@ -77,7 +86,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -122,7 +131,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
     let _ = app.perform_registered(app.sole_window(), "workbench.close-pane");
     assert_eq!(app.pane_count(), 1, "the last pane refuses to close");
     assert!(
-        himark::test_driver::type_text(&mut app, "x"),
+        workbench_shell::test_driver::type_text(&mut app, "x"),
         "the surviving pane still types"
     );
 }
@@ -170,7 +179,7 @@ fn open_documents_list_recently_opened_first() {
 fn navigation_back_and_forward_walk_pane_history() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app::OpenedDocument;
+    use himark::opening::OpenedDocument;
     fn located(name: &str) -> editor::location::ResourceLocation {
         editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
@@ -188,7 +197,7 @@ fn navigation_back_and_forward_walk_pane_history() {
     }
 
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -199,7 +208,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 
     let open = |app: &mut Himark, name: &str, text: &str| {
         let document = plain_document(text);
-        assert!(app.perform_command(himark::app::opened(
+        assert!(app.perform_command(workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),
@@ -215,12 +224,12 @@ fn navigation_back_and_forward_walk_pane_history() {
     open(&mut app, "a.md", "alpha\n");
     assert_eq!(app.focused_document_text().as_deref(), Some("alpha\n"));
 
-    assert!(himark::test_driver::type_text(&mut app, "x"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     assert_eq!(app.focused_document_text().as_deref(), Some("xalpha\n"));
 
     open(&mut app, "b.md", "beta\n");
     assert_eq!(app.focused_document_text().as_deref(), Some("beta\n"));
-    assert!(himark::test_driver::type_text(&mut app, "y"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "y"));
     assert_eq!(
         editor_count(&app, &located("a.md")),
         0,
@@ -257,7 +266,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             .caret_byte(editor)
     };
     let before_jump = caret(&app);
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -288,7 +297,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 fn close_widget_walks_the_pane_history() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app::OpenedDocument;
+    use himark::opening::OpenedDocument;
     fn located(name: &str) -> editor::location::ResourceLocation {
         editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
@@ -297,7 +306,7 @@ fn close_widget_walks_the_pane_history() {
         )
     }
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -306,7 +315,7 @@ fn close_widget_walks_the_pane_history() {
     );
     let window = app.sole_window();
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(himark::app::opened(
+        assert!(app.perform_command(workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),
@@ -321,7 +330,7 @@ fn close_widget_walks_the_pane_history() {
     };
 
     open(&mut app, "a.md", "alpha\n");
-    assert!(himark::test_driver::type_text(&mut app, "x"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     open(&mut app, "b.md", "beta\n");
     assert_eq!(
         {
@@ -389,7 +398,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     use himark::app::Himark;
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -590,7 +599,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // And a fresh edit AFTER the retrack stripes again — through the
     // real typing road.
-    assert!(himark::test_driver::type_text(&mut app, "typed"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "typed"));
     settle(&mut app);
     assert!(
         !stripes(&app).is_empty(),

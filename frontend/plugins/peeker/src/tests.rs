@@ -1,14 +1,23 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use editor::test_document::plain_document;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
+use workbench_shell::app_ext::AppExt;
 
 fn boot() -> Himark {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     app
@@ -30,9 +39,9 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         )
     };
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(himark::app::opened(
+        assert!(app.perform_command(workbench_shell::app::opened(
             app.sole_window(),
-            himark::app::OpenedDocument {
+            workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
@@ -45,7 +54,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     };
 
     open(&mut app, "beta", "beta body");
-    assert!(himark::test_driver::type_text(&mut app, "x"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     open(&mut app, "alpha", "alpha body");
 
     assert!(
@@ -66,11 +75,11 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         "the selection previews"
     );
 
-    assert!(himark::test_driver::type_text(&mut app, "beta"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "beta"));
     let listed = labels(&app).expect("still open");
     assert_eq!(listed, vec!["beta"], "the filter narrowed the list");
 
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         Default::default()
@@ -94,7 +103,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     // The sigil lanes: '#' swaps the master to the hits tree and the
     // sheet keeps drawing (the caption and counts read the feed).
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    assert!(himark::test_driver::type_text(&mut app, "#lay"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "#lay"));
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -103,7 +112,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         labels(&app).is_some(),
         "the peeker stands in the symbol lane"
     );
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Escape,
         Default::default()
@@ -254,9 +263,9 @@ fn dump_jump_screenshot() {
                 .map(|segment| segment.to_string())
                 .collect::<Vec<_>>(),
         );
-        assert!(app.perform_command(himark::app::opened(
+        assert!(app.perform_command(workbench_shell::app::opened(
             app.sole_window(),
-            himark::app::OpenedDocument {
+            workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: path.last().unwrap().to_string(),
                 document: plain_document(body),
@@ -272,13 +281,13 @@ fn dump_jump_screenshot() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "ar"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "ar"));
     for tick in 0..30 {
         app.draw_window(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),
         );
-        let busy = himark::test_driver::animate(
+        let busy = workbench_shell::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
         );

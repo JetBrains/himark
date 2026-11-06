@@ -62,7 +62,7 @@ impl Stats {
         self.latency_event_started_at = Some(event_started_at);
     }
 
-    pub(crate) fn begin_frame(&mut self) {
+    pub fn begin_frame(&mut self) {
         self.fps_frames += 1;
         let elapsed = self.fps_window_started.elapsed();
         if elapsed >= FPS_WINDOW {
@@ -72,7 +72,7 @@ impl Stats {
         }
     }
 
-    pub(crate) fn record_reconcile(&mut self, reconciled: bool) {
+    pub fn record_reconcile(&mut self, reconciled: bool) {
         self.reconcile_streak = if reconciled {
             self.reconcile_streak + 1
         } else {
@@ -86,7 +86,7 @@ impl Stats {
         }
     }
 
-    pub(crate) fn record_render_sample(&mut self, duration: Duration) {
+    pub fn record_render_sample(&mut self, duration: Duration) {
         self.render_samples[self.render_sample_index] =
             duration.as_nanos().min(u64::MAX as u128) as u64;
         self.render_sample_index = (self.render_sample_index + 1) % RENDER_WINDOW;
@@ -95,7 +95,7 @@ impl Stats {
     /// The HUD overlay, painted straight onto the frame AFTER the
     /// widget tree: its numbers change every frame without a command,
     /// so it must never live inside a store-derived (cacheable) tree.
-    pub(crate) fn paint(
+    pub fn paint(
         &self,
         canvas: &Canvas<'_>,
         rect: Rect,

@@ -28,7 +28,7 @@ fn the_parse_never_renders_a_diagram() {
         &theme(),
     );
 
-    let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+    let outcome = editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(theme()))
         .reparse(
             editor::reparse::ReparseWork::capture(&document, registry.clone()).expect("parse"),
         );

@@ -49,7 +49,7 @@ pub(crate) mod helpers {
 
     impl RunReparse for editor::reparse::ReparseWork {
         fn run_reparse(self) -> editor::reparse::ReparseOutcome {
-            editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+            editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(theme()))
                 .reparse(self)
         }
     }

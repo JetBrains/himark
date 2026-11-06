@@ -1,9 +1,18 @@
 use super::*;
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use ahp_locations::driver::DisposeFeed;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app::OpenedDocument;
+use himark::opening::OpenedDocument;
 use locations::FeedId;
 use locations::FoundLocation;
 use locations::LocationLists;
@@ -20,7 +29,7 @@ fn located(name: &str) -> editor::location::ResourceLocation {
 
 fn state_lists(app: &Himark) -> imba::store::Id<LocationLists> {
     let window = app.sole_window();
-    himark::workspace::entity_state(
+    workbench_shell::workspace::entity_state(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
     )
     .lists()
@@ -28,7 +37,7 @@ fn state_lists(app: &Himark) -> imba::store::Id<LocationLists> {
 
 fn state_wire(app: &Himark) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
     let window = app.sole_window();
-    himark::workspace::entity_state(
+    workbench_shell::workspace::entity_state(
         ::workbench::window::Windows::window_ref(app.store(), window).expect("the window entity"),
     )
     .locations_wire()
@@ -67,9 +76,9 @@ fn seeded_feed(app: &mut Himark, name: &str) -> (imba::store::Id<LocationLists>,
 
 #[test]
 fn a_search_pick_washes_the_opened_editor() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -102,7 +111,7 @@ fn a_search_pick_washes_the_opened_editor() {
         ),)))
     );
     // Requests drain on the next content tick, as in the live app.
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));
@@ -134,14 +143,14 @@ fn a_search_pick_washes_the_opened_editor() {
 
 #[test]
 fn a_pick_before_the_open_washes_at_registration() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
     let (lists, feed) = seeded_feed(&mut app, "late.md");
 
     // The async-open path: the pick notes the pending wash; the
     // document hook converts it when registration lands.
     LocationLists::note_wash(&mut app.store_mut(), lists, located("late.md"), feed);
-    assert!(app.perform_command(himark::app::opened(
+    assert!(app.perform_command(workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -153,7 +162,7 @@ fn a_pick_before_the_open_washes_at_registration() {
             focus: false,
         },
     )));
-    assert!(app.perform_command(himark::app::content(
+    assert!(app.perform_command(workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));

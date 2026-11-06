@@ -1,11 +1,20 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use ::editor::test_document::plain_document;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
+use workbench_shell::app_ext::AppExt;
 
 #[derive(Clone)]
 struct StubWidget(&'static str);
@@ -72,7 +81,7 @@ fn seed_terminal_row(app: &mut Himark, title: &str) -> terminals::TerminalId {
 
 #[test]
 fn displaced_handles_drop_and_their_rows_survive() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
@@ -103,7 +112,7 @@ fn displaced_handles_drop_and_their_rows_survive() {
 
 #[test]
 fn the_peeker_lists_previews_and_selects_widgets() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
@@ -130,7 +139,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         listed.contains(&"beta widget".to_owned()) && listed.contains(&"alpha results".to_owned()),
         "held widgets and state rows list beside documents: {listed:?}"
     );
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Escape,
         Default::default()
@@ -156,7 +165,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
-    assert!(himark::test_driver::type_text(&mut app, "alpha results"));
+    assert!(workbench_shell::test_driver::type_text(&mut app, "alpha results"));
     app.draw_window(
         app.sole_window(),
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -168,7 +177,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         Some("alpha results"),
         "the preview MOUNTED the minted handle"
     );
-    assert!(himark::test_driver::key(
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Enter,
         Default::default()

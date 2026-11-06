@@ -148,11 +148,11 @@ impl himark::commands::HimarkCommand for ShowDocuments {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let ui = ui;
-        himark::workspace::open_locations(store, ui, window, &self.locations, fx);
+        workbench_shell::workspace::open_locations(store, ui, window, &self.locations, fx);
     }
 }
 
@@ -418,7 +418,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             .next()
             .and_then(|window| {
                 let entity = workbench::window::Windows::window_ref(store, window)?;
-                let session = himark::workspace::entity_session(&entity);
+                let session = workbench_shell::workspace::entity_session(&entity);
                 if !session.names_session() {
                     return None;
                 }

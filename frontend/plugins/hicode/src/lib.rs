@@ -197,11 +197,11 @@ impl HimarkCommand for ApplyNavigation {
                 focus: true,
             };
             fx.scope(himark::app::AppCommand::Verb, |fx| {
-                himark::shell::navigate_origin(store, ui, origin, place, fx)
+                workbench_shell::shell::navigate_origin(store, ui, origin, place, fx)
             });
             return;
         }
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         navigate(store, ui, window, target, &self.outcome.built, fx);
@@ -217,7 +217,7 @@ fn navigate(
     fx: &mut AppFx<'_>,
 ) {
     let Some(documents) =
-        himark::workspace::session_state(store, window).map(|state| state.documents())
+        workbench_shell::workspace::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };

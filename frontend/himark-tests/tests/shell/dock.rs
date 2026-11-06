@@ -1,4 +1,13 @@
 #![allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::app::WorkbenchShell as _;
+#[allow(unused_imports)]
+use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use himark::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use workbench_shell::test_support::TestSupport as _;
+
 use super::*;
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +25,7 @@ use imba::thunk_ext::ThunkExt as _;
 
 use imba::{ui::UiCtx, View};
 
-use himark::test_driver;
+use workbench_shell::test_driver;
 
 use himark::app::AppCommand;
 
@@ -149,14 +158,14 @@ impl himark::commands::HimarkCommand for ShowStubDock {
         bound: &imba::focus::Bindings,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
             return;
         };
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         fx.scope(
-            move |command| himark::app::content(window, command),
+            move |command| workbench_shell::shell::content(window, command),
             |fx| entity.show_dock(store, Box::new(DockStub::new(self.label)), self.owner, fx),
         );
         ::workbench::window::Windows::put(store, window, entity);
@@ -165,7 +174,7 @@ impl himark::commands::HimarkCommand for ShowStubDock {
 
 #[test]
 fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     app.draw_window(
@@ -201,7 +210,7 @@ fn the_dock_opens_as_a_split_and_narrows_the_workbench() {
 
 #[test]
 fn escape_closes_the_dock_after_the_slide_settles() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -227,7 +236,7 @@ fn escape_closes_the_dock_after_the_slide_settles() {
 
 #[test]
 fn the_dock_resizes_by_dragging_its_edge() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -272,7 +281,7 @@ fn the_dock_resizes_by_dragging_its_edge() {
 
 #[test]
 fn an_editor_drag_still_selects_while_the_dock_is_up() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     app.draw_window(
@@ -318,7 +327,7 @@ fn an_editor_drag_still_selects_while_the_dock_is_up() {
 
 #[test]
 fn dock_picks_keep_the_panel_up() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -356,7 +365,7 @@ fn dock_header_buttons_dispatch_their_commands() {
             self.hits.fetch_add(1, Ordering::Relaxed);
         }
     }
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let hits = Arc::new(AtomicUsize::new(0));
     {
@@ -425,7 +434,7 @@ fn dock_header_buttons_dispatch_their_commands() {
 
 #[test]
 fn the_dock_swaps_content_in_place() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -466,7 +475,7 @@ fn the_dock_swaps_content_in_place() {
 
 #[test]
 fn the_dock_and_the_floating_drawer_coexist() {
-    let mut app = Himark::new(AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -496,7 +505,7 @@ fn the_dock_and_the_floating_drawer_coexist() {
 #[test]
 fn the_dock_and_the_families_ride_their_session_across_switches() {
     let fonts = himark::app::AppFonts::embedded();
-    let mut app = Himark::new(fonts);
+    let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     app.draw_window(
@@ -544,7 +553,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
             bound: &imba::focus::Bindings,
             fx: &mut himark::app::AppFx<'_>,
         ) {
-            let Some(window) = himark::commands::bound_window(self.id(), bound) else {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
                 return;
             };
             let target = match self.0.lock().unwrap().clone() {
@@ -552,12 +561,12 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
                 None => ahp_wire::SessionId::mint_scratch(store),
             };
             *self.0.lock().unwrap() = Some(target.clone());
-            himark::app::switch_session(store, window, target, fx);
+            workbench_shell::app::switch_session(store, window, target, fx);
         }
     }
-    let first = himark::workspace::entity_session(&entity(&app));
+    let first = workbench_shell::workspace::entity_session(&entity(&app));
     let minted = std::sync::Arc::new(Mutex::new(None));
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(Switch(std::sync::Arc::clone(&minted))),
     )));
@@ -579,7 +588,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 
     let back = std::sync::Arc::new(Mutex::new(Some(first)));
-    assert!(app.perform_command(himark::app::windowed(window, Arc::new(Switch(back)),)));
+    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(Switch(back)),)));
     let restored = entity(&app);
     assert!(restored.dock_panel().is_some(), "the dock rode its session");
     assert!(
@@ -611,7 +620,7 @@ pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
 
 pub(super) fn show_dock(app: &mut Himark, label: &'static str, owner: &'static str) {
     let window = app.sole_window();
-    assert!(app.perform_command(himark::app::windowed(
+    assert!(app.perform_command(workbench_shell::shell::windowed(
         window,
         Arc::new(ShowStubDock { label, owner }),
     )));

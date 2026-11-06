@@ -9,13 +9,14 @@
 
 use std::sync::Arc;
 
-use himark::app::AppFonts;
+pub use himark::app::AppFonts;
 
 /// The engine, its C surface and every symbol the header speaks —
 /// re-exported whole so the staticlib carries them and the tests
 /// keep their vocabulary.
 pub use himark::app_ext::AppExt;
-pub use himark::ffi::*;
+pub mod ffi;
+pub use ffi::*;
 
 #[cfg(unix)]
 mod tailnet_hosts;
@@ -94,11 +95,11 @@ fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
         Box::new(palette::PalettePlugin),
         Box::new(peeker::PeekerPlugin),
         Box::new(himark::higent::SessionsPlugin),
-        Box::new(himark::diff_pane::DiffPanePlugin),
+        Box::new(workbench_shell::diff_pane::DiffPanePlugin),
         Box::new(demo::DemoPlugin),
         Box::new(himark::hiahp::AhpPlugin),
         Box::new(himark::hicomments::CommentsPlugin),
-        Box::new(himark::higent::AgentsPlugin),
+        Box::new(workbench_shell::higent::AgentsPlugin),
         Box::new(himark::hichanges::ChangesPlugin),
         Box::new(himark::save::SavePlugin),
         Box::new(himark::watch::WatchPlugin),
@@ -220,14 +221,15 @@ pub fn production_engine_at(
     engine
 }
 
-#[cfg(test)]
-pub(crate) fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
+/// TEST SUPPORT: the integration tests' connector.
+#[doc(hidden)]
+pub fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
     Arc::new(desktop::connector::DesktopConnector)
 }
 
 /// The TEST boot: the same plugins, no outward dialing.
-#[cfg(test)]
-pub(crate) fn with_fonts(fonts: AppFonts) -> HimarkEngine {
+#[doc(hidden)]
+pub fn with_fonts(fonts: AppFonts) -> HimarkEngine {
     HimarkEngine::with_plugins(
         fonts,
         &plugins(),
@@ -259,13 +261,3 @@ pub unsafe extern "C" fn himark_create(
     Box::into_raw(Box::new(production_engine_at(Some(callbacks), data_dir)))
 }
 
-#[cfg(test)]
-mod chat_flow_tests;
-#[cfg(test)]
-mod diagnostics_flow_tests;
-#[cfg(test)]
-mod findroute_tests;
-#[cfg(test)]
-mod reconnect_tests;
-#[cfg(test)]
-mod tests;

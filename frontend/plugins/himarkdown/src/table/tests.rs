@@ -157,7 +157,7 @@ fn resize_relayout_round_trips_through_the_effect() {
         TableCommand::Relayout { width: 280.0 },
         &mut batch.effects(),
     );
-    let launched = himark::test_support::surviving_launches(batch);
+    let launched = workbench_shell::test_support::surviving_launches(batch);
     assert_eq!(launched.len(), 1, "one relay launched");
     assert!(launched[0].is::<TableRelayoutEffect>());
     let mut repeat = imba::effect::Batch::new();
@@ -169,7 +169,7 @@ fn resize_relayout_round_trips_through_the_effect() {
         &mut repeat.effects(),
     );
     assert!(
-        himark::test_support::surviving_launches(repeat).is_empty(),
+        workbench_shell::test_support::surviving_launches(repeat).is_empty(),
         "the same wanted width relaunches nothing"
     );
 

@@ -4,9 +4,16 @@
 //! The PANE's tests — the keymap, the grid reconcile, the dismantle
 //! road. The emulator's own tests live with the `terminals` crate.
 
+use himark::app::Himark;
+use workbench_shell::app::{workbench_app, WorkbenchShell as _};
+use workbench_shell::test_support::TestSupport as _;
+#[allow(unused_imports)]
+use workbench_shell::test_driver;
+use workbench_shell::app_ext::AppExt as _;
+
 use std::sync::{Arc, Mutex};
 
-use crate::app_ext::AppExt;
+use himark::app_ext::AppExt;
 use ::terminals::pane::*;
 use ::terminals::*;
 use hikit::panel::PanelView;
@@ -58,7 +65,7 @@ fn dismantle_hangs_up_exactly_once() {
 
 #[test]
 fn the_panel_reconciles_its_grid_and_routes_focused_input() {
-    let mut app = crate::app::Himark::new(crate::app::AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     let _ = app.add_window();
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
@@ -101,8 +108,8 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
         "the pane's grid differs from the default"
     );
 
-    assert!(crate::test_driver::type_text(&mut app, "ls"));
-    assert!(crate::test_driver::key(
+    assert!(workbench_shell::test_driver::type_text(&mut app, "ls"));
+    assert!(workbench_shell::test_driver::key(
         &mut app,
         imba::event::Key::Char('c'),
         Modifiers {
@@ -122,7 +129,7 @@ fn dump_terminal_screenshot() {
     };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).expect("shot dir");
-    let mut app = crate::app::Himark::new(crate::app::AppFonts::embedded());
+    let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     let _ = app.add_window();
     let session = Session::new(Box::new(Recorder::default()));
     assert!(app.new_scratch(app.sole_window()));

@@ -11,6 +11,7 @@ hikit = { path = "../../hikit" }
 ahp-session = { path = "../../ahp-session" }
 editor = { path = "../../editor" }
 himark = { path = "../../himark" }
+workbench-shell = { path = "../../workbench-shell" }
 hirust = { path = "../lang/hirust" }
 himarkdown = { path = "../himarkdown" }
 imba = { path = "../../imba" }
@@ -21,5 +22,5 @@ operation = { path = "../../operation" }
 [dev-dependencies]
 gfx-skia = { path = "../../gfx-skia" }
 himark = { path = "../../himark", features = ["test-support"] }
-peeker = { path = "../peeker" }
+peeker = { path = "../peeker", features = ["test-support"] }
 

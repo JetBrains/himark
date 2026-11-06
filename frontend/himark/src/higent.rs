@@ -1,20 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The agents feature's WINDOW half — what cannot leave the shell:
-//! the drawer view, the open-session and new-chat gestures (they
-//! switch and fill windows), the folder-grant picker, and the roads
-//! the domain crates ask through. The catalog, the channel mirror,
-//! the subscriptions and the sweeps live in `ahp-session`; the chat
-//! itself in `ahp-chat`.
+//! The agents feature's ENGINE half: the headless session roads
+//! (`open_session`). The windowed half — the drawer, its toolbar
+//! button, the new-chat gesture — lives in the workbench shell.
 
-pub(crate) mod chat_roads;
-pub mod drawer;
 pub mod flows;
 pub mod folder_grant;
-pub(crate) mod folder_picker;
-pub mod new_chat;
+pub mod folder_picker;
 pub mod open_session;
+
+use std::sync::Arc;
 
 /// The SESSIONS browser as a plugin: hosts, their folders, their
 /// sessions and the speed search over them — the engine's drawer,
@@ -32,19 +28,19 @@ impl crate::plugin::Plugin for SessionsPlugin {
             let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
                 open_session: Arc::new(move |_store| Some(showing.clone())),
                 open_row: Arc::new(move |server, session| {
-                    imba::command::Verb::once(open_session::ShowSession {
+                    imba::command::Verb::once(crate::higent::open_session::ShowSession {
                         origin: id,
                         server,
                         session,
                     })
                 }),
                 new_session: Arc::new(move |_store, server| {
-                    imba::command::Verb::once(open_session::CreateHeadless { host: Some(server) })
+                    imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host: Some(server) })
                 }),
                 add_host: Arc::new(move |url| {
-                    crate::app::shell_verb(crate::shell::windowed(
-                        ::workbench::window::WindowId::from_raw(id.raw()),
-                        Arc::new(drawer::AddHost { url }),
+                    crate::app::shell_verb(crate::perform::AppCommand::AtOrigin(
+                        id,
+                        Arc::new(crate::higent::flows::AddHost { url }),
                     ))
                 }),
             });
@@ -55,15 +51,3 @@ impl crate::plugin::Plugin for SessionsPlugin {
     }
 }
 
-/// The agents feature as a plugin: the drawer toggle and its
-/// toolbar button, the new-chat gesture.
-pub struct AgentsPlugin;
-
-impl crate::plugin::Plugin for AgentsPlugin {
-    fn install(&self, app: &mut crate::app::Himark, _cx: &crate::plugin::PluginContext) {
-        use crate::app_ext::AppExt;
-        app.register_command(std::sync::Arc::new(drawer::ToggleAgentsView));
-        app.register_command(std::sync::Arc::new(new_chat::NewChat));
-        app.register_toolbar_button(drawer::toolbar_button());
-    }
-}

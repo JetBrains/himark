@@ -26,7 +26,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &theme(),
     );
 
-    let workshop = himark::test_support::test_workshop(theme());
+    let workshop = workbench_shell::test_support::test_workshop(theme());
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         900.0,
@@ -49,7 +49,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     let mut store = imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
 
-    let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+    let outcome = editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(theme()))
         .reparse(
             editor::reparse::ReparseWork::capture(&view.document, registry.clone()).expect("parse"),
         );
@@ -62,16 +62,16 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     );
 
     let mut rounds = 0;
-    let mut pending = himark::test_support::surviving_launches(std::mem::replace(
+    let mut pending = workbench_shell::test_support::surviving_launches(std::mem::replace(
         &mut batch,
         imba::effect::Batch::new(),
     ));
     while let Some(effect) = pending.pop() {
         rounds += 1;
         assert!(rounds < 10_000, "the bounded tail must converge");
-        let command = himark::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
         imba::View::perform(&mut view, &mut store, &ui, command, &mut batch.effects());
-        pending.extend(himark::test_support::surviving_launches(std::mem::replace(
+        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
             &mut batch,
             imba::effect::Batch::new(),
         )));

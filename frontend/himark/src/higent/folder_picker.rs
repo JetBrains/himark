@@ -29,7 +29,7 @@ use imba::{
 
 /// What the picker is opened OVER — the host's browse roots and the
 /// grant to run on the choice.
-pub(crate) struct FolderPick {
+pub struct FolderPick {
     /// The host's filesystem as locations: the home root (the
     /// connect's `defaultDirectory`), or the filesystem root for a
     /// host that offered none.
@@ -64,7 +64,7 @@ fn tree_slot(store: &mut Store, key: &str) -> imba::store::Id<SessionTree> {
 }
 
 #[derive(Clone)]
-pub(crate) enum FolderPickerCommand {
+pub enum FolderPickerCommand {
     Tree(imba::scroll::ScrollCommand<TreeCommand>),
     /// ⌘⏎ — the cursor's directory becomes the session's.
     Choose,
@@ -81,7 +81,7 @@ impl std::fmt::Display for FolderPickerCommand {
     }
 }
 
-pub(crate) struct FolderPicker {
+pub struct FolderPicker {
     /// The Files tab's tree, whole, in its own scroller (the view is
     /// scroller-free by design).
     tree: imba::scroll::ScrollView<SessionTreeView>,
@@ -110,7 +110,7 @@ impl Clone for FolderPicker {
 }
 
 impl FolderPicker {
-    pub(crate) fn open(
+    pub fn open(
         store: &mut Store,
         ui: &UiCtx,
         pick: FolderPick,
@@ -156,7 +156,7 @@ impl FolderPicker {
     }
 
     /// The GLASS face: the mounting host paints the island floor.
-    pub(crate) fn unfloored(mut self) -> Self {
+    pub fn unfloored(mut self) -> Self {
         self.floored = false;
         self
     }
