@@ -16160,3 +16160,7 @@ timestamp,commit,profile,bench,metric,value_ms
 1793997819,0d62a571c,debug,canvas-landing,drain_max_ms,78.9354
 1793997819,0d62a571c,debug,canvas-landing,background_total_ms,18400.0589
 1793997819,0d62a571c,debug,canvas-landing,monster_landed_ms,2452.6663
+1794000942,380ed2c9e,debug,diff-open,open_ms,23.2881
+1794000943,380ed2c9e,debug,diff-typing,p50_ms,1.8820
+1794000947,380ed2c9e,debug,diff-resize,frame_p50_ms,56.3894
+1794000947,380ed2c9e,debug,diff-resize,frame_worst_ms,189.1933

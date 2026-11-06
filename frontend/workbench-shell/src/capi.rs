@@ -12,9 +12,7 @@ use std::ffi::c_char;
 
 use gfx::{Canvas, Point, Size};
 use himark_ffi::str_from;
-use himark_ffi::{
-    map_key, map_mods, HimarkEngine, Pointed, HIMARK_FORM_DESKTOP, HIMARK_FORM_PHONE,
-};
+use himark_ffi::{map_key, map_mods, HimarkEngine, Pointed};
 use imba::event::{Event, MouseButton};
 
 use crate::app::WorkbenchShell as _;
@@ -52,14 +50,11 @@ pub trait WindowEngine {
         event_started_at: f64,
     ) -> bool;
     fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool;
-    fn toolbar_height(&self) -> f32;
     fn mouse_drag(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool;
     fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed;
     fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed;
     fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool;
     fn mouse_left(&mut self, window: u64) -> bool;
-    fn set_chrome_clearance(&mut self, width: f32);
-    fn set_form(&mut self, form: u32) -> bool;
     /// TEST SUPPORT and the gpui demo road — no C door anymore.
     fn open_document(
         &mut self,
@@ -190,11 +185,6 @@ impl WindowEngine for HimarkEngine {
             0.0,
         )
     }
-    fn toolbar_height(&self) -> f32 {
-        editor::env::Themes::of(self.app.store())
-            .part(::hikit::chrome::ToolbarChrome::KEY)
-            .height
-    }
     fn mouse_drag(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
         let size = self.window_size(window);
         self.app.dispatch(
@@ -244,31 +234,6 @@ impl WindowEngine for HimarkEngine {
     fn mouse_left(&mut self, window: u64) -> bool {
         let size = self.window_size(window);
         self.app.dispatch(wid(window), Event::window_left(), size)
-    }
-    fn set_chrome_clearance(&mut self, width: f32) {
-        self.app.set_chrome_clearance(width);
-    }
-    /// The shell's form, set once at boot (`HIMARK_FORM_*`): the
-    /// appearance commands pick the form's theme pair from here on,
-    /// and the standing appearance re-applies in the new pair — through
-    /// the registered command, so the change propagates like any
-    /// theme switch. Answers whether the form was known.
-    fn set_form(&mut self, form: u32) -> bool {
-        let form = match form {
-            HIMARK_FORM_DESKTOP => crate::builtins::Form::Desktop,
-            HIMARK_FORM_PHONE => crate::builtins::Form::Phone,
-            other => {
-                eprintln!("[ffi] form {other} is not one this engine knows — refused");
-                return false;
-            }
-        };
-        if crate::builtins::Form::of(self.app.store()) == form {
-            return true;
-        }
-        self.app
-            .setup(|store| crate::builtins::Form::set(store, form));
-        let dark = crate::builtins::theme_is_dark(self.app.store());
-        self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
     }
     fn open_document(
         &mut self,
@@ -344,28 +309,3 @@ pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> HimarkW
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32 {
-    engine
-        .as_mut()
-        .map_or(0.0, |engine| engine.toolbar_height())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, width: f32) {
-    if let Some(engine) = engine.as_mut() {
-        engine.set_chrome_clearance(width);
-    }
-}
-
-/// Tell the engine what it runs in — once, at boot, before the first
-/// paint. The appearance commands (`theme.dark`, `theme.light`,
-/// `theme.toggle`) pick the form's pair from then on; the standing
-/// appearance re-applies in the new pair at once. Answers false for
-/// an unknown form.
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.set_form(form))
-}

@@ -229,6 +229,26 @@ typedef struct {
     uint64_t raw;
 } HimarkCommands;
 
+/**
+ * Everything the engine needs from its host, taken AT CREATION —
+ * no half-wired engine ever exists, and the effects a boot batch
+ * launches wake the host's executor instead of firing into empty
+ * slots. One `ctx` serves every callback; `on_navigate` may be
+ * null for a shell that claims no places.
+ */
+typedef struct {
+    void *ctx;
+    void (*wake)(void*);
+    void (*effect_wake)(void*);
+    bool (*on_navigate)(void *ctx,
+                        HimarkBridge origin,
+                        HimarkPlace place,
+                        uint32_t kind,
+                        const char *title,
+                        uintptr_t title_len,
+                        bool focus);
+} HimarkEngineCallbacks;
+
 void himark_destroy(HimarkEngine *engine);
 
 void himark_run_pending(HimarkEngine *engine);
@@ -248,6 +268,19 @@ bool himark_text_input_replacing(HimarkEngine *engine,
                                  HimarkRange replacement);
 
 bool himark_animation_tick(HimarkEngine *engine, double now_ms);
+
+/**
+ * Tell the engine what it runs in — once, at boot, before the first
+ * paint. The appearance commands (`theme.dark`, `theme.light`,
+ * `theme.toggle`) pick the form's pair from then on; the standing
+ * appearance re-applies in the new pair at once. Answers false for
+ * an unknown form.
+ */
+bool himark_set_form(HimarkEngine *engine, uint32_t form);
+
+float himark_toolbar_height(HimarkEngine *engine);
+
+void himark_set_chrome_clearance(HimarkEngine *engine, float width);
 
 void himark_set_host(HimarkEngine *engine, HimarkHostCallbacks callbacks);
 
@@ -363,7 +396,7 @@ bool himark_bridge_draw(HimarkEngine *engine,
                         void *canvas,
                         float width,
                         float height,
-                        float scale);
+                        float _scale);
 
 /**
  * display → layout: the SIZED stage, as a handle. 0 refuses an

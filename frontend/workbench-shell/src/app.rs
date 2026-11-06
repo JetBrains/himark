@@ -270,7 +270,6 @@ pub trait WorkbenchShell {
     fn register_navigator<N: hikit::navigation::Navigator>(&mut self, navigator: N);
     fn register_toolbar_button(&mut self, button: ::workbench::toolbar::ToolbarButton);
     fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::panel::RowMinter>);
-    fn set_chrome_clearance(&mut self, width: f32);
     fn dock_owner_for_tests(&self, window: WindowId) -> Option<&'static str>;
     fn dispatch_paint(
         &mut self,
@@ -422,10 +421,6 @@ impl WorkbenchShell for Himark {
 
     fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::panel::RowMinter>) {
         self.setup(|store| ::workbench::rows::RowMinters::register(store, minter));
-    }
-
-    fn set_chrome_clearance(&mut self, width: f32) {
-        self.ui_ctx().set(::workbench::toolbar::ChromeClearance(width));
     }
 
     /// TEST SUPPORT: the fronting dock's owner id, if any.

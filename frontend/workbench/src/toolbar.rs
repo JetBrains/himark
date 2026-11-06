@@ -369,7 +369,4 @@ pub fn composer_button() -> crate::toolbar::ToolbarButton {
     }
 }
 
-/// The host chrome inset the toolbar clears (the macOS traffic
-/// lights) — written by the shell at boot and on fullscreen moves.
-#[derive(Clone, Copy, Default)]
-pub struct ChromeClearance(pub f32);
+pub use hikit::chrome::ChromeClearance;

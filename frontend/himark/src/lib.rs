@@ -7,6 +7,7 @@ pub mod bridge;
 pub mod commands;
 pub mod effects;
 pub mod focus;
+pub mod form;
 pub mod hiahp;
 pub mod hichanges;
 pub mod hicomments;

@@ -86,6 +86,13 @@ impl Default for ToolbarChrome {
     }
 }
 
+/// The host chrome inset the toolbar clears (the macOS traffic
+/// lights) — written by the shell at boot and on fullscreen moves.
+/// A UiCtx env value, not a theme part: the host's geometry, not a
+/// style.
+#[derive(Clone, Copy, Default)]
+pub struct ChromeClearance(pub f32);
+
 impl ChatChrome {
     pub const KEY: Key<ChatChrome> = Key::new("chat");
 }

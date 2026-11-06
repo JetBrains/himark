@@ -526,6 +526,45 @@ impl HimarkEngine {
             .perform_registered_at(himark::bridge::ViewBridgeId::from_raw(bridge), id)
     }
 
+    /// The standing toolbar height, in physical pixels — the shell
+    /// sizes its title-bar accessory from it.
+    pub fn toolbar_height(&self) -> f32 {
+        ::editor::env::Themes::of(self.app.store())
+            .part(::hikit::chrome::ToolbarChrome::KEY)
+            .height
+    }
+
+    /// The host chrome inset the toolbar clears (the macOS traffic
+    /// lights) — at boot and on fullscreen moves.
+    pub fn set_chrome_clearance(&mut self, width: f32) {
+        self.app
+            .ui_ctx()
+            .set(::hikit::chrome::ChromeClearance(width));
+    }
+
+    /// The shell's form, set once at boot (`HIMARK_FORM_*`): the
+    /// appearance commands pick the form's theme pair from here on,
+    /// and the standing appearance re-applies in the new pair — through
+    /// the registered command, so the change propagates like any
+    /// theme switch. Answers whether the form was known.
+    pub fn set_form(&mut self, form: u32) -> bool {
+        let form = match form {
+            HIMARK_FORM_DESKTOP => himark::form::Form::Desktop,
+            HIMARK_FORM_PHONE => himark::form::Form::Phone,
+            other => {
+                eprintln!("[ffi] form {other} is not one this engine knows — refused");
+                return false;
+            }
+        };
+        if himark::form::Form::of(self.app.store()) == form {
+            return true;
+        }
+        self.app
+            .setup(|store| himark::form::Form::set(store, form));
+        let dark = himark::form::theme_is_dark(self.app.store());
+        self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
+    }
+
     pub fn install_agent_host_filesystem(&mut self, capabilities: AgentHostFilesystemCapabilities) {
         let installed = self.agent_host_filesystem;
 
@@ -1048,6 +1087,32 @@ pub const HIMARK_FORM_DESKTOP: u32 = 0;
 /// The phone form: the iOS pair (theme-ios.json, theme-ios-light.json)
 /// — 3x metrics, rows that are tap targets, the phone's insets.
 pub const HIMARK_FORM_PHONE: u32 = 1;
+
+/// Tell the engine what it runs in — once, at boot, before the first
+/// paint. The appearance commands (`theme.dark`, `theme.light`,
+/// `theme.toggle`) pick the form's pair from then on; the standing
+/// appearance re-applies in the new pair at once. Answers false for
+/// an unknown form.
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.set_form(form))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32 {
+    engine
+        .as_mut()
+        .map_or(0.0, |engine| engine.toolbar_height())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, width: f32) {
+    if let Some(engine) = engine.as_mut() {
+        engine.set_chrome_clearance(width);
+    }
+}
 
 
 

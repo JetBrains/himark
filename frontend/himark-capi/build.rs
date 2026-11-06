@@ -15,6 +15,7 @@ fn generate(crate_dir: &str, with_header: bool) -> String {
         config.include_guard = None;
         config.pragma_once = false;
         config.no_includes = true;
+        config.includes = Vec::new();
         config.autogen_warning = None;
     }
     let dir = std::path::Path::new(&root).join(crate_dir);
@@ -41,7 +42,12 @@ fn main() {
     let root = std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
     let own = generate(".", true);
     let windows = generate("../workbench-shell", false);
-    let assembled = format!("{own}\n{windows}");
+    // The guard must close AFTER the window chunk — splice it inside.
+    let guard_close = "#endif  /* HIMARK_SHELL_H */";
+    let assembled = match own.rfind(guard_close) {
+        Some(at) => format!("{}{}\n{}", &own[..at], windows, guard_close),
+        None => format!("{own}\n{windows}"),
+    };
     std::fs::write(format!("{root}/include/himark-shell.h"), assembled).expect("write header");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=../workbench-shell/src");

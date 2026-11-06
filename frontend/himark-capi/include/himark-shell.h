@@ -22,10 +22,6 @@ HimarkEngine *himark_create(HimarkEngineCallbacks callbacks,
                             const char *data_dir,
                             uintptr_t data_dir_len);
 
-#endif  /* HIMARK_SHELL_H */
-
-#include "himark.h"
-
 /**
  * The handle NEWTYPES: single-field structs, so C and Swift see
  * DISTINCT types — an event where a layout belongs is a compile
@@ -45,15 +41,4 @@ HimarkBridge himark_window_bridge(HimarkEngine *engine, HimarkWindow window);
 
 HimarkWindow himark_add_window(HimarkEngine *engine);
 
-float himark_toolbar_height(HimarkEngine *engine);
-
-void himark_set_chrome_clearance(HimarkEngine *engine, float width);
-
-/**
- * Tell the engine what it runs in — once, at boot, before the first
- * paint. The appearance commands (`theme.dark`, `theme.light`,
- * `theme.toggle`) pick the form's pair from then on; the standing
- * appearance re-applies in the new pair at once. Answers false for
- * an unknown form.
- */
-bool himark_set_form(HimarkEngine *engine, uint32_t form);
+#endif  /* HIMARK_SHELL_H */
