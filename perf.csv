@@ -16146,3 +16146,17 @@ timestamp,commit,profile,bench,metric,value_ms
 1793997370,3184ea566,debug,canvas-landing,drain_max_ms,81.0471
 1793997370,3184ea566,debug,canvas-landing,background_total_ms,18834.6982
 1793997370,3184ea566,debug,canvas-landing,monster_landed_ms,2502.6002
+1793997773,0d62a571c,debug,chat-scroll,tick_p50_ms,1.1442
+1793997773,0d62a571c,debug,chat-scroll,tick_p95_ms,1.5219
+1793997773,0d62a571c,debug,chat-scroll,tick_max_ms,1.9230
+1793997773,0d62a571c,debug,chat-scroll,trees_per_tick,1.0000
+1793997781,0d62a571c,debug,chat-edits,frame_p50_ms,21.4036
+1793997781,0d62a571c,debug,chat-edits,frame_p95_ms,23.2104
+1793997781,0d62a571c,debug,chat-edits,frame_max_ms,33.9782
+1793997781,0d62a571c,debug,chat-edits,background_total_ms,2019.3012
+1793997819,0d62a571c,debug,canvas-landing,draw_p95_ms,1.3319
+1793997819,0d62a571c,debug,canvas-landing,draw_max_ms,19.3815
+1793997819,0d62a571c,debug,canvas-landing,drain_p95_ms,24.6008
+1793997819,0d62a571c,debug,canvas-landing,drain_max_ms,78.9354
+1793997819,0d62a571c,debug,canvas-landing,background_total_ms,18400.0589
+1793997819,0d62a571c,debug,canvas-landing,monster_landed_ms,2452.6663

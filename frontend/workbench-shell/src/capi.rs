@@ -58,9 +58,9 @@ pub trait WindowEngine {
     fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed;
     fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool;
     fn mouse_left(&mut self, window: u64) -> bool;
-    fn perform_command(&mut self, window: u64, id: &str) -> bool;
     fn set_chrome_clearance(&mut self, width: f32);
     fn set_form(&mut self, form: u32) -> bool;
+    /// TEST SUPPORT and the gpui demo road — no C door anymore.
     fn open_document(
         &mut self,
         window: u64,
@@ -245,9 +245,6 @@ impl WindowEngine for HimarkEngine {
         let size = self.window_size(window);
         self.app.dispatch(wid(window), Event::window_left(), size)
     }
-    fn perform_command(&mut self, window: u64, id: &str) -> bool {
-        self.app.perform_registered(wid(window), id)
-    }
     fn set_chrome_clearance(&mut self, width: f32) {
         self.app.set_chrome_clearance(width);
     }
@@ -292,107 +289,10 @@ impl WindowEngine for HimarkEngine {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> himark_ffi::bridges::HimarkWindow {
-    himark_ffi::bridges::HimarkWindow {
-        raw: engine.as_mut().map_or(0, HimarkEngine::add_window),
-    }
-}
-#[no_mangle]
-pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32 {
-    engine
-        .as_mut()
-        .map_or(0.0, |engine| engine.toolbar_height())
-}
-#[no_mangle]
-pub unsafe extern "C" fn himark_perform_command(
-    engine: *mut HimarkEngine,
-    bridge: himark_ffi::bridges::HimarkBridge,
-    id: *const c_char,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    if id.is_null() {
-        return false;
-    }
-    let Ok(id) = std::ffi::CStr::from_ptr(id).to_str() else {
-        return false;
-    };
-    engine.perform_command(bridge.raw, id)
-}
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, width: f32) {
-    if let Some(engine) = engine.as_mut() {
-        engine.set_chrome_clearance(width);
-    }
-}
-/// Tell the engine what it runs in — once, at boot, before the first
-/// paint. The appearance commands (`theme.dark`, `theme.light`,
-/// `theme.toggle`) pick the form's pair from then on; the standing
-/// appearance re-applies in the new pair at once. Answers false for
-/// an unknown form.
-#[no_mangle]
-pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.set_form(form))
-}
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_document(
-    engine: *mut HimarkEngine,
-    bridge: himark_ffi::bridges::HimarkBridge,
-    name: *const c_char,
-    name_len: usize,
-    utf8: *const c_char,
-    len: usize,
-    primary: bool,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let Some(name) = str_from(name, name_len) else {
-        return false;
-    };
-    let Some(source) = str_from(utf8, len) else {
-        return false;
-    };
-    engine.open_document(bridge.raw, name, source, primary)
-}
 
-/// Open a registered demo document into the bridge — the debug
-/// harness road.
-#[no_mangle]
-pub unsafe extern "C" fn himark_open_demo(
-    engine: *mut HimarkEngine,
-    bridge: himark_ffi::bridges::HimarkBridge,
-    name: *const c_char,
-    len: usize,
-) {
-    let Some(engine) = engine.as_mut() else {
-        return;
-    };
-    let Some(name) = str_from(name, len) else {
-        return;
-    };
-    let Some((location, build)) = engine
-        .app
-        .store()
-        .get::<himark::demo_docs::DemoDocs>()
-        .and_then(|docs| docs.0.get(name).cloned())
-    else {
-        eprintln!("[himark] no demo document registered as '{name}'");
-        return;
-    };
-    use crate::app_ext::AppExt as _;
-    engine.app.open_async(
-        wid(bridge.raw),
-        name.to_owned(),
-        true,
-        Some(location),
-        move |store, ui, theme| build(store, ui, theme),
-    );
-}
+
+
+
 
 /// Seat the capability-gated chrome: what `himark_set_host`
 /// registers when the host callbacks carry pickers or a clipboard.
@@ -410,4 +310,62 @@ pub fn seat_host_chrome(app: &mut himark::app::Himark) {
             })),
         })
     });
+}
+
+/// The handle NEWTYPES: single-field structs, so C and Swift see
+/// DISTINCT types — an event where a layout belongs is a compile
+/// error, not a mixed-up integer. The ABI of a one-u64 struct is
+/// the u64 itself; `raw` is 0 for a refusal.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HimarkWindow {
+    pub raw: u64,
+}
+
+/// The window AS a bridge — the degenerate case named. Today the
+/// identity is direct; the handle is the only currency the
+/// normalized entries below speak.
+#[no_mangle]
+pub unsafe extern "C" fn himark_window_bridge(
+    engine: *mut HimarkEngine,
+    window: HimarkWindow,
+) -> himark_ffi::bridges::HimarkBridge {
+    if engine.is_null() {
+        himark_ffi::bridges::refuse("engine for window bridge", window.raw);
+        return himark_ffi::bridges::HimarkBridge { raw: 0 };
+    }
+    himark_ffi::bridges::HimarkBridge { raw: window.raw }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> HimarkWindow {
+    HimarkWindow {
+        raw: engine.as_mut().map_or(0, HimarkEngine::add_window),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_toolbar_height(engine: *mut HimarkEngine) -> f32 {
+    engine
+        .as_mut()
+        .map_or(0.0, |engine| engine.toolbar_height())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, width: f32) {
+    if let Some(engine) = engine.as_mut() {
+        engine.set_chrome_clearance(width);
+    }
+}
+
+/// Tell the engine what it runs in — once, at boot, before the first
+/// paint. The appearance commands (`theme.dark`, `theme.light`,
+/// `theme.toggle`) pick the form's pair from then on; the standing
+/// appearance re-applies in the new pair at once. Answers false for
+/// an unknown form.
+#[no_mangle]
+pub unsafe extern "C" fn himark_set_form(engine: *mut HimarkEngine, form: u32) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.set_form(form))
 }

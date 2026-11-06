@@ -196,16 +196,6 @@ typedef struct {
 } HimarkEvent;
 
 /**
- * The handle NEWTYPES: single-field structs, so C and Swift see
- * DISTINCT types — an event where a layout belongs is a compile
- * error, not a mixed-up integer. The ABI of a one-u64 struct is
- * the u64 itself; `raw` is 0 for a refusal.
- */
-typedef struct {
-    uint64_t raw;
-} HimarkWindow;
-
-/**
  * The pointer event's answer across the FFI: `changed` owes a frame;
  * `shape` is 0 for the platform default arrow, 1 for the pointing
  * hand. The shell applies the shape right away and stores nothing.
@@ -351,11 +341,10 @@ HimarkEvent himark_event_text(const char *utf8, uintptr_t len);
 void himark_event_release(HimarkEvent event);
 
 /**
- * The window AS a bridge — the degenerate case named. Today the
- * identity is direct; the handle is the only currency the
- * normalized entries below speak.
+ * Perform a registered command at the bridge — the palette and
+ * menu road, shell-agnostic.
  */
-HimarkBridge himark_window_bridge(HimarkEngine *engine, HimarkWindow window);
+bool himark_perform_command(HimarkEngine *engine, HimarkBridge bridge, const char *id);
 
 /**
  * One event into one window bridge, through the engine's own

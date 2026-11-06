@@ -1329,6 +1329,44 @@ impl Himark {
         collected
     }
 
+    /// Perform a REGISTERED command at an origin bridge — the C
+    /// door's and the palette's shared road: the origin view's own
+    /// walk answers first (its presentables carry their bindings),
+    /// the global registry rides behind it over `AtOrigin`.
+    pub fn perform_registered_at(&mut self, origin: ViewBridgeId, id: &str) -> bool {
+        let ui = self.ui.clone();
+        let store = self.store.clone();
+        let command = {
+            let chain = self
+                .bridges
+                .get(&origin)
+                .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
+                .map(|data| crate::focus::bind_mounted(&store, origin, data));
+            let bound = chain.as_ref().map(|data| data.bindings.clone());
+            chain
+                .map(|data| data.commands)
+                .unwrap_or_default()
+                .into_iter()
+                .find(|presentable| presentable.id == id)
+                .map(|presentable| presentable.command)
+                .or_else(|| {
+                    crate::commands::Commands::of(&store).find(id).cloned().map(
+                        |command| match bound {
+                            Some(bound) => crate::perform::AppCommand::Bound(bound, command),
+                            None => crate::perform::AppCommand::AtOrigin(origin, command),
+                        },
+                    )
+                })
+        };
+        match command {
+            Some(command) => self.perform_batch(vec![command]),
+            None => {
+                eprintln!("[himark] no command registered as '{id}' — dropped");
+                false
+            }
+        }
+    }
+
     /// The palette's VIEW, from the plugin that owns it — the
     /// engine hands it the session's commands and gets a modal
     /// back. Registered at boot, like a place arm; `palette` sits

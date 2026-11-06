@@ -26,11 +26,26 @@ HimarkEngine *himark_create(HimarkEngineCallbacks callbacks,
 
 #include "himark.h"
 
+/**
+ * The handle NEWTYPES: single-field structs, so C and Swift see
+ * DISTINCT types — an event where a layout belongs is a compile
+ * error, not a mixed-up integer. The ABI of a one-u64 struct is
+ * the u64 itself; `raw` is 0 for a refusal.
+ */
+typedef struct {
+    uint64_t raw;
+} HimarkWindow;
+
+/**
+ * The window AS a bridge — the degenerate case named. Today the
+ * identity is direct; the handle is the only currency the
+ * normalized entries below speak.
+ */
+HimarkBridge himark_window_bridge(HimarkEngine *engine, HimarkWindow window);
+
 HimarkWindow himark_add_window(HimarkEngine *engine);
 
 float himark_toolbar_height(HimarkEngine *engine);
-
-bool himark_perform_command(HimarkEngine *engine, HimarkBridge bridge, const char *id);
 
 void himark_set_chrome_clearance(HimarkEngine *engine, float width);
 
@@ -42,17 +57,3 @@ void himark_set_chrome_clearance(HimarkEngine *engine, float width);
  * an unknown form.
  */
 bool himark_set_form(HimarkEngine *engine, uint32_t form);
-
-bool himark_open_document(HimarkEngine *engine,
-                          HimarkBridge bridge,
-                          const char *name,
-                          uintptr_t name_len,
-                          const char *utf8,
-                          uintptr_t len,
-                          bool primary);
-
-/**
- * Open a registered demo document into the bridge — the debug
- * harness road.
- */
-void himark_open_demo(HimarkEngine *engine, HimarkBridge bridge, const char *name, uintptr_t len);

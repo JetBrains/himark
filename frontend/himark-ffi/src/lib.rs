@@ -16,6 +16,7 @@ use ahp_docsync as docsync;
 use ahp_locations::find;
 use ahp_session::fsroute;
 pub mod bridges;
+pub use crate::bridges::himark_perform_command;
 pub mod host;
 use himark::app::AppFonts;
 use ahp_wire::uris;
@@ -516,6 +517,14 @@ impl HimarkEngine {
 
 
 
+
+    /// Perform a registered command at a BRIDGE origin — the
+    /// general road: the native palette and keymaps bind to ids and
+    /// perform them here.
+    pub fn perform_command(&mut self, bridge: u64, id: &str) -> bool {
+        self.app
+            .perform_registered_at(himark::bridge::ViewBridgeId::from_raw(bridge), id)
+    }
 
     pub fn install_agent_host_filesystem(&mut self, capabilities: AgentHostFilesystemCapabilities) {
         let installed = self.agent_host_filesystem;

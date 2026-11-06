@@ -197,16 +197,13 @@ func buildMenu() -> NSMenu {
     fileMenu.addItem(withTitle: "New Window",
                      action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "N")
     fileMenu.addItem(withTitle: "Open…",
-                     action: #selector(HimarkView.openDocument(_:)), keyEquivalent: "o")
     fileMenu.addItem(withTitle: "Save",
                      action: #selector(HimarkView.saveDocument(_:)), keyEquivalent: "s")
     fileMenu.addItem(withTitle: "Save As…",
                      action: #selector(HimarkView.saveDocumentAs(_:)), keyEquivalent: "S")
     fileMenu.addItem(.separator())
     fileMenu.addItem(withTitle: "Open Demo Document",
-                     action: #selector(HimarkView.openDemo(_:)), keyEquivalent: "")
     fileMenu.addItem(withTitle: "Open Demo Wall of Text",
-                     action: #selector(HimarkView.openDemoWall(_:)), keyEquivalent: "")
     fileItem.submenu = fileMenu
 
     let editItem = NSMenuItem()

@@ -37,15 +37,6 @@ use crate::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed, Pointed,
 };
 
-/// The handle NEWTYPES: single-field structs, so C and Swift see
-/// DISTINCT types — an event where a layout belongs is a compile
-/// error, not a mixed-up integer. The ABI of a one-u64 struct is
-/// the u64 itself; `raw` is 0 for a refusal.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct HimarkWindow {
-    pub raw: u64,
-}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -117,7 +108,7 @@ impl<T> Handles<T> {
     }
 }
 
-fn refuse(what: &str, handle: u64) {
+pub fn refuse(what: &str, handle: u64) {
     eprintln!("[ffi] {what} handle {handle} is dead or foreign — refused");
 }
 
@@ -293,19 +284,23 @@ pub extern "C" fn himark_event_release(event: HimarkEvent) {
 
 // ─── the window-bridge road ───
 
-/// The window AS a bridge — the degenerate case named. Today the
-/// identity is direct; the handle is the only currency the
-/// normalized entries below speak.
+
+
+/// Perform a registered command at the bridge — the palette and
+/// menu road, shell-agnostic.
 #[no_mangle]
-pub unsafe extern "C" fn himark_window_bridge(
+pub unsafe extern "C" fn himark_perform_command(
     engine: *mut HimarkEngine,
-    window: HimarkWindow,
-) -> HimarkBridge {
-    if engine.is_null() {
-        refuse("engine for window bridge", window.raw);
-        return HimarkBridge { raw: 0 };
-    }
-    HimarkBridge { raw: window.raw }
+    bridge: HimarkBridge,
+    id: *const std::os::raw::c_char,
+) -> bool {
+    let Some(engine) = engine.as_mut() else {
+        return false;
+    };
+    let Some(id) = std::ffi::CStr::from_ptr(id).to_str().ok() else {
+        return false;
+    };
+    engine.perform_command(bridge.raw, id)
 }
 
 /// One event into one window bridge, through the engine's own

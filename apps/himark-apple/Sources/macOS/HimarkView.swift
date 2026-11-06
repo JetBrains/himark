@@ -41,9 +41,6 @@ final class HimarkView: HimarkBridgeView {
         }
     }
 
-    @objc func openDocument(_ sender: Any?) {
-        if engine.perform(bridge: bridgeId, command: "file.open") { request() }
-    }
 
     @objc func saveDocument(_ sender: Any?) {
         if engine.perform(bridge: bridgeId, command: "file.save") { request() }
@@ -61,15 +58,7 @@ final class HimarkView: HimarkBridgeView {
         if engine.perform(bridge: bridgeId, command: "workbench.new-document") { request() }
     }
 
-    @objc func openDemoWall(_ sender: Any?) {
-        engine.openDemoWall(bridge: bridgeId)
-        request()
-    }
 
-    @objc func openDemo(_ sender: Any?) {
-        engine.openDemo(bridge: bridgeId)
-        request()
-    }
 
     @objc func togglePeeker(_ sender: Any?) {
         if engine.perform(bridge: bridgeId, command: "peeker.toggle") { request() }
