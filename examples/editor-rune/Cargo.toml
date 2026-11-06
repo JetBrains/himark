@@ -1,0 +1,23 @@
+[package]
+name = "editor-rune"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# The rune example editor — a LIBRARY CONSUMER, its own crate like
+# every example: the adapter plus the engine parts an embedder
+# links, and nothing of the workbench.
+[dependencies]
+himark = { path = "../../frontend/himark" }
+himark-rune = { path = "../../frontend/himark-rune" }
+himark-plugins = { path = "../../frontend/himark-plugins" }
+hikit = { path = "../../frontend/hikit" }
+imba = { path = "../../frontend/imba" }
+documents = { path = "../../frontend/documents" }
+editor = { path = "../../frontend/editor" }
+text = { path = "../../frontend/text" }
+myersdiff = { path = "../../frontend/myersdiff" }
+
+[[bin]]
+name = "editor-rune"
+path = "src/main.rs"

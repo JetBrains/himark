@@ -1,0 +1,18 @@
+[package]
+name = "himark-rune"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# Himark's bridges adapted to rune — a PURE adapter, the gpui
+# bridge's sibling: the app composes the engine and hands it in;
+# one rune effect El hosts a bridge, input lands as imba events,
+# and the paint records rune Instances spliced at the slot (the
+# editor's glyphs rasterize into rune's own atlas).
+[dependencies]
+himark = { path = "../himark" }
+imba = { path = "../imba" }
+gfx = { path = "../gfx" }
+rune = { path = "../../../rune/crates/rune" }
+parley = { version = "0.12", default-features = false, features = ["std"] }
+swash = "0.2"
