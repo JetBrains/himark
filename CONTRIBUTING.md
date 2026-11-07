@@ -156,7 +156,7 @@ Re-run `./build.sh gen` after changing the Rust side; Xcode links the static
 library that cargo produced and does not rebuild it.
 
 Open files with **File > Open** (`Cmd+O`). On macOS you can also run the
-Rust gpui shell (`cargo run -p macos`) as a
+Rust gpui shell (`cargo run -p himark-desktop`) as a
 quick way to test the engine without Xcode.
 
 ## iOS

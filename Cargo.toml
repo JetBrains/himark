@@ -62,7 +62,7 @@ members = [
     "protocol/host-discovery",
     "protocol/tailnet",
     "apps/web",
-    "apps/macos",
+    "apps/desktop",
     "apps/web/tools/grammar-pack",
     "examples/editor-gpui",
     "examples/editor-rune",
