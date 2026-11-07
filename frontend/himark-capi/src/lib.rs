@@ -28,7 +28,7 @@ pub fn with_plugins(
     plugins: &[Box<dyn himark::plugin::Plugin>],
     connector: Arc<dyn ahp_wire::transport::Connector>,
     callbacks: Option<HimarkEngineCallbacks>,
-) -> HimarkEngine {
+) -> (HimarkEngine, himark_plugins::Wires) {
     let mut app = workbench_shell::app::workbench_app(fonts);
     let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(ahp_wire::uris::FileUris);
 
@@ -43,10 +43,16 @@ pub fn with_plugins(
     let document_channels = Arc::clone(&wires.channels);
 
     // The workbench's capability-gated chrome, seated before the
-    // shell can hand callbacks in.
+    // shell can hand callbacks in — then the AHP capi's own seats
+    // (navigate exporter, mint rider, host-capability routes).
     workbench_shell::capi::seat_host_chrome(&mut app);
-    let mut engine =
-        HimarkEngine::assemble(app, languages, clients, document_channels, resource_uris);
+    hiahp::capi::seat_ahp(
+        &mut app,
+        Arc::clone(&languages),
+        Arc::clone(&clients),
+        Arc::clone(&resource_uris),
+    );
+    let mut engine = HimarkEngine::assemble(app, Arc::clone(&languages));
     // The host's callbacks, before any further batch can launch
     // an effect into empty slots.
     if let Some(callbacks) = callbacks {
@@ -56,7 +62,15 @@ pub fn with_plugins(
             himark_ffi::bridges::seat_callback_shell(&mut engine, callbacks.ctx, on_navigate);
         }
     }
-    engine
+    (
+        engine,
+        himark_plugins::Wires {
+            clients,
+            languages,
+            channels: document_channels,
+            resource_uris,
+        },
+    )
 }
 fn app_fonts() -> AppFonts {
 AppFonts::platform()
@@ -114,7 +128,7 @@ pub fn production_engine_at(
     #[cfg(not(unix))]
     let connector: Arc<dyn ahp_wire::transport::Connector> =
         Arc::new(desktop::connector::DesktopConnector);
-    let mut engine = with_plugins(
+    let (mut engine, wires) = with_plugins(
         AppFonts::platform(),
         &plugins(),
         Arc::clone(&connector),
@@ -124,30 +138,47 @@ pub fn production_engine_at(
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         let _ = host_discovery::autostart();
-        engine.install_agent_host_filesystem(AgentHostFilesystemCapabilities::all());
+        hiahp::agent_fs::install_routes(
+            &mut engine.app,
+            true,
+            true,
+            true,
+            &wires.languages,
+            &wires.clients,
+            &wires.resource_uris,
+        );
     }
     host_discovery::logging::init("app");
-    engine.register_agent_server(
+    let runtime = engine.runtime();
+    himark_plugins::register_agent_server(
+        &mut engine.app,
+        &wires.clients,
         "VS Code Agent Host",
         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::new(
-            engine.runtime(),
+            runtime.clone(),
             Arc::clone(&connector),
         ))),
     );
-    let local_backend = engine.register_agent_server(
+    let local_backend = himark_plugins::register_agent_server(
+        &mut engine.app,
+        &wires.clients,
         "himark Agent Host",
         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::discovered(
-            engine.runtime(),
+            runtime,
             Arc::clone(&connector),
             himark_plugins::himark_host_resolver(),
         ))),
     );
-    engine.set_local_backend(local_backend);
+    wires.clients.set_local(local_backend);
+    hiahp::engine::set_local_host(&mut engine.app, local_backend);
     #[cfg(unix)]
-    {
-        let clients = engine.clients();
-        hitailnet::install(&mut engine.app, &clients, tailnet_connector, connector, data_root);
-    }
+    hitailnet::install(
+        &mut engine.app,
+        &wires.clients,
+        tailnet_connector,
+        connector,
+        data_root,
+    );
     engine
 }
 
@@ -160,12 +191,13 @@ pub fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
 /// The TEST boot: the same plugins, no outward dialing.
 #[doc(hidden)]
 pub fn with_fonts(fonts: AppFonts) -> HimarkEngine {
-    with_plugins(
+    let (engine, _wires) = with_plugins(
         fonts,
         &plugins(),
         Arc::new(desktop::connector::DesktopConnector),
         None,
-    )
+    );
+    engine
 }
 
 
@@ -188,3 +220,34 @@ pub unsafe extern "C" fn himark_create(
     Box::into_raw(Box::new(production_engine_at(Some(callbacks), data_dir)))
 }
 
+
+/// Agent-server registration with METHOD syntax over the assembled
+/// engine — reads the seated wire directory; the integration tests
+/// and the C boot share it.
+pub trait EngineAgents {
+    fn register_agent_server(
+        &mut self,
+        name: &str,
+        client: ahp_wire::client::Client,
+    ) -> ahp_wire::client::HostId;
+    fn set_local_backend(&mut self, server: ahp_wire::client::HostId);
+}
+
+impl EngineAgents for HimarkEngine {
+    fn register_agent_server(
+        &mut self,
+        name: &str,
+        client: ahp_wire::client::Client,
+    ) -> ahp_wire::client::HostId {
+        let clients = hiahp::engine::wire_clients(self.app.store())
+            .expect("the wire directory is seated at boot");
+        himark_plugins::register_agent_server(&mut self.app, &clients, name, client)
+    }
+
+    fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
+        if let Some(clients) = hiahp::engine::wire_clients(self.app.store()) {
+            clients.set_local(server);
+        }
+        hiahp::engine::set_local_host(&mut self.app, server);
+    }
+}

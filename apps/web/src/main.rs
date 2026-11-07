@@ -359,55 +359,29 @@ mod app {
     impl WebApp {
         fn new(context: DirectContext, world: editor::parley_line::FontWorld) -> Self {
             let mut state = workbench_shell::app::workbench_app(AppFonts::over(world));
-            state.register_syntax_languages(web_languages());
 
-            // The boot-time halves of AhpPlugin (frontend-host installs
-            // the plugin; this shell assembles by hand): without the
-            // build handler every chat body's BuildDocumentEffect
-            // orphans and the transcript paints empty cells.
-            hiahp::install_build_handler(
+            // The browser is the production workbench in a tab: the
+            // SAME plugin list the desktop assembles — no hand-wired
+            // twin of any plugin's install.
+            let plugins: Vec<Box<dyn himark::plugin::Plugin>> = {
+                let mut plugins = himark_plugins::engine_plugins();
+                plugins.extend([
+                    Box::new(palette::PalettePlugin) as Box<dyn himark::plugin::Plugin>,
+                    Box::new(peeker::PeekerPlugin),
+                    Box::new(workbench_shell::diff_pane::DiffPanePlugin),
+                    Box::new(demo::DemoPlugin),
+                    Box::new(workbench_shell::higent::AgentsPlugin),
+                ]);
+                plugins.extend(workbench_shell::plugins());
+                plugins
+            };
+            let installed = himark::plugin::install_all(
                 &mut state,
-                std::sync::Arc::new(web_languages()),
                 std::sync::Arc::new(myersdiff::Myers),
+                &plugins,
             );
-            state.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
-
-            himarkdown::register_handlers(&mut state);
-            state.register_command(std::sync::Arc::new(palette::TogglePalette));
-            state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
-            state.register_command(std::sync::Arc::new(himark::diff_pane::OpenDiff));
-            state.register_row_minter(canvas::diff_pane::pair_row_minter());
-            // The canvas navigator is a BUILTIN (ScrolledCanvasNavigator);
-            // registering the bare mounted-road one here would shadow it
-            // and leave the faces scroll-less — the browser is a windowed
-            // shell like any other.
-            state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
-
-            comments::install(&mut state.store_mut());
-            state.register_command(std::sync::Arc::new(
-                workbench_shell::hicomments::ToggleCommentsView,
-            ));
-            state.register_toolbar_button(workbench_shell::hicomments::toolbar_button());
-            state.register_command(std::sync::Arc::new(
-                hiahp::higent::drawer::ToggleAgentsView,
-            ));
-            state.register_command(std::sync::Arc::new(hiahp::higent::new_chat::NewChat));
-            state.register_toolbar_button(hiahp::higent::drawer::toolbar_button());
-            state.register_command(std::sync::Arc::new(
-                workbench_shell::hichanges::ToggleChangesView,
-            ));
-            state.register_command(std::sync::Arc::new(
-                hiahp::hichanges::RefetchChanges::default(),
-            ));
-            state.register_toolbar_button(workbench_shell::hichanges::toolbar_button());
-            state.register_command(std::sync::Arc::new(
-                workbench_shell::hihistory::ToggleHistoryView,
-            ));
-            state.register_toolbar_button(workbench_shell::hihistory::toolbar_button());
-            state.register_command(std::sync::Arc::new(
-                workbench_shell::hifiles::ToggleSessionTree,
-            ));
-            state.register_toolbar_button(workbench_shell::hifiles::toolbar_button());
+            #[cfg(not(target_feature = "atomics"))]
+            let _ = &installed;
 
             #[cfg(target_feature = "atomics")]
             let (posted, arriving) = std::sync::mpsc::channel();
@@ -440,17 +414,23 @@ mod app {
                         })
                         .expect("wire thread");
                     let handle = handle_rx.recv().expect("wire handle");
-                    hiahp::register_all(&mut state);
 
                     use std::sync::Arc;
-                    let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
+                    let post: Arc<dyn Fn(himark::app::AppCommand) + Send + Sync> = {
                         let posted = posted.clone();
-                        Arc::new(move |subscription| {
-                            let _ = posted.send(himark::app::AppCommand::FileChanged(
-                                documents::watch::Subscription(subscription),
-                            ));
+                        Arc::new(move |command| {
+                            let _ = posted.send(command);
                         })
-                    }));
+                    };
+                    let wires = himark_plugins::wire_doors(
+                        &mut state,
+                        handle.clone(),
+                        post,
+                        std::sync::Arc::new(crate::browser::BrowserConnector),
+                        Arc::new(ahp_wire::uris::FileUris),
+                        Arc::clone(&installed.languages),
+                    );
+                    let clients = Arc::clone(&wires.clients);
 
                     if !url.is_empty() {
                         let client = ahp_wire::client::Client::of(std::sync::Arc::new(
@@ -460,19 +440,13 @@ mod app {
                                 url,
                             ),
                         ));
-                        let host = state.register_client(client.clone());
-                        ahp_session::session::agents::Agents::seed(
-                            &mut state.store_mut(),
-                            host,
+                        let host = himark_plugins::register_agent_server(
+                            &mut state,
+                            &clients,
                             "This Host",
-                        );
-                        ahp_session::session::state::Hosts::install_uris(
-                            &mut state.store_mut(),
-                            host,
-                            std::sync::Arc::new(ahp_wire::uris::FileUris),
+                            client,
                         );
                         state.designate_local_host(host);
-                        clients.record(host, client);
                         clients.set_local(host);
                     }
 
@@ -485,120 +459,27 @@ mod app {
                         posted.clone(),
                         Arc::clone(&clients),
                     );
-                    let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
-                        Arc::new(ahp_wire::uris::FileUris);
 
-                    let document_channels = ahp_docsync::DocumentChannels::new(
-                        handle.clone(),
-                        Arc::new({
-                            let posted = posted.clone();
-                            move |verb| {
-                                let _ = posted.send(himark::app::AppCommand::Verb(verb));
-                            }
-                        }),
-                        Arc::clone(&resource_uris),
-                    );
-                    documents::OpenDocuments::install_hook(
-                        &mut state.store_mut(),
-                        Arc::new(ahp_docsync::DocsyncHook {
-                            channels: Arc::clone(&document_channels),
-                            directory: Arc::clone(&clients),
-                        }),
-                    );
-
-                    editor::change_sink::InstalledChangeSink::install(
-                        &mut state.store_mut(),
-                        Arc::new(ahp_docsync::SyncSink),
-                    );
-                    state.register_handler::<documents::FetchDocumentEffect>(
-                        ahp_session::fsroute::RouteFetch {
-                            uris: Arc::clone(&resource_uris),
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-                    state.register_handler::<documents::StoreDocumentEffect>(
-                        ahp_session::fsroute::RouteStore {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                            channels: Arc::clone(&document_channels),
-                        },
-                    );
-                    state.register_document_command(Arc::new(hiahp::save::save_document(false)));
-                    state.register_handler::<documents::ListDirectoryEffect>(
-                        ahp_session::fsroute::RouteList {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                        },
-                    );
-                    state.register_handler::<documents::watch::SubscribeEffect>(
-                        ahp_session::fsroute::RouteSubscribe {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                        },
-                    );
-                    state.register_handler::<documents::watch::UnsubscribeEffect>(
-                        ahp_session::fsroute::RouteUnsubscribe {
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-                    state.observe_file_changes();
-
-                    state.register_handler::<ahp_locations::FindEffect>(
-                        ahp_locations::find::NativeFindHandler {
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-                    state.register_handler::<::editor::completion::PathCompletionEffect>(
-                        ahp_locations::find::NativeFindHandler {
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-
-                    state.register_handler::<::editor::completion::CompletionEffect>(
-                        ahp_lsp::CompletionRoute {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                        },
-                    );
-                    state.register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
-                        directory: Arc::clone(&clients),
-                        uris: Arc::clone(&resource_uris),
-                    });
-
-                    state.register_handler::<ahp_locations::SearchLocationsEffect>(
-                        ahp_locations::routes::RouteSearchLocations {
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-                    state.register_handler::<ahp_locations::SymbolLocationsEffect>(
-                        ahp_locations::routes::RouteSymbolLocations {
-                            directory: Arc::clone(&clients),
-                        },
-                    );
-                    state.register_command(Arc::new(workbench_shell::hisearch::ToggleSearchView));
-                    state.register_command(Arc::new(workbench_shell::hisearch::FocusSearchView));
-                    state.register_toolbar_button(workbench_shell::hisearch::toolbar_button());
-                    state.register_handler::<ahp_locations::LspLocationsEffect>(
-                        ahp_locations::routes::RouteLspLocations {
-                            directory: Arc::clone(&clients),
-                            uris: Arc::clone(&resource_uris),
-                        },
-                    );
-
-                    state.observe_stripe_bases(Arc::new(ahp_session::fsroute::resolve_base));
-
-                    hiahp::install_open_handlers(
+                    // The agent-host filesystem ROUTES — the one
+                    // door the desktop uses (hiahp::agent_fs); the
+                    // fetch/store/list wire handlers came with
+                    // `wire_doors`.
+                    hiahp::agent_fs::install_routes(
                         &mut state,
-                        Arc::new(web_languages()),
-                        Arc::new(myersdiff::Myers),
+                        true,
+                        true,
+                        true,
+                        &wires.languages,
+                        &wires.clients,
+                        &wires.resource_uris,
                     );
                 }
             }
             let window = state.add_window();
 
-            state.perform_command(himark::app::windowed(
+            state.perform_command(workbench_shell::shell::windowed(
                 window,
-                std::sync::Arc::new(hiahp::higent::open_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
             ));
 
             #[cfg(target_feature = "atomics")]

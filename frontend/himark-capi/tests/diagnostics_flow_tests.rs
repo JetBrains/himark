@@ -6,6 +6,7 @@
 //! diagnostics channel; a document opened under the session's folder
 //! gets dressed with the snapshot's squiggles at the batch tail.
 
+use himark_api::EngineAgents as _;
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 use workbench_shell::capi::WindowEngine as _;

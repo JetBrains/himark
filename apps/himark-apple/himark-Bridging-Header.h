@@ -3,6 +3,7 @@
 
 #include "himark.h"
 #include "himark-shell.h"
+#include "himark-ahp.h"
 #include "himark-tailnet.h"
 #include <util.h>
 #include "SkiaMetalBridge.h"

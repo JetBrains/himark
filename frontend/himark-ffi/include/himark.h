@@ -83,64 +83,6 @@
  */
 #define HIMARK_FORM_PHONE 1
 
-/**
- * Which string `himark_catalog_session_string` reads.
- */
-#define HIMARK_SESSION_URI 0
-
-#define HIMARK_SESSION_TITLE 1
-
-#define HIMARK_SESSION_PROVIDER 2
-
-#define HIMARK_SESSION_MODIFIED 3
-
-/**
- * The place-kind vocabulary the callback speaks. `DOCUMENT` and
- * `DIFF` are READY places — minting is synchronous; the session
- * kinds are the tab places the host already knows how to mint.
- */
-#define HIMARK_PLACE_CHAT 1
-
-#define HIMARK_PLACE_CHANGES 2
-
-#define HIMARK_PLACE_FILES 3
-
-#define HIMARK_PLACE_DOCUMENT 4
-
-#define HIMARK_PLACE_DIFF 5
-
-#define HIMARK_PLACE_CANVAS 6
-
-/**
- * Not a view: the ORIGIN's hosting face asks to close.
- */
-#define HIMARK_PLACE_DISMISS 7
-
-#define HIMARK_PLACE_CHAT_TRANSCRIPT 8
-
-#define HIMARK_PLACE_CHAT_COMPOSER 9
-
-#define HIMARK_PLACE_CHANGES_CANVAS 10
-
-#define HIMARK_PLACE_HISTORY 11
-
-#define HIMARK_PLACE_SEARCH 12
-
-#define HIMARK_PLACE_COMMENTS 13
-
-#define HIMARK_PLACE_PEEKER 14
-
-#define HIMARK_PLACE_PALETTE 15
-
-#define HIMARK_PLACE_SESSIONS 16
-
-/**
- * The session host's folder picker — BOTH halves speak it: a rust
- * road navigates it (the add-folder ask on a remote host) and the
- * native shell may mint it directly.
- */
-#define HIMARK_PLACE_FOLDER_PICKER 17
-
 typedef struct HimarkEngine HimarkEngine;
 
 typedef struct {
@@ -213,14 +155,6 @@ typedef struct {
     uint64_t raw;
 } HimarkFrame;
 
-typedef struct {
-    uint64_t raw;
-} HimarkPlace;
-
-typedef struct {
-    uint64_t raw;
-} HimarkCatalog;
-
 /**
  * A snapshot of the REGISTERED COMMANDS — the host-visible verbs
  * (palette material). Same handle discipline as the catalog.
@@ -228,6 +162,10 @@ typedef struct {
 typedef struct {
     uint64_t raw;
 } HimarkCommands;
+
+typedef struct {
+    uint64_t raw;
+} HimarkPlace;
 
 /**
  * Everything the engine needs from its host, taken AT CREATION —
@@ -464,15 +402,6 @@ bool himark_frame_offer_scroll(HimarkEngine *engine,
                                float view_height);
 
 /**
- * The EXPLICIT tree-follow: the host landed a navigation (the
- * navigate callback handed it this very place) and commands the
- * session's files tree to stand on the landed location — the same
- * `TreeCommand::Follow` the workbench pushes from its focus walk.
- * False when the place carries no location or no tree is mounted.
- */
-bool himark_tree_follow(HimarkEngine *engine, HimarkPlace place);
-
-/**
  * Drain the reveal a mounted road parked — a caret-follow or a
  * selection the view asked to be brought on screen, rect in that
  * bridge's content coordinates. The host scrolls it into view;
@@ -515,14 +444,6 @@ void himark_frame_release(HimarkEngine *engine, HimarkFrame frame);
  */
 uint64_t himark_sessions_epoch(HimarkEngine *engine);
 
-/**
- * Snapshot the catalog — an owned, immutable copy behind a
- * handle; strings read out of it stay valid until its release.
- */
-HimarkCatalog himark_sessions_copy(HimarkEngine *engine);
-
-void himark_catalog_release(HimarkEngine *engine, HimarkCatalog catalog);
-
 HimarkCommands himark_commands_copy(HimarkEngine *engine);
 
 void himark_commands_release(HimarkEngine *engine, HimarkCommands commands);
@@ -541,85 +462,7 @@ uintptr_t himark_command_name(HimarkEngine *engine,
                               char *out,
                               uintptr_t cap);
 
-uintptr_t himark_catalog_hosts(HimarkEngine *engine, HimarkCatalog catalog);
-
-uint64_t himark_catalog_host_id(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
-
-/**
- * 0 idle · 1 connecting · 2 connected · 3 failed.
- */
-uint32_t himark_catalog_host_status(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
-
-uintptr_t himark_catalog_host_name(HimarkEngine *engine,
-                                   HimarkCatalog catalog,
-                                   uintptr_t index,
-                                   char *out,
-                                   uintptr_t cap);
-
-/**
- * The connect error under a FAILED host row (UTF-8, no NUL;
- * returns the byte length, copies when it fits). Empty otherwise.
- */
-uintptr_t himark_catalog_host_error(HimarkEngine *engine,
-                                    HimarkCatalog catalog,
-                                    uintptr_t index,
-                                    char *out,
-                                    uintptr_t cap);
-
-uintptr_t himark_catalog_sessions(HimarkEngine *engine, HimarkCatalog catalog);
-
-uint64_t himark_catalog_session_host(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
-
-int64_t himark_catalog_session_status(HimarkEngine *engine, HimarkCatalog catalog, uintptr_t index);
-
-/**
- * ONE sized-string door for the catalog row's text fields.
- */
-uintptr_t himark_catalog_session_string(HimarkEngine *engine,
-                                        HimarkCatalog catalog,
-                                        uintptr_t index,
-                                        uint32_t field,
-                                        char *out,
-                                        uintptr_t cap);
-
-/**
- * Enter a session headlessly: subscribe, adopt, wire, poll — the
- * native shell's selection. The session's views are mintable
- * after the entry lands; the catalog carries the visible state.
- */
-bool himark_session_enter(HimarkEngine *engine, uint64_t host, const char *uri, uintptr_t len);
-
-/**
- * Create a session headlessly on the host (0 = the local
- * default); the landing enters it.
- */
-bool himark_session_new(HimarkEngine *engine, uint64_t host);
-
-/**
- * ONE minting door for every session view: `kind` speaks the
- * `HIMARK_PLACE_*` vocabulary (the session-view kinds — the READY
- * kinds `DOCUMENT`/`DIFF`/`CANVAS` and `DISMISS` are the navigate
- * callback's and refuse here).
- */
-HimarkPlace himark_place_session_view(HimarkEngine *engine,
-                                      uint32_t kind,
-                                      uint64_t host,
-                                      const char *uri,
-                                      uintptr_t len);
-
 void himark_place_release(HimarkEngine *engine, HimarkPlace place);
-
-/**
- * WHICH SESSION a place names. A shell that claims a place has to
- * re-point its views at that session — the sessions drawer picking
- * a row is the case — and the handle is the only thing it holds.
- */
-uint64_t himark_place_session_host(HimarkEngine *engine, HimarkPlace place);
-
-uintptr_t himark_place_session_uri(HimarkEngine *engine,
-                                   HimarkPlace place,
-                                   char *out,
-                                   uintptr_t cap);
 
 /**
  * A bridge's exported WINDOW overlays — the anchors that become

@@ -61,45 +61,16 @@ fn compose() -> (Himark, himark_plugins::Wires) {
     let _ = host_discovery::autostart();
     host_discovery::logging::init("app");
 
-    // The agent-host filesystem routes — every capability, like the
-    // desktop C shell asks for.
-    hiahp::install_open_handlers(
+    // The agent-host filesystem routes — every capability, through
+    // the one door the C shell uses too.
+    hiahp::agent_fs::install_routes(
         &mut app,
-        Arc::clone(&wires.languages),
-        Arc::new(myersdiff::Myers),
-    );
-    app.observe_stripe_bases(Arc::new(ahp_session::fsroute::resolve_base));
-    app.register_handler::<editor::completion::CompletionEffect>(ahp_lsp::CompletionRoute {
-        directory: Arc::clone(&wires.clients),
-        uris: Arc::clone(&wires.resource_uris),
-    });
-    app.register_handler::<editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
-        directory: Arc::clone(&wires.clients),
-        uris: Arc::clone(&wires.resource_uris),
-    });
-    app.register_handler::<ahp_locations::LspLocationsEffect>(
-        ahp_locations::routes::RouteLspLocations {
-            directory: Arc::clone(&wires.clients),
-            uris: Arc::clone(&wires.resource_uris),
-        },
-    );
-    app.register_handler::<editor::completion::PathCompletionEffect>(
-        ahp_locations::find::NativeFindHandler {
-            directory: Arc::clone(&wires.clients),
-        },
-    );
-    app.register_handler::<ahp_locations::FindEffect>(ahp_locations::find::NativeFindHandler {
-        directory: Arc::clone(&wires.clients),
-    });
-    app.register_handler::<ahp_locations::SearchLocationsEffect>(
-        ahp_locations::routes::RouteSearchLocations {
-            directory: Arc::clone(&wires.clients),
-        },
-    );
-    app.register_handler::<ahp_locations::SymbolLocationsEffect>(
-        ahp_locations::routes::RouteSymbolLocations {
-            directory: Arc::clone(&wires.clients),
-        },
+        true,
+        true,
+        true,
+        &wires.languages,
+        &wires.clients,
+        &wires.resource_uris,
     );
 
     // The outward hosts — dialed here, never in a test's engine.

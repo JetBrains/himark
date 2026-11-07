@@ -31,7 +31,7 @@ ahp-comments = { path = "../ahp-comments" }
 text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark", default-features = false }
-hiahp = { path = "../hiahp" }
+hiahp = { path = "../hiahp", features = ["capi"] }
 workbench-shell = { path = "../workbench-shell", features = ["capi"] }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }

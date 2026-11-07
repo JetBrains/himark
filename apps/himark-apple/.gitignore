@@ -4,4 +4,5 @@ himark.xcodeproj/
 himark.h
 himark-shell.h
 himark-tailnet.h
+himark-ahp.h
 build/

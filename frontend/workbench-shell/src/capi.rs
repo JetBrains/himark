@@ -264,6 +264,9 @@ impl WindowEngine for HimarkEngine {
 pub fn seat_host_chrome(app: &mut himark::app::Himark) {
     app.setup(|store| {
         store.put(himark_ffi::host::HostChrome {
+            on_pick_folders: None,
+            on_share: None,
+            on_agent_filesystem: None,
             on_pick_files: Some(Arc::new(|app| {
                 use himark::app_ext::AppExt as _;
                 app.register_command(Arc::new(crate::pickers::OpenFilePicker));

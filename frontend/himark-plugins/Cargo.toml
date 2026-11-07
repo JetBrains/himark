@@ -67,3 +67,4 @@ hipowershell = { path = "../plugins/lang/hipowershell" }
 hir = { path = "../plugins/lang/hir" }
 hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
+tokio = { version = "1", default-features = false, features = ["rt"] }

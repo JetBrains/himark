@@ -33,6 +33,14 @@ ahp-lsp = { path = "../ahp-lsp" }
 ahp-session = { path = "../ahp-session" }
 rpds = "1"
 recents = { path = "../recents" }
+himark-ffi = { path = "../himark-ffi", optional = true }
+tokio = { version = "1", features = ["time"], optional = true }
+
+[build-dependencies]
+cbindgen = "0.29.4"
+
+[features]
+capi = ["dep:himark-ffi", "dep:tokio"]
 
 [dev-dependencies]
 serde_json = "1"

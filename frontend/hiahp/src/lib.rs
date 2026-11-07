@@ -7,7 +7,10 @@
 //! place arms, the session residents. himark keeps no ahp-*
 //! dependency; this crate owns the half.
 
+pub mod agent_fs;
 pub mod arms;
+#[cfg(feature = "capi")]
+pub mod capi;
 pub mod engine;
 pub mod places;
 pub mod sessions;

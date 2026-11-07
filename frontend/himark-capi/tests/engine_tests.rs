@@ -15,6 +15,8 @@ use himark::app_ext::AppExt as _;
 use workbench_shell::test_support::TestSupport as _;
 
 use himark_api::*;
+#[allow(unused_imports)]
+use himark_api::EngineAgents as _;
 use gfx::Painter as _;
 use std::ffi::c_char;
 

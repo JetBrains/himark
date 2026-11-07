@@ -10,6 +10,7 @@
 //! windows), displacement + ⌘I mid-stream, and a verbatim REPLAY of
 //! the stream (an overlapping subscription must fold to one copy).
 
+use himark_api::EngineAgents as _;
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 use workbench_shell::capi::WindowEngine as _;

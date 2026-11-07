@@ -188,30 +188,52 @@ pub fn install_host(
     // every thread-crossing door below rides the poster.
     app.install_host_loop();
     let poster = app.poster();
+    let post: Arc<dyn Fn(AppCommand) + Send + Sync> =
+        Arc::new(move |command| poster.post(command));
     let runtime = app.runtime();
+    let installed = himark::plugin::install_all(app, Arc::new(myersdiff::Myers), plugins);
+    wire_doors(
+        app,
+        runtime,
+        post,
+        connector,
+        resource_uris,
+        Arc::clone(&installed.languages),
+    )
+}
 
+/// The WIRE DOORS alone — channels, the client directory, the
+/// fsroute handlers, the docsync hook, the add-host flow — over a
+/// runtime handle and a cross-thread post the CALLER owns: the
+/// desktop host hands in the engine's (see `install_host`); the web
+/// shell hands its emscripten wire thread's.
+pub fn wire_doors(
+    app: &mut Himark,
+    runtime: tokio::runtime::Handle,
+    post: Arc<dyn Fn(AppCommand) + Send + Sync>,
+    connector: Arc<dyn ahp_wire::transport::Connector>,
+    resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
+    languages: Arc<editor::reparse::SyntaxLanguages>,
+) -> Wires {
     let channels = docsync::DocumentChannels::new(
         runtime.clone(),
         {
-            let poster = poster.clone();
-            Arc::new(move |verb| poster.post(AppCommand::Verb(verb)))
+            let post = Arc::clone(&post);
+            Arc::new(move |verb| post(AppCommand::Verb(verb)))
         },
         Arc::clone(&resource_uris),
     );
 
     let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
-        let poster = poster.clone();
+        let post = Arc::clone(&post);
         Arc::new(move |subscription| {
-            poster.post(AppCommand::FileChanged(documents::watch::Subscription(
+            post(AppCommand::FileChanged(documents::watch::Subscription(
                 subscription,
             )));
         })
     }));
 
-    // The plugins install HERE; the wire-closed routes register
-    // right after, where the directory lives.
-    let installed = himark::plugin::install_all(app, Arc::new(myersdiff::Myers), plugins);
-    let languages = Arc::clone(&installed.languages);
+    app.setup(|store| store.put(hiahp::engine::WireClients(Arc::clone(&clients))));
 
     // hicode's definition ask routes over the wire — the HOST
     // registers it, closed over its client directory.

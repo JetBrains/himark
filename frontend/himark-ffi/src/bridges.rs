@@ -187,21 +187,71 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
 /// engine (`Himark`), where the `ToView` road can quiesce them.
 #[derive(Default)]
 pub(crate) struct Stages {
-    catalogs: Handles<hiahp::Catalog>,
 }
 
 /// The place table is process-wide like the event table: places
 /// are engine-independent values, and the SEATED shell (called
 /// deep inside a batch, no engine struct in reach) mints the
 /// handles it hands the native callback.
-static PLACES: LazyLock<
-    Mutex<
-        Handles<(
-            hikit::navigation::NavigationLocation,
-            Option<ahp_wire::SessionId>,
-        )>,
+static PLACES: LazyLock<Mutex<Handles<PlaceEntry>>> = LazyLock::new(Default::default);
+
+/// One held place: the location, and an opaque PAYLOAD the layer
+/// above this crate attached (the AHP capi rides the place's
+/// session here — this crate never reads it, only carries it).
+pub type PlacePayload = std::sync::Arc<dyn std::any::Any + Send + Sync>;
+pub type PlaceEntry = (hikit::navigation::NavigationLocation, Option<PlacePayload>);
+
+/// Mint a place handle — the door the layers above mint through.
+pub fn mint_place_handle(
+    place: hikit::navigation::NavigationLocation,
+    payload: Option<PlacePayload>,
+) -> HimarkPlace {
+    HimarkPlace {
+        raw: PLACES.lock().expect("the place table").mint((place, payload)),
+    }
+}
+
+/// Read a held place back (the payload included).
+pub fn place_entry(place: HimarkPlace) -> Option<PlaceEntry> {
+    PLACES.lock().expect("the place table").get(place.raw).cloned()
+}
+
+/// The seated MINT RIDER: runs after `himark_bridge_mint` mounts a
+/// place that carried a payload (the AHP capi remembers the
+/// session on the new bridge).
+#[derive(Clone)]
+pub struct PlaceMintRider(
+    pub  std::sync::Arc<
+        dyn Fn(&mut himark::app::Himark, himark::bridge::ViewBridgeId, &PlacePayload)
+            + Send
+            + Sync,
     >,
-> = LazyLock::new(Default::default);
+);
+
+/// What a seated exporter answers when the native shell should
+/// take a place over (`seat_callback_shell`'s classifier).
+pub struct NavigateExport {
+    pub kind: u32,
+    pub title: String,
+    pub focus: bool,
+    pub payload: Option<PlacePayload>,
+}
+
+/// The seated EXPORT classifier: which places the native callback
+/// is offered, with what kind, title and payload. The AHP capi
+/// seats the one that knows the whole vocabulary.
+#[derive(Clone)]
+pub struct NavigateExporter(
+    pub  std::sync::Arc<
+        dyn Fn(
+                &hikit::navigation::NavigationLocation,
+                himark::bridge::ViewBridgeId,
+                &imba::store::Store,
+            ) -> Option<NavigateExport>
+            + Send
+            + Sync,
+    >,
+);
 
 // ─── event factories ───
 
@@ -708,49 +758,6 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
     )
 }
 
-/// The EXPLICIT tree-follow: the host landed a navigation (the
-/// navigate callback handed it this very place) and commands the
-/// session's files tree to stand on the landed location — the same
-/// `TreeCommand::Follow` the workbench pushes from its focus walk.
-/// False when the place carries no location or no tree is mounted.
-#[no_mangle]
-pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: HimarkPlace) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let Some((place, Some(session))) = PLACES
-        .lock()
-        .expect("the place table")
-        .get(place.raw)
-        .cloned()
-    else {
-        return false;
-    };
-    let location = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>() {
-        ahp_session::session::state::Hosts::states(engine.app.store())
-            .into_iter()
-            .map(|state| state.documents())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .find_map(|collection| {
-                documents::OpenDocuments::location(engine.app.store(), collection, ready.document)
-            })
-    } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
-        documents::OpenDocuments::diff_view_ref(engine.app.store(), ready.documents, ready.view)
-            .map(|held| held.right.document())
-            .and_then(|right| {
-                documents::OpenDocuments::location(engine.app.store(), ready.documents, right)
-            })
-    } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
-        ready.reveal.clone()
-    } else {
-        None
-    };
-    let Some(location) = location else {
-        return false;
-    };
-    hiahp::sessions::follow_session_tree(&mut engine.app, &session, location)
-}
 
 /// Drain the reveal a mounted road parked — a caret-follow or a
 /// selection the view asked to be brought on screen, rect in that
@@ -904,28 +911,6 @@ pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64
         .map_or(0, |engine| engine.app.sessions_epoch())
 }
 
-/// Snapshot the catalog — an owned, immutable copy behind a
-/// handle; strings read out of it stay valid until its release.
-#[no_mangle]
-pub unsafe extern "C" fn himark_sessions_copy(engine: *mut HimarkEngine) -> HimarkCatalog {
-    let Some(engine) = engine.as_mut() else {
-        return HimarkCatalog { raw: 0 };
-    };
-    let snapshot = hiahp::engine::catalog(&engine.app);
-    HimarkCatalog {
-        raw: engine.stages.catalogs.mint(snapshot),
-    }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_release(engine: *mut HimarkEngine, catalog: HimarkCatalog) {
-    let Some(engine) = engine.as_mut() else {
-        return;
-    };
-    if engine.stages.catalogs.take(catalog.raw).is_none() {
-        refuse("catalog", catalog.raw);
-    }
-}
 
 /// A snapshot of the REGISTERED COMMANDS — the host-visible verbs
 /// (palette material). Same handle discipline as the catalog.
@@ -1026,262 +1011,11 @@ pub unsafe extern "C" fn himark_command_name(
     copy_optional_utf8(held.map(|(_, name)| name), out, cap)
 }
 
-unsafe fn with_catalog<R>(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    missing: R,
-    read: impl FnOnce(&hiahp::Catalog) -> R,
-) -> R {
-    let Some(engine) = engine.as_ref() else {
-        return missing;
-    };
-    match engine.stages.catalogs.get(catalog.raw) {
-        Some(snapshot) => read(snapshot),
-        None => {
-            refuse("catalog", catalog.raw);
-            missing
-        }
-    }
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_hosts(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-) -> usize {
-    with_catalog(engine, catalog, 0, |snapshot| snapshot.hosts.len())
-}
 
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_host_id(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-) -> u64 {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        snapshot.hosts.get(index).map_or(0, |host| host.host.raw())
-    })
-}
-
-/// 0 idle · 1 connecting · 2 connected · 3 failed.
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_host_status(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-) -> u32 {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        snapshot.hosts.get(index).map_or(0, |host| host.status)
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_host_name(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        copy_optional_utf8(
-            snapshot.hosts.get(index).map(|host| host.name.clone()),
-            out,
-            cap,
-        )
-    })
-}
-
-/// The connect error under a FAILED host row (UTF-8, no NUL;
-/// returns the byte length, copies when it fits). Empty otherwise.
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_host_error(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        copy_optional_utf8(
-            snapshot
-                .hosts
-                .get(index)
-                .and_then(|host| host.error.clone()),
-            out,
-            cap,
-        )
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_sessions(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-) -> usize {
-    with_catalog(engine, catalog, 0, |snapshot| snapshot.sessions.len())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_host(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-) -> u64 {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        snapshot.sessions.get(index).map_or(0, |row| row.host.raw())
-    })
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_status(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-) -> i64 {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        snapshot.sessions.get(index).map_or(0, |row| row.status)
-    })
-}
-
-unsafe fn catalog_session_string(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    out: *mut c_char,
-    cap: usize,
-    read: impl Fn(&hiahp::SessionRow) -> String,
-) -> usize {
-    with_catalog(engine, catalog, 0, |snapshot| {
-        copy_optional_utf8(snapshot.sessions.get(index).map(read), out, cap)
-    })
-}
-
-/// Which string `himark_catalog_session_string` reads.
-pub const HIMARK_SESSION_URI: u32 = 0;
-pub const HIMARK_SESSION_TITLE: u32 = 1;
-pub const HIMARK_SESSION_PROVIDER: u32 = 2;
-pub const HIMARK_SESSION_MODIFIED: u32 = 3;
-
-/// ONE sized-string door for the catalog row's text fields.
-#[no_mangle]
-pub unsafe extern "C" fn himark_catalog_session_string(
-    engine: *mut HimarkEngine,
-    catalog: HimarkCatalog,
-    index: usize,
-    field: u32,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    catalog_session_string(engine, catalog, index, out, cap, move |row| match field {
-        HIMARK_SESSION_URI => row.uri.clone(),
-        HIMARK_SESSION_TITLE => row.title.clone(),
-        HIMARK_SESSION_PROVIDER => row.provider.clone(),
-        HIMARK_SESSION_MODIFIED => row.modified_at.clone(),
-        _ => String::new(),
-    })
-}
-
-/// Enter a session headlessly: subscribe, adopt, wire, poll — the
-/// native shell's selection. The session's views are mintable
-/// after the entry lands; the catalog carries the visible state.
-#[no_mangle]
-pub unsafe extern "C" fn himark_session_enter(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let Some(uri) = str_from(uri, len) else {
-        return false;
-    };
-    hiahp::engine::enter_session(&mut engine.app, 
-        ahp_wire::client::HostId::from_raw(host),
-        ahp_wire::client::SessionUri::new(uri.to_owned()),
-    )
-}
-
-/// Create a session headlessly on the host (0 = the local
-/// default); the landing enters it.
-#[no_mangle]
-pub unsafe extern "C" fn himark_session_new(engine: *mut HimarkEngine, host: u64) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let host = match host {
-        0 => None,
-        raw => Some(ahp_wire::client::HostId::from_raw(raw)),
-    };
-    hiahp::engine::create_session(&mut engine.app, host)
-}
 
 // ─── places and the minting door (docs/ui/himark-ffi.md) ───
 
-unsafe fn mint_session_place(
-    engine: *mut HimarkEngine,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-    place: impl Fn(ahp_wire::SessionId) -> hikit::navigation::NavigationLocation,
-) -> HimarkPlace {
-    let Some(engine) = engine.as_mut() else {
-        return HimarkPlace { raw: 0 };
-    };
-    let Some(uri) = str_from(uri, len) else {
-        return HimarkPlace { raw: 0 };
-    };
-    let session = ahp_wire::SessionId {
-        host: ahp_wire::client::HostId::from_raw(host),
-        session: ahp_wire::client::SessionUri::new(uri.to_owned()),
-    };
-    let _ = engine;
-    HimarkPlace {
-        raw: PLACES
-            .lock()
-            .expect("the place table")
-            .mint((place(session.clone()), Some(session))),
-    }
-}
-
-/// ONE minting door for every session view: `kind` speaks the
-/// `HIMARK_PLACE_*` vocabulary (the session-view kinds — the READY
-/// kinds `DOCUMENT`/`DIFF`/`CANVAS` and `DISMISS` are the navigate
-/// callback's and refuse here).
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_session_view(
-    engine: *mut HimarkEngine,
-    kind: u32,
-    host: u64,
-    uri: *const c_char,
-    len: usize,
-) -> HimarkPlace {
-    use hiahp::places::*;
-    
-    use hikit::navigation::NavigationLocation;
-    let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
-        HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),
-        HIMARK_PLACE_CHAT_TRANSCRIPT => |s| NavigationLocation::new(ChatTranscriptPlace(s)),
-        HIMARK_PLACE_CHAT_COMPOSER => |s| NavigationLocation::new(ChatComposerPlace(s)),
-        HIMARK_PLACE_CHANGES => |s| NavigationLocation::new(ChangesPlace(s)),
-        HIMARK_PLACE_CHANGES_CANVAS => |s| NavigationLocation::new(ChangesCanvasPlace(s)),
-        HIMARK_PLACE_HISTORY => |s| NavigationLocation::new(HistoryPlace(s)),
-        HIMARK_PLACE_SEARCH => |s| NavigationLocation::new(SearchPlace(s)),
-        HIMARK_PLACE_COMMENTS => |s| NavigationLocation::new(CommentsPlace(s)),
-        HIMARK_PLACE_PEEKER => |s| NavigationLocation::new(PeekerPlace(s)),
-        HIMARK_PLACE_PALETTE => |s| NavigationLocation::new(PalettePlace(s)),
-        HIMARK_PLACE_SESSIONS => |s| NavigationLocation::new(SessionsPlace(s)),
-        HIMARK_PLACE_FILES => |s| NavigationLocation::new(FilesPlace(s)),
-        HIMARK_PLACE_FOLDER_PICKER => |s| NavigationLocation::new(FolderPickerPlace(s)),
-        _ => {
-            refuse("session view kind", kind as u64);
-            return HimarkPlace { raw: 0 };
-        }
-    };
-    mint_session_place(engine, host, uri, len, make)
-}
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: HimarkPlace) {
@@ -1298,42 +1032,6 @@ pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: 
     }
 }
 
-/// WHICH SESSION a place names. A shell that claims a place has to
-/// re-point its views at that session — the sessions drawer picking
-/// a row is the case — and the handle is the only thing it holds.
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_session_host(
-    engine: *mut HimarkEngine,
-    place: HimarkPlace,
-) -> u64 {
-    let Some(_engine) = engine.as_mut() else {
-        return 0;
-    };
-    PLACES
-        .lock()
-        .expect("the place table")
-        .get(place.raw)
-        .and_then(|(_, session)| session.as_ref().map(|session| session.host.raw()))
-        .unwrap_or(0)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_place_session_uri(
-    engine: *mut HimarkEngine,
-    place: HimarkPlace,
-    out: *mut c_char,
-    cap: usize,
-) -> usize {
-    let Some(_engine) = engine.as_mut() else {
-        return 0;
-    };
-    let uri = PLACES
-        .lock()
-        .expect("the place table")
-        .get(place.raw)
-        .and_then(|(_, session)| session.as_ref().map(|session| session.session.to_string()));
-    copy_optional_utf8(uri, out, cap)
-}
 
 /// A bridge's exported WINDOW overlays — the anchors that become
 /// the shell's popovers. The epoch moves only when the set
@@ -1527,41 +1225,25 @@ pub unsafe extern "C" fn himark_bridge_mint(
         refuse("place", place.raw);
         return HimarkBridge { raw: 0 };
     };
-    let (place, session) = place;
-    match hiahp::arms::mount_place(&mut engine.app, &place, session) {
-        Some(id) => HimarkBridge { raw: id.raw() },
+    let (place, payload) = place;
+    match himark::mounts::mount_place(&mut engine.app, &place) {
+        Some(id) => {
+            // The payload rides to the seated rider (the AHP capi
+            // remembers the session on the new bridge).
+            if let (Some(payload), Some(rider)) = (
+                payload,
+                engine.app.store().get::<PlaceMintRider>().cloned(),
+            ) {
+                (rider.0)(&mut engine.app, id, &payload);
+            }
+            HimarkBridge { raw: id.raw() }
+        }
         None => HimarkBridge { raw: 0 },
     }
 }
 
 // ─── the shell callback: himark asks the host to navigate ───
 
-/// The place-kind vocabulary the callback speaks. `DOCUMENT` and
-/// `DIFF` are READY places — minting is synchronous; the session
-/// kinds are the tab places the host already knows how to mint.
-pub const HIMARK_PLACE_CHAT: u32 = 1;
-pub const HIMARK_PLACE_CHANGES: u32 = 2;
-pub const HIMARK_PLACE_FILES: u32 = 3;
-pub const HIMARK_PLACE_DOCUMENT: u32 = 4;
-pub const HIMARK_PLACE_DIFF: u32 = 5;
-pub const HIMARK_PLACE_CANVAS: u32 = 6;
-/// Not a view: the ORIGIN's hosting face asks to close.
-pub const HIMARK_PLACE_DISMISS: u32 = 7;
-// The remaining session-view kinds — `himark_place_session_view`'s
-// half of the vocabulary; the callback never speaks them.
-pub const HIMARK_PLACE_CHAT_TRANSCRIPT: u32 = 8;
-pub const HIMARK_PLACE_CHAT_COMPOSER: u32 = 9;
-pub const HIMARK_PLACE_CHANGES_CANVAS: u32 = 10;
-pub const HIMARK_PLACE_HISTORY: u32 = 11;
-pub const HIMARK_PLACE_SEARCH: u32 = 12;
-pub const HIMARK_PLACE_COMMENTS: u32 = 13;
-pub const HIMARK_PLACE_PEEKER: u32 = 14;
-pub const HIMARK_PLACE_PALETTE: u32 = 15;
-pub const HIMARK_PLACE_SESSIONS: u32 = 16;
-/// The session host's folder picker — BOTH halves speak it: a rust
-/// road navigates it (the add-folder ask on a remote host) and the
-/// native shell may mint it directly.
-pub const HIMARK_PLACE_FOLDER_PICKER: u32 = 17;
 
 /// The host's navigate answer: called on the MAIN thread, in the
 /// middle of an engine batch — the host must only RECORD (push the
@@ -1620,71 +1302,21 @@ impl himark::himark::Shell for CallbackShell {
         fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         if origin.is_mounted() {
-            let mut focus = false;
-            let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
-            {
-                focus = ready.focus;
-                // The document's name: it is registered by the time
-                // this place is navigated (the open landing's law).
-                let title = ahp_session::session::state::Hosts::states(store)
-                    .into_iter()
-                    .map(|state| state.documents())
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .find_map(|collection| {
-                        documents::OpenDocuments::name(store, collection, ready.document)
-                    })
-                    .unwrap_or_default();
-                Some((HIMARK_PLACE_DOCUMENT, title))
-            } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
-                Some((HIMARK_PLACE_DIFF, ready.title.clone()))
-            } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
-                Some((
-                    HIMARK_PLACE_CANVAS,
-                    ready.source.title(store, ready.changes),
-                ))
-            } else if place.place::<himark::places::DismissPlace>().is_some() {
-                Some((HIMARK_PLACE_DISMISS, String::new()))
-            } else if place.place::<hiahp::places::ChatPlace>().is_some() {
-                // "Show this session" — the sessions drawer's pick.
-                Some((HIMARK_PLACE_CHAT, String::new()))
-            } else if place.place::<hiahp::places::FolderPickerPlace>().is_some() {
-                // The add-folder ask on a remote host — the native
-                // shell presents the picker (iOS: a sheet).
-                Some((HIMARK_PLACE_FOLDER_PICKER, "Add Folder".to_owned()))
-            } else {
-                None
-            };
-            if let Some((kind, title)) = classified {
-                // The ORIGIN's session rides the handle: the READY
-                // places carry none of their own, and the mount must
-                // answer `session_of` for the opens made FROM it. A
-                // place that NAMES a session (the drawer's pick)
-                // carries its own — that is the whole message.
-                let session = place
-                    .place::<hiahp::places::ChatPlace>()
-                    .map(|chat| chat.0.clone())
-                    .or_else(|| {
-                        place
-                            .place::<hiahp::places::FolderPickerPlace>()
-                            .map(|picker| picker.0.clone())
-                    })
-                    .or_else(|| hiahp::sessions::session_of(store, origin));
-                let handle = HimarkPlace {
-                    raw: PLACES
-                        .lock()
-                        .expect("the place table")
-                        .mint((place.clone(), session)),
-                };
+            let exported = store
+                .get::<NavigateExporter>()
+                .cloned()
+                .and_then(|exporter| (exporter.0)(&place, origin, store));
+            if let Some(export) = exported {
+                let handle = mint_place_handle(place.clone(), export.payload);
                 let claimed = unsafe {
                     (self.on_navigate)(
                         self.ctx.0,
                         HimarkBridge { raw: origin.raw() },
                         handle,
-                        kind,
-                        title.as_ptr() as *const c_char,
-                        title.len(),
-                        focus,
+                        export.kind,
+                        export.title.as_ptr() as *const c_char,
+                        export.title.len(),
+                        export.focus,
                     )
                 };
                 if claimed {

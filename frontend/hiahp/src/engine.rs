@@ -180,3 +180,13 @@ pub fn install_residents(app: &mut Himark) {
         });
     });
 }
+
+/// The wire CLIENT DIRECTORY as a store resident — seated by the
+/// host wiring so late registrations (a test's inert host, the
+/// drawer's add-host) reach the one directory without threading it.
+#[derive(Clone)]
+pub struct WireClients(pub Arc<ahp_wire::fs::ClientDirectory>);
+
+pub fn wire_clients(store: &imba::store::Store) -> Option<Arc<ahp_wire::fs::ClientDirectory>> {
+    store.get::<WireClients>().map(|held| Arc::clone(&held.0))
+}

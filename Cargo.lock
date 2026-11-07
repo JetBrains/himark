@@ -3827,6 +3827,7 @@ dependencies = [
  "ahp-types",
  "ahp-wire",
  "canvas",
+ "cbindgen 0.29.4",
  "changesview",
  "comments",
  "documents",
@@ -3835,6 +3836,7 @@ dependencies = [
  "gfx",
  "hikit",
  "himark",
+ "himark-ffi",
  "imba",
  "locations",
  "myersdiff",
@@ -3842,6 +3844,7 @@ dependencies = [
  "rpds",
  "serde_json",
  "text",
+ "tokio",
 ]
 
 [[package]]
@@ -4375,18 +4378,11 @@ dependencies = [
 name = "himark-ffi"
 version = "0.1.0"
 dependencies = [
- "ahp-docsync",
- "ahp-locations",
- "ahp-lsp",
- "ahp-session",
- "ahp-wire",
- "canvas",
  "cbindgen 0.29.4",
  "documents",
  "editor",
  "gfx",
  "gfx-skia",
- "hiahp",
  "hikit",
  "himark",
  "imba",
@@ -4474,6 +4470,7 @@ dependencies = [
  "hizig",
  "host-discovery",
  "myersdiff",
+ "tokio",
 ]
 
 [[package]]
@@ -11602,6 +11599,7 @@ dependencies = [
  "hilua",
  "himake",
  "himark",
+ "himark-plugins",
  "himarkdown",
  "hinix",
  "hiobjc",

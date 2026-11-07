@@ -20,6 +20,19 @@ use imba::effect::{Effect, EffectHandler};
 pub struct HostChrome {
     pub on_pick_files: Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark) + Send + Sync>>,
     pub on_clipboard: Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark) + Send + Sync>>,
+    /// The AHP capi's seats — this crate marshals callbacks and
+    /// invokes; the handlers whose EFFECT TYPES sit above it
+    /// register through these, over the public [`HostBridge`]
+    /// doors.
+    pub on_pick_folders:
+        Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark, Arc<HostBridge>) + Send + Sync>>,
+    pub on_share:
+        Option<std::sync::Arc<dyn Fn(&mut himark::app::Himark, Arc<HostBridge>) + Send + Sync>>,
+    pub on_agent_filesystem: Option<
+        std::sync::Arc<
+            dyn Fn(&mut himark::app::Himark, crate::AgentHostFilesystemCapabilities) + Send + Sync,
+        >,
+    >,
 }
 
 #[repr(C)]
@@ -247,7 +260,7 @@ impl HostRequests {
     }
 }
 
-pub(crate) struct HostBridge {
+pub struct HostBridge {
     callbacks: HimarkHostCallbacks,
     pub(crate) requests: HostRequests,
 }
@@ -263,7 +276,7 @@ impl HostBridge {
         })
     }
 
-    pub(crate) fn open_url(&self, url: &str) -> bool {
+    pub fn open_url(&self, url: &str) -> bool {
         let Some(open) = self.callbacks.open_url else {
             return false;
         };
@@ -271,10 +284,21 @@ impl HostBridge {
         true
     }
 
-    pub(crate) fn set_clipboard(&self, text: &str) {
+    pub fn set_clipboard(&self, text: &str) {
         if let Some(set) = self.callbacks.set_clipboard {
             unsafe { set(self.callbacks.ctx, text.as_ptr().cast(), text.len()) };
         }
+    }
+
+    /// Ask the host to pick locations for `origin` and await the
+    /// answer — the public half the AHP folder-grant handler rides.
+    pub async fn pick_locations(&self, origin: u64) -> Vec<ResourceLocation> {
+        let Some(pick) = self.callbacks.pick_files else {
+            return Vec::new();
+        };
+        let request = self.requests.begin();
+        unsafe { pick(self.callbacks.ctx, request, origin) };
+        self.requests.response(request).await
     }
 }
 
@@ -294,62 +318,6 @@ impl Effect for FilePickerEffect {
 
 pub(crate) struct FilePickerHandler(pub(crate) Arc<HostBridge>);
 
-pub(crate) struct ShareHostHandler(pub(crate) Arc<HostBridge>);
-
-impl EffectHandler<ahp_wire::effects::ShareHostEffect> for ShareHostHandler {
-    async fn handle(&self, effect: ahp_wire::effects::ShareHostEffect) -> Result<String, String> {
-        let url = effect.client.http_serve().await?;
-        self.0.set_clipboard(&url);
-        Ok(url)
-    }
-}
-
-pub(crate) struct ShareTailnetHandler(pub(crate) Arc<HostBridge>);
-
-impl EffectHandler<ahp_wire::effects::ShareTailnetEffect> for ShareTailnetHandler {
-    async fn handle(
-        &self,
-        effect: ahp_wire::effects::ShareTailnetEffect,
-    ) -> Result<ahp_wire::client::TailnetShare, String> {
-        // The first ask enables; the enrollment then moves on its
-        // own clock. A few re-asks catch the login URL (or a prior
-        // enrollment going straight to running) without the user
-        // rerunning the command.
-        let mut share = effect.client.tailnet_serve().await?;
-        for _ in 0..4 {
-            if share.auth_url.is_some() || share.url.is_some() || share.error.is_some() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-            share = effect.client.tailnet_serve().await?;
-        }
-        if let Some(copy) = share.url.as_deref().or(share.auth_url.as_deref()) {
-            self.0.set_clipboard(copy);
-        }
-        // The login is a browser trip — take the user straight
-        // there when the shell has a door.
-        if let Some(auth_url) = share.auth_url.as_deref() {
-            self.0.open_url(auth_url);
-        }
-        Ok(share)
-    }
-}
-
-pub(crate) struct PickFoldersHandler(pub(crate) Arc<HostBridge>);
-
-impl EffectHandler<hiahp::higent::folder_grant::PickFoldersEffect> for PickFoldersHandler {
-    async fn handle(
-        &self,
-        effect: hiahp::higent::folder_grant::PickFoldersEffect,
-    ) -> Vec<ResourceLocation> {
-        let Some(pick) = self.0.callbacks.pick_files else {
-            return Vec::new();
-        };
-        let request = self.0.requests.begin();
-        unsafe { pick(self.0.callbacks.ctx, request, effect.window) };
-        self.0.requests.response(request).await
-    }
-}
 
 impl EffectHandler<FilePickerEffect> for FilePickerHandler {
     async fn handle(&self, effect: FilePickerEffect) -> Vec<ResourceLocation> {

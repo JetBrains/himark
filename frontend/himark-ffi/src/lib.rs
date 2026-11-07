@@ -12,13 +12,9 @@ use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
 use std::sync::Arc;
 
-use ahp_docsync as docsync;
-use ahp_locations::find;
-use ahp_session::fsroute;
 pub mod bridges;
 pub use crate::bridges::himark_perform_command;
 pub mod host;
-use ahp_wire::uris;
 pub use host::{HimarkHostCallbacks, HimarkLocation};
 
 use himark::app::Himark;
@@ -41,9 +37,9 @@ type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
 #[derive(Clone, Copy, Default)]
 pub struct AgentHostFilesystemCapabilities {
-    fetch_document: bool,
-    store_document: bool,
-    list_directory: bool,
+    pub fetch_document: bool,
+    pub store_document: bool,
+    pub list_directory: bool,
 }
 
 impl AgentHostFilesystemCapabilities {
@@ -76,13 +72,9 @@ pub struct HimarkEngine {
 
     host: Option<Arc<host::HostBridge>>,
 
-    agent_host_filesystem: AgentHostFilesystemCapabilities,
 
-    clients: Arc<ahp_wire::fs::ClientDirectory>,
 
-    _document_channels: Arc<docsync::DocumentChannels>,
 
-    resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 
     pub clicks: ClickCounter,
 
@@ -560,104 +552,53 @@ impl HimarkEngine {
         self.perform_command(0, if dark { "theme.dark" } else { "theme.light" })
     }
 
-    pub fn install_agent_host_filesystem(&mut self, capabilities: AgentHostFilesystemCapabilities) {
-        let installed = self.agent_host_filesystem;
-
-        if capabilities.fetch_document && !installed.fetch_document {
-            hiahp::install_open_handlers(
-                &mut self.app,
-                Arc::clone(&self.languages),
-                Arc::new(myersdiff::Myers),
-            );
-            self.app
-                .observe_stripe_bases(Arc::new(fsroute::resolve_base));
-            self.app
-                .register_handler::<::editor::completion::CompletionEffect>(
-                    ahp_lsp::CompletionRoute {
-                        directory: Arc::clone(&self.clients),
-                        uris: Arc::clone(&self.resource_uris),
-                    },
-                );
-            self.app
-                .register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
-                    directory: Arc::clone(&self.clients),
-                    uris: Arc::clone(&self.resource_uris),
-                });
-            self.app
-                .register_handler::<ahp_locations::LspLocationsEffect>(
-                    ahp_locations::routes::RouteLspLocations {
-                        directory: Arc::clone(&self.clients),
-                        uris: Arc::clone(&self.resource_uris),
-                    },
-                );
-        }
-        if capabilities.list_directory && !installed.list_directory {
-            self.app
-                .register_handler::<::editor::completion::PathCompletionEffect>(
-                    find::NativeFindHandler {
-                        directory: Arc::clone(&self.clients),
-                    },
-                );
-            self.app
-                .register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
-                    directory: Arc::clone(&self.clients),
-                });
-            self.app
-                .register_handler::<ahp_locations::SearchLocationsEffect>(
-                    ahp_locations::routes::RouteSearchLocations {
-                        directory: Arc::clone(&self.clients),
-                    },
-                );
-            self.app
-                .register_handler::<ahp_locations::SymbolLocationsEffect>(
-                    ahp_locations::routes::RouteSymbolLocations {
-                        directory: Arc::clone(&self.clients),
-                    },
-                );
-        }
-
-        self.agent_host_filesystem.include(capabilities);
-    }
 
     pub fn set_host(&mut self, callbacks: HimarkHostCallbacks) {
         let bridge = host::HostBridge::new(callbacks);
+        let chrome = self.app.store().get::<host::HostChrome>().cloned();
         if callbacks.pick_files.is_some() {
             self.app
                 .register_handler::<host::FilePickerEffect>(host::FilePickerHandler(Arc::clone(
                     &bridge,
                 )));
-
-            self.app
-                .register_handler::<hiahp::higent::folder_grant::PickFoldersEffect>(
-                    host::PickFoldersHandler(Arc::clone(&bridge)),
-                );
-            if let Some(chrome) = self.app.store().get::<host::HostChrome>().cloned() {
-                if let Some(on_pick_files) = chrome.on_pick_files {
+            if let Some(chrome) = &chrome {
+                if let Some(on_pick_files) = &chrome.on_pick_files {
                     on_pick_files(&mut self.app);
+                }
+                // The AHP folder-grant picker — seated by the AHP
+                // capi; this crate only marshals.
+                if let Some(on_pick_folders) = &chrome.on_pick_folders {
+                    on_pick_folders(&mut self.app, Arc::clone(&bridge));
                 }
             }
         }
         if callbacks.set_clipboard.is_some() {
-            self.app
-                .register_handler::<ahp_wire::effects::ShareHostEffect>(host::ShareHostHandler(
-                    Arc::clone(&bridge),
-                ));
-            if let Some(chrome) = self.app.store().get::<host::HostChrome>().cloned() {
-                if let Some(on_clipboard) = chrome.on_clipboard {
+            if let Some(chrome) = &chrome {
+                if let Some(on_clipboard) = &chrome.on_clipboard {
                     on_clipboard(&mut self.app);
                 }
+                // The share roads (host url, tailnet) — seated.
+                if let Some(on_share) = &chrome.on_share {
+                    on_share(&mut self.app, Arc::clone(&bridge));
+                }
             }
-            self.app
-                .register_handler::<ahp_wire::effects::ShareTailnetEffect>(
-                    host::ShareTailnetHandler(Arc::clone(&bridge)),
-                );
         }
 
-        self.install_agent_host_filesystem(AgentHostFilesystemCapabilities {
-            fetch_document: callbacks.fetch_document.is_some(),
-            store_document: callbacks.store_document.is_some(),
-            list_directory: callbacks.list_directory.is_some(),
-        });
+        // The agent-host FILESYSTEM routes ride a seat too: the
+        // capabilities are this crate's C facts, the routes the AHP
+        // capi's.
+        if let Some(chrome) = &chrome {
+            if let Some(on_agent_filesystem) = &chrome.on_agent_filesystem {
+                on_agent_filesystem(
+                    &mut self.app,
+                    AgentHostFilesystemCapabilities {
+                        fetch_document: callbacks.fetch_document.is_some(),
+                        store_document: callbacks.store_document.is_some(),
+                        list_directory: callbacks.list_directory.is_some(),
+                    },
+                );
+            }
+        }
         if callbacks.pick_save.is_some() {
             self.app
                 .register_handler::<documents::PickSaveEffect>(host::PickSaveHandler(Arc::clone(
@@ -884,14 +825,7 @@ impl HimarkEngine {
     /// Assemble the C engine over a BOOTED app and its wires — the
     /// composition root (himark-capi, an app crate) builds the app
     /// (plugins, host loop, connector) and hands it in whole.
-    #[allow(clippy::too_many_arguments)]
-    pub fn assemble(
-        app: Himark,
-        languages: Arc<editor::reparse::SyntaxLanguages>,
-        clients: Arc<ahp_wire::fs::ClientDirectory>,
-        document_channels: Arc<docsync::DocumentChannels>,
-        resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
-    ) -> Self {
+    pub fn assemble(app: Himark, languages: Arc<editor::reparse::SyntaxLanguages>) -> Self {
         Self {
             app,
             languages,
@@ -900,50 +834,12 @@ impl HimarkEngine {
             stages: Default::default(),
             pending_cut: None,
             host: None,
-            agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
-            clients,
-            _document_channels: document_channels,
-            resource_uris,
         }
     }
 
-    pub fn register_agent_server(
-        &mut self,
-        name: &str,
-        client: ahp_wire::client::Client,
-    ) -> ahp_wire::client::HostId {
-        let id = hiahp::engine::register_client(&mut self.app, client.clone());
-        let clients = Arc::clone(&self.clients);
-        self.app.setup(|store| {
-            ahp_session::session::agents::Agents::seed(store, id, name);
-            ahp_session::session::state::Hosts::install_uris(
-                store,
-                id,
-                Arc::new(uris::FileUris),
-            );
-        });
-        clients.record(id, client);
-        id
-    }
 
-    pub fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
-        self.clients.set_local(server);
-        hiahp::engine::set_local_host(&mut self.app, server);
-    }
-
-    /// The wire client directory and the uri map — the HOST's late
-    /// registrations (routes for effects whose types sit above this
-    /// crate) close over them.
     pub fn languages(&self) -> Arc<editor::reparse::SyntaxLanguages> {
         Arc::clone(&self.languages)
-    }
-
-    pub fn clients(&self) -> Arc<ahp_wire::fs::ClientDirectory> {
-        Arc::clone(&self.clients)
-    }
-
-    pub fn resource_uris(&self) -> Arc<dyn ahp_wire::client::ResourceUriMap> {
-        Arc::clone(&self.resource_uris)
     }
 
     pub fn runtime(&self) -> tokio::runtime::Handle {
