@@ -30,7 +30,10 @@ final class AppHost: NSObject, ObservableObject {
     // node state dir inside it is locked until first unlock and kept
     // out of backups (a backed-up node key would clone this device's
     // tailnet identity).
-    let engine = HimarkEngine(dataDir: AppHost.prepareTailnetDataDir())
+    // The host bridge is born FIRST: its callbacks are the engine's
+    // construction parameters; engine and presenter attach later.
+    private let hostBridge: HostBridge
+    let engine: HimarkEngine
     let device = MTLCreateSystemDefaultDevice()!
 
     struct Selected: Equatable {
@@ -80,6 +83,9 @@ final class AppHost: NSObject, ObservableObject {
     private let executor = DispatchQueue(label: "dev.himark.executor", qos: .userInteractive)
 
     override init() {
+        let (hostBridge, callbacks) = HostBridge.prepare()
+        self.hostBridge = hostBridge
+        engine = HimarkEngine(dataDir: AppHost.prepareTailnetDataDir(), host: callbacks)
         super.init()
         // The engine took its callbacks AT CREATION; the seat hooks
         // them to this host now that it stands.
@@ -357,7 +363,7 @@ final class AppHost: NSObject, ObservableObject {
     private func installHostIfNeeded() {
         guard !hostInstalled, let presenter = Self.rootViewController() else { return }
         hostInstalled = true
-        HostBridge.install(engine: engine, presenter: presenter)
+        hostBridge.attach(engine: engine, presenter: presenter)
     }
 
     private static func rootViewController() -> UIViewController? {

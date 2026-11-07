@@ -18,7 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func bootEngine() {
-        engine = HimarkEngine()
+        let (host, callbacks) = HostBridge.prepare { [weak self] in self?.repaintAll() }
+        engine = HimarkEngine(host: callbacks)
+        host.attach(engine: engine)
 
         engine.setChromeClearance(130.0)
         engine.seat.onWake = { [weak self] in
@@ -27,8 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.seat.onEffectWake = { [weak self] in
             self?.executor.async { [weak self] in self?.engine.runPending() }
         }
-
-        HostBridge.install(engine: engine) { [weak self] in self?.repaintAll() }
 
         appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
             DispatchQueue.main.async { self?.applySystemTheme() }

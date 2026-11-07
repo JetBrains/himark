@@ -16,7 +16,7 @@ use himark_ffi::bridges::{refuse, HimarkPlace, NavigateExport, NavigateExporter,
 use himark_ffi::host::HostBridge;
 use himark_ffi::{copy_optional_utf8, str_from, HimarkEngine};
 
-use crate::{Catalog, HostRow, SessionRow};
+use crate::{Catalog, SessionRow};
 
 /// The held catalog snapshots — the same handle discipline as
 /// himark-ffi's own tables, in this crate because the type is.
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn himark_sessions_copy(engine: *mut HimarkEngine) -> Hima
     let Some(engine) = engine.as_mut() else {
         return HimarkCatalog { raw: 0 };
     };
-    let snapshot = crate::engine::catalog(&engine.app);
+    let snapshot = crate::engine::catalog(engine);
     HimarkCatalog {
         raw: catalogs().lock().expect("the catalog table").mint(snapshot),
     }
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn himark_session_enter(
     let Some(uri) = str_from(uri, len) else {
         return false;
     };
-    crate::engine::enter_session(&mut engine.app, 
+    crate::engine::enter_session(engine, 
         ahp_wire::client::HostId::from_raw(host),
         ahp_wire::client::SessionUri::new(uri.to_owned()),
     )
@@ -269,7 +269,7 @@ pub unsafe extern "C" fn himark_session_new(engine: *mut HimarkEngine, host: u64
         0 => None,
         raw => Some(ahp_wire::client::HostId::from_raw(raw)),
     };
-    crate::engine::create_session(&mut engine.app, host)
+    crate::engine::create_session(engine, host)
 }
 
 /// The place-kind vocabulary the callback speaks. `DOCUMENT` and
@@ -414,19 +414,19 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
         return false;
     };
     let location = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>() {
-        ahp_session::session::state::Hosts::states(engine.app.store())
+        ahp_session::session::state::Hosts::states(engine.store())
             .into_iter()
             .map(|state| state.documents())
             .collect::<Vec<_>>()
             .into_iter()
             .find_map(|collection| {
-                documents::OpenDocuments::location(engine.app.store(), collection, ready.document)
+                documents::OpenDocuments::location(engine.store(), collection, ready.document)
             })
     } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
-        documents::OpenDocuments::diff_view_ref(engine.app.store(), ready.documents, ready.view)
+        documents::OpenDocuments::diff_view_ref(engine.store(), ready.documents, ready.view)
             .map(|held| held.right.document())
             .and_then(|right| {
-                documents::OpenDocuments::location(engine.app.store(), ready.documents, right)
+                documents::OpenDocuments::location(engine.store(), ready.documents, right)
             })
     } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
         ready.reveal.clone()
@@ -436,7 +436,7 @@ pub unsafe extern "C" fn himark_tree_follow(engine: *mut HimarkEngine, place: Hi
     let Some(location) = location else {
         return false;
     };
-    crate::sessions::follow_session_tree(&mut engine.app, &session, location)
+    crate::sessions::follow_session_tree(engine, &session, location)
 }
 
 /// Seat the AHP half over an assembled engine: the navigate
@@ -469,13 +469,11 @@ pub fn seat_ahp(
     app.setup(move |store| {
         store.put(himark_ffi::host::HostChrome {
             on_pick_folders: Some(Arc::new(|app, bridge| {
-                use himark::app_ext::AppExt as _;
                 app.register_handler::<crate::higent::folder_grant::PickFoldersEffect>(
                     PickFoldersHandler(bridge),
                 );
             })),
             on_share: Some(Arc::new(|app, bridge| {
-                use himark::app_ext::AppExt as _;
                 app.register_handler::<ahp_wire::effects::ShareHostEffect>(ShareHostHandler(
                     Arc::clone(&bridge),
                 ));
@@ -507,7 +505,6 @@ fn classify_navigate(
     store: &imba::store::Store,
 ) -> Option<NavigateExport> {
     let mut focus = false;
-            let mut focus = false;
     let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
             {
                 focus = ready.focus;
@@ -609,7 +606,7 @@ impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFolde
         &self,
         effect: crate::higent::folder_grant::PickFoldersEffect,
     ) -> Vec<ResourceLocation> {
-        self.0.pick_locations(effect.window).await
+        self.0.pick_locations(effect.origin).await
     }
 }
 

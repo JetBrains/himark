@@ -16,10 +16,10 @@ targets:
     sources: [Sources/Shared, Sources/macOS]
     configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
     # ⌘R builds the Rust staticlib for this SDK first — a stale
-    # libhimark_api.a was the silent failure; build.sh stays the
+    # libhimark_plugins.a was the silent failure; build.sh stays the
     # from-scratch and xcconfig-(re)generation road.
     preBuildScripts:
-      - name: Build Rust (himark-capi)
+      - name: Build Rust (himark-plugins)
         script: exec "$SRCROOT/xcode-build-rust.sh"
         shell: /bin/bash
         basedOnDependencyAnalysis: false
@@ -62,10 +62,10 @@ targets:
         buildPhase: resources
     configFiles: { Release: Generated-iOS.xcconfig, Debug: Generated-iOS.xcconfig }
     # ⌘R builds the Rust staticlib for this SDK first — a stale
-    # libhimark_api.a was the silent failure; build.sh stays the
+    # libhimark_plugins.a was the silent failure; build.sh stays the
     # from-scratch and xcconfig-(re)generation road.
     preBuildScripts:
-      - name: Build Rust (himark-capi)
+      - name: Build Rust (himark-plugins)
         script: exec "$SRCROOT/xcode-build-rust.sh"
         shell: /bin/bash
         basedOnDependencyAnalysis: false

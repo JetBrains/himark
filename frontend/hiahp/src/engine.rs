@@ -190,3 +190,25 @@ pub struct WireClients(pub Arc<ahp_wire::fs::ClientDirectory>);
 pub fn wire_clients(store: &imba::store::Store) -> Option<Arc<ahp_wire::fs::ClientDirectory>> {
     store.get::<WireClients>().map(|held| Arc::clone(&held.0))
 }
+
+/// The store-in-hand host mint shared by discovery and the add-host
+/// flow — seats before seeding, so the row never connects against an
+/// unregistered client.
+pub fn register_agent_server(
+    app: &mut himark::app::Himark,
+    clients: &ahp_wire::fs::ClientDirectory,
+    name: &str,
+    client: ahp_wire::client::Client,
+) -> ahp_wire::client::HostId {
+    let id = register_client(app, client.clone());
+    app.setup(|store| {
+        ahp_session::session::agents::Agents::seed(store, id, name);
+        ahp_session::session::state::Hosts::install_uris(
+            store,
+            id,
+            Arc::new(ahp_wire::uris::FileUris),
+        );
+    });
+    clients.record(id, client);
+    id
+}

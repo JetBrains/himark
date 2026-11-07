@@ -7,7 +7,6 @@
 //! the per-bridge gesture streams every shell shares. None of this
 //! is C marshaling; a Rust shell speaks it directly.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use gfx::Point;
@@ -417,7 +416,7 @@ impl Himark {
     #[allow(clippy::too_many_arguments)]
     pub fn offer_stage_scroll(
         &mut self,
-        frame: u64,
+        frame: crate::bridge::StageId,
         x: f32,
         y: f32,
         delta_x: f32,

@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+typedef struct Himark Himark;
+typedef struct HimarkPlugins HimarkPlugins;
 
 #define HIMARK_KEY_BACKSPACE 1
 
@@ -71,6 +73,8 @@
 
 #define HIMARK_SCROLL_PHASE_MOMENTUM_ENDED 7
 
+#define HIMARK_SCROLL_PHASE_CANCELLED 8
+
 /**
  * The desktop form: the workbench's theme pair (theme.json,
  * theme-light.json) — the engine's own default.
@@ -83,16 +87,48 @@
  */
 #define HIMARK_FORM_PHONE 1
 
-typedef struct HimarkEngine HimarkEngine;
+/**
+ * `Himark` IS the engine — the C handle is it; this alias is the
+ * opaque name the header has always spoken.
+ */
+typedef Himark HimarkEngine;
 
 typedef struct {
     uint64_t raw;
 } HimarkBridge;
 
 typedef struct {
-    uint32_t start;
-    uint32_t length;
-} HimarkRange;
+    uint64_t raw;
+} HimarkPlace;
+
+/**
+ * Everything the engine needs from its host, taken AT CREATION —
+ * no half-wired engine ever exists, and the effects a boot batch
+ * launches wake the host's executor instead of firing into empty
+ * slots. One `ctx` serves every callback; `on_navigate` may be
+ * null for a shell that claims no places.
+ */
+typedef struct {
+    void *ctx;
+    void (*wake)(void*);
+    void (*effect_wake)(void*);
+    bool (*on_navigate)(void *ctx,
+                        HimarkBridge origin,
+                        HimarkPlace place,
+                        uint32_t kind,
+                        const char *title,
+                        uintptr_t title_len,
+                        bool focus);
+} HimarkEngineCallbacks;
+
+/**
+ * A host REQUEST token: minted at the ask, dead once answered —
+ * its own C type, so a request can't be mixed up with a bridge
+ * or a subscription.
+ */
+typedef struct {
+    uint64_t raw;
+} HimarkRequest;
 
 typedef struct {
     const char *ptr;
@@ -106,25 +142,41 @@ typedef struct {
     uintptr_t segment_count;
 } HimarkLocation;
 
+/**
+ * A standing watch subscription's handle — distinct from requests:
+ * it lives until unsubscribed, not until answered.
+ */
+typedef struct {
+    uint64_t raw;
+} HimarkSubscription;
+
 typedef struct {
     void *ctx;
-    void (*pick_files)(void *ctx, uint64_t request, uint64_t window);
-    void (*pick_save)(void *ctx, uint64_t request, const char *suggested, uintptr_t suggested_len);
-    void (*fetch_document)(void *ctx, uint64_t request, const HimarkLocation *location);
+    void (*pick_files)(void *ctx, HimarkRequest request, HimarkBridge origin);
+    void (*pick_save)(void *ctx,
+                      HimarkRequest request,
+                      const char *suggested,
+                      uintptr_t suggested_len);
+    void (*fetch_document)(void *ctx, HimarkRequest request, const HimarkLocation *location);
     void (*store_document)(void *ctx,
-                           uint64_t request,
+                           HimarkRequest request,
                            const HimarkLocation *location,
                            const char *text,
                            uintptr_t text_len);
-    void (*list_directory)(void *ctx, uint64_t request, const HimarkLocation *location);
-    void (*subscribe)(void *ctx, uint64_t request, const HimarkLocation *location);
-    void (*unsubscribe)(void *ctx, uint64_t subscription);
+    void (*list_directory)(void *ctx, HimarkRequest request, const HimarkLocation *location);
+    void (*subscribe)(void *ctx, HimarkRequest request, const HimarkLocation *location);
+    void (*unsubscribe)(void *ctx, HimarkSubscription subscription);
     void (*set_clipboard)(void *ctx, const char *text, uintptr_t text_len);
     /**
      * Open a URL in the system browser (UTF-8, no NUL).
      */
     void (*open_url)(void *ctx, const char *url, uintptr_t url_len);
 } HimarkHostCallbacks;
+
+typedef struct {
+    uint32_t start;
+    uint32_t length;
+} HimarkRange;
 
 typedef struct {
     float x;
@@ -163,29 +215,15 @@ typedef struct {
     uint64_t raw;
 } HimarkCommands;
 
-typedef struct {
-    uint64_t raw;
-} HimarkPlace;
-
 /**
- * Everything the engine needs from its host, taken AT CREATION —
- * no half-wired engine ever exists, and the effects a boot batch
- * launches wake the host's executor instead of firing into empty
- * slots. One `ctx` serves every callback; `on_navigate` may be
- * null for a shell that claims no places.
+ * Boot the engine over a minted plugin set. The callbacks seat
+ * right after composition, before the host can drive a batch —
+ * `on_navigate` may be null for a shell that claims no places.
+ * Consumes `plugins`; null answers null.
  */
-typedef struct {
-    void *ctx;
-    void (*wake)(void*);
-    void (*effect_wake)(void*);
-    bool (*on_navigate)(void *ctx,
-                        HimarkBridge origin,
-                        HimarkPlace place,
-                        uint32_t kind,
-                        const char *title,
-                        uintptr_t title_len,
-                        bool focus);
-} HimarkEngineCallbacks;
+HimarkEngine *himark_create(HimarkEngineCallbacks callbacks,
+                            HimarkHostCallbacks host,
+                            HimarkPlugins *plugins);
 
 void himark_destroy(HimarkEngine *engine);
 
@@ -220,26 +258,24 @@ float himark_toolbar_height(HimarkEngine *engine);
 
 void himark_set_chrome_clearance(HimarkEngine *engine, float width);
 
-void himark_set_host(HimarkEngine *engine, HimarkHostCallbacks callbacks);
-
 bool himark_host_picked(HimarkEngine *engine,
-                        uint64_t request,
+                        HimarkRequest request,
                         const HimarkLocation *locations,
                         uintptr_t count);
 
 bool himark_host_picked_folder(HimarkEngine *engine,
-                               uint64_t request,
+                               HimarkRequest request,
                                const HimarkLocation *location);
 
 bool himark_host_fetched(HimarkEngine *engine,
-                         uint64_t request,
+                         HimarkRequest request,
                          const char *text,
                          uintptr_t text_len);
 
-bool himark_host_stored(HimarkEngine *engine, uint64_t request, bool stored);
+bool himark_host_stored(HimarkEngine *engine, HimarkRequest request, bool stored);
 
 bool himark_host_listed(HimarkEngine *engine,
-                        uint64_t request,
+                        HimarkRequest request,
                         const HimarkLocation *entries,
                         uintptr_t count);
 

@@ -20,9 +20,9 @@ use ahp_wire::client::SessionUri;
 /// road only — the system chooser cannot browse a remote machine
 /// (and on macOS it is also the TCC grant, so local keeps it).
 pub struct PickFoldersEffect {
-    /// The anchor id the host may sheet the picker to — a window's
-    /// or a mounted origin's raw id, 0 for none.
-    pub window: u64,
+    /// The origin the host may sheet the picker to — a window's
+    /// root bridge or a mounted origin; None sheets app-modally.
+    pub origin: Option<himark::bridge::ViewBridgeId>,
 }
 
 /// Whether the session's host is the DESIGNATED local one — the one

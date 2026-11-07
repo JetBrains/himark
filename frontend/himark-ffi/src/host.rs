@@ -7,7 +7,6 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use himark::commands::HimarkCommand;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use imba::effect::{Effect, EffectHandler};
@@ -40,13 +39,18 @@ pub struct HostChrome {
 pub struct HimarkHostCallbacks {
     pub ctx: *mut std::ffi::c_void,
 
-    pub pick_files:
-        Option<unsafe extern "C" fn(ctx: *mut std::ffi::c_void, request: u64, window: u64)>,
+    pub pick_files: Option<
+        unsafe extern "C" fn(
+            ctx: *mut std::ffi::c_void,
+            request: HimarkRequest,
+            origin: crate::bridges::HimarkBridge,
+        ),
+    >,
 
     pub pick_save: Option<
         unsafe extern "C" fn(
             ctx: *mut std::ffi::c_void,
-            request: u64,
+            request: HimarkRequest,
             suggested: *const std::ffi::c_char,
             suggested_len: usize,
         ),
@@ -55,7 +59,7 @@ pub struct HimarkHostCallbacks {
     pub fetch_document: Option<
         unsafe extern "C" fn(
             ctx: *mut std::ffi::c_void,
-            request: u64,
+            request: HimarkRequest,
             location: *const HimarkLocation,
         ),
     >,
@@ -63,7 +67,7 @@ pub struct HimarkHostCallbacks {
     pub store_document: Option<
         unsafe extern "C" fn(
             ctx: *mut std::ffi::c_void,
-            request: u64,
+            request: HimarkRequest,
             location: *const HimarkLocation,
             text: *const std::ffi::c_char,
             text_len: usize,
@@ -73,7 +77,7 @@ pub struct HimarkHostCallbacks {
     pub list_directory: Option<
         unsafe extern "C" fn(
             ctx: *mut std::ffi::c_void,
-            request: u64,
+            request: HimarkRequest,
             location: *const HimarkLocation,
         ),
     >,
@@ -81,12 +85,13 @@ pub struct HimarkHostCallbacks {
     pub subscribe: Option<
         unsafe extern "C" fn(
             ctx: *mut std::ffi::c_void,
-            request: u64,
+            request: HimarkRequest,
             location: *const HimarkLocation,
         ),
     >,
 
-    pub unsubscribe: Option<unsafe extern "C" fn(ctx: *mut std::ffi::c_void, subscription: u64)>,
+    pub unsubscribe:
+        Option<unsafe extern "C" fn(ctx: *mut std::ffi::c_void, subscription: HimarkSubscription)>,
 
     pub set_clipboard: Option<
         unsafe extern "C" fn(
@@ -125,14 +130,14 @@ impl HimarkHostCallbacks {
 
 unsafe extern "C" fn agent_host_fetch_capability(
     _ctx: *mut std::ffi::c_void,
-    _request: u64,
+    _request: HimarkRequest,
     _location: *const HimarkLocation,
 ) {
 }
 
 unsafe extern "C" fn agent_host_store_capability(
     _ctx: *mut std::ffi::c_void,
-    _request: u64,
+    _request: HimarkRequest,
     _location: *const HimarkLocation,
     _text: *const std::ffi::c_char,
     _text_len: usize,
@@ -141,7 +146,7 @@ unsafe extern "C" fn agent_host_store_capability(
 
 unsafe extern "C" fn agent_host_list_capability(
     _ctx: *mut std::ffi::c_void,
-    _request: u64,
+    _request: HimarkRequest,
     _location: *const HimarkLocation,
 ) {
 }
@@ -189,6 +194,23 @@ pub unsafe fn location_from_abi(abi: &HimarkLocation) -> Option<ResourceLocation
     ))
 }
 
+/// A host REQUEST token: minted at the ask, dead once answered —
+/// its own C type, so a request can't be mixed up with a bridge
+/// or a subscription.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+pub struct HimarkRequest {
+    pub raw: u64,
+}
+
+/// A standing watch subscription's handle — distinct from requests:
+/// it lives until unsubscribed, not until answered.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+pub struct HimarkSubscription {
+    pub raw: u64,
+}
+
 #[derive(Default)]
 pub struct HostRequests {
     next: AtomicU64,
@@ -202,18 +224,18 @@ struct Answer {
 }
 
 impl HostRequests {
-    fn begin(&self) -> u64 {
+    fn begin(&self) -> HimarkRequest {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         self.pending
             .lock()
             .expect("host requests")
             .insert(id, Answer::default());
-        id
+        HimarkRequest { raw: id }
     }
 
-    pub fn fulfill(&self, id: u64, value: Box<dyn std::any::Any + Send + Sync>) -> bool {
+    pub fn fulfill(&self, id: HimarkRequest, value: Box<dyn std::any::Any + Send + Sync>) -> bool {
         let mut pending = self.pending.lock().expect("host requests");
-        let Some(answer) = pending.get_mut(&id) else {
+        let Some(answer) = pending.get_mut(&id.raw) else {
             return false;
         };
         answer.value = Some(value);
@@ -223,10 +245,10 @@ impl HostRequests {
         true
     }
 
-    async fn response<T: 'static>(&self, id: u64) -> T {
+    async fn response<T: 'static>(&self, id: HimarkRequest) -> T {
         struct ResponseFuture<'a> {
             requests: &'a HostRequests,
-            id: u64,
+            id: HimarkRequest,
         }
         impl Future for ResponseFuture<'_> {
             type Output = Box<dyn std::any::Any + Send + Sync>;
@@ -236,7 +258,7 @@ impl HostRequests {
             ) -> std::task::Poll<Self::Output> {
                 let mut pending = self.requests.pending.lock().expect("host requests");
                 let answer = pending
-                    .get_mut(&self.id)
+                    .get_mut(&self.id.raw)
                     .expect("request outlives its await");
                 match answer.value.take() {
                     Some(value) => std::task::Poll::Ready(value),
@@ -250,7 +272,7 @@ impl HostRequests {
         impl Drop for ResponseFuture<'_> {
             fn drop(&mut self) {
                 let mut pending = self.requests.pending.lock().expect("host requests");
-                pending.remove(&self.id);
+                pending.remove(&self.id.raw);
             }
         }
         let value = ResponseFuture { requests: self, id }.await;
@@ -292,12 +314,23 @@ impl HostBridge {
 
     /// Ask the host to pick locations for `origin` and await the
     /// answer — the public half the AHP folder-grant handler rides.
-    pub async fn pick_locations(&self, origin: u64) -> Vec<ResourceLocation> {
+    pub async fn pick_locations(
+        &self,
+        origin: Option<himark::bridge::ViewBridgeId>,
+    ) -> Vec<ResourceLocation> {
         let Some(pick) = self.callbacks.pick_files else {
             return Vec::new();
         };
         let request = self.requests.begin();
-        unsafe { pick(self.callbacks.ctx, request, origin) };
+        unsafe {
+            pick(
+                self.callbacks.ctx,
+                request,
+                crate::bridges::HimarkBridge {
+                    raw: origin.map_or(0, himark::bridge::ViewBridgeId::raw),
+                },
+            )
+        };
         self.requests.response(request).await
     }
 }
@@ -325,7 +358,15 @@ impl EffectHandler<FilePickerEffect> for FilePickerHandler {
             return Vec::new();
         };
         let request = self.0.requests.begin();
-        unsafe { pick(self.0.callbacks.ctx, request, effect.origin.raw()) };
+        unsafe {
+            pick(
+                self.0.callbacks.ctx,
+                request,
+                crate::bridges::HimarkBridge {
+                    raw: effect.origin.raw(),
+                },
+            )
+        };
         self.0.requests.response(request).await
     }
 }

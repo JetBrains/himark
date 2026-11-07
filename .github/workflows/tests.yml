@@ -54,10 +54,10 @@ jobs:
         include:
           - name: macos
             os: macos-15
-            cargo_args: --workspace
+            cargo_args: --workspace --features himark-plugins/capi
           - name: linux
             os: ubuntu-24.04
-            cargo_args: --workspace --exclude macos
+            cargo_args: --workspace --exclude macos --features himark-plugins/capi
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -147,10 +147,10 @@ jobs:
         include:
           - name: macos
             os: macos-15
-            cargo_args: --workspace
+            cargo_args: --workspace --features himark-plugins/capi
           - name: linux
             os: ubuntu-24.04
-            cargo_args: --workspace --exclude macos
+            cargo_args: --workspace --exclude macos --features himark-plugins/capi
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

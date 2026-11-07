@@ -4,7 +4,9 @@
 #[allow(unused_imports)]
 #[allow(unused_imports)]
 #[allow(unused_imports)]
-use workbench_shell::capi::WindowEngine as _;
+use workbench_shell::capi::WindowEngine;
+
+mod common;
 use std::sync::Arc;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
@@ -14,17 +16,19 @@ use himark::app_ext::AppExt as _;
 #[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
-use himark_api::*;
+use himark_plugins::*;
 #[allow(unused_imports)]
-use himark_api::EngineAgents as _;
+use himark_plugins::EngineAgents as _;
+#[allow(unused_imports)]
+use himark_plugins::HimarkEngineExt as _;
 use gfx::Painter as _;
 use std::ffi::c_char;
 
 /// The demo opens, as the host's doors run them.
-fn open_demo(engine: &mut HimarkEngine, window: u64) {
+fn open_demo(engine: &mut HimarkEngine, window: himark::bridge::ViewBridgeId) {
     use himark::app_ext::AppExt as _;
-    engine.app.open_async(
-        ::workbench::window::WindowId::from_raw(window),
+    engine.open_async(
+        ::himark_plugins::wid(window),
         "torture sample".to_owned(),
         true,
         Some(demo::demo_location("torture sample")),
@@ -32,10 +36,10 @@ fn open_demo(engine: &mut HimarkEngine, window: u64) {
     );
 }
 
-fn open_demo_wall(engine: &mut HimarkEngine, window: u64) {
+fn open_demo_wall(engine: &mut HimarkEngine, window: himark::bridge::ViewBridgeId) {
     use himark::app_ext::AppExt as _;
-    engine.app.open_async(
-        ::workbench::window::WindowId::from_raw(window),
+    engine.open_async(
+        ::himark_plugins::wid(window),
         "wall of text".to_owned(),
         true,
         Some(demo::demo_location("wall of text")),
@@ -62,17 +66,17 @@ mod fake_host {
     /// its own request instead of replaying the first.
     pub struct Seat {
         pub picks: AtomicU64,
-        pub save_picks: Mutex<(u64, String)>,
-        pub fetches: Mutex<Vec<(u64, String)>>,
-        pub stores: Mutex<Vec<(u64, String, String)>>,
-        pub lists: Mutex<Vec<(u64, String)>>,
+        pub save_picks: Mutex<(himark_plugins::host::HimarkRequest, String)>,
+        pub fetches: Mutex<Vec<(himark_plugins::host::HimarkRequest, String)>>,
+        pub stores: Mutex<Vec<(himark_plugins::host::HimarkRequest, String, String)>>,
+        pub lists: Mutex<Vec<(himark_plugins::host::HimarkRequest, String)>>,
     }
 
     impl Seat {
         pub fn new() -> Arc<Seat> {
             Arc::new(Seat {
                 picks: AtomicU64::new(0),
-                save_picks: Mutex::new((0, String::new())),
+                save_picks: Mutex::new(Default::default()),
                 fetches: Mutex::new(Vec::new()),
                 stores: Mutex::new(Vec::new()),
                 lists: Mutex::new(Vec::new()),
@@ -85,11 +89,13 @@ mod fake_host {
             Arc::as_ptr(self) as *mut std::ffi::c_void
         }
 
-        pub(crate) fn take_pick(&self) -> u64 {
-            self.picks.swap(0, Ordering::SeqCst)
+        pub(crate) fn take_pick(&self) -> himark_plugins::host::HimarkRequest {
+            himark_plugins::host::HimarkRequest {
+                raw: self.picks.swap(0, Ordering::SeqCst),
+            }
         }
 
-        pub(crate) fn take_save_pick(&self) -> (u64, String) {
+        pub(crate) fn take_save_pick(&self) -> (himark_plugins::host::HimarkRequest, String) {
             std::mem::take(&mut *self.save_picks.lock().expect("save picks"))
         }
 
@@ -98,18 +104,22 @@ mod fake_host {
         }
     }
 
-    unsafe fn joined_path(location: *const himark_api::host::HimarkLocation) -> String {
-        let location = himark_api::host::location_from_abi(&*location).expect("a valid location");
+    unsafe fn joined_path(location: *const himark_plugins::host::HimarkLocation) -> String {
+        let location = himark_plugins::host::location_from_abi(&*location).expect("a valid location");
         location.path().join("/")
     }
 
-    pub unsafe extern "C" fn pick_files(ctx: *mut std::ffi::c_void, request: u64, _window: u64) {
-        Seat::of(ctx).picks.store(request, Ordering::SeqCst);
+    pub unsafe extern "C" fn pick_files(
+        ctx: *mut std::ffi::c_void,
+        request: himark_plugins::host::HimarkRequest,
+        _origin: himark_plugins::bridges::HimarkBridge,
+    ) {
+        Seat::of(ctx).picks.store(request.raw, Ordering::SeqCst);
     }
 
     pub unsafe extern "C" fn pick_save(
         ctx: *mut std::ffi::c_void,
-        request: u64,
+        request: himark_plugins::host::HimarkRequest,
         suggested: *const std::ffi::c_char,
         suggested_len: usize,
     ) {
@@ -125,8 +135,8 @@ mod fake_host {
 
     pub unsafe extern "C" fn fetch_document(
         ctx: *mut std::ffi::c_void,
-        request: u64,
-        location: *const himark_api::host::HimarkLocation,
+        request: himark_plugins::host::HimarkRequest,
+        location: *const himark_plugins::host::HimarkLocation,
     ) {
         Seat::of(ctx)
             .fetches
@@ -137,8 +147,8 @@ mod fake_host {
 
     pub unsafe extern "C" fn store_document(
         ctx: *mut std::ffi::c_void,
-        request: u64,
-        location: *const himark_api::host::HimarkLocation,
+        request: himark_plugins::host::HimarkRequest,
+        location: *const himark_plugins::host::HimarkLocation,
         text: *const std::ffi::c_char,
         text_len: usize,
     ) {
@@ -154,8 +164,8 @@ mod fake_host {
 
     pub unsafe extern "C" fn list_directory(
         ctx: *mut std::ffi::c_void,
-        request: u64,
-        location: *const himark_api::host::HimarkLocation,
+        request: himark_plugins::host::HimarkRequest,
+        location: *const himark_plugins::host::HimarkLocation,
     ) {
         Seat::of(ctx)
             .lists
@@ -246,10 +256,13 @@ struct Hosted {
 /// The picker request for THIS seat — pumping settles until the
 /// async picker effect actually fires, then CONSUMING the id. This
 /// is what the old one-settle-then-read-a-static could not promise.
-fn pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> u64 {
+fn pick_request(
+    engine: &mut HimarkEngine,
+    seat: &fake_host::Seat,
+) -> himark_plugins::host::HimarkRequest {
     for _ in 0..400 {
         let request = seat.take_pick();
-        if request != 0 {
+        if request.raw != 0 {
             return request;
         }
         settle(engine);
@@ -258,10 +271,13 @@ fn pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> u64 {
     panic!("the picker request never reached the host");
 }
 
-fn save_pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> (u64, String) {
+fn save_pick_request(
+    engine: &mut HimarkEngine,
+    seat: &fake_host::Seat,
+) -> (himark_plugins::host::HimarkRequest, String) {
     for _ in 0..400 {
         let (request, name) = seat.take_save_pick();
-        if request != 0 {
+        if request.raw != 0 {
             return (request, name);
         }
         settle(engine);
@@ -270,13 +286,44 @@ fn save_pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> (u64,
     panic!("the save panel request never reached the host");
 }
 
-fn hosted_engine() -> (Hosted, HimarkEngine, u64, HostedFs) {
+fn hosted_engine() -> (Hosted, HimarkEngine, himark::bridge::ViewBridgeId, HostedFs) {
     hosted_engine_with_language_servers(Vec::new())
 }
 
 fn hosted_engine_with_language_servers(
     language_servers: Vec<agent_host::server::LanguageServer>,
-) -> (Hosted, HimarkEngine, u64, HostedFs) {
+) -> (Hosted, HimarkEngine, himark::bridge::ViewBridgeId, HostedFs) {
+    hosted_engine_probed(language_servers, None)
+}
+
+/// The host RESTARTS under a probed engine: a new backend over the
+/// same state dir, the standing connection cut — what a crash or an
+/// update does to a live workbench. The engine's wire reconnects to
+/// the reborn host on its next ask.
+fn restart_backend(
+    fs: &HostedFs,
+    probe: &common::probe::Probe,
+    incarnation: usize,
+    language_servers: Vec<agent_host::server::LanguageServer>,
+) {
+    let url = common::bind_backend_at(
+        fs._dir.path().join(format!("backend-{incarnation}.sock")),
+        fs._dir.path(),
+        "false".to_owned(),
+        language_servers,
+    );
+    probe.redirect(url);
+    probe
+        .last_link()
+        .cut
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_millis(150));
+}
+
+fn hosted_engine_probed(
+    language_servers: Vec<agent_host::server::LanguageServer>,
+    probe: Option<Arc<common::probe::Probe>>,
+) -> (Hosted, HimarkEngine, himark::bridge::ViewBridgeId, HostedFs) {
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -314,16 +361,20 @@ fn hosted_engine_with_language_servers(
         waited += 1;
         assert!(waited < 500, "the backend never bound its socket");
     }
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
+    let connector: Arc<dyn ahp_wire::transport::Connector> = match probe {
+        Some(probe) => Arc::new(common::probe::ProbeConnector(probe)),
+        None => himark_plugins::test_connector(),
+    };
     let seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        connector,
         format!("unix:{}", socket.display()),
     ));
     let local = engine.register_agent_server("Local Backend", ahp_wire::client::Client::of(seat));
     engine.set_local_backend(local);
-    engine.set_host(HimarkHostCallbacks {
+    himark_plugins::install_host_callbacks(&mut engine, HimarkHostCallbacks {
         ctx: picker.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
@@ -383,7 +434,7 @@ fn settle_until(
 
 fn settle_into_session(engine: &mut HimarkEngine) {
     settle_until(engine, "the folder session opened", |engine| {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .is_some_and(|entity| workbench_shell::workspace::entity_session(&entity).names_session())
     });
 }
@@ -391,13 +442,13 @@ fn settle_into_session(engine: &mut HimarkEngine) {
 fn open_picked(
     engine: &mut HimarkEngine,
     seat: &fake_host::Seat,
-    window: u64,
+    window: himark::bridge::ViewBridgeId,
     fs: &HostedFs,
     rel: &[&str],
     body: &str,
 ) {
     fs.write(rel, body);
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(engine);
     let request = pick_request(engine, seat);
     assert!(engine.host_picked(request, vec![fs.doc(rel)]));
@@ -536,7 +587,7 @@ fn probe_scratch_after_wall_close() {
         );
         settle(&mut engine);
     }
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
     settle(&mut engine);
     let _ = engine.draw(
         window,
@@ -557,10 +608,10 @@ fn probe_scratch_after_wall_close() {
         )
         .expect("the scratch is back");
     assert!(text.contains("hello scratch"), "scratch content: {text:?}");
-    let (document_id, editor_id) = engine.app.focused_editor_id();
+    let (document_id, editor_id) = engine.focused_editor_id();
     let document = documents::OpenDocuments::document_ref(
-        engine.app.store(),
-        engine.app.sole_documents(),
+        engine.store(),
+        engine.sole_documents(),
         document_id,
     )
     .expect("document");
@@ -614,9 +665,9 @@ fn probe_history_reopen_layout() {
     let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
     settle(&mut engine);
 
-    let _ = workbench_shell::test_driver::scroll(&mut engine.app, 6000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut engine, 6000.0);
     let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
-    let _ = workbench_shell::test_driver::click(&mut engine.app, 400.0, 400.0, 1100.0, 800.0);
+    let _ = workbench_shell::test_driver::click(&mut engine, 400.0, 400.0, 1100.0, 800.0);
     let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
     settle(&mut engine);
 
@@ -637,7 +688,7 @@ fn probe_history_reopen_layout() {
             break;
         }
     }
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
 
     settle_until(&mut engine, "the walk re-opened a.rs", |engine| {
         let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
@@ -663,11 +714,11 @@ fn probe_history_reopen_layout() {
         )
         .expect("a.rs shows");
     assert!(text.contains("fn item_0"), "a.rs is back: {text:?}");
-    let (document_id, editor_id) = engine.app.focused_editor_id();
+    let (document_id, editor_id) = engine.focused_editor_id();
     {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .expect("document");
@@ -720,7 +771,7 @@ fn the_file_picker_round_trip_opens_the_picked_files() {
     let (_host, mut engine, window, fs) = hosted_engine();
     fs.write(&["docs", "picked.md"], "# picked\n\nhello");
     fs.write(&["docs", "second.md"], "second");
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
 
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
@@ -744,13 +795,13 @@ fn the_file_picker_round_trip_opens_the_picked_files() {
             .is_some_and(|text| text.contains("hello"))
     });
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.doc(&["docs", "picked.md"])]));
     settle(&mut engine);
     assert_eq!(
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .iter()
             .filter(|(_, entity)| entity.name() == "picked.md")
             .count(),
@@ -780,8 +831,8 @@ const SPLIT_HEIGHT: f32 = 1080.0;
 /// and `working_band_word` in the shell suite). The pane ends where
 /// the dock begins, in a `width`-wide window.
 fn canvas_pane_button_x(engine: &HimarkEngine, width: f32) -> f32 {
-    let theme = editor::env::Themes::of(engine.app.store());
-    let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
+    let theme = editor::env::Themes::of(engine.store());
+    let brief = hikit::ui::brief(engine.store(), &engine.ui_ctx());
     let word = |label: &str| brief.shaper.advance(&brief.font, label);
     let gap = theme.part(::hikit::chrome::DiffChrome::KEY).band_gap;
     width
@@ -795,8 +846,8 @@ fn canvas_pane_button_x(engine: &HimarkEngine, width: f32) -> f32 {
 /// The center of the band's LAST word, "Open source" — the live
 /// file in an ordinary pane — at the band's right pad.
 fn canvas_source_button_x(engine: &HimarkEngine, width: f32) -> f32 {
-    let theme = editor::env::Themes::of(engine.app.store());
-    let brief = hikit::ui::brief(engine.app.store(), &engine.app.ui_ctx());
+    let theme = editor::env::Themes::of(engine.store());
+    let brief = hikit::ui::brief(engine.store(), &engine.ui_ctx());
     let word = brief.shaper.advance(&brief.font, "Open source");
     width
         - workbench::dock::DOCK_WIDTH
@@ -809,8 +860,8 @@ fn canvas_source_button_x(engine: &HimarkEngine, width: f32) -> f32 {
 /// trailing inset (mirrors `TreeItemView`'s action chip and the
 /// changes rows' hang).
 fn changes_refresh_x(engine: &HimarkEngine, width: f32) -> f32 {
-    let store = engine.app.store();
-    let ui = engine.app.ui_ctx();
+    let store = engine.store();
+    let ui = engine.ui_ctx();
     let theme = editor::env::Themes::of(store);
     let style = hikit::ui::RowStyle::drawer(store, &ui);
     let word = style.trail.shaper.advance(&style.trail.font, "refresh");
@@ -822,12 +873,12 @@ fn changes_refresh_x(engine: &HimarkEngine, width: f32) -> f32 {
 /// The summary line's strip above the working-copy canvas's first
 /// row — the list starts below it.
 fn canvas_pill_strip(engine: &HimarkEngine) -> f32 {
-    ::canvas::diff_summary::strip_height(engine.app.store(), &engine.app.ui_ctx())
+    ::canvas::diff_summary::strip_height(engine.store(), &engine.ui_ctx())
 }
 
 /// The window's one entity.
 fn sole_entity(engine: &HimarkEngine) -> &workbench::window::Window {
-    workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+    workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
         .expect("the window entity")
 }
 
@@ -835,7 +886,7 @@ fn sole_entity(engine: &HimarkEngine) -> &workbench::window::Window {
 /// tabs band, then where the tree stands the row (its head, the
 /// rows above) — read off the view, not re-derived.
 fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
-    let store = engine.app.store();
+    let store = engine.store();
     let band = editor::env::Themes::of(store)
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
@@ -845,7 +896,7 @@ fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
         .expect("the files tab is up")
         .row_span(
             store,
-            &engine.app.ui_ctx(),
+            &engine.ui_ctx(),
             workbench::dock::DOCK_WIDTH,
             index,
         );
@@ -855,7 +906,7 @@ fn tree_row_y(engine: &HimarkEngine, index: usize) -> f32 {
 /// The center of row `index` in the dock's CHANGES or HISTORY tab —
 /// the same view wearing either set — under the dock's tabs band.
 fn changes_row_y(engine: &HimarkEngine, index: usize) -> f32 {
-    let store = engine.app.store();
+    let store = engine.store();
     let band = editor::env::Themes::of(store)
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
@@ -880,14 +931,14 @@ fn history_row_y(engine: &HimarkEngine, index: usize) -> f32 {
 /// the commit composer over an empty message box, as the canvas
 /// lays it.
 fn canvas_composer_band(engine: &HimarkEngine) -> f32 {
-    ::canvas::changes_face::composer_band_height(engine.app.store(), &engine.app.ui_ctx())
+    ::canvas::changes_face::composer_band_height(engine.store(), &engine.ui_ctx())
 }
 
 /// The vertical center of a working-copy canvas's FIRST file band:
 /// the window chrome, the summary strip, the commit composer, then
 /// half the band.
 fn canvas_band_y(engine: &HimarkEngine) -> f32 {
-    let store = engine.app.store();
+    let store = engine.store();
     editor::env::Themes::of(store)
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height
@@ -907,12 +958,12 @@ fn directory_location(path: &[&str]) -> editor::location::ResourceLocation {
 #[test]
 fn keymap_backspace_edits_the_dock_speed_search() {
     let (_host, mut engine, window, _fs) = hosted_engine();
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![directory_location(&["project"])]));
     settle_into_session(&mut engine);
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -923,18 +974,18 @@ fn keymap_backspace_edits_the_dock_speed_search() {
         1.0,
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(0.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     settle(&mut engine);
 
     let query = |engine: &HimarkEngine| -> Option<String> {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())?;
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())?;
         let tree = entity
             .dock_panel()?
             .as_any()
@@ -957,15 +1008,15 @@ fn keymap_backspace_edits_the_dock_speed_search() {
     );
     assert_eq!(query(&engine).as_deref(), Some("p"), "the QUERY shrank");
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity");
     assert!(entity.dock_panel().is_some(), "the dock never closed");
 
-    let _ = workbench_shell::test_driver::click(&mut engine.app, 200.0, 400.0, 900.0, 700.0);
+    let _ = workbench_shell::test_driver::click(&mut engine, 200.0, 400.0, 900.0, 700.0);
     settle(&mut engine);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(
             entity.dock_panel().is_some(),
@@ -977,21 +1028,21 @@ fn keymap_backspace_edits_the_dock_speed_search() {
         Some("p"),
         "the query still stands"
     );
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(4_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(5_000.0),
     );
     settle(&mut engine);
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity");
     assert!(entity.dock_panel().is_none(), "the toggle closed the dock");
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
     let _ = engine.draw(
         window,
@@ -1014,29 +1065,29 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     fs.write(&["project", "README.md"], "# readme");
     fs.write(&["project", "src", "lib.rs"], "fn main() {}");
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
 
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
 
     settle_until(&mut engine, "the folder session opened", |engine| {
-        let entity_id = engine.app.sole_window();
+        let entity_id = engine.sole_window();
         let workspace = workbench_shell::workspace::entity_session(
-            workbench::window::Windows::window_ref(engine.app.store(), entity_id)
+            workbench::window::Windows::window_ref(engine.store(), entity_id)
                 .expect("the window entity"),
         );
-        !ahp_session::session::folders::session_folders(engine.app.store(), &workspace).is_empty()
+        !ahp_session::session::folders::session_folders(engine.store(), &workspace).is_empty()
     });
-    let entity_id = engine.app.sole_window();
-    let entity = workbench::window::Windows::window_ref(engine.app.store(), entity_id)
+    let entity_id = engine.sole_window();
+    let entity = workbench::window::Windows::window_ref(engine.store(), entity_id)
         .expect("the window entity");
     let workspace = workbench_shell::workspace::entity_session(&entity);
     assert!(
         workspace.names_session(),
         "the pick entered a session workspace"
     );
-    let folders = ahp_session::session::folders::session_folders(engine.app.store(), &workspace);
+    let folders = ahp_session::session::folders::session_folders(engine.store(), &workspace);
     assert_eq!(
         folders
             .iter()
@@ -1050,7 +1101,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
         "no overlay — the pick is silent"
     );
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -1063,22 +1114,22 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     settle(&mut engine);
 
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(0.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     settle(&mut engine);
 
     let row_y = tree_row_y(&engine, 0);
-    let clicked = workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
 
     settle_until(&mut engine, "the root listing landed", |engine| {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         entity
             .dock_panel()
@@ -1087,32 +1138,32 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     });
 
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(2_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(3_000.0),
     );
     settle(&mut engine);
 
     let row_y = tree_row_y(&engine, 2);
-    let clicked = workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the document row took the click");
     settle(&mut engine);
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity");
     assert!(
         entity.dock_panel().is_some(),
         "picking a document keeps the split panel"
     );
 
-    let _ = workbench_shell::test_driver::click(&mut engine.app, 150.0, 300.0, 900.0, 700.0);
+    let _ = workbench_shell::test_driver::click(&mut engine, 150.0, 300.0, 900.0, 700.0);
     settle(&mut engine);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(
             entity.dock_panel().is_some(),
@@ -1130,26 +1181,26 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
             )
             .is_some_and(|text| text.contains("readme"))
     });
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(4_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(5_000.0),
     );
     settle(&mut engine);
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity");
     assert!(entity.dock_panel().is_none(), "the toggle closed the dock");
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         let view = entity
             .dock_panel()
@@ -1161,21 +1212,21 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
     }
 
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(6_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(6_500.0),
     );
     settle(&mut engine);
     let row_y = tree_row_y(&engine, 0);
-    let clicked = workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row collapses");
     settle(&mut engine);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         let rows = entity
             .dock_panel()
@@ -1183,22 +1234,22 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
             .map(|view| view.row_count());
         assert_eq!(rows, Some(1), "the root folded shut");
     }
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(7_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(8_000.0),
     );
     settle(&mut engine);
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
 
     settle_until(&mut engine, "the reveal walked to the row", |engine| {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         entity
             .dock_panel()
@@ -1237,14 +1288,14 @@ fn the_docked_tree_follows_the_focused_document() {
     let (_host, mut engine, window, fs) = hosted_engine();
     fs.write(&["project", "README.md"], "# readme");
     fs.write(&["project", "src", "lib.rs"], "fn main() {}");
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
     settle_into_session(&mut engine);
 
-    let entity_id = engine.app.sole_window();
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+    let entity_id = engine.sole_window();
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         entity_id,
         std::sync::Arc::new(OpenAt(fs.doc(&["project", "README.md"]))),
     )]));
@@ -1259,7 +1310,7 @@ fn the_docked_tree_follows_the_focused_document() {
             )
             .is_some_and(|text| text.contains("# readme"))
     });
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
@@ -1271,17 +1322,17 @@ fn the_docked_tree_follows_the_focused_document() {
         1.0,
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(0.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     settle(&mut engine);
     let tree_selection = |engine: &mut HimarkEngine| {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         entity
             .dock_panel()
@@ -1299,7 +1350,7 @@ fn the_docked_tree_follows_the_focused_document() {
         tree_selection(engine).as_deref() == Some("README.md")
     });
 
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         entity_id,
         std::sync::Arc::new(OpenAt(fs.doc(&["project", "src", "lib.rs"]))),
     )]));
@@ -1314,7 +1365,7 @@ fn the_docked_tree_follows_the_focused_document() {
         tree_selection(engine).as_deref() == Some("lib.rs")
     });
 
-    assert!(engine.perform_command(window, "navigation.back"));
+    assert!(engine.perform_registered_at(window, "navigation.back"));
     settle_until(&mut engine, "the tree followed the back-walk", |engine| {
         let _ = engine.draw(
             window,
@@ -1366,13 +1417,13 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         root_segments.clone(),
     );
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "changes.view"));
+    assert!(engine.perform_registered_at(window, "changes.view"));
     settle(&mut engine);
     let mut surface =
         skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
@@ -1386,12 +1437,12 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     );
     for ms in [0.0, 1_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
     }
     let rows = |engine: &HimarkEngine| {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -1401,7 +1452,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -1439,7 +1490,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     let row_y = changes_row_y(&engine, 1);
     let clicked = workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x_in(SPLIT_WIDTH, 90.0),
         row_y,
         SPLIT_WIDTH,
@@ -1449,7 +1500,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     settle(&mut engine);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(
             entity.dock_panel().is_some(),
@@ -1463,9 +1514,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     // and the landing swaps in atomically.
     let canvas_probe = |engine: &HimarkEngine| {
         let mut shot = None;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
-                shot = Some(canvas.probe_rows(engine.app.store()));
+                shot = Some(canvas.probe_rows(engine.store()));
             }
         });
         shot
@@ -1495,7 +1546,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     let pane_word_x = canvas_pane_button_x(&engine, SPLIT_WIDTH);
     let band_y = canvas_band_y(&engine);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         pane_word_x,
         band_y,
         SPLIT_WIDTH,
@@ -1515,12 +1566,12 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
             SPLIT_HEIGHT,
             1.0,
         );
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel
                 .as_any()
                 .downcast_ref::<canvas::diff_pane::DiffPanelView>()
             {
-                halves = Some(panel.halves(engine.app.store()));
+                halves = Some(panel.halves(engine.store()));
             }
         });
         halves.is_some()
@@ -1530,7 +1581,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     let right_doc = right.document();
 
     let pinned =
-        documents::OpenDocuments::entity(engine.app.store(), engine.app.sole_documents(), left_doc)
+        documents::OpenDocuments::entity(engine.store(), engine.sole_documents(), left_doc)
             .expect("the before side registers");
     let pinned_location = pinned
         .location()
@@ -1544,8 +1595,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     assert_eq!(
         pinned.saved_revision(),
         documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             left_doc
         )
         .expect("old document")
@@ -1554,10 +1605,10 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     );
 
     let session_folder =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .map(|entity| workbench_shell::workspace::entity_session(&entity))
             .and_then(|workspace| {
-                ahp_session::session::folders::session_folders(engine.app.store(), &workspace)
+                ahp_session::session::folders::session_folders(engine.store(), &workspace)
                     .first()
                     .cloned()
             })
@@ -1572,8 +1623,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         },
     );
     let registered = documents::OpenDocuments::by_location(
-        engine.app.store(),
-        engine.app.sole_documents(),
+        engine.store(),
+        engine.sole_documents(),
         &new_side,
     )
     .expect("the working-copy side registered as a real open");
@@ -1581,8 +1632,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     let old_text = {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             left_doc,
         )
         .expect("old document");
@@ -1621,7 +1672,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         );
     }
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(10_000.0),
     );
     for _ in 0..2 {
@@ -1637,7 +1688,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     for ms in [20_000.0, 20_008.3, 20_016.7, 20_025.0] {
         assert!(
             !workbench_shell::test_driver::animate(
-                &mut engine.app,
+                &mut engine,
                 imba::anim::AnimationClock::from_millis(ms),
             ),
             "a settled diff pane must not answer the clock at {ms}ms"
@@ -1669,7 +1720,7 @@ and another
     let row_y = changes_row_y(&engine, 0);
     let refresh_x = changes_refresh_x(&engine, SPLIT_WIDTH);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         refresh_x,
         row_y,
         SPLIT_WIDTH,
@@ -1739,13 +1790,13 @@ fn stripes_take_the_changesets_old_text_as_base() {
         editor::location::Authority::new("local"),
         root_segments.clone(),
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     let file = editor::location::ResourceLocation::new(
@@ -1771,7 +1822,7 @@ fn stripes_take_the_changesets_old_text_as_base() {
     });
 
     settle_until(&mut engine, "the stripes diff tracked", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, entity)| {
                 entity
@@ -1780,15 +1831,15 @@ fn stripes_take_the_changesets_old_text_as_base() {
             })
             .and_then(|(document, _)| {
                 documents::OpenDocuments::stripe_diff(
-                    engine.app.store(),
-                    engine.app.sole_documents(),
+                    engine.store(),
+                    engine.sole_documents(),
                     document,
                 )
             })
             .is_some()
     });
 
-    let base_text = documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+    let base_text = documents::OpenDocuments::list(engine.store(), engine.sole_documents())
         .into_iter()
         .find(|(_, entity)| {
             entity
@@ -1797,8 +1848,8 @@ fn stripes_take_the_changesets_old_text_as_base() {
         })
         .map(|(document, _)| {
             let document = documents::OpenDocuments::document_ref(
-                engine.app.store(),
-                engine.app.sole_documents(),
+                engine.store(),
+                engine.sole_documents(),
                 document,
             )
             .expect("the base document");
@@ -1826,18 +1877,18 @@ fn saving_stores_the_focused_document_to_its_location() {
 
     assert!(engine.text_input(window, "x"));
     settle(&mut engine);
-    assert!(engine.perform_command(window, "file.save"));
+    assert!(engine.perform_registered_at(window, "file.save"));
     settle_until(&mut engine, "the save landed on disk", |engine| {
         let stored = fs
             .read(&["notes.md"])
             .is_some_and(|text| text.contains('x'));
-        let clean = documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        let clean = documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, entity)| entity.name() == "notes.md")
             .is_some_and(|(id, entity)| {
                 documents::OpenDocuments::document(
-                    engine.app.store(),
-                    engine.app.sole_documents(),
+                    engine.store(),
+                    engine.sole_documents(),
                     id,
                 )
                 .is_some_and(|document| entity.saved_revision() == document.revision())
@@ -1856,7 +1907,7 @@ fn a_cancelled_pick_lands_and_opens_nothing() {
             length: u32::MAX,
         },
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
 
@@ -1877,7 +1928,7 @@ fn a_cancelled_pick_lands_and_opens_nothing() {
 #[test]
 fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     let (_host, mut engine, window, _fs) = hosted_engine();
-    assert!(engine.perform_command(window, "terminal.open"));
+    assert!(engine.perform_registered_at(window, "terminal.open"));
 
     settle_until(&mut engine, "the terminal panel took the pane", |engine| {
         engine
@@ -1927,39 +1978,39 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
 
     // A chat pane routes to the workbench's chat slot now — displace
     // the terminal with an ordinary document instead.
-    assert!(engine.perform_command(window, "workbench.new-document"));
+    assert!(engine.perform_registered_at(window, "workbench.new-document"));
     settle(&mut engine);
     let mut mounted = false;
-    engine.app.for_each_plugin_panel(&mut |panel| {
+    engine.for_each_plugin_panel(&mut |panel| {
         mounted |= panel.as_any().is::<::terminals::pane::TerminalView>();
     });
     assert!(!mounted, "the terminal handle dropped with the pane");
     assert_eq!(
-        ahp_session::session::state::Hosts::state(engine.app.store(), &engine_session(&engine))
-            .map(|state| terminals::Terminals::list(engine.app.store(), state.terminals()))
+        ahp_session::session::state::Hosts::state(engine.store(), &engine_session(&engine))
+            .map(|state| terminals::Terminals::list(engine.store(), state.terminals()))
             .unwrap_or_default()
             .len(),
         1,
         "the PTY session survives in the state"
     );
 
-    let state = workbench_shell::workspace::session_state(engine.app.store(), engine.app.sole_window())
+    let state = workbench_shell::workspace::session_state(engine.store(), engine.sole_window())
         .expect("the window's state");
-    let terminal = workbench_shell::pane_rows::mint_unfronted(engine.app.store(), &state, &[])
+    let terminal = workbench_shell::pane_rows::mint_unfronted(engine.store(), &state, &[])
         .into_iter()
         .find(|widget| widget.as_any().is::<::terminals::pane::TerminalView>())
         .expect("the state lists the surviving terminal");
-    assert!(engine.app.open_panel(engine.app.sole_window(), terminal));
+    assert!(engine.open_panel(engine.sole_window(), terminal));
     let inked = ink(&mut engine);
     assert!(
         inked > 50,
         "the remounted terminal painted: {inked} inked pixels"
     );
 
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
     settle(&mut engine);
     let mut mounted = false;
-    engine.app.for_each_plugin_panel(&mut |panel| {
+    engine.for_each_plugin_panel(&mut |panel| {
         mounted |= panel.as_any().is::<::terminals::pane::TerminalView>();
     });
     assert!(!mounted, "the terminal panel closed");
@@ -1972,8 +2023,8 @@ fn a_failed_spawn_lands_and_shows_no_panel() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     std::env::set_var("HIMARK_HOST_HOME", dir.path());
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
@@ -1990,7 +2041,7 @@ fn a_failed_spawn_lands_and_shows_no_panel() {
         },
     );
 
-    assert!(engine.perform_command(window, "terminal.open"));
+    assert!(engine.perform_registered_at(window, "terminal.open"));
     for _ in 0..40 {
         settle(&mut engine);
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -2015,10 +2066,10 @@ fn hostless_engines_do_not_register_the_host_commands() {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     std::env::set_var("HIMARK_HOST_HOME", dir.path());
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
-    assert!(!engine.perform_command(window, "file.open"));
-    assert!(engine.perform_command(window, "terminal.open"));
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
+    assert!(!engine.perform_registered_at(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "terminal.open"));
 }
 
 #[test]
@@ -2070,9 +2121,9 @@ fn scroll_gestures_break_on_touch_not_on_momentum() {
 
 #[test]
 fn phased_scrolls_route_to_the_gesture_owner_per_window() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let a = engine.add_window();
-    let b = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let a = WindowEngine::open_window(&mut engine);
+    let b = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         a,
@@ -2107,7 +2158,7 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
             1.0,
         );
     }
-    assert!(engine.perform_command(a, "workbench.split-pane"));
+    assert!(engine.perform_registered_at(a, "workbench.split-pane"));
     for _ in 0..10 {
         settle(&mut engine);
         let _ = engine.draw(
@@ -2118,8 +2169,20 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
             1.0,
         );
     }
-    let scroll = |engine: &mut HimarkEngine, window: u64, x: f32, dy: f32, phase: u32| {
-        engine.scroll_phased_at_time(window, x, 400.0, 0.0, dy, phase, 0.0)
+    let scroll = |engine: &mut HimarkEngine,
+                  window: himark::bridge::ViewBridgeId,
+                  x: f32,
+                  dy: f32,
+                  phase: u32| {
+        engine.scroll_phased_at_time(
+            window,
+            x,
+            400.0,
+            0.0,
+            dy,
+            himark_plugins::scroll_phase(phase),
+            0.0,
+        )
     };
     let (left, right) = (275.0, 825.0);
 
@@ -2203,13 +2266,13 @@ fn phased_scrolls_route_to_the_gesture_owner_per_window() {
 
 #[test]
 fn ffi_null_engine_calls_are_noops() {
-    let bridge = himark_api::bridges::HimarkBridge { raw: 0 };
+    let bridge = himark_plugins::bridges::HimarkBridge { raw: 0 };
     unsafe {
         assert_eq!(himark_add_window(null_mut()).raw, 0);
         assert!(!himark_drain(null_mut()));
-        let key = himark_api::bridges::himark_event_key_down(HIMARK_KEY_BACKSPACE, 0);
-        assert!(!himark_api::bridges::himark_bridge_event(null_mut(), bridge, key).changed);
-        himark_api::bridges::himark_event_release(key);
+        let key = himark_plugins::bridges::himark_event_key_down(HIMARK_KEY_BACKSPACE, 0);
+        assert!(!himark_plugins::bridges::himark_bridge_event(null_mut(), bridge, key).changed);
+        himark_plugins::bridges::himark_event_release(key);
         assert!(!himark_animation_tick(null_mut(), 0.0));
         assert!(!himark_perform_command(
             null_mut(),
@@ -2248,8 +2311,8 @@ fn ffi_null_engine_calls_are_noops() {
 
 #[test]
 fn registered_commands_dispatch_by_id() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -2260,23 +2323,23 @@ fn registered_commands_dispatch_by_id() {
         1.0,
     );
 
-    assert!(!engine.perform_command(window, "no.such.command"));
+    assert!(!engine.perform_registered_at(window, "no.such.command"));
     // search.view is capability-gated (it needs a seat serving
     // searchLocations); hicode's references e2e covers its dock.
 
-    assert!(engine.perform_command(window, "palette.toggle"));
+    assert!(engine.perform_registered_at(window, "palette.toggle"));
     assert!(
-        engine.app.plugin_modal().is_some(),
+        engine.plugin_modal().is_some(),
         "palette.toggle opened the palette modal"
     );
-    assert!(engine.perform_command(window, "palette.toggle"));
-    assert!(engine.app.plugin_modal().is_none(), "and toggles it away");
+    assert!(engine.perform_registered_at(window, "palette.toggle"));
+    assert!(engine.plugin_modal().is_none(), "and toggles it away");
 }
 
 #[test]
 fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1280, 860)).expect("surface");
     let draw = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
         let _ = engine.draw(
@@ -2309,19 +2372,19 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
     assert!(engine.open_document(window, "left.md", body, false));
     assert!(engine.open_document(window, "right.md", body, false));
     pump(&mut engine, &mut surface, 8);
-    assert!(engine.perform_command(window, "diff.open"));
+    assert!(engine.perform_registered_at(window, "diff.open"));
     pump(&mut engine, &mut surface, 20);
 
     let cell_focused = |engine: &HimarkEngine| {
-        let info = documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        let info = documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == "right.md")
             .expect("right open")
             .0;
         {
             let document = documents::OpenDocuments::document_ref(
-                engine.app.store(),
-                engine.app.sole_documents(),
+                engine.store(),
+                engine.sole_documents(),
                 info,
             )
             .expect("document");
@@ -2348,20 +2411,20 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
 
     let assert_aligned = |engine: &HimarkEngine, when: &str| {
         let mut checked = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             let Some(panel) = panel
                 .as_any()
                 .downcast_ref::<canvas::diff_pane::DiffPanelView>()
             else {
                 return;
             };
-            let diff_state = panel.diff_state(engine.app.store()).expect("settled");
+            let diff_state = panel.diff_state(engine.store()).expect("settled");
             let diff = diff_state.diff();
-            let (left, right) = panel.halves(engine.app.store());
+            let (left, right) = panel.halves(engine.store());
             let sides = [left, right].map(|entity| {
                 let document = documents::OpenDocuments::document_ref(
-                    engine.app.store(),
-                    engine.app.sole_documents(),
+                    engine.store(),
+                    engine.sole_documents(),
                     entity.document(),
                 )
                 .expect("document");
@@ -2460,7 +2523,7 @@ fn external_edits_reach_documents_through_the_channel() {
     );
 
     settle_until(&mut engine, "the document channel went live", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|entity| {
                 entity
@@ -2472,8 +2535,8 @@ fn external_edits_reach_documents_through_the_channel() {
                 // Mode one against the real host: the channel is the
                 // reload road; the client holds NO file watch.
                 documents::OpenDocuments::host_synced(
-                    engine.app.store(),
-                    engine.app.sole_documents(),
+                    engine.store(),
+                    engine.sole_documents(),
                     id,
                 ) && entity.watch().is_none()
             })
@@ -2515,7 +2578,7 @@ fn an_external_edit_merges_into_unsaved_typing() {
         "alpha\nbeta\n",
     );
     settle_until(&mut engine, "the document channel went live", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|entity| {
                 entity
@@ -2527,14 +2590,14 @@ fn an_external_edit_merges_into_unsaved_typing() {
                 // Mode one against the real host: the channel is the
                 // reload road; the client holds NO file watch.
                 documents::OpenDocuments::host_synced(
-                    engine.app.store(),
-                    engine.app.sole_documents(),
+                    engine.store(),
+                    engine.sole_documents(),
                     id,
                 ) && entity.watch().is_none()
             })
     });
 
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "MINE "));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "MINE "));
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     loop {
@@ -2560,7 +2623,7 @@ fn an_external_edit_merges_into_unsaved_typing() {
     }
 
     let (_, entity) =
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|entity| entity.1.name() == "merged.md")
             .expect("the merged document");
@@ -2589,7 +2652,7 @@ fn a_script_runs_reads_and_writes_over_the_real_host() {
          himark.log(\"ran\");\n}\n",
     );
     assert!(
-        engine.perform_command(window, "script.run"),
+        engine.perform_registered_at(window, "script.run"),
         "the command reaches the focused script"
     );
     settle_until(&mut engine, "both writes reached the disk", |engine| {
@@ -2598,7 +2661,7 @@ fn a_script_runs_reads_and_writes_over_the_real_host() {
             && std::fs::read_to_string(fs.root.join("out.md"))
                 .is_ok_and(|text| text == "made by script")
     });
-    let runs = hiscript::plugin::ScriptRuns::of(engine.app.store());
+    let runs = hiscript::plugin::ScriptRuns::of(engine.store());
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].error, None, "log: {:?}", runs[0].log);
     assert_eq!(runs[0].log, vec!["ran"]);
@@ -2628,11 +2691,11 @@ fn an_opened_mermaid_fence_renders_through_the_pipeline() {
         "# Doc\n\n```mermaid\nflowchart TD\n    Start --> Finish\n```\n\ntail\n",
     );
     assert!(
-        editor::env::Enrichers::of(engine.app.store()).is_some_and(|passes| !passes.is_empty()),
+        editor::env::Enrichers::of(engine.store()).is_some_and(|passes| !passes.is_empty()),
         "the enrichment registry reached the store"
     );
     settle_until(&mut engine, "the diagram landed", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2657,8 +2720,8 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
         engine.key_down(window, HIMARK_KEY_RIGHT, 0);
     }
     settle_until(&mut engine, "the bracket pair lit", |engine| {
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2677,8 +2740,8 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
     });
 
     settle_until(&mut engine, "the identifier lit", |engine| {
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2713,8 +2776,8 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         "# Page\n\n``` rust sidecar.rs\nplaceholder\n```\n",
     );
     settle_until(&mut engine, "the fence embedded the sibling", |engine| {
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2753,7 +2816,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
 
     {
         let (host_id, inlay_key) =
-            documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+            documents::OpenDocuments::list(engine.store(), engine.sole_documents())
                 .into_iter()
                 .find_map(|entity| {
                     let document = entity.1.document();
@@ -2768,18 +2831,18 @@ fn an_addressed_fence_embeds_a_sibling_file() {
                 })
                 .expect("the embed inlay");
         let editor = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             host_id,
         )
         .and_then(|document| document.editor_ids().next())
         .expect("the host pane editor");
         let mut view =
-            documents::entity_view::EditorIdView::new(engine.app.sole_documents(), host_id, editor);
+            documents::entity_view::EditorIdView::new(engine.sole_documents(), host_id, editor);
         let mut batch = imba::effect::Batch::new();
         let _ = imba::View::perform(
             &mut view,
-            &mut *engine.app.store_mut(),
+            &mut *engine.store_mut(),
             ::editor::test_document::test_ui(),
             editor::editor_view::EditorCommand::Inlay {
                 key: inlay_key,
@@ -2795,8 +2858,8 @@ fn an_addressed_fence_embeds_a_sibling_file() {
             &mut batch.effects(),
         );
     }
-    let store = engine.app.store();
-    let (reserved, live) = documents::OpenDocuments::list(store, engine.app.sole_documents())
+    let store = engine.store();
+    let (reserved, live) = documents::OpenDocuments::list(store, engine.sole_documents())
         .into_iter()
         .find_map(|entity| {
             let document = entity.1.document();
@@ -2815,7 +2878,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         })
         .expect("the embed after the resize");
     let at_install_width = editor::editor_view::EditorView::complete(
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .find(|entity| {
                 entity
@@ -2856,8 +2919,8 @@ fn opening_the_embedded_file_in_a_pane_dedups_and_survives() {
         "# Page\n\n``` rust sidecar.rs\nplaceholder\n```\n",
     );
     settle_until(&mut engine, "the fence embedded the sibling", |engine| {
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2882,8 +2945,8 @@ fn opening_the_embedded_file_in_a_pane_dedups_and_survives() {
 
     assert!(engine.text_input(window, "X"));
     settle(&mut engine);
-    let store = engine.app.store();
-    let shared: Vec<_> = documents::OpenDocuments::list(store, engine.app.sole_documents())
+    let store = engine.store();
+    let shared: Vec<_> = documents::OpenDocuments::list(store, engine.sole_documents())
         .into_iter()
         .filter(|entity| {
             entity
@@ -2920,8 +2983,8 @@ fn splitting_and_opening_the_embedded_file_survives() {
             700.0,
             1.0,
         );
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -2942,7 +3005,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
         1.0,
     );
 
-    assert!(engine.perform_command(window, "workbench.split-pane"));
+    assert!(engine.perform_registered_at(window, "workbench.split-pane"));
     settle(&mut engine);
     let _ = engine.draw(
         window,
@@ -3008,8 +3071,8 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
             700.0,
             1.0,
         );
-        let store = engine.app.store();
-        probe = documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        probe = documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .find_map(|entity| {
                 let document = entity.1.document();
@@ -3045,8 +3108,8 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     );
 
     let whole = {
-        let store = engine.app.store();
-        let target = documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        let target = documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .find(|entity| {
                 entity
@@ -3069,7 +3132,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
         "a two-line window measures two lines, not the file: window={height} whole={whole}"
     );
 
-    assert!(engine.perform_command(window, "workbench.split-pane"));
+    assert!(engine.perform_registered_at(window, "workbench.split-pane"));
     settle(&mut engine);
     let _ = engine.draw(
         window,
@@ -3100,8 +3163,8 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
         );
         settle(&mut engine);
     }
-    let store = engine.app.store();
-    let sidecars = documents::OpenDocuments::list(store, engine.app.sole_documents())
+    let store = engine.store();
+    let sidecars = documents::OpenDocuments::list(store, engine.sole_documents())
         .into_iter()
         .filter(|entity| {
             entity
@@ -3119,7 +3182,7 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
 
     assert!(engine.text_input(window, "hello scratch"));
 
-    assert!(engine.perform_command(window, "file.save"));
+    assert!(engine.perform_registered_at(window, "file.save"));
     settle(&mut engine);
     let (request, suggested) = save_pick_request(&mut engine, &_host.seat);
     assert_eq!(suggested, "scratch.md", "the scratch suggests its name");
@@ -3128,7 +3191,7 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
     assert!(engine.host_picked_folder(request, Some(picked.clone())));
     settle_until(&mut engine, "the save-as stored and re-pointed", |engine| {
         fs.read(&["notes", "kept.md"]).as_deref() == Some("hello scratch")
-            && documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+            && documents::OpenDocuments::list(engine.store(), engine.sole_documents())
                 .into_iter()
                 .find(|(_, entity)| entity.name() == "kept.md")
                 .is_some_and(|(_, entity)| {
@@ -3137,8 +3200,8 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
                 })
     });
     assert!(
-        ahp_session::session::state::Hosts::state(engine.app.store(), &engine_session(&engine))
-            .map(|state| recents::RecentLocations::list(engine.app.store(), state.recents()))
+        ahp_session::session::state::Hosts::state(engine.store(), &engine_session(&engine))
+            .map(|state| recents::RecentLocations::list(engine.store(), state.recents()))
             .unwrap_or_default()
             .contains(&picked),
         "the recents follow the re-point"
@@ -3214,13 +3277,13 @@ fn a_one_sided_diff_goes_quiet() {
         editor::location::Authority::new("local"),
         root_segments.clone(),
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     let file = editor::location::ResourceLocation::new(
@@ -3245,7 +3308,7 @@ fn a_one_sided_diff_goes_quiet() {
             .is_some_and(|text| text.contains("brand new"))
     });
 
-    assert!(engine.perform_command(window, "changes.view"));
+    assert!(engine.perform_registered_at(window, "changes.view"));
     settle(&mut engine);
     let mut surface =
         skia_safe::surfaces::raster_n32_premul((SPLIT_WIDTH as i32, SPLIT_HEIGHT as i32))
@@ -3259,7 +3322,7 @@ fn a_one_sided_diff_goes_quiet() {
     );
     for ms in [0.0, 1_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
     }
@@ -3271,7 +3334,7 @@ fn a_one_sided_diff_goes_quiet() {
             SPLIT_HEIGHT,
             1.0,
         );
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -3281,7 +3344,7 @@ fn a_one_sided_diff_goes_quiet() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -3297,7 +3360,7 @@ fn a_one_sided_diff_goes_quiet() {
 
     let row_y = changes_row_y(&engine, 1);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x_in(SPLIT_WIDTH, 90.0),
         row_y,
         SPLIT_WIDTH,
@@ -3317,10 +3380,10 @@ fn a_one_sided_diff_goes_quiet() {
             1.0,
         );
         let mut built = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built = canvas
-                    .probe_rows(engine.app.store())
+                    .probe_rows(engine.store())
                     .iter()
                     .any(|(title, phase, _)| {
                         title == "fresh.json" && *phase == canvas::canvas::RowPhase::Built
@@ -3336,7 +3399,7 @@ fn a_one_sided_diff_goes_quiet() {
     let header_y = canvas_band_y(&engine);
     let source_x = canvas_source_button_x(&engine, SPLIT_WIDTH);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         source_x,
         header_y,
         SPLIT_WIDTH,
@@ -3369,7 +3432,7 @@ fn a_one_sided_diff_goes_quiet() {
     // with no placeholder frame and no rebuild.
     let row_y = changes_row_y(&engine, 1);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x_in(SPLIT_WIDTH, 90.0),
         row_y,
         SPLIT_WIDTH,
@@ -3387,10 +3450,10 @@ fn a_one_sided_diff_goes_quiet() {
             1.0,
         );
         let mut built = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built |= canvas
-                    .probe_rows(engine.app.store())
+                    .probe_rows(engine.store())
                     .iter()
                     .any(|(title, phase, _)| {
                         title == "fresh.json" && *phase == canvas::canvas::RowPhase::Built
@@ -3405,7 +3468,7 @@ fn a_one_sided_diff_goes_quiet() {
     // QUIET guarantee below is the pane's.
     let pane_word_x = canvas_pane_button_x(&engine, SPLIT_WIDTH);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         pane_word_x,
         header_y,
         SPLIT_WIDTH,
@@ -3423,7 +3486,7 @@ fn a_one_sided_diff_goes_quiet() {
             1.0,
         );
         let mut mounted = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             mounted |= panel.as_any().is::<canvas::diff_pane::DiffPanelView>();
         });
         mounted
@@ -3440,7 +3503,7 @@ fn a_one_sided_diff_goes_quiet() {
         );
     }
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(10_000.0),
     );
     for _ in 0..2 {
@@ -3456,7 +3519,7 @@ fn a_one_sided_diff_goes_quiet() {
     for ms in [20_000.0, 20_008.3, 20_016.7, 20_025.0] {
         assert!(
             !workbench_shell::test_driver::animate(
-                &mut engine.app,
+                &mut engine,
                 imba::anim::AnimationClock::from_millis(ms),
             ),
             "a settled one-sided diff must not answer the clock at {ms}ms"
@@ -3478,12 +3541,12 @@ fn a_rolled_away_drawer_leaves_and_goes_silent() {
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     let mut now = 0.0_f64;
     let tick = |engine: &mut HimarkEngine, now: &mut f64| -> bool {
         *now += 8.3;
         workbench_shell::test_driver::animate(
-            &mut engine.app,
+            engine,
             imba::anim::AnimationClock::from_millis(*now),
         )
     };
@@ -3499,12 +3562,12 @@ fn a_rolled_away_drawer_leaves_and_goes_silent() {
     }
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(entity.dock_panel().is_some(), "the dock is up");
     }
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     for _ in 0..120 {
         let _ = tick(&mut engine, &mut now);
         let _ = engine.draw(
@@ -3518,7 +3581,7 @@ fn a_rolled_away_drawer_leaves_and_goes_silent() {
     }
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(
             entity.dock_panel().is_none(),
@@ -3634,14 +3697,14 @@ macro_rules! fs_probe {
         fn $name(
             engine: &mut HimarkEngine,
             surface: &mut skia_safe::Surface,
-            window: u64,
+            window: himark::bridge::ViewBridgeId,
             location: editor::location::ResourceLocation,
         ) -> Option<$result> {
             let slot: std::sync::Arc<std::sync::Mutex<Option<$result>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(None));
             let filled = std::sync::Arc::clone(&slot);
-            let id = engine.app.sole_window();
-            engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+            let id = engine.sole_window();
+            engine.perform_batch(vec![workbench_shell::shell::windowed(
                 id,
                 std::sync::Arc::new(LaunchProbe {
                     launch: Box::new(move |window, fx| {
@@ -3691,7 +3754,7 @@ fs_probe!(
 
 fn drawer_panel(engine: &HimarkEngine) -> Option<&ahp_session::session::drawer::AgentsPanel> {
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())?;
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())?;
     entity
         .side_panel()?
         .as_any()
@@ -3715,20 +3778,20 @@ fn host_plus_row(engine: &HimarkEngine) -> Option<usize> {
 /// test names when it reaches session-addressed state.
 fn engine_session(engine: &HimarkEngine) -> ahp_wire::SessionId {
     workbench_shell::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity"),
     )
 }
 
 fn shown_chat(engine: &HimarkEngine) -> Option<ahp_chat::chat::ChatPanel> {
     let mut address = None;
-    engine.app.for_each_plugin_panel(&mut |panel| {
+    engine.for_each_plugin_panel(&mut |panel| {
         if let Some(pane) = panel.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
             address = Some((pane.chats(), pane.chat().clone()));
         }
     });
     let (chats, uri) = address?;
-    ahp_chat::chats::Chats::chat(engine.app.store(), chats, &uri)
+    ahp_chat::chats::Chats::chat(engine.store(), chats, &uri)
 }
 
 fn chat_transcript(engine: &HimarkEngine) -> Option<Vec<(String, Vec<(String, String)>)>> {
@@ -3740,19 +3803,19 @@ fn pick_drawer_row(engine: &mut HimarkEngine, index: usize) {
     // and a walk counted from nowhere lands one row short — Home
     // pins row 0, the Downs count from there.
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        engine,
         imba::event::Key::Home,
         imba::event::Modifiers::default(),
     );
     for _ in 0..index {
         let _ = workbench_shell::test_driver::key(
-            &mut engine.app,
+            engine,
             imba::event::Key::Down,
             imba::event::Modifiers::default(),
         );
     }
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        engine,
         imba::event::Key::Enter,
         imba::event::Modifiers::default(),
     );
@@ -3785,8 +3848,8 @@ fn block_on_seat<T>(mut future: ahp_wire::client::ClientFuture<T>) -> T {
 #[ignore = "needs a running agent host and a claude.ai login; spends a real prompt"]
 fn real_claude_answers_through_the_agent_host() {
     std::env::remove_var("HIMARK_AHP_URL");
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -3810,11 +3873,11 @@ fn real_claude_answers_through_the_agent_host() {
         }
     };
 
-    let servers = ahp_wire::client::Servers::list(engine.app.store());
+    let servers = ahp_wire::client::Servers::list(engine.store());
     let vscode = servers[0];
     let repo = std::env::current_dir().expect("cwd");
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -3823,7 +3886,7 @@ fn real_claude_answers_through_the_agent_host() {
         }),
     );
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut waited = 0;
     loop {
         pump(&mut engine, &mut surface, 1);
@@ -3857,9 +3920,9 @@ fn real_claude_answers_through_the_agent_host() {
     assert!(chat_ready(&engine), "the real chat subscribed");
     let rows = chat_transcript(&engine).expect("the real chat panel mounted");
     println!("mounted; rows: {}", rows.len());
-    let store = engine.app.store();
+    let store = engine.store();
     let entity =
-        workbench::window::Windows::window_ref(store, engine.app.sole_window()).expect("window");
+        workbench::window::Windows::window_ref(store, engine.sole_window()).expect("window");
     let key = ahp_session::session::agents::Agents::live_session(
         store,
         &workbench_shell::workspace::entity_session(&entity),
@@ -3869,11 +3932,11 @@ fn real_claude_answers_through_the_agent_host() {
     println!("session: {}", key.session);
 
     assert!(workbench_shell::test_driver::type_text(
-        &mut engine.app,
+        &mut engine,
         "Reply with the single word OK and nothing else."
     ));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -3913,7 +3976,7 @@ fn the_wire_serves_a_session_filesystem() {
 
     let wire = std::sync::Arc::new(ahp_wire::wire::WireHost::new(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
     ));
     let session = block_on_seat(wire.create_session(
         vec![format!("file://{root}")],
@@ -4128,8 +4191,8 @@ fn a_host_added_by_url_connects_over_the_http_face() {
         .replacen("http://", "ws://", 1);
 
     std::env::set_var("HIMARK_HOST_HOME", dir.path().join("client-home"));
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -4139,8 +4202,8 @@ fn a_host_added_by_url_connects_over_the_http_face() {
         1.0,
     );
 
-    let entity = engine.app.sole_window();
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
+    let entity = engine.sole_window();
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         entity,
         std::sync::Arc::new(hiahp::higent::flows::AddHost { url: ws.clone() }),
     )]));
@@ -4203,7 +4266,7 @@ fn the_seat_speaks_ahp_over_the_http_face() {
 
     std::env::set_var("HIMARK_LOG_DIR", dir.path().join("logs"));
     let seat =
-        ahp_wire::wire::WireHost::at(ahp_wire::wire::test_runtime(), himark_api::test_connector(), ws);
+        ahp_wire::wire::WireHost::at(ahp_wire::wire::test_runtime(), himark_plugins::test_connector(), ws);
     drive(seat.connect()).expect("the ws seat connects");
     let session = drive(seat.create_session(
         vec![format!("file://{}", dir.path().display())],
@@ -4223,7 +4286,7 @@ fn reconnect_seat(dir: &std::path::Path, socket: &std::path::Path) -> ahp_wire::
     std::env::set_var("HIMARK_LOG_DIR", dir.join("logs"));
     ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     )
 }
@@ -4405,12 +4468,12 @@ fn a_document_channel_survives_reconnects() {
     let mut proxy = SeverableProxy::start(&proxy_path, &socket);
     let alice_seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", proxy_path.display()),
     ));
     let bob_seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     drive(alice_seat.connect()).expect("alice connects");
@@ -4815,8 +4878,8 @@ fn the_drawer_connects_to_the_himark_host() {
         assert!(waited < 250, "the host never bound its socket");
     }
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -4828,12 +4891,12 @@ fn the_drawer_connects_to_the_himark_host() {
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -4842,7 +4905,7 @@ fn the_drawer_connects_to_the_himark_host() {
         }),
     );
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut rows = Vec::new();
     let clock = std::cell::Cell::new(0.0f64);
     for _ in 0..30 {
@@ -4877,8 +4940,8 @@ fn dump_chat_pane_snapshot() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -4890,13 +4953,13 @@ fn dump_chat_pane_snapshot() {
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -4940,7 +5003,7 @@ fn dump_chat_pane_snapshot() {
         }
     };
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
@@ -4960,8 +5023,8 @@ fn dump_chat_pane_snapshot() {
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while engine
-            .app
-            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ())
+            
+            .with_ime_client(window, |_| ())
             .is_none()
         {
             assert!(
@@ -4974,9 +5037,9 @@ fn dump_chat_pane_snapshot() {
     }
 
     let send = |engine: &mut HimarkEngine, text: &str| {
-        assert!(workbench_shell::test_driver::type_text(&mut engine.app, text));
+        assert!(workbench_shell::test_driver::type_text(engine, text));
         let _ = workbench_shell::test_driver::key(
-            &mut engine.app,
+            engine,
             imba::event::Key::Enter,
             imba::event::Modifiers {
                 command: true,
@@ -5005,7 +5068,7 @@ fn dump_chat_pane_snapshot() {
     wait_for(&mut engine, &mut surface, "ask card", &mut |engine| {
         shown_chat(engine).is_some_and(|chat| chat.permission_oracle().is_some())
     });
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "1"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "1"));
     wait_for(&mut engine, &mut surface, "tool ran", &mut |engine| {
         chat_transcript(engine).is_some_and(|rows| {
             rows.iter().any(|(_, cells)| {
@@ -5054,8 +5117,8 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -5075,18 +5138,18 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         }
     }
     engine
-        .app
+        
         .register_handler::<ahp_locations::FindEffect>(NoFind);
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -5131,7 +5194,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         }
     };
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
@@ -5155,8 +5218,8 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while engine
-            .app
-            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ())
+            
+            .with_ime_client(window, |_| ())
             .is_none()
         {
             assert!(
@@ -5183,9 +5246,9 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
             .unwrap_or(0)
     };
 
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "hello"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "hello"));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -5201,10 +5264,10 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
 
     // Phase 1: the chat NEVER closes — \u{2318}W on it is refused and
     // the conversation stays on screen.
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
     pump(&mut engine, &mut surface);
     assert!(shown_chat(&engine).is_some(), "the chat never closes");
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
@@ -5214,13 +5277,13 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
 
     // Phase 1b: the USER's exact road — the chat leaf is DISPLACED
     // by a document (not closed), and cmd-I walks back to the chat.
-    assert!(engine.perform_command(window, "workbench.new-document"));
+    assert!(engine.perform_registered_at(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
         shown_chat(&engine).is_some(),
         "the document opens beside the chat — the slot stays"
     );
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
@@ -5230,13 +5293,13 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
 
     // Phase 1b: the USER's exact road — the chat leaf is DISPLACED
     // by a document (not closed), and cmd-I fronts the chat again.
-    assert!(engine.perform_command(window, "workbench.new-document"));
+    assert!(engine.perform_registered_at(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
         shown_chat(&engine).is_some(),
         "the document opens beside the chat — the slot stays"
     );
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
@@ -5249,13 +5312,13 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     // the transcript when the pane reopens.
     // (Front the standing pane again: the mint road opens without
     // focusing the leaf; the front-existing road focuses it.)
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     pump(&mut engine, &mut surface);
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while engine
-            .app
-            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ())
+            
+            .with_ime_client(window, |_| ())
             .is_none()
         {
             assert!(
@@ -5266,18 +5329,18 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "hello"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "hello"));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
             ..Default::default()
         },
     );
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
     pump(&mut engine, &mut surface);
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
@@ -5297,9 +5360,9 @@ fn the_chat_runs_through_the_himark_host() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
 
-    let window = engine.add_window();
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -5319,18 +5382,18 @@ fn the_chat_runs_through_the_himark_host() {
         }
     }
     engine
-        .app
+        
         .register_handler::<ahp_locations::FindEffect>(NoFind);
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -5377,7 +5440,7 @@ fn the_chat_runs_through_the_himark_host() {
         }
     };
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let plus_row = |engine: &HimarkEngine| -> Option<usize> {
         let rows = drawer_rows(engine)?;
         let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
@@ -5403,8 +5466,8 @@ fn the_chat_runs_through_the_himark_host() {
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while engine
-            .app
-            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(window), |_| ())
+            
+            .with_ime_client(window, |_| ())
             .is_none()
         {
             assert!(
@@ -5416,9 +5479,9 @@ fn the_chat_runs_through_the_himark_host() {
         }
     }
 
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "hello"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "hello"));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -5445,11 +5508,11 @@ fn the_chat_runs_through_the_himark_host() {
         shown_chat(engine).is_some_and(|chat| chat.permission_oracle().is_some())
     };
     assert!(workbench_shell::test_driver::type_text(
-        &mut engine.app,
+        &mut engine,
         "ask permission first"
     ));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -5463,7 +5526,7 @@ fn the_chat_runs_through_the_himark_host() {
         &mut |engine| ask_up(engine),
     );
 
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "1"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "1"));
     let ran = |engine: &HimarkEngine| -> bool {
         chat_transcript(engine).is_some_and(|rows| {
             rows.iter().any(|(_, cells)| {
@@ -5555,8 +5618,8 @@ fn the_chat_runs_through_the_himark_host() {
             );
         }
     }
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
-        engine.app.sole_window(),
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
+        engine.sole_window(),
         std::sync::Arc::new(SendLikeComments("attached review comment")),
     )]));
     let shows = |engine: &HimarkEngine, needle: &str| -> bool {
@@ -5572,34 +5635,34 @@ fn the_chat_runs_through_the_himark_host() {
         &mut |engine| shows(engine, "attached review comment"),
     );
 
-    assert!(engine.perform_command(window, "workbench.new-document"));
+    assert!(engine.perform_registered_at(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
         chat_transcript(&engine).is_some(),
         "the scratch opens beside the chat — the slot stays"
     );
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
-        engine.app.sole_window(),
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
+        engine.sole_window(),
         std::sync::Arc::new(SendLikeComments("sent while hidden")),
     )]));
     pump(&mut engine, &mut surface);
     let folded = {
         let key = ahp_session::session::agents::Agents::live_session(
-            engine.app.store(),
+            engine.store(),
             &workbench_shell::workspace::entity_session(
                 workbench::window::Windows::window_ref(
-                    engine.app.store(),
-                    engine.app.sole_window(),
+                    engine.store(),
+                    engine.sole_window(),
                 )
                 .expect("the window entity"),
             ),
         )
         .expect("the bound session");
-        let chat = ahp_session::session::agents::Agents::channel(engine.app.store(), &key)
+        let chat = ahp_session::session::agents::Agents::channel(engine.store(), &key)
             .and_then(|channel| channel.default_chat)
             .expect("the default chat");
         let seat =
-            ahp_wire::client::Servers::client(engine.app.store(), key.host).expect("the seat");
+            ahp_wire::client::Servers::client(engine.store(), key.host).expect("the seat");
         fn block_on<T>(future: ahp_wire::client::ClientFuture<T>) -> T {
             use std::task::{Context, Poll, Wake, Waker};
             struct Unpark(std::thread::Thread);
@@ -5643,9 +5706,9 @@ fn the_chat_runs_through_the_himark_host() {
     assert!(folded, "the hidden-send turn folded host-side");
 
     let title = {
-        let store = engine.app.store();
+        let store = engine.store();
         let chats = workbench_shell::workspace::entity_state(
-            workbench::window::Windows::window_ref(store, engine.app.sole_window())
+            workbench::window::Windows::window_ref(store, engine.sole_window())
                 .expect("the window entity"),
         )
         .chats();
@@ -5654,12 +5717,12 @@ fn the_chat_runs_through_the_himark_host() {
         let pane = ahp_chat::chats::ChatPane::new(chats, listed[0].clone());
         hikit::panel::PanelView::title(&pane, store)
     };
-    assert!(engine.perform_command(window, "peeker.toggle"));
+    assert!(engine.perform_registered_at(window, "peeker.toggle"));
     pump(&mut engine, &mut surface);
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, &title));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, &title));
     pump(&mut engine, &mut surface);
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers::default(),
     );
@@ -5693,8 +5756,8 @@ fn real_claude_answers_through_the_himark_host() {
     let host = spawn_host_with_env(dir.path(), "claude", false);
     let socket = host.socket.clone();
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -5706,13 +5769,13 @@ fn real_claude_answers_through_the_himark_host() {
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -5740,7 +5803,7 @@ fn real_claude_answers_through_the_himark_host() {
             settle(engine);
         }
     };
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut plus = None;
     for _ in 0..30 {
         pump(&mut engine, &mut surface);
@@ -5762,11 +5825,11 @@ fn real_claude_answers_through_the_himark_host() {
     assert!(chat_ready(&engine), "the chat subscribed");
 
     assert!(workbench_shell::test_driver::type_text(
-        &mut engine.app,
+        &mut engine,
         "Reply with the single word OK and nothing else."
     ));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -5821,13 +5884,13 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = work.clone();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -5855,7 +5918,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
             settle(engine);
         }
     };
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut plus = None;
     for _ in 0..30 {
         pump(&mut engine, &mut surface);
@@ -5871,10 +5934,10 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
 
     let current_folders = |engine: &HimarkEngine| -> Vec<editor::location::ResourceLocation> {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         ahp_session::session::folders::session_folders(
-            engine.app.store(),
+            engine.store(),
             &workbench_shell::workspace::entity_session(&entity),
         )
     };
@@ -5889,7 +5952,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     {
         let (server, session) =
             ahp_wire::client::parse(folders[0].authority().as_str()).expect("an ahp authority");
-        let seat = ahp_wire::client::Servers::client(engine.app.store(), server).expect("the seat");
+        let seat = ahp_wire::client::Servers::client(engine.store(), server).expect("the seat");
         let listed = block_on_seat(seat.resources.resource_list(
             session,
             ahp_wire::client::ResourceUri::new(format!("file://{}", work.display())),
@@ -5901,19 +5964,19 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         );
     }
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     pump(&mut engine, &mut surface);
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut waited = 0;
     loop {
         pump(&mut engine, &mut surface);
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(500.0 * (waited + 1) as f64),
         );
         pump(&mut engine, &mut surface);
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         if entity.side_panel().is_none() {
             break;
@@ -5921,33 +5984,33 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         waited += 1;
         assert!(waited < 30, "the drawer never rolled away");
     }
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     pump(&mut engine, &mut surface);
     {
         let entity =
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("the window entity");
         assert!(entity.dock_panel().is_some(), "the tree panel is up");
     }
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(0.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     pump(&mut engine, &mut surface);
     let row_y = tree_row_y(&engine, 0);
-    let clicked = workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the root row took the click");
     pump(&mut engine, &mut surface);
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(2_000.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(3_000.0),
     );
     pump(&mut engine, &mut surface);
@@ -5969,7 +6032,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     }
 
     let tree_rows = |engine: &HimarkEngine| -> usize {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 Some(
                     entity
@@ -5989,7 +6052,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     }
 
     let row_y = tree_row_y(&engine, 1);
-    let clicked = workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0);
+    let clicked = workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0);
     assert!(clicked, "the file row took the click");
     let file = editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
@@ -6011,8 +6074,8 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     for _ in 0..50 {
         pump(&mut engine, &mut surface);
         opened = documents::OpenDocuments::by_location(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             &file,
         );
         if opened.is_some() {
@@ -6020,11 +6083,11 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         }
     }
     let opened = opened.unwrap_or_else(|| {
-        let all: Vec<String> = documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        let all: Vec<String> = documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .iter()
             .filter_map(|(_, doc)| doc.location().map(|l| format!("{:?}", l)))
             .collect();
-        let entity = workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        let entity = workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("entity");
         panic!(
             "hello.txt opened through the seat; wanted {file:?}; open: {all:?}; host lists: {:?}; host fetches: {:?}; modal up: {}",
@@ -6035,8 +6098,8 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     });
     let text = {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             opened,
         )
         .expect("the opened document");
@@ -6051,15 +6114,15 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     settle_until(
         &mut engine,
         "the served open seated its sync loop",
-        |engine| ahp_docsync::SyncClients::count(engine.app.store()) == 1,
+        |engine| ahp_docsync::SyncClients::count(engine.store()) == 1,
     );
-    assert!(engine.perform_command(window, "workbench.close"));
+    assert!(engine.perform_registered_at(window, "workbench.close"));
     // The drain is a cross-process round trip: the stopped life
     // unsubscribes over the socket before `Drained` retires the seat.
     settle_until(
         &mut engine,
         "the closed document took its loop with it",
-        |engine| ahp_docsync::SyncClients::count(engine.app.store()) == 0,
+        |engine| ahp_docsync::SyncClients::count(engine.store()) == 0,
     );
 }
 
@@ -6135,12 +6198,12 @@ fn two_wire_clients_converge_on_one_document() {
 
     let alice_seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let bob_seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
 
@@ -6370,12 +6433,12 @@ fn two_wire_clients_share_annotations() {
     let session = ahp_wire::client::SessionUri::new("hihost-fs:/local");
     let alice = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let bob = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
 
@@ -6436,7 +6499,7 @@ fn two_wire_clients_share_annotations() {
 
     let carol = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let folded = block_on(carol.subscribe_annotations(session.clone())).expect("carol subscribes");
@@ -6496,18 +6559,18 @@ fn two_engines_sync_a_live_document() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
-        let mut engine = himark_api::with_fonts(AppFonts::embedded());
-        let window = engine.add_window();
+    let engine_at = |name: &str| -> (HimarkEngine, himark::bridge::ViewBridgeId, std::sync::Arc<fake_host::Seat>) {
+        let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+        let window = WindowEngine::open_window(&mut engine);
         let seat = Arc::new(ahp_wire::wire::WireHost::at(
             ahp_wire::wire::test_runtime(),
-            himark_api::test_connector(),
+            himark_plugins::test_connector(),
             format!("unix:{}", socket.display()),
         ));
         let local = engine.register_agent_server(name, ahp_wire::client::Client::of(seat));
         engine.set_local_backend(local);
         let host_seat = fake_host::Seat::new();
-        engine.set_host(HimarkHostCallbacks {
+        himark_plugins::install_host_callbacks(&mut engine, HimarkHostCallbacks {
             ctx: host_seat.ctx(),
             pick_files: Some(fake_host::pick_files),
             pick_save: Some(fake_host::pick_save),
@@ -6554,7 +6617,7 @@ fn two_engines_sync_a_live_document() {
         (&mut bob, bob_window, &bob_seat),
     ] {
         let window = window;
-        assert!(engine.perform_command(window, "file.open"));
+        assert!(engine.perform_registered_at(window, "file.open"));
         settle(engine);
         let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
@@ -6572,7 +6635,7 @@ fn two_engines_sync_a_live_document() {
     }
 
     assert!(workbench_shell::test_driver::type_text(
-        &mut alice.app,
+        &mut alice,
         "Alice was here. "
     ));
     let mut waited = 0;
@@ -6596,7 +6659,7 @@ fn two_engines_sync_a_live_document() {
         assert!(waited < 500, "bob never saw alice's edit: {shown:?}");
     }
 
-    assert!(workbench_shell::test_driver::type_text(&mut bob.app, "Bob too. "));
+    assert!(workbench_shell::test_driver::type_text(&mut bob, "Bob too. "));
     let mut waited = 0;
     loop {
         settle(&mut alice);
@@ -6668,18 +6731,18 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
-        let mut engine = himark_api::with_fonts(AppFonts::embedded());
-        let window = engine.add_window();
+    let engine_at = |name: &str| -> (HimarkEngine, himark::bridge::ViewBridgeId, std::sync::Arc<fake_host::Seat>) {
+        let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+        let window = WindowEngine::open_window(&mut engine);
         let seat = Arc::new(ahp_wire::wire::WireHost::at(
             ahp_wire::wire::test_runtime(),
-            himark_api::test_connector(),
+            himark_plugins::test_connector(),
             format!("unix:{}", socket.display()),
         ));
         let local = engine.register_agent_server(name, ahp_wire::client::Client::of(seat));
         engine.set_local_backend(local);
         let host_seat = fake_host::Seat::new();
-        engine.set_host(HimarkHostCallbacks {
+        himark_plugins::install_host_callbacks(&mut engine, HimarkHostCallbacks {
             ctx: host_seat.ctx(),
             pick_files: Some(fake_host::pick_files),
             pick_save: Some(fake_host::pick_save),
@@ -6723,7 +6786,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
 
     for (engine, window, seat) in [(&mut alice, alice_window, &alice_seat)] {
         let window = window;
-        assert!(engine.perform_command(window, "file.open"));
+        assert!(engine.perform_registered_at(window, "file.open"));
         settle(engine);
         let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
@@ -6741,7 +6804,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
     }
 
     assert!(workbench_shell::test_driver::type_text(
-        &mut alice.app,
+        &mut alice,
         "Alice was here. "
     ));
     for _ in 0..20 {
@@ -6750,7 +6813,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
     }
     for (engine, window, seat) in [(&mut bob, bob_window, &bob_seat)] {
         let window = window;
-        assert!(engine.perform_command(window, "file.open"));
+        assert!(engine.perform_registered_at(window, "file.open"));
         settle(engine);
         let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
@@ -6791,7 +6854,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         );
     }
 
-    assert!(workbench_shell::test_driver::type_text(&mut bob.app, "Bob too. "));
+    assert!(workbench_shell::test_driver::type_text(&mut bob, "Bob too. "));
     let mut waited = 0;
     loop {
         settle(&mut alice);
@@ -6864,18 +6927,18 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
 
-    engine.compose_new_windows = true;
+    engine.setup(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let local = engine.register_agent_server("Local Backend", ahp_wire::client::Client::of(seat));
     engine.set_local_backend(local);
     let host_seat = fake_host::Seat::new();
-    engine.set_host(HimarkHostCallbacks {
+    himark_plugins::install_host_callbacks(&mut engine, HimarkHostCallbacks {
         ctx: host_seat.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
@@ -6890,7 +6953,7 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
     // Production registers the local backend in the ENTRY, before the
     // shell can add a window — the window comes after here too, so
     // its `session.new` has a host to create on.
-    let window = engine.add_window();
+    let window = WindowEngine::open_window(&mut engine);
     let root = dir.path().join("files");
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
@@ -6918,17 +6981,17 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
                 800.0,
                 1.0,
             );
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .map(|entity| workbench_shell::workspace::entity_session(&entity))
                 .filter(|session| session.names_session())
                 .is_some_and(|session| {
-                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                    ahp_session::session::agents::Agents::channel(engine.store(), &session)
                         .is_some()
                 })
         },
     );
     let first = workbench_shell::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("window"),
     );
 
@@ -6949,11 +7012,11 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
     );
 
     assert!(workbench_shell::test_driver::type_text(
-        &mut engine.app,
+        &mut engine,
         "Build me a parser"
     ));
     assert!(workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -6983,8 +7046,8 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
 
     // `session.new` over a live session: a FRESH session takes the
     // window and its chat fronts, seeded from the one it replaces.
-    let app_window = engine.app.sole_window();
-    assert!(engine.app.perform_registered(app_window, "session.new"));
+    let app_window = engine.sole_window();
+    assert!(engine.perform_registered(app_window, "session.new"));
     settle_until(
         engine_mut(&mut engine),
         "the next session took the window",
@@ -6996,11 +7059,11 @@ fn a_new_session_is_a_live_chat_from_the_first_frame() {
                 800.0,
                 1.0,
             );
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .map(|entity| workbench_shell::workspace::entity_session(&entity))
                 .filter(|session| session.names_session() && *session != first)
                 .is_some_and(|session| {
-                    ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                    ahp_session::session::agents::Agents::channel(engine.store(), &session)
                         .is_some()
                 })
         },
@@ -7064,18 +7127,18 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
 
-    engine.compose_new_windows = true;
+    engine.setup(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let local = engine.register_agent_server("Local Backend", ahp_wire::client::Client::of(seat));
     engine.set_local_backend(local);
     let host_seat = fake_host::Seat::new();
-    engine.set_host(HimarkHostCallbacks {
+    himark_plugins::install_host_callbacks(&mut engine, HimarkHostCallbacks {
         ctx: host_seat.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
@@ -7090,7 +7153,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     // Production registers the local backend in the ENTRY, before the
     // shell can add a window — the window comes after here too, so
     // its `session.new` has a host to create on.
-    let window = engine.add_window();
+    let window = WindowEngine::open_window(&mut engine);
     let root = dir.path().join("files");
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
@@ -7114,20 +7177,20 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
             800.0,
             1.0,
         );
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .map(|entity| workbench_shell::workspace::entity_session(&entity))
             .filter(|session| session.names_session())
             .is_some_and(|session| {
-                ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+                ahp_session::session::agents::Agents::channel(engine.store(), &session)
                     .is_some()
             })
     });
     let session = workbench_shell::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("window"),
     );
     assert!(
-        ahp_session::session::agents::Agents::channel(engine.app.store(), &session)
+        ahp_session::session::agents::Agents::channel(engine.store(), &session)
             .expect("the session channel mirror")
             .working_directories
             .is_empty(),
@@ -7166,12 +7229,12 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
 
     let edits_cell = seeded.cells[2];
 
-    let window_chrome = editor::env::Themes::of(engine.app.store())
+    let window_chrome = editor::env::Themes::of(engine.store())
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     let (strip_x, strip_y) = (seeded.origin.0, seeded.origin.1 + window_chrome);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         strip_x + edits_cell.0 + edits_cell.1 * 0.5,
         strip_y + 20.0,
         1200.0,
@@ -7179,11 +7242,11 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     ));
     assert!(toolbar(&engine).edits.open, "the EDITS menu stands");
 
-    let row_h = editor::env::Themes::of(engine.app.store())
+    let row_h = editor::env::Themes::of(engine.store())
         .part(::hikit::chrome::ComboChrome::KEY)
         .menu_row_height;
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         strip_x + edits_cell.0 + 20.0,
         strip_y - row_h * 2.5 - 1.0,
         1200.0,
@@ -7225,9 +7288,9 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
 
     // The composer button is gone — adding a folder is a palette
     // command now.
-    let window_id = engine.app.sole_window();
+    let window_id = engine.sole_window();
     assert!(engine
-        .app
+        
         .perform_registered(window_id, "session.add-folder"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &host_seat);
@@ -7248,14 +7311,14 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         let current = |engine: &HimarkEngine| {
             workbench_shell::workspace::entity_session(
                 workbench::window::Windows::window_ref(
-                    engine.app.store(),
-                    engine.app.sole_window(),
+                    engine.store(),
+                    engine.sole_window(),
                 )
                 .expect("window"),
             )
         };
         let landed = |engine: &HimarkEngine| {
-            ahp_session::session::agents::Agents::channel(engine.app.store(), &current(engine))
+            ahp_session::session::agents::Agents::channel(engine.store(), &current(engine))
                 .is_some_and(|channel| {
                     channel
                         .working_directories
@@ -7279,7 +7342,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
             if started.elapsed() > std::time::Duration::from_secs(30) {
                 let now = current(&engine);
                 let mirror =
-                    ahp_session::session::agents::Agents::channel(engine.app.store(), &now).map(
+                    ahp_session::session::agents::Agents::channel(engine.store(), &now).map(
                         |channel| {
                             (
                                 channel
@@ -7292,7 +7355,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
                         },
                     );
                 let live =
-                    ahp_session::session::agents::Agents::live_session(engine.app.store(), &now);
+                    ahp_session::session::agents::Agents::live_session(engine.store(), &now);
                 // The host's persisted manifest is the chain's far
                 // end: folder IN the manifest but not the mirror means
                 // the host applied it and the client drain lost it;
@@ -7328,8 +7391,8 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let host = spawn_host(dir.path(), &stub);
     let socket = host.socket.clone();
 
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -7341,13 +7404,13 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
 
     let seat = std::sync::Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         format!("unix:{}", socket.display()),
     ));
     let _ours = engine.register_agent_server("himark Host", ahp_wire::client::Client::of(seat));
     let workdir = dir.path().to_owned();
     hiahp::higent::flows::AgentFlows::install_new_session(
-        &mut engine.app.store_mut(),
+        &mut engine.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
                 server,
@@ -7378,12 +7441,12 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         |engine: &HimarkEngine| -> Option<ahp_chat::chat::ChatPanel> { shown_chat(engine) };
     let current = |engine: &HimarkEngine| -> ahp_wire::SessionId {
         workbench_shell::workspace::entity_session(
-            workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
                 .expect("window"),
         )
     };
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut plus = None;
     for _ in 0..30 {
         pump(&mut engine, &mut surface);
@@ -7428,14 +7491,14 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             workbench_shell::app::switch_session(store, window, target, fx);
         }
     }
-    assert!(engine.app.perform_command(workbench_shell::shell::windowed(
-        engine.app.sole_window(),
+    assert!(engine.perform_command(workbench_shell::shell::windowed(
+        engine.sole_window(),
         std::sync::Arc::new(SwitchScratch),
     )));
     pump(&mut engine, &mut surface);
     assert_ne!(current(&engine), created, "the scratch took the window");
 
-    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    assert!(engine.perform_registered_at(window, "agent.toggle-agents"));
     let mut session_row = None;
     for _ in 0..30 {
         pump(&mut engine, &mut surface);
@@ -7500,13 +7563,13 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         editor::location::Authority::new("local"),
         root_segments,
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "history.view"));
+    assert!(engine.perform_registered_at(window, "history.view"));
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -7518,12 +7581,12 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     );
     for ms in [0.0, 1_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
     }
     let rows = |engine: &HimarkEngine| {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -7533,7 +7596,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -7574,7 +7637,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
 
     let row_y = history_row_y(&engine, second_at);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x(90.0),
         row_y,
         900.0,
@@ -7594,7 +7657,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
 
     let row_y = history_row_y(&engine, file_at);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x(90.0),
         row_y,
         900.0,
@@ -7610,12 +7673,12 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             1.0,
         );
         let mut built = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 built = matches!(
                     canvas.source(),
                     changesview::hichanges::CanvasSource::Commit { .. }
-                ) && canvas.probe_rows(engine.app.store()).iter().any(
+                ) && canvas.probe_rows(engine.store()).iter().any(
                     |(title, phase, _)| {
                         title == "README.md" && *phase == canvas::canvas::RowPhase::Built
                     },
@@ -7628,7 +7691,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     // The commit canvas heads with the commit's message and author.
     {
         let mut banner = None;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
                 .as_any()
                 .downcast_ref::<::canvas::commit_face::CommitFace>()
@@ -7652,7 +7715,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     {
         let commit_banner = |engine: &HimarkEngine| {
             let mut shot = None;
-            engine.app.for_each_plugin_panel(&mut |panel| {
+            engine.for_each_plugin_panel(&mut |panel| {
                 if let Some(canvas) = panel
                     .as_any()
                     .downcast_ref::<::canvas::commit_face::CommitFace>()
@@ -7662,17 +7725,17 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             });
             shot
         };
-        let chrome_top = editor::env::Themes::of(engine.app.store())
+        let chrome_top = editor::env::Themes::of(engine.store())
             .part(::hikit::chrome::ToolbarChrome::KEY)
             .height;
         assert!(workbench_shell::test_driver::click(
-            &mut engine.app,
+            &mut engine,
             60.0,
             chrome_top + 14.0,
             900.0,
             700.0
         ));
-        assert!(workbench_shell::test_driver::type_text(&mut engine.app, "amended "));
+        assert!(workbench_shell::test_driver::type_text(&mut engine, "amended "));
         let (message, _) = commit_banner(&engine).expect("the commit banner");
         assert!(
             message.contains("amended"),
@@ -7681,7 +7744,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     }
 
     let history_cursor = |engine: &HimarkEngine| {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -7691,7 +7754,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -7706,7 +7769,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         .expect("the commit row stands");
     let row_y = history_row_y(&engine, second_at);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x(90.0),
         row_y,
         900.0,
@@ -7714,7 +7777,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     ));
     let before_step = history_cursor(&engine);
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Down,
         imba::event::Modifiers::default(),
     );
@@ -7725,10 +7788,10 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         "Down stepped the graph's cursor — the section held the keys"
     );
 
-    assert!(engine.perform_command(window, "changes.view"));
+    assert!(engine.perform_registered_at(window, "changes.view"));
     for ms in [3_000.0, 4_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
         settle(&mut engine);
@@ -7752,7 +7815,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             700.0,
             1.0,
         );
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -7762,7 +7825,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -7777,7 +7840,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     });
     let row_y = changes_row_y(&engine, 1);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x(90.0),
         row_y,
         900.0,
@@ -7785,7 +7848,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     ));
     let composer = |engine: &HimarkEngine| {
         let mut shot = None;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel
                 .as_any()
                 .downcast_ref::<::canvas::changes_face::ChangesFace>()
@@ -7807,14 +7870,14 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         composer(engine).is_some()
     });
 
-    let chrome_top = editor::env::Themes::of(engine.app.store())
+    let chrome_top = editor::env::Themes::of(engine.store())
         .part(::hikit::chrome::ToolbarChrome::KEY)
         .height;
     // The SUMMARY strip heads the face and the composer stands under
     // it — click under the strip, in the box's own zone.
-    let strip = ::canvas::diff_summary::strip_height(engine.app.store(), &engine.app.ui_ctx());
+    let strip = ::canvas::diff_summary::strip_height(engine.store(), &engine.ui_ctx());
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         60.0,
         chrome_top + strip + 14.0,
         900.0,
@@ -7825,7 +7888,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         "the well click focused the box"
     );
     assert!(workbench_shell::test_driver::type_text(
-        &mut engine.app,
+        &mut engine,
         "wired commit"
     ));
     assert_eq!(
@@ -7835,7 +7898,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     );
 
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Backspace,
         imba::event::Modifiers::default(),
     );
@@ -7844,9 +7907,9 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         "wired commi",
         "keymap commands route to the box editor"
     );
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "t"));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "t"));
     let _ = workbench_shell::test_driver::key(
-        &mut engine.app,
+        &mut engine,
         imba::event::Key::Enter,
         imba::event::Modifiers {
             command: true,
@@ -7862,7 +7925,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             700.0,
             1.0,
         );
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -7872,7 +7935,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -7885,7 +7948,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             })
     });
 
-    assert!(engine.perform_command(window, "history.view"));
+    assert!(engine.perform_registered_at(window, "history.view"));
     settle_until(&mut engine, "the box's commit topped the graph", |engine| {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(
@@ -7947,13 +8010,13 @@ fn diff_resize_probe_over_real_code() {
         editor::location::Authority::new("local"),
         root_segments,
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "changes.view"));
+    assert!(engine.perform_registered_at(window, "changes.view"));
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
     let _ = engine.draw(
@@ -7965,7 +8028,7 @@ fn diff_resize_probe_over_real_code() {
     );
     for ms in [0.0, 1_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
     }
@@ -7978,7 +8041,7 @@ fn diff_resize_probe_over_real_code() {
             900.0,
             1.0,
         );
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()
@@ -7988,7 +8051,7 @@ fn diff_resize_probe_over_real_code() {
                     })
                     .and_then(|pane| {
                         changesview::hichanges::Changes::view_ref(
-                            engine.app.store(),
+                            engine.store(),
                             pane.changes(),
                             pane.view(),
                         )
@@ -8003,7 +8066,7 @@ fn diff_resize_probe_over_real_code() {
 
     let row_y = changes_row_y(&engine, 1);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         1400.0 - workbench::dock::DOCK_WIDTH + 90.0,
         row_y,
         1400.0,
@@ -8011,7 +8074,7 @@ fn diff_resize_probe_over_real_code() {
     ));
     settle_until(&mut engine, "the diff pane mounted", |engine| {
         let mut mounted = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             mounted |= panel.as_any().is::<canvas::diff_pane::DiffPanelView>();
         });
         mounted
@@ -8065,7 +8128,7 @@ fn diff_resize_probe_over_real_code() {
     resize_leg(&mut engine, &mut surface, "sole pane @1x", 1.0);
     resize_leg(&mut engine, &mut surface, "sole pane @2x", 2.0);
 
-    assert!(engine.perform_command(window, "workbench.split-pane"));
+    assert!(engine.perform_registered_at(window, "workbench.split-pane"));
     settle(&mut engine);
     let _ = engine.draw(
         window,
@@ -8080,8 +8143,8 @@ fn diff_resize_probe_over_real_code() {
 
 #[test]
 fn a_drain_hands_the_ui_thread_back_mid_burst() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
@@ -8093,7 +8156,10 @@ fn a_drain_hands_the_ui_thread_back_mid_burst() {
 
     engine.set_drain_pacing(8, std::time::Duration::ZERO);
     for subscription in 1..=64u64 {
-        assert!(engine.file_changed(subscription), "the landing queued");
+        assert!(
+            engine.file_changed(documents::watch::Subscription(subscription)),
+            "the landing queued"
+        );
     }
     assert_eq!(engine.queued_landings(), 64);
 
@@ -8115,7 +8181,7 @@ fn a_drain_hands_the_ui_thread_back_mid_burst() {
 
     engine.set_drain_pacing(8, std::time::Duration::from_secs(1));
     for subscription in 1..=64u64 {
-        assert!(engine.file_changed(subscription));
+        assert!(engine.file_changed(documents::watch::Subscription(subscription)));
     }
     assert!(engine.drain());
     assert_eq!(
@@ -8149,8 +8215,8 @@ fn a_markdown_image_shows_under_its_line() {
         "# Page\n\n![a screenshot](shot.png)\n",
     );
     settle_until(&mut engine, "the picture loaded under its line", |engine| {
-        let store = engine.app.store();
-        documents::OpenDocuments::list(store, engine.app.sole_documents())
+        let store = engine.store();
+        documents::OpenDocuments::list(store, engine.sole_documents())
             .into_iter()
             .any(|entity| {
                 let document = entity.1.document();
@@ -8202,12 +8268,12 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         }
     }
     engine
-        .app
+        
         .register_handler::<::editor::hover::HoverEffect>(FakeHover);
 
-    let sole = engine.app.sole_window();
+    let sole = engine.sole_window();
     let (x, y, w, h) = engine
-        .app
+        
         .with_ime_client(himark::bridge::ViewBridgeId::from_raw(sole.raw()), |client| client.first_rect(4, 5))
         .expect("focused editor")
         .expect("the word is on screen");
@@ -8218,10 +8284,10 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         "the move over text must be consumed"
     );
     fn popup_standing(engine: &mut HimarkEngine) -> bool {
-        let (document_id, editor_id) = engine.app.focused_editor_id();
+        let (document_id, editor_id) = engine.focused_editor_id();
         documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .is_some_and(|document| document.hover(editor_id).open())
@@ -8236,7 +8302,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     let rest = |engine: &mut HimarkEngine| {
         for at in [0.0, 500.0, 1_000.0, 1_500.0] {
             let _ = workbench_shell::test_driver::animate(
-                &mut engine.app,
+                engine,
                 imba::anim::AnimationClock::from_millis(at),
             );
         }
@@ -8266,7 +8332,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         "leaving the text must dismiss the card"
     );
 
-    assert!(engine.perform_command(window, "workbench.split-pane"));
+    assert!(engine.perform_registered_at(window, "workbench.split-pane"));
     let _ = engine.draw(
         window,
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -8280,7 +8346,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         let _ = engine.mouse_up(window, 900.0 * side, y + h * 0.5);
         settle(&mut engine);
         let (x, y, w, h) = engine
-            .app
+            
             .with_ime_client(himark::bridge::ViewBridgeId::from_raw(sole.raw()), |client| client.first_rect(4, 5))
             .expect("focused editor")
             .expect("the word is on screen after the split");
@@ -8301,7 +8367,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     }
 
     let (x, y, w, h) = engine
-        .app
+        
         .with_ime_client(himark::bridge::ViewBridgeId::from_raw(sole.raw()), |client| client.first_rect(4, 5))
         .expect("focused editor")
         .expect("the word is on screen");
@@ -8316,7 +8382,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
         "the card stood before the cover",
         popup_standing,
     );
-    assert!(engine.perform_command(window, "peeker.toggle"));
+    assert!(engine.perform_registered_at(window, "peeker.toggle"));
     settle(&mut engine);
     let _ = engine
         .mouse_move(window, x + w * 0.5 + 1.0, y + h * 0.5, 0)
@@ -8343,8 +8409,8 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
     // (`sizedString`). Cut deletes the selection, so a naive second
     // run finds nothing and the pasteboard stays empty; the probe
     // must cut once and the fill must drain the stash.
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
         window,
@@ -8358,16 +8424,16 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
     let body = "the text about to be cut";
     assert!(engine.text_input(window, body));
     assert!(
-        engine.key_down(window, u32::from('a'), himark_api::HIMARK_MOD_COMMAND),
+        engine.key_down(window, u32::from('a'), himark_plugins::HIMARK_MOD_COMMAND),
         "cmd-a selects all"
     );
 
     let two_call_cut = |engine: &mut HimarkEngine| -> Option<String> {
         let engine: *mut HimarkEngine = engine;
         let needed = unsafe {
-            himark_api::himark_cut(
+            himark_plugins::himark_cut(
                 engine,
-                himark_api::bridges::HimarkBridge { raw: window },
+                himark_plugins::bridges::HimarkBridge { raw: window.raw() },
                 std::ptr::null_mut(),
                 0,
             )
@@ -8377,9 +8443,9 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
         }
         let mut buffer = vec![0i8; needed];
         let written = unsafe {
-            himark_api::himark_cut(
+            himark_plugins::himark_cut(
                 engine,
-                himark_api::bridges::HimarkBridge { raw: window },
+                himark_plugins::bridges::HimarkBridge { raw: window.raw() },
                 buffer.as_mut_ptr(),
                 buffer.len(),
             )
@@ -8424,27 +8490,27 @@ fn a_hosted_documents_disk_change_arrives_through_the_channel() {
 
     // The document channel goes live: the host owns the file now.
     settle_until(&mut engine, "the channel went live", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .any(|(id, entity)| {
                 entity.name() == "agent.md"
                     && documents::OpenDocuments::host_synced(
-                        engine.app.store(),
-                        engine.app.sole_documents(),
+                        engine.store(),
+                        engine.sole_documents(),
                         id,
                     )
             })
     });
     let document_id =
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, entity)| entity.name() == "agent.md")
             .map(|(id, _)| id)
             .expect("the open");
     assert_eq!(
         documents::OpenDocuments::entity(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id
         )
         .expect("registered")
@@ -8458,8 +8524,8 @@ fn a_hosted_documents_disk_change_arrives_through_the_channel() {
 
     settle_until(&mut engine, "the host's edit landed", |engine| {
         documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .is_some_and(|document| {
@@ -8486,19 +8552,19 @@ fn repeated_external_saves_land_exactly_once_each() {
         "alpha\nbeta\n",
     );
     settle_until(&mut engine, "the channel went live", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .any(|(id, entity)| {
                 entity.name() == "emacs.md"
                     && documents::OpenDocuments::host_synced(
-                        engine.app.store(),
-                        engine.app.sole_documents(),
+                        engine.store(),
+                        engine.sole_documents(),
                         id,
                     )
             })
     });
     let document_id =
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, entity)| entity.name() == "emacs.md")
             .map(|(id, _)| id)
@@ -8512,8 +8578,8 @@ fn repeated_external_saves_land_exactly_once_each() {
     };
     let text_of = |engine: &HimarkEngine| -> String {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .expect("open");
@@ -8542,7 +8608,7 @@ fn repeated_external_saves_land_exactly_once_each() {
     }
 
     // Local typing joins the history and flows to the host's mirror.
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "typed "));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "typed "));
     settle(&mut engine);
     let merged = text_of(&engine);
     assert!(
@@ -8575,13 +8641,13 @@ fn repeated_external_saves_land_exactly_once_each() {
 fn a_reopened_document_types_exactly_once() {
     let (_host, mut engine, window, fs) = hosted_engine();
     let live = |engine: &HimarkEngine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(id, entity)| {
                 entity.name() == "cycle.md"
                     && documents::OpenDocuments::host_synced(
-                        engine.app.store(),
-                        engine.app.sole_documents(),
+                        engine.store(),
+                        engine.sole_documents(),
                         *id,
                     )
             })
@@ -8601,13 +8667,13 @@ fn a_reopened_document_types_exactly_once() {
             live(engine).is_some()
         });
         assert_eq!(
-            ahp_docsync::SyncClients::count(engine.app.store()),
+            ahp_docsync::SyncClients::count(engine.store()),
             1,
             "one open, one sync loop"
         );
-        assert!(engine.perform_command(window, "workbench.close"));
+        assert!(engine.perform_registered_at(window, "workbench.close"));
         settle_until(&mut engine, "the close took the sync loop", |engine| {
-            ahp_docsync::SyncClients::count(engine.app.store()) == 0
+            ahp_docsync::SyncClients::count(engine.store()) == 0
         });
     }
 
@@ -8625,8 +8691,8 @@ fn a_reopened_document_types_exactly_once() {
     let document_id = live(&engine).expect("the reopened document");
     let text_of = |engine: &HimarkEngine| -> String {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .expect("open");
@@ -8635,7 +8701,7 @@ fn a_reopened_document_types_exactly_once() {
         view.substring(0..end)
     };
 
-    assert!(workbench_shell::test_driver::type_text(&mut engine.app, "typed "));
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "typed "));
     settle_until(&mut engine, "the typed text landed byte-exact", |engine| {
         text_of(engine) == "typed alpha\n"
     });
@@ -8658,7 +8724,7 @@ fn a_reopened_document_types_exactly_once() {
         });
     }
     assert_eq!(
-        ahp_docsync::SyncClients::count(engine.app.store()),
+        ahp_docsync::SyncClients::count(engine.store()),
         1,
         "one document, one sync loop"
     );
@@ -8714,21 +8780,21 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     fs.write(&["live.md"], "alpha\nbeta\n");
 
     // The diff FIRST — its sides fetch and register.
-    let _ = engine.app.perform_batch(vec![workbench_shell::shell::windowed(
-        workbench::window::WindowId::from_raw(window),
+    let _ = engine.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_plugins::wid(window),
         std::sync::Arc::new(OpenWorkingDiff {
             old: fs.doc(&["old.md"]),
             new: fs.doc(&["live.md"]),
         }),
     )]);
     settle_until(&mut engine, "the diff registered its sides", |engine| {
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .any(|(id, entity)| {
                 entity.name() == "live.md"
                     && documents::OpenDocuments::host_synced(
-                        engine.app.store(),
-                        engine.app.sole_documents(),
+                        engine.store(),
+                        engine.sole_documents(),
                         id,
                     )
             })
@@ -8744,15 +8810,15 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
         "alpha\nbeta\n",
     );
     let document_id =
-        documents::OpenDocuments::list(engine.app.store(), engine.app.sole_documents())
+        documents::OpenDocuments::list(engine.store(), engine.sole_documents())
             .into_iter()
             .find(|(_, entity)| entity.name() == "live.md")
             .map(|(id, _)| id)
             .expect("the open");
     let text_of = |engine: &HimarkEngine| -> String {
         let document = documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .expect("open");
@@ -8789,23 +8855,23 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         }]);
     fs.write(&["project", "lib.rs"], "fn answer() -> u32 { 42 }\n");
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
     settle_until(&mut engine, "the folder session opened", |engine| {
-        let entity_id = engine.app.sole_window();
+        let entity_id = engine.sole_window();
         let workspace = workbench_shell::workspace::entity_session(
-            workbench::window::Windows::window_ref(engine.app.store(), entity_id)
+            workbench::window::Windows::window_ref(engine.store(), entity_id)
                 .expect("the window entity"),
         );
-        !ahp_session::session::folders::session_folders(engine.app.store(), &workspace).is_empty()
+        !ahp_session::session::folders::session_folders(engine.store(), &workspace).is_empty()
     });
     let session = workbench_shell::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity"),
     );
-    let folders = ahp_session::session::folders::session_folders(engine.app.store(), &session);
+    let folders = ahp_session::session::folders::session_folders(engine.store(), &session);
     let file = editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
         folders[0].authority().clone(),
@@ -8838,43 +8904,43 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.app.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_command(workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Open(file.clone()))
     )));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             &file,
         )
         .is_some()
     });
 
     let command = workbench_shell::app::palette_commands(
-        engine.app.store(),
-        &engine.app.ui_handle(),
+        engine.store(),
+        &engine.ui_handle(),
         wid(window),
     )
     .into_iter()
     .find(|presentable| presentable.id == "code.implementations")
     .expect("the located editor offers implementations")
     .command;
-    assert!(engine.app.perform_command(command));
+    assert!(engine.perform_command(command));
 
     let lists = workbench_shell::workspace::entity_state(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity"),
     )
     .lists();
     settle_until(&mut engine, "the stream resolved into the feed", |engine| {
-        locations::LocationLists::search(engine.app.store(), lists)
-            .and_then(|feed| locations::LocationLists::row(engine.app.store(), lists, feed))
+        locations::LocationLists::search(engine.store(), lists)
+            .and_then(|feed| locations::LocationLists::row(engine.store(), lists, feed))
             .is_some_and(|row| row.done)
     });
-    let feed = locations::LocationLists::search(engine.app.store(), lists)
+    let feed = locations::LocationLists::search(engine.store(), lists)
         .expect("the session fronts the feed");
-    let row = locations::LocationLists::row(engine.app.store(), lists, feed).expect("the feed row");
+    let row = locations::LocationLists::row(engine.store(), lists, feed).expect("the feed row");
     assert!(!row.truncated, "the ask answered whole");
     assert_eq!(
         row.locations.len(),
@@ -8887,7 +8953,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         .all(|found| found.location.path().join("/").ends_with("lib.rs")
             && found.context == "fn answer() -> u32 { 42 }"));
     let entity =
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity");
     assert_eq!(
         entity.dock_owner(),
@@ -8899,29 +8965,29 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     // Locations; the fresh feed DISPLACES the implementations one
     // (the supersession rule), and the old feed disposes.
     let command = workbench_shell::app::palette_commands(
-        engine.app.store(),
-        &engine.app.ui_handle(),
+        engine.store(),
+        &engine.ui_handle(),
         wid(window),
     )
     .into_iter()
     .find(|presentable| presentable.id == "code.references")
     .expect("the located editor offers references")
     .command;
-    assert!(engine.app.perform_command(command));
+    assert!(engine.perform_command(command));
     settle_until(&mut engine, "the references resolved", |engine| {
-        locations::LocationLists::search(engine.app.store(), lists)
-            .and_then(|next| locations::LocationLists::row(engine.app.store(), lists, next))
+        locations::LocationLists::search(engine.store(), lists)
+            .and_then(|next| locations::LocationLists::row(engine.store(), lists, next))
             .is_some_and(|row| row.done && row.title.starts_with("References"))
     });
-    let referenced = locations::LocationLists::search(engine.app.store(), lists)
+    let referenced = locations::LocationLists::search(engine.store(), lists)
         .expect("the session fronts the references feed");
     assert_ne!(referenced, feed, "a fresh feed displaced the old one");
-    let row = locations::LocationLists::row(engine.app.store(), lists, referenced)
+    let row = locations::LocationLists::row(engine.store(), lists, referenced)
         .expect("the references feed row");
     assert!(!row.truncated, "the references ask answered whole");
     assert_eq!(row.locations.len(), 2, "the fake's two references landed");
     settle_until(&mut engine, "the displaced feed disposed", |engine| {
-        locations::LocationLists::row(engine.app.store(), lists, feed).is_none()
+        locations::LocationLists::row(engine.store(), lists, feed).is_none()
     });
 }
 
@@ -8931,14 +8997,14 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
 /// toggles away); the toolbar's `search.view` keeps the toggle.
 #[test]
 fn cmd_shift_f_opens_then_focuses_the_search_dock() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     // The capability gate normally registers these when the seat
     // serves searchLocations; the KEY ROAD under test is the same.
-    engine.app.register_command(std::sync::Arc::new(
+    engine.register_command(std::sync::Arc::new(
         workbench_shell::hisearch::ToggleSearchView,
     ));
-    engine.app.register_command(std::sync::Arc::new(
+    engine.register_command(std::sync::Arc::new(
         workbench_shell::hisearch::FocusSearchView,
     ));
 
@@ -8967,7 +9033,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
         1.0,
     );
     assert_eq!(
-        engine.app.dock_owner_for_tests(wid(window)),
+        engine.dock_owner_for_tests(wid(window)),
         Some("search.view"),
         "cmd-shift-f opened the search dock"
     );
@@ -8986,13 +9052,13 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
         1.0,
     );
     assert_eq!(
-        engine.app.dock_owner_for_tests(wid(window)),
+        engine.dock_owner_for_tests(wid(window)),
         Some("search.view"),
         "re-invoke keeps the dock, focusing the input"
     );
 
     // The toolbar's command still TOGGLES like every dock button.
-    assert!(engine.perform_command(window, "search.view"));
+    assert!(engine.perform_registered_at(window, "search.view"));
     let _ = engine.draw(
         window,
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
@@ -9001,7 +9067,7 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
         1.0,
     );
     assert_eq!(
-        engine.app.dock_owner_for_tests(wid(window)),
+        engine.dock_owner_for_tests(wid(window)),
         None,
         "search.view rolls the fronting dock away"
     );
@@ -9009,9 +9075,9 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
 
 #[test]
 fn input_reaches_a_second_window() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let a = engine.add_window();
-    let b = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let a = WindowEngine::open_window(&mut engine);
+    let b = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         a,
@@ -9049,9 +9115,9 @@ fn input_reaches_a_second_window() {
 /// test drawers (it did, once).
 #[test]
 fn a_test_engine_registers_no_outward_hosts() {
-    let engine = himark_api::with_fonts(AppFonts::embedded());
+    let engine = himark_plugins::with_fonts(AppFonts::embedded());
     assert_eq!(
-        ahp_session::session::agents::Agents::list(engine.app.store()).len(),
+        ahp_session::session::agents::Agents::list(engine.store()).len(),
         0,
         "no host rows before a test registers its own"
     );
@@ -9078,7 +9144,7 @@ fn cmd_hover_marks_the_link_under_the_pointer() {
     );
 
     let document = |engine: &mut HimarkEngine| {
-        let (document_id, editor_id) = engine.app.focused_editor_id();
+        let (document_id, editor_id) = engine.focused_editor_id();
         (document_id, editor_id)
     };
 
@@ -9086,16 +9152,16 @@ fn cmd_hover_marks_the_link_under_the_pointer() {
     settle_until(&mut engine, "the parse landed reference spans", |engine| {
         let (document_id, _) = document(engine);
         documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .is_some_and(|entry| entry.link_range_at(12).is_some())
     });
 
-    let sole = engine.app.sole_window();
+    let sole = engine.sole_window();
     let (x, y, w, h) = engine
-        .app
+        
         .with_ime_client(himark::bridge::ViewBridgeId::from_raw(sole.raw()), |client| client.first_rect(12, 17))
         .expect("focused editor")
         .expect("the word is on screen");
@@ -9103,8 +9169,8 @@ fn cmd_hover_marks_the_link_under_the_pointer() {
     let hovered = |engine: &mut HimarkEngine| {
         let (document_id, editor_id) = document(engine);
         documents::OpenDocuments::document_ref(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             document_id,
         )
         .and_then(|entry| entry.hovered_link(editor_id))
@@ -9173,23 +9239,23 @@ fn published_diagnostics_squiggle_the_open_document() {
         }]);
     fs.write(&["project", "lib.rs"], "fn answer() -> u32 { 42 }\n");
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
     settle_until(&mut engine, "the folder session opened", |engine| {
-        let entity_id = engine.app.sole_window();
+        let entity_id = engine.sole_window();
         let workspace = workbench_shell::workspace::entity_session(
-            workbench::window::Windows::window_ref(engine.app.store(), entity_id)
+            workbench::window::Windows::window_ref(engine.store(), entity_id)
                 .expect("the window entity"),
         );
-        !ahp_session::session::folders::session_folders(engine.app.store(), &workspace).is_empty()
+        !ahp_session::session::folders::session_folders(engine.store(), &workspace).is_empty()
     });
     let session = workbench_shell::workspace::entity_session(
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .expect("the window entity"),
     );
-    let folders = ahp_session::session::folders::session_folders(engine.app.store(), &session);
+    let folders = ahp_session::session::folders::session_folders(engine.store(), &session);
     let file = editor::location::ResourceLocation::new(
         editor::location::ResourceType::document(),
         folders[0].authority().clone(),
@@ -9222,14 +9288,14 @@ fn published_diagnostics_squiggle_the_open_document() {
             workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.app.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_command(workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Open(file.clone()))
     )));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             &file,
         )
         .is_some()
@@ -9240,14 +9306,14 @@ fn published_diagnostics_squiggle_the_open_document() {
     // host-side and the next change republishes).
     settle_until(&mut engine, "the document synced to the host", |engine| {
         documents::OpenDocuments::by_location(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             &file,
         )
         .is_some_and(|id| {
             documents::OpenDocuments::host_synced(
-                engine.app.store(),
-                engine.app.sole_documents(),
+                engine.store(),
+                engine.sole_documents(),
                 id,
             )
         })
@@ -9256,14 +9322,14 @@ fn published_diagnostics_squiggle_the_open_document() {
 
     settle_until(&mut engine, "the squiggle markup landed", |engine| {
         documents::OpenDocuments::by_location(
-            engine.app.store(),
-            engine.app.sole_documents(),
+            engine.store(),
+            engine.sole_documents(),
             &file,
         )
         .and_then(|id| {
             documents::OpenDocuments::document_ref(
-                engine.app.store(),
-                engine.app.sole_documents(),
+                engine.store(),
+                engine.sole_documents(),
                 id,
             )
         })
@@ -9295,7 +9361,7 @@ fn published_diagnostics_squiggle_the_open_document() {
         // maxima (fps, slowest draw in the window), so it is chrome
         // outside the tree's determinism — and a draw-time blip must
         // not fake the clear-vs-squiggled difference either.
-        let theme = editor::env::Themes::of(engine.app.store());
+        let theme = editor::env::Themes::of(engine.store());
         let chrome = &theme.part(::himark::stats_chrome::StatsChrome::KEY);
         let mut mask = gfx::Paint::default();
         mask.set_color(gfx::Color::BLACK);
@@ -9365,9 +9431,9 @@ fn published_diagnostics_squiggle_the_open_document() {
             documents::OpenDocuments::put_document(store, documents_id, document_id, document);
         }
     }
-    assert!(engine.app.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_command(workbench_shell::shell::windowed(
         wid(window),
-        Arc::new(Clear(engine.app.sole_documents(), file.clone()))
+        Arc::new(Clear(engine.sole_documents(), file.clone()))
     )));
     settle(&mut engine);
     let cleared = snapshot(&mut engine, &mut surface);
@@ -9399,7 +9465,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
     let (_host, mut engine, window, _fs) = hosted_engine();
     // A session exists only once a folder is picked — the places are
     // all session-scoped.
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![directory_location(&["project"])]));
@@ -9476,7 +9542,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
     let mut measured = Vec::new();
     for (name, (place, how)) in places {
         let Some(bridge) =
-            hiahp::arms::mount_place(&mut engine.app, &place, Some(session.clone()))
+            hiahp::arms::mount_place(&mut engine, &place, Some(session.clone()))
         else {
             panic!("{name}: the place refused to mount");
         };
@@ -9484,10 +9550,11 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
             Measured::Open => gfx::Size::new(WIDTH, f32::INFINITY),
             Measured::Framed => gfx::Size::new(WIDTH, FRAME),
         };
-        let handle = engine.app.stage_layout(bridge, ask);
-        assert_ne!(handle, 0, "{name}: the mounted stage refused to lay");
+        let handle = engine
+            .stage_layout(bridge, ask)
+            .unwrap_or_else(|| panic!("{name}: the mounted stage refused to lay"));
         let size = engine
-            .app
+            
             .stage_layout_size(handle)
             .unwrap_or_else(|| panic!("{name}: the laid stage has no size"));
         assert!(
@@ -9501,7 +9568,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
                 "{name}: a framed sheet fills its frame, answered {size:?}"
             );
         }
-        engine.app.stage_layout_release(handle);
+        engine.stage_layout_release(handle);
         measured.push((name, size.height));
     }
     eprintln!("[mounted-sizing] {measured:?}");
@@ -9516,7 +9583,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
     let (_host, mut engine, window, fs) = hosted_engine();
     fs.write(&["project", "README.md"], "# readme");
     fs.write(&["project", "src", "lib.rs"], "fn main() {}");
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
@@ -9526,7 +9593,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
     // The followed location is built the way the ENGINE builds it:
     // from the session's own folder, so the path shape matches the
     // tree's roots (fs.doc's raw path differs by canonicalization).
-    let folder = ahp_session::session::folders::session_folders(engine.app.store(), &session)
+    let folder = ahp_session::session::folders::session_folders(engine.store(), &session)
         .into_iter()
         .next()
         .expect("the picked folder");
@@ -9540,7 +9607,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
 
     // The follow arrives FIRST, with no tree anywhere.
     assert!(
-        hiahp::sessions::follow_session_tree(&mut engine.app, &session, followed),
+        hiahp::sessions::follow_session_tree(&mut engine, &session, followed),
         "a follow with no live tree parks as standing — not dropped"
     );
     settle(&mut engine);
@@ -9548,7 +9615,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
     // The tree mounts LATE and must replay the standing follow.
     let place =
         hikit::navigation::NavigationLocation::new(hiahp::places::FilesPlace(session.clone()));
-    let tree = hiahp::arms::mount_place(&mut engine.app, &place, Some(session))
+    let tree = hiahp::arms::mount_place(&mut engine, &place, Some(session))
         .expect("the files tree mounts");
     // Reveals park on the mounted PAINT road — drive it the way
     // the shell does.
@@ -9560,7 +9627,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
         &mut engine,
         "the standing follow parks the reveal",
         |engine| {
-            let _ = engine.app.draw_mounted(
+            let _ = engine.draw_mounted(
                 tree,
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
                 gfx::Size::new(320.0, 40.0),
@@ -9570,7 +9637,7 @@ fn a_late_files_tree_stands_on_the_followed_file() {
             // workbench animate (which walks windows only).
             now += 16.0;
             let _ = engine.animation_tick(now);
-            match engine.app.take_reveal() {
+            match engine.take_reveal() {
                 Some((id, _reveal)) => {
                     assert_eq!(id, tree, "the reveal belongs to the late tree");
                     true
@@ -9599,10 +9666,10 @@ fn a_hosted_sample_file_diagrams() {
     let source = include_str!("../../plugins/demo/sample.md");
     open_picked(&mut engine, &host.seat, window, &fs, &["sample.md"], source);
     let mermaid_state = |engine: &mut HimarkEngine| -> Option<(bool, usize)> {
-        let documents = engine.app.sole_documents();
-        for (id, _open) in documents::OpenDocuments::list(engine.app.store(), documents) {
+        let documents = engine.sole_documents();
+        for (id, _open) in documents::OpenDocuments::list(engine.store(), documents) {
             let Some(document) =
-                documents::OpenDocuments::document_ref(engine.app.store(), documents, id)
+                documents::OpenDocuments::document_ref(engine.store(), documents, id)
             else {
                 continue;
             };
@@ -9651,8 +9718,8 @@ fn the_demo_sample_diagrams_through_the_engine() {
 }
 
 fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 900)).expect("surface");
     let _ = engine.draw(
         window,
@@ -9669,10 +9736,10 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
     let _ = band;
 
     let mermaid_state = |engine: &mut HimarkEngine| -> Option<(bool, usize)> {
-        let documents = engine.app.sole_documents();
-        for (id, _open) in documents::OpenDocuments::list(engine.app.store(), documents) {
+        let documents = engine.sole_documents();
+        for (id, _open) in documents::OpenDocuments::list(engine.store(), documents) {
             let Some(document) =
-                documents::OpenDocuments::document_ref(engine.app.store(), documents, id)
+                documents::OpenDocuments::document_ref(engine.store(), documents, id)
             else {
                 continue;
             };
@@ -9711,8 +9778,8 @@ fn mermaid_probe(name: &str, source: &str, band: std::ops::Range<usize>) {
 /// is the difference between a smooth drag and a second-long hang.
 #[test]
 fn engine_resize_shape_meter() {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let body: String = (0..400)
         .map(|n| format!("line {n} of a document that is long enough to matter here\n"))
         .collect();
@@ -9739,7 +9806,7 @@ fn engine_resize_shape_meter() {
 
     for step in 0..8 {
         let width = 1200.0 - step as f32 * 23.0;
-        let before = editor::parley_line::shaper(&engine.app.ui_handle()).shapes_so_far();
+        let before = editor::parley_line::shaper(&engine.ui_handle()).shapes_so_far();
         let started = std::time::Instant::now();
         let _ = engine.draw(
             window,
@@ -9751,7 +9818,7 @@ fn engine_resize_shape_meter() {
         let spent = started.elapsed();
         eprintln!(
             "[engine-resize] width {width:.0}: {spent:?} and {} shapes",
-            editor::parley_line::shaper(&engine.app.ui_handle()).shapes_so_far() - before
+            editor::parley_line::shaper(&engine.ui_handle()).shapes_so_far() - before
         );
     }
 }
@@ -9826,17 +9893,17 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         editor::location::Authority::new("local"),
         root_segments,
     );
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "changes.view"));
+    assert!(engine.perform_registered_at(window, "changes.view"));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 900)).expect("surface");
     for ms in [0.0, 1_000.0, 2_000.0] {
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(ms),
         );
         settle(&mut engine);
@@ -9865,7 +9932,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
             })
             .and_then(|pane| {
                 changesview::hichanges::Changes::view_ref(
-                    engine.app.store(),
+                    engine.store(),
                     pane.changes(),
                     pane.view(),
                 )
@@ -9886,7 +9953,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         })
         .and_then(|pane| {
             changesview::hichanges::Changes::view_ref(
-                engine.app.store(),
+                engine.store(),
                 pane.changes(),
                 pane.view(),
             )
@@ -9906,11 +9973,11 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
     // drain is where a landing batch hits the UI thread.
     let built_rows = |engine: &HimarkEngine| -> usize {
         let mut count = 0;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 count = count.max(
                     canvas
-                        .probe_rows(engine.app.store())
+                        .probe_rows(engine.store())
                         .iter()
                         .filter(|(_, phase, _)| *phase == ::canvas::canvas::RowPhase::Built)
                         .count(),
@@ -9921,11 +9988,11 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
     };
     let built = |engine: &HimarkEngine, title: &str| -> bool {
         let mut done = false;
-        engine.app.for_each_plugin_panel(&mut |panel| {
+        engine.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = ::canvas::faces::canvas_of(panel.as_any()) {
                 done = done
                     || canvas
-                        .probe_rows(engine.app.store())
+                        .probe_rows(engine.store())
                         .iter()
                         .any(|(name, phase, _)| {
                             name.starts_with(title) && *phase == ::canvas::canvas::RowPhase::Built
@@ -9950,7 +10017,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
 
         clock += 8.33;
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            engine,
             imba::anim::AnimationClock::from_millis(clock),
         );
         // The FRAME's law: the draw and the drain mint no documents —
@@ -9992,7 +10059,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
         .expect("the first file row stands");
     let row_y = changes_row_y(&engine, file0_at);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x_in(1400.0, 90.0),
         row_y,
         1400.0,
@@ -10017,7 +10084,7 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
     // Phase B: the monster.
     let row_y = changes_row_y(&engine, monster_at);
     assert!(workbench_shell::test_driver::click(
-        &mut engine.app,
+        &mut engine,
         dock_x_in(1400.0, 90.0),
         row_y,
         1400.0,
@@ -10212,13 +10279,13 @@ fn the_tree_follows_filesystem_changes() {
     fs.write(&["project", "README.md"], "# readme");
     fs.write(&["project", "src", "lib.rs"], "fn main() {}");
 
-    assert!(engine.perform_command(window, "file.open"));
+    assert!(engine.perform_registered_at(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
     settle_into_session(&mut engine);
 
-    assert!(engine.perform_command(window, "files.tree"));
+    assert!(engine.perform_registered_at(window, "files.tree"));
     settle(&mut engine);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -10230,17 +10297,17 @@ fn the_tree_follows_filesystem_changes() {
     );
     settle(&mut engine);
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(0.0),
     );
     let _ = workbench_shell::test_driver::animate(
-        &mut engine.app,
+        &mut engine,
         imba::anim::AnimationClock::from_millis(1_000.0),
     );
     settle(&mut engine);
 
     let rows = |engine: &HimarkEngine| -> usize {
-        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
             .and_then(|entity| {
                 entity
                     .dock_panel()?
@@ -10253,7 +10320,7 @@ fn the_tree_follows_filesystem_changes() {
 
     let row_y = tree_row_y(&engine, 0);
     assert!(
-        workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0),
+        workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0),
         "the root row took the click"
     );
     settle_until(&mut engine, "the root listing landed", |engine| {
@@ -10261,7 +10328,7 @@ fn the_tree_follows_filesystem_changes() {
     });
 
     assert!(
-        documents::watch::Watching::installed(engine.app.store()),
+        documents::watch::Watching::installed(engine.store()),
         "watching is installed at boot"
     );
     // The filesystem moves on its own — no gesture follows. The
@@ -10275,6 +10342,236 @@ fn the_tree_follows_filesystem_changes() {
     });
 
     // And a deletion folds back out.
+    std::fs::remove_file(fs.root.join("project").join("GREETING.md")).expect("remove");
+    settle_until(&mut engine, "the deleted file leaves the tree", |engine| {
+        rows(engine) == 3
+    });
+}
+
+/// The DIAGNOSTICS channel across a HOST RESTART: the reborn host
+/// has no language server and no `lsp-diagnostics` channel — the
+/// lane must hear that its channel died and re-dial (the tree's
+/// watch law, one feature over), so squiggles keep tracking the
+/// document instead of freezing at the last pre-restart publish.
+#[test]
+fn squiggles_follow_the_language_server_across_a_host_restart() {
+    let ls_dir = tempfile::tempdir().expect("ls dir");
+    let language_server = || agent_host::server::LanguageServer {
+        extensions: vec!["rs".to_owned()],
+        command: agent_host::testing::fake_ls_command(ls_dir.path()),
+    };
+    let probe = Arc::new(common::probe::Probe::default());
+    let (_host, mut engine, window, fs) =
+        hosted_engine_probed(vec![language_server()], Some(Arc::clone(&probe)));
+    fs.write(&["project", "lib.rs"], "fn answer() -> u32 { 42 }\n");
+
+    assert!(engine.perform_registered_at(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_until(&mut engine, "the folder session opened", |engine| {
+        let entity_id = engine.sole_window();
+        let workspace = workbench_shell::workspace::entity_session(
+            workbench::window::Windows::window_ref(engine.store(), entity_id)
+                .expect("the window entity"),
+        );
+        !ahp_session::session::folders::session_folders(engine.store(), &workspace).is_empty()
+    });
+    let session = workbench_shell::workspace::entity_session(
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
+            .expect("the window entity"),
+    );
+    let folders = ahp_session::session::folders::session_folders(engine.store(), &session);
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        folders[0].authority().clone(),
+        {
+            let mut segments = folders[0].path().to_vec();
+            segments.push("lib.rs".to_owned());
+            segments
+        },
+    );
+
+    struct Open(editor::location::ResourceLocation);
+    impl himark::commands::HimarkCommand for Open {
+        fn id(&self) -> &'static str {
+            "test.open-lib-diag"
+        }
+        fn name(&self) -> String {
+            "Open".to_owned()
+        }
+        fn perform(
+            &self,
+            store: &mut imba::store::Store,
+            ui: &imba::ui::UiCtx,
+            bound: &imba::focus::Bindings,
+            fx: &mut himark::app::AppFx<'_>,
+        ) {
+            let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
+                return;
+            };
+            workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
+        }
+    }
+    assert!(engine.perform_command(workbench_shell::shell::windowed(
+        wid(window),
+        Arc::new(Open(file.clone()))
+    )));
+    settle_until(&mut engine, "lib.rs opened", |engine| {
+        documents::OpenDocuments::by_location(engine.store(), engine.sole_documents(), &file)
+            .is_some()
+    });
+
+    let squiggles = |engine: &HimarkEngine| -> usize {
+        let store = engine.store();
+        let Some(state) = workbench_shell::workspace::session_state(store, himark_plugins::wid(window))
+        else {
+            return 0;
+        };
+        let Some(id) = documents::OpenDocuments::by_location(store, state.documents(), &file)
+        else {
+            return 0;
+        };
+        let Some(document) = documents::OpenDocuments::document_ref(store, state.documents(), id)
+        else {
+            return 0;
+        };
+        let Some(markup) = document.feature_markup(ahp_lsp::diagnostics::diagnostics_markup())
+        else {
+            return 0;
+        };
+        let mut inline = Vec::new();
+        let mut hidden = Vec::new();
+        markup.marks_inline_hidden_in(0..u32::MAX, &mut inline, &mut hidden);
+        inline.len()
+    };
+    settle_until(&mut engine, "the opened document squiggles", |engine| {
+        squiggles(engine) > 0
+    });
+
+    // The live road, pre-restart: emptying the document clears the
+    // squiggle (the fake server publishes EMPTY diagnostics for an
+    // empty document), retyping brings it back.
+    let select_all = |engine: &mut HimarkEngine| {
+        let _ = workbench_shell::test_driver::key(
+            engine,
+            imba::event::Key::Char('a'),
+            imba::event::Modifiers {
+                command: true,
+                ..Default::default()
+            },
+        );
+        let _ = workbench_shell::test_driver::key(
+            engine,
+            imba::event::Key::Backspace,
+            imba::event::Modifiers::default(),
+        );
+    };
+    select_all(&mut engine);
+    settle_until(&mut engine, "the emptied document clears squiggles", |engine| {
+        squiggles(engine) == 0
+    });
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "x"));
+    settle_until(&mut engine, "the retyped document squiggles again", |engine| {
+        squiggles(engine) > 0
+    });
+    // Back to empty, verified clear — the post-restart probe runs in
+    // the CREATING direction, which no client-side sweep can fake:
+    // only a live language server mints a squiggle.
+    select_all(&mut engine);
+    settle_until(&mut engine, "cleared again before the restart", |engine| {
+        squiggles(engine) == 0
+    });
+
+    // The RESTART: the reborn host shares the disk and the language
+    // server CONFIG — but every channel and LSP process is gone.
+    restart_backend(&fs, &probe, 1, vec![language_server()]);
+
+    // The same gesture after the restart: the edit must reach the
+    // reborn host's fresh language server and its PUBLISH must reach
+    // the squiggles. A lane frozen on its dead channel never hears,
+    // and a mark can only be BORN from the channel.
+    assert!(workbench_shell::test_driver::type_text(&mut engine, "y"));
+    settle_until(
+        &mut engine,
+        "the post-restart edit grows a squiggle from the reborn server",
+        |engine| squiggles(engine) > 0,
+    );
+}
+
+/// The watch law, end to end, across a HOST RESTART: the watch died
+/// with its connection, the wire SAID so, the tree re-opened the
+/// folder on the reborn host through the one `open_folder` road —
+/// so a file born after the restart still appears on its own. The
+/// reborn host shares the old one's disk (a real restart keeps it);
+/// everything in its memory — the watch registry above all — is gone.
+#[test]
+fn the_tree_follows_filesystem_changes_across_a_host_restart() {
+    let probe = Arc::new(common::probe::Probe::default());
+    let (_host, mut engine, window, fs) = hosted_engine_probed(Vec::new(), Some(Arc::clone(&probe)));
+
+    fs.write(&["project", "README.md"], "# readme");
+    fs.write(&["project", "src", "lib.rs"], "fn main() {}");
+
+    assert!(engine.perform_registered_at(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_into_session(&mut engine);
+
+    assert!(engine.perform_registered_at(window, "files.tree"));
+    settle(&mut engine);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let _ = engine.draw(
+        window,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        900.0,
+        700.0,
+        1.0,
+    );
+    settle(&mut engine);
+    let _ = workbench_shell::test_driver::animate(
+        &mut engine,
+        imba::anim::AnimationClock::from_millis(0.0),
+    );
+    let _ = workbench_shell::test_driver::animate(
+        &mut engine,
+        imba::anim::AnimationClock::from_millis(1_000.0),
+    );
+    settle(&mut engine);
+    let rows = |engine: &HimarkEngine| -> usize {
+        workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
+            .and_then(|entity| {
+                entity
+                    .dock_panel()?
+                    .as_any()
+                    .downcast_ref::<filetree::SessionTreeView>()
+                    .map(filetree::SessionTreeView::row_count)
+            })
+            .unwrap_or(0)
+    };
+    let row_y = tree_row_y(&engine, 0);
+    assert!(
+        workbench_shell::test_driver::click(&mut engine, dock_x(40.0), row_y, 900.0, 700.0),
+        "the root row took the click"
+    );
+    settle_until(&mut engine, "the root listing landed", |engine| {
+        rows(engine) == 3
+    });
+
+    // The RESTART: the engine's standing connection is cut; the
+    // reborn host behind the redirect knows no watches.
+    restart_backend(&fs, &probe, 1, Vec::new());
+
+    // The filesystem moves while only the reborn host is looking.
+    // Nothing but the watch road can carry this into the tree: the
+    // died watch must re-open the folder on the new host.
+    fs.write(&["project", "GREETING.md"], "hello");
+    settle_until(&mut engine, "the restart-born file appears", |engine| {
+        rows(engine) == 4
+    });
+
+    // And the re-opened watch is LIVE, not a one-shot relist.
     std::fs::remove_file(fs.root.join("project").join("GREETING.md")).expect("remove");
     settle_until(&mut engine, "the deleted file leaves the tree", |engine| {
         rows(engine) == 3

@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::app::AppCommand;
 
 /// A REGISTERED command: a palette entry, a keymap target or a
 /// deferred landing that speaks the app's command stream. What it

@@ -8,7 +8,6 @@ license = "Apache-2.0"
 himark = { path = "../himark" }
 hiahp = { path = "../hiahp" }
 himark-ffi = { path = "../himark-ffi", optional = true }
-himark-plugins = { path = "../himark-plugins" }
 desktop = { path = "../desktop" }
 ahp-wire = { path = "../ahp-wire" }
 ahp-session = { path = "../ahp-session" }

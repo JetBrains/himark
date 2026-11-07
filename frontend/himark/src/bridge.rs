@@ -82,6 +82,22 @@ impl<T> Handles<T> {
     }
 }
 
+/// One minted stage row — a measured layout or a realized frame.
+/// Handles never recycle, so a released stage stays dead instead
+/// of aliasing a newborn.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct StageId(u64);
+
+impl StageId {
+    pub fn from_raw(raw: u64) -> StageId {
+        StageId(raw)
+    }
+
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
 /// The engine-side identity of one mounted view.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ViewBridgeId(u64);

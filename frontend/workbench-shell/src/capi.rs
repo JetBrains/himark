@@ -8,10 +8,8 @@
 
 use std::sync::Arc;
 
-use std::ffi::c_char;
 
 use gfx::{Canvas, Point, Size};
-use himark_ffi::str_from;
 use himark_ffi::{map_key, map_mods, HimarkEngine, Pointed};
 use imba::event::{Event, MouseButton};
 
@@ -19,75 +17,95 @@ use crate::app::WorkbenchShell as _;
 use crate::app_ext::AppExt as _;
 use himark::app_ext::AppExt as _;
 
-pub fn wid(window: u64) -> workbench::window::WindowId {
-    workbench::window::WindowId::from_raw(window)
+use himark::bridge::ViewBridgeId;
+
+/// The window AS a bridge is the id pun, and it lives HERE alone:
+/// the engine door speaks `ViewBridgeId`, this module converts to
+/// the workbench's `WindowId` where the window roads need it.
+pub fn wid(window: ViewBridgeId) -> workbench::window::WindowId {
+    workbench::window::WindowId::from_raw(window.raw())
 }
 /// The window half of the C engine door, method syntax preserved —
 /// an extension trait over `himark_ffi::HimarkEngine`.
 pub trait WindowEngine {
-    fn add_window(&mut self) -> u64;
-    fn window_size(&self, window: u64) -> Size;
+    fn open_window(&mut self) -> ViewBridgeId;
+    fn window_size(&self, window: ViewBridgeId) -> Size;
     fn draw(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         canvas: &Canvas<'_>,
         width: f32,
         height: f32,
         _scale: f32,
     ) -> bool;
-    fn key_down(&mut self, window: u64, key: u32, mods: u32) -> bool;
-    fn key_down_at(&mut self, window: u64, key: u32, mods: u32, event_started_at: f64) -> bool;
-    fn text_input(&mut self, window: u64, text: &str) -> bool;
-    fn text_input_at(&mut self, window: u64, text: &str, event_started_at: f64) -> bool;
-    fn mouse_down(&mut self, window: u64, x: f32, y: f32, mods: u32, click_count: u32) -> bool;
+    fn key_down(&mut self, window: ViewBridgeId, key: u32, mods: u32) -> bool;
+    fn key_down_at(&mut self, window: ViewBridgeId, key: u32, mods: u32, event_started_at: f64) -> bool;
+    fn text_input(&mut self, window: ViewBridgeId, text: &str) -> bool;
+    fn text_input_at(&mut self, window: ViewBridgeId, text: &str, event_started_at: f64) -> bool;
+    fn mouse_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32, click_count: u32) -> bool;
     fn mouse_down_at(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         x: f32,
         y: f32,
         mods: u32,
         click_count: u32,
         event_started_at: f64,
     ) -> bool;
-    fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool;
-    fn mouse_drag(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool;
-    fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed;
-    fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed;
-    fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool;
-    fn mouse_left(&mut self, window: u64) -> bool;
+    fn secondary_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> bool;
+    fn mouse_drag(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> bool;
+    fn mouse_move(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> Pointed;
+    fn modifiers_changed(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> Pointed;
+    fn mouse_up(&mut self, window: ViewBridgeId, x: f32, y: f32) -> bool;
+    fn mouse_left(&mut self, window: ViewBridgeId) -> bool;
     /// TEST SUPPORT and the gpui demo road — no C door anymore.
     fn open_document(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         name: impl Into<String>,
         source: impl Into<String>,
         primary: bool,
     ) -> bool;
 }
 
+/// A fresh window COMPOSES a session when the shell says so — the
+/// production boot turns it on; tests leave it off. A store
+/// resident, like every shell flag.
+#[derive(Clone, Copy, Default)]
+pub struct ComposeNewWindows(pub bool);
+
 impl WindowEngine for HimarkEngine {
-    fn add_window(&mut self) -> u64 {
-        let window = self.app.add_window();
-        if self.compose_new_windows {
-            self.app.perform_command(crate::shell::windowed(
-                window,
-                std::sync::Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
-            ));
+    fn open_window(&mut self) -> ViewBridgeId {
+        let window = crate::app::WorkbenchShell::add_window(self);
+        let compose = self
+            .store()
+            .get::<ComposeNewWindows>()
+            .copied()
+            .unwrap_or_default()
+            .0;
+        if compose {
+            himark::app_ext::AppExt::perform_command(
+                self,
+                crate::shell::windowed(
+                    window,
+                    std::sync::Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
+                ),
+            );
         }
-        window.raw()
+        ViewBridgeId::from_raw(window.raw())
     }
     // The committed store is gathered for the PRIMARY window only, so a
     // sibling window's entity is projected out of it — sizes must come
     // from the live window state or every non-primary window hit-tests
     // against a 1x1 layout.
-    fn window_size(&self, window: u64) -> Size {
-        self.app
+    fn window_size(&self, window: ViewBridgeId) -> Size {
+        self
             .window_viewport(wid(window))
             .unwrap_or_else(|| Size::new(1.0, 1.0))
     }
     fn draw(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         canvas: &Canvas<'_>,
         width: f32,
         height: f32,
@@ -96,19 +114,19 @@ impl WindowEngine for HimarkEngine {
         // A shell that draws without ticking (tests, direct renders)
         // still applies the standing deltas before the frame.
         let flushed = self.flush_scroll(window);
-        self.app
+        self
             .draw_window_sized(wid(window), canvas, Size::new(width, height))
             || flushed
     }
-    fn key_down(&mut self, window: u64, key: u32, mods: u32) -> bool {
+    fn key_down(&mut self, window: ViewBridgeId, key: u32, mods: u32) -> bool {
         self.key_down_at(window, key, mods, 0.0)
     }
-    fn key_down_at(&mut self, window: u64, key: u32, mods: u32, event_started_at: f64) -> bool {
+    fn key_down_at(&mut self, window: ViewBridgeId, key: u32, mods: u32, event_started_at: f64) -> bool {
         self.flush_scroll(window);
         match map_key(key) {
             Some(key) => {
                 let size = self.window_size(window);
-                self.app.dispatch_timed(
+                self.dispatch_timed(
                     wid(window),
                     Event::KeyDown {
                         key,
@@ -121,28 +139,28 @@ impl WindowEngine for HimarkEngine {
             None => false,
         }
     }
-    fn text_input(&mut self, window: u64, text: &str) -> bool {
+    fn text_input(&mut self, window: ViewBridgeId, text: &str) -> bool {
         self.text_input_at(window, text, 0.0)
     }
-    fn text_input_at(&mut self, window: u64, text: &str, event_started_at: f64) -> bool {
+    fn text_input_at(&mut self, window: ViewBridgeId, text: &str, event_started_at: f64) -> bool {
         if text.is_empty() {
             return false;
         }
         self.flush_scroll(window);
         let size = self.window_size(window);
-        self.app.dispatch_timed(
+        self.dispatch_timed(
             wid(window),
             Event::TextInput { text },
             size,
             event_started_at,
         )
     }
-    fn mouse_down(&mut self, window: u64, x: f32, y: f32, mods: u32, click_count: u32) -> bool {
+    fn mouse_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32, click_count: u32) -> bool {
         self.mouse_down_at(window, x, y, mods, click_count, 0.0)
     }
     fn mouse_down_at(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         x: f32,
         y: f32,
         mods: u32,
@@ -151,11 +169,15 @@ impl WindowEngine for HimarkEngine {
     ) -> bool {
         self.flush_scroll(window);
         let count = match click_count {
-            0 => self.clicks.count(x, y),
+            0 => himark_ffi::ffi_seat(self.store())
+                .clicks
+                .lock()
+                .expect("the click counter")
+                .count(x, y),
             real => real.min(3) as u8,
         };
         let size = self.window_size(window);
-        self.app.dispatch_timed(
+        self.dispatch_timed(
             wid(window),
             Event::MouseDown {
                 point: Point::new(x, y),
@@ -170,10 +192,10 @@ impl WindowEngine for HimarkEngine {
     /// The secondary (context) press. Shells that can tell buttons
     /// apart route their right-button downs here; the others reach
     /// the same rows via control-click.
-    fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
+    fn secondary_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> bool {
         self.flush_scroll(window);
         let size = self.window_size(window);
-        self.app.dispatch_timed(
+        self.dispatch_timed(
             wid(window),
             Event::MouseDown {
                 point: Point::new(x, y),
@@ -185,9 +207,9 @@ impl WindowEngine for HimarkEngine {
             0.0,
         )
     }
-    fn mouse_drag(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
+    fn mouse_drag(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> bool {
         let size = self.window_size(window);
-        self.app.dispatch(
+        self.dispatch(
             wid(window),
             Event::MouseDrag {
                 point: Point::new(x, y),
@@ -196,10 +218,10 @@ impl WindowEngine for HimarkEngine {
             size,
         )
     }
-    fn mouse_move(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
+    fn mouse_move(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> Pointed {
         self.flush_scroll(window);
         let size = self.window_size(window);
-        let (changed, shape) = self.app.dispatch_pointed(
+        let (changed, shape) = self.dispatch_pointed(
             wid(window),
             Event::MouseMove {
                 point: Point::new(x, y),
@@ -213,13 +235,13 @@ impl WindowEngine for HimarkEngine {
     /// `ModifiersChanged`): a mouse move at the standing pointer's
     /// position, so modifier-gated hover looks (the cmd-hover link
     /// underline) re-hit-test without pointer motion.
-    fn modifiers_changed(&mut self, window: u64, x: f32, y: f32, mods: u32) -> Pointed {
+    fn modifiers_changed(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32) -> Pointed {
         self.mouse_move(window, x, y, mods)
     }
-    fn mouse_up(&mut self, window: u64, x: f32, y: f32) -> bool {
+    fn mouse_up(&mut self, window: ViewBridgeId, x: f32, y: f32) -> bool {
         self.flush_scroll(window);
         let size = self.window_size(window);
-        self.app.dispatch(
+        self.dispatch(
             wid(window),
             Event::MouseUp {
                 point: Point::new(x, y),
@@ -231,13 +253,13 @@ impl WindowEngine for HimarkEngine {
     /// reach (missing, far off-screen), so hover state — tooltips,
     /// hover popups — lets go instead of sticking to the last point
     /// the window ever heard about.
-    fn mouse_left(&mut self, window: u64) -> bool {
+    fn mouse_left(&mut self, window: ViewBridgeId) -> bool {
         let size = self.window_size(window);
-        self.app.dispatch(wid(window), Event::window_left(), size)
+        self.dispatch(wid(window), Event::window_left(), size)
     }
     fn open_document(
         &mut self,
-        window: u64,
+        window: ViewBridgeId,
         name: impl Into<String>,
         source: impl Into<String>,
         primary: bool,
@@ -245,8 +267,9 @@ impl WindowEngine for HimarkEngine {
         let name = name.into();
         let source = source.into();
         let document_name = name.clone();
-        let languages = self.languages();
-        self.app
+        let languages = ::editor::env::Parsers::of(self.store())
+            .expect("the plugin pass registered the languages");
+        self
             .open_async(wid(window), name, primary, None, move |store, ui, theme| {
                 ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
             });
@@ -308,7 +331,9 @@ pub unsafe extern "C" fn himark_window_bridge(
 #[no_mangle]
 pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> HimarkWindow {
     HimarkWindow {
-        raw: engine.as_mut().map_or(0, HimarkEngine::add_window),
+        raw: engine
+            .as_mut()
+            .map_or(0, |engine| WindowEngine::open_window(engine).raw()),
     }
 }
 

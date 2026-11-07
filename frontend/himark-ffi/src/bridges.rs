@@ -37,6 +37,7 @@ use gfx::{Point, Rect, Size};
 use gfx::Canvas;
 use imba::event::{Event, EventResult, MouseButton};
 
+use crate::ffi_seat;
 use crate::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed, Pointed,
 };
@@ -179,14 +180,6 @@ fn mint_event(event: OwnedEvent) -> HimarkEvent {
     HimarkEvent {
         raw: EVENTS.lock().expect("the event table").mint(event),
     }
-}
-
-/// The per-engine stage tables: each row remembers the bridge it
-/// was derived FROM, so a released frame's arena goes home warm.
-/// The C-only tables; the stage tables themselves live on the
-/// engine (`Himark`), where the `ToView` road can quiesce them.
-#[derive(Default)]
-pub(crate) struct Stages {
 }
 
 /// The place table is process-wide like the event table: places
@@ -354,7 +347,7 @@ pub unsafe extern "C" fn himark_perform_command(
     let Some(id) = std::ffi::CStr::from_ptr(id).to_str().ok() else {
         return false;
     };
-    engine.perform_command(bridge.raw, id)
+    engine.perform_registered_at(ViewBridgeId::from_raw(bridge.raw), id)
 }
 
 /// One event into one window bridge, through the engine's own
@@ -382,14 +375,14 @@ pub unsafe extern "C" fn himark_bridge_event(
     };
     let id = himark::bridge::ViewBridgeId::from_raw(bridge.raw);
     let changed = |changed: bool| HimarkPointed { changed, shape: 0 };
-    let app = &mut engine.app;
+    let app = engine;
     // Every input flushes the standing scroll first (claims resolve
     // against scrolled content), then rides the ONE dispatch road.
     match owned {
         OwnedEvent::MouseDown { x, y, mods, count } => {
             let flushed = app.flush_scroll(id);
             let count = match count {
-                0 => engine.clicks.count(x, y),
+                0 => ffi_seat(app.store()).clicks.lock().expect("the click counter").count(x, y),
                 n => n.min(u8::MAX as u32) as u8,
             };
             changed(
@@ -536,9 +529,9 @@ pub unsafe extern "C" fn himark_bridge_draw(
         let id = ViewBridgeId::from_raw(bridge.raw);
         // A shell that draws without ticking (tests, direct renders)
         // still applies the standing deltas before the frame.
-        let flushed = engine.app.flush_scroll(id);
+        let flushed = engine.flush_scroll(id);
         engine
-            .app
+            
             .draw_mounted(id, canvas, gfx::Size::new(width, height))
             || flushed
     })
@@ -559,12 +552,12 @@ pub unsafe extern "C" fn himark_bridge_layout(
         return HimarkLayout { raw: 0 };
     };
     let id = ViewBridgeId::from_raw(bridge.raw);
-    match engine.app.stage_layout(id, Size::new(width, height)) {
-        0 => {
+    match engine.stage_layout(id, Size::new(width, height)) {
+        None => {
             refuse("bridge", bridge.raw);
             HimarkLayout { raw: 0 }
         }
-        raw => HimarkLayout { raw },
+        Some(stage) => HimarkLayout { raw: stage.raw() },
     }
 }
 
@@ -580,7 +573,7 @@ pub unsafe extern "C" fn himark_layout_size(
     let Some(engine) = engine.as_ref() else {
         return false;
     };
-    let Some(size) = engine.app.stage_layout_size(layout.raw) else {
+    let Some(size) = engine.stage_layout_size(himark::bridge::StageId::from_raw(layout.raw)) else {
         refuse("layout (size)", layout.raw);
         return false;
     };
@@ -608,15 +601,15 @@ pub unsafe extern "C" fn himark_layout_realize(
     let Some(engine) = engine.as_mut() else {
         return HimarkFrame { raw: 0 };
     };
-    match engine
-        .app
-        .stage_realize(layout.raw, Rect::from_xywh(x, y, width, height))
-    {
-        0 => {
+    match engine.stage_realize(
+        himark::bridge::StageId::from_raw(layout.raw),
+        Rect::from_xywh(x, y, width, height),
+    ) {
+        None => {
             refuse("layout (realize)", layout.raw);
             HimarkFrame { raw: 0 }
         }
-        raw => HimarkFrame { raw },
+        Some(stage) => HimarkFrame { raw: stage.raw() },
     }
 }
 
@@ -625,7 +618,7 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if !engine.app.stage_layout_release(layout.raw) {
+    if !engine.stage_layout_release(himark::bridge::StageId::from_raw(layout.raw)) {
         refuse("layout (release)", layout.raw);
     }
 }
@@ -655,7 +648,7 @@ pub unsafe extern "C" fn himark_frame_event(
     };
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.app.stage_frame(frame.raw) else {
+        let Some(stage) = engine.stage_frame(himark::bridge::StageId::from_raw(frame.raw)) else {
             refuse("frame", frame.raw);
             return false;
         };
@@ -708,18 +701,18 @@ pub unsafe extern "C" fn himark_frame_event(
     if let Some(reveal) = handled.reveal {
         // The stage road has no scroller — park the ask for
         // the host to drain (`himark_take_reveal`) into its own.
-        if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
+        if let Some(id) = engine.stage_frame_origin(himark::bridge::StageId::from_raw(frame.raw)) {
             if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                 eprintln!(
                     "[reveal] parked (stage EVENT) bridge {} {reveal:?}",
                     id.raw()
                 );
             }
-            engine.app.park_reveal(id, reveal);
+            engine.park_reveal(id, reveal);
         }
     }
     if !handled.commands.is_empty() {
-        engine.app.perform_batch(handled.commands);
+        engine.perform_batch(handled.commands);
     }
     true
 }
@@ -748,12 +741,12 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
         return false;
     };
     engine.offer_stage_scroll(
-        frame.raw,
+        himark::bridge::StageId::from_raw(frame.raw),
         x,
         y,
         delta_x,
         delta_y,
-        phase,
+        crate::scroll_phase(phase),
         Rect::from_xywh(view_x, view_y, view_width, view_height),
     )
 }
@@ -778,7 +771,7 @@ pub unsafe extern "C" fn himark_take_reveal(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let Some((id, reveal)) = engine.app.take_reveal() else {
+    let Some((id, reveal)) = engine.take_reveal() else {
         return false;
     };
     if !out_bridge.is_null() {
@@ -826,7 +819,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.app.stage_frame(frame.raw) else {
+        let Some(stage) = engine.stage_frame(himark::bridge::StageId::from_raw(frame.raw)) else {
             refuse("frame", frame.raw);
             return false;
         };
@@ -867,14 +860,14 @@ pub unsafe extern "C" fn himark_frame_paint(
         // event road's — the stage road has no scroller, and
         // dropping it here left the scroll waiting for the
         // NEXT event to re-surface it.
-        if let Some(id) = engine.app.stage_frame_origin(frame.raw) {
+        if let Some(id) = engine.stage_frame_origin(himark::bridge::StageId::from_raw(frame.raw)) {
             if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
                 eprintln!(
                     "[reveal] parked (stage PAINT) bridge {} {reveal:?}",
                     id.raw()
                 );
             }
-            engine.app.park_reveal(id, reveal);
+            engine.park_reveal(id, reveal);
         }
         if handled.commands.is_empty() {
             return true;
@@ -882,7 +875,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     }
     match handled.commands.is_empty() {
         true => false,
-        false => engine.app.perform_batch(handled.commands),
+        false => engine.perform_batch(handled.commands),
     }
 }
 
@@ -897,7 +890,7 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: 
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    let _ = engine.app.stage_frame_release(frame.raw);
+    let _ = engine.stage_frame_release(himark::bridge::StageId::from_raw(frame.raw));
 }
 
 // ─── the session surface: query + control (docs/ui/himark-ffi.md) ───
@@ -908,7 +901,7 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: 
 pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64 {
     engine
         .as_ref()
-        .map_or(0, |engine| engine.app.sessions_epoch())
+        .map_or(0, |engine| engine.sessions_epoch())
 }
 
 
@@ -928,7 +921,7 @@ pub unsafe extern "C" fn himark_commands_copy(engine: *mut HimarkEngine) -> Hima
     let Some(engine) = engine.as_mut() else {
         return HimarkCommands { raw: 0 };
     };
-    let snapshot: Vec<(String, String)> = himark::commands::Commands::of(engine.app.store())
+    let snapshot: Vec<(String, String)> = himark::commands::Commands::of(engine.store())
         .iter()
         .map(|command| (command.id().to_owned(), command.name()))
         .collect();
@@ -1046,7 +1039,7 @@ pub unsafe extern "C" fn himark_bridge_overlays(
         return 0;
     };
     let Some((epoch, anchors)) = engine
-        .app
+        
         .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
@@ -1071,7 +1064,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_anchor(
         return false;
     };
     let Some((_, anchors)) = engine
-        .app
+        
         .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
@@ -1108,7 +1101,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_kind(
         return 0;
     };
     let Some((_, anchors)) = engine
-        .app
+        
         .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
@@ -1136,7 +1129,7 @@ pub unsafe extern "C" fn himark_bridge_overlay_host(
         return 0;
     };
     let Some((_, anchors)) = engine
-        .app
+        
         .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
@@ -1164,7 +1157,7 @@ pub unsafe extern "C" fn himark_overlay_content_rect(
         return false;
     };
     let Some(rect) = engine
-        .app
+        
         .overlay_content(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
@@ -1196,7 +1189,7 @@ pub unsafe extern "C" fn himark_overlay_mint(
         return HimarkBridge { raw: 0 };
     };
     match engine
-        .app
+        
         .mint_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
     {
         Some(id) => HimarkBridge { raw: id.raw() },
@@ -1226,15 +1219,15 @@ pub unsafe extern "C" fn himark_bridge_mint(
         return HimarkBridge { raw: 0 };
     };
     let (place, payload) = place;
-    match himark::mounts::mount_place(&mut engine.app, &place) {
+    match himark::mounts::mount_place(engine, &place) {
         Some(id) => {
             // The payload rides to the seated rider (the AHP capi
             // remembers the session on the new bridge).
             if let (Some(payload), Some(rider)) = (
                 payload,
-                engine.app.store().get::<PlaceMintRider>().cloned(),
+                engine.store().get::<PlaceMintRider>().cloned(),
             ) {
-                (rider.0)(&mut engine.app, id, &payload);
+                (rider.0)(engine, id, &payload);
             }
             HimarkBridge { raw: id.raw() }
         }
@@ -1270,7 +1263,7 @@ pub fn seat_callback_shell(
     ctx: *mut c_void,
     on_navigate: HimarkNavigateFn,
 ) {
-    engine.app.seat_shell(move |next| {
+    engine.seat_shell(move |next| {
         std::sync::Arc::new(CallbackShell {
             ctx: ShellCtx(ctx),
             on_navigate,
@@ -1338,7 +1331,7 @@ pub unsafe extern "C" fn himark_bridge_unmount(engine: *mut HimarkEngine, bridge
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if !engine.app.unmount(ViewBridgeId::from_raw(bridge.raw)) {
+    if !engine.unmount(ViewBridgeId::from_raw(bridge.raw)) {
         refuse("bridge", bridge.raw);
     }
 }
@@ -1348,5 +1341,5 @@ pub unsafe extern "C" fn himark_bridge_unmount(engine: *mut HimarkEngine, bridge
 /// boot; the wakes carry everything after.
 #[no_mangle]
 pub unsafe extern "C" fn himark_sync(engine: *mut HimarkEngine) -> bool {
-    engine.as_mut().map_or(false, |engine| engine.app.sync())
+    engine.as_mut().map_or(false, |engine| engine.sync())
 }

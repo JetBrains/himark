@@ -150,7 +150,7 @@ pub fn install(
             Arc::clone(&connector),
             host.url.clone(),
         );
-        himark_plugins::register_agent_server(app, clients, &host.name, ahp_wire::client::Client::of(Arc::new(seat)));
+        hiahp::engine::register_agent_server(app, clients, &host.name, ahp_wire::client::Client::of(Arc::new(seat)));
     }
 
     let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();

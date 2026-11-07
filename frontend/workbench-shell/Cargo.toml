@@ -61,3 +61,6 @@ test-support = [
     "toc/test-support",
     "ahp-session/test-support",
 ]
+
+[build-dependencies]
+cbindgen = "0.29.4"

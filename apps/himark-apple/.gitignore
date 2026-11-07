@@ -6,3 +6,4 @@ himark-shell.h
 himark-tailnet.h
 himark-ahp.h
 build/
+himark-host.h

@@ -143,13 +143,13 @@ func withAbiLocations<T>(
     return locations.withUnsafeBufferPointer { body($0.baseAddress, UInt(specs.count)) }
 }
 
-func answerPicked(engine: HimarkEngine, request: UInt64, locations: [LocationSpec]) {
+func answerPicked(engine: HimarkEngine, request: HimarkRequest, locations: [LocationSpec]) {
     withAbiLocations(locations) { base, count in
         _ = himark_host_picked(engine.raw, request, base, count)
     }
 }
 
-func answerPickedFolder(engine: HimarkEngine, request: UInt64, location: LocationSpec?) {
+func answerPickedFolder(engine: HimarkEngine, request: HimarkRequest, location: LocationSpec?) {
     switch location {
     case let .some(location):
         withAbiLocations([location]) { base, _ in
@@ -160,7 +160,7 @@ func answerPickedFolder(engine: HimarkEngine, request: UInt64, location: Locatio
     }
 }
 
-func answerFetched(engine: HimarkEngine, request: UInt64, text: String?) {
+func answerFetched(engine: HimarkEngine, request: HimarkRequest, text: String?) {
     guard let text else {
         _ = himark_host_fetched(engine.raw, request, nil, 0)
         return
@@ -170,7 +170,7 @@ func answerFetched(engine: HimarkEngine, request: UInt64, text: String?) {
     }
 }
 
-func answerListed(engine: HimarkEngine, request: UInt64, entries: [LocationSpec]?) {
+func answerListed(engine: HimarkEngine, request: HimarkRequest, entries: [LocationSpec]?) {
     switch entries {
     case let .some(entries):
         withAbiLocations(entries) { base, count in

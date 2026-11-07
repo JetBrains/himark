@@ -1,11 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The PRODUCTION HOST: the plugin list, the grammar pack, the
-//! outward agent-host dialing and the few doors whose types sit
-//! above the engine (the demo documents, hicode's wire route). The
-//! engine and its whole C surface live in `himark::ffi` — this crate
-//! is what a shipping shell links, and REGISTRATION is its one job.
+//! The C FACE and the PRODUCTION assembly: `himark_production_plugins`
+//! (the plugin-set mint `himark_create` consumes), the shipping
+//! plugin list, the outward agent-host dialing, and the re-exports
+//! that fill the apple staticlib with every extern the headers
+//! speak. Behind the `capi` feature — the bare engine half of this
+//! crate never links a window or a connector.
 
 use std::sync::Arc;
 
@@ -21,18 +22,18 @@ pub use workbench_shell::capi::*;
 
 
 /// Boot the engine over the HOST'S plugin list — the one
-/// construction every shell shares. The callbacks apply before
-/// the first batch can launch an effect.
+/// construction every shell shares. The host's callbacks are NOT
+/// seated here: they are `himark_create`'s construction parameters
+/// (a Rust composition root seats them itself).
 pub fn with_plugins(
     fonts: AppFonts,
     plugins: &[Box<dyn himark::plugin::Plugin>],
     connector: Arc<dyn ahp_wire::transport::Connector>,
-    callbacks: Option<HimarkEngineCallbacks>,
-) -> (HimarkEngine, himark_plugins::Wires) {
+) -> (HimarkEngine, crate::Wires) {
     let mut app = workbench_shell::app::workbench_app(fonts);
     let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(ahp_wire::uris::FileUris);
 
-    let wires = himark_plugins::install_host(
+    let wires = crate::install_host(
         &mut app,
         Arc::clone(&connector),
         Arc::clone(&resource_uris),
@@ -52,19 +53,10 @@ pub fn with_plugins(
         Arc::clone(&clients),
         Arc::clone(&resource_uris),
     );
-    let mut engine = HimarkEngine::assemble(app, Arc::clone(&languages));
-    // The host's callbacks, before any further batch can launch
-    // an effect into empty slots.
-    if let Some(callbacks) = callbacks {
-        engine.set_wake_raw(callbacks.wake, callbacks.ctx);
-        engine.set_effect_wake_raw(callbacks.effect_wake, callbacks.ctx);
-        if let Some(on_navigate) = callbacks.on_navigate {
-            himark_ffi::bridges::seat_callback_shell(&mut engine, callbacks.ctx, on_navigate);
-        }
-    }
+    let engine = himark_ffi::assemble(app);
     (
         engine,
-        himark_plugins::Wires {
+        crate::Wires {
             clients,
             languages,
             channels: document_channels,
@@ -72,14 +64,9 @@ pub fn with_plugins(
         },
     )
 }
-fn app_fonts() -> AppFonts {
-AppFonts::platform()
-}
-
-
 /// Everything this host installs beyond its own FFI and wiring.
 fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
-    let mut plugins = himark_plugins::engine_plugins();
+    let mut plugins = crate::engine_plugins();
     plugins.extend([
         Box::new(palette::PalettePlugin) as Box<dyn himark::plugin::Plugin>,
         Box::new(peeker::PeekerPlugin),
@@ -95,23 +82,20 @@ fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
     plugins
 }
 
-pub use himark_plugins::agent_host_autostart;
+pub use crate::agent_host_autostart;
 
 /// The PRODUCTION engine: the shared boot plus what belongs to the
 /// shipping entry alone — the outward hosts are dialed here, never
 /// in a test's engine (a test engine that registered the discovered
 /// host would reach the machine's REAL agent host and pull the
 /// user's catalog into its drawers).
-pub fn production_engine(callbacks: Option<HimarkEngineCallbacks>) -> HimarkEngine {
-    production_engine_at(callbacks, None)
+pub fn production_engine() -> HimarkEngine {
+    production_engine_at(None)
 }
 
 /// `data_dir` is the shell's data root (the iOS container's
 /// Application Support); None takes the desktop dotdir.
-pub fn production_engine_at(
-    callbacks: Option<HimarkEngineCallbacks>,
-    data_dir: Option<std::path::PathBuf>,
-) -> HimarkEngine {
+pub fn production_engine_at(data_dir: Option<std::path::PathBuf>) -> HimarkEngine {
     #[cfg(unix)]
     let data_root = hitailnet::data_root(data_dir);
     #[cfg(not(unix))]
@@ -128,18 +112,14 @@ pub fn production_engine_at(
     #[cfg(not(unix))]
     let connector: Arc<dyn ahp_wire::transport::Connector> =
         Arc::new(desktop::connector::DesktopConnector);
-    let (mut engine, wires) = with_plugins(
-        AppFonts::platform(),
-        &plugins(),
-        Arc::clone(&connector),
-        callbacks,
-    );
-    engine.compose_new_windows = true;
+    let (mut engine, wires) =
+        with_plugins(AppFonts::platform(), &plugins(), Arc::clone(&connector));
+    engine.setup(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         let _ = host_discovery::autostart();
         hiahp::agent_fs::install_routes(
-            &mut engine.app,
+            &mut engine,
             true,
             true,
             true,
@@ -150,8 +130,8 @@ pub fn production_engine_at(
     }
     host_discovery::logging::init("app");
     let runtime = engine.runtime();
-    himark_plugins::register_agent_server(
-        &mut engine.app,
+    crate::register_agent_server(
+        &mut engine,
         &wires.clients,
         "VS Code Agent Host",
         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::new(
@@ -159,21 +139,21 @@ pub fn production_engine_at(
             Arc::clone(&connector),
         ))),
     );
-    let local_backend = himark_plugins::register_agent_server(
-        &mut engine.app,
+    let local_backend = crate::register_agent_server(
+        &mut engine,
         &wires.clients,
         "himark Agent Host",
         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::discovered(
             runtime,
             Arc::clone(&connector),
-            himark_plugins::himark_host_resolver(),
+            crate::himark_host_resolver(),
         ))),
     );
     wires.clients.set_local(local_backend);
-    hiahp::engine::set_local_host(&mut engine.app, local_backend);
+    hiahp::engine::set_local_host(&mut engine, local_backend);
     #[cfg(unix)]
     hitailnet::install(
-        &mut engine.app,
+        &mut engine,
         &wires.clients,
         tailnet_connector,
         connector,
@@ -195,29 +175,31 @@ pub fn with_fonts(fonts: AppFonts) -> HimarkEngine {
         fonts,
         &plugins(),
         Arc::new(desktop::connector::DesktopConnector),
-        None,
     );
     engine
 }
 
 
-/// `data_dir`/`data_dir_len` name the shell's data root (UTF-8, no
-/// NUL; null means the desktop dotdir).
+/// The PRODUCTION plugin set, minted for `himark_create`: the whole
+/// shipping composition — plugin list, wire doors, outward dialing —
+/// deferred into one boot. `data_dir`/`data_dir_len` name the
+/// shell's data root (UTF-8, no NUL; null means the desktop dotdir).
 #[no_mangle]
-pub unsafe extern "C" fn himark_create(
-    callbacks: HimarkEngineCallbacks,
+pub unsafe extern "C" fn himark_production_plugins(
     data_dir: *const std::os::raw::c_char,
     data_dir_len: usize,
-) -> *mut HimarkEngine {
+) -> *mut HimarkPlugins {
     let data_dir = (!data_dir.is_null() && data_dir_len > 0)
         .then(|| {
             let bytes = std::slice::from_raw_parts(data_dir as *const u8, data_dir_len);
             std::str::from_utf8(bytes)
                 .ok()
-                .map(|text| std::path::PathBuf::from(text))
+                .map(std::path::PathBuf::from)
         })
         .flatten();
-    Box::into_raw(Box::new(production_engine_at(Some(callbacks), data_dir)))
+    Box::into_raw(Box::new(HimarkPlugins(Box::new(move || {
+        production_engine_at(data_dir)
+    }))))
 }
 
 
@@ -239,15 +221,15 @@ impl EngineAgents for HimarkEngine {
         name: &str,
         client: ahp_wire::client::Client,
     ) -> ahp_wire::client::HostId {
-        let clients = hiahp::engine::wire_clients(self.app.store())
+        let clients = hiahp::engine::wire_clients(self.store())
             .expect("the wire directory is seated at boot");
-        himark_plugins::register_agent_server(&mut self.app, &clients, name, client)
+        crate::register_agent_server(self, &clients, name, client)
     }
 
     fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
-        if let Some(clients) = hiahp::engine::wire_clients(self.app.store()) {
+        if let Some(clients) = hiahp::engine::wire_clients(self.store()) {
             clients.set_local(server);
         }
-        hiahp::engine::set_local_host(&mut self.app, server);
+        hiahp::engine::set_local_host(self, server);
     }
 }

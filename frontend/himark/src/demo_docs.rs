@@ -6,7 +6,6 @@
 
 use std::sync::Arc;
 
-use imba::store::Store;
 
 /// them up.
 #[derive(Clone, Default)]

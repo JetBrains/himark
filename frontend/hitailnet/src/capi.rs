@@ -46,7 +46,7 @@ pub unsafe extern "C" fn himark_tailnet_login(engine: *mut HimarkEngine) {
     let Some(engine) = engine.as_ref() else {
         return;
     };
-    if let Some(flows) = engine.app.store().get::<crate::TailnetFlows>() {
+    if let Some(flows) = engine.store().get::<crate::TailnetFlows>() {
         (flows.connect)();
     }
 }
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn himark_tailnet_resume(engine: *mut HimarkEngine) {
     let Some(engine) = engine.as_ref() else {
         return;
     };
-    if let Some(flows) = engine.app.store().get::<crate::TailnetFlows>() {
+    if let Some(flows) = engine.store().get::<crate::TailnetFlows>() {
         (flows.resume)();
     }
 }
@@ -68,7 +68,7 @@ unsafe fn read_state(engine: *mut HimarkEngine) -> crate::TailnetState {
         return crate::TailnetState::Off;
     };
     engine
-        .app
+        
         .store()
         .get::<crate::TailnetFaceState>()
         .map(|held| held.state.clone())

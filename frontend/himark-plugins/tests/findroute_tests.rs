@@ -26,7 +26,7 @@ pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<ahp_wire::wire::Wir
     let url = bind_backend(dir.path(), "false".to_owned());
     let seat = Arc::new(ahp_wire::wire::WireHost::at(
         ahp_wire::wire::test_runtime(),
-        himark_api::test_connector(),
+        himark_plugins::test_connector(),
         url,
     ));
     (dir, seat)

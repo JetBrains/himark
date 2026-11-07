@@ -133,13 +133,11 @@ impl himark::commands::HimarkCommand for AddSessionFolders {
         }
         // The picker needs no window — the host sheets it where it
         // likes; the ORIGIN rides along as the anchor id.
-        let anchor = himark::commands::bound_origin(self.id(), bound)
-            .map(|origin| origin.raw())
-            .unwrap_or(0);
+        let anchor = himark::commands::bound_origin(self.id(), bound);
         let server = self.server;
         let session = self.session.clone();
         fx.push(
-            AnyEffect::new(PickFoldersEffect { window: anchor }).map(move |locations| {
+            AnyEffect::new(PickFoldersEffect { origin: anchor }).map(move |locations| {
                 crate::shell::bound(
                     imba::focus::Bindings::new(),
                     Arc::new(SessionFoldersPicked {
@@ -209,8 +207,8 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
         // The local host: the system chooser (on macOS it is also the
         // TCC grant). The picker needs no window — requiring one
         // killed this road on every mounted shell. A window SHOWING
-        // the session anchors the sheet when one exists; 0 sheets
-        // app-modally.
+        // the session anchors the sheet when one exists; None
+        // sheets app-modally.
         let anchor = store
             .get::<::workbench::window::Windows>()
             .and_then(|windows| {
@@ -220,11 +218,10 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
                         .is_some_and(|entity| crate::workspace::entity_session(entity) == target)
                 })
             })
-            .map(|window| window.raw())
-            .unwrap_or(0);
+            .map(|window| himark::bridge::ViewBridgeId::from_raw(window.raw()));
         let (server, session) = (self.server, self.session.clone());
         fx.push(
-            AnyEffect::new(PickFoldersEffect { window: anchor }).map(move |locations| {
+            AnyEffect::new(PickFoldersEffect { origin: anchor }).map(move |locations| {
                 imba::command::Verb::Dynamic(Arc::new(ChatFoldersPicked {
                     server,
                     session: session.clone(),

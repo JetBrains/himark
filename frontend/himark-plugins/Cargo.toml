@@ -4,7 +4,51 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+# The staticlib is what the apple shells link (the `capi` feature
+# fills it); plain consumers (the examples, the gpui/web apps) take
+# the rlib with default features and never see the C half.
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+# The C face and the PRODUCTION assembly: himark_create's plugin-set
+# mint, the shipping plugin list, the outward dialing. Pulls the
+# window shell and the desktop connectors — never a default (the web
+# shell compiles this crate for wasm with the bare engine half).
+capi = [
+    "dep:himark-ffi",
+    "dep:workbench-shell",
+    "dep:hitailnet",
+    "dep:desktop",
+    "dep:palette",
+    "dep:peeker",
+    "dep:demo",
+    "dep:hiscript",
+    "dep:tracing",
+    "hiahp/capi",
+]
+# The apple staticlib draws through skia canvases crossing the C
+# ABI; a shell with its own painter (gpui) never enables this.
+skia-shell = [
+    "capi",
+    "dep:skia-safe",
+    "dep:gfx-skia",
+    "himark-ffi/skia-shell",
+]
+
 [dependencies]
+himark-ffi = { path = "../himark-ffi", optional = true }
+workbench-shell = { path = "../workbench-shell", features = ["capi"], optional = true }
+hitailnet = { path = "../hitailnet", features = ["capi"], optional = true }
+desktop = { path = "../desktop", optional = true }
+palette = { path = "../plugins/palette", optional = true }
+peeker = { path = "../plugins/peeker", optional = true }
+demo = { path = "../plugins/demo", optional = true }
+hiscript = { path = "../hiscript", optional = true }
+tracing = { version = "0.1", optional = true }
+gfx-skia = { path = "../gfx-skia", optional = true }
+skia-safe = { version = "0.153.3", optional = true }
 himark = { path = "../himark" }
 hiahp = { path = "../hiahp" }
 editor = { path = "../editor" }
@@ -68,3 +112,75 @@ hir = { path = "../plugins/lang/hir" }
 hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
 tokio = { version = "1", default-features = false, features = ["rt"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# GRAPHITE, no ganesh: the Apple shells render through
+# SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
+# exists for graphite+textlayout — CI builds Skia from source
+# until our own binary cache lands.
+skia-safe = { version = "0.153.3", features = ["metal", "graphite"], optional = true }
+
+[build-dependencies]
+cbindgen = "0.29.4"
+
+[dev-dependencies]
+workbench-shell = { path = "../workbench-shell", features = ["capi", "test-support"] }
+workbench = { path = "../workbench" }
+himark = { path = "../himark", features = ["test-support"] }
+gfx = { path = "../gfx" }
+gfx-skia = { path = "../gfx-skia" }
+skia-safe = "0.153.3"
+imba = { path = "../imba" }
+editor = { path = "../editor" }
+text = { path = "../text" }
+operation = { path = "../operation" }
+rebase = { path = "../rebase" }
+terminals = { path = "../terminals" }
+filetree = { path = "../filetree" }
+locations = { path = "../locations" }
+hikit = { path = "../hikit" }
+canvas = { path = "../canvas" }
+changesview = { path = "../changesview" }
+recents = { path = "../recents" }
+comments = { path = "../comments" }
+ahp = "0.9"
+ahp-types = "0.9"
+ahp-chat = { path = "../ahp-chat" }
+ahp-lsp = { path = "../ahp-lsp" }
+ahp-changes = { path = "../ahp-changes" }
+ahp-comments = { path = "../ahp-comments" }
+ahp-locations = { path = "../ahp-locations" }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+agent-host = { path = "../../backend/agent-host" }
+desktop = { path = "../desktop" }
+hiscript = { path = "../hiscript" }
+tempfile = "3"
+serde_json = "1"
+humantime = "2"
+
+# The integration suites ride the C face — plain `cargo test -p
+# himark-plugins` must not silently skip them, so every target
+# declares the feature it needs.
+[[test]]
+name = "engine_tests"
+required-features = ["capi"]
+
+[[test]]
+name = "chat_flow_tests"
+required-features = ["capi"]
+
+[[test]]
+name = "diagnostics_flow_tests"
+required-features = ["capi"]
+
+[[test]]
+name = "findroute_tests"
+required-features = ["capi"]
+
+[[test]]
+name = "reconnect_tests"
+required-features = ["capi"]
+
+[[test]]
+name = "feature_reconnect_tests"
+required-features = ["capi"]

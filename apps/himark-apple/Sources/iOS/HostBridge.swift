@@ -5,23 +5,30 @@ import UIKit
 import UniformTypeIdentifiers
 
 final class HostBridge: NSObject, UIDocumentPickerDelegate {
-    private let engine: HimarkEngine
+    /// Attached after `himark_create` (the engine) and after the
+    /// first scene stands (the presenter) — the callbacks are the
+    /// engine's CONSTRUCTION parameters, so the bridge is born
+    /// first; a callback firing before attachment answers empty.
+    private var engine: HimarkEngine?
     private weak var presenter: UIViewController?
 
-    private var request: UInt64 = 0
+    private var request: HimarkRequest?
 
     private var pickingFolder = false
     private let files = DispatchQueue(label: "himark.host.files", qos: .userInitiated)
 
-    static func install(engine: HimarkEngine, presenter: UIViewController) {
-        let bridge = HostBridge(engine: engine, presenter: presenter)
+    /// The host's capability callbacks, for `himark_create` — and
+    /// the bridge they dispatch into, which wants `attach` once the
+    /// engine and the root presenter exist.
+    static func prepare() -> (HostBridge, HimarkHostCallbacks) {
+        let bridge = HostBridge()
         let ctx = Unmanaged.passRetained(bridge).toOpaque()
         let callbacks = HimarkHostCallbacks(
             ctx: ctx,
-            pick_files: { ctx, request, window in
+            pick_files: { ctx, request, origin in
                 guard let ctx else { return }
                 let bridge = Unmanaged<HostBridge>.fromOpaque(ctx).takeUnretainedValue()
-                DispatchQueue.main.async { bridge.pickFiles(request: request, window: window) }
+                DispatchQueue.main.async { bridge.pickFiles(request: request, origin: origin) }
             },
 
             pick_save: nil,
@@ -71,10 +78,10 @@ final class HostBridge: NSObject, UIDocumentPickerDelegate {
                     UIApplication.shared.open(parsed)
                 }
             })
-        himark_set_host(engine.raw, callbacks)
+        return (bridge, callbacks)
     }
 
-    private init(engine: HimarkEngine, presenter: UIViewController) {
+    func attach(engine: HimarkEngine, presenter: UIViewController) {
         self.engine = engine
         self.presenter = presenter
     }
@@ -87,8 +94,9 @@ final class HostBridge: NSObject, UIDocumentPickerDelegate {
         .sourceCode,
     ]
 
-    private func pickFiles(request: UInt64, window: UInt64) {
-        guard let presenter, self.request == 0 else {
+    private func pickFiles(request: HimarkRequest, origin _: HimarkBridge) {
+        guard let engine else { return }
+        guard let presenter, self.request == nil else {
             answerPicked(engine: engine, request: request, locations: [])
             return
         }
@@ -102,36 +110,39 @@ final class HostBridge: NSObject, UIDocumentPickerDelegate {
         presenter.present(picker, animated: true)
     }
 
-    private func fetch(request: UInt64, segments: [String]) {
+    private func fetch(request: HimarkRequest, segments: [String]) {
         files.async { [self] in
             let text = fetchDocument(segments: segments)
             DispatchQueue.main.async {
-                answerFetched(engine: self.engine, request: request, text: text)
+                guard let engine = self.engine else { return }
+                answerFetched(engine: engine, request: request, text: text)
             }
         }
     }
 
-    private func store(request: UInt64, segments: [String], text: String) {
+    private func store(request: HimarkRequest, segments: [String], text: String) {
         files.async { [self] in
             let stored = storeDocument(segments: segments, text: text)
             DispatchQueue.main.async {
-                _ = himark_host_stored(self.engine.raw, request, stored)
+                guard let engine = self.engine else { return }
+                _ = himark_host_stored(engine.raw, request, stored)
             }
         }
     }
 
-    private func list(request: UInt64, segments: [String]) {
+    private func list(request: HimarkRequest, segments: [String]) {
         files.async { [self] in
             let entries = listDirectory(segments: segments)
             DispatchQueue.main.async {
-                answerListed(engine: self.engine, request: request, entries: entries)
+                guard let engine = self.engine else { return }
+                answerListed(engine: engine, request: request, entries: entries)
             }
         }
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        guard request != 0 else { return }
+        guard let engine, let request else { return }
         if pickingFolder {
             let location = urls.first.map { url -> LocationSpec in
                 ScopedRoots.shared.remember(url)
@@ -142,16 +153,16 @@ final class HostBridge: NSObject, UIDocumentPickerDelegate {
             answerPicked(
                 engine: engine, request: request, locations: pickedDocumentLocations(in: urls))
         }
-        request = 0
+        self.request = nil
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        guard request != 0 else { return }
+        guard let engine, let request else { return }
         if pickingFolder {
             answerPickedFolder(engine: engine, request: request, location: nil)
         } else {
             answerPicked(engine: engine, request: request, locations: [])
         }
-        request = 0
+        self.request = nil
     }
 }

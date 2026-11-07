@@ -134,8 +134,10 @@ final class HimarkEngine {
     let seat = Seat()
 
     /// `dataDir` is the shell's data root (the iOS container's
-    /// Application Support); nil takes the desktop dotdir.
-    init(dataDir: String? = nil) {
+    /// Application Support); nil takes the desktop dotdir. `host`
+    /// carries the host-capability callbacks — a CONSTRUCTION
+    /// parameter: the engine is never half-wired.
+    init(dataDir: String? = nil, host: HimarkHostCallbacks) {
         let ctx = Unmanaged.passUnretained(seat).toOpaque()
         let callbacks = HimarkEngineCallbacks(
             ctx: ctx,
@@ -160,12 +162,13 @@ final class HimarkEngine {
                 }
                 return navigate(origin, place, kind, name, focus)
             })
-        engine =
+        let plugins =
             if let dataDir {
-                dataDir.withCString { himark_create(callbacks, $0, UInt(strlen($0))) }
+                dataDir.withCString { himark_production_plugins($0, UInt(strlen($0))) }
             } else {
-                himark_create(callbacks, nil, 0)
+                himark_production_plugins(nil, 0)
             }
+        engine = himark_create(callbacks, host, plugins)
     }
 
     deinit {

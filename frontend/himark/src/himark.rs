@@ -1383,15 +1383,17 @@ impl Himark {
 
     // ── the stage doors (the C surface delegates here) ──
 
-    pub fn stage_layout(&mut self, id: ViewBridgeId, size: gfx::Size) -> u64 {
+    pub fn stage_layout(
+        &mut self,
+        id: ViewBridgeId,
+        size: gfx::Size,
+    ) -> Option<crate::bridge::StageId> {
         // A popover slot ignores the shell's (content-sized) ask
         // and lays out at the parent's standing size, against a
         // freshly pinned parent.
         let size = self.overlay_host_size(id).unwrap_or(size);
         let pin = self.overlay_parent_pin(id);
-        let Some(slot) = self.bridges.get_mut(&id) else {
-            return 0;
-        };
+        let slot = self.bridges.get_mut(&id)?;
         if let Some((parent, band)) = pin {
             if let Some(mount) = slot
                 .bridge
@@ -1424,25 +1426,32 @@ impl Himark {
             // rebuilds the same layout the stage client shows.
             slot.size = stage.size();
         }
-        self.stages.mint((id, crate::bridge::Stage::Layout(stage)))
+        Some(crate::bridge::StageId::from_raw(
+            self.stages.mint((id, crate::bridge::Stage::Layout(stage))),
+        ))
     }
 
-    pub fn stage_layout_size(&self, handle: u64) -> Option<gfx::Size> {
-        match self.stages.get(handle) {
+    pub fn stage_layout_size(&self, handle: crate::bridge::StageId) -> Option<gfx::Size> {
+        match self.stages.get(handle.raw()) {
             Some((_, crate::bridge::Stage::Layout(stage))) => Some(stage.size()),
             _ => None,
         }
     }
 
-    pub fn stage_realize(&mut self, handle: u64, viewport: gfx::Rect) -> u64 {
+    pub fn stage_realize(
+        &mut self,
+        handle: crate::bridge::StageId,
+        viewport: gfx::Rect,
+    ) -> Option<crate::bridge::StageId> {
         if !matches!(
-            self.stages.get(handle),
+            self.stages.get(handle.raw()),
             Some((_, crate::bridge::Stage::Layout(_)))
         ) {
-            return 0;
+            return None;
         }
-        let Some((id, crate::bridge::Stage::Layout(stage))) = self.stages.take(handle) else {
-            return 0;
+        let Some((id, crate::bridge::Stage::Layout(stage))) = self.stages.take(handle.raw())
+        else {
+            return None;
         };
         let mut frame = stage.realize(viewport);
         if let Some(slot) = self.bridges.get_mut(&id) {
@@ -1458,25 +1467,27 @@ impl Himark {
                 }
             }
         }
-        self.stages.mint((id, crate::bridge::Stage::Frame(frame)))
+        Some(crate::bridge::StageId::from_raw(
+            self.stages.mint((id, crate::bridge::Stage::Frame(frame))),
+        ))
     }
 
-    pub fn stage_layout_release(&mut self, handle: u64) -> bool {
-        match self.stages.get(handle) {
-            Some((_, crate::bridge::Stage::Layout(_))) => self.stages.take(handle).is_some(),
+    pub fn stage_layout_release(&mut self, handle: crate::bridge::StageId) -> bool {
+        match self.stages.get(handle.raw()) {
+            Some((_, crate::bridge::Stage::Layout(_))) => self.stages.take(handle.raw()).is_some(),
             _ => false,
         }
     }
 
-    pub fn stage_frame(&self, handle: u64) -> Option<&crate::bridge::Frame> {
-        match self.stages.get(handle) {
+    pub fn stage_frame(&self, handle: crate::bridge::StageId) -> Option<&crate::bridge::Frame> {
+        match self.stages.get(handle.raw()) {
             Some((_, crate::bridge::Stage::Frame(frame))) => Some(frame),
             _ => None,
         }
     }
 
-    pub fn stage_frame_origin(&self, handle: u64) -> Option<ViewBridgeId> {
-        match self.stages.get(handle) {
+    pub fn stage_frame_origin(&self, handle: crate::bridge::StageId) -> Option<ViewBridgeId> {
+        match self.stages.get(handle.raw()) {
             Some((id, crate::bridge::Stage::Frame(_))) => Some(*id),
             _ => None,
         }
@@ -1493,14 +1504,14 @@ impl Himark {
         }
     }
 
-    pub fn stage_frame_release(&mut self, handle: u64) -> bool {
+    pub fn stage_frame_release(&mut self, handle: crate::bridge::StageId) -> bool {
         if !matches!(
-            self.stages.get(handle),
+            self.stages.get(handle.raw()),
             Some((_, crate::bridge::Stage::Frame(_)))
         ) {
             return false;
         }
-        let Some((id, crate::bridge::Stage::Frame(frame))) = self.stages.take(handle) else {
+        let Some((id, crate::bridge::Stage::Frame(frame))) = self.stages.take(handle.raw()) else {
             return false;
         };
         let arena = frame.recycle();

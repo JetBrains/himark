@@ -46,14 +46,14 @@ ensure_skia_headers() {
 
 resolve() {
   local target_flag="$1" lib_dir="$2" out="$3" qualifier="${4:-}" append="${5:-}" xcode_arch="${6:-}"
-  echo "==> cargo build -p himark-capi --release $target_flag"
-  ( cd "$ROOT" && cargo build -p himark-capi --release $target_flag >/dev/null )
+  echo "==> cargo build -p himark-plugins --features skia-shell --release $target_flag"
+  ( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release $target_flag >/dev/null )
 
   local SKIA EXTRA
   {
     read -r SKIA
     read -r EXTRA
-  } < <( cd "$ROOT" && cargo build -p himark-capi --release $target_flag \
+  } < <( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release $target_flag \
            --message-format=json 2>/dev/null | python3 -c "
 import sys, json
 out=None; extra=[]
@@ -82,13 +82,14 @@ XC
   fi
   cat >> "$out" <<XC
 LIBRARY_SEARCH_PATHS$qualifier = $lib_dir $SKIA
-OTHER_LDFLAGS$qualifier = $lib_dir/libhimark_api.a -lskia -lskia-bindings $EXTRA
+OTHER_LDFLAGS$qualifier = $lib_dir/libhimark_plugins.a -lskia -lskia-bindings $EXTRA
 XC
   echo "    wrote $out$qualifier (skia: $SKIA)"
 }
 
 cp "$ROOT/frontend/himark-ffi/include/himark.h" ./himark.h
-cp "$ROOT/frontend/himark-capi/include/himark-shell.h" ./himark-shell.h
+cp "$ROOT/frontend/workbench-shell/include/himark-shell.h" ./himark-shell.h
+cp "$ROOT/frontend/himark-plugins/include/himark-host.h" ./himark-host.h
 cp "$ROOT/frontend/hitailnet/include/himark-tailnet.h" ./himark-tailnet.h
 ACTION="${1:-gen}"
 ensure_skia_headers

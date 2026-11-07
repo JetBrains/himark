@@ -8,6 +8,11 @@
 //! no workbench, no C: the iOS boot and the desktop boot compose
 //! the same pieces.
 
+#[cfg(feature = "capi")]
+pub mod capi;
+#[cfg(feature = "capi")]
+pub use capi::*;
+
 use std::sync::Arc;
 
 use ahp_docsync as docsync;
@@ -108,27 +113,7 @@ pub struct Wires {
     pub resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
-/// The store-in-hand host mint shared by discovery and the add-host
-/// flow — seats before seeding, so the row never connects against an
-/// unregistered client.
-pub fn register_agent_server(
-    app: &mut Himark,
-    clients: &ahp_wire::fs::ClientDirectory,
-    name: &str,
-    client: ahp_wire::client::Client,
-) -> ahp_wire::client::HostId {
-    let id = hiahp::engine::register_client(app, client.clone());
-    app.setup(|store| {
-        ahp_session::session::agents::Agents::seed(store, id, name);
-        ahp_session::session::state::Hosts::install_uris(
-            store,
-            id,
-            Arc::new(ahp_wire::uris::FileUris),
-        );
-    });
-    clients.record(id, client);
-    id
-}
+pub use hiahp::engine::register_agent_server;
 
 /// Find — or autostart — the local himark agent host. The lockfile
 /// dance is the EMBEDDER's: the wire takes a resolver and never

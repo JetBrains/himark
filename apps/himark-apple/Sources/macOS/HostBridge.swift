@@ -4,20 +4,27 @@
 import AppKit
 
 final class HostBridge {
-    private let engine: HimarkEngine
+    /// Attached right after `himark_create` returns — the callbacks
+    /// are the engine's CONSTRUCTION parameters, so the bridge is
+    /// born first; a callback firing before the engine attached is
+    /// answered empty.
+    private var engine: HimarkEngine?
     private let onRepaint: () -> Void
 
     private let files = DispatchQueue(label: "himark.host.files", qos: .userInitiated)
 
-    static func install(engine: HimarkEngine, onRepaint: @escaping () -> Void) {
-        let bridge = HostBridge(engine: engine, onRepaint: onRepaint)
+    /// The host's capability callbacks, for `himark_create` — and
+    /// the bridge they dispatch into, which wants `attach(engine:)`
+    /// once the engine exists.
+    static func prepare(onRepaint: @escaping () -> Void) -> (HostBridge, HimarkHostCallbacks) {
+        let bridge = HostBridge(onRepaint: onRepaint)
         let ctx = Unmanaged.passRetained(bridge).toOpaque()
         let callbacks = HimarkHostCallbacks(
             ctx: ctx,
-            pick_files: { ctx, request, window in
+            pick_files: { ctx, request, origin in
                 guard let ctx else { return }
                 let bridge = Unmanaged<HostBridge>.fromOpaque(ctx).takeUnretainedValue()
-                DispatchQueue.main.async { bridge.pickFiles(request: request, window: window) }
+                DispatchQueue.main.async { bridge.pickFiles(request: request, origin: origin) }
             },
             pick_save: { ctx, request, suggested, suggestedLen in
                 guard let ctx else { return }
@@ -80,15 +87,19 @@ final class HostBridge {
                     NSWorkspace.shared.open(parsed)
                 }
             })
-        himark_set_host(engine.raw, callbacks)
+        return (bridge, callbacks)
     }
 
-    private init(engine: HimarkEngine, onRepaint: @escaping () -> Void) {
+    func attach(engine: HimarkEngine) {
         self.engine = engine
+    }
+
+    private init(onRepaint: @escaping () -> Void) {
         self.onRepaint = onRepaint
     }
 
-    private func pickFiles(request: UInt64, window: UInt64) {
+    private func pickFiles(request: HimarkRequest, origin _: HimarkBridge) {
+        guard let engine else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true
@@ -98,7 +109,8 @@ final class HostBridge {
         onRepaint()
     }
 
-    private func pickSave(request: UInt64, suggested: String) {
+    private func pickSave(request: HimarkRequest, suggested: String) {
+        guard let engine else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = suggested
         var location: LocationSpec?
@@ -110,31 +122,34 @@ final class HostBridge {
         onRepaint()
     }
 
-    private func fetch(request: UInt64, segments: [String]) {
+    private func fetch(request: HimarkRequest, segments: [String]) {
         files.async { [self] in
             let text = fetchDocument(segments: segments)
             DispatchQueue.main.async {
-                answerFetched(engine: self.engine, request: request, text: text)
+                guard let engine = self.engine else { return }
+                answerFetched(engine: engine, request: request, text: text)
                 self.onRepaint()
             }
         }
     }
 
-    private func store(request: UInt64, segments: [String], text: String) {
+    private func store(request: HimarkRequest, segments: [String], text: String) {
         files.async { [self] in
             let stored = storeDocument(segments: segments, text: text)
             DispatchQueue.main.async {
-                _ = himark_host_stored(self.engine.raw, request, stored)
+                guard let engine = self.engine else { return }
+                _ = himark_host_stored(engine.raw, request, stored)
                 self.onRepaint()
             }
         }
     }
 
-    private func list(request: UInt64, segments: [String]) {
+    private func list(request: HimarkRequest, segments: [String]) {
         files.async { [self] in
             let entries = listDirectory(segments: segments)
             DispatchQueue.main.async {
-                answerListed(engine: self.engine, request: request, entries: entries)
+                guard let engine = self.engine else { return }
+                answerListed(engine: engine, request: request, entries: entries)
                 self.onRepaint()
             }
         }

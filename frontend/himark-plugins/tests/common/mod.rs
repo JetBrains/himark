@@ -4,10 +4,25 @@
 //! Shared helpers of the himark-capi integration tests.
 #![allow(dead_code)]
 
+pub mod probe;
+
 use std::sync::Arc;
 
 pub fn bind_backend(dir: &std::path::Path, claude_binary: String) -> String {
-    let socket = dir.join("backend.sock");
+    bind_backend_at(dir.join("backend.sock"), dir, claude_binary, Vec::new())
+}
+
+/// Bind a host on `socket` over `dir`'s state. A RESTART in a test is
+/// this called again: a fresh socket, the SAME `dir` — what a real
+/// host keeps (the disk) and what it loses (every in-memory channel,
+/// watch, mirror and language server) fall out by construction. The
+/// old host thread stays alive but clientless; its socket is cut.
+pub fn bind_backend_at(
+    socket: std::path::PathBuf,
+    dir: &std::path::Path,
+    claude_binary: String,
+    language_servers: Vec<agent_host::server::LanguageServer>,
+) -> String {
     let serving = socket.clone();
     let config = agent_host::server::HostConfig {
         agents: Vec::new(),
@@ -19,7 +34,7 @@ pub fn bind_backend(dir: &std::path::Path, claude_binary: String) -> String {
         shell: "/bin/sh".to_owned(),
         fsp_binary: None,
         fsp_data_dir: dir.join("fsp"),
-        language_servers: Vec::new(),
+        language_servers,
     };
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()

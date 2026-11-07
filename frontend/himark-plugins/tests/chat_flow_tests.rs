@@ -10,10 +10,12 @@
 //! windows), displacement + ⌘I mid-stream, and a verbatim REPLAY of
 //! the stream (an overlapping subscription must fold to one copy).
 
-use himark_api::EngineAgents as _;
+use himark_plugins::EngineAgents as _;
+#[allow(unused_imports)]
+use himark_plugins::HimarkEngineExt as _;
 #[allow(unused_imports)]
 #[allow(unused_imports)]
-use workbench_shell::capi::WindowEngine as _;
+use workbench_shell::capi::WindowEngine;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
@@ -40,7 +42,7 @@ use ahp_wire::client::TurnId;
 use ahp_chat::cell::Cell;
 use himark::app_ext::AppExt;
 
-use himark_api::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
+use himark_plugins::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
 /// The scripted wire side of ONE chat: the snapshot to answer, the
 /// poll batches the test feeds, the older pages behind the cursor.
@@ -439,7 +441,7 @@ fn settle(engine: &mut HimarkEngine) {
 
 fn settle_until(
     engine: &mut HimarkEngine,
-    window: u64,
+    window: himark::bridge::ViewBridgeId,
     what: &str,
     mut done: impl FnMut(&HimarkEngine) -> bool,
 ) {
@@ -500,9 +502,9 @@ impl himark::commands::HimarkCommand for OpenScripted {
 /// window that entered it (the first one; a second window of the same
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
-    let window = *engine.app.window_ids().first().expect("a window");
+    let window = *engine.window_ids().first().expect("a window");
     workbench_shell::workspace::entity_state(
-        workbench::window::Windows::window_ref(engine.app.store(), window)
+        workbench::window::Windows::window_ref(engine.store(), window)
             .expect("the window entity"),
     )
     .chats()
@@ -510,7 +512,7 @@ fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Ch
 
 fn chat_record(engine: &HimarkEngine) -> Option<ahp_chat::chat::ChatPanel> {
     ahp_chat::chats::Chats::chat(
-        engine.app.store(),
+        engine.store(),
         chats_of_window(engine),
         &ChatUri::new(CHAT),
     )
@@ -541,9 +543,9 @@ fn script_host(engine: &HimarkEngine) -> ahp_wire::client::HostId {
 const CHAT: &str = "ahp-chat:/scripted";
 const SESSION: &str = "ahp-session:/scripted";
 
-fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
-    let mut engine = himark_api::with_fonts(AppFonts::embedded());
-    let window = engine.add_window();
+fn boot(snapshot: ChatState) -> (HimarkEngine, himark::bridge::ViewBridgeId, Script) {
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let window = WindowEngine::open_window(&mut engine);
     let expected_turns = snapshot.turns.len();
     let script = Script::new(CHAT, SESSION, snapshot);
     let scripted = Arc::new(ScriptedSeat {
@@ -557,8 +559,8 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
-        workbench::window::WindowId::from_raw(window),
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_plugins::wid(window),
         Arc::new(OpenScripted {
             host,
             session: SessionUri::new(SESSION),
@@ -621,9 +623,9 @@ fn a_scripted_stream_lands_whole() {
 #[test]
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
-    let second = engine.add_window();
-    assert!(engine.app.perform_batch(vec![workbench_shell::shell::windowed(
-        workbench::window::WindowId::from_raw(second),
+    let second = WindowEngine::open_window(&mut engine);
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
+        himark_plugins::wid(second),
         Arc::new(OpenScripted {
             host: script_host(&engine),
             session: SessionUri::new(SESSION),
@@ -679,7 +681,7 @@ fn a_displaced_pane_misses_nothing_mid_stream() {
         !turn_text(&transcript(engine), "t-mid").is_empty()
     });
 
-    assert!(engine.perform_command(window, "workbench.new-document"));
+    assert!(engine.perform_registered_at(window, "workbench.new-document"));
     settle(&mut engine);
     for batch in tail {
         script.feed(batch.clone());
@@ -691,7 +693,7 @@ fn a_displaced_pane_misses_nothing_mid_stream() {
         })
     });
 
-    assert!(engine.perform_command(window, "chat.composer"));
+    assert!(engine.perform_registered_at(window, "chat.composer"));
     settle_until(
         &mut engine,
         window,
@@ -747,7 +749,7 @@ fn said(engine: &HimarkEngine) -> String {
         .join("|")
 }
 
-fn paint(engine: &mut HimarkEngine, window: u64) {
+fn paint(engine: &mut HimarkEngine, window: himark::bridge::ViewBridgeId) {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(
         window,
@@ -956,7 +958,7 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     let chats = chats_of_window(&engine);
     for _ in 0..3 {
         let pane = ahp_chat::chats::ChatPane::new(chats, chat.clone());
-        assert!(engine.app.open_panel(window_id(window), Box::new(pane)));
+        assert!(engine.open_panel(window_id(window), Box::new(pane)));
         paint(&mut engine, window);
     }
     assert_eq!(transcript(&engine).len(), 8, "the same page stands");
@@ -972,8 +974,8 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     );
 }
 
-fn window_id(window: u64) -> workbench::window::WindowId {
-    workbench::window::WindowId::from_raw(window)
+fn window_id(window: himark::bridge::ViewBridgeId) -> workbench::window::WindowId {
+    himark_plugins::wid(window)
 }
 
 /// HUNDREDS of file edits — the shape a real coding turn takes. Every
@@ -1186,7 +1188,7 @@ fn a_scroll_tick_builds_one_tree() {
     // (a fling culls the middle — unpainted rows never wake), the
     // worker landing builds between steps.
     for _ in 0..90 {
-        let _ = workbench_shell::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 600.0);
+        let _ = workbench_shell::test_driver::scroll_at(&mut engine, 550.0, 400.0, 600.0);
         engine.worker().run_pending();
         let _ = engine.draw(
             window,
@@ -1210,7 +1212,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.drain();
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    let _ = workbench_shell::test_driver::scroll(&mut engine.app, -10_000_000.0);
+    let _ = workbench_shell::test_driver::scroll(&mut engine, -10_000_000.0);
     for _ in 0..30 {
         engine.worker().run_pending();
         let _ = engine.draw(
@@ -1227,14 +1229,14 @@ fn a_scroll_tick_builds_one_tree() {
     // region, the real per-frame shape.
     let mounted = Cell::documents_mounted();
     let born = editor::document::Document::born_on_this_thread();
-    let built = engine.app.frames_built();
+    let built = engine.frames_built();
     const TICKS: usize = 240;
     let mut ticks: Vec<std::time::Duration> = Vec::new();
     for at in 0..TICKS {
         let started = std::time::Instant::now();
-        let _ = workbench_shell::test_driver::scroll_at(&mut engine.app, 550.0, 400.0, 90.0);
+        let _ = workbench_shell::test_driver::scroll_at(&mut engine, 550.0, 400.0, 90.0);
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(60_000.0 + at as f64 * 8.0),
         );
         let _ = engine.draw(
@@ -1247,7 +1249,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.drain();
         ticks.push(started.elapsed());
     }
-    let trees = engine.app.frames_built() - built;
+    let trees = engine.frames_built() - built;
 
     assert_eq!(
         Cell::documents_mounted() - mounted,
@@ -1304,7 +1306,7 @@ fn a_panned_gesture_scrolls_the_chat_up() {
         engine.worker().run_pending();
         now += 16.0;
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(now),
         );
         let _ = engine.draw(
@@ -1328,10 +1330,10 @@ fn a_panned_gesture_scrolls_the_chat_up() {
     let gesture = imba::event::ScrollGesture::default();
     gesture.begin();
     for _ in 0..10 {
-        let _ = workbench_shell::test_driver::scroll_with(&mut engine.app, &gesture, 550.0, 400.0, -60.0);
+        let _ = workbench_shell::test_driver::scroll_with(&mut engine, &gesture, 550.0, 400.0, -60.0);
         now += 16.0;
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(now),
         );
         let _ = engine.draw(
@@ -1378,7 +1380,7 @@ fn idle_clock_ticks_are_quiet() {
         engine.worker().run_pending();
         now += 16.0;
         let _ = workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(now),
         );
         let _ = engine.draw(
@@ -1392,18 +1394,18 @@ fn idle_clock_ticks_are_quiet() {
     }
 
     // Settled. A quiet minute of ticks: count the liars.
-    let built = engine.app.frames_built();
+    let built = engine.frames_built();
     let mut changed_ticks = 0;
     for _ in 0..120 {
         now += 16.0;
         if workbench_shell::test_driver::animate(
-            &mut engine.app,
+            &mut engine,
             imba::anim::AnimationClock::from_millis(now),
         ) {
             changed_ticks += 1;
         }
     }
-    let trees = engine.app.frames_built() - built;
+    let trees = engine.frames_built() - built;
     assert!(
         changed_ticks <= 2 && trees <= 2,
         "a settled chat answered {changed_ticks}/120 idle ticks as changed and built {trees} trees — \
