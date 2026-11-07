@@ -394,19 +394,25 @@ impl Frame {
 /// recycled — after this, the view has exactly one owner and may
 /// be mutated (`ToView`). A host's stale stage handles become
 /// checked refusals, which is the contract: the view moved on.
+/// One host-held stage, by handle: the SIZED layout (display ran,
+/// nothing realized) or the realized frame — one table, one handle
+/// space (docs/ui/imba-ffi.md).
+pub(crate) enum Stage {
+    Layout(BridgeLayout),
+    Frame(Frame),
+}
+
 pub(crate) fn quiesce(
     id: ViewBridgeId,
     slot: &mut crate::himark::Mounted,
-    layouts: &mut Handles<(ViewBridgeId, BridgeLayout)>,
-    frames: &mut Handles<(ViewBridgeId, Frame)>,
+    stages: &mut Handles<(ViewBridgeId, Stage)>,
 ) {
     if let Some(frame) = slot.frame.take() {
         slot.spare_arena = Some(frame.recycle());
     }
-    for (_, stage) in layouts.drain_matching(|(owner, _)| *owner == id) {
-        drop(stage);
-    }
-    for (_, stage) in frames.drain_matching(|(owner, _)| *owner == id) {
-        slot.spare_arena = Some(stage.recycle());
+    for (_, stage) in stages.drain_matching(|(owner, _)| *owner == id) {
+        if let Stage::Frame(frame) = stage {
+            slot.spare_arena = Some(frame.recycle());
+        }
     }
 }

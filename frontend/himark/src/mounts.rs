@@ -183,22 +183,6 @@ pub type PaletteFactory = std::sync::Arc<
         + Sync,
 >;
 
-/// An EXTERNAL place arm: a crate ABOVE this one (a plugin)
-/// answers a place with a modal view. Registered at boot
-/// (`Himark::register_place_arm`); `mount_place` consults these
-/// after its own arms.
-pub type ModalPlaceArm = std::sync::Arc<
-    dyn Fn(
-            &mut Store,
-            &UiCtx,
-            ViewBridgeId,
-            &mut AppFx<'_>,
-            &hikit::navigation::NavigationLocation,
-        ) -> Option<Box<dyn hikit::modal::ModalView>>
-        + Send
-        + Sync,
->;
-
 /// An EXTERNAL BRIDGE arm: a plugin answers a place with a mounted
 /// view of ANY shape — it mints through `Himark::mount` itself
 /// (the AHP plugin's whole session vocabulary registers here).
@@ -575,18 +559,6 @@ pub fn mount_place(
     let bridge_arms = app.bridge_place_arms.clone();
     for arm in bridge_arms {
         let minted = arm(app, place);
-        if minted.is_some() {
-            return minted;
-        }
-    }
-    // The EXTERNAL arms — plugins registered above this crate.
-    let arms = app.modal_place_arms.clone();
-    for arm in arms {
-        let place = place.clone();
-        let minted = app.mount(move |store, ui, id, fx| {
-            let view = arm(store, ui, id, fx, &place)?;
-            Some(Arc::new(DynModalMount { id, view }) as Arc<dyn BridgeView>)
-        });
         if minted.is_some() {
             return minted;
         }

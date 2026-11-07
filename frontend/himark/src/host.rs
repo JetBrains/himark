@@ -431,7 +431,7 @@ impl Himark {
             return false;
         };
         let now = std::time::Instant::now();
-        let state = self.stage_wheels.entry(origin).or_default();
+        let state = self.scroll_states.entry(origin).or_default();
         let paused = state
             .last
             .is_none_or(|last| now.duration_since(last).as_millis() > 250);

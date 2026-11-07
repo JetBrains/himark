@@ -1909,40 +1909,42 @@ impl himark::plugin::Plugin for PeekerPlugin {
     fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
         use himark::app_ext::AppExt;
         app.register_command(std::sync::Arc::new(TogglePeeker));
-        app.register_place_arm(std::sync::Arc::new(|store, ui, id, fx, place| {
+        app.register_bridge_arm(std::sync::Arc::new(|app, place| {
             let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();
-            let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
-            let documents = state.documents();
-            let lists = state.lists();
-            let recents = recents::RecentLocations::list(store, state.recents());
-            let folders = ahp_session::session::folders::session_folders(store, &key);
-            let view = fx.scope(
-                move |command: PeekerCommand| {
-                    himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
-                },
-                |fx| {
-                    Peeker::open(
-                        store,
-                        ui,
-                        documents,
-                        lists,
-                        // The desktop go-to sheet's viewport (engine
-                        // pixels) — near-full-window glass; display
-                        // relays out live, this seeds the preview's
-                        // wrap width.
-                        gfx::Size::new(3_100.0, 1_850.0),
-                        recents,
-                        Vec::new(),
-                        folders,
-                        fx,
-                    )
-                    // The island's glass is the sheet — the peeker
-                    // keeps only its hairlines.
-                    .unfloored()
-                },
-            );
-            Some(Box::new(view))
+            app.mount(move |store, ui, id, fx| {
+                let state = ahp_session::session::state::Hosts::ensure_state(store, &key);
+                let documents = state.documents();
+                let lists = state.lists();
+                let recents = recents::RecentLocations::list(store, state.recents());
+                let folders = ahp_session::session::folders::session_folders(store, &key);
+                let view = fx.scope(
+                    move |command: PeekerCommand| {
+                        himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
+                    },
+                    |fx| {
+                        Peeker::open(
+                            store,
+                            ui,
+                            documents,
+                            lists,
+                            // The desktop go-to sheet's viewport (engine
+                            // pixels) — near-full-window glass; display
+                            // relays out live, this seeds the preview's
+                            // wrap width.
+                            gfx::Size::new(3_100.0, 1_850.0),
+                            recents,
+                            Vec::new(),
+                            folders,
+                            fx,
+                        )
+                        // The island's glass is the sheet — the peeker
+                        // keeps only its hairlines.
+                        .unfloored()
+                    },
+                );
+                    Some(himark::mounts::dyn_modal_mount(id, Box::new(view)))
+            })
         }));
     }
 }

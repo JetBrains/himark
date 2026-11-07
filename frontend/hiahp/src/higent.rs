@@ -21,10 +21,11 @@ pub struct SessionsPlugin;
 impl himark::plugin::Plugin for SessionsPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         use std::sync::Arc;
-        app.register_place_arm(Arc::new(|store, ui, id, _fx, place| {
+        app.register_bridge_arm(Arc::new(|app, place| {
             let place = place.place::<crate::places::SessionsPlace>()?;
             let showing = place.0.clone();
-            let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
+            app.mount(move |store, ui, id, _fx| {
+                let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
                 open_session: Arc::new(move |_store| Some(showing.clone())),
                 open_row: Arc::new(move |server, session| {
                     imba::command::Verb::once(crate::higent::open_session::ShowSession {
@@ -42,10 +43,14 @@ impl himark::plugin::Plugin for SessionsPlugin {
                         Arc::new(crate::higent::flows::AddHost { url }),
                     ))
                 }),
-            });
-            Some(Box::new(ahp_session::session::drawer::AgentsPanel::open(
-                store, ui, asks,
-            )))
+                });
+                Some(himark::mounts::dyn_modal_mount(
+                    id,
+                    Box::new(ahp_session::session::drawer::AgentsPanel::open(
+                        store, ui, asks,
+                    )),
+                ))
+            })
         }));
     }
 }

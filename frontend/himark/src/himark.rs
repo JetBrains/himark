@@ -154,11 +154,11 @@ pub struct Himark {
     /// the mount's session note).
     unmount_hooks: Vec<Arc<dyn Fn(&mut Store, ViewBridgeId)>>,
 
-    /// The stage tables (docs/ui/imba-ffi.md): layouts and frames
-    /// a host holds by handle. Engine-owned so the `ToView` road
-    /// can quiesce a view's stages before mutating it.
-    pub(crate) stage_layouts: crate::bridge::Handles<(ViewBridgeId, crate::bridge::BridgeLayout)>,
-    pub(crate) stage_frames: crate::bridge::Handles<(ViewBridgeId, crate::bridge::Frame)>,
+    /// The stage table (docs/ui/imba-ffi.md): every layout and
+    /// frame a host holds by handle, one handle space. Engine-owned
+    /// so the `ToView` road can quiesce a view's stages before
+    /// mutating it.
+    pub(crate) stages: crate::bridge::Handles<(ViewBridgeId, crate::bridge::Stage)>,
 
     /// Mount ids for non-window views, minted from the high half —
     /// window bridges keep their window's raw id in the low half.
@@ -180,8 +180,6 @@ pub struct Himark {
     /// The palette plugin's view factory (`register_palette`).
     pub(crate) palette: Option<crate::mounts::PaletteFactory>,
 
-    pub(crate) modal_place_arms: Vec<crate::mounts::ModalPlaceArm>,
-
     pub(crate) bridge_place_arms: Vec<crate::mounts::BridgePlaceArm>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
@@ -191,15 +189,12 @@ pub struct Himark {
     pub(crate) settle_requested: bool,
     pub(crate) settling: bool,
 
-    /// The per-bridge scroll-gesture streams (`crate::host`): a
-    /// touch beginning on one bridge must not break the gesture —
+    /// The per-bridge scroll-gesture streams (`crate::host`), ONE
+    /// per origin whichever road the wheel arrives on (the
+    /// dispatch coalescer, the stage road's offer): a touch
+    /// beginning on one bridge must not break the gesture —
     /// momentum included — still flowing on another.
     pub(crate) scroll_states:
-        std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
-
-    /// Per STAGE-FRAME origin: the gesture stream behind
-    /// `offer_stage_scroll`.
-    pub(crate) stage_wheels:
         std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
 
     /// The installed host loop (`install_host_loop`): inbox, wakes,
@@ -311,20 +306,17 @@ impl Himark {
             handlers,
             workshop,
             bridges: std::collections::HashMap::new(),
-            stage_layouts: Default::default(),
-            stage_frames: Default::default(),
+            stages: Default::default(),
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
             frames_built: 0,
             pending_file_events: Vec::new(),
             pending_reveals: Vec::new(),
             palette: None,
-            modal_place_arms: Vec::new(),
             bridge_place_arms: Vec::new(),
             settle_requested: false,
             settling: false,
             scroll_states: std::collections::HashMap::new(),
-            stage_wheels: std::collections::HashMap::new(),
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
             host: None,
             tails: Vec::new(),
@@ -432,8 +424,7 @@ impl Himark {
             pending_file_events: &mut self.pending_file_events,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
-            stage_layouts: &mut self.stage_layouts,
-            stage_frames: &mut self.stage_frames,
+            stages: &mut self.stages,
         };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         // EVERY command must declare itself display-neutral
@@ -489,8 +480,7 @@ impl Himark {
             pending_file_events: &mut self.pending_file_events,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
-            stage_layouts: &mut self.stage_layouts,
-            stage_frames: &mut self.stage_frames,
+            stages: &mut self.stages,
         };
         loop {
             let mut late = batch.take_follow_ups();
@@ -1187,12 +1177,9 @@ impl Himark {
 
     /// A plugin's place arm — consulted by `mount_place` after the
     /// built-in arms.
-    pub fn register_place_arm(&mut self, arm: crate::mounts::ModalPlaceArm) {
-        self.modal_place_arms.push(arm);
-    }
-
-    /// Register a BRIDGE place arm — a plugin's answer to a place,
-    /// any mount shape (see `mounts::BridgePlaceArm`).
+    /// Register a place arm — a plugin's answer to a place, any
+    /// mount shape (see `mounts::BridgePlaceArm`): the arm mints
+    /// through `Himark::mount` itself.
     pub fn register_bridge_arm(&mut self, arm: crate::mounts::BridgePlaceArm) {
         self.bridge_place_arms.push(arm);
     }
@@ -1370,8 +1357,7 @@ impl Himark {
         crate::bridge::quiesce(
             id,
             &mut slot,
-            &mut self.stage_layouts,
-            &mut self.stage_frames,
+            &mut self.stages,
         );
         let hooks = self.unmount_hooks.clone();
         for hook in &hooks {
@@ -1423,17 +1409,24 @@ impl Himark {
             // rebuilds the same layout the stage client shows.
             slot.size = stage.size();
         }
-        self.stage_layouts.mint((id, stage))
+        self.stages.mint((id, crate::bridge::Stage::Layout(stage)))
     }
 
     pub fn stage_layout_size(&self, handle: u64) -> Option<gfx::Size> {
-        self.stage_layouts
-            .get(handle)
-            .map(|(_, stage)| stage.size())
+        match self.stages.get(handle) {
+            Some((_, crate::bridge::Stage::Layout(stage))) => Some(stage.size()),
+            _ => None,
+        }
     }
 
     pub fn stage_realize(&mut self, handle: u64, viewport: gfx::Rect) -> u64 {
-        let Some((id, stage)) = self.stage_layouts.take(handle) else {
+        if !matches!(
+            self.stages.get(handle),
+            Some((_, crate::bridge::Stage::Layout(_)))
+        ) {
+            return 0;
+        }
+        let Some((id, crate::bridge::Stage::Layout(stage))) = self.stages.take(handle) else {
             return 0;
         };
         let mut frame = stage.realize(viewport);
@@ -1450,19 +1443,28 @@ impl Himark {
                 }
             }
         }
-        self.stage_frames.mint((id, frame))
+        self.stages.mint((id, crate::bridge::Stage::Frame(frame)))
     }
 
     pub fn stage_layout_release(&mut self, handle: u64) -> bool {
-        self.stage_layouts.take(handle).is_some()
+        match self.stages.get(handle) {
+            Some((_, crate::bridge::Stage::Layout(_))) => self.stages.take(handle).is_some(),
+            _ => false,
+        }
     }
 
     pub fn stage_frame(&self, handle: u64) -> Option<&crate::bridge::Frame> {
-        self.stage_frames.get(handle).map(|(_, frame)| frame)
+        match self.stages.get(handle) {
+            Some((_, crate::bridge::Stage::Frame(frame))) => Some(frame),
+            _ => None,
+        }
     }
 
     pub fn stage_frame_origin(&self, handle: u64) -> Option<ViewBridgeId> {
-        self.stage_frames.get(handle).map(|(id, _)| *id)
+        match self.stages.get(handle) {
+            Some((id, crate::bridge::Stage::Frame(_))) => Some(*id),
+            _ => None,
+        }
     }
 
     pub fn park_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
@@ -1477,7 +1479,13 @@ impl Himark {
     }
 
     pub fn stage_frame_release(&mut self, handle: u64) -> bool {
-        let Some((id, frame)) = self.stage_frames.take(handle) else {
+        if !matches!(
+            self.stages.get(handle),
+            Some((_, crate::bridge::Stage::Frame(_)))
+        ) {
+            return false;
+        }
+        let Some((id, crate::bridge::Stage::Frame(frame))) = self.stages.take(handle) else {
             return false;
         };
         let arena = frame.recycle();
