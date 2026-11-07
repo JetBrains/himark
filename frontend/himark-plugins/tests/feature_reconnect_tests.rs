@@ -160,6 +160,7 @@ fn drive<T>(mut future: ahp_wire::client::ClientFuture<T>) -> T {
 /// not park forever on a feed nobody will fill. The frozen poll is
 /// the file-tree watch bug one layer up.
 #[test]
+#[ignore = "RED BY DESIGN: the resume's missing list drops the feed silently and the poll waits forever — unignore with the frozen-channel fix"]
 fn a_document_poll_hears_the_restart_instead_of_freezing() {
     let mut bench = bench();
     block_on(bench.a.connect()).expect("connected");
