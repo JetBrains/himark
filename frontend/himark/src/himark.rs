@@ -57,6 +57,14 @@ pub(crate) struct Mounted {
 
     /// One warm arena from the last recycled frame.
     pub(crate) spare_arena: Option<Box<imba::arena::Arena>>,
+
+    /// The C shell's two-step draw: `stage_layout` keeps the measured
+    /// layout here, `stage_realize` consumes it into `staged_frame`,
+    /// paint/events read it, release recycles it. At most one of each
+    /// per view — the shell's calls are strictly sequential, so there
+    /// is nothing for an id to tell apart.
+    pub(crate) staged_layout: Option<crate::bridge::BridgeLayout>,
+    pub(crate) staged_frame: Option<crate::bridge::Frame>,
 }
 
 impl Mounted {
@@ -71,6 +79,8 @@ impl Mounted {
             size: gfx::Size::new(-1.0, -1.0),
             stage_viewport: None,
             spare_arena: None,
+            staged_layout: None,
+            staged_frame: None,
         }
     }
 }
@@ -156,9 +166,7 @@ pub struct Himark {
 
     /// The stage table (docs/ui/imba-ffi.md): every layout and
     /// frame a host holds by handle, one handle space. Engine-owned
-    /// so the `ToView` road can quiesce a view's stages before
     /// mutating it.
-    pub(crate) stages: crate::bridge::Handles<(ViewBridgeId, crate::bridge::Stage)>,
 
     /// Mount ids for non-window views, minted from the high half —
     /// window bridges keep their window's raw id in the low half.
@@ -307,7 +315,6 @@ impl Himark {
             handlers,
             workshop,
             bridges: std::collections::HashMap::new(),
-            stages: Default::default(),
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
             frames_built: 0,
@@ -427,7 +434,6 @@ impl Himark {
             pending_watch_deaths: &mut self.pending_watch_deaths,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
-            stages: &mut self.stages,
         };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         // EVERY command must declare itself display-neutral
@@ -484,7 +490,6 @@ impl Himark {
             pending_watch_deaths: &mut self.pending_watch_deaths,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
-            stages: &mut self.stages,
         };
         loop {
             let mut late = batch.take_follow_ups();
@@ -1363,17 +1368,12 @@ impl Himark {
         Some(id)
     }
 
-    /// Unmount: the slot, its frame and every stage a host still
-    /// holds for it go together.
+    /// Unmount: the slot and everything staged on it go together.
     pub fn unmount(&mut self, id: ViewBridgeId) -> bool {
         let Some(mut slot) = self.bridges.remove(&id) else {
             return false;
         };
-        crate::bridge::quiesce(
-            id,
-            &mut slot,
-            &mut self.stages,
-        );
+        crate::bridge::quiesce(&mut slot);
         let hooks = self.unmount_hooks.clone();
         for hook in &hooks {
             hook(&mut self.store, id);
@@ -1381,19 +1381,26 @@ impl Himark {
         true
     }
 
-    // ── the stage doors (the C surface delegates here) ──
+    // ── the staged two-step draw (the C surface delegates here).
+    // The shell cannot hold the Rust objects across the ABI, so the
+    // engine keeps them on the slot: `staged_layout` from
+    // `stage_layout`, consumed by `stage_realize` into
+    // `staged_frame`, read by paint/events, recycled by release.
+    // At most one of each per view — the shell's calls are strictly
+    // sequential and never span a call site.
 
-    pub fn stage_layout(
-        &mut self,
-        id: ViewBridgeId,
-        size: gfx::Size,
-    ) -> Option<crate::bridge::StageId> {
+    /// Run layout at `size` and keep the result as the view's
+    /// staged layout (replacing any previous one). False when no
+    /// such view is mounted.
+    pub fn stage_layout(&mut self, id: ViewBridgeId, size: gfx::Size) -> bool {
         // A popover slot ignores the shell's (content-sized) ask
         // and lays out at the parent's standing size, against a
         // freshly pinned parent.
         let size = self.overlay_host_size(id).unwrap_or(size);
         let pin = self.overlay_parent_pin(id);
-        let slot = self.bridges.get_mut(&id)?;
+        let Some(slot) = self.bridges.get_mut(&id) else {
+            return false;
+        };
         if let Some((parent, band)) = pin {
             if let Some(mount) = slot
                 .bridge
@@ -1417,80 +1424,60 @@ impl Himark {
         } else {
             imba::constraints::Constraints::tight(size)
         };
-        let stage = slot
+        let staged = slot
             .bridge
             .layout(&self.store, &self.ui, constraints, arena);
         if id.is_mounted() {
-            // The stage road's shadow: the measured size becomes
-            // the slot's, so the IME fold (`mounted_frame`)
-            // rebuilds the same layout the stage client shows.
-            slot.size = stage.size();
+            // The measured size becomes the slot's, so the IME fold
+            // (`mounted_frame`) rebuilds the same layout the shell
+            // shows.
+            slot.size = staged.size();
         }
-        Some(crate::bridge::StageId::from_raw(
-            self.stages.mint((id, crate::bridge::Stage::Layout(stage))),
-        ))
+        slot.staged_layout = Some(staged);
+        true
     }
 
-    pub fn stage_layout_size(&self, handle: crate::bridge::StageId) -> Option<gfx::Size> {
-        match self.stages.get(handle.raw()) {
-            Some((_, crate::bridge::Stage::Layout(stage))) => Some(stage.size()),
-            _ => None,
-        }
+    pub fn stage_layout_size(&self, id: ViewBridgeId) -> Option<gfx::Size> {
+        self.bridges
+            .get(&id)?
+            .staged_layout
+            .as_ref()
+            .map(crate::bridge::BridgeLayout::size)
     }
 
-    pub fn stage_realize(
-        &mut self,
-        handle: crate::bridge::StageId,
-        viewport: gfx::Rect,
-    ) -> Option<crate::bridge::StageId> {
-        if !matches!(
-            self.stages.get(handle.raw()),
-            Some((_, crate::bridge::Stage::Layout(_)))
-        ) {
-            return None;
-        }
-        let Some((id, crate::bridge::Stage::Layout(stage))) = self.stages.take(handle.raw())
-        else {
-            return None;
+    /// Consume the staged layout into the staged frame, realized
+    /// for `viewport`. False when no layout is staged.
+    pub fn stage_realize(&mut self, id: ViewBridgeId, viewport: gfx::Rect) -> bool {
+        let Some(slot) = self.bridges.get_mut(&id) else {
+            return false;
         };
-        let mut frame = stage.realize(viewport);
-        if let Some(slot) = self.bridges.get_mut(&id) {
-            if id.is_mounted() {
-                slot.stage_viewport = Some(viewport);
-                // The paint road is the per-frame rebuild now — the
-                // bubbled overlay anchors must move with it, or a
-                // popover's presence lags the standing frame.
-                let anchors = frame.exported_overlays();
-                if anchors != slot.overlay_anchors {
-                    slot.overlay_anchors = anchors;
-                    slot.overlay_epoch += 1;
-                }
+        let Some(staged) = slot.staged_layout.take() else {
+            return false;
+        };
+        let mut frame = staged.realize(viewport);
+        if id.is_mounted() {
+            slot.stage_viewport = Some(viewport);
+            // The paint road is the per-frame rebuild now — the
+            // bubbled overlay anchors must move with it, or a
+            // popover's presence lags the standing frame.
+            let anchors = frame.exported_overlays();
+            if anchors != slot.overlay_anchors {
+                slot.overlay_anchors = anchors;
+                slot.overlay_epoch += 1;
             }
         }
-        Some(crate::bridge::StageId::from_raw(
-            self.stages.mint((id, crate::bridge::Stage::Frame(frame))),
-        ))
+        slot.staged_frame = Some(frame);
+        true
     }
 
-    pub fn stage_layout_release(&mut self, handle: crate::bridge::StageId) -> bool {
-        match self.stages.get(handle.raw()) {
-            Some((_, crate::bridge::Stage::Layout(_))) => self.stages.take(handle.raw()).is_some(),
-            _ => false,
-        }
+    pub fn stage_layout_release(&mut self, id: ViewBridgeId) -> bool {
+        self.bridges
+            .get_mut(&id)
+            .is_some_and(|slot| slot.staged_layout.take().is_some())
     }
 
-    pub fn stage_frame(&self, handle: crate::bridge::StageId) -> Option<&crate::bridge::Frame> {
-        match self.stages.get(handle.raw()) {
-            Some((_, crate::bridge::Stage::Frame(frame))) => Some(frame),
-            _ => None,
-        }
-    }
-
-    pub fn stage_frame_origin(&self, handle: crate::bridge::StageId) -> Option<ViewBridgeId> {
-        match self.stages.get(handle.raw()) {
-            Some((id, crate::bridge::Stage::Frame(_))) => Some(*id),
-            _ => None,
-        }
+    pub fn stage_frame(&self, id: ViewBridgeId) -> Option<&crate::bridge::Frame> {
+        self.bridges.get(&id)?.staged_frame.as_ref()
     }
 
     pub fn park_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
@@ -1504,23 +1491,16 @@ impl Himark {
         }
     }
 
-    pub fn stage_frame_release(&mut self, handle: crate::bridge::StageId) -> bool {
-        if !matches!(
-            self.stages.get(handle.raw()),
-            Some((_, crate::bridge::Stage::Frame(_)))
-        ) {
-            return false;
-        }
-        let Some((id, crate::bridge::Stage::Frame(frame))) = self.stages.take(handle.raw()) else {
+    pub fn stage_frame_release(&mut self, id: ViewBridgeId) -> bool {
+        let Some(slot) = self.bridges.get_mut(&id) else {
             return false;
         };
-        let arena = frame.recycle();
-        if let Some(slot) = self.bridges.get_mut(&id) {
-            slot.spare_arena = Some(arena);
-        }
+        let Some(frame) = slot.staged_frame.take() else {
+            return false;
+        };
+        slot.spare_arena = Some(frame.recycle());
         true
     }
-
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     pub fn attach_host(

@@ -378,27 +378,27 @@ class HimarkBridgeView: UIView {
         _ origin: CGPoint, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
     ) {
         let raw = engine.raw
-        let layout = himark_bridge_layout(
+        guard himark_bridge_layout(
             raw, bridgeId, Float(bounds.width * scale), Float(bounds.height * scale))
-        guard layout.raw != 0 else { return }
+        else { return }
         let ox = Float(origin.x * scale)
         let oy = Float(origin.y * scale)
-        let frame = himark_layout_realize(
-            raw, layout, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
-        guard frame.raw != 0 else { return }
+        guard himark_layout_realize(
+            raw, bridgeId, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
+        else { return }
         if let canvas = surface.begin(pixelWidth: w, pixelHeight: h) {
             let changed = himark_frame_paint(
-                raw, frame, canvas, ox, oy,
+                raw, bridgeId, canvas, ox, oy,
                 Float(bounds.width * scale), Float(bounds.height * scale))
             surface.end()
             if OverlayHostView.traceOverlay {
                 NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) changed \(changed)")
             }
             if changed { needsRedraw = true }
-            himark_frame_release(raw, frame)
+            himark_frame_release(raw, bridgeId)
         } else {
             // Starved — nothing painted, retry owed.
-            himark_frame_release(raw, frame)
+            himark_frame_release(raw, bridgeId)
             needsRedraw = true
         }
     }
@@ -412,30 +412,30 @@ class HimarkBridgeView: UIView {
         _ visible: CGRect, scale: CGFloat, pixelWidth w: Int32, pixelHeight h: Int32
     ) -> Bool {
         let raw = engine.raw
-        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return false }
+        guard himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        else { return false }
         var cw: Float = 0
         var ch: Float = 0
-        _ = himark_layout_size(raw, layout, &cw, &ch)
+        _ = himark_layout_size(raw, bridgeId, &cw, &ch)
 
         let offsetY = Float(max(visible.minY, 0) * scale)
-        let frame = himark_layout_realize(
-            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        guard frame.raw != 0 else { return false }
+        guard himark_layout_realize(
+            raw, bridgeId, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        else { return false }
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else {
-            himark_frame_release(raw, frame)
+            himark_frame_release(raw, bridgeId)
             return false
         }
         let changed = himark_frame_paint(
-            raw, frame, canvas, 0, offsetY,
+            raw, bridgeId, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
         surface.end()
         if changed {
             needsRedraw = true
         }
-        // Released on EVERY road: the changed road kept the handle —
-        // and the frame's whole arena with it — until unmount.
-        himark_frame_release(raw, frame)
+        // Released on EVERY road: an unreleased frame keeps its
+        // whole arena until unmount.
+        himark_frame_release(raw, bridgeId)
         // The measure lands AFTER the pass: applying it resizes the
         // scroller's content, which re-enters render synchronously —
         // an outstanding layout would die refused and the band would

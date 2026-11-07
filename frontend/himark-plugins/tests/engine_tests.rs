@@ -9550,12 +9550,12 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
             Measured::Open => gfx::Size::new(WIDTH, f32::INFINITY),
             Measured::Framed => gfx::Size::new(WIDTH, FRAME),
         };
-        let handle = engine
-            .stage_layout(bridge, ask)
-            .unwrap_or_else(|| panic!("{name}: the mounted stage refused to lay"));
+        assert!(
+            engine.stage_layout(bridge, ask),
+            "{name}: the mounted stage refused to lay"
+        );
         let size = engine
-            
-            .stage_layout_size(handle)
+            .stage_layout_size(bridge)
             .unwrap_or_else(|| panic!("{name}: the laid stage has no size"));
         assert!(
             size.width.is_finite() && size.height.is_finite(),
@@ -9568,7 +9568,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
                 "{name}: a framed sheet fills its frame, answered {size:?}"
             );
         }
-        engine.stage_layout_release(handle);
+        engine.stage_layout_release(bridge);
         measured.push((name, size.height));
     }
     eprintln!("[mounted-sizing] {measured:?}");

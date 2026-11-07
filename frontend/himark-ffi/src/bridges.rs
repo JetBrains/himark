@@ -57,18 +57,6 @@ pub struct HimarkEvent {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct HimarkLayout {
-    pub raw: u64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct HimarkFrame {
-    pub raw: u64,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
 pub struct HimarkCatalog {
     pub raw: u64,
 }
@@ -547,18 +535,16 @@ pub unsafe extern "C" fn himark_bridge_layout(
     bridge: HimarkBridge,
     width: f32,
     height: f32,
-) -> HimarkLayout {
+) -> bool {
     let Some(engine) = engine.as_mut() else {
-        return HimarkLayout { raw: 0 };
+        return false;
     };
     let id = ViewBridgeId::from_raw(bridge.raw);
-    match engine.stage_layout(id, Size::new(width, height)) {
-        None => {
-            refuse("bridge", bridge.raw);
-            HimarkLayout { raw: 0 }
-        }
-        Some(stage) => HimarkLayout { raw: stage.raw() },
+    if !engine.stage_layout(id, Size::new(width, height)) {
+        refuse("bridge", bridge.raw);
+        return false;
     }
+    true
 }
 
 /// The measure read on the sized stage — the native scroller's
@@ -566,15 +552,15 @@ pub unsafe extern "C" fn himark_bridge_layout(
 #[no_mangle]
 pub unsafe extern "C" fn himark_layout_size(
     engine: *mut HimarkEngine,
-    layout: HimarkLayout,
+    bridge: HimarkBridge,
     out_width: *mut f32,
     out_height: *mut f32,
 ) -> bool {
     let Some(engine) = engine.as_ref() else {
         return false;
     };
-    let Some(size) = engine.stage_layout_size(himark::bridge::StageId::from_raw(layout.raw)) else {
-        refuse("layout (size)", layout.raw);
+    let Some(size) = engine.stage_layout_size(ViewBridgeId::from_raw(bridge.raw)) else {
+        refuse("layout (size)", bridge.raw);
         return false;
     };
     if !out_width.is_null() {
@@ -592,34 +578,32 @@ pub unsafe extern "C" fn himark_layout_size(
 #[no_mangle]
 pub unsafe extern "C" fn himark_layout_realize(
     engine: *mut HimarkEngine,
-    layout: HimarkLayout,
+    bridge: HimarkBridge,
     x: f32,
     y: f32,
     width: f32,
     height: f32,
-) -> HimarkFrame {
+) -> bool {
     let Some(engine) = engine.as_mut() else {
-        return HimarkFrame { raw: 0 };
+        return false;
     };
-    match engine.stage_realize(
-        himark::bridge::StageId::from_raw(layout.raw),
+    if !engine.stage_realize(
+        ViewBridgeId::from_raw(bridge.raw),
         Rect::from_xywh(x, y, width, height),
     ) {
-        None => {
-            refuse("layout (realize)", layout.raw);
-            HimarkFrame { raw: 0 }
-        }
-        Some(stage) => HimarkFrame { raw: stage.raw() },
+        refuse("layout (realize)", bridge.raw);
+        return false;
     }
+    true
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout: HimarkLayout) {
+pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, bridge: HimarkBridge) {
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if !engine.stage_layout_release(himark::bridge::StageId::from_raw(layout.raw)) {
-        refuse("layout (release)", layout.raw);
+    if !engine.stage_layout_release(ViewBridgeId::from_raw(bridge.raw)) {
+        refuse("layout (release)", bridge.raw);
     }
 }
 
@@ -629,7 +613,7 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, layout
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_event(
     engine: *mut HimarkEngine,
-    frame: HimarkFrame,
+    bridge: HimarkBridge,
     event: HimarkEvent,
     x: f32,
     y: f32,
@@ -648,8 +632,8 @@ pub unsafe extern "C" fn himark_frame_event(
     };
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.stage_frame(himark::bridge::StageId::from_raw(frame.raw)) else {
-            refuse("frame", frame.raw);
+        let Some(stage) = engine.stage_frame(ViewBridgeId::from_raw(bridge.raw)) else {
+            refuse("frame", bridge.raw);
             return false;
         };
         let event = match &owned {
@@ -701,15 +685,14 @@ pub unsafe extern "C" fn himark_frame_event(
     if let Some(reveal) = handled.reveal {
         // The stage road has no scroller — park the ask for
         // the host to drain (`himark_take_reveal`) into its own.
-        if let Some(id) = engine.stage_frame_origin(himark::bridge::StageId::from_raw(frame.raw)) {
-            if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
-                eprintln!(
-                    "[reveal] parked (stage EVENT) bridge {} {reveal:?}",
-                    id.raw()
-                );
-            }
-            engine.park_reveal(id, reveal);
+        let id = ViewBridgeId::from_raw(bridge.raw);
+        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+            eprintln!(
+                "[reveal] parked (stage EVENT) bridge {} {reveal:?}",
+                id.raw()
+            );
         }
+        engine.park_reveal(id, reveal);
     }
     if !handled.commands.is_empty() {
         engine.perform_batch(handled.commands);
@@ -726,7 +709,7 @@ pub unsafe extern "C" fn himark_frame_event(
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_offer_scroll(
     engine: *mut HimarkEngine,
-    frame: HimarkFrame,
+    bridge: HimarkBridge,
     x: f32,
     y: f32,
     delta_x: f32,
@@ -741,7 +724,7 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
         return false;
     };
     engine.offer_stage_scroll(
-        himark::bridge::StageId::from_raw(frame.raw),
+        ViewBridgeId::from_raw(bridge.raw),
         x,
         y,
         delta_x,
@@ -803,7 +786,7 @@ pub unsafe extern "C" fn himark_take_reveal(
 #[no_mangle]
 pub unsafe extern "C" fn himark_frame_paint(
     engine: *mut HimarkEngine,
-    frame: HimarkFrame,
+    bridge: HimarkBridge,
     canvas: *mut c_void,
     x: f32,
     y: f32,
@@ -819,8 +802,8 @@ pub unsafe extern "C" fn himark_frame_paint(
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.stage_frame(himark::bridge::StageId::from_raw(frame.raw)) else {
-            refuse("frame", frame.raw);
+        let Some(stage) = engine.stage_frame(ViewBridgeId::from_raw(bridge.raw)) else {
+            refuse("frame", bridge.raw);
             return false;
         };
         // TRANSPARENT floor: the stage road's content composites
@@ -860,15 +843,14 @@ pub unsafe extern "C" fn himark_frame_paint(
         // event road's — the stage road has no scroller, and
         // dropping it here left the scroll waiting for the
         // NEXT event to re-surface it.
-        if let Some(id) = engine.stage_frame_origin(himark::bridge::StageId::from_raw(frame.raw)) {
-            if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
-                eprintln!(
-                    "[reveal] parked (stage PAINT) bridge {} {reveal:?}",
-                    id.raw()
-                );
-            }
-            engine.park_reveal(id, reveal);
+        let id = ViewBridgeId::from_raw(bridge.raw);
+        if std::env::var_os("HIMARK_TRACE_REVEAL").is_some() {
+            eprintln!(
+                "[reveal] parked (stage PAINT) bridge {} {reveal:?}",
+                id.raw()
+            );
         }
+        engine.park_reveal(id, reveal);
         if handled.commands.is_empty() {
             return true;
         }
@@ -886,11 +868,11 @@ pub unsafe extern "C" fn himark_frame_paint(
 /// very frame the host still holds — the host releases
 /// unconditionally and the engine takes it if it still stands.
 #[no_mangle]
-pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, frame: HimarkFrame) {
+pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, bridge: HimarkBridge) {
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    let _ = engine.stage_frame_release(himark::bridge::StageId::from_raw(frame.raw));
+    let _ = engine.stage_frame_release(ViewBridgeId::from_raw(bridge.raw));
 }
 
 // ─── the session surface: query + control (docs/ui/himark-ffi.md) ───

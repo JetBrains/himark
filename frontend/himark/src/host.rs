@@ -416,7 +416,7 @@ impl Himark {
     #[allow(clippy::too_many_arguments)]
     pub fn offer_stage_scroll(
         &mut self,
-        frame: crate::bridge::StageId,
+        id: crate::bridge::ViewBridgeId,
         x: f32,
         y: f32,
         delta_x: f32,
@@ -424,13 +424,13 @@ impl Himark {
         phase: ScrollPhase,
         viewport: gfx::Rect,
     ) -> bool {
-        // Frames are one-pass handles — the gesture stream keys by
-        // the frame's ORIGIN bridge, which outlives them all.
-        let Some(origin) = self.stage_frame_origin(frame) else {
+        if self.stage_frame(id).is_none() {
             return false;
-        };
+        }
+        // Frames are one-pass; the gesture stream keys by the view,
+        // which outlives them all.
         let now = std::time::Instant::now();
-        let state = self.scroll_states.entry(origin).or_default();
+        let state = self.scroll_states.entry(id).or_default();
         let paused = state
             .last
             .is_none_or(|last| now.duration_since(last).as_millis() > 250);
@@ -440,7 +440,7 @@ impl Himark {
         }
         let gesture = std::rc::Rc::clone(&state.gesture);
         let result = {
-            let Some(stage) = self.stage_frame(frame) else {
+            let Some(stage) = self.stage_frame(id) else {
                 return false;
             };
             stage.handle(
@@ -468,9 +468,7 @@ impl Himark {
             );
         }
         if let Some(reveal) = handled.reveal {
-            if let Some(id) = self.stage_frame_origin(frame) {
-                self.park_reveal(id, reveal);
-            }
+            self.park_reveal(id, reveal);
         }
         if !handled.commands.is_empty() {
             self.perform_batch(handled.commands);

@@ -294,12 +294,12 @@ final class ComposerHost: UIView {
         guard bridge.raw != 0, bounds.width > 0 else { return }
         let raw = host.engine.raw
         let scale = UIScreen.main.scale
-        let layout = himark_bridge_layout(raw, bridge, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return }
+        guard himark_bridge_layout(raw, bridge, Float(bounds.width * scale), .infinity)
+        else { return }
         var cw: Float = 0
         var ch: Float = 0
-        _ = himark_layout_size(raw, layout, &cw, &ch)
-        himark_layout_release(raw, layout)
+        _ = himark_layout_size(raw, bridge, &cw, &ch)
+        himark_layout_release(raw, bridge)
         if ProcessInfo.processInfo.environment["HIMARK_TRACE_COMPOSER"] != nil {
             NSLog("[composer] measured %.1fx%.1f px at width %.0f pt (frame %.0f pt)", cw, ch, bounds.width, bounds.height)
         }

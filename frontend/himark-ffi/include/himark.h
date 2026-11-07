@@ -199,14 +199,6 @@ typedef struct {
     uint32_t shape;
 } HimarkPointed;
 
-typedef struct {
-    uint64_t raw;
-} HimarkLayout;
-
-typedef struct {
-    uint64_t raw;
-} HimarkFrame;
-
 /**
  * A snapshot of the REGISTERED COMMANDS — the host-visible verbs
  * (palette material). Same handle discipline as the catalog.
@@ -376,17 +368,14 @@ bool himark_bridge_draw(HimarkEngine *engine,
  * display → layout: the SIZED stage, as a handle. 0 refuses an
  * unmounted bridge.
  */
-HimarkLayout himark_bridge_layout(HimarkEngine *engine,
-                                  HimarkBridge bridge,
-                                  float width,
-                                  float height);
+bool himark_bridge_layout(HimarkEngine *engine, HimarkBridge bridge, float width, float height);
 
 /**
  * The measure read on the sized stage — the native scroller's
  * content-size question.
  */
 bool himark_layout_size(HimarkEngine *engine,
-                        HimarkLayout layout,
+                        HimarkBridge bridge,
                         float *out_width,
                         float *out_height);
 
@@ -395,14 +384,14 @@ bool himark_layout_size(HimarkEngine *engine,
  * the layout handle — a new viewport is a new realize off a
  * fresh layout, exactly as inside the engine.
  */
-HimarkFrame himark_layout_realize(HimarkEngine *engine,
-                                  HimarkLayout layout,
-                                  float x,
-                                  float y,
-                                  float width,
-                                  float height);
+bool himark_layout_realize(HimarkEngine *engine,
+                           HimarkBridge bridge,
+                           float x,
+                           float y,
+                           float width,
+                           float height);
 
-void himark_layout_release(HimarkEngine *engine, HimarkLayout layout);
+void himark_layout_release(HimarkEngine *engine, HimarkBridge bridge);
 
 /**
  * One event into a realized stage frame, viewport in content
@@ -410,7 +399,7 @@ void himark_layout_release(HimarkEngine *engine, HimarkLayout layout);
  * with run through the engine's one batch loop.
  */
 bool himark_frame_event(HimarkEngine *engine,
-                        HimarkFrame frame,
+                        HimarkBridge bridge,
                         HimarkEvent event,
                         float x,
                         float y,
@@ -426,7 +415,7 @@ bool himark_frame_event(HimarkEngine *engine,
  * content coordinates; `phase` as in `himark_event_scroll`.
  */
 bool himark_frame_offer_scroll(HimarkEngine *engine,
-                               HimarkFrame frame,
+                               HimarkBridge bridge,
                                float x,
                                float y,
                                float delta_x,
@@ -457,7 +446,7 @@ bool himark_take_reveal(HimarkEngine *engine,
  * Paint the realized slice into the host's canvas.
  */
 bool himark_frame_paint(HimarkEngine *engine,
-                        HimarkFrame frame,
+                        HimarkBridge bridge,
                         void *canvas,
                         float x,
                         float y,
@@ -472,7 +461,7 @@ bool himark_frame_paint(HimarkEngine *engine,
  * very frame the host still holds — the host releases
  * unconditionally and the engine takes it if it still stands.
  */
-void himark_frame_release(HimarkEngine *engine, HimarkFrame frame);
+void himark_frame_release(HimarkEngine *engine, HimarkBridge bridge);
 
 /**
  * The catalog epoch — moved means re-copy. Read after every

@@ -33,71 +33,6 @@ use imba::{
 
 use crate::perform::AppCommand;
 
-/// A dense handle table: ids start at 1 and never recycle, so a
-/// released handle stays dead forever instead of aliasing a
-/// newborn (docs/ui/himark-ffi.md, handles law).
-pub(crate) struct Handles<T> {
-    next: u64,
-    rows: std::collections::HashMap<u64, T>,
-}
-
-impl<T> Default for Handles<T> {
-    fn default() -> Self {
-        Self {
-            next: 1,
-            rows: std::collections::HashMap::new(),
-        }
-    }
-}
-
-impl<T> Handles<T> {
-    pub(crate) fn mint(&mut self, row: T) -> u64 {
-        let handle = self.next;
-        self.next += 1;
-        self.rows.insert(handle, row);
-        handle
-    }
-
-    pub(crate) fn get(&self, handle: u64) -> Option<&T> {
-        self.rows.get(&handle)
-    }
-
-    pub(crate) fn take(&mut self, handle: u64) -> Option<T> {
-        self.rows.remove(&handle)
-    }
-
-    /// Pull every row matching the predicate out — the quiesce
-    /// road's sweep.
-    pub(crate) fn drain_matching(&mut self, keep_out: impl Fn(&T) -> bool) -> Vec<T> {
-        let handles: Vec<u64> = self
-            .rows
-            .iter()
-            .filter(|(_, row)| keep_out(row))
-            .map(|(handle, _)| *handle)
-            .collect();
-        handles
-            .into_iter()
-            .filter_map(|handle| self.rows.remove(&handle))
-            .collect()
-    }
-}
-
-/// One minted stage row — a measured layout or a realized frame.
-/// Handles never recycle, so a released stage stays dead instead
-/// of aliasing a newborn.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct StageId(u64);
-
-impl StageId {
-    pub fn from_raw(raw: u64) -> StageId {
-        StageId(raw)
-    }
-
-    pub fn raw(self) -> u64 {
-        self.0
-    }
-}
-
 /// The engine-side identity of one mounted view.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ViewBridgeId(u64);
@@ -405,30 +340,17 @@ impl Frame {
     }
 }
 
-/// Quiesce one mounted view: drop its standing frame and every
-/// stage a host still holds for it, recycling what can be
-/// recycled — after this, the view has exactly one owner and may
-/// be mutated (`ToView`). A host's stale stage handles become
-/// checked refusals, which is the contract: the view moved on.
-/// One host-held stage, by handle: the SIZED layout (display ran,
-/// nothing realized) or the realized frame — one table, one handle
-/// space (docs/ui/imba-ffi.md).
-pub(crate) enum Stage {
-    Layout(BridgeLayout),
-    Frame(Frame),
-}
-
-pub(crate) fn quiesce(
-    id: ViewBridgeId,
-    slot: &mut crate::himark::Mounted,
-    stages: &mut Handles<(ViewBridgeId, Stage)>,
-) {
+/// Quiesce one mounted view: drop its standing frame and anything
+/// staged for the C shell, recycling what can be recycled — after
+/// this, the view has exactly one owner and may be mutated
+/// (`ToView`). The shell never holds staged objects across a call,
+/// so there is nothing of its to invalidate.
+pub(crate) fn quiesce(slot: &mut crate::himark::Mounted) {
     if let Some(frame) = slot.frame.take() {
         slot.spare_arena = Some(frame.recycle());
     }
-    for (_, stage) in stages.drain_matching(|(owner, _)| *owner == id) {
-        if let Stage::Frame(frame) = stage {
-            slot.spare_arena = Some(frame.recycle());
-        }
+    slot.staged_layout = None;
+    if let Some(frame) = slot.staged_frame.take() {
+        slot.spare_arena = Some(frame.recycle());
     }
 }

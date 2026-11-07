@@ -243,8 +243,6 @@ pub(crate) struct Performer<'app> {
     pub(crate) workshop: &'app Arc<::editor::env::Workshop>,
     pub(crate) bridges:
         &'app mut std::collections::HashMap<crate::bridge::ViewBridgeId, crate::himark::Mounted>,
-    pub(crate) stages:
-        &'app mut crate::bridge::Handles<(crate::bridge::ViewBridgeId, crate::bridge::Stage)>,
 }
 
 impl Performer<'_> {
@@ -305,7 +303,7 @@ impl Performer<'_> {
                     .collect();
                 for child in children {
                     if let Some(slot) = self.bridges.get_mut(&child) {
-                        crate::bridge::quiesce(child, slot, self.stages);
+                        crate::bridge::quiesce(slot);
                         if let Some(mount) = slot
                             .bridge
                             .view_mut()
@@ -322,7 +320,7 @@ impl Performer<'_> {
                     );
                     return;
                 };
-                crate::bridge::quiesce(id, slot, self.stages);
+                crate::bridge::quiesce(slot);
                 let Some(view) = slot.bridge.view_mut() else {
                     eprintln!(
                         "[app] a view is still borrowed by foreign stages — dropped: {command} (bridge {}, refs {})",

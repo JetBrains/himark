@@ -167,11 +167,11 @@ final class OverlayHostView: UIView {
             // release, read. The rect is the layer's size; its
             // origin is the content view's offset into the shared
             // coordinate space.
-            let layout = himark_bridge_layout(
+            if himark_bridge_layout(
                 owner.engine.raw, entry.bridge,
                 Float(owner.bounds.width * s), Float(owner.bounds.height * s))
-            if layout.raw != 0 {
-                himark_layout_release(owner.engine.raw, layout)
+            {
+                himark_layout_release(owner.engine.raw, entry.bridge)
             }
             var cx: Float = 0
             var cy: Float = 0

@@ -297,14 +297,13 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let scale = metalLayer.contentsScale
         let visible = visibleRect.intersection(bounds)
         guard visible.width > 0.5, visible.height > 0.5 else { return }
-        let layout = himark_bridge_layout(
-            raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return }
-        let frame = himark_layout_realize(
-            raw, layout, 0, Float(max(visible.minY, 0) * scale),
+        guard himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        else { return }
+        if himark_layout_realize(
+            raw, bridgeId, 0, Float(max(visible.minY, 0) * scale),
             Float(visible.width * scale), Float(visible.height * scale))
-        if frame.raw != 0 {
-            himark_frame_release(raw, frame)
+        {
+            himark_frame_release(raw, bridgeId)
         }
     }
 
@@ -469,17 +468,17 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         metalLayer.drawableSize = size
-        let layout = himark_bridge_layout(
+        if himark_bridge_layout(
             raw, bridgeId, Float(bounds.width * scale), Float(bounds.height * scale))
-        if layout.raw != 0 {
+        {
             let ox = Float(origin.x * scale)
             let oy = Float(origin.y * scale)
-            let frame = himark_layout_realize(
-                raw, layout, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
-            if frame.raw != 0 {
+            if himark_layout_realize(
+                raw, bridgeId, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
+            {
                 if let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: resized) {
                     let changed = himark_frame_paint(
-                        raw, frame, canvas, ox, oy,
+                        raw, bridgeId, canvas, ox, oy,
                         Float(bounds.width * scale), Float(bounds.height * scale))
                     surface.end()
                     if OverlayHostView.traceOverlay {
@@ -488,10 +487,10 @@ class HimarkBridgeView: NSView, NSTextInputClient {
                     if changed {
                         request()
                     }
-                    himark_frame_release(raw, frame)
+                    himark_frame_release(raw, bridgeId)
                 } else {
                     // Starved — nothing painted, retry owed.
-                    himark_frame_release(raw, frame)
+                    himark_frame_release(raw, bridgeId)
                     request()
                 }
             }
@@ -510,35 +509,35 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         coupled: Bool = true
     ) -> Bool {
         let raw = engine.raw
-        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return false }
+        guard himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        else { return false }
         var cw: Float = 0
         var ch: Float = 0
-        _ = himark_layout_size(raw, layout, &cw, &ch)
+        _ = himark_layout_size(raw, bridgeId, &cw, &ch)
 
         if Self.traceBand {
             NSLog("band bridge \(bridgeId.raw) bounds \(bounds.size) visible \(visible) content \(ch / Float(scale))")
         }
         let offsetY = Float(max(visible.minY, 0) * scale)
-        let frame = himark_layout_realize(
-            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        guard frame.raw != 0 else { return false }
+        guard himark_layout_realize(
+            raw, bridgeId, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        else { return false }
         guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
         else {
-            himark_frame_release(raw, frame)
+            himark_frame_release(raw, bridgeId)
             return false
         }
         let changed = himark_frame_paint(
-            raw, frame, canvas, 0, offsetY,
+            raw, bridgeId, canvas, 0, offsetY,
             Float(visible.width * scale), Float(visible.height * scale))
         surface.end()
         if Self.traceSync { notePresent(layerY: visible.minY) }
         if changed {
             request()
         }
-        // Released on EVERY road: the changed road kept the handle —
-        // and the frame's whole arena with it — until unmount.
-        himark_frame_release(raw, frame)
+        // Released on EVERY road: an unreleased frame keeps its
+        // whole arena until unmount.
+        himark_frame_release(raw, bridgeId)
         // The measure lands AFTER the pass: applying it resizes the
         // document view, which re-enters render synchronously — an
         // outstanding layout would die refused and the band would
@@ -929,21 +928,21 @@ class HimarkBridgeView: NSView, NSTextInputClient {
         let scale = metalLayer.contentsScale
         let visible = visibleRect.intersection(bounds)
         guard !visible.isEmpty else { return false }
-        let layout = himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
-        guard layout.raw != 0 else { return false }
+        guard himark_bridge_layout(raw, bridgeId, Float(bounds.width * scale), .infinity)
+        else { return false }
         let offsetY = Float(max(visible.minY, 0) * scale)
-        let frame = himark_layout_realize(
-            raw, layout, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        guard frame.raw != 0 else { return false }
+        guard himark_layout_realize(
+            raw, bridgeId, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
+        else { return false }
         let s = Float(scale)
         let consumed = himark_frame_offer_scroll(
-            raw, frame,
+            raw, bridgeId,
             Float(point.x) * s, Float(point.y) * s,
             dx * s,
             dy * s,
             phase,
             0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
-        himark_frame_release(raw, frame)
+        himark_frame_release(raw, bridgeId)
         if consumed { request() }
         return consumed
     }
