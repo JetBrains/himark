@@ -29,8 +29,8 @@ fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
         Box::new(peeker::PeekerPlugin),
         Box::new(workbench_shell::diff_pane::DiffPanePlugin),
         Box::new(demo::DemoPlugin),
-        Box::new(workbench_shell::higent::AgentsPlugin),
         Box::new(hiscript::plugin::ScriptPlugin),
+        Box::new(workbench_shell::higent::AgentsPlugin),
     ]);
     plugins.extend(workbench_shell::plugins());
     plugins

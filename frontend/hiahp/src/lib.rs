@@ -47,6 +47,7 @@ impl himark::plugin::Plugin for AhpPlugin {
     fn install(&self, app: &mut himark::app::Himark, cx: &himark::plugin::PluginContext) {
         register_all(app);
         install_build_handler(app, Arc::clone(&cx.languages), Arc::clone(&cx.diff_policy));
+        install_session_half(app);
         app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
         app.setup(|store| {
             ::editor::change_sink::InstalledChangeSink::install(
@@ -547,13 +548,18 @@ pub fn install_session_binding(app: &mut himark::himark::Himark) {
     });
 }
 
-/// The SESSION HALF's seams, seated once per boot: the batch lanes
-/// and sweep, the mount binder and file route, the place arms, the
-/// unmount bookkeeping, the residents — everything the engine used
-/// to hardwire. The workbench boot calls this today (every real
-/// boot passes it); it moves into the plugin when install gains a
-/// once-guard.
+/// The SESSION HALF's seams, seated ONCE (idempotent): the batch
+/// lanes and sweep, the mount binder and file route, the place
+/// arms, the unmount bookkeeping, the residents — everything the
+/// engine used to hardwire. `AhpPlugin::install` seats it; the
+/// workbench boot keeps a belt call for plugin-less test boots.
 pub fn install_session_half(app: &mut himark::app::Himark) {
+    #[derive(Clone)]
+    struct SessionHalfSeated;
+    if app.store().get::<SessionHalfSeated>().is_some() {
+        return;
+    }
+    app.setup(|store| store.put(SessionHalfSeated));
     app.register_batch_lane(session_lanes());
     app.register_sweep_hook(session_sweep());
     app.register_unmount_hook(Arc::new(crate::sessions::forget_session));

@@ -79,6 +79,13 @@ pub struct ShellPlugin;
 
 impl himark::plugin::Plugin for ShellPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
+        // IDEMPOTENT whole: the boot installs this plugin (every
+        // workbench boot needs the furniture, tests included) and
+        // the shipping lists pass the ws set again — the second
+        // install is a no-op.
+        if !crate::app::install_shell_furniture(app) {
+            return;
+        }
         app.seat_shell(|next| Arc::new(ChromeFrontend { next }));
     }
 }

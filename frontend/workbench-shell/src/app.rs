@@ -177,13 +177,36 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
             next: WorkbenchFrontend,
         }),
     );
-    // The SESSION HALF — lanes, sweep, binder, file route, place
-    // arms, residents: registered reactions, not engine wiring (a
-    // bare library boot runs none). Seated here because every real
-    // boot passes this fn; moves into the AHP plugin's install
-    // when it gains a once-guard.
+    // The boot only COMPOSES: every registration lives in a
+    // plugin's install. The workbench set goes in here (production
+    // lists no longer pass it to `install_all`); the AHP session
+    // half is the once-guarded belt for boots that install no
+    // plugins (the shell tests) — `AhpPlugin` seats it too.
+    let cx = himark::plugin::PluginContext {
+        languages: std::sync::Arc::new(::editor::reparse::SyntaxLanguages::new()),
+        diff_policy: std::sync::Arc::new(myersdiff::Myers),
+    };
+    himark::plugin::Plugin::install(&crate::ShellPlugin, &mut app, &cx);
     hiahp::install_session_half(&mut app);
+    app
+}
+
+/// The workbench FURNITURE — everything the shell app registers at
+/// boot, as the plugin install it always was in spirit: the shell
+/// entity and builtins, the windowed navigators, the registry
+/// closures, the windows catalog, the origin-bindings resolver,
+/// the composer button, the batch tail, the open road. Idempotent:
+/// a second install is a no-op.
+/// Answers false when the furniture already stood (the caller's
+/// own follow-ups skip too).
+pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
+    #[derive(Clone)]
+    struct ShellSeated;
+    if app.store().get::<ShellSeated>().is_some() {
+        return false;
+    }
     app.setup(|store| {
+        store.put(ShellSeated);
         store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
         crate::builtins::register_builtins(store);
         ::workbench::navigation::Navigators::register_windowed(
@@ -217,7 +240,6 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
             ));
             registry.drawer_button = Some(crate::toc::toolbar_button());
         });
-        crate::higent::chat_roads::install_shell_roads(store);
         store.put(::workbench::window::Windows::default());
         // The workbench answers origin bindings for the origins
         // that ride a window's raw id: the REAL walk, not just
@@ -245,15 +267,18 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
     // `open_async`): its handler rides the shared workshop.
     let workshop = std::sync::Arc::clone(app.workshop());
     app.register_handler::<OpenEffect>(OpenHandler(workshop));
-    // The drawer's fold-back after a host lands: only a WINDOW
-    // gesture re-opens the side slot; a mounted origin no-ops.
+    // The drawer ROADS are standing shell wiring (the chat roads,
+    // and the fold-back after a host lands — only a WINDOW gesture
+    // re-opens the side slot; a mounted origin no-ops). The agents
+    // BUTTON is `AgentsPlugin`'s, installed by shipping lists.
     app.setup(|store| {
+        crate::higent::chat_roads::install_shell_roads(store);
         hiahp::higent::flows::AgentFlows::install_refold(
             store,
             std::sync::Arc::new(crate::higent::drawer::DrawerRefold),
-        )
+        );
     });
-    app
+    true
 }
 
 /// The workbench COMPOSITION over the engine: windows as
