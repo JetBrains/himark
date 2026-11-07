@@ -161,28 +161,18 @@ pub trait BridgeView: Send + Sync {
         eprintln!("[bridge] a view command reached a view with no perform — dropped: {command}");
     }
 
-    /// A POPOVER view's content slice, in the parent's coordinates
-    /// — the rect the shell's popover shows. `None` everywhere but
-    /// `OverlayMount`.
-    fn overlay_content_rect(&self) -> Option<gfx::Rect> {
+    /// ENGINE PLUMBING, not vocabulary: the engine reaches the
+    /// mounts it minted itself (the popover mount) concretely
+    /// through these. A library view leaves them `None`.
+    #[doc(hidden)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Hand a POPOVER view the strong pin on its parent it lays
-    /// against, and the parent's standing band — the engine
-    /// refills both before each layout. A no-op everywhere but
-    /// `OverlayMount`.
-    fn overlay_pin_parent(
-        &self,
-        _parent: std::sync::Arc<dyn BridgeView>,
-        _band: Option<gfx::Rect>,
-    ) {
+    #[doc(hidden)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
     }
-
-    /// Drop a POPOVER view's strong pin on its parent — called
-    /// (after its frames quiesce) before the parent is taken
-    /// mutably. A no-op everywhere but `OverlayMount`.
-    fn overlay_release_parent(&mut self) {}
 
     /// The LIVE viewport the view's host composition tracks, when
     /// the view owns one — the workbench window answers its

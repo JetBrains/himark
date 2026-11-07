@@ -619,7 +619,14 @@ impl Himark {
         let pin = self.overlay_parent_pin(id);
         let slot = self.bridges.get_mut(&id)?;
         if let Some((parent, band)) = pin {
-            slot.bridge.view().overlay_pin_parent(parent, band);
+            if let Some(mount) = slot
+                .bridge
+                .view()
+                .as_any()
+                .and_then(|any| any.downcast_ref::<crate::mounts::OverlayMount>())
+            {
+                mount.pin_parent(parent, band);
+            }
         }
         let size = size.or_else(|| (slot.size.width > 0.0).then_some(slot.size))?;
         // STANDING tolerates a stale SIZE, never a stale REVISION. A
@@ -1086,7 +1093,13 @@ impl Himark {
     /// — stashed by the last layout. The shell sizes the popover
     /// to it and paints exactly this viewport.
     pub fn overlay_content(&self, id: ViewBridgeId) -> Option<gfx::Rect> {
-        self.bridges.get(&id)?.bridge.view().overlay_content_rect()
+        self.bridges
+            .get(&id)?
+            .bridge
+            .view()
+            .as_any()?
+            .downcast_ref::<crate::mounts::OverlayMount>()?
+            .content_rect()
     }
 
     /// The parent view a popover slot pins before laying out, with
@@ -1379,7 +1392,14 @@ impl Himark {
             return 0;
         };
         if let Some((parent, band)) = pin {
-            slot.bridge.view().overlay_pin_parent(parent, band);
+            if let Some(mount) = slot
+                .bridge
+                .view()
+                .as_any()
+                .and_then(|any| any.downcast_ref::<crate::mounts::OverlayMount>())
+            {
+                mount.pin_parent(parent, band);
+            }
         }
         let arena = slot.spare_arena.take().unwrap_or_default();
         // An INFINITE height is the native scroller asking to

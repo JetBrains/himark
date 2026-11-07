@@ -304,8 +304,13 @@ impl Performer<'_> {
                 for child in children {
                     if let Some(slot) = self.bridges.get_mut(&child) {
                         crate::bridge::quiesce(child, slot, self.stage_layouts, self.stage_frames);
-                        if let Some(view) = slot.bridge.view_mut() {
-                            view.overlay_release_parent();
+                        if let Some(mount) = slot
+                            .bridge
+                            .view_mut()
+                            .and_then(|view| view.as_any_mut())
+                            .and_then(|any| any.downcast_mut::<crate::mounts::OverlayMount>())
+                        {
+                            mount.release_parent();
                         }
                     }
                 }

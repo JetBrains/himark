@@ -282,6 +282,26 @@ impl OverlayMount {
     fn parent_ref(&self) -> Option<&Arc<dyn BridgeView>> {
         self.pinned.get()
     }
+
+    /// Refill the pin before a layout road runs the popover — the
+    /// engine calls this concretely (`as_any`), never through the
+    /// `BridgeView` vocabulary.
+    pub(crate) fn pin_parent(&self, parent: Arc<dyn BridgeView>, band: Option<gfx::Rect>) {
+        let _ = self.pinned.set(parent);
+        *self.band.lock().unwrap() = band;
+    }
+
+    /// Drop the strong pin (after the popover's frames quiesced),
+    /// so the parent can be taken mutably. `&mut` on purpose: the
+    /// exclusivity is the proof no standing borrow rides the pin.
+    pub(crate) fn release_parent(&mut self) {
+        self.pinned.take();
+    }
+
+    /// The overlay's content slice, as the last layout stashed it.
+    pub(crate) fn content_rect(&self) -> Option<gfx::Rect> {
+        *self.content.lock().unwrap()
+    }
 }
 
 impl BridgeView for OverlayMount {
@@ -303,13 +323,12 @@ impl BridgeView for OverlayMount {
         self.parent_ref()?.focus(store, ui)
     }
 
-    fn overlay_pin_parent(&self, parent: Arc<dyn BridgeView>, band: Option<gfx::Rect>) {
-        let _ = self.pinned.set(parent);
-        *self.band.lock().unwrap() = band;
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
     }
 
-    fn overlay_release_parent(&mut self) {
-        self.pinned.take();
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 
     fn layout<'a>(
@@ -383,9 +402,6 @@ impl BridgeView for OverlayMount {
         imba::ThunkBox::new(arena, full)
     }
 
-    fn overlay_content_rect(&self) -> Option<gfx::Rect> {
-        *self.content.lock().unwrap()
-    }
 }
 
 /// The dyn twin of `ModalMount`, for externally-answered places.
