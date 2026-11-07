@@ -438,6 +438,7 @@ pub enum TreeCommand {
     },
 
     Changed(Vec<documents::watch::Subscription>),
+    WatchesDied(Vec<documents::watch::Subscription>),
 
     /// The roots drifted from the session's folders — folders join
     /// and leave the session while the dock stands open.
@@ -482,6 +483,7 @@ impl std::fmt::Display for TreeCommand {
             TreeCommand::Listed { .. } => out.write_str("tree listed"),
             TreeCommand::Watched { .. } => out.write_str("tree watched"),
             TreeCommand::Changed(_) => out.write_str("tree changed"),
+            TreeCommand::WatchesDied(_) => out.write_str("tree watches died"),
             TreeCommand::SyncRoots { .. } => out.write_str("tree sync roots"),
             TreeCommand::CommitEdit => out.write_str("tree commit edit"),
             TreeCommand::CancelEdit => out.write_str("tree cancel edit"),
@@ -597,12 +599,12 @@ impl SessionTreeView {
             request: None,
             edit: None,
         };
-        panel.drive_reveal(fx);
+        panel.drive_reveal(store, fx);
         panel.persist(store);
         panel
     }
 
-    fn drive_reveal(&mut self, fx: &mut imba::effect::Effects<'_, TreeCommand>) {
+    fn drive_reveal(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, TreeCommand>) {
         let Some(target) = self.pending_reveal.clone() else {
             return;
         };
@@ -624,7 +626,7 @@ impl SessionTreeView {
                 self.tree.select_and_reveal(&location);
             }
             Descend::Fetch(parent) => {
-                let _ = fx.push(self.list_effect(parent));
+                self.open_folder(parent, store, fx);
             }
             Descend::Wait => {}
             Descend::Dead => self.pending_reveal = None,
@@ -634,6 +636,7 @@ impl SessionTreeView {
     pub fn row_count(&self) -> usize {
         self.tree.len()
     }
+
 
     /// TEST SUPPORT: where row `index` stands under the tab's top and
     /// how tall it is — the tree's top gap, then the rows above it as
@@ -674,6 +677,34 @@ impl SessionTreeView {
         SessionTree::persist(store, self.trees, &self.tree);
     }
 
+    /// Open a folder's listing road: SUBSCRIBE first when the
+    /// watch road stands (the listing lands covered), list
+    /// directly when it does not (no watch road, or this folder
+    /// already watches). The caller marked `pending`.
+    fn open_folder(
+        &self,
+        parent: ResourceLocation,
+        store: &Store,
+        fx: &mut imba::effect::Effects<'_, TreeCommand>,
+    ) {
+        if documents::watch::Watching::installed(store)
+            && !self.tree.watches.contains_key(&parent)
+        {
+            let landing = parent.clone();
+            let _ = fx.push(
+                imba::effect::AnyEffect::new(documents::watch::SubscribeEffect {
+                    location: parent,
+                })
+                .map(move |subscription| TreeCommand::Watched {
+                    parent: landing,
+                    subscription,
+                }),
+            );
+        } else {
+            let _ = fx.push(self.list_effect(parent));
+        }
+    }
+
     fn list_effect(&self, parent: ResourceLocation) -> imba::effect::AnyEffect<TreeCommand> {
         let landing = parent.clone();
         imba::effect::AnyEffect::new(documents::ListDirectoryEffect { location: parent }).map(
@@ -708,7 +739,7 @@ impl SessionTreeView {
         match self.tree.activate_key(location, store, ui) {
             Activation::Done => {}
             Activation::List(parent) => {
-                let _ = fx.push(self.list_effect(parent));
+                self.open_folder(parent, store, fx);
             }
             Activation::Collapsed(folder) => self.drop_watches_under(&folder, fx),
             Activation::Open(location) => {
@@ -1268,31 +1299,45 @@ impl View for SessionTreeView {
                     self.drop_watches_under(gone, fx);
                 }
 
-                self.drive_reveal(fx);
+                self.drive_reveal(store, fx);
 
-                if listed
-                    && documents::watch::Watching::installed(store)
-                    && !self.tree.watches.contains_key(&parent)
-                {
-                    let landing = parent.clone();
-                    let _ = fx.push(
-                        imba::effect::AnyEffect::new(documents::watch::SubscribeEffect {
-                            location: parent,
-                        })
-                        .map(move |subscription| TreeCommand::Watched {
-                            parent: landing,
-                            subscription,
-                        }),
-                    );
-                }
+                let _ = listed;
             }
             TreeCommand::Watched {
                 parent,
                 subscription,
             } => {
+                // WATCH FIRST, THEN LIST: the host's watcher
+                // baselines the folder at creation, so a listing
+                // taken before the watch stands can go stale in the
+                // gap. The watch landing is what lists — the first
+                // listing is born covered. A host that refuses the
+                // watch (`None`) still lists, unwatched.
                 if let Some(subscription) = subscription {
                     self.tree.watches.insert_mut(parent.clone(), subscription);
-                    self.tree.by_subscription.insert_mut(subscription, parent);
+                    self.tree
+                        .by_subscription
+                        .insert_mut(subscription, parent.clone());
+                }
+                let _ = fx.push(self.list_effect(parent));
+            }
+            TreeCommand::WatchesDied(subscriptions) => {
+                // The watches ended with their connection. Forget
+                // them and RE-OPEN each folder still shown — the
+                // same watch-first road a fresh expand takes, so
+                // the refresh re-subscribes and re-lists in one
+                // motion.
+                for subscription in subscriptions {
+                    let Some(parent) = self.tree.by_subscription.get(&subscription).cloned()
+                    else {
+                        continue;
+                    };
+                    self.tree.watches.remove_mut(&parent);
+                    self.tree.by_subscription.remove_mut(&subscription);
+                    if self.tree.is_visible(&parent) && !self.tree.pending.contains(&parent) {
+                        self.tree.pending.insert_mut(parent.clone());
+                        self.open_folder(parent, store, fx);
+                    }
                 }
             }
             TreeCommand::Changed(subscriptions) => {
@@ -1362,7 +1407,7 @@ impl View for SessionTreeView {
                     .is_some_and(|held| held == &location);
                 if !standing {
                     self.pending_reveal = Some(location);
-                    self.drive_reveal(fx);
+                    self.drive_reveal(store, fx);
                 }
             }
         };
@@ -1485,21 +1530,32 @@ impl View for SessionTreeView {
             let watched = self.tree.by_subscription.clone();
             let inner = overlay.event(move |_arena, event, _size| match event {
                 Event::UserEvent(payload) => {
-                    match payload.downcast_ref::<documents::watch::FilesChanged>() {
-                        Some(changed) => {
-                            let ours: Vec<documents::watch::Subscription> = changed
-                                .0
-                                .iter()
-                                .copied()
-                                .filter(|subscription| watched.contains_key(subscription))
-                                .collect();
-                            match ours.is_empty() {
-                                true => EventResult::Ignored,
-                                false => EventResult::command(TreeCommand::Changed(ours)),
-                            }
-                        }
-                        _ => EventResult::Ignored,
+                    if let Some(changed) = payload.downcast_ref::<documents::watch::FilesChanged>()
+                    {
+                        let ours: Vec<documents::watch::Subscription> = changed
+                            .0
+                            .iter()
+                            .copied()
+                            .filter(|subscription| watched.contains_key(subscription))
+                            .collect();
+                        return match ours.is_empty() {
+                            true => EventResult::Ignored,
+                            false => EventResult::command(TreeCommand::Changed(ours)),
+                        };
                     }
+                    if let Some(died) = payload.downcast_ref::<documents::watch::WatchesDied>() {
+                        let ours: Vec<documents::watch::Subscription> = died
+                            .0
+                            .iter()
+                            .copied()
+                            .filter(|subscription| watched.contains_key(subscription))
+                            .collect();
+                        return match ours.is_empty() {
+                            true => EventResult::Ignored,
+                            false => EventResult::command(TreeCommand::WatchesDied(ours)),
+                        };
+                    }
+                    EventResult::Ignored
                 }
                 _ => EventResult::Ignored,
             });

@@ -60,7 +60,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
     ))
     .expect("the directory dispatches");
 
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let (server, _) = ahp_wire::client::parse(&ahp_wire::client::authority(
         {
             let (server, _) = ahp_wire::client::parse("ahp:1:x").expect("id");

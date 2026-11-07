@@ -3955,7 +3955,7 @@ fn the_wire_serves_a_session_filesystem() {
     let handle = block_on_seat(wire.resource_watch(
         session.clone(),
         ahp_wire::client::ResourceUri::new(format!("file://{root}")),
-        std::sync::Arc::new(move || {
+        std::sync::Arc::new(move |_event| {
             counter.fetch_add(1, Ordering::Relaxed);
         }),
     ))
@@ -10198,4 +10198,85 @@ fn a_bare_engine_mounts_a_scrolled_editor() {
         inked > 200,
         "the bare-mounted editor paints its text: {inked} inked pixels"
     );
+}
+
+/// THE WATCH ROAD, end to end: an expanded folder's listing must
+/// follow the filesystem — a file created on disk appears in the
+/// files tab without any user gesture (the host's poll watcher →
+/// the wire channel → the client directory's deliver → the
+/// FileChanged batch → the files-changed fan → the tree's relist).
+#[test]
+fn the_tree_follows_filesystem_changes() {
+    let (_host, mut engine, window, fs) = hosted_engine();
+
+    fs.write(&["project", "README.md"], "# readme");
+    fs.write(&["project", "src", "lib.rs"], "fn main() {}");
+
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_into_session(&mut engine);
+
+    assert!(engine.perform_command(window, "files.tree"));
+    settle(&mut engine);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let _ = engine.draw(
+        window,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        900.0,
+        700.0,
+        1.0,
+    );
+    settle(&mut engine);
+    let _ = workbench_shell::test_driver::animate(
+        &mut engine.app,
+        imba::anim::AnimationClock::from_millis(0.0),
+    );
+    let _ = workbench_shell::test_driver::animate(
+        &mut engine.app,
+        imba::anim::AnimationClock::from_millis(1_000.0),
+    );
+    settle(&mut engine);
+
+    let rows = |engine: &HimarkEngine| -> usize {
+        workbench::window::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            .and_then(|entity| {
+                entity
+                    .dock_panel()?
+                    .as_any()
+                    .downcast_ref::<filetree::SessionTreeView>()
+                    .map(filetree::SessionTreeView::row_count)
+            })
+            .unwrap_or(0)
+    };
+
+    let row_y = tree_row_y(&engine, 0);
+    assert!(
+        workbench_shell::test_driver::click(&mut engine.app, dock_x(40.0), row_y, 900.0, 700.0),
+        "the root row took the click"
+    );
+    settle_until(&mut engine, "the root listing landed", |engine| {
+        rows(engine) == 3
+    });
+
+    assert!(
+        documents::watch::Watching::installed(engine.app.store()),
+        "watching is installed at boot"
+    );
+    // The filesystem moves on its own — no gesture follows. The
+    // write lands IMMEDIATELY after the listing, inside the blind
+    // window before the folder's watch stands: the watch-landing
+    // relist must cover it (the host's watcher baselines the folder
+    // at creation and never reports what changed before).
+    fs.write(&["project", "GREETING.md"], "hello");
+    settle_until(&mut engine, "the created file appears in the tree", |engine| {
+        rows(engine) == 4
+    });
+
+    // And a deletion folds back out.
+    std::fs::remove_file(fs.root.join("project").join("GREETING.md")).expect("remove");
+    settle_until(&mut engine, "the deleted file leaves the tree", |engine| {
+        rows(engine) == 3
+    });
 }

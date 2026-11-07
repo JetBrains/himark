@@ -214,14 +214,21 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
         let (client, session) = client_of(&self.directory, &effect.location)?;
 
         let slot = Arc::new(std::sync::OnceLock::new());
-        let deliver = self.directory.deliver();
         let events = {
             let slot = Arc::clone(&slot);
-            Arc::new(move || {
-                if let Some(id) = slot.get() {
-                    deliver(*id);
+            let directory = Arc::clone(&self.directory);
+            Arc::new(move |event| {
+                let Some(id) = slot.get().copied() else {
+                    return;
+                };
+                match event {
+                    ahp_wire::client::WatchEvent::Changed => (directory.deliver())(id),
+                    // The watch died with its connection — forget
+                    // it and tell the owner, who re-opens (list +
+                    // watch) through the same road it came in by.
+                    ahp_wire::client::WatchEvent::Died => directory.watch_died(id),
                 }
-            }) as Arc<dyn Fn() + Send + Sync>
+            }) as Arc<dyn Fn(ahp_wire::client::WatchEvent) + Send + Sync>
         };
         let resources = std::sync::Arc::clone(&client.resources);
         let handle = resources

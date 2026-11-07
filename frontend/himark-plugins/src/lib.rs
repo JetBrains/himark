@@ -224,14 +224,24 @@ pub fn wire_doors(
         Arc::clone(&resource_uris),
     );
 
-    let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
-        let post = Arc::clone(&post);
-        Arc::new(move |subscription| {
-            post(AppCommand::FileChanged(documents::watch::Subscription(
-                subscription,
-            )));
-        })
-    }));
+    let clients = Arc::new(ahp_wire::fs::ClientDirectory::new(
+        {
+            let post = Arc::clone(&post);
+            Arc::new(move |subscription| {
+                post(AppCommand::FileChanged(documents::watch::Subscription(
+                    subscription,
+                )));
+            })
+        },
+        {
+            let post = Arc::clone(&post);
+            Arc::new(move |subscription| {
+                post(AppCommand::WatchDied(documents::watch::Subscription(
+                    subscription,
+                )));
+            })
+        },
+    ));
 
     app.setup(|store| store.put(hiahp::engine::WireClients(Arc::clone(&clients))));
 

@@ -182,7 +182,7 @@ impl ahp_wire::client::ResourceClient for Parked {
         &self,
         _session: SessionUri,
         _uri: ahp_wire::client::ResourceUri,
-        _events: Arc<dyn Fn() + Send + Sync>,
+        _events: Arc<dyn Fn(ahp_wire::client::WatchEvent) + Send + Sync>,
     ) -> ClientFuture<Option<ahp_wire::client::WatchHandle>> {
         Box::pin(std::future::ready(None))
     }

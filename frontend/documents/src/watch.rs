@@ -58,6 +58,11 @@ impl Effect for UnsubscribeEffect {
 
 pub struct FilesChanged(pub std::sync::Arc<std::collections::HashSet<Subscription>>);
 
+/// The DIED twin: these watches ended with their connection. An
+/// owner that still shows the folder re-opens it — list and watch
+/// again, the same road a fresh expand takes.
+pub struct WatchesDied(pub std::sync::Arc<std::collections::HashSet<Subscription>>);
+
 pub struct FileChanged {
     pub subscription: Subscription,
 }

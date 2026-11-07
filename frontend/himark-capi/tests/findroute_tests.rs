@@ -75,7 +75,7 @@ fn session_folders_ask_their_seat() {
     std::fs::write(files.join("README.md"), "conflation is delivery\n").expect("write");
     std::fs::write(dir.path().join("loose.md"), "conflation outside\n").expect("write");
 
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let encoded = ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -101,7 +101,7 @@ fn local_folders_ask_the_designated_backend() {
     let files = dir.path().join("notes").canonicalize().expect("canonical");
     std::fs::write(files.join("a.md"), "conflation is delivery\n").expect("write");
 
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let (server, _) = ahp::parse(&ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -129,7 +129,7 @@ fn symbol_locations_route_answers_and_resolves_honestly() {
     std::fs::create_dir_all(dir.path().join("notes")).expect("mkdir");
     let files = dir.path().join("notes").canonicalize().expect("canonical");
 
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let (server, _) = ahp::parse(&ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -183,7 +183,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
     std::fs::write(files.join("a.md"), "plain\nconflation is delivery\n").expect("write");
     std::fs::write(files.join("b.md"), "conflation twice, conflation\n").expect("write");
 
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let (server, _) = ahp::parse(&ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -266,7 +266,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
 
 #[test]
 fn undesignated_and_foreign_folders_answer_nothing() {
-    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {}), Arc::new(|_| {})));
     let local = ResourceLocation::new(
         ResourceType::directory(),
         editor::location::Authority::new("local"),

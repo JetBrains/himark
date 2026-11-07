@@ -19,16 +19,40 @@ pub struct ClientDirectory {
     next: AtomicU64,
 
     deliver: Arc<dyn Fn(u64) + Send + Sync>,
+
+    /// A watch DIED with its connection — the entry is already
+    /// dropped (nothing tracks a watch past its life); the owner
+    /// re-opens if it still cares.
+    deliver_died: Arc<dyn Fn(u64) + Send + Sync>,
 }
 
 impl ClientDirectory {
-    pub fn new(deliver: Arc<dyn Fn(u64) + Send + Sync>) -> Self {
+    pub fn new(
+        deliver: Arc<dyn Fn(u64) + Send + Sync>,
+        deliver_died: Arc<dyn Fn(u64) + Send + Sync>,
+    ) -> Self {
         Self {
             clients: Mutex::new(HashMap::new()),
             local: Mutex::new(None),
             watches: Mutex::new(HashMap::new()),
             next: AtomicU64::new(SUBSCRIPTION_BASE),
             deliver,
+            deliver_died,
+        }
+    }
+
+    /// The wire said a watch's stream ended: forget the entry and
+    /// tell the owner. An id already released (the owner
+    /// unsubscribed first) reports nothing.
+    pub fn watch_died(&self, id: u64) {
+        let known = self
+            .watches
+            .lock()
+            .expect("watch table")
+            .remove(&id)
+            .is_some();
+        if known {
+            (self.deliver_died)(id);
         }
     }
 

@@ -234,7 +234,7 @@ pub trait ResourceClient: Send + Sync + 'static {
         &self,
         session: SessionUri,
         uri: ResourceUri,
-        events: std::sync::Arc<dyn Fn() + Send + Sync>,
+        events: std::sync::Arc<dyn Fn(WatchEvent) + Send + Sync>,
     ) -> ClientFuture<Option<WatchHandle>>;
 
     fn resource_unwatch(&self, handle: WatchHandle) -> ClientFuture<()>;
@@ -658,6 +658,16 @@ pub struct WatchHandle {
     pub channel: ChannelUri,
 }
 
+/// What a resource watch reports. `Died` is the watch's OWN end —
+/// the connection under it died, taking the host's watcher along.
+/// The owner re-opens (list + watch again) if it still cares; the
+/// wire tracks nothing past this.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WatchEvent {
+    Changed,
+    Died,
+}
+
 /// An AHP session URI (`ahp-session:/<uuid>`, `hihost-fs:/local`).
 /// (A REAL newtype — the wire's `Uri` is a bare `type Uri = String`
 /// alias, no protection at all.)
@@ -917,7 +927,7 @@ pub fn inert() -> Client {
             resource_read(session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<String>>;
             resource_write(session: SessionUri, uri: ResourceUri, text: String) -> ClientFuture<bool>;
             resource_list(session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<Vec<(String, bool)>>>;
-            resource_watch(session: SessionUri, uri: ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> ClientFuture<Option<WatchHandle>>;
+            resource_watch(session: SessionUri, uri: ResourceUri, events: Arc<dyn Fn(WatchEvent) + Send + Sync>) -> ClientFuture<Option<WatchHandle>>;
             resource_unwatch(handle: WatchHandle) -> ClientFuture<()>;
             search(session: SessionUri, ask: SearchAsk) -> ClientFuture<Option<SearchResult>>;
         }

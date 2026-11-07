@@ -703,7 +703,27 @@ fn expanded_folders_watch_and_events_relist() {
     );
     let ui = ::editor::test_document::test_ui();
 
-    let mut batch = imba::effect::Batch::new();
+    // WATCH FIRST, THEN LIST: the watch landing is what lists, so
+    // the first listing is born covered — no blind window between
+    // a listing and its watch.
+    let mut landing = imba::effect::Batch::new();
+    imba::View::perform(
+        &mut view,
+        &mut store,
+        &ui,
+        TreeCommand::Watched {
+            parent: directory(&["project"]),
+            subscription: Some(documents::watch::Subscription(9)),
+        },
+        &mut landing.effects(),
+    );
+    assert!(
+        landing
+            .surviving_launches()
+            .iter()
+            .any(|effect| effect.get::<documents::ListDirectoryEffect>().is_some()),
+        "the watch landing lists the folder"
+    );
     imba::View::perform(
         &mut view,
         &mut store,
@@ -714,24 +734,6 @@ fn expanded_folders_watch_and_events_relist() {
                 directory(&["project", "src"]),
                 document(&["project", "README.md"]),
             ]),
-        },
-        &mut batch.effects(),
-    );
-    let launches = batch.surviving_launches();
-    assert!(
-        launches
-            .iter()
-            .any(|effect| effect.get::<documents::watch::SubscribeEffect>().is_some()),
-        "an expanded folder asks for its watch"
-    );
-
-    imba::View::perform(
-        &mut view,
-        &mut store,
-        &ui,
-        TreeCommand::Watched {
-            parent: directory(&["project"]),
-            subscription: Some(documents::watch::Subscription(9)),
         },
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1054,4 +1056,60 @@ fn a_standing_row_menu_owns_the_keys_and_escape_dismisses_it() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(!menu_open(&view, 0), "Escape dismissed the row's menu");
+}
+
+
+#[test]
+fn a_dead_watch_reopens_the_folder() {
+    let mut store = Store::new();
+    documents::watch::Watching::install(&mut store);
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let ui = ::editor::test_document::test_ui();
+
+    imba::View::perform(
+        &mut view,
+        &mut store,
+        &ui,
+        TreeCommand::Watched {
+            parent: directory(&["project"]),
+            subscription: Some(documents::watch::Subscription(9)),
+        },
+        &mut imba::effect::Batch::new().effects(),
+    );
+    imba::View::perform(
+        &mut view,
+        &mut store,
+        &ui,
+        TreeCommand::Listed {
+            parent: directory(&["project"]),
+            entries: Some(vec![document(&["project", "README.md"])]),
+        },
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    // The connection died under the watch: the tree forgets it and
+    // RE-OPENS the folder through the same watch-first road — a
+    // reconnect's refresh is an ordinary expand.
+    let mut reopened = imba::effect::Batch::new();
+    imba::View::perform(
+        &mut view,
+        &mut store,
+        &ui,
+        TreeCommand::WatchesDied(vec![documents::watch::Subscription(9)]),
+        &mut reopened.effects(),
+    );
+    assert!(view.tree.watches.is_empty(), "the dead watch is forgotten");
+    assert!(
+        reopened
+            .surviving_launches()
+            .iter()
+            .any(|effect| effect.get::<documents::watch::SubscribeEffect>().is_some()),
+        "the refresh re-subscribes first"
+    );
 }

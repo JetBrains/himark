@@ -60,6 +60,10 @@ pub enum AppCommand {
 
     FileChanged(documents::watch::Subscription),
 
+    /// A watch DIED with its connection (`WatchesDied` fans at the
+    /// batch tail) — owners re-open what they still show.
+    WatchDied(documents::watch::Subscription),
+
     RegisterLanguages(::editor::reparse::SyntaxLanguages),
 
     RegisterDiffPolicy(std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
@@ -223,6 +227,7 @@ pub fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         AppCommand::Bound(_, command) => format!("bound: {}", command.id()).into(),
         AppCommand::Register(..) => std::borrow::Cow::Borrowed("register"),
         AppCommand::FileChanged(..) => std::borrow::Cow::Borrowed("file changed"),
+        AppCommand::WatchDied(..) => std::borrow::Cow::Borrowed("watch died"),
         AppCommand::RegisterLanguages(_) => std::borrow::Cow::Borrowed("register languages"),
         AppCommand::RegisterDiffPolicy(_) => std::borrow::Cow::Borrowed("register diff policy"),
         AppCommand::RegisterEnrichers(_) => std::borrow::Cow::Borrowed("register enrichers"),
@@ -234,6 +239,7 @@ pub fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
 /// perform never holds the application itself.
 pub(crate) struct Performer<'app> {
     pub(crate) pending_file_events: &'app mut Vec<documents::watch::Subscription>,
+    pub(crate) pending_watch_deaths: &'app mut Vec<documents::watch::Subscription>,
     pub(crate) workshop: &'app Arc<::editor::env::Workshop>,
     pub(crate) bridges:
         &'app mut std::collections::HashMap<crate::bridge::ViewBridgeId, crate::himark::Mounted>,
@@ -342,6 +348,9 @@ impl Performer<'_> {
                     }
                     fx.follow_up(AppCommand::AtOrigin(id, request));
                 }
+            }
+            AppCommand::WatchDied(subscription) => {
+                self.pending_watch_deaths.push(subscription);
             }
             AppCommand::FileChanged(subscription) => {
                 // The border road: the event names only a

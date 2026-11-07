@@ -2231,7 +2231,7 @@ impl ResourceClient for WireHost {
         &self,
         session: crate::client::SessionUri,
         uri: crate::client::ResourceUri,
-        events: Arc<dyn Fn() + Send + Sync>,
+        events: Arc<dyn Fn(crate::client::WatchEvent) + Send + Sync>,
     ) -> ClientFuture<Option<crate::client::WatchHandle>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -2260,10 +2260,14 @@ impl ResourceClient for WireHost {
                 while let Some(event) = sub.recv().await {
                     if let ahp::SubscriptionEvent::Action(envelope) = event {
                         if matches!(envelope.action, StateAction::ResourceWatchChanged(_)) {
-                            events();
+                            events(crate::client::WatchEvent::Changed);
                         }
                     }
                 }
+                // The stream ends with the connection (or the
+                // unwatch): the watch is OVER — say so once, and
+                // track nothing past it.
+                events(crate::client::WatchEvent::Died);
             });
             Ok(Some(crate::client::WatchHandle {
                 channel: crate::client::ChannelUri::new(channel),

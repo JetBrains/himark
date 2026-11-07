@@ -165,6 +165,7 @@ pub struct Himark {
     next_mount: u64,
 
     pub(crate) pending_file_events: Vec<documents::watch::Subscription>,
+    pub(crate) pending_watch_deaths: Vec<documents::watch::Subscription>,
 
     /// The last REVEAL a mounted road answered and nobody scrolled:
     /// the engine owns no viewport for a mounted view, so the ask
@@ -311,6 +312,7 @@ impl Himark {
             revision: 0,
             frames_built: 0,
             pending_file_events: Vec::new(),
+            pending_watch_deaths: Vec::new(),
             pending_reveals: Vec::new(),
             palette: None,
             bridge_place_arms: Vec::new(),
@@ -422,6 +424,7 @@ impl Himark {
         let mut store = std::mem::take(&mut self.store);
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
+            pending_watch_deaths: &mut self.pending_watch_deaths,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
             stages: &mut self.stages,
@@ -478,6 +481,7 @@ impl Himark {
         // is over, so perform them here — late but never lost.
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
+            pending_watch_deaths: &mut self.pending_watch_deaths,
             workshop: &self.workshop,
             bridges: &mut self.bridges,
             stages: &mut self.stages,
@@ -1250,6 +1254,17 @@ impl Himark {
         if !changed.is_empty() {
             let event = documents::watch::FilesChanged(std::sync::Arc::new(changed));
             self.fan_file_events(&event);
+        }
+        let died: std::collections::HashSet<documents::watch::Subscription> =
+            std::mem::take(&mut self.pending_watch_deaths)
+                .into_iter()
+                .collect();
+        if !died.is_empty() {
+            let event = documents::watch::WatchesDied(std::sync::Arc::new(died));
+            for id in self.bridge_ids() {
+                let result = self.handle_mounted(id, &imba::event::Event::UserEvent(&event), None);
+                self.run_fanned(id, result);
+            }
         }
         self.settle_rounds();
         // Taken out while they run: a batch a tail performs finds
