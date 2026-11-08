@@ -25,8 +25,6 @@ mod app {
     use gfx::Painter as _;
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use workbench_shell::app::WorkbenchShell as _;
-    use workbench_shell::app_ext::AppExt as _;
     use skia_safe::{
         gpu::{
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
@@ -34,6 +32,8 @@ mod app {
         },
         ColorType,
     };
+    use workbench_shell::app::WorkbenchShell as _;
+    use workbench_shell::app_ext::AppExt as _;
 
     const CANVAS: *const c_char = b"#canvas\0".as_ptr().cast();
     const EVENT_TARGET_WINDOW: *const c_char = 2 as *const c_char;
@@ -719,7 +719,10 @@ mod app {
             app.drain_worker();
             drain_host_commands(app, time / 1000.0);
 
-            let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+            let size = app
+                .state
+                .window_viewport(app.window)
+                .unwrap_or(gfx::Size::new(1.0, 1.0));
             let ticked = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::AnimationClock {
@@ -917,7 +920,10 @@ mod app {
                 DOM_DELTA_PAGE => app.logical_height as f64,
                 _ => 1.0,
             } * scale;
-            let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+            let size = app
+                .state
+                .window_viewport(app.window)
+                .unwrap_or(gfx::Size::new(1.0, 1.0));
             let changed = app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::Scroll {
@@ -1053,7 +1059,10 @@ mod app {
                 (pan.start, delta)
             };
             if delta != (0.0, 0.0) {
-                let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+                let size = app
+                    .state
+                    .window_viewport(app.window)
+                    .unwrap_or(gfx::Size::new(1.0, 1.0));
                 let changed = app.state.dispatch_timed(
                     app.window,
                     imba::event::Event::Scroll {
@@ -1155,7 +1164,10 @@ mod app {
         let delta = (fling.velocity.0 * dt, fling.velocity.1 * dt);
         let decay = 0.998f32.powf(dt * 1000.0);
         fling.velocity = (fling.velocity.0 * decay, fling.velocity.1 * decay);
-        let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+        let size = app
+            .state
+            .window_viewport(app.window)
+            .unwrap_or(gfx::Size::new(1.0, 1.0));
         let moved = app.state.dispatch_timed(
             app.window,
             imba::event::Event::Scroll {
@@ -1250,7 +1262,9 @@ mod app {
         let changed = app.state.dispatch_timed(
             app.window,
             imba::event::Event::MouseUp { point },
-            app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0)),
+            app.state
+                .window_viewport(app.window)
+                .unwrap_or(gfx::Size::new(1.0, 1.0)),
             timestamp,
         );
         app.needs_redraw |= changed;
@@ -1315,7 +1329,9 @@ mod app {
                         command: event.meta_key,
                     },
                 },
-                app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0)),
+                app.state
+                    .window_viewport(app.window)
+                    .unwrap_or(gfx::Size::new(1.0, 1.0)),
                 timestamp,
             );
             app.needs_redraw |= changed;
@@ -1351,7 +1367,9 @@ mod app {
             let changed = app.state.dispatch(
                 app.window,
                 imba::event::Event::window_left(),
-                app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0)),
+                app.state
+                    .window_viewport(app.window)
+                    .unwrap_or(gfx::Size::new(1.0, 1.0)),
             );
             app.needs_redraw |= changed;
             changed
@@ -1462,7 +1480,10 @@ mod app {
         let Some(text) = seated_text(text).filter(|text| !text.is_empty()) else {
             return;
         };
-        let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+        let size = app
+            .state
+            .window_viewport(app.window)
+            .unwrap_or(gfx::Size::new(1.0, 1.0));
         let typed = app
             .state
             .dispatch(app.window, imba::event::Event::TextInput { text }, size);
@@ -1507,7 +1528,10 @@ mod app {
         );
         app.needs_redraw |= committed.is_some();
         if committed.is_none() && !text.is_empty() {
-            let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+            let size = app
+                .state
+                .window_viewport(app.window)
+                .unwrap_or(gfx::Size::new(1.0, 1.0));
             let typed =
                 app.state
                     .dispatch(app.window, imba::event::Event::TextInput { text }, size);
@@ -1530,7 +1554,10 @@ mod app {
                 alt: event.alt_key,
                 command: event.meta_key,
             };
-            let size = app.state.window_viewport(app.window).unwrap_or(gfx::Size::new(1.0, 1.0));
+            let size = app
+                .state
+                .window_viewport(app.window)
+                .unwrap_or(gfx::Size::new(1.0, 1.0));
 
             // A composing input method owns the keyboard — the same
             // gate every shell keeps. 229 is the processing keyCode

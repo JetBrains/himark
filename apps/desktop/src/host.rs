@@ -93,7 +93,11 @@ unsafe extern "C" fn set_clipboard(
     }
 }
 
-unsafe extern "C" fn open_url(ctx: *mut std::ffi::c_void, ptr: *const std::ffi::c_char, len: usize) {
+unsafe extern "C" fn open_url(
+    ctx: *mut std::ffi::c_void,
+    ptr: *const std::ffi::c_char,
+    len: usize,
+) {
     if let Some(url) = text(ptr, len) {
         send(ctx, HostAsk::OpenUrl(url));
     }
@@ -153,7 +157,9 @@ pub async fn serve(asks: HostAsks, engine: Engine, cx: &mut AsyncApp) {
                 engine.with_app(|app| app.host_picked(request, locations));
             }
             HostAsk::PickSave(request, suggested) => {
-                let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+                let home = std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_default();
                 let prompt = cx.update(|cx| cx.prompt_for_new_path(&home, Some(&suggested)));
                 let path = match prompt {
                     Ok(prompt) => match prompt.await {
