@@ -30,3 +30,8 @@ rustflags = [
 [env]
 CLANGCC = "/usr/bin/clang"
 CLANGCXX = "/usr/bin/clang++"
+# libtailscale-sys pins a go-json-experiment/json whose jsonv2 build
+# aliases encoding/json/v2 symbols (SkipFunc, DiscardUnknownMembers)
+# that Go 1.27 dropped. Its own implementation builds on every Go;
+# an explicit GOEXPERIMENT in the environment still wins.
+GOEXPERIMENT = "nojsonv2"
