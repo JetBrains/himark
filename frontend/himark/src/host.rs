@@ -242,11 +242,20 @@ pub enum ScrollPhase {
 }
 
 impl ScrollPhase {
-    fn boundary(self, paused: bool) -> bool {
+    /// Whether this event starts a new scroll gesture. Explicit
+    /// finger-down phases always do; the end and momentum phases never
+    /// do — they belong to the flick that spawned them. Phaseless
+    /// events and bare `Changed` streams (hosts that never report a
+    /// `Began`, like gpui on Wayland) fall back to the pause heuristic,
+    /// so a stale owner cannot wedge the routing forever.
+    pub fn boundary(self, paused: bool) -> bool {
         match self {
             ScrollPhase::MayBegin | ScrollPhase::Began => true,
-            ScrollPhase::None => paused,
-            _ => false,
+            ScrollPhase::Ended
+            | ScrollPhase::MomentumBegan
+            | ScrollPhase::MomentumChanged
+            | ScrollPhase::MomentumEnded => false,
+            ScrollPhase::None | ScrollPhase::Changed | ScrollPhase::Cancelled => paused,
         }
     }
 

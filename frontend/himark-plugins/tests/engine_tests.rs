@@ -10518,3 +10518,61 @@ fn the_tree_follows_filesystem_changes_across_a_host_restart() {
         rows(engine) == 3
     });
 }
+
+/// gpui on Wayland reports every touchpad event as a bare `Changed`
+/// (no `Began`, no `Ended`). The first pane scrolled must not own the
+/// routing forever: after a pause, the pane under the pointer scrolls.
+#[test]
+fn a_bare_changed_stream_releases_its_owner_after_a_pause() {
+    let mut engine = himark_plugins::with_fonts(AppFonts::embedded());
+    let a = WindowEngine::open_window(&mut engine);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut draw = |engine: &mut HimarkEngine| {
+        let _ = engine.draw(
+            a,
+            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            1100.0,
+            800.0,
+            1.0,
+        );
+    };
+    draw(&mut engine);
+    open_demo_wall(&mut engine, a);
+    for _ in 0..10 {
+        settle(&mut engine);
+        draw(&mut engine);
+    }
+    assert!(engine.perform_command_at(Some(a), "workbench.split-pane"));
+    for _ in 0..10 {
+        settle(&mut engine);
+        draw(&mut engine);
+    }
+    let changed = |engine: &mut HimarkEngine, x: f32, dy: f32| {
+        engine.scroll_phased_at_time(
+            a,
+            x,
+            400.0,
+            0.0,
+            dy,
+            himark_plugins::scroll_phase(HIMARK_SCROLL_PHASE_CHANGED),
+            0.0,
+        )
+    };
+    let (left, right) = (275.0, 825.0);
+
+    assert!(changed(&mut engine, left, 120.0));
+    assert!(engine.flush_scroll(a), "the stream claims the left pane");
+    // Mid-stream, the claim holds: the right pane refuses.
+    assert!(changed(&mut engine, right, 40.0));
+    assert!(
+        !engine.flush_scroll(a),
+        "an unbroken stream stays the left pane's"
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(changed(&mut engine, right, 40.0));
+    assert!(
+        engine.flush_scroll(a),
+        "after a pause the stream is a new gesture: the right pane scrolls"
+    );
+}

@@ -234,14 +234,7 @@ pub fn scroll_phase(phase: u32) -> himark::host::ScrollPhase {
 }
 
 pub fn scroll_gesture_boundary(phase: u32, paused: bool) -> bool {
-    match phase {
-        HIMARK_SCROLL_PHASE_MAY_BEGIN | HIMARK_SCROLL_PHASE_BEGAN => true,
-        HIMARK_SCROLL_PHASE_ENDED
-        | HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN
-        | HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED
-        | HIMARK_SCROLL_PHASE_MOMENTUM_ENDED => false,
-        _ => paused,
-    }
+    scroll_phase(phase).boundary(paused)
 }
 
 pub fn map_key(code: u32) -> Option<Key> {
