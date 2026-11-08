@@ -108,7 +108,8 @@ impl crate::commands::HimarkCommand for LiftedText {
 }
 
 fn lifted<E: Effect<Result = String>>(effect: E) -> AppEffect {
-    AnyEffect::new(effect).map(move |text| crate::perform::AppCommand::Register(Arc::new(LiftedText(text))))
+    AnyEffect::new(effect)
+        .map(move |text| crate::perform::AppCommand::Register(Arc::new(LiftedText(text))))
 }
 
 fn batch_of(effects: Vec<AppEffect>) -> AppEffects {

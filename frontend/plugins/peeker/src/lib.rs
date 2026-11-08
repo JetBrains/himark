@@ -1905,7 +1905,9 @@ pub struct PeekerPlugin;
 
 impl himark::plugin::Plugin for PeekerPlugin {
     fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
-                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(
+            std::sync::Arc::new(TogglePeeker),
+        )]);
         app.register_view_bridge_factory(std::sync::Arc::new(|app, place| {
             let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();
@@ -1917,7 +1919,10 @@ impl himark::plugin::Plugin for PeekerPlugin {
                 let folders = ahp_session::session::folders::session_folders(store, &key);
                 let view = fx.scope(
                     move |command: PeekerCommand| {
-                        himark::app::AppCommand::ToView(id, imba::dyn_view::DynCommand::new(command))
+                        himark::app::AppCommand::ToView(
+                            id,
+                            imba::dyn_view::DynCommand::new(command),
+                        )
                     },
                     |fx| {
                         Peeker::open(
@@ -1940,7 +1945,7 @@ impl himark::plugin::Plugin for PeekerPlugin {
                         .unfloored()
                     },
                 );
-                    Some(himark::mounts::dyn_modal_mount(id, Box::new(view)))
+                Some(himark::mounts::dyn_modal_mount(id, Box::new(view)))
             })
         }));
     }
@@ -2009,7 +2014,12 @@ pub(crate) fn previewed_widget(app: &Himark) -> Option<String> {
 
 #[cfg(any(test, feature = "test-support"))]
 fn peeker_of(app: &Himark) -> Option<&Peeker> {
-    { use workbench_shell::test_support::TestSupport as _; app.plugin_modal() }?.as_any().downcast_ref::<Peeker>()
+    {
+        use workbench_shell::test_support::TestSupport as _;
+        app.plugin_modal()
+    }?
+    .as_any()
+    .downcast_ref::<Peeker>()
 }
 
 #[cfg(test)]

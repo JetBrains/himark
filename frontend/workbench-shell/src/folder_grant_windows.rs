@@ -52,7 +52,8 @@ impl himark::commands::HimarkCommand for OpenFolderPicker {
                 })
             });
         if let Some(window) = window {
-            let pick = hiahp::higent::folder_grant::folder_pick(store, self.server, self.session.clone());
+            let pick =
+                hiahp::higent::folder_grant::folder_pick(store, self.server, self.session.clone());
             let modal: Box<dyn hikit::modal::ModalView> = fx.scope(
                 move |command| {
                     crate::shell::content(
@@ -232,8 +233,6 @@ impl imba::command::DynamicCommand for AddFolderFromChat {
     }
 }
 
-
-
 struct SessionFoldersPicked {
     server: HostId,
     session: SessionUri,
@@ -321,4 +320,3 @@ impl himark::commands::HimarkCommand for GrantAck {
         }
     }
 }
-

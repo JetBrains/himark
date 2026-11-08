@@ -234,19 +234,19 @@ impl<S: 'static> rune::Compositor<S> for BridgeCompositor {
         self.animating.set(animating);
 
         // The slot, by mark, in this frame's painter stream.
-        let slot = f
-            .rt
-            .instances
-            .iter()
-            .position(|i| {
-                i.params[1] == KIND_EFFECT
-                    && ((i.border[0] as u32 & 0xFFFF) | ((i.border[1] as u32 & 0xFFFF) << 16))
-                        == self.mark
-            });
+        let slot = f.rt.instances.iter().position(|i| {
+            i.params[1] == KIND_EFFECT
+                && ((i.border[0] as u32 & 0xFFFF) | ((i.border[1] as u32 & 0xFFFF) << 16))
+                    == self.mark
+        });
         if let Some(index) = slot {
             let instance = f.rt.instances[index];
             let rect = instance.rect;
-            let clip = if instance.clip == [0.0; 4] { NO_CLIP } else { instance.clip };
+            let clip = if instance.clip == [0.0; 4] {
+                NO_CLIP
+            } else {
+                instance.clip
+            };
             self.scale.set(instance.params[3].max(0.01));
 
             let recorded = {
@@ -288,8 +288,10 @@ impl<S: 'static> rune::Compositor<S> for BridgeCompositor {
             let count = recorded.len();
             f.rt.instances.splice(index + 1..index + 1, recorded);
             if f.rt.track_marks {
-                f.rt.marks
-                    .splice(index + 1..index + 1, std::iter::repeat(self.mark).take(count));
+                f.rt.marks.splice(
+                    index + 1..index + 1,
+                    std::iter::repeat(self.mark).take(count),
+                );
             }
         }
 

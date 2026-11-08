@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-
 use gfx::{Canvas, Point, Size};
 use himark_ffi::{map_key, map_mods, HimarkEngine, Pointed};
 use imba::event::{Event, MouseButton};
@@ -38,10 +37,23 @@ pub trait WindowEngine {
         _scale: f32,
     ) -> bool;
     fn key_down(&mut self, window: ViewBridgeId, key: u32, mods: u32) -> bool;
-    fn key_down_at(&mut self, window: ViewBridgeId, key: u32, mods: u32, event_started_at: f64) -> bool;
+    fn key_down_at(
+        &mut self,
+        window: ViewBridgeId,
+        key: u32,
+        mods: u32,
+        event_started_at: f64,
+    ) -> bool;
     fn text_input(&mut self, window: ViewBridgeId, text: &str) -> bool;
     fn text_input_at(&mut self, window: ViewBridgeId, text: &str, event_started_at: f64) -> bool;
-    fn mouse_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32, click_count: u32) -> bool;
+    fn mouse_down(
+        &mut self,
+        window: ViewBridgeId,
+        x: f32,
+        y: f32,
+        mods: u32,
+        click_count: u32,
+    ) -> bool;
     fn mouse_down_at(
         &mut self,
         window: ViewBridgeId,
@@ -95,8 +107,7 @@ impl WindowEngine for HimarkEngine {
     // from the live window state or every non-primary window hit-tests
     // against a 1x1 layout.
     fn window_size(&self, window: ViewBridgeId) -> Size {
-        self
-            .window_viewport(wid(window))
+        self.window_viewport(wid(window))
             .unwrap_or_else(|| Size::new(1.0, 1.0))
     }
     fn draw(
@@ -110,14 +121,18 @@ impl WindowEngine for HimarkEngine {
         // A shell that draws without ticking (tests, direct renders)
         // still applies the standing deltas before the frame.
         let flushed = self.flush_scroll(window);
-        self
-            .draw_window_sized(wid(window), canvas, Size::new(width, height))
-            || flushed
+        self.draw_window_sized(wid(window), canvas, Size::new(width, height)) || flushed
     }
     fn key_down(&mut self, window: ViewBridgeId, key: u32, mods: u32) -> bool {
         self.key_down_at(window, key, mods, 0.0)
     }
-    fn key_down_at(&mut self, window: ViewBridgeId, key: u32, mods: u32, event_started_at: f64) -> bool {
+    fn key_down_at(
+        &mut self,
+        window: ViewBridgeId,
+        key: u32,
+        mods: u32,
+        event_started_at: f64,
+    ) -> bool {
         self.flush_scroll(window);
         match map_key(key) {
             Some(key) => {
@@ -151,7 +166,14 @@ impl WindowEngine for HimarkEngine {
             event_started_at,
         )
     }
-    fn mouse_down(&mut self, window: ViewBridgeId, x: f32, y: f32, mods: u32, click_count: u32) -> bool {
+    fn mouse_down(
+        &mut self,
+        window: ViewBridgeId,
+        x: f32,
+        y: f32,
+        mods: u32,
+        click_count: u32,
+    ) -> bool {
         self.mouse_down_at(window, x, y, mods, click_count, 0.0)
     }
     fn mouse_down_at(
@@ -265,18 +287,12 @@ impl WindowEngine for HimarkEngine {
         let document_name = name.clone();
         let languages = ::editor::env::Parsers::of(self.store())
             .expect("the plugin pass registered the languages");
-        self
-            .open_async(wid(window), name, primary, None, move |store, ui, theme| {
-                ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
-            });
+        self.open_async(wid(window), name, primary, None, move |store, ui, theme| {
+            ahp_chat::open::document_for(&languages, &document_name, &source, store, ui, theme)
+        });
         true
     }
 }
-
-
-
-
-
 
 /// Seat the capability-gated chrome: what `himark_set_host`
 /// registers when the host callbacks carry pickers or a clipboard.
@@ -287,11 +303,17 @@ pub fn seat_host_chrome(app: &mut himark::app::Himark) {
             on_share: None,
             on_agent_filesystem: None,
             on_pick_files: Some(Arc::new(|app| {
-                                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::pickers::OpenFilePicker))]);
+                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+                    crate::pickers::OpenFilePicker,
+                ))]);
             })),
             on_clipboard: Some(Arc::new(|app| {
-                                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::higent::drawer::ShareHost))]);
-                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::higent::drawer::ShareHostTailnet))]);
+                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+                    crate::higent::drawer::ShareHost,
+                ))]);
+                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+                    crate::higent::drawer::ShareHostTailnet,
+                ))]);
             })),
         })
     });
@@ -330,4 +352,3 @@ pub unsafe extern "C" fn himark_add_window(engine: *mut HimarkEngine) -> HimarkW
             .map_or(0, |engine| WindowEngine::open_window(engine).raw()),
     }
 }
-

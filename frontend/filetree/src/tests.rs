@@ -1058,7 +1058,6 @@ fn a_standing_row_menu_owns_the_keys_and_escape_dismisses_it() {
     assert!(!menu_open(&view, 0), "Escape dismissed the row's menu");
 }
 
-
 #[test]
 fn a_dead_watch_reopens_the_folder() {
     let mut store = Store::new();

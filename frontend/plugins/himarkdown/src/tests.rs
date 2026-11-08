@@ -1797,8 +1797,10 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         reference.content_height()
     );
 
-    let command =
-        workbench_shell::test_support::handle_effect(effects.pop().expect("repair effect"), &test_cx());
+    let command = workbench_shell::test_support::handle_effect(
+        effects.pop().expect("repair effect"),
+        &test_cx(),
+    );
     assert!(
         matches!(command, EditorCommand::ApplyRepair(ref items) if !items.is_empty()),
         "the repair effect must yield a non-empty ApplyRepair"
@@ -1823,10 +1825,9 @@ fn demo_open_pipeline_applies_markup_and_layout() {
             command,
             &mut batch.effects(),
         );
-        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
-            &mut batch,
-            imba::effect::Batch::new(),
-        )));
+        pending.extend(workbench_shell::test_support::surviving_launches(
+            std::mem::replace(&mut batch, imba::effect::Batch::new()),
+        ));
     }
     let gathered = view.gathered(&store).expect("entity");
     assert!(
@@ -1872,10 +1873,11 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let styled_reference =
         editor::editor_view::EditorView::complete(styled.clone(), 600.0, &store, ui, &test_theme());
     let cx = test_cx();
-    let mut pending: Vec<EditorCommand> = workbench_shell::test_support::surviving_launches(parse_batch)
-        .into_iter()
-        .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx))
-        .collect();
+    let mut pending: Vec<EditorCommand> =
+        workbench_shell::test_support::surviving_launches(parse_batch)
+            .into_iter()
+            .map(|effect| workbench_shell::test_support::handle_effect(effect, &cx))
+            .collect();
     while let Some(command) = pending.pop() {
         view.perform(
             &mut store,
@@ -2118,7 +2120,9 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     pending_commands.extend(
                         workbench_shell::test_support::surviving_launches(local)
                             .into_iter()
-                            .map(|effect| workbench_shell::test_support::handle_effect(effect, &test_cx())),
+                            .map(|effect| {
+                                workbench_shell::test_support::handle_effect(effect, &test_cx())
+                            }),
                     );
                 } else if !pending_commands.is_empty() {
                     let index = (rand() % pending_commands.len() as u64) as usize;
@@ -2134,7 +2138,10 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
             }
         }
         for effect in workbench_shell::test_support::surviving_launches(batch) {
-            pending_commands.push(workbench_shell::test_support::handle_effect(effect, &test_cx()));
+            pending_commands.push(workbench_shell::test_support::handle_effect(
+                effect,
+                &test_cx(),
+            ));
         }
 
         for (name, id) in [("narrow", narrow), ("wide", wide)] {

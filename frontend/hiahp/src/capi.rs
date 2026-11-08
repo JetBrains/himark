@@ -74,7 +74,12 @@ pub unsafe extern "C" fn himark_catalog_release(engine: *mut HimarkEngine, catal
         return;
     };
     let _ = engine;
-    if catalogs().lock().expect("the catalog table").take(catalog.raw).is_none() {
+    if catalogs()
+        .lock()
+        .expect("the catalog table")
+        .take(catalog.raw)
+        .is_none()
+    {
         refuse("catalog", catalog.raw);
     }
 }
@@ -89,7 +94,11 @@ unsafe fn with_catalog<R>(
         return missing;
     }
     let _ = engine;
-    match catalogs().lock().expect("the catalog table").get(catalog.raw) {
+    match catalogs()
+        .lock()
+        .expect("the catalog table")
+        .get(catalog.raw)
+    {
         Some(snapshot) => read(snapshot),
         None => {
             refuse("catalog", catalog.raw);
@@ -252,7 +261,8 @@ pub unsafe extern "C" fn himark_session_enter(
     let Some(uri) = str_from(uri, len) else {
         return false;
     };
-    crate::engine::enter_session(engine, 
+    crate::engine::enter_session(
+        engine,
         ahp_wire::client::HostId::from_raw(host),
         ahp_wire::client::SessionUri::new(uri.to_owned()),
     )
@@ -336,7 +346,7 @@ pub unsafe extern "C" fn himark_place_session_view(
     len: usize,
 ) -> HimarkPlace {
     use crate::places::*;
-    
+
     use hikit::navigation::NavigationLocation;
     let make: fn(ahp_wire::SessionId) -> NavigationLocation = match kind {
         HIMARK_PLACE_CHAT => |s| NavigationLocation::new(ChatPlace(s)),
@@ -373,7 +383,11 @@ pub unsafe extern "C" fn himark_place_session_host(
     };
     himark_ffi::bridges::place_entry(place)
         .and_then(|(_, payload)| payload)
-        .and_then(|payload| payload.downcast_ref::<ahp_wire::SessionId>().map(|s| s.host.raw()))
+        .and_then(|payload| {
+            payload
+                .downcast_ref::<ahp_wire::SessionId>()
+                .map(|s| s.host.raw())
+        })
         .unwrap_or(0)
 }
 
@@ -477,9 +491,9 @@ pub fn seat_ahp(
                 app.register_handler::<ahp_wire::effects::ShareHostEffect>(ShareHostHandler(
                     Arc::clone(&bridge),
                 ));
-                app.register_handler::<ahp_wire::effects::ShareTailnetEffect>(
-                    ShareTailnetHandler(bridge),
-                );
+                app.register_handler::<ahp_wire::effects::ShareTailnetEffect>(ShareTailnetHandler(
+                    bridge,
+                ));
             })),
             on_agent_filesystem: Some(Arc::new(move |app, capabilities| {
                 crate::agent_fs::install_routes(
@@ -505,40 +519,39 @@ fn classify_navigate(
     store: &imba::store::Store,
 ) -> Option<NavigateExport> {
     let mut focus = false;
-    let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>()
-            {
-                focus = ready.focus;
-                // The document's name: it is registered by the time
-                // this place is navigated (the open landing's law).
-                let title = ahp_session::session::state::Hosts::states(store)
-                    .into_iter()
-                    .map(|state| state.documents())
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .find_map(|collection| {
-                        documents::OpenDocuments::name(store, collection, ready.document)
-                    })
-                    .unwrap_or_default();
-                Some((HIMARK_PLACE_DOCUMENT, title))
-            } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
-                Some((HIMARK_PLACE_DIFF, ready.title.clone()))
-            } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
-                Some((
-                    HIMARK_PLACE_CANVAS,
-                    ready.source.title(store, ready.changes),
-                ))
-            } else if place.place::<himark::places::DismissPlace>().is_some() {
-                Some((HIMARK_PLACE_DISMISS, String::new()))
-            } else if place.place::<crate::places::ChatPlace>().is_some() {
-                // "Show this session" — the sessions drawer's pick.
-                Some((HIMARK_PLACE_CHAT, String::new()))
-            } else if place.place::<crate::places::FolderPickerPlace>().is_some() {
-                // The add-folder ask on a remote host — the native
-                // shell presents the picker (iOS: a sheet).
-                Some((HIMARK_PLACE_FOLDER_PICKER, "Add Folder".to_owned()))
-            } else {
-                None
-            };
+    let classified = if let Some(ready) = place.place::<himark::places::OpenDocumentPlace>() {
+        focus = ready.focus;
+        // The document's name: it is registered by the time
+        // this place is navigated (the open landing's law).
+        let title = ahp_session::session::state::Hosts::states(store)
+            .into_iter()
+            .map(|state| state.documents())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .find_map(|collection| {
+                documents::OpenDocuments::name(store, collection, ready.document)
+            })
+            .unwrap_or_default();
+        Some((HIMARK_PLACE_DOCUMENT, title))
+    } else if let Some(ready) = place.place::<himark::places::DiffViewPlace>() {
+        Some((HIMARK_PLACE_DIFF, ready.title.clone()))
+    } else if let Some(ready) = place.place::<canvas::diff_canvas::CanvasPlace>() {
+        Some((
+            HIMARK_PLACE_CANVAS,
+            ready.source.title(store, ready.changes),
+        ))
+    } else if place.place::<himark::places::DismissPlace>().is_some() {
+        Some((HIMARK_PLACE_DISMISS, String::new()))
+    } else if place.place::<crate::places::ChatPlace>().is_some() {
+        // "Show this session" — the sessions drawer's pick.
+        Some((HIMARK_PLACE_CHAT, String::new()))
+    } else if place.place::<crate::places::FolderPickerPlace>().is_some() {
+        // The add-folder ask on a remote host — the native
+        // shell presents the picker (iOS: a sheet).
+        Some((HIMARK_PLACE_FOLDER_PICKER, "Add Folder".to_owned()))
+    } else {
+        None
+    };
     let (kind, title) = classified?;
     let session = place
         .place::<crate::places::ChatPlace>()
@@ -553,8 +566,7 @@ fn classify_navigate(
         kind,
         title,
         focus,
-        payload: session
-            .map(|session| Arc::new(session) as himark_ffi::bridges::PlacePayload),
+        payload: session.map(|session| Arc::new(session) as himark_ffi::bridges::PlacePayload),
     })
 }
 
@@ -609,4 +621,3 @@ impl EffectHandler<crate::higent::folder_grant::PickFoldersEffect> for PickFolde
         self.0.pick_locations(effect.origin).await
     }
 }
-

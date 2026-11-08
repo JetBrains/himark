@@ -14,11 +14,11 @@ use editor::location::Authority;
 use editor::location::ResourceType;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::app::OpenedDocument;
-use workbench_shell::app_ext::AppExt;
 use imba::effect::EffectHandler;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
+use workbench_shell::app::OpenedDocument;
+use workbench_shell::app_ext::AppExt;
 
 fn doc_location(name: &str) -> ResourceLocation {
     ResourceLocation::new(
@@ -118,7 +118,9 @@ fn boot(
 ) {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(TogglePeeker))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+        TogglePeeker,
+    ))]);
     app.register_handler::<FindEffect>(StubFind);
     app.register_handler::<FetchDocumentEffect>(StubFetch(Arc::clone(fetches)));
     app.register_handler::<BuildDocumentEffect>(StubBuild);

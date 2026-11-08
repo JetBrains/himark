@@ -269,11 +269,13 @@ pub fn drawer_asks(window: ::workbench::window::WindowId) -> Arc<DrawerAsks> {
             himark::app::shell_verb(crate::shell::windowed(window, command))
         }),
         add_host: Arc::new(move |url| {
-            himark::app::shell_verb(crate::shell::windowed(window, Arc::new(hiahp::higent::flows::AddHost { url })))
+            himark::app::shell_verb(crate::shell::windowed(
+                window,
+                Arc::new(hiahp::higent::flows::AddHost { url }),
+            ))
         }),
     })
 }
-
 
 /// The drawer's FOLD-BACK, seated into `AgentFlows::install_refold`:
 /// a WINDOW gesture re-opens the side slot to show the fresh host; a

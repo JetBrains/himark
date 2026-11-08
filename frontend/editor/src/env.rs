@@ -129,7 +129,12 @@ impl BackgroundLayout {
     pub fn set_theme(&self, theme: crate::theme::Theme) {
         let mut seeded = imba::store::Store::new();
         Themes::set(&mut seeded, theme.clone());
-        if let Some(enrichers) = self.enrichers.lock().expect("background_layout enrichers").clone() {
+        if let Some(enrichers) = self
+            .enrichers
+            .lock()
+            .expect("background_layout enrichers")
+            .clone()
+        {
             seeded.put(Enrichers(enrichers));
         }
         self.measure.lock().expect("background_layout measure").0 = seeded;

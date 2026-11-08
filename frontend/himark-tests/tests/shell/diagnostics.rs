@@ -187,13 +187,16 @@ fn the_snapshot_squiggles_the_open_document() {
             diagnostics: vec![error_at(0, 3, 7)],
         },
     );
-    let host = hiahp::engine::register_client(&mut app, Client {
-        session: Arc::new(Seat),
-        lsp: Arc::new(Lsp {
-            snapshot: DiagnosticsState { items },
-        }),
-        ..ahp_wire::client::inert()
-    });
+    let host = hiahp::engine::register_client(
+        &mut app,
+        Client {
+            session: Arc::new(Seat),
+            lsp: Arc::new(Lsp {
+                snapshot: DiagnosticsState { items },
+            }),
+            ..ahp_wire::client::inert()
+        },
+    );
     ahp_session::session::agents::Agents::seed(&mut app.store_mut(), host, "Diagnostics Host");
     ahp_session::session::state::Hosts::install_uris(
         &mut app.store_mut(),

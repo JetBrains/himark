@@ -66,7 +66,10 @@ fn dump_frame_screenshot() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -134,7 +137,10 @@ fn dump_frame_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(OpenDoc)
+    )]));
     super::dock::settle(&mut app, &mut surface);
     // The side column's tabs, as the shell registers them.
     for (order, (label, command)) in [
@@ -174,9 +180,15 @@ fn dump_frame_screenshot() {
         ),
     )]));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+    let _ = workbench_shell::test_driver::animate(
+        &mut app,
+        imba::anim::AnimationClock::from_millis(0.0),
+    );
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(64.0));
+    let _ = workbench_shell::test_driver::animate(
+        &mut app,
+        imba::anim::AnimationClock::from_millis(64.0),
+    );
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     let data = surface
         .image_snapshot()

@@ -58,10 +58,13 @@ pub fn mint_session_place(
                 chat.clone(),
                 None,
             );
-            Some(himark::mounts::panel_mount(id, Box::new(ahp_chat::transcript::TranscriptPane::new(
+            Some(himark::mounts::panel_mount(
+                id,
+                Box::new(ahp_chat::transcript::TranscriptPane::new(
                     state.chats(),
                     chat,
-                ))))
+                )),
+            ))
         });
     }
     if let Some(place) = place.place::<crate::places::ChatComposerPlace>() {
@@ -79,7 +82,10 @@ pub fn mint_session_place(
                 chat.clone(),
                 None,
             );
-            Some(himark::mounts::panel_mount(id, Box::new(ahp_chat::composer::ComposerPane::new(state.chats(), chat))))
+            Some(himark::mounts::panel_mount(
+                id,
+                Box::new(ahp_chat::composer::ComposerPane::new(state.chats(), chat)),
+            ))
         });
     }
     if let Some(place) = place.place::<crate::places::ChangesPlace>() {
@@ -110,7 +116,10 @@ pub fn mint_session_place(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(himark::mounts::modal_mount(id, changesview::changes_view::ChangesPane::new(changes, view)))
+            Some(himark::mounts::modal_mount(
+                id,
+                changesview::changes_view::ChangesPane::new(changes, view),
+            ))
         });
     }
     if let Some(place) = place.place::<crate::places::ChangesCanvasPlace>() {
@@ -140,7 +149,10 @@ pub fn mint_session_place(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(himark::mounts::modal_mount(id, changesview::changes_view::ChangesPane::new(changes, view)))
+            Some(himark::mounts::modal_mount(
+                id,
+                changesview::changes_view::ChangesPane::new(changes, view),
+            ))
         });
     }
     if let Some(place) = place.place::<crate::places::HistoryPlace>() {
@@ -166,7 +178,10 @@ pub fn mint_session_place(
                 opener,
             );
             let view = changesview::hichanges::Changes::mint_view(store, changes, view);
-            Some(himark::mounts::modal_mount(id, changesview::changes_view::ChangesPane::new(changes, view)))
+            Some(himark::mounts::modal_mount(
+                id,
+                changesview::changes_view::ChangesPane::new(changes, view),
+            ))
         });
     }
     if let Some(place) = place.place::<crate::places::FolderPickerPlace>() {
@@ -378,7 +393,10 @@ pub fn mint_session_place(
                     himark::app::AppCommand::Bound(bound.clone(), command.clone()),
                 )
             }));
-            Some(himark::mounts::dyn_modal_mount(id, make(store, ui, commands)))
+            Some(himark::mounts::dyn_modal_mount(
+                id,
+                make(store, ui, commands),
+            ))
         });
     }
     None
@@ -438,7 +456,6 @@ impl imba::command::DynamicOnceCommand for OpenCanvasFromChanges {
     }
 }
 
-
 /// The changes tree asked to open a row: find THAT ROW'S pair in
 /// the set's listing (the same normalization the canvas rows use)
 /// and launch the pair-open with the MOUNTED origin — the landing
@@ -482,4 +499,3 @@ impl imba::command::DynamicOnceCommand for OpenDiffFromChanges {
         );
     }
 }
-

@@ -204,8 +204,7 @@ pub struct Himark {
     /// dispatch coalescer, the stage road's offer): a touch
     /// beginning on one bridge must not break the gesture —
     /// momentum included — still flowing on another.
-    pub(crate) scroll_states:
-        std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
+    pub(crate) scroll_states: std::collections::HashMap<ViewBridgeId, crate::host::BridgeScroll>,
 
     /// The installed host loop (`install_host_loop`): inbox, wakes,
     /// the owned runtime, drain pacing.
@@ -235,7 +234,6 @@ impl<F: FnMut(&mut Himark, &str, bool) + 'static> BatchTail for F {
         self(app, label, theme_changed)
     }
 }
-
 
 /// THE FONT WORLD the app shapes with, built once at boot. Every
 /// `UiCtx` the engine mints is handed this one — the UI thread's
@@ -559,7 +557,6 @@ impl Himark {
         self.revision
     }
 
-
     /// A MOUNTED slot's current frame at its size — rebuilt
     /// lazily off the revision, exactly the window client's memo
     /// but for views the host composes directly. `size` sets a
@@ -854,7 +851,10 @@ impl Himark {
         // at every stage realize), not the whole content — the
         // views read it: reveal_satisfied must see what's actually
         // on screen or a caret-follow settles without ever asking.
-        let band = self.bridges.get(&id).and_then(|slot| slot.realized_viewport);
+        let band = self
+            .bridges
+            .get(&id)
+            .and_then(|slot| slot.realized_viewport);
         // Clock ticks and wheel deltas advance widget STATE; they
         // ride the retained frame as-is. Pointer and key events
         // hit-test geometry — those get the fresh rebuild.
@@ -896,7 +896,12 @@ impl Himark {
     /// and mounts alike. Clears the backdrop for views that want
     /// it, applies `Event::Paint` against the frame, parks a
     /// mounted view's reveal and performs the answered commands.
-    fn paint(&mut self, id: ViewBridgeId, canvas: &gfx::Canvas<'_>, size: Option<gfx::Size>) -> bool {
+    fn paint(
+        &mut self,
+        id: ViewBridgeId,
+        canvas: &gfx::Canvas<'_>,
+        size: Option<gfx::Size>,
+    ) -> bool {
         // TRANSPARENT floor, like the stage road: the HOST behind
         // a mounted view owns the background (a glass island, the
         // document floor's color). A window root paints its own
@@ -1107,7 +1112,6 @@ impl Himark {
         Some((id, reveal))
     }
 
-
     /// Perform a REGISTERED command, by id, at an origin view — the
     /// C door's and the palette's shared road: the origin view's own
     /// focus walk answers first (its presentables carry their
@@ -1136,15 +1140,16 @@ impl Himark {
                 .find(|presentable| presentable.id == id)
                 .map(|presentable| presentable.command)
                 .or_else(|| {
-                    crate::commands::Commands::of(&store).find(id).cloned().map(
-                        |command| match bound {
+                    crate::commands::Commands::of(&store)
+                        .find(id)
+                        .cloned()
+                        .map(|command| match bound {
                             Some(bound) => crate::perform::AppCommand::Bound(bound, command),
                             None => crate::perform::AppCommand::AtOrigin(
                                 origin.unwrap_or(ViewBridgeId::from_raw(0)),
                                 command,
                             ),
-                        },
-                    )
+                        })
                 })
         };
         match command {
@@ -1167,10 +1172,7 @@ impl Himark {
     /// Register a view-bridge factory — a plugin's answer to a
     /// navigation place (see `mounts::ViewBridgeFactory`); the
     /// factory mounts through `Himark::mount` itself.
-    pub fn register_view_bridge_factory(
-        &mut self,
-        factory: crate::mounts::ViewBridgeFactory,
-    ) {
+    pub fn register_view_bridge_factory(&mut self, factory: crate::mounts::ViewBridgeFactory) {
         self.view_bridge_factories.push(factory);
     }
 
@@ -1248,7 +1250,8 @@ impl Himark {
         if !died.is_empty() {
             let event = documents::watch::WatchesDied(std::sync::Arc::new(died));
             for id in self.bridge_ids() {
-                let result = self.apply_event_to_frame(id, &imba::event::Event::UserEvent(&event), None);
+                let result =
+                    self.apply_event_to_frame(id, &imba::event::Event::UserEvent(&event), None);
                 self.run_fanned(id, result);
             }
         }

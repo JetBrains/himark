@@ -14,7 +14,6 @@ use imba::store::Store;
 use hiahp::watch::*;
 use himark::app::AppFonts;
 
-use workbench_shell::app::OpenedDocument;
 use ::editor::test_document::plain_document;
 use documents::watch::{
     RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect, Subscription, UnsubscribeEffect,
@@ -23,6 +22,7 @@ use documents::watch::{
 use documents::OpenDocuments;
 use editor::document::Document;
 use editor::location::ResourceLocation;
+use workbench_shell::app::OpenedDocument;
 
 fn located(name: &str) -> ResourceLocation {
     ResourceLocation::new(
@@ -769,17 +769,17 @@ fn opens_watch_and_events_refetch() {
 
     let documents = app.sole_documents();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
-            window,
-            OpenedDocument {
-                documents,
-                name: "a.md".to_owned(),
-                document: plain_document("alpha\n"),
-                location: Some(located("a.md")),
-                primary: true,
-                target: None,
-                focus: false,
-            },
-        )]));
+        window,
+        OpenedDocument {
+            documents,
+            name: "a.md".to_owned(),
+            document: plain_document("alpha\n"),
+            location: Some(located("a.md")),
+            primary: true,
+            target: None,
+            focus: false,
+        },
+    )]));
     settle(&mut app);
 
     let entity = OpenDocuments::list(app.store(), app.sole_documents())
@@ -831,21 +831,24 @@ fn the_palette_reload_follows_the_disk() {
 
     let documents = app.sole_documents();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
-            window,
-            OpenedDocument {
-                documents,
-                name: "a.md".to_owned(),
-                document: plain_document("alpha\n"),
-                location: Some(located("a.md")),
-                primary: true,
-                target: None,
-                focus: false,
-            },
-        )]));
+        window,
+        OpenedDocument {
+            documents,
+            name: "a.md".to_owned(),
+            document: plain_document("alpha\n"),
+            location: Some(located("a.md")),
+            primary: true,
+            target: None,
+            focus: false,
+        },
+    )]));
     settle(&mut app);
 
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(ReloadDocument))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(ReloadDocument)
+    )]));
     settle(&mut app);
 
     let entity = OpenDocuments::list(app.store(), app.sole_documents())

@@ -25,7 +25,7 @@ mod app {
     use gfx::Painter as _;
     use himark::app::AppFonts;
     use himark::app::Himark;
-        use skia_safe::{
+    use skia_safe::{
         gpu::{
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
             SurfaceOrigin,
@@ -448,7 +448,9 @@ mod app {
                     // The in-page tailnet: the command loads the Go
                     // wasm node and logs in; discovery turns its
                     // netmap into host rows dialed tailnet://…:7298.
-                    state.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(crate::tailnet::ConnectTailnet))]);
+                    state.perform_batch(vec![himark::app::AppCommand::Register(
+                        std::sync::Arc::new(crate::tailnet::ConnectTailnet),
+                    )]);
                     crate::tailnet::spawn_discovery(
                         handle.clone(),
                         posted.clone(),
@@ -474,7 +476,9 @@ mod app {
 
             state.perform_batch(vec![workbench_shell::shell::windowed(
                 window,
-                std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
+                std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession {
+                    host: None,
+                }),
             )]);
 
             #[cfg(target_feature = "atomics")]
@@ -1018,8 +1022,7 @@ mod app {
                 return false;
             };
             let id = held.id;
-            let Some(touch) = touches(event).iter().find(|touch| touch.identifier == id)
-            else {
+            let Some(touch) = touches(event).iter().find(|touch| touch.identifier == id) else {
                 return false;
             };
             let point = touch_point(app, touch);
@@ -1029,9 +1032,8 @@ mod app {
                 let delta = (pan.last.x - point.x, pan.last.y - point.y);
                 pan.last = point;
                 if !pan.panning {
-                    let wobble = ((point.x - pan.start.x).powi(2)
-                        + (point.y - pan.start.y).powi(2))
-                    .sqrt();
+                    let wobble =
+                        ((point.x - pan.start.x).powi(2) + (point.y - pan.start.y).powi(2)).sqrt();
                     if wobble < PAN_SLOP * app.scale {
                         return false;
                     }
@@ -1099,9 +1101,9 @@ mod app {
                 .collect();
             if let Some((oldest, ..)) = throw.first() {
                 let spread = (now - oldest).max(1.0 / 60.0) as f32;
-                let sum = throw
-                    .iter()
-                    .fold((0.0f32, 0.0f32), |sum, (_, dx, dy)| (sum.0 + dx, sum.1 + dy));
+                let sum = throw.iter().fold((0.0f32, 0.0f32), |sum, (_, dx, dy)| {
+                    (sum.0 + dx, sum.1 + dy)
+                });
                 let cap = 6000.0 * app.scale;
                 let velocity = (
                     (sum.0 / spread).clamp(-cap, cap),
@@ -1164,8 +1166,7 @@ mod app {
             now,
         );
         app.needs_redraw |= moved;
-        let live = (fling.velocity.0.powi(2) + fling.velocity.1.powi(2)).sqrt()
-            > 30.0 * app.scale;
+        let live = (fling.velocity.0.powi(2) + fling.velocity.1.powi(2)).sqrt() > 30.0 * app.scale;
         if moved && live {
             app.fling = Some(fling);
         }
@@ -1265,7 +1266,13 @@ mod app {
     /// summon — wants imba to know it stands on a touch form; that
     /// enhancement is postponed, this probe is its transport.)
     fn sync_keyboard(app: &mut WebApp) {
-        let wants = app.state.with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |_| ()).is_some();
+        let wants = app
+            .state
+            .with_ime_client(
+                himark::bridge::ViewBridgeId::from_raw(app.window.raw()),
+                |_| (),
+            )
+            .is_some();
         if wants == app.wants_text {
             return;
         }
@@ -1403,10 +1410,13 @@ mod app {
         };
         let copied = app
             .state
-            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| match cut != 0 {
-                true => client.cut(),
-                false => client.copy(),
-            })
+            .with_clipboard_client(
+                himark::bridge::ViewBridgeId::from_raw(app.window.raw()),
+                |client| match cut != 0 {
+                    true => client.cut(),
+                    false => client.copy(),
+                },
+            )
             .flatten();
         if cut != 0 && copied.is_some() {
             app.needs_redraw = true;
@@ -1431,11 +1441,14 @@ mod app {
         };
         app.needs_redraw |= app
             .state
-            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
-                client.paste(&imba::clipboard::ClipboardContent {
-                    text: text.to_owned(),
-                })
-            })
+            .with_clipboard_client(
+                himark::bridge::ViewBridgeId::from_raw(app.window.raw()),
+                |client| {
+                    client.paste(&imba::clipboard::ClipboardContent {
+                        text: text.to_owned(),
+                    })
+                },
+            )
             .unwrap_or(false);
     }
 
@@ -1458,13 +1471,18 @@ mod app {
     #[no_mangle]
     pub unsafe extern "C" fn himark_ime_set(text: *const c_char) {
         let Some(app) = seated_app() else { return };
-        let Some(text) = seated_text(text) else { return };
+        let Some(text) = seated_text(text) else {
+            return;
+        };
         let caret = text.encode_utf16().count() as u32;
         app.needs_redraw |= app
             .state
-            .with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
-                client.set_marked_text(text, (caret, 0), None);
-            })
+            .with_ime_client(
+                himark::bridge::ViewBridgeId::from_raw(app.window.raw()),
+                |client| {
+                    client.set_marked_text(text, (caret, 0), None);
+                },
+            )
             .is_some();
     }
 
@@ -1475,19 +1493,22 @@ mod app {
     #[no_mangle]
     pub unsafe extern "C" fn himark_ime_commit(text: *const c_char) {
         let Some(app) = seated_app() else { return };
-        let Some(text) = seated_text(text) else { return };
-        let committed = app.state.with_ime_client(himark::bridge::ViewBridgeId::from_raw(app.window.raw()), |client| {
-            match text.is_empty() {
+        let Some(text) = seated_text(text) else {
+            return;
+        };
+        let committed = app.state.with_ime_client(
+            himark::bridge::ViewBridgeId::from_raw(app.window.raw()),
+            |client| match text.is_empty() {
                 true => client.unmark_text(),
                 false => client.insert_text(text, None),
-            }
-        });
+            },
+        );
         app.needs_redraw |= committed.is_some();
         if committed.is_none() && !text.is_empty() {
             let size = app.state.viewport_size();
-            let typed = app
-                .state
-                .dispatch(app.window, imba::event::Event::TextInput { text }, size);
+            let typed =
+                app.state
+                    .dispatch(app.window, imba::event::Event::TextInput { text }, size);
             app.needs_redraw |= typed;
         }
     }

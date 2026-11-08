@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-
 /// A REGISTERED command: a palette entry, a keymap target or a
 /// deferred landing that speaks the app's command stream. What it
 /// acts ON arrives through the focus walk's bindings — the UI binds
@@ -28,7 +27,6 @@ pub trait HimarkCommand: Send + Sync {
         fx: &mut crate::app::AppFx<'_>,
     );
 }
-
 
 /// The gesture's origin bridge as a BOUND FACT — distinct from a
 /// bare bound `ViewBridgeId`, which commands read as the SIGNAL
@@ -54,7 +52,6 @@ pub fn bound_origin(
     }
     origin
 }
-
 
 #[derive(Clone, Default)]
 pub struct Commands(pub(crate) Vec<Arc<dyn HimarkCommand>>);
@@ -102,4 +99,3 @@ impl AppRequests {
         drained
     }
 }
-

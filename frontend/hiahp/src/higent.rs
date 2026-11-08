@@ -10,7 +10,6 @@ pub mod folder_grant;
 pub mod folder_picker;
 pub mod open_session;
 
-
 /// The SESSIONS browser as a plugin: hosts, their folders, their
 /// sessions and the speed search over them — the engine's drawer,
 /// the same one the workbench stands in a side slot. Its asks are
@@ -26,23 +25,25 @@ impl himark::plugin::Plugin for SessionsPlugin {
             let showing = place.0.clone();
             app.mount(move |store, ui, id, _fx| {
                 let asks = Arc::new(ahp_session::session::drawer::DrawerAsks {
-                open_session: Arc::new(move |_store| Some(showing.clone())),
-                open_row: Arc::new(move |server, session| {
-                    imba::command::Verb::once(crate::higent::open_session::ShowSession {
-                        origin: id,
-                        server,
-                        session,
-                    })
-                }),
-                new_session: Arc::new(move |_store, server| {
-                    imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host: Some(server) })
-                }),
-                add_host: Arc::new(move |url| {
-                    himark::app::shell_verb(himark::perform::AppCommand::AtOrigin(
-                        id,
-                        Arc::new(crate::higent::flows::AddHost { url }),
-                    ))
-                }),
+                    open_session: Arc::new(move |_store| Some(showing.clone())),
+                    open_row: Arc::new(move |server, session| {
+                        imba::command::Verb::once(crate::higent::open_session::ShowSession {
+                            origin: id,
+                            server,
+                            session,
+                        })
+                    }),
+                    new_session: Arc::new(move |_store, server| {
+                        imba::command::Verb::once(crate::higent::open_session::CreateHeadless {
+                            host: Some(server),
+                        })
+                    }),
+                    add_host: Arc::new(move |url| {
+                        himark::app::shell_verb(himark::perform::AppCommand::AtOrigin(
+                            id,
+                            Arc::new(crate::higent::flows::AddHost { url }),
+                        ))
+                    }),
                 });
                 Some(himark::mounts::dyn_modal_mount(
                     id,
@@ -54,4 +55,3 @@ impl himark::plugin::Plugin for SessionsPlugin {
         }));
     }
 }
-

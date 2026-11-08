@@ -19,7 +19,9 @@ pub struct ChangesPlugin;
 
 impl himark::plugin::Plugin for ChangesPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(RefetchChanges::default()))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+            RefetchChanges::default(),
+        ))]);
         app.register_document_command(Arc::new(OpenWorkingCopy));
     }
 }

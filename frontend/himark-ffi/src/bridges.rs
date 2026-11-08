@@ -29,8 +29,8 @@ use std::collections::HashMap;
 use std::os::raw::{c_char, c_void};
 use std::sync::{LazyLock, Mutex};
 
-use himark::bridge::ViewBridgeId;
 use gfx::{Point, Rect, Size};
+use himark::bridge::ViewBridgeId;
 // Only the skia-shell feature's paint doors speak the canvas —
 // keep the import with them, not the default build.
 #[cfg(feature = "skia-shell")]
@@ -41,7 +41,6 @@ use crate::ffi_seat;
 use crate::{
     copy_optional_utf8, map_key, map_mods, pointed, str_from, HimarkEngine, HimarkPointed, Pointed,
 };
-
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -188,13 +187,20 @@ pub fn mint_place_handle(
     payload: Option<PlacePayload>,
 ) -> HimarkPlace {
     HimarkPlace {
-        raw: PLACES.lock().expect("the place table").mint((place, payload)),
+        raw: PLACES
+            .lock()
+            .expect("the place table")
+            .mint((place, payload)),
     }
 }
 
 /// Read a held place back (the payload included).
 pub fn place_entry(place: HimarkPlace) -> Option<PlaceEntry> {
-    PLACES.lock().expect("the place table").get(place.raw).cloned()
+    PLACES
+        .lock()
+        .expect("the place table")
+        .get(place.raw)
+        .cloned()
 }
 
 /// The seated MINT RIDER: runs after `himark_bridge_mint` mounts a
@@ -203,9 +209,7 @@ pub fn place_entry(place: HimarkPlace) -> Option<PlaceEntry> {
 #[derive(Clone)]
 pub struct PlaceMintRider(
     pub  std::sync::Arc<
-        dyn Fn(&mut himark::app::Himark, himark::bridge::ViewBridgeId, &PlacePayload)
-            + Send
-            + Sync,
+        dyn Fn(&mut himark::app::Himark, himark::bridge::ViewBridgeId, &PlacePayload) + Send + Sync,
     >,
 );
 
@@ -319,8 +323,6 @@ pub extern "C" fn himark_event_release(event: HimarkEvent) {
 
 // ─── the window-bridge road ───
 
-
-
 /// Perform a registered command at the bridge — the palette and
 /// menu road, shell-agnostic.
 #[no_mangle]
@@ -373,7 +375,11 @@ pub unsafe extern "C" fn himark_bridge_event(
         OwnedEvent::MouseDown { x, y, mods, count } => {
             let flushed = app.flush_scroll(id);
             let count = match count {
-                0 => ffi_seat(app.store()).clicks.lock().expect("the click counter").count(x, y),
+                0 => ffi_seat(app.store())
+                    .clicks
+                    .lock()
+                    .expect("the click counter")
+                    .count(x, y),
                 n => n.min(u8::MAX as u32) as u8,
             };
             changed(
@@ -387,7 +393,9 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ).needs_redraw || flushed,
+                )
+                .needs_redraw
+                    || flushed,
             )
         }
         OwnedEvent::SecondaryDown { x, y, mods } => {
@@ -403,7 +411,9 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ).needs_redraw || flushed,
+                )
+                .needs_redraw
+                    || flushed,
             )
         }
         OwnedEvent::MouseDrag { x, y, mods } => changed(
@@ -428,7 +438,9 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ).needs_redraw || flushed,
+                )
+                .needs_redraw
+                    || flushed,
             )
         }
         OwnedEvent::MouseMove { x, y, mods } => {
@@ -446,7 +458,10 @@ pub unsafe extern "C" fn himark_bridge_event(
                 shape: outcome.pointer,
             }))
         }
-        OwnedEvent::MouseLeft => changed(app.dispatch_bridge(id, Event::window_left(), None, 0.0).needs_redraw),
+        OwnedEvent::MouseLeft => changed(
+            app.dispatch_bridge(id, Event::window_left(), None, 0.0)
+                .needs_redraw,
+        ),
         OwnedEvent::ModifiersChanged { x, y, mods } => {
             let outcome = app.dispatch_bridge(
                 id,
@@ -491,13 +506,17 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ).needs_redraw || flushed,
+                )
+                .needs_redraw
+                    || flushed,
             )
         }
         OwnedEvent::TextInput { text } => {
             let flushed = app.flush_scroll(id);
             changed(
-                app.dispatch_bridge(id, Event::TextInput { text: &text }, None, 0.0).needs_redraw || flushed,
+                app.dispatch_bridge(id, Event::TextInput { text: &text }, None, 0.0)
+                    .needs_redraw
+                    || flushed,
             )
         }
     }
@@ -749,7 +768,6 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
     )
 }
 
-
 /// Drain the reveal a mounted road parked — a caret-follow or a
 /// selection the view asked to be brought on screen, rect in that
 /// bridge's content coordinates. The host scrolls it into view;
@@ -896,11 +914,8 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, bridge:
 /// drain.
 #[no_mangle]
 pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64 {
-    engine
-        .as_ref()
-        .map_or(0, |engine| engine.revision())
+    engine.as_ref().map_or(0, |engine| engine.revision())
 }
-
 
 /// A snapshot of the REGISTERED COMMANDS — the host-visible verbs
 /// (palette material). Same handle discipline as the catalog.
@@ -1001,11 +1016,7 @@ pub unsafe extern "C" fn himark_command_name(
     copy_optional_utf8(held.map(|(_, name)| name), out, cap)
 }
 
-
-
-
 // ─── places and the minting door (docs/ui/himark-ffi.md) ───
-
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: HimarkPlace) {
@@ -1022,7 +1033,6 @@ pub unsafe extern "C" fn himark_place_release(engine: *mut HimarkEngine, place: 
     }
 }
 
-
 /// A bridge's exported WINDOW overlays — the anchors that become
 /// the shell's popovers. The epoch moves only when the set
 /// changes: poll it per frame, reconcile on change.
@@ -1035,9 +1045,8 @@ pub unsafe extern "C" fn himark_bridge_overlays(
     let Some(engine) = engine.as_mut() else {
         return 0;
     };
-    let Some((epoch, anchors)) = engine
-        
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    let Some((epoch, anchors)) =
+        engine.bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
     };
@@ -1060,9 +1069,8 @@ pub unsafe extern "C" fn himark_bridge_overlay_anchor(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let Some((_, anchors)) = engine
-        
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    let Some((_, anchors)) =
+        engine.bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
     };
@@ -1097,9 +1105,8 @@ pub unsafe extern "C" fn himark_bridge_overlay_kind(
     let Some(engine) = engine.as_mut() else {
         return 0;
     };
-    let Some((_, anchors)) = engine
-        
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    let Some((_, anchors)) =
+        engine.bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
     };
@@ -1125,9 +1132,8 @@ pub unsafe extern "C" fn himark_bridge_overlay_host(
     let Some(engine) = engine.as_mut() else {
         return 0;
     };
-    let Some((_, anchors)) = engine
-        
-        .bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    let Some((_, anchors)) =
+        engine.bridge_overlays(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return 0;
     };
@@ -1153,9 +1159,7 @@ pub unsafe extern "C" fn himark_overlay_content_rect(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    let Some(rect) = engine
-        
-        .overlay_content(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    let Some(rect) = engine.overlay_content(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
     else {
         return false;
     };
@@ -1185,10 +1189,7 @@ pub unsafe extern "C" fn himark_overlay_mint(
     let Some(engine) = engine.as_mut() else {
         return HimarkBridge { raw: 0 };
     };
-    match engine
-        
-        .mount_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
-    {
+    match engine.mount_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index) {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
     }
@@ -1220,10 +1221,9 @@ pub unsafe extern "C" fn himark_bridge_mint(
         Some(id) => {
             // The payload rides to the seated rider (the AHP capi
             // remembers the session on the new bridge).
-            if let (Some(payload), Some(rider)) = (
-                payload,
-                engine.store().get::<PlaceMintRider>().cloned(),
-            ) {
+            if let (Some(payload), Some(rider)) =
+                (payload, engine.store().get::<PlaceMintRider>().cloned())
+            {
                 (rider.0)(engine, id, &payload);
             }
             HimarkBridge { raw: id.raw() }
@@ -1233,7 +1233,6 @@ pub unsafe extern "C" fn himark_bridge_mint(
 }
 
 // ─── the shell callback: himark asks the host to navigate ───
-
 
 /// The host's navigate answer: called on the MAIN thread, in the
 /// middle of an engine batch — the host must only RECORD (push the

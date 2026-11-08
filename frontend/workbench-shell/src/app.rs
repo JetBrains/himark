@@ -12,15 +12,8 @@ use std::sync::OnceLock;
 
 use gfx::{Canvas, Rect, Size};
 use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effect,
-    event::Event,
-    scroll::ScrollView,
-    store::Store,
-    thunk_ext::ThunkExt,
-    ui::UiCtx,
-    View,
+    arena::Arena, constraints::Constraints, effect::Effect, event::Event, scroll::ScrollView,
+    store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
 };
 use text::text::Text;
 
@@ -36,16 +29,16 @@ use documents::OpenDocuments;
 use editor::document::Document;
 use editor::markup::Markup;
 
-#[cfg(any(test, feature = "test-support"))]
-pub use himark::himark::StoreMut;
-pub use himark::himark::{AppFonts, Himark};
-pub(crate) use himark::perform::{command_label, AppEffects};
-pub use himark::perform::{shell_verb, AppCommand, AppFx};
 pub use crate::shell::verb_command;
 pub use crate::shell::{
     close_modal, content, open_async, open_modal, open_panel, opened, register, shell,
     viewport_resized, windowed, OneShot, ShellCommand,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use himark::himark::StoreMut;
+pub use himark::himark::{AppFonts, Himark};
+pub(crate) use himark::perform::{command_label, AppEffects};
+pub use himark::perform::{shell_verb, AppCommand, AppFx};
 
 pub use himark::opening::OpenedDocument;
 
@@ -166,7 +159,7 @@ pub fn markdown_scratch() -> Document {
     )
 }
 
-    /// The workbench SHELL's boot: the bare engine plus everything
+/// The workbench SHELL's boot: the bare engine plus everything
 /// window-shaped — the windows catalog, the windowed commands,
 /// the workbench registry roads. A shell that composes its own
 /// frame boots `Himark::new` and mounts the views it needs.
@@ -303,12 +296,7 @@ pub trait WorkbenchShell {
     fn register_toolbar_button(&mut self, button: ::workbench::toolbar::ToolbarButton);
     fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::panel::RowMinter>);
     fn dock_owner_for_tests(&self, window: WindowId) -> Option<&'static str>;
-    fn dispatch_paint(
-        &mut self,
-        window: WindowId,
-        canvas: &Canvas<'_>,
-        size: Size,
-    ) -> bool;
+    fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas<'_>, size: Size) -> bool;
     fn dispatch_timed(
         &mut self,
         window: WindowId,
@@ -329,11 +317,7 @@ pub trait WorkbenchShell {
         size: Size,
     ) -> (himark::bridge::ViewBridgeId, Option<Size>);
     fn batch_tail(&mut self, label: &str);
-    fn sync_viewport_window(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        size: gfx::Size,
-    );
+    fn sync_viewport_window(&mut self, window: ::workbench::window::WindowId, size: gfx::Size);
     fn draw_window(
         &mut self,
         window: ::workbench::window::WindowId,
@@ -352,12 +336,9 @@ pub trait WorkbenchShell {
         canvas: &gfx::Canvas<'_>,
         size: gfx::Size,
     ) -> std::time::Duration;
-
 }
 
 impl WorkbenchShell for Himark {
-
-
     /// The windows catalog, read in place — a boot resident.
     fn windows(&self) -> &::workbench::window::Windows {
         self.store()
@@ -385,7 +366,6 @@ impl WorkbenchShell for Himark {
         self.mount_at(id, std::sync::Arc::new(WorkbenchView { window }));
         id
     }
-
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
         let _ = window;
@@ -463,12 +443,7 @@ impl WorkbenchShell for Himark {
             .and_then(|entity| entity.dock_owner())
     }
 
-    fn dispatch_paint(
-        &mut self,
-        window: WindowId,
-        canvas: &Canvas<'_>,
-        size: Size,
-    ) -> bool {
+    fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas<'_>, size: Size) -> bool {
         let (id, live) = self.window_origin(window, size);
         let reconciled = self
             .dispatch_bridge(
@@ -632,11 +607,7 @@ impl WorkbenchShell for Himark {
         }
     }
 
-    fn sync_viewport_window(
-        &mut self,
-        window: ::workbench::window::WindowId,
-        size: gfx::Size,
-    ) {
+    fn sync_viewport_window(&mut self, window: ::workbench::window::WindowId, size: gfx::Size) {
         if self.viewport_stale(window, size) {
             self.perform_batch(vec![crate::shell::viewport_resized(window, size)]);
         }
@@ -704,7 +675,6 @@ impl WorkbenchShell for Himark {
         paint_started.elapsed()
     }
 }
-
 
 pub(crate) struct OpenEffect {
     window: WindowId,
@@ -1022,7 +992,10 @@ impl himark::himark::Shell for WorkbenchFrontend {
             let opened = entity.open_panel(
                 store,
                 ui,
-                Box::new(terminals::pane::TerminalView::new(place.terminals, place.id)),
+                Box::new(terminals::pane::TerminalView::new(
+                    place.terminals,
+                    place.id,
+                )),
                 fx,
             );
             ::workbench::window::Windows::put(store, window, entity);
@@ -1099,7 +1072,6 @@ pub(crate) struct WorkbenchView {
     window: WindowId,
 }
 
-
 impl himark::bridge::BridgeView for WorkbenchView {
     /// The frame's store: the live store plus the FOCUSED SEAT
     /// (the semantic walk's answer), so editors derive their
@@ -1165,8 +1137,6 @@ impl himark::bridge::BridgeView for WorkbenchView {
     }
 }
 
-
-
 fn trace_resize_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_RESIZE").is_some())
@@ -1193,7 +1163,6 @@ pub fn window_focus_data<'a>(
     }
     Some(data)
 }
-
 
 pub fn palette_commands(
     store: &Store,
@@ -1226,7 +1195,6 @@ pub fn palette_commands(
     commands
 }
 
-
 /// The chrome prelude: the window this gesture came from, or a loud
 /// drop — the dock toggles and pane openers keep needing one.
 pub fn bound_window(
@@ -1241,5 +1209,3 @@ pub fn bound_window(
     }
     window
 }
-
-

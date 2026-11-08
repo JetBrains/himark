@@ -84,7 +84,6 @@ impl himark::plugin::Plugin for LanguagePack {
     }
 }
 
-
 /// The ENGINE plugins every shell installs — no window, no
 /// workbench: the grammar pack, markdown, the AHP feature set.
 pub fn engine_plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
@@ -155,8 +154,6 @@ pub fn autostart_himark_host() -> Option<String> {
     None
 }
 
-
-
 /// The shared HOST INSTALL: the host loop, the poster-backed doors
 /// (docsync, the client directory), the plugin pass, the add-host
 /// flow and the filesystem routes. Callers hand the connector and
@@ -173,8 +170,7 @@ pub fn install_host(
     // every thread-crossing door below rides the poster.
     app.install_host_loop();
     let poster = app.poster();
-    let post: Arc<dyn Fn(AppCommand) + Send + Sync> =
-        Arc::new(move |command| poster.post(command));
+    let post: Arc<dyn Fn(AppCommand) + Send + Sync> = Arc::new(move |command| poster.post(command));
     let runtime = app.runtime();
     let installed = himark::plugin::install_all(app, plugins);
     wire_doors(

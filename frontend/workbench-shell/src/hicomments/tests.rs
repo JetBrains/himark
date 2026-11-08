@@ -4,9 +4,9 @@
 #[allow(unused_imports)]
 use crate::app::WorkbenchShell as _;
 #[allow(unused_imports)]
-use crate::test_support::TestSupport as _;
-#[allow(unused_imports)]
 use crate::app_ext::AppExt as _;
+#[allow(unused_imports)]
+use crate::test_support::TestSupport as _;
 use ::comments::view::{CommentCommand, CommentView, RemoveComment};
 
 use super::*;
@@ -62,9 +62,9 @@ impl editor::dynamic::DynamicEditorCommand for SelectRange {
 
 fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::WindowId) {
     let mut app = crate::app::workbench_app(AppFonts::embedded());
-    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(
-        editor::reparse::SyntaxLanguages::new(),
-    ))]);
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(
+        himarkdown::markdown_languages(editor::reparse::SyntaxLanguages::new()),
+    )]);
     // `comments.add` arrives via the session ceremony (a scoped,
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));

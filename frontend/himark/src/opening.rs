@@ -109,7 +109,10 @@ pub struct OpenedDocument {
 /// the stamped collection, run the document lanes, and when the open
 /// was primary hand the seated shell the READY place.
 pub fn opened(origin: ViewBridgeId, document: OpenedDocument) -> AppCommand {
-    AppCommand::AtOrigin(origin, Arc::new(OpenedLanding(std::sync::Mutex::new(Some(document)))))
+    AppCommand::AtOrigin(
+        origin,
+        Arc::new(OpenedLanding(std::sync::Mutex::new(Some(document)))),
+    )
 }
 
 struct OpenedLanding(std::sync::Mutex<Option<OpenedDocument>>);

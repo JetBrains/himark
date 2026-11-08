@@ -13,7 +13,6 @@ use hikit::modal::ModalView;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -22,6 +21,7 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{ui::UiCtx, View};
 use std::sync::{Arc, Mutex};
+use workbench_shell::test_driver;
 
 /// The sessions subscription is RESIDENT: a registered host connects,
 /// lists its sessions and drains its event stream off the batch tail
@@ -102,10 +102,13 @@ fn the_sessions_subscription_runs_without_any_view() {
         std::sync::Arc::new(|| {}),
     );
 
-    let host = hiahp::engine::register_client(&mut app, ahp_wire::client::Client {
-        session: std::sync::Arc::new(Seat),
-        ..ahp_wire::client::inert()
-    });
+    let host = hiahp::engine::register_client(
+        &mut app,
+        ahp_wire::client::Client {
+            session: std::sync::Arc::new(Seat),
+            ..ahp_wire::client::inert()
+        },
+    );
     ahp_session::session::agents::Agents::seed(&mut app.store_mut(), host, "Resident Host");
 
     // Any batch at all — its tail is where the subscription lives.
@@ -211,7 +214,8 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
     let hikit::modal::ModalRequest::Perform(verb) = request else {
         panic!("Enter dispatches a Perform request");
     };
-    let command = workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command =
+        workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_batch(vec![command]));
     assert_eq!(
         received.lock().expect("recorder").as_deref(),
@@ -405,7 +409,9 @@ fn the_drawer_lands_on_the_window_s_open_session() {
         session: ahp_wire::client::SessionUri::new("test-session:/beta"),
     };
     let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &beta);
-    let _ = entity.switch_to(workbench_shell::workspace::SessionWorkspace::boxed(beta, state));
+    let _ = entity.switch_to(workbench_shell::workspace::SessionWorkspace::boxed(
+        beta, state,
+    ));
     ::workbench::window::Windows::put(&mut store, window, entity);
 
     let ui = ::editor::test_document::test_ui();

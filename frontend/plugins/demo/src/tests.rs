@@ -65,10 +65,14 @@ fn attach_bare_host() -> (Himark, TestHost) {
     let mut app = workbench_shell::app::workbench_app(app_fonts());
     let _ = app.add_window();
 
-    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(peeker::TogglePeeker))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+        peeker::TogglePeeker,
+    ))]);
     let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
-    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(languages))]);
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(
+        himarkdown::markdown_languages(languages),
+    )]);
     let (posted, arriving) = mpsc::channel::<AppCommand>();
     let (signal, work) = mpsc::channel::<()>();
     let runner = app.attach_host(
@@ -712,7 +716,10 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
     );
 
     assert!(
-        workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0)),
+        workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0)
+        ),
         "a running inlay animation must answer the clock"
     );
     assert!(workbench_shell::test_driver::animate(
@@ -730,12 +737,18 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
         imba::anim::AnimationClock::from_millis(200.0)
     ));
     for _ in 0..3 {
-        if !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(400.0)) {
+        if !workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(400.0),
+        ) {
             break;
         }
     }
     assert!(
-        !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(500.0)),
+        !workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(500.0)
+        ),
         "a settled animation must be silent"
     );
 }
@@ -752,7 +765,10 @@ fn an_idle_app_answers_the_animation_clock_with_silence() {
 
     for ms in [0.0, 16.7, 33.4, 50.1] {
         assert!(
-            !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
+            !workbench_shell::test_driver::animate(
+                &mut app,
+                imba::anim::AnimationClock::from_millis(ms)
+            ),
             "an idle app must not answer the clock"
         );
     }
@@ -1335,7 +1351,9 @@ fn where_do_heights_diverge() {
 fn tree_demo_panel_toggles_through_clicks() {
     let (mut app, _arriving) = boot();
 
-    &mut app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(crate::tree_demo::OpenTreeDemo))]);
+    &mut app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(crate::tree_demo::OpenTreeDemo),
+    )]);
     let window = app.sole_window();
     let mut surface = gfx_skia::raster_tuple((800, 600)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));

@@ -24,7 +24,6 @@ use crate::bridge::{BridgeView, ViewBridgeId};
 use crate::perform::{AppCommand, AppFx};
 use crate::shell::navigate_origin;
 
-
 /// An erased panel (`DynPanelView`) as a mounted view.
 pub(crate) struct PanelMount {
     id: ViewBridgeId,
@@ -200,7 +199,10 @@ pub type ViewBridgeFactory = std::sync::Arc<
 
 /// An erased PANEL as a mounted view — the wrapper a bridge arm
 /// answers with for panel-shaped content (the chat pane).
-pub fn panel_mount(id: ViewBridgeId, panel: Box<dyn hikit::panel::DynPanelView>) -> Arc<dyn BridgeView> {
+pub fn panel_mount(
+    id: ViewBridgeId,
+    panel: Box<dyn hikit::panel::DynPanelView>,
+) -> Arc<dyn BridgeView> {
     Arc::new(PanelMount { id, panel })
 }
 
@@ -388,7 +390,6 @@ impl BridgeView for OverlayMount {
         }
         imba::ThunkBox::new(arena, full)
     }
-
 }
 
 /// The dyn twin of `ModalMount`, for externally-answered places.

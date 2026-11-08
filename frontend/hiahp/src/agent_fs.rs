@@ -38,55 +38,49 @@ pub fn install_routes(
         .copied()
         .unwrap_or_default();
 
-        if fetch_document && !installed.fetch_document {
-            crate::install_open_handlers(
-                app,
-                Arc::clone(languages),
-                Arc::new(myersdiff::Myers),
+    if fetch_document && !installed.fetch_document {
+        crate::install_open_handlers(app, Arc::clone(languages), Arc::new(myersdiff::Myers));
+        app.with_store(|store| {
+            documents::diffs::StripeBases::install(
+                store,
+                Arc::new(ahp_session::fsroute::resolve_base),
             );
-            app.with_store(|store| {
-                documents::diffs::StripeBases::install(
-                    store,
-                    Arc::new(ahp_session::fsroute::resolve_base),
-                );
-            });
-            app.register_handler::<::editor::completion::CompletionEffect>(
-                    ahp_lsp::CompletionRoute {
-                        directory: Arc::clone(clients),
-                        uris: Arc::clone(resource_uris),
-                    },
-                );
-            app.register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
-                    directory: Arc::clone(clients),
-                    uris: Arc::clone(resource_uris),
-                });
-            app.register_handler::<ahp_locations::LspLocationsEffect>(
-                    ahp_locations::routes::RouteLspLocations {
-                        directory: Arc::clone(clients),
-                        uris: Arc::clone(resource_uris),
-                    },
-                );
-        }
-        if list_directory && !installed.list_directory {
-            app.register_handler::<::editor::completion::PathCompletionEffect>(
-                    find::NativeFindHandler {
-                        directory: Arc::clone(clients),
-                    },
-                );
-            app.register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
-                    directory: Arc::clone(clients),
-                });
-            app.register_handler::<ahp_locations::SearchLocationsEffect>(
-                    ahp_locations::routes::RouteSearchLocations {
-                        directory: Arc::clone(clients),
-                    },
-                );
-            app.register_handler::<ahp_locations::SymbolLocationsEffect>(
-                    ahp_locations::routes::RouteSymbolLocations {
-                        directory: Arc::clone(clients),
-                    },
-                );
-        }
+        });
+        app.register_handler::<::editor::completion::CompletionEffect>(ahp_lsp::CompletionRoute {
+            directory: Arc::clone(clients),
+            uris: Arc::clone(resource_uris),
+        });
+        app.register_handler::<::editor::hover::HoverEffect>(ahp_lsp::HoverRoute {
+            directory: Arc::clone(clients),
+            uris: Arc::clone(resource_uris),
+        });
+        app.register_handler::<ahp_locations::LspLocationsEffect>(
+            ahp_locations::routes::RouteLspLocations {
+                directory: Arc::clone(clients),
+                uris: Arc::clone(resource_uris),
+            },
+        );
+    }
+    if list_directory && !installed.list_directory {
+        app.register_handler::<::editor::completion::PathCompletionEffect>(
+            find::NativeFindHandler {
+                directory: Arc::clone(clients),
+            },
+        );
+        app.register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
+            directory: Arc::clone(clients),
+        });
+        app.register_handler::<ahp_locations::SearchLocationsEffect>(
+            ahp_locations::routes::RouteSearchLocations {
+                directory: Arc::clone(clients),
+            },
+        );
+        app.register_handler::<ahp_locations::SymbolLocationsEffect>(
+            ahp_locations::routes::RouteSymbolLocations {
+                directory: Arc::clone(clients),
+            },
+        );
+    }
 
     let _ = store_document;
     app.with_store(|store| {

@@ -117,9 +117,14 @@ fn the_outline_derives_lands_and_jumps() {
 
     assert!(app.perform_registered(window, "toc.toggle"));
 
-    let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
-    let _ =
-        workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(1_000.0));
+    let _ = workbench_shell::test_driver::animate(
+        &mut app,
+        imba::anim::AnimationClock::from_millis(0.0),
+    );
+    let _ = workbench_shell::test_driver::animate(
+        &mut app,
+        imba::anim::AnimationClock::from_millis(1_000.0),
+    );
     assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     let mut store = app.store().clone();
     {
@@ -147,7 +152,8 @@ fn the_outline_derives_lands_and_jumps() {
     else {
         panic!("the pick performs the jump");
     };
-    let command = workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
+    let command =
+        workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
     assert!(app.perform_batch(vec![command]));
     let (document_id, editor_id) = app.focused_editor_id();
     let caret =

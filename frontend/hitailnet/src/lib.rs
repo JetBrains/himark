@@ -145,12 +145,14 @@ pub fn install(
         if !known.insert(host.url.clone()) {
             continue;
         }
-        let seat = ahp_wire::wire::WireHost::at(
-            app.runtime(),
-            Arc::clone(&connector),
-            host.url.clone(),
+        let seat =
+            ahp_wire::wire::WireHost::at(app.runtime(), Arc::clone(&connector), host.url.clone());
+        hiahp::engine::register_agent_server(
+            app,
+            clients,
+            &host.name,
+            ahp_wire::client::Client::of(Arc::new(seat)),
         );
-        hiahp::engine::register_agent_server(app, clients, &host.name, ahp_wire::client::Client::of(Arc::new(seat)));
     }
 
     let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();

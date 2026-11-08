@@ -75,7 +75,9 @@ fn pump_workshop<R: 'static>(batch: imba::effect::Batch<R>, store: &Store) -> Ve
             let effect = payload.downcast::<BuildBeforeCardsEffect>().ok()?;
             let background_layout = background_layout.clone();
             let command = imba::effect::block_on(Box::pin(async move {
-                BuildBeforeCardsHandler(background_layout).handle(*effect).await
+                BuildBeforeCardsHandler(background_layout)
+                    .handle(*effect)
+                    .await
             }));
             lift(Box::new(command))
         })

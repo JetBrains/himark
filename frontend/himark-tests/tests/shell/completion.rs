@@ -12,8 +12,8 @@ use super::*;
 fn the_at_completion_opens_finds_and_picks() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
+    use workbench_shell::test_driver;
 
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
@@ -23,7 +23,8 @@ fn the_at_completion_opens_finds_and_picks() {
         editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
-    let session = workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
+    let session =
+        workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
@@ -171,9 +172,9 @@ fn the_at_completion_serves_markdown_panes() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     use himark::opening::OpenedDocument;
-    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
+    use workbench_shell::test_driver;
 
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
@@ -183,7 +184,8 @@ fn the_at_completion_serves_markdown_panes() {
         editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
-    let session = workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
+    let session =
+        workbench_shell::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<::editor::completion::PathCompletionEffect> for StubFind {
@@ -367,9 +369,9 @@ fn lsp_completion_serves_code_panes() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     use himark::opening::OpenedDocument;
-    use workbench_shell::test_driver;
     use imba::event::{Key, Modifiers};
     use std::sync::Arc;
+    use workbench_shell::test_driver;
 
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);

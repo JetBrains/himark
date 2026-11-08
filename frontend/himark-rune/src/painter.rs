@@ -76,7 +76,11 @@ impl<'a> Recorder<'a> {
     }
 
     fn state(&self) -> State {
-        *self.stack.borrow().last().expect("the recorder's base state")
+        *self
+            .stack
+            .borrow()
+            .last()
+            .expect("the recorder's base state")
     }
 
     fn point(&self, p: Point) -> [f32; 2] {
@@ -173,8 +177,8 @@ impl<'a> Recorder<'a> {
 }
 
 fn warn_once(what: &'static str) {
-    use std::sync::Mutex;
     use std::collections::HashSet;
+    use std::sync::Mutex;
     static SEEN: Mutex<Option<HashSet<&'static str>>> = Mutex::new(None);
     let mut seen = SEEN.lock().expect("warn set");
     if seen.get_or_insert_with(HashSet::new).insert(what) {
@@ -325,10 +329,7 @@ impl gfx::Painter for Recorder<'_> {
             let font = self.font_data(run.face);
             let px = run.size * s.sy;
             for (glyph, position) in run.glyphs.iter() {
-                let at = [
-                    base[0] + position.x * s.sx,
-                    base[1] + position.y * s.sy,
-                ];
+                let at = [base[0] + position.x * s.sx, base[1] + position.y * s.sy];
                 self.glyph(&font, *glyph, px, at, fill);
             }
         }

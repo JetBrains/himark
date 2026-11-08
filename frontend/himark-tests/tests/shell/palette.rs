@@ -268,7 +268,9 @@ fn registered_commands_present_and_dispatch_by_id() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(Probe))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(Probe),
+    )]);
     let ids: Vec<&str> =
         workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .iter()
@@ -380,7 +382,11 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         ..Default::default()
     };
 
-    assert!(workbench_shell::test_driver::key(&mut app, Key::Char('Z'), shifted));
+    assert!(workbench_shell::test_driver::key(
+        &mut app,
+        Key::Char('Z'),
+        shifted
+    ));
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some("typed"),
@@ -408,7 +414,11 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     );
 
     himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::embedded());
-    assert!(workbench_shell::test_driver::key(&mut app, Key::Char('Z'), shifted));
+    assert!(workbench_shell::test_driver::key(
+        &mut app,
+        Key::Char('Z'),
+        shifted
+    ));
     assert_eq!(app.focused_document_text().as_deref(), Some("typed"));
     assert!(workbench_shell::test_driver::backspace(&mut app));
     assert_eq!(

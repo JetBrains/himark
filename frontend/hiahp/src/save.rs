@@ -3,10 +3,10 @@
 
 use imba::{effect::AnyEffect, store::Store};
 
-use himark::app::AppFx;
-use himark::commands::HimarkCommand;
 use documents::StoreDocumentEffect;
 use editor::location::ResourceLocation;
+use himark::app::AppFx;
+use himark::commands::HimarkCommand;
 
 pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
     documents::save::SaveDocument::new(
@@ -32,7 +32,9 @@ pub struct SavePlugin;
 
 impl himark::plugin::Plugin for SavePlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(SaveAll))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(
+            std::sync::Arc::new(SaveAll),
+        )]);
         app.register_document_command(std::sync::Arc::new(save_document(true)));
     }
 }
@@ -138,4 +140,3 @@ impl HimarkCommand for SyncWatches {
         });
     }
 }
-

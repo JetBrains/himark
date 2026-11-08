@@ -13,7 +13,6 @@ use hikit::modal::ModalView;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;
 use imba::event::{Event, EventResult, Key};
@@ -22,6 +21,7 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt as _;
 use imba::{ui::UiCtx, View};
 use std::sync::{Arc, Mutex};
+use workbench_shell::test_driver;
 
 #[test]
 fn switching_workspaces_stashes_the_chat_panel() {
@@ -162,7 +162,10 @@ fn the_composer_command_fronts_the_chat_panel() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -309,7 +312,10 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -400,7 +406,10 @@ fn the_chat_docks_left_when_the_window_is_wide() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(OpenDoc)
+    )]));
     settle(&mut app, &mut wide);
     assert!(!vacant(&app), "the document fills the vacant leaf");
     assert!(slot_filled(&app), "the chat stays beside it");
@@ -453,7 +462,10 @@ fn dump_chat_narrow_screenshot() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -511,7 +523,10 @@ fn dump_chat_narrow_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(OpenDoc)
+    )]));
     settle(&mut app, &mut narrow);
 
     let image = narrow.image_snapshot();
@@ -569,7 +584,10 @@ fn dump_chat_column_screenshot() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -619,7 +637,9 @@ fn dump_chat_transcript_screenshot() {
     // markdown's language — the host's boot wiring, minus the wire.
     let mut languages = ::editor::reparse::SyntaxLanguages::new();
     himark::plugin::Plugin::languages(&himarkdown::MarkdownPlugin, &mut languages);
-    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(languages.clone())]);
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(
+        languages.clone(),
+    )]);
     hiahp::install_build_handler(
         &mut app,
         Arc::new(languages),
@@ -660,7 +680,10 @@ fn dump_chat_transcript_screenshot() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
 
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
@@ -811,7 +834,10 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -878,7 +904,10 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(OpenDoc)
+    )]));
     settle(&mut app, &mut narrow);
     assert!(!held(&app).workbench().root.is_vacant());
     assert!(
@@ -895,7 +924,10 @@ fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
     );
 
     // Opening a panel hands the window back.
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(OpenDoc)
+    )]));
     settle(&mut app, &mut narrow);
     assert!(
         !held(&app).workbench().chat_fronted(),
@@ -952,7 +984,10 @@ fn maximize_hides_the_chat_and_restore_brings_it_back() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -1109,7 +1144,10 @@ fn new_session_without_a_host_keeps_the_current_chat() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/live");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -1221,7 +1259,10 @@ fn the_chat_tab_toggles_the_column() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -1334,7 +1375,10 @@ fn the_chat_tab_fronts_the_chat_in_a_narrow_window() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(EnterSession)
+    )]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,

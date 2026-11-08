@@ -23,8 +23,8 @@ pub(crate) fn bind_mounted<'a>(
     if id.is_mounted() {
         data = data.bind(id);
     }
-    data.bindings = std::mem::take(&mut data.bindings)
-        .merge_under(crate::perform::mount_bindings(store, id));
+    data.bindings =
+        std::mem::take(&mut data.bindings).merge_under(crate::perform::mount_bindings(store, id));
     data
 }
 

@@ -107,7 +107,12 @@ fn main() {
     let spec = rune::AppSpec {
         setup: Some(|s: &mut EditorApp, waker| s.engine.set_waker(waker)),
         poll: Some(|s: &mut EditorApp, _t, _tx| s.engine.drain()),
-        ..rune::AppSpec::new("himark · rune", (980.0, 720.0), || unreachable!("init is captured"), view)
+        ..rune::AppSpec::new(
+            "himark · rune",
+            (980.0, 720.0),
+            || unreachable!("init is captured"),
+            view,
+        )
     };
     rune::App::new(spec)
         .init(move || EditorApp {

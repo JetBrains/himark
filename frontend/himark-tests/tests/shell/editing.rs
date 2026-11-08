@@ -1362,9 +1362,9 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 fn caret_commands_glide_the_pane_to_the_caret() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use workbench_shell::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
+    use workbench_shell::test_driver;
 
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
@@ -1434,9 +1434,9 @@ fn caret_commands_glide_the_pane_to_the_caret() {
 fn a_manual_scroll_cancels_the_reveal_in_flight() {
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use workbench_shell::test_driver;
     use imba::anim::AnimationClock;
     use imba::event::{Key, Modifiers};
+    use workbench_shell::test_driver;
 
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
@@ -1510,7 +1510,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     use himark::opening::OpenedDocument;
-        let fonts = AppFonts::embedded();
+    let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
 
@@ -1583,7 +1583,10 @@ fn clipboard_reaches_the_focused_editor() {
     );
 
     let copied = app
-        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.copy().map(|content| content.text))
+        .with_clipboard_client(
+            himark::bridge::ViewBridgeId::from_raw(window.raw()),
+            |client| client.copy().map(|content| content.text),
+        )
         .expect("the focused editor answers");
     assert_eq!(copied, None, "no selection, nothing to copy");
 
@@ -1599,24 +1602,33 @@ fn clipboard_reaches_the_focused_editor() {
         size,
     );
     let copied = app
-        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.copy().map(|content| content.text))
+        .with_clipboard_client(
+            himark::bridge::ViewBridgeId::from_raw(window.raw()),
+            |client| client.copy().map(|content| content.text),
+        )
         .expect("still focused");
     assert_eq!(copied.as_deref(), Some("hello world"));
     assert_eq!(app.focused_document_text().as_deref(), Some("hello world"));
 
     let cut = app
-        .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| client.cut().map(|content| content.text))
+        .with_clipboard_client(
+            himark::bridge::ViewBridgeId::from_raw(window.raw()),
+            |client| client.cut().map(|content| content.text),
+        )
         .expect("still focused");
     assert_eq!(cut.as_deref(), Some("hello world"));
     assert_eq!(app.focused_document_text().as_deref(), Some(""));
 
     for _ in 0..2 {
         let pasted = app
-            .with_clipboard_client(himark::bridge::ViewBridgeId::from_raw(window.raw()), |client| {
-                client.paste(&imba::clipboard::ClipboardContent {
-                    text: "again ".to_owned(),
-                })
-            })
+            .with_clipboard_client(
+                himark::bridge::ViewBridgeId::from_raw(window.raw()),
+                |client| {
+                    client.paste(&imba::clipboard::ClipboardContent {
+                        text: "again ".to_owned(),
+                    })
+                },
+            )
             .expect("still focused");
         assert!(pasted);
     }
@@ -2050,8 +2062,8 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
 
 #[test]
 fn a_markdown_pane_resize_keeps_the_top_visible_line() {
-    use himark::opening::OpenedDocument;
     use himark::app::{AppFonts, Himark};
+    use himark::opening::OpenedDocument;
     // The markdown shell: a real document opened through the app
     // road (header styles, wrapping prose, the centered column) —
     // closest to the reported window.

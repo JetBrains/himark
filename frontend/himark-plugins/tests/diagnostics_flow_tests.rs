@@ -9,12 +9,12 @@
 use himark_plugins::EngineAgents as _;
 #[allow(unused_imports)]
 use himark_plugins::HimarkEngineExt as _;
-#[allow(unused_imports)]
-#[allow(unused_imports)]
-use workbench_shell::capi::WindowEngine;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine;
 #[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
@@ -408,7 +408,10 @@ fn settle_until(
     }
 }
 
-fn squiggles(engine: &HimarkEngine, window: himark::bridge::ViewBridgeId) -> Option<Vec<(std::ops::Range<u32>, StyleId)>> {
+fn squiggles(
+    engine: &HimarkEngine,
+    window: himark::bridge::ViewBridgeId,
+) -> Option<Vec<(std::ops::Range<u32>, StyleId)>> {
     let store = engine.store();
     let state = workbench_shell::workspace::session_state(store, himark_plugins::wid(window))?;
     let location = {
@@ -976,7 +979,8 @@ fn live_canvas_face_serves_completion_and_hover() {
     }
     {
         let store = engine.store();
-        let key = workbench_shell::workspace::window_session(store, himark_plugins::wid(window)).expect("session");
+        let key = workbench_shell::workspace::window_session(store, himark_plugins::wid(window))
+            .expect("session");
         let changes = workbench_shell::workspace::session_state(store, himark_plugins::wid(window))
             .expect("state")
             .changes();
@@ -1068,17 +1072,16 @@ fn live_canvas_face_serves_completion_and_hover() {
     }
     eprintln!(
         "[live] scroll top {} reveal pending {:?}",
-        canvas(&engine)
-            .unwrap()
-            .probe_scroll_top(engine.store()),
+        canvas(&engine).unwrap().probe_scroll_top(engine.store()),
         canvas(&engine).unwrap().probe_reveal(engine.store())
     );
 
     // Click down the column until the window's focus chain offers the
     // completion trigger — that is the face holding the keyboard.
-    let documents = workbench_shell::workspace::session_state(engine.store(), himark_plugins::wid(window))
-        .expect("state")
-        .documents();
+    let documents =
+        workbench_shell::workspace::session_state(engine.store(), himark_plugins::wid(window))
+            .expect("state")
+            .documents();
     let roster = |engine: &HimarkEngine| -> Vec<String> {
         workbench_shell::app::palette_commands(
             engine.store(),
@@ -1163,14 +1166,12 @@ fn live_canvas_face_serves_completion_and_hover() {
     let handled = engine.key_down(window, ' ' as u32, HIMARK_MOD_CONTROL);
     eprintln!("[live] ctrl-space handled={handled}");
     let completion = |engine: &HimarkEngine| -> Option<(bool, usize)> {
-        let document =
-            documents::OpenDocuments::document_ref(engine.store(), documents, right)?;
+        let document = documents::OpenDocuments::document_ref(engine.store(), documents, right)?;
         let completion = document.completion(editor);
         Some((completion.open(), completion.row_labels().len()))
     };
     let hover = |engine: &HimarkEngine| -> Option<(bool, bool)> {
-        let document =
-            documents::OpenDocuments::document_ref(engine.store(), documents, right)?;
+        let document = documents::OpenDocuments::document_ref(engine.store(), documents, right)?;
         Some((
             document.hover(editor).armed(),
             document.hover(editor).open(),

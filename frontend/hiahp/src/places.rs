@@ -93,4 +93,3 @@ impl Place for SessionsPlace {}
 pub struct FilesPlace(pub ahp_wire::SessionId);
 
 impl Place for FilesPlace {}
-

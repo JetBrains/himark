@@ -5,7 +5,6 @@
 //! `DiffPlace`; the engine half (handlers, landings) is
 //! `himark::hiahp`.
 
-
 use imba::effect::AnyEffect;
 use imba::store::Store;
 

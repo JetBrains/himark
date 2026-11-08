@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use himark::commands::HimarkCommand;
 use ::workbench::window::Windows;
 use ahp_session::session::agents::Agents;
 use ahp_wire::client::HostId;
 use ahp_wire::effects::CreateChatEffect;
 use ahp_wire::SessionId;
+use himark::commands::HimarkCommand;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 

@@ -17,8 +17,8 @@ pub mod host;
 pub use host::{HimarkHostCallbacks, HimarkLocation};
 
 use himark::app::Himark;
-pub use imba::event::PointerShape;
 use imba::event::Key;
+pub use imba::event::PointerShape;
 
 /// A pointer event's answer: whether a frame is owed, and the shape
 /// the pointer takes over what the hit test found. Derived from this
@@ -87,7 +87,12 @@ pub fn install_seat(app: &mut Himark) {
 
 /// The seat, from any extern — the boot installed it.
 pub fn ffi_seat(store: &imba::store::Store) -> Arc<FfiSeatState> {
-    Arc::clone(&store.get::<FfiSeat>().expect("the ffi seat is installed at boot").0)
+    Arc::clone(
+        &store
+            .get::<FfiSeat>()
+            .expect("the ffi seat is installed at boot")
+            .0,
+    )
 }
 
 #[derive(Default)]
@@ -113,8 +118,6 @@ impl ClickCounter {
         self.count
     }
 }
-
-
 
 pub use himark::host::Worker as HimarkWorker;
 
@@ -273,8 +276,6 @@ pub fn map_mods(mods: u32) -> imba::event::Modifiers {
     }
 }
 
-
-
 /// Everything the engine needs from its host, taken AT CREATION —
 /// no half-wired engine ever exists, and the effects a boot batch
 /// launches wake the host's executor instead of firing into empty
@@ -373,19 +374,40 @@ pub trait HimarkEngineExt {
 
     fn unmark_text(&mut self, window: himark::bridge::ViewBridgeId) -> bool;
 
-    fn set_selected_range(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> bool;
+    fn set_selected_range(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> bool;
 
     fn document_length(&mut self, window: himark::bridge::ViewBridgeId) -> Option<u32>;
 
     fn reveal_selection(&mut self, window: himark::bridge::ViewBridgeId) -> bool;
 
-    fn selection_rects(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Vec<HimarkRect>;
+    fn selection_rects(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Vec<HimarkRect>;
 
-    fn first_rect(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Option<HimarkRect>;
+    fn first_rect(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Option<HimarkRect>;
 
-    fn char_index_at(&mut self, window: himark::bridge::ViewBridgeId, x: f32, y: f32) -> Option<u32>;
+    fn char_index_at(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        x: f32,
+        y: f32,
+    ) -> Option<u32>;
 
-    fn substring(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Option<String>;
+    fn substring(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Option<String>;
 
     unsafe fn substring_raw(
         &mut self,
@@ -395,9 +417,17 @@ pub trait HimarkEngineExt {
         cap: usize,
     ) -> usize;
 
-    unsafe fn marked_range_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut HimarkRange) -> bool;
+    unsafe fn marked_range_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut HimarkRange,
+    ) -> bool;
 
-    unsafe fn selected_range_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut HimarkRange) -> bool;
+    unsafe fn selected_range_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut HimarkRange,
+    ) -> bool;
 
     unsafe fn first_rect_raw(
         &mut self,
@@ -406,7 +436,11 @@ pub trait HimarkEngineExt {
         out: *mut HimarkRect,
     ) -> bool;
 
-    unsafe fn document_length_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut u32) -> bool;
+    unsafe fn document_length_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut u32,
+    ) -> bool;
 
     unsafe fn selection_rects_raw(
         &mut self,
@@ -424,23 +458,15 @@ pub trait HimarkEngineExt {
 }
 
 impl HimarkEngineExt for Himark {
-
-
     fn set_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
         let wake = Wake { callback, context };
         self.set_wake(move || wake.fire());
     }
 
-
     fn set_effect_wake_raw(&self, callback: extern "C" fn(*mut c_void), context: *mut c_void) {
         let wake = Wake { callback, context };
         self.set_effect_wake(move || wake.fire());
     }
-
-
-
-
-
 
     fn record_latency(&mut self, now_secs: f64) {
         let latency_ns = self.stats().latency_ns();
@@ -454,27 +480,13 @@ impl HimarkEngineExt for Himark {
         }
     }
 
-
-
-
-
-
-
-
-
     fn clipboard_copy(&mut self, window: himark::bridge::ViewBridgeId) -> Option<String> {
-        self
-            .with_clipboard_client(window, |client| {
-                client.copy().map(|content| content.text)
-            })
+        self.with_clipboard_client(window, |client| client.copy().map(|content| content.text))
             .flatten()
     }
 
     fn clipboard_cut(&mut self, window: himark::bridge::ViewBridgeId) -> Option<String> {
-        self
-            .with_clipboard_client(window, |client| {
-                client.cut().map(|content| content.text)
-            })
+        self.with_clipboard_client(window, |client| client.cut().map(|content| content.text))
             .flatten()
     }
 
@@ -482,13 +494,12 @@ impl HimarkEngineExt for Himark {
         if text.is_empty() {
             return false;
         }
-        self
-            .with_clipboard_client(window, |client| {
-                client.paste(&imba::clipboard::ClipboardContent {
-                    text: text.to_owned(),
-                })
+        self.with_clipboard_client(window, |client| {
+            client.paste(&imba::clipboard::ClipboardContent {
+                text: text.to_owned(),
             })
-            .unwrap_or(false)
+        })
+        .unwrap_or(false)
     }
 
     // Pub like its C export `himark_text_input_replacing`: the Rust
@@ -499,30 +510,11 @@ impl HimarkEngineExt for Himark {
         text: &str,
         replacement: HimarkRange,
     ) -> bool {
-        self
-            .with_ime_client(window, |client| {
-                client.insert_text(text, Some((replacement.start, replacement.length)))
-            })
-            .is_some()
+        self.with_ime_client(window, |client| {
+            client.insert_text(text, Some((replacement.start, replacement.length)))
+        })
+        .is_some()
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /// The standing toolbar height, in physical pixels — the shell
     /// sizes its title-bar accessory from it.
@@ -535,9 +527,7 @@ impl HimarkEngineExt for Himark {
     /// The host chrome inset the toolbar clears (the macOS traffic
     /// lights) — at boot and on fullscreen moves.
     fn set_chrome_clearance(&mut self, width: f32) {
-        self
-            .ui_ctx()
-            .set(::hikit::chrome::ChromeClearance(width));
+        self.ui_ctx().set(::hikit::chrome::ChromeClearance(width));
     }
 
     /// The shell's form, set once at boot (`HIMARK_FORM_*`): the
@@ -557,22 +547,19 @@ impl HimarkEngineExt for Himark {
         if himark::form::Form::of(self.store()) == form {
             return true;
         }
-        self
-            .with_store(|store| himark::form::Form::set(store, form));
+        self.with_store(|store| himark::form::Form::set(store, form));
         let dark = himark::form::theme_is_dark(self.store());
-        self.perform_command_at(
-            None,
-            if dark { "theme.dark" } else { "theme.light" },
-        )
+        self.perform_command_at(None, if dark { "theme.dark" } else { "theme.light" })
     }
-
 
     fn host_picked(
         &mut self,
         request: host::HimarkRequest,
         locations: Vec<editor::location::ResourceLocation>,
     ) -> bool {
-        ffi_seat(self.store()).host_bridge().is_some_and(|host| host.requests.fulfill(request, Box::new(locations)))
+        ffi_seat(self.store())
+            .host_bridge()
+            .is_some_and(|host| host.requests.fulfill(request, Box::new(locations)))
     }
 
     fn host_picked_folder(
@@ -580,11 +567,15 @@ impl HimarkEngineExt for Himark {
         request: host::HimarkRequest,
         location: Option<editor::location::ResourceLocation>,
     ) -> bool {
-        ffi_seat(self.store()).host_bridge().is_some_and(|host| host.requests.fulfill(request, Box::new(location)))
+        ffi_seat(self.store())
+            .host_bridge()
+            .is_some_and(|host| host.requests.fulfill(request, Box::new(location)))
     }
 
     fn host_fetched(&mut self, request: host::HimarkRequest, text: Option<String>) -> bool {
-        ffi_seat(self.store()).host_bridge().is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
+        ffi_seat(self.store())
+            .host_bridge()
+            .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
     }
 
     #[doc(hidden)]
@@ -592,14 +583,15 @@ impl HimarkEngineExt for Himark {
         if subscription.0 == 0 {
             return false;
         }
-        self
-            .poster()
+        self.poster()
             .post(himark::app::AppCommand::FileChanged(subscription));
         true
     }
 
     fn host_stored(&mut self, request: host::HimarkRequest, stored: bool) -> bool {
-        ffi_seat(self.store()).host_bridge().is_some_and(|host| host.requests.fulfill(request, Box::new(stored)))
+        ffi_seat(self.store())
+            .host_bridge()
+            .is_some_and(|host| host.requests.fulfill(request, Box::new(stored)))
     }
 
     fn host_listed(
@@ -607,24 +599,22 @@ impl HimarkEngineExt for Himark {
         request: host::HimarkRequest,
         entries: Option<Vec<editor::location::ResourceLocation>>,
     ) -> bool {
-        ffi_seat(self.store()).host_bridge().is_some_and(|host| host.requests.fulfill(request, Box::new(entries)))
+        ffi_seat(self.store())
+            .host_bridge()
+            .is_some_and(|host| host.requests.fulfill(request, Box::new(entries)))
     }
-
-
 
     fn has_text_focus(&mut self, window: himark::bridge::ViewBridgeId) -> bool {
         self.with_ime_client(window, |_| ()).is_some()
     }
 
     fn has_marked_text(&mut self, window: himark::bridge::ViewBridgeId) -> bool {
-        self
-            .with_ime_client(window, |client| client.has_marked_text())
+        self.with_ime_client(window, |client| client.has_marked_text())
             .unwrap_or(false)
     }
 
     fn marked_range(&mut self, window: himark::bridge::ViewBridgeId) -> Option<HimarkRange> {
-        self
-            .with_ime_client(window, |client| client.marked_range())?
+        self.with_ime_client(window, |client| client.marked_range())?
             .map(|(start, end)| HimarkRange {
                 start,
                 length: end.saturating_sub(start),
@@ -632,8 +622,7 @@ impl HimarkEngineExt for Himark {
     }
 
     fn selected_range(&mut self, window: himark::bridge::ViewBridgeId) -> Option<HimarkRange> {
-        self
-            .with_ime_client(window, |client| client.selected_range())?
+        self.with_ime_client(window, |client| client.selected_range())?
             .map(|(start, end)| HimarkRange {
                 start,
                 length: end.saturating_sub(start),
@@ -648,74 +637,87 @@ impl HimarkEngineExt for Himark {
         replacement: Option<HimarkRange>,
     ) -> bool {
         let replacement = replacement.map(|range| (range.start, range.length));
-        self
-            .with_ime_client(window, |client| {
-                client.set_marked_text(text, (selected.start, selected.length), replacement)
-            })
-            .is_some()
+        self.with_ime_client(window, |client| {
+            client.set_marked_text(text, (selected.start, selected.length), replacement)
+        })
+        .is_some()
     }
 
     fn unmark_text(&mut self, window: himark::bridge::ViewBridgeId) -> bool {
-        self
-            .with_ime_client(window, |client| client.unmark_text())
+        self.with_ime_client(window, |client| client.unmark_text())
             .is_some()
     }
 
-    fn set_selected_range(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> bool {
-        self
-            .with_ime_client(window, |client| {
-                client.set_selected_range(range.start, range.length)
-            })
-            .is_some()
+    fn set_selected_range(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> bool {
+        self.with_ime_client(window, |client| {
+            client.set_selected_range(range.start, range.length)
+        })
+        .is_some()
     }
 
     fn document_length(&mut self, window: himark::bridge::ViewBridgeId) -> Option<u32> {
-        self
-            .with_ime_client(window, |client| client.document_length())
+        self.with_ime_client(window, |client| client.document_length())
     }
 
     fn reveal_selection(&mut self, window: himark::bridge::ViewBridgeId) -> bool {
-        self
-            .with_ime_client(window, |client| client.reveal_selection())
+        self.with_ime_client(window, |client| client.reveal_selection())
             .is_some()
     }
 
-    fn selection_rects(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Vec<HimarkRect> {
-        self
-            .with_ime_client(window, |client| {
-                client
-                    .selection_rects(range.start, range.length)
-                    .into_iter()
-                    .map(|(x, y, width, height)| HimarkRect {
-                        x,
-                        y,
-                        width,
-                        height,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+    fn selection_rects(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Vec<HimarkRect> {
+        self.with_ime_client(window, |client| {
+            client
+                .selection_rects(range.start, range.length)
+                .into_iter()
+                .map(|(x, y, width, height)| HimarkRect {
+                    x,
+                    y,
+                    width,
+                    height,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
     }
 
-    fn first_rect(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Option<HimarkRect> {
-        self
-            .with_ime_client(window, |client| {
-                client.first_rect(range.start, range.length)
-            })?
-            .map(|(x, y, width, height)| HimarkRect {
-                x,
-                y,
-                width,
-                height,
-            })
+    fn first_rect(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Option<HimarkRect> {
+        self.with_ime_client(window, |client| {
+            client.first_rect(range.start, range.length)
+        })?
+        .map(|(x, y, width, height)| HimarkRect {
+            x,
+            y,
+            width,
+            height,
+        })
     }
 
-    fn char_index_at(&mut self, window: himark::bridge::ViewBridgeId, x: f32, y: f32) -> Option<u32> {
-        self
-            .with_ime_client(window, |client| client.char_index_at(x, y))?
+    fn char_index_at(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        x: f32,
+        y: f32,
+    ) -> Option<u32> {
+        self.with_ime_client(window, |client| client.char_index_at(x, y))?
     }
 
-    fn substring(&mut self, window: himark::bridge::ViewBridgeId, range: HimarkRange) -> Option<String> {
+    fn substring(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        range: HimarkRange,
+    ) -> Option<String> {
         self.with_ime_client(window, |client| {
             client.substring_utf16(range.start, range.length)
         })?
@@ -731,11 +733,19 @@ impl HimarkEngineExt for Himark {
         copy_optional_utf8(self.substring(window, range), out, cap)
     }
 
-    unsafe fn marked_range_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut HimarkRange) -> bool {
+    unsafe fn marked_range_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut HimarkRange,
+    ) -> bool {
         write_optional_out(self.marked_range(window), out)
     }
 
-    unsafe fn selected_range_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut HimarkRange) -> bool {
+    unsafe fn selected_range_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut HimarkRange,
+    ) -> bool {
         write_optional_out(self.selected_range(window), out)
     }
 
@@ -748,7 +758,11 @@ impl HimarkEngineExt for Himark {
         write_optional_out(self.first_rect(window, range), out)
     }
 
-    unsafe fn document_length_raw(&mut self, window: himark::bridge::ViewBridgeId, out: *mut u32) -> bool {
+    unsafe fn document_length_raw(
+        &mut self,
+        window: himark::bridge::ViewBridgeId,
+        out: *mut u32,
+    ) -> bool {
         write_optional_out(self.document_length(window), out)
     }
 
@@ -777,10 +791,9 @@ pub fn install_host_callbacks(app: &mut Himark, callbacks: HimarkHostCallbacks) 
     let bridge = host::HostBridge::new(callbacks);
     let chrome = app.store().get::<host::HostChrome>().cloned();
     if callbacks.pick_files.is_some() {
-        app
-            .register_handler::<host::FilePickerEffect>(host::FilePickerHandler(Arc::clone(
-                &bridge,
-            )));
+        app.register_handler::<host::FilePickerEffect>(host::FilePickerHandler(Arc::clone(
+            &bridge,
+        )));
         if let Some(chrome) = &chrome {
             if let Some(on_pick_files) = &chrome.on_pick_files {
                 on_pick_files(app);
@@ -820,10 +833,9 @@ pub fn install_host_callbacks(app: &mut Himark, callbacks: HimarkHostCallbacks) 
         }
     }
     if callbacks.pick_save.is_some() {
-        app
-            .register_handler::<documents::PickSaveEffect>(host::PickSaveHandler(Arc::clone(
-                &bridge,
-            )));
+        app.register_handler::<documents::PickSaveEffect>(host::PickSaveHandler(Arc::clone(
+            &bridge,
+        )));
     }
     ffi_seat(app.store()).set_host_bridge(bridge);
 }
@@ -868,7 +880,6 @@ pub unsafe extern "C" fn himark_create(
     Box::into_raw(Box::new(engine))
 }
 
-
 #[no_mangle]
 pub unsafe extern "C" fn himark_destroy(engine: *mut HimarkEngine) {
     if !engine.is_null() {
@@ -896,7 +907,11 @@ pub unsafe extern "C" fn himark_copy(
     cap: usize,
 ) -> usize {
     engine.as_mut().map_or(0, |engine| {
-        copy_optional_utf8(engine.clipboard_copy(himark::bridge::ViewBridgeId::from_raw(bridge.raw)), out, cap)
+        copy_optional_utf8(
+            engine.clipboard_copy(himark::bridge::ViewBridgeId::from_raw(bridge.raw)),
+            out,
+            cap,
+        )
     })
 }
 
@@ -964,8 +979,6 @@ pub unsafe extern "C" fn himark_text_input_replacing(
     )
 }
 
-
-
 /// The pointer event's answer across the FFI: `changed` owes a frame;
 /// `shape` is 0 for the platform default arrow, 1 for the pointing
 /// hand. The shell applies the shape right away and stores nothing.
@@ -995,10 +1008,6 @@ pub unsafe extern "C" fn himark_animation_tick(engine: *mut HimarkEngine, now_ms
         .as_mut()
         .map_or(false, |engine| engine.animation_tick(now_ms))
 }
-
-
-
-
 
 /// The desktop form: the workbench's theme pair (theme.json,
 /// theme-light.json) — the engine's own default.
@@ -1032,8 +1041,6 @@ pub unsafe extern "C" fn himark_set_chrome_clearance(engine: *mut HimarkEngine, 
         engine.set_chrome_clearance(width);
     }
 }
-
-
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_host_picked(
@@ -1137,23 +1144,18 @@ pub unsafe extern "C" fn himark_host_listed(
     engine.host_listed(request, entries)
 }
 
-
-
 /// DEMO documents, registered by name — the demo plugin owns the
 /// builders (the crate sits above this one); the door only looks
 pub use himark::demo_docs::DemoDocs;
-
-
-
 
 #[no_mangle]
 pub unsafe extern "C" fn himark_has_text_focus(
     engine: *mut HimarkEngine,
     bridge: crate::bridges::HimarkBridge,
 ) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.has_text_focus(himark::bridge::ViewBridgeId::from_raw(bridge.raw)))
+    engine.as_mut().map_or(false, |engine| {
+        engine.has_text_focus(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    })
 }
 
 #[no_mangle]
@@ -1161,9 +1163,9 @@ pub unsafe extern "C" fn himark_has_marked_text(
     engine: *mut HimarkEngine,
     bridge: crate::bridges::HimarkBridge,
 ) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.has_marked_text(himark::bridge::ViewBridgeId::from_raw(bridge.raw)))
+    engine.as_mut().map_or(false, |engine| {
+        engine.has_marked_text(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    })
 }
 
 #[no_mangle]
@@ -1183,7 +1185,12 @@ pub unsafe extern "C" fn himark_set_marked_text(
         return false;
     };
     let replacement = has_replacement.then_some(replacement);
-    engine.set_marked_text(himark::bridge::ViewBridgeId::from_raw(bridge.raw), text, selected, replacement)
+    engine.set_marked_text(
+        himark::bridge::ViewBridgeId::from_raw(bridge.raw),
+        text,
+        selected,
+        replacement,
+    )
 }
 
 #[no_mangle]
@@ -1191,9 +1198,9 @@ pub unsafe extern "C" fn himark_unmark_text(
     engine: *mut HimarkEngine,
     bridge: crate::bridges::HimarkBridge,
 ) -> bool {
-    engine
-        .as_mut()
-        .map_or(false, |engine| engine.unmark_text(himark::bridge::ViewBridgeId::from_raw(bridge.raw)))
+    engine.as_mut().map_or(false, |engine| {
+        engine.unmark_text(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    })
 }
 
 #[no_mangle]
@@ -1202,9 +1209,9 @@ pub unsafe extern "C" fn himark_marked_range(
     bridge: crate::bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.marked_range_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out))
+    engine.as_mut().is_some_and(|engine| {
+        engine.marked_range_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out)
+    })
 }
 
 #[no_mangle]
@@ -1213,9 +1220,9 @@ pub unsafe extern "C" fn himark_selected_range(
     bridge: crate::bridges::HimarkBridge,
     out: *mut HimarkRange,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.selected_range_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out))
+    engine.as_mut().is_some_and(|engine| {
+        engine.selected_range_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out)
+    })
 }
 
 #[no_mangle]
@@ -1224,9 +1231,9 @@ pub unsafe extern "C" fn himark_set_selected_range(
     bridge: crate::bridges::HimarkBridge,
     range: HimarkRange,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.set_selected_range(himark::bridge::ViewBridgeId::from_raw(bridge.raw), range))
+    engine.as_mut().is_some_and(|engine| {
+        engine.set_selected_range(himark::bridge::ViewBridgeId::from_raw(bridge.raw), range)
+    })
 }
 
 #[no_mangle]
@@ -1235,9 +1242,9 @@ pub unsafe extern "C" fn himark_document_length(
     bridge: crate::bridges::HimarkBridge,
     out: *mut u32,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.document_length_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out))
+    engine.as_mut().is_some_and(|engine| {
+        engine.document_length_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), out)
+    })
 }
 
 #[no_mangle]
@@ -1245,9 +1252,9 @@ pub unsafe extern "C" fn himark_reveal_selection(
     engine: *mut HimarkEngine,
     bridge: crate::bridges::HimarkBridge,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.reveal_selection(himark::bridge::ViewBridgeId::from_raw(bridge.raw)))
+    engine.as_mut().is_some_and(|engine| {
+        engine.reveal_selection(himark::bridge::ViewBridgeId::from_raw(bridge.raw))
+    })
 }
 
 #[no_mangle]
@@ -1259,7 +1266,12 @@ pub unsafe extern "C" fn himark_selection_rects(
     cap: usize,
 ) -> usize {
     engine.as_mut().map_or(0, |engine| {
-        engine.selection_rects_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), range, out, cap)
+        engine.selection_rects_raw(
+            himark::bridge::ViewBridgeId::from_raw(bridge.raw),
+            range,
+            out,
+            cap,
+        )
     })
 }
 
@@ -1270,9 +1282,13 @@ pub unsafe extern "C" fn himark_first_rect(
     range: HimarkRange,
     out: *mut HimarkRect,
 ) -> bool {
-    engine
-        .as_mut()
-        .is_some_and(|engine| engine.first_rect_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), range, out))
+    engine.as_mut().is_some_and(|engine| {
+        engine.first_rect_raw(
+            himark::bridge::ViewBridgeId::from_raw(bridge.raw),
+            range,
+            out,
+        )
+    })
 }
 
 #[no_mangle]
@@ -1299,7 +1315,12 @@ pub unsafe extern "C" fn himark_substring(
     cap: usize,
 ) -> usize {
     engine.as_mut().map_or(0, |engine| {
-        engine.substring_raw(himark::bridge::ViewBridgeId::from_raw(bridge.raw), range, out, cap)
+        engine.substring_raw(
+            himark::bridge::ViewBridgeId::from_raw(bridge.raw),
+            range,
+            out,
+            cap,
+        )
     })
 }
 

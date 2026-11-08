@@ -351,7 +351,6 @@ impl Effect for FilePickerEffect {
 
 pub(crate) struct FilePickerHandler(pub(crate) Arc<HostBridge>);
 
-
 impl EffectHandler<FilePickerEffect> for FilePickerHandler {
     async fn handle(&self, effect: FilePickerEffect) -> Vec<ResourceLocation> {
         let Some(pick) = self.0.callbacks.pick_files else {
@@ -370,8 +369,6 @@ impl EffectHandler<FilePickerEffect> for FilePickerHandler {
         self.0.requests.response(request).await
     }
 }
-
-
 
 pub(crate) struct PickSaveHandler(pub(crate) Arc<HostBridge>);
 

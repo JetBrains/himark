@@ -12,15 +12,15 @@ pub mod arms;
 #[cfg(feature = "capi")]
 pub mod capi;
 pub mod engine;
-pub mod places;
-pub mod sessions;
-pub mod higent;
-pub mod save;
-pub mod watch;
-pub mod hipeek;
 pub mod hichanges;
-pub mod hifiles;
 pub mod hicomments;
+pub mod hifiles;
+pub mod higent;
+pub mod hipeek;
+pub mod places;
+pub mod save;
+pub mod sessions;
+pub mod watch;
 
 pub use engine::{bound_session, catalog, Catalog, HostRow, SessionRow};
 
@@ -85,7 +85,6 @@ pub fn install_build_handler(
     );
 }
 
-
 pub fn install_open_handlers(
     app: &mut himark::app::Himark,
     languages: Arc<editor::reparse::SyntaxLanguages>,
@@ -104,9 +103,9 @@ pub fn install_open_handlers(
         background_layout,
         languages,
     };
-    app.register_handler::<himark::opening::OpenDiffByLocationsEffect>(
-        OpenDiffByLocationsHandler(shop.clone()),
-    );
+    app.register_handler::<himark::opening::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
+        shop.clone(),
+    ));
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
         ::ahp_chat::open::OpenDiffPairHandler(shop),
     );
@@ -131,7 +130,10 @@ impl EffectHandler<himark::opening::OpenDiffByLocationsEffect> for OpenDiffByLoc
                     documents::diff_views::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
-            return himark::perform::AppCommand::AtOrigin(effect.origin, Arc::new(FetchFailed { location }));
+            return himark::perform::AppCommand::AtOrigin(
+                effect.origin,
+                Arc::new(FetchFailed { location }),
+            );
         }
         himark::perform::AppCommand::AtOrigin(
             effect.origin,
@@ -142,8 +144,6 @@ impl EffectHandler<himark::opening::OpenDiffByLocationsEffect> for OpenDiffByLoc
         )
     }
 }
-
-
 
 pub struct OpenDiffPair {
     documents: imba::store::Id<documents::OpenDocuments>,
@@ -439,11 +439,7 @@ pub fn session_lanes() -> himark::himark::BatchLane {
                 // The dock tree views ride the push road too: a
                 // changes / history feed landing refreshes a mounted
                 // stale view in the SAME batch — no paint probe.
-                changesview::changes_view::sync_changes_views(
-                    &mut *store,
-                    state.changes(),
-                    ui,
-                );
+                changesview::changes_view::sync_changes_views(&mut *store, state.changes(), ui);
                 // The canvases sync against the fresh document/diff/
                 // changeset state — the SAME batch a feed landed in, a
                 // direct lane over the sets that own them. The
@@ -469,12 +465,7 @@ pub fn session_lanes() -> himark::himark::BatchLane {
                 // The diagnostics lane: dirty resources land their
                 // squiggle markups into the session's open documents.
                 fx.scope(AppCommand::Verb, |fx| {
-                    ahp_lsp::diagnostics::sync(
-                        &mut *store,
-                        state.diagnostics_wire(),
-                        ui,
-                        fx,
-                    )
+                    ahp_lsp::diagnostics::sync(&mut *store, state.diagnostics_wire(), ui, fx)
                 });
                 // The language-services pull lane: edited and newly
                 // opened documents re-ask their semantic tokens and
@@ -489,12 +480,7 @@ pub fn session_lanes() -> himark::himark::BatchLane {
                 fx.scope(AppCommand::Verb, |fx| {
                     ahp_changes::history::sync(&mut *store, state.history_wire(), fx);
                     ahp_changes::changes::sync(&mut *store, state.changes_wire(), fx);
-                    ahp_locations::driver::sync(
-                        &mut *store,
-                        ui,
-                        state.locations_wire(),
-                        fx,
-                    );
+                    ahp_locations::driver::sync(&mut *store, ui, state.locations_wire(), fx);
                 });
             }
         }

@@ -175,7 +175,9 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     pending_commands.extend(
                         workbench_shell::test_support::surviving_launches(local)
                             .into_iter()
-                            .map(|effect| workbench_shell::test_support::handle_effect(effect, &test_cx())),
+                            .map(|effect| {
+                                workbench_shell::test_support::handle_effect(effect, &test_cx())
+                            }),
                     );
                 } else if !pending_commands.is_empty() {
                     let index = (rand() % pending_commands.len() as u64) as usize;
@@ -191,7 +193,10 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
             }
         }
         for effect in workbench_shell::test_support::surviving_launches(batch) {
-            pending_commands.push(workbench_shell::test_support::handle_effect(effect, &test_cx()));
+            pending_commands.push(workbench_shell::test_support::handle_effect(
+                effect,
+                &test_cx(),
+            ));
         }
 
         for (name, id) in [("narrow", narrow), ("wide", wide)] {
@@ -257,10 +262,9 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
             command,
             &mut batch.effects(),
         );
-        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
-            &mut batch,
-            imba::effect::Batch::new(),
-        )));
+        pending.extend(workbench_shell::test_support::surviving_launches(
+            std::mem::replace(&mut batch, imba::effect::Batch::new()),
+        ));
     }
     assert!(
         view.find_misaligned_boundary().is_none(),

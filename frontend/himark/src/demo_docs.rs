@@ -6,11 +6,10 @@
 
 use std::sync::Arc;
 
-
 /// them up.
 #[derive(Clone, Default)]
-pub struct DemoDocs(pub 
-    rpds::HashTrieMapSync<
+pub struct DemoDocs(
+    pub  rpds::HashTrieMapSync<
         String,
         (
             editor::location::ResourceLocation,

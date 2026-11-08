@@ -126,7 +126,10 @@ pub(crate) fn orphan(type_id: std::any::TypeId) {
     eprintln!("[himark] dropping effect: no handler registered for {type_id:?}");
 }
 
-pub(crate) fn register_builtins(handlers: &Arc<Handlers>, background_layout: &Arc<::editor::env::BackgroundLayout>) {
+pub(crate) fn register_builtins(
+    handlers: &Arc<Handlers>,
+    background_layout: &Arc<::editor::env::BackgroundLayout>,
+) {
     handlers.register::<::editor::repair::RepairEffect>(::editor::repair::RepairHandler(
         Arc::clone(background_layout),
     ));

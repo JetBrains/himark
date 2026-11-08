@@ -120,7 +120,9 @@ fn dump_palette_screenshot() {
     };
     let mut app = workbench_shell::app::workbench_app(himark::app::AppFonts::embedded());
     let _ = app.add_window();
-    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePalette))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(TogglePalette),
+    )]);
     let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
     app.draw_window(
         app.sole_window(),

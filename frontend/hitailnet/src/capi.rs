@@ -68,10 +68,8 @@ unsafe fn read_state(engine: *mut HimarkEngine) -> crate::TailnetState {
         return crate::TailnetState::Off;
     };
     engine
-        
         .store()
         .get::<crate::TailnetFaceState>()
         .map(|held| held.state.clone())
         .unwrap_or_default()
 }
-

@@ -6,10 +6,10 @@
 
 use himark::app::Himark;
 use workbench_shell::app::{workbench_app, WorkbenchShell as _};
-use workbench_shell::test_support::TestSupport as _;
+use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
 use workbench_shell::test_driver;
-use workbench_shell::app_ext::AppExt as _;
+use workbench_shell::test_support::TestSupport as _;
 
 use std::sync::{Arc, Mutex};
 

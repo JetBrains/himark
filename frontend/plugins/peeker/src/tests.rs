@@ -17,7 +17,9 @@ use workbench_shell::app_ext::AppExt;
 fn boot() -> Himark {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(TogglePeeker),
+    )]);
     app
 }
 

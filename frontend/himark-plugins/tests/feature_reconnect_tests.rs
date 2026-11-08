@@ -200,8 +200,9 @@ fn a_document_poll_hears_the_restart_instead_of_freezing() {
         bench.url(),
     ));
     block_on(b.connect()).expect("b connected");
-    let reopened = block_on(b.open_document(bench.local(), Some(bench.file_uri("shared.md")), None))
-        .expect("b reopened");
+    let reopened =
+        block_on(b.open_document(bench.local(), Some(bench.file_uri("shared.md")), None))
+            .expect("b reopened");
     assert_eq!(
         ChannelUri::new(reopened.document.clone()),
         channel,
@@ -263,8 +264,12 @@ fn a_fresh_open_after_the_restart_mints_a_live_channel() {
     block_on(bench.a.connect()).expect("connected");
     std::fs::write(bench.dir.path().join("shared.md"), "shared\n").expect("the file");
     let uri = bench.file_uri("shared.md");
-    let opened =
-        block_on(bench.a.open_document(bench.local(), Some(uri.clone()), None)).expect("opened");
+    let opened = block_on(
+        bench
+            .a
+            .open_document(bench.local(), Some(uri.clone()), None),
+    )
+    .expect("opened");
     let stale = ChannelUri::new(opened.document);
     block_on(bench.a.subscribe_document(stale.clone())).expect("subscribed");
 
@@ -348,14 +353,12 @@ fn a_terminal_on_the_reborn_host_exits_instead_of_freezing() {
         })
     };
     let channel = ChannelUri::new("ahp-terminal:/feature-reconnect/1".to_owned());
-    let handle = block_on(bench.a.terminal_open(
-        bench.local(),
-        channel.clone(),
-        None,
-        80,
-        24,
-        events,
-    ));
+    let handle =
+        block_on(
+            bench
+                .a
+                .terminal_open(bench.local(), channel.clone(), None, 80, 24, events),
+        );
     assert!(handle.is_some(), "the terminal opened");
     bench.a.terminal_input(&channel, "echo alive\n".to_owned());
     let deadline = Instant::now() + TEN;

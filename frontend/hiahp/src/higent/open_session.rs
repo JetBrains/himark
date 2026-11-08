@@ -1,12 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-
-use himark::commands::HimarkCommand;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
 use ahp_wire::effects::SubscribeSessionEffect;
 use ahp_wire::SessionId;
+use himark::commands::HimarkCommand;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -178,4 +177,3 @@ impl imba::command::DynamicOnceCommand for ShowSession {
         himark::shell::navigate_origin(store, ui, self.origin, crate::places::ChatPlace(key), fx);
     }
 }
-

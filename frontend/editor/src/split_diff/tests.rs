@@ -18,14 +18,16 @@ fn run_effect(
         }
         Err(value) => match value.downcast::<crate::repair::RepairEffect>() {
             Ok(effect) => {
-                let handler = crate::repair::RepairHandler(std::sync::Arc::clone(background_layout));
+                let handler =
+                    crate::repair::RepairHandler(std::sync::Arc::clone(background_layout));
                 Box::new(block_on(Box::pin(
                     async move { handler.handle(*effect).await },
                 )))
             }
             Err(value) => match value.downcast::<crate::reparse::ReparseEffect>() {
                 Ok(effect) => {
-                    let handler = crate::reparse::ReparseHandler(std::sync::Arc::clone(background_layout));
+                    let handler =
+                        crate::reparse::ReparseHandler(std::sync::Arc::clone(background_layout));
                     Box::new(block_on(Box::pin(
                         async move { handler.handle(*effect).await },
                     )))

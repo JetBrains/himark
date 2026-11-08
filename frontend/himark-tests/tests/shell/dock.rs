@@ -27,7 +27,6 @@ use workbench_shell::test_driver;
 
 use himark::app::AppCommand;
 
-
 use himark::app::AppFonts;
 
 use himark::app::Himark;
@@ -585,7 +584,10 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 
     let back = std::sync::Arc::new(Mutex::new(Some(first)));
-    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(Switch(back)),)]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(Switch(back)),
+    )]));
     let restored = entity(&app);
     assert!(restored.dock_panel().is_some(), "the dock rode its session");
     assert!(

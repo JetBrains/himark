@@ -13,9 +13,9 @@ use super::*;
 use ::editor::test_document::plain_document;
 use himark::app::AppFonts;
 use himark::app::Himark;
+use std::sync::{mpsc, Arc};
 use workbench_shell::app::OpenedDocument;
 use workbench_shell::app_ext::AppExt;
-use std::sync::{mpsc, Arc};
 
 fn document_location(name: &str) -> ResourceLocation {
     ResourceLocation::new(

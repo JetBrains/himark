@@ -117,7 +117,6 @@ impl imba::effect::Effect for PickFoldersEffect {
     type Result = Vec<editor::location::ResourceLocation>;
 }
 
-
 pub struct ChatFoldersPicked {
     pub server: HostId,
     pub session: SessionUri,
@@ -187,4 +186,3 @@ impl imba::command::DynamicCommand for ChatGrantAck {
         }
     }
 }
-

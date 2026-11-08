@@ -14,8 +14,6 @@ use imba::event::{Key, Modifiers};
 use editor::location::ResourceLocation;
 use hiahp::save::*;
 
-
-
 use ::editor::test_document::plain_document;
 use documents::OpenDocuments;
 use documents::StoreDocumentEffect;

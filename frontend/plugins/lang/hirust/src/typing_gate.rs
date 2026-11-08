@@ -76,7 +76,8 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
                 for effect in pending {
                     rounds += 1;
                     assert!(rounds < 10_000, "the tail must converge");
-                    let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
+                    let command =
+                        workbench_shell::test_support::handle_effect(effect, &background_layout);
                     imba::View::perform(view, store, &ui, command, &mut batch.effects());
                 }
             }

@@ -100,13 +100,13 @@ fn a_search_pick_washes_the_opened_editor() {
     )
     .expect("the document is open");
     assert!(
-        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
-            locations::views::WashDocument {
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(
+            Arc::new(locations::views::WashDocument {
                 lists,
                 feed,
                 document: washed,
-            }
-        ),))])
+            }),
+        ))])
     );
     // Requests drain on the next content tick, as in the live app.
     assert!(app.perform_batch(vec![workbench_shell::shell::content(
@@ -127,9 +127,9 @@ fn a_search_pick_washes_the_opened_editor() {
     let wire = state_wire(&app);
     let _ = window;
     assert!(
-        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
-            DisposeFeed { wire, feed }
-        ),))])
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(
+            Arc::new(DisposeFeed { wire, feed }),
+        ))])
     );
     assert!(LocationLists::row(app.store(), lists, feed).is_none());
     assert!(

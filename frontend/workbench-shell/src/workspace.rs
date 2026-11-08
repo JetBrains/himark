@@ -1,7 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-
 use imba::store::Store;
 
 use crate::app::{AppCommand, AppFx};

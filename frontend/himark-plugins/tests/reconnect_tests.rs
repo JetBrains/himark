@@ -18,11 +18,11 @@
 //! connection's inbound, or cut its socket — the things a host, a
 //! network or a scheduler do to a wire.
 
-#[allow(unused_imports)]
-use workbench_shell::capi::WindowEngine as _;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine as _;
 
 use ahp_types::actions::StateAction;
 use ahp_wire::client::AnnotationsClient as _;
@@ -37,9 +37,9 @@ use ahp_wire::client::SessionOptions;
 use ahp_wire::client::SessionUri;
 
 mod common;
+use ahp_wire::wire::WireHost;
 use common::probe::{Probe, ProbeConnector};
 use common::{bind_backend, block_on};
-use ahp_wire::wire::WireHost;
 
 // ─── the bench ───────────────────────────────────────────────────────────
 

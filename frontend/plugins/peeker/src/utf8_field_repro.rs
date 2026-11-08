@@ -12,18 +12,22 @@ use workbench_shell::test_support::TestSupport as _;
 use super::*;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::app_ext::AppExt;
 use std::sync::{mpsc, Arc};
+use workbench_shell::app_ext::AppExt;
 
 #[test]
 fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(TogglePeeker),
+    )]);
     let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
-    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(languages))]);
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(
+        himarkdown::markdown_languages(languages),
+    )]);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -107,7 +111,8 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     for _ in 0..12 {
-        let _ = workbench_shell::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
+        let _ =
+            workbench_shell::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
         let _ = app.draw_window_sized(
             app.sole_window(),
             &gfx_skia::SkiaCanvas::new(surface.canvas()),

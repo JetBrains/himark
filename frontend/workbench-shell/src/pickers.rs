@@ -7,8 +7,8 @@
 
 use std::sync::Arc;
 
-use himark::app::AppFx;
 use himark::app::AppCommand;
+use himark::app::AppFx;
 use himark::commands::HimarkCommand;
 use himark_ffi::host::FilePickerEffect;
 use imba::effect::AnyEffect;
@@ -17,9 +17,9 @@ use imba::store::Store;
 use editor::location::ResourceLocation;
 
 use crate::app::bound_window;
-use crate::workspace::open_locations;
 use crate::app::WorkbenchShell as _;
 use crate::app_ext::AppExt as _;
+use crate::workspace::open_locations;
 
 pub struct OpenFilePicker;
 
@@ -41,7 +41,10 @@ impl HimarkCommand for OpenFilePicker {
             return;
         };
         let _ = fx.push(
-            AnyEffect::new(FilePickerEffect { origin: himark::bridge::ViewBridgeId::from_raw(window.raw()) }).map(move |locations| {
+            AnyEffect::new(FilePickerEffect {
+                origin: himark::bridge::ViewBridgeId::from_raw(window.raw()),
+            })
+            .map(move |locations| {
                 crate::shell::windowed(window, Arc::new(OpenPicked { locations }))
             }),
         );

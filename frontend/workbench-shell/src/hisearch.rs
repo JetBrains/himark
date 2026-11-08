@@ -139,9 +139,13 @@ pub struct ChromePlugin;
 impl himark::plugin::Plugin for ChromePlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
-        
-                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(ToggleSearchView))]);
-        app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(FocusSearchView))]);
+
+        app.perform_batch(vec![himark::app::AppCommand::Register(
+            std::sync::Arc::new(ToggleSearchView),
+        )]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(
+            std::sync::Arc::new(FocusSearchView),
+        )]);
         app.register_toolbar_button(toolbar_button());
     }
 }

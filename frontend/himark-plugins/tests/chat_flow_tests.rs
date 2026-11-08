@@ -13,12 +13,12 @@
 use himark_plugins::EngineAgents as _;
 #[allow(unused_imports)]
 use himark_plugins::HimarkEngineExt as _;
-#[allow(unused_imports)]
-#[allow(unused_imports)]
-use workbench_shell::capi::WindowEngine;
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
+#[allow(unused_imports)]
+#[allow(unused_imports)]
+use workbench_shell::capi::WindowEngine;
 #[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
@@ -501,18 +501,13 @@ impl himark::commands::HimarkCommand for OpenScripted {
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.window_ids().first().expect("a window");
     workbench_shell::workspace::entity_state(
-        workbench::window::Windows::window_ref(engine.store(), window)
-            .expect("the window entity"),
+        workbench::window::Windows::window_ref(engine.store(), window).expect("the window entity"),
     )
     .chats()
 }
 
 fn chat_record(engine: &HimarkEngine) -> Option<ahp_chat::chat::ChatPanel> {
-    ahp_chat::chats::Chats::chat(
-        engine.store(),
-        chats_of_window(engine),
-        &ChatUri::new(CHAT),
-    )
+    ahp_chat::chats::Chats::chat(engine.store(), chats_of_window(engine), &ChatUri::new(CHAT))
 }
 
 fn transcript(engine: &HimarkEngine) -> Vec<(String, Vec<(String, String)>)> {
@@ -1320,14 +1315,18 @@ fn a_panned_gesture_scrolls_the_chat_up() {
         .expect("the chat record")
         .rows_scroll_probe();
     let tail = before.iter().cloned().fold(0.0f32, f32::max);
-    assert!(tail > 1000.0, "the transcript opened pinned to a tall tail: {before:?}");
+    assert!(
+        tail > 1000.0,
+        "the transcript opened pinned to a tall tail: {before:?}"
+    );
 
     // The pan: ten upward finger steps, one gesture, anchored point,
     // a draw between steps — the web shell's frame shape.
     let gesture = imba::event::ScrollGesture::default();
     gesture.begin();
     for _ in 0..10 {
-        let _ = workbench_shell::test_driver::scroll_with(&mut engine, &gesture, 550.0, 400.0, -60.0);
+        let _ =
+            workbench_shell::test_driver::scroll_with(&mut engine, &gesture, 550.0, 400.0, -60.0);
         now += 16.0;
         let _ = workbench_shell::test_driver::animate(
             &mut engine,
@@ -1408,5 +1407,4 @@ fn idle_clock_ticks_are_quiet() {
         "a settled chat answered {changed_ticks}/120 idle ticks as changed and built {trees} trees — \
          something re-arms every frame"
     );
-
 }

@@ -1,7 +1,7 @@
 mod common;
+use common::{bind_backend, block_on};
 #[allow(unused_imports)]
 use workbench_shell::capi::WindowEngine as _;
-use common::{bind_backend, block_on};
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -34,7 +34,6 @@ pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<ahp_wire::wire::Wir
 
 /// A real `agent_host::server::Host` on its own runtime and thread, bound on a
 /// unix socket under `dir`; answers the url to dial.
-
 
 fn located(authority: &str, path: &std::path::Path) -> ResourceLocation {
     let segments: Vec<String> = path

@@ -10,17 +10,23 @@
 use std::sync::Arc;
 
 pub mod app;
+pub mod app_ext;
 pub mod builtins;
 #[cfg(feature = "capi")]
 pub mod capi;
-#[cfg(feature = "capi")]
-pub mod pickers;
+pub mod diff_navigator;
 pub mod diff_pane;
 pub mod folder_grant_windows;
-pub mod app_ext;
-pub mod diff_navigator;
+pub mod hichanges;
+pub mod hicomments;
+pub mod hifiles;
 pub mod higent;
+pub mod hihistory;
+pub mod hisearch;
+pub mod modal;
 pub mod pane_rows;
+#[cfg(feature = "capi")]
+pub mod pickers;
 pub mod shell;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_driver;
@@ -28,12 +34,6 @@ pub mod test_driver;
 pub mod test_support;
 pub mod toc;
 pub mod workspace;
-pub mod hichanges;
-pub mod hicomments;
-pub mod hifiles;
-pub mod hihistory;
-pub mod hisearch;
-pub mod modal;
 
 /// The chrome's shell DECORATOR: places only a workbench can show
 /// (the search-dock feed) are claimed here and handed to their

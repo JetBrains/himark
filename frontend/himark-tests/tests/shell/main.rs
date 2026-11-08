@@ -16,8 +16,7 @@ pub(crate) use editor::{
 };
 
 pub(crate) use documents::entity_view::EditorIdView;
-pub(crate) 
-fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
+pub(crate) fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
         std::sync::OnceLock::new();
     *DOCS.get_or_init(imba::store::Id::mint)

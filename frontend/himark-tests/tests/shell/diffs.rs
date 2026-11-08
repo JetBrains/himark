@@ -35,8 +35,8 @@ use ::canvas::diff_pane::*;
 use changesview::hichanges::CanvasSource;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
+use workbench_shell::diff_pane::*;
 
 /// The panel a test opens over a seeded canvas: its source's face,
 /// under the workbench's scroller — the navigator's answer.
@@ -2173,7 +2173,9 @@ fn a_settled_diff_pane_goes_quiet() {
     let fonts = himark::app::AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(OpenDiff))]);
+    app.perform_batch(vec![himark::app::AppCommand::Register(
+        std::sync::Arc::new(OpenDiff),
+    )]);
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
         std::sync::Arc::new(move |command| {
@@ -2218,7 +2220,10 @@ fn a_settled_diff_pane_goes_quiet() {
 
     for ms in [0.0, 8.3, 16.7, 25.0, 33.4] {
         assert!(
-            !workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(ms)),
+            !workbench_shell::test_driver::animate(
+                &mut app,
+                imba::anim::AnimationClock::from_millis(ms)
+            ),
             "a settled diff pane must not answer the clock at {ms}ms"
         );
     }
@@ -2883,8 +2888,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let size = gfx::Size::new(1100.0, 1500.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     for _ in 0..40 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -2980,8 +2987,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let standing = inline_of(&app);
     assert!(workbench_shell::test_driver::type_text(&mut app, "x"));
     for _ in 0..20 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -3072,7 +3081,10 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3303,8 +3315,10 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let mut trace: Vec<f32> = vec![reserved];
     for _ in 0..40 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -3399,7 +3413,10 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let draw_settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             let mut drained = false;
             while let Ok(command) = arriving.try_recv() {
@@ -3410,7 +3427,10 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
                 // A quiet round still runs a batch: the batch-tail
                 // lanes (diff, dressing, canvas) are what converge the
                 // state now — paint no longer carries probes.
-                app.perform_batch(vec![workbench_shell::shell::viewport_resized(app.sole_window(), size)]);
+                app.perform_batch(vec![workbench_shell::shell::viewport_resized(
+                    app.sole_window(),
+                    size,
+                )]);
             }
             let _ = app.draw_window_sized(
                 app.sole_window(),
@@ -3543,7 +3563,10 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..40 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -3977,7 +4000,10 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, rounds: usize| {
         for _ in 0..rounds {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -4927,7 +4953,10 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Himark| {
         for _ in 0..12 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5152,7 +5181,10 @@ fn completion_serves_a_canvas_diff_face() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5363,7 +5395,10 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((430, 600)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..16 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
@@ -5767,8 +5802,10 @@ fn dump_commit_canvas_screenshot() {
     let size = gfx::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5904,8 +5941,10 @@ fn dump_multi_file_commit_canvas_screenshot() {
     let size = gfx::Size::new(2880.0, 1800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     for _ in 0..24 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -5926,8 +5965,10 @@ fn dump_multi_file_commit_canvas_screenshot() {
     // bare — its air is the diff row's tail, not the band's head.
     let _ = workbench_shell::test_driver::scroll_at(&mut app, 1440.0, 900.0, 700.0);
     for _ in 0..12 {
-        let _ =
-            workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = workbench_shell::test_driver::animate(
+            &mut app,
+            imba::anim::AnimationClock::from_millis(0.0),
+        );
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
@@ -6027,7 +6068,10 @@ fn dump_commit_control_screenshots() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface| {
         for _ in 0..12 {
-            let _ = workbench_shell::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);

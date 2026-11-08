@@ -10,15 +10,14 @@
 
 use std::sync::Arc;
 
-pub use std::sync::Arc as _A;
 pub use himark::app::AppFonts;
+pub use std::sync::Arc as _A;
 
 /// The engine, its C surface and every symbol the header speaks —
 /// re-exported whole so the staticlib carries them and the tests
 /// keep their vocabulary.
 pub use himark_ffi::*;
 pub use workbench_shell::capi::*;
-
 
 /// Boot the engine over the HOST'S plugin list — the one
 /// construction every shell shares. The host's callbacks are NOT
@@ -30,7 +29,8 @@ pub fn with_plugins(
     connector: Arc<dyn ahp_wire::transport::Connector>,
 ) -> (HimarkEngine, crate::Wires) {
     let mut app = workbench_shell::app::workbench_app(fonts);
-    let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(ahp_wire::uris::FileUris);
+    let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
+        Arc::new(ahp_wire::uris::FileUris);
 
     let wires = crate::install_host(
         &mut app,
@@ -178,7 +178,6 @@ pub fn with_fonts(fonts: AppFonts) -> HimarkEngine {
     engine
 }
 
-
 /// The PRODUCTION plugin set, minted for `himark_create`: the whole
 /// shipping composition — plugin list, wire doors, outward dialing —
 /// deferred into one boot. `data_dir`/`data_dir_len` name the
@@ -200,7 +199,6 @@ pub unsafe extern "C" fn himark_production_plugins(
         production_engine_at(data_dir)
     }))))
 }
-
 
 /// Agent-server registration with METHOD syntax over the assembled
 /// engine — reads the seated wire directory; the integration tests

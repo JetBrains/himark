@@ -49,10 +49,12 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     let mut store = imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
 
-    let outcome = editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(theme()))
-        .reparse(
-            editor::reparse::ReparseWork::capture(&view.document, registry.clone()).expect("parse"),
-        );
+    let outcome =
+        editor::reparse::ReparseHandler(workbench_shell::test_support::test_workshop(theme()))
+            .reparse(
+                editor::reparse::ReparseWork::capture(&view.document, registry.clone())
+                    .expect("parse"),
+            );
     imba::View::perform(
         &mut view,
         &mut store,
@@ -71,10 +73,9 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         assert!(rounds < 10_000, "the bounded tail must converge");
         let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
         imba::View::perform(&mut view, &mut store, &ui, command, &mut batch.effects());
-        pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
-            &mut batch,
-            imba::effect::Batch::new(),
-        )));
+        pending.extend(workbench_shell::test_support::surviving_launches(
+            std::mem::replace(&mut batch, imba::effect::Batch::new()),
+        ));
     }
     let live = view.document.element_heights(editor);
     let laid: f32 = live.iter().map(|(_, height)| height).sum();

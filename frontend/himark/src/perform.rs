@@ -87,9 +87,7 @@ impl AppCommand {
 pub struct MountBinders(
     #[allow(clippy::type_complexity)]
     pub  Vec<
-        Arc<
-            dyn Fn(&Store, crate::bridge::ViewBridgeId) -> imba::focus::Bindings + Send + Sync,
-        >,
+        Arc<dyn Fn(&Store, crate::bridge::ViewBridgeId) -> imba::focus::Bindings + Send + Sync>,
     >,
 );
 
@@ -113,11 +111,7 @@ pub(crate) fn mount_bindings(
 #[derive(Clone, Default)]
 pub struct FileRoutes(
     #[allow(clippy::type_complexity)]
-    pub  Vec<
-        Arc<
-            dyn Fn(&mut Store, documents::watch::Subscription, &mut AppFx<'_>) + Send + Sync,
-        >,
-    >,
+    pub  Vec<Arc<dyn Fn(&mut Store, documents::watch::Subscription, &mut AppFx<'_>) + Send + Sync>>,
 );
 
 /// The seated ORIGIN-BINDINGS resolver: whoever owns richer origins

@@ -14,8 +14,10 @@ pub struct DiffPanePlugin;
 impl himark::plugin::Plugin for DiffPanePlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
-        
-                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(OpenDiff))]);
+
+        app.perform_batch(vec![himark::app::AppCommand::Register(
+            std::sync::Arc::new(OpenDiff),
+        )]);
         app.register_row_minter(::canvas::diff_pane::pair_row_minter());
     }
 }

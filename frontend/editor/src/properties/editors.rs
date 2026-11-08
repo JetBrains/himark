@@ -198,7 +198,8 @@ fn drain_repairs(
         assert!(rounds < 16, "the repair lane must converge");
         rounds += 1;
         batch = Batch::new();
-        let background_layout = background_layout.get_or_insert_with(|| crate::test_document::test_workshop(theme()));
+        let background_layout =
+            background_layout.get_or_insert_with(|| crate::test_document::test_workshop(theme()));
         for effect in launched {
             let (value, lift) = effect.into_payload().split();
             let repair = value.downcast::<RepairEffect>().expect("a repair effect");

@@ -28,4 +28,3 @@ pub fn navigate_origin(
         eprintln!("[shell] navigation declined by every shell — dropped");
     }
 }
-

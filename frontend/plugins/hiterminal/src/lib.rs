@@ -34,10 +34,12 @@ pub struct TerminalPlugin;
 
 impl himark::plugin::Plugin for TerminalPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
+        app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
             poster: app.poster(),
         });
-        app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenTerminal))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(
+            OpenTerminal,
+        ))]);
         // The MOUNTED arm: a native shell shows the ready terminal
         // as its own bridge.
         app.register_view_bridge_factory(Arc::new(|app, place| {
@@ -45,7 +47,10 @@ impl himark::plugin::Plugin for TerminalPlugin {
             app.mount(move |_store, _ui, id, _fx| {
                 Some(himark::mounts::panel_mount(
                     id,
-                    Box::new(terminals::pane::TerminalView::new(place.terminals, place.id)),
+                    Box::new(terminals::pane::TerminalView::new(
+                        place.terminals,
+                        place.id,
+                    )),
                 ))
             })
         }));

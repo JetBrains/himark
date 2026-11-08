@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-
 use himark::app::Himark;
 
 /// One catalog snapshot — plain rows, cloned out, immutable.
@@ -78,20 +77,20 @@ pub fn enter_session(
     host: ahp_wire::client::HostId,
     session: ahp_wire::client::SessionUri,
 ) -> bool {
-    app.perform_batch(vec![himark::app::AppCommand::Verb(imba::command::Verb::once(
-        crate::higent::open_session::EnterHeadless {
+    app.perform_batch(vec![himark::app::AppCommand::Verb(
+        imba::command::Verb::once(crate::higent::open_session::EnterHeadless {
             server: host,
             session,
-        },
-    ))])
+        }),
+    )])
 }
 
 /// Create a session HEADLESSLY on the given host (or the local
 /// default); the landing enters it, the catalog carries the rest.
 pub fn create_session(app: &mut Himark, host: Option<ahp_wire::client::HostId>) -> bool {
-    app.perform_batch(vec![himark::app::AppCommand::Verb(imba::command::Verb::once(
-        crate::higent::open_session::CreateHeadless { host },
-    ))])
+    app.perform_batch(vec![himark::app::AppCommand::Verb(
+        imba::command::Verb::once(crate::higent::open_session::CreateHeadless { host }),
+    )])
 }
 
 /// Every command the SESSION can run: ask each view mounted into

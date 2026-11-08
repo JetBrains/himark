@@ -637,7 +637,6 @@ impl SessionTreeView {
         self.tree.len()
     }
 
-
     /// TEST SUPPORT: where row `index` stands under the tab's top and
     /// how tall it is — the tree's top gap, then the rows above it as
     /// the list measured them. Mirrors `display`.
@@ -687,8 +686,7 @@ impl SessionTreeView {
         store: &Store,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) {
-        if documents::watch::Watching::installed(store)
-            && !self.tree.watches.contains_key(&parent)
+        if documents::watch::Watching::installed(store) && !self.tree.watches.contains_key(&parent)
         {
             let landing = parent.clone();
             let _ = fx.push(
@@ -1328,8 +1326,7 @@ impl View for SessionTreeView {
                 // the refresh re-subscribes and re-lists in one
                 // motion.
                 for subscription in subscriptions {
-                    let Some(parent) = self.tree.by_subscription.get(&subscription).cloned()
-                    else {
+                    let Some(parent) = self.tree.by_subscription.get(&subscription).cloned() else {
                         continue;
                     };
                     self.tree.watches.remove_mut(&parent);

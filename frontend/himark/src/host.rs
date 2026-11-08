@@ -122,7 +122,9 @@ impl Himark {
     }
 
     fn host(&self) -> &HostLoop {
-        self.host.as_ref().expect("the host loop is installed at boot")
+        self.host
+            .as_ref()
+            .expect("the host loop is installed at boot")
     }
 
     pub fn worker(&self) -> Worker {
@@ -150,7 +152,10 @@ impl Himark {
 
     #[doc(hidden)]
     pub fn set_drain_pacing(&mut self, chunk: usize, budget: std::time::Duration) {
-        let host = self.host.as_mut().expect("the host loop is installed at boot");
+        let host = self
+            .host
+            .as_mut()
+            .expect("the host loop is installed at boot");
         host.drain_chunk = chunk;
         host.drain_budget = budget;
     }

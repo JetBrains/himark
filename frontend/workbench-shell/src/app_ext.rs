@@ -1,17 +1,15 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-
 use crate::app::WorkbenchShell;
 
-use himark::app::Himark;
 use crate::app::OpenedDocument;
-use himark::commands::HimarkCommand;
 use editor::document::Document;
 use hikit::modal::ModalView;
+use himark::app::Himark;
+use himark::commands::HimarkCommand;
 
 pub trait AppExt {
-
     fn perform_registered(&mut self, window: ::workbench::window::WindowId, id: &str) -> bool;
 
     fn add_document(
@@ -49,14 +47,9 @@ pub trait AppExt {
     ) -> bool;
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool;
-
-
-
-
 }
 
 impl AppExt for Himark {
-
     fn perform_registered(&mut self, window: ::workbench::window::WindowId, id: &str) -> bool {
         let store = self.window_store(window);
         let ui = self.ui_ctx();
@@ -148,8 +141,4 @@ impl AppExt for Himark {
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool {
         self.perform_batch(vec![crate::shell::close_modal(window)])
     }
-
-
-
-
 }

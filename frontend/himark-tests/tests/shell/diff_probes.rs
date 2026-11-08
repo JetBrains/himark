@@ -16,9 +16,9 @@ use workbench_shell::test_support::TestSupport as _;
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
+use workbench_shell::diff_pane::*;
 
 fn monster_pair(repetitions: usize) -> (String, String) {
     let sample = include_str!("../../../plugins/demo/sample.md");
@@ -433,7 +433,8 @@ fn probe_pair(left: String, right: String) {
             viewport_start(&app)
         );
         for _ in 0..8 {
-            let _ = workbench_shell::test_driver::type_text(&mut app, "grow the row substantially ");
+            let _ =
+                workbench_shell::test_driver::type_text(&mut app, "grow the row substantially ");
             let _ = app.draw_window_sized(
                 app.sole_window(),
                 &gfx_skia::SkiaCanvas::new(surface.canvas()),
