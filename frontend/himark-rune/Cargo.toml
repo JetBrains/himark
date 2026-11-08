@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "himark-rune"
 version = "0.1.0"

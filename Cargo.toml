@@ -1,4 +1,10 @@
 [workspace]
+# The rune crates are NOT members: they depend by path on the
+# sibling ../rune checkout, which exists only on development
+# machines — as members they kill `cargo metadata` (and with it
+# all of CI) wherever that checkout is absent. Each is its own
+# workspace; build them from their directories.
+exclude = ["frontend/himark-rune", "examples/editor-rune"]
 members = [
     "frontend/rope",
     "frontend/sumtree",
@@ -53,7 +59,6 @@ members = [
     "frontend/desktop",
     "frontend/imba-gpui",
     "frontend/himark-gpui",
-    "frontend/himark-rune",
     "backend/agent-host",
     "backend/find",
     "backend/git",
@@ -64,7 +69,6 @@ members = [
     "apps/desktop",
     "apps/web/tools/grammar-pack",
     "examples/editor-gpui",
-    "examples/editor-rune",
     "vendor/difftastic-core",
     "vendor/fsp-types",
     "vendor/ghostty-sys",
