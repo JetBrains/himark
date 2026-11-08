@@ -11,14 +11,11 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use ::canvas::diff_pane::*;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
 use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
@@ -639,7 +636,7 @@ fn canvas_landing_breakdown_probe() {
     {
         let mut scratch = old_doc.clone();
         let env_theme = editor::env::Themes::of(app.store());
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let started = Instant::now();
         let _editor = scratch.add_editor(
@@ -680,7 +677,7 @@ fn canvas_landing_breakdown_probe() {
     eprintln!("[landing] register both sides: {:?}", started.elapsed());
 
     let id = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let started = Instant::now();
         let id = documents::diff_views::build_diff_view(
             &mut app.store_mut(),
@@ -700,7 +697,7 @@ fn canvas_landing_breakdown_probe() {
     };
 
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut pane = PairPane::over(documents, id);
         let mut batch = imba::effect::Batch::new();
         let started = Instant::now();

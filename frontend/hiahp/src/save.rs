@@ -32,8 +32,7 @@ pub struct SavePlugin;
 
 impl himark::plugin::Plugin for SavePlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
-        app.register_command(std::sync::Arc::new(SaveAll));
+                app.register_command(std::sync::Arc::new(SaveAll));
         app.register_document_command(std::sync::Arc::new(save_document(true)));
     }
 }

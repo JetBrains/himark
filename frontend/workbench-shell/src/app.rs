@@ -205,7 +205,7 @@ pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
     if app.store().get::<ShellSeated>().is_some() {
         return false;
     }
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(ShellSeated);
         store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
         crate::builtins::register_builtins(store);
@@ -271,7 +271,7 @@ pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
     // and the fold-back after a host lands — only a WINDOW gesture
     // re-opens the side slot; a mounted origin no-ops). The agents
     // BUTTON is `AgentsPlugin`'s, installed by shipping lists.
-    app.setup(|store| {
+    app.with_store(|store| {
         crate::higent::chat_roads::install_shell_roads(store);
         hiahp::higent::flows::AgentFlows::install_refold(
             store,
@@ -381,7 +381,7 @@ impl WorkbenchShell for Himark {
     /// window id lives inside.
     fn ensure_window_slot(&mut self, window: WindowId) -> himark::bridge::ViewBridgeId {
         let id = himark::bridge::ViewBridgeId::from_raw(window.raw());
-        self.mount_as(id, std::sync::Arc::new(WorkbenchView { window }));
+        self.mount_at(id, std::sync::Arc::new(WorkbenchView { window }));
         id
     }
 
@@ -437,21 +437,21 @@ impl WorkbenchShell for Himark {
         &mut self,
         navigator: N,
     ) {
-        self.setup(|store| {
+        self.with_store(|store| {
             ::workbench::navigation::Navigators::register_windowed(store, navigator)
         });
     }
 
     fn register_navigator<N: hikit::navigation::Navigator>(&mut self, navigator: N) {
-        self.setup(|store| ::workbench::navigation::Navigators::register(store, navigator));
+        self.with_store(|store| ::workbench::navigation::Navigators::register(store, navigator));
     }
 
     fn register_toolbar_button(&mut self, button: ::workbench::toolbar::ToolbarButton) {
-        self.setup(|store| ::workbench::toolbar::ToolbarButtons::register(store, button));
+        self.with_store(|store| ::workbench::toolbar::ToolbarButtons::register(store, button));
     }
 
     fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::panel::RowMinter>) {
-        self.setup(|store| ::workbench::rows::RowMinters::register(store, minter));
+        self.with_store(|store| ::workbench::rows::RowMinters::register(store, minter));
     }
 
     /// TEST SUPPORT: the fronting dock's owner id, if any.
@@ -494,7 +494,8 @@ impl WorkbenchShell for Himark {
             self.perform_batch(vec![crate::shell::viewport_resized(window, size)]);
         }
         let (id, live) = self.window_origin(window, size);
-        self.dispatch_bridge_timed(id, event, live, event_started_at)
+        self.dispatch_bridge(id, event, live, event_started_at)
+            .needs_redraw
     }
 
     fn dispatch(&mut self, window: WindowId, event: Event<'_>, size: Size) -> bool {
@@ -508,7 +509,8 @@ impl WorkbenchShell for Himark {
         size: Size,
     ) -> (bool, imba::event::PointerShape) {
         let (id, live) = self.window_origin(window, size);
-        self.dispatch_bridge(id, event, live)
+        let outcome = self.dispatch_bridge(id, event, live, 0.0);
+        (outcome.needs_redraw, outcome.pointer)
     }
 
     /// The window adapter's fork, in ONE place: a live window

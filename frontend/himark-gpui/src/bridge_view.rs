@@ -69,24 +69,24 @@ impl BridgeView {
     /// no key codes, no masks, the slot's standing size.
     fn dispatch(&self, event: Event<'_>, cx: &mut Context<Self>) {
         let at = self.now();
-        let changed = self
+        let outcome = self
             .engine
             .raw()
             .borrow_mut()
-            .dispatch_bridge_timed(self.bridge, event, None, at);
-        if changed {
+            .dispatch_bridge(self.bridge, event, None, at);
+        if outcome.needs_redraw {
             cx.notify();
         }
     }
 
     fn dispatch_pointed(&self, event: Event<'_>, cx: &mut Context<Self>) {
-        let (changed, shape) = self
+        let outcome = self
             .engine
             .raw()
             .borrow_mut()
-            .dispatch_bridge(self.bridge, event, None);
-        let style = cursor_style_of(shape);
-        if self.cursor.replace(style) != style || changed {
+            .dispatch_bridge(self.bridge, event, None, 0.0);
+        let style = cursor_style_of(outcome.pointer);
+        if self.cursor.replace(style) != style || outcome.needs_redraw {
             cx.notify();
         }
     }
@@ -164,7 +164,8 @@ impl BridgeView {
                 // A shell that types without ticking still applies
                 // the standing scroll before the stroke lands.
                 let flushed = app.flush_scroll(self.bridge);
-                app.dispatch_bridge_timed(self.bridge, Event::KeyDown { key, mods }, None, at)
+                app.dispatch_bridge(self.bridge, Event::KeyDown { key, mods }, None, at)
+                    .needs_redraw
                     || flushed
             };
             if changed {
@@ -435,7 +436,8 @@ impl gpui::EntityInputHandler for BridgeView {
                 let at = self.now();
                 let mut app = self.engine.raw().borrow_mut();
                 let flushed = app.flush_scroll(self.bridge);
-                app.dispatch_bridge_timed(self.bridge, Event::TextInput { text }, None, at)
+                app.dispatch_bridge(self.bridge, Event::TextInput { text }, None, at)
+                    .needs_redraw
                     || flushed
             }
             None => false,

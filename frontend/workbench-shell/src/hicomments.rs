@@ -20,8 +20,7 @@ impl himark::plugin::Plugin for ChromePlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
         
-        use himark::app_ext::AppExt as _;
-        app.register_command(Arc::new(ToggleCommentsView));
+                app.register_command(Arc::new(ToggleCommentsView));
         app.register_toolbar_button(toolbar_button());
     }
 }

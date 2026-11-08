@@ -11,7 +11,6 @@
 use std::sync::Arc;
 
 use himark::app::{AppFonts, Himark};
-use himark::app_ext::AppExt as _;
 use himark::bridge::ViewBridgeId;
 use himark_gpui::gpui::{
     px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions,

@@ -88,7 +88,7 @@ pub fn follow_session_tree(
         let session = session.clone();
         let location_kept = location.clone();
         let mut generation = 0;
-        app.setup(|store| {
+        app.with_store(|store| {
             let mut map = store.get::<FollowTargets>().cloned().unwrap_or_default();
             map.standing.insert_mut(session, location_kept);
             map.generation += 1;

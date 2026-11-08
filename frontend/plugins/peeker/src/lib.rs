@@ -5,8 +5,6 @@
 use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
-#[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
 #[cfg(any(test, feature = "test-support"))]
 #[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
@@ -1907,8 +1905,7 @@ pub struct PeekerPlugin;
 
 impl himark::plugin::Plugin for PeekerPlugin {
     fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
-        app.register_command(std::sync::Arc::new(TogglePeeker));
+                app.register_command(std::sync::Arc::new(TogglePeeker));
         app.register_bridge_arm(std::sync::Arc::new(|app, place| {
             let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();

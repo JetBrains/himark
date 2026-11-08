@@ -44,7 +44,12 @@ pub fn install_routes(
                 Arc::clone(languages),
                 Arc::new(myersdiff::Myers),
             );
-            app.observe_stripe_bases(Arc::new(ahp_session::fsroute::resolve_base));
+            app.with_store(|store| {
+                documents::diffs::StripeBases::install(
+                    store,
+                    Arc::new(ahp_session::fsroute::resolve_base),
+                );
+            });
             app.register_handler::<::editor::completion::CompletionEffect>(
                     ahp_lsp::CompletionRoute {
                         directory: Arc::clone(clients),
@@ -84,7 +89,7 @@ pub fn install_routes(
         }
 
     let _ = store_document;
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(AgentFsInstalled {
             fetch_document: installed.fetch_document || fetch_document,
             store_document: installed.store_document || store_document,

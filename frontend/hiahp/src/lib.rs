@@ -51,8 +51,8 @@ impl himark::plugin::Plugin for AhpPlugin {
         register_all(app);
         install_build_handler(app, Arc::clone(&cx.languages), Arc::clone(&cx.diff_policy));
         install_session_half(app);
-        app.setup(|store| ::ahp_lsp::enrich::install_edit_sink(store));
-        app.setup(|store| {
+        app.with_store(|store| ::ahp_lsp::enrich::install_edit_sink(store));
+        app.with_store(|store| {
             ::editor::change_sink::InstalledChangeSink::install(
                 store,
                 Arc::new(::ahp_docsync::SyncSink),
@@ -515,7 +515,7 @@ pub fn session_sweep() -> Arc<dyn Fn(&mut imba::store::Store)> {
 /// session and `SessionState`, and a watch subscription's change
 /// refetches the owning session's documents collection.
 pub fn install_session_binding(app: &mut himark::himark::Himark) {
-    app.setup(|store| {
+    app.with_store(|store| {
         let mut binders = store
             .get::<himark::perform::MountBinders>()
             .cloned()
@@ -562,7 +562,7 @@ pub fn install_session_half(app: &mut himark::app::Himark) {
     if app.store().get::<SessionHalfSeated>().is_some() {
         return;
     }
-    app.setup(|store| store.put(SessionHalfSeated));
+    app.with_store(|store| store.put(SessionHalfSeated));
     app.register_batch_lane(session_lanes());
     app.register_sweep_hook(session_sweep());
     app.register_unmount_hook(Arc::new(crate::sessions::forget_session));

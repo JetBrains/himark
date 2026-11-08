@@ -72,7 +72,7 @@ fn main() {
     let documents = imba::store::Id::<documents::OpenDocuments>::mint();
     let ui = app.ui_ctx();
     let mut registered = None;
-    app.setup(|store| {
+    app.with_store(|store| {
         let theme = editor::env::Themes::of(store).clone();
         let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
         let body = text::text::Text::from_string_exact(&source);

@@ -13,7 +13,6 @@ use workbench_shell::app_ext::AppExt as _;
 
 use std::sync::{Arc, Mutex};
 
-use himark::app_ext::AppExt;
 use ::terminals::pane::*;
 use ::terminals::*;
 use hikit::panel::PanelView;

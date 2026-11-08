@@ -3,7 +3,6 @@
 
 
 use crate::app::WorkbenchShell;
-use himark::app_ext::AppExt as _;
 
 use himark::app::Himark;
 use crate::app::OpenedDocument;
@@ -60,7 +59,7 @@ impl AppExt for Himark {
 
     fn perform_registered(&mut self, window: ::workbench::window::WindowId, id: &str) -> bool {
         let store = self.window_store(window);
-        let ui = self.ui_handle();
+        let ui = self.ui_ctx();
         let Some(command) = crate::app::palette_commands(&store, &ui, window)
             .into_iter()
             .find(|presentable| presentable.id == id)

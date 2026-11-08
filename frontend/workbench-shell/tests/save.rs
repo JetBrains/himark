@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::app::Himark;
-use himark::app_ext::AppExt as _;
 use workbench_shell::app::WorkbenchShell as _;
 use workbench_shell::app_ext::AppExt as _;
 use workbench_shell::test_driver;

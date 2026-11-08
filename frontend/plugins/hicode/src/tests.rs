@@ -6,8 +6,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::*;
@@ -78,7 +76,7 @@ fn app_with_located_document(source: &str) -> (Himark, workbench::window::Window
 }
 
 fn invoke(app: &mut Himark, window: workbench::window::WindowId, id: &str) {
-    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
@@ -92,7 +90,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
     app.register_document_command(Arc::new(GoDefinition));
     let window = app.add_window();
     let listed = |app: &Himark| {
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), window)
             .iter()
             .any(|presentable| presentable.id == "code.definition")
     };

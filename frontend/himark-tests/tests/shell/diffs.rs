@@ -26,8 +26,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use ::canvas::canvas::{self as canvas, DiffCanvasView};
@@ -37,14 +35,13 @@ use ::canvas::diff_pane::*;
 use changesview::hichanges::CanvasSource;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
 use workbench_shell::diff_pane::*;
 use std::sync::{mpsc, Arc};
 
 /// The panel a test opens over a seeded canvas: its source's face,
 /// under the workbench's scroller — the navigator's answer.
 fn face_panel(app: &mut Himark, canvas: DiffCanvasView) -> Box<dyn hikit::panel::DynPanelView> {
-    let ui = app.ui_handle();
+    let ui = app.ui_ctx();
     let mut store = app.store_mut();
     match canvas.source() {
         CanvasSource::WorkingCopy { .. } => Box::new(hikit::modal::Scrolled::new(
@@ -63,7 +60,7 @@ fn commit_panel(
     message: &str,
     author: &str,
 ) -> Box<dyn hikit::panel::DynPanelView> {
-    let ui = app.ui_handle();
+    let ui = app.ui_ctx();
     let store = app.store_mut();
     Box::new(hikit::modal::Scrolled::new(
         CommitFace::over(&store, canvas).with_block_for_tests(&store, &ui, message, author),
@@ -2042,7 +2039,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
     }
     assert!(app.perform_registered(window, "diff.open"));
 
-    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), window)
         .into_iter()
         .find(|presentable| presentable.id == "test.probe")
         .expect("the diff half offers the registered command")
@@ -2327,7 +2324,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 
     let toggle = |app: &mut Himark| {
         let command =
-            workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+            workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
                 .into_iter()
                 .find(|presentable| presentable.id == "diff.toggle-layout")
                 .expect("the pane offers the layout toggle")
@@ -2493,7 +2490,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     settle(&mut app, &mut surface);
 
     let toggle =
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .into_iter()
             .find(|presentable| presentable.id == "diff.toggle-layout")
             .expect("the pane offers the layout toggle")
@@ -2612,7 +2609,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -2753,7 +2750,7 @@ fn folded_squash_paint_cost_is_size_independent() {
         };
         let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
         let canvas = {
-            let ui = app.ui_handle();
+            let ui = app.ui_ctx();
             let mut store = app.store_mut();
             let changes = canvas_changes(&store);
             DiffCanvasView::seeded_for_tests(
@@ -2856,7 +2853,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     // and lands after a resize; the rewrap ride reconciles.
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 700.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3054,7 +3051,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3208,7 +3205,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     // The focused row offers the open roads on the focus chain —
     // cmd-enter ("workbench.open-in-full") needs nothing more.
     let offered =
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window());
     for id in ["workbench.open-in-full", "diff.open-pane"] {
         assert!(
             offered.iter().any(|presentable| presentable.id == id),
@@ -3269,7 +3266,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3381,7 +3378,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3516,7 +3513,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3681,7 +3678,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 
     let file_a = canvas_file("a.md", 1);
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3730,7 +3727,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 
     // The relaunched build lands: still Built, swapped in place.
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(
             &mut store,
@@ -3824,7 +3821,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
 
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -3959,7 +3956,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -4106,7 +4103,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
 
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -4176,7 +4173,7 @@ fn reconcile_keeps_the_sticky_cover() {
 
     // The rebuild lands: still covered.
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(&mut store, &ui, key.clone(), built2);
     }
@@ -4301,7 +4298,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
         (changes, documents)
     };
     let mut first = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         DiffCanvasView::seeded_for_tests(
             &mut store,
@@ -4341,7 +4338,7 @@ fn releasing_the_last_view_frees_the_rows_documents() {
         ..file.clone()
     };
     let mut working = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         DiffCanvasView::seeded_for_tests(
             &mut store,
@@ -4400,7 +4397,7 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
 
     let seed = file("seed.md", Some(1), Some(0));
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         let prep = built(&seed);
@@ -4447,7 +4444,7 @@ fn an_armed_row_prefetches_a_bounded_horizon() {
     let f01 = file("f01.md", Some(100), Some(100));
     let prep = built(&f01);
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(&mut store, &ui, location("f01.md"), prep);
     }
@@ -4522,7 +4519,7 @@ fn seeded_working_canvas(
         )
     };
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -4588,7 +4585,7 @@ fn a_retired_file_leaves_no_orphan_row() {
 
     // Seed a.md built, then reconcile in b.md and build it too.
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -4608,7 +4605,7 @@ fn a_retired_file_leaves_no_orphan_row() {
     };
     view.reconcile_for_tests(&mut app.store_mut(), vec![file("a.md", 1), file("b.md", 1)]);
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(&mut store, &ui, loc("b.md"), built("b.md", "b\n", "B\n"));
     }
@@ -4617,7 +4614,7 @@ fn a_retired_file_leaves_no_orphan_row() {
     // resplice), then relaunches; the relaunch lands.
     view.reconcile_for_tests(&mut app.store_mut(), vec![file("a.md", 2), file("b.md", 1)]);
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(&mut store, &ui, loc("a.md"), built("a.md", "a\n", "AA\n"));
     }
@@ -4823,7 +4820,7 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     let launched = view.reconcile_for_tests(&mut app.store_mut(), vec![canvas_file(&key, 2)]);
     assert_eq!(launched, 1);
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(&mut store, &ui, key.clone(), built2);
     }
@@ -4906,7 +4903,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         1100.0,
     );
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         let view = DiffCanvasView::seeded_for_tests(
@@ -5135,7 +5132,7 @@ fn completion_serves_a_canvas_diff_face() {
         1100.0,
     );
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -5234,7 +5231,7 @@ fn completion_serves_a_canvas_diff_face() {
         pixels
     };
     let quiet = frame(&mut surface);
-    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
+    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), window)
         .into_iter()
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")
@@ -5346,7 +5343,7 @@ fn a_wrapped_canvas_line_stays_off_the_gutter() {
         1100.0,
     );
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -5495,7 +5492,7 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         1100.0,
     );
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
@@ -5739,7 +5736,7 @@ fn dump_commit_canvas_screenshot() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1400.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         let view = DiffCanvasView::seeded_for_tests(
@@ -5860,7 +5857,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
     };
 
     let view = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         let view = DiffCanvasView::seeded_for_tests(
@@ -5881,7 +5878,7 @@ fn dump_multi_file_commit_canvas_screenshot() {
         vec![server.clone(), bridge.clone(), order.clone()],
     );
     {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         view.land_for_tests(
             &mut store,
@@ -6009,7 +6006,7 @@ fn dump_commit_control_screenshots() {
     };
     let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 2880.0);
     let canvas = {
-        let ui = app.ui_handle();
+        let ui = app.ui_ctx();
         let mut store = app.store_mut();
         let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(

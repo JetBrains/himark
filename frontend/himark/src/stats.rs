@@ -15,6 +15,8 @@ const FPS_WINDOW: Duration = Duration::from_millis(500);
 const RENDER_WINDOW: usize = 100;
 
 pub struct Stats {
+    /// Widget trees built since boot — the one-tree-per-frame probe.
+    frames_built: u64,
     font: Font,
     fps_window_started: Instant,
     fps_frames: u32,
@@ -30,6 +32,7 @@ pub struct Stats {
 impl Stats {
     pub(crate) fn new(font: Font) -> Self {
         Self {
+            frames_built: 0,
             font,
             fps_window_started: Instant::now(),
             fps_frames: 0,
@@ -56,6 +59,14 @@ impl Stats {
 
     pub fn clear_latency_event_start(&mut self) {
         self.latency_event_started_at = None;
+    }
+
+    pub fn frames_built(&self) -> u64 {
+        self.frames_built
+    }
+
+    pub(crate) fn count_frame_built(&mut self) {
+        self.frames_built += 1;
     }
 
     pub(crate) fn mark_latency_event_start(&mut self, event_started_at: f64) {

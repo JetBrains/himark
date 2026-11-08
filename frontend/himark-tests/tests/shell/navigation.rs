@@ -4,14 +4,11 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::opening::OpenedDocument;
-use himark::app_ext::AppExt;
 
 fn located(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(

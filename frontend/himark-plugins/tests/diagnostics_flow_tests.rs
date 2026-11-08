@@ -16,8 +16,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use std::sync::Arc;
@@ -721,7 +719,7 @@ fn live_host_squiggles_the_opened_file() {
     }
     for round in 0..3 {
         let started = std::time::Instant::now();
-        assert!(engine.perform_registered_at(window, "theme.toggle"));
+        assert!(engine.perform_command_at(Some(window), "theme.toggle"));
         let performed = started.elapsed();
         let _ = engine.draw(
             window,
@@ -1084,7 +1082,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     let roster = |engine: &HimarkEngine| -> Vec<String> {
         workbench_shell::app::palette_commands(
             engine.store(),
-            &engine.ui_handle(),
+            &engine.ui_ctx(),
             himark_plugins::wid(window),
         )
         .into_iter()

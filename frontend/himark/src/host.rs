@@ -131,6 +131,10 @@ impl Himark {
         }
     }
 
+    /// The redraw callback. Not a constructor parameter by
+    /// necessity: in the C boot the callbacks reach `himark_create`
+    /// after the plugin composer (which runs `install_host_loop`)
+    /// has finished, so the slot fills late by design.
     pub fn set_wake(&self, callback: impl Fn() + Send + 'static) {
         self.host().shared.wake.set(callback);
     }
@@ -346,17 +350,19 @@ impl Himark {
             return false;
         };
         let gesture = std::rc::Rc::clone(&self.scroll_states[&id].gesture);
-        let changed = self.dispatch_bridge_timed(
-            id,
-            Event::Scroll {
-                point: pending.point,
-                delta_x: pending.delta_x,
-                delta_y: pending.delta_y,
-                gesture: &gesture,
-            },
-            Some(size),
-            pending.event_started_at,
-        );
+        let changed = self
+            .dispatch_bridge(
+                id,
+                Event::Scroll {
+                    point: pending.point,
+                    delta_x: pending.delta_x,
+                    delta_y: pending.delta_y,
+                    gesture: &gesture,
+                },
+                Some(size),
+                pending.event_started_at,
+            )
+            .needs_redraw;
         if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
             eprintln!(
                 "[scroll] flush {}: dy {} at {:?} viewport {size:?} -> changed {changed}",
@@ -398,8 +404,9 @@ impl Himark {
                         now: AnimationClock::from_millis(now_ms),
                     },
                     None,
+                    0.0,
                 )
-                .0;
+                .needs_redraw;
             if moved && trace {
                 eprintln!("[anim] bridge {} still animating", id.raw());
             }
@@ -468,7 +475,7 @@ impl Himark {
             );
         }
         if let Some(reveal) = handled.reveal {
-            self.park_reveal(id, reveal);
+            self.push_reveal(id, reveal);
         }
         if !handled.commands.is_empty() {
             self.perform_batch(handled.commands);

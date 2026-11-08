@@ -82,7 +82,7 @@ pub fn install_seat(app: &mut Himark) {
     if app.store().get::<FfiSeat>().is_some() {
         return;
     }
-    app.setup(|store| store.put(FfiSeat(Arc::new(FfiSeatState::default()))));
+    app.with_store(|store| store.put(FfiSeat(Arc::new(FfiSeatState::default()))));
 }
 
 /// The seat, from any extern — the boot installed it.
@@ -558,10 +558,10 @@ impl HimarkEngineExt for Himark {
             return true;
         }
         self
-            .setup(|store| himark::form::Form::set(store, form));
+            .with_store(|store| himark::form::Form::set(store, form));
         let dark = himark::form::theme_is_dark(self.store());
-        self.perform_registered_at(
-            himark::bridge::ViewBridgeId::from_raw(0),
+        self.perform_command_at(
+            None,
             if dark { "theme.dark" } else { "theme.light" },
         )
     }

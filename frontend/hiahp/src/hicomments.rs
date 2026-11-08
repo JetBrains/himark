@@ -16,6 +16,6 @@ pub struct CommentsPlugin;
 
 impl himark::plugin::Plugin for CommentsPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        app.setup(|store| ::comments::install(store));
+        app.with_store(|store| ::comments::install(store));
     }
 }

@@ -59,7 +59,7 @@ impl BridgeView {
                 match d.phase {
                     rune::el::Phase::Down => {
                         app.flush_scroll(bridge);
-                        app.dispatch_bridge_timed(
+                        app.dispatch_bridge(
                             bridge,
                             Event::MouseDown {
                                 point,
@@ -72,7 +72,7 @@ impl BridgeView {
                         );
                     }
                     rune::el::Phase::Move => {
-                        app.dispatch_bridge_timed(
+                        app.dispatch_bridge(
                             bridge,
                             Event::MouseDrag {
                                 point,
@@ -83,7 +83,7 @@ impl BridgeView {
                         );
                     }
                     rune::el::Phase::Up => {
-                        app.dispatch_bridge_timed(bridge, Event::MouseUp { point }, None, at);
+                        app.dispatch_bridge(bridge, Event::MouseUp { point }, None, at);
                     }
                 }
             });
@@ -100,6 +100,7 @@ impl BridgeView {
                     mods: imba::event::Modifiers::default(),
                 },
                 None,
+                0.0,
             );
         });
 
@@ -110,7 +111,7 @@ impl BridgeView {
             let point = gfx::Point::new(p.x * s, p.y * s);
             let at = engine.now();
             let mut app = engine.raw().borrow_mut();
-            app.dispatch_bridge_timed(
+            app.dispatch_bridge(
                 bridge,
                 Event::MouseDown {
                     point,
@@ -121,7 +122,7 @@ impl BridgeView {
                 None,
                 at,
             );
-            app.dispatch_bridge_timed(bridge, Event::MouseUp { point }, None, at);
+            app.dispatch_bridge(bridge, Event::MouseUp { point }, None, at);
         });
 
         let engine = self.engine.clone();
@@ -168,7 +169,7 @@ impl BridgeView {
                 rune::Key::Text(text) => {
                     let mut app = engine.raw().borrow_mut();
                     app.flush_scroll(bridge);
-                    app.dispatch_bridge_timed(bridge, Event::TextInput { text }, None, at);
+                    app.dispatch_bridge(bridge, Event::TextInput { text }, None, at);
                     return true;
                 }
                 rune::Key::Command(c) => Some(imba::event::Key::Char(*c)),
@@ -192,7 +193,8 @@ impl BridgeView {
             };
             let mut app = engine.raw().borrow_mut();
             app.flush_scroll(bridge);
-            app.dispatch_bridge_timed(bridge, Event::KeyDown { key, mods }, None, at)
+            app.dispatch_bridge(bridge, Event::KeyDown { key, mods }, None, at)
+                .needs_redraw
         })
     }
 

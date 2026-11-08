@@ -34,8 +34,7 @@ pub struct TerminalPlugin;
 
 impl himark::plugin::Plugin for TerminalPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt as _;
-        app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
+                app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
             poster: app.poster(),
         });
         app.register_command(Arc::new(OpenTerminal));

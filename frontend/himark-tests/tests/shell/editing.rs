@@ -4,8 +4,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::*;
@@ -1512,8 +1510,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     use himark::app::AppFonts;
     use himark::app::Himark;
     use himark::opening::OpenedDocument;
-    use himark::app_ext::AppExt;
-    let fonts = AppFonts::embedded();
+        let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let window = app.add_window();
 

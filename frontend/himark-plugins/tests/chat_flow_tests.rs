@@ -20,8 +20,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use std::sync::{Arc, Mutex};
@@ -40,7 +38,6 @@ use ahp_wire::client::SessionUri;
 use ahp_wire::client::TurnId;
 
 use ahp_chat::cell::Cell;
-use himark::app_ext::AppExt;
 
 use himark_plugins::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
@@ -681,7 +678,7 @@ fn a_displaced_pane_misses_nothing_mid_stream() {
         !turn_text(&transcript(engine), "t-mid").is_empty()
     });
 
-    assert!(engine.perform_registered_at(window, "workbench.new-document"));
+    assert!(engine.perform_command_at(Some(window), "workbench.new-document"));
     settle(&mut engine);
     for batch in tail {
         script.feed(batch.clone());
@@ -693,7 +690,7 @@ fn a_displaced_pane_misses_nothing_mid_stream() {
         })
     });
 
-    assert!(engine.perform_registered_at(window, "chat.composer"));
+    assert!(engine.perform_command_at(Some(window), "chat.composer"));
     settle_until(
         &mut engine,
         window,
@@ -1229,7 +1226,7 @@ fn a_scroll_tick_builds_one_tree() {
     // region, the real per-frame shape.
     let mounted = Cell::documents_mounted();
     let born = editor::document::Document::born_on_this_thread();
-    let built = engine.frames_built();
+    let built = engine.stats().frames_built();
     const TICKS: usize = 240;
     let mut ticks: Vec<std::time::Duration> = Vec::new();
     for at in 0..TICKS {
@@ -1249,7 +1246,7 @@ fn a_scroll_tick_builds_one_tree() {
         engine.drain();
         ticks.push(started.elapsed());
     }
-    let trees = engine.frames_built() - built;
+    let trees = engine.stats().frames_built() - built;
 
     assert_eq!(
         Cell::documents_mounted() - mounted,
@@ -1394,7 +1391,7 @@ fn idle_clock_ticks_are_quiet() {
     }
 
     // Settled. A quiet minute of ticks: count the liars.
-    let built = engine.frames_built();
+    let built = engine.stats().frames_built();
     let mut changed_ticks = 0;
     for _ in 0..120 {
         now += 16.0;
@@ -1405,7 +1402,7 @@ fn idle_clock_ticks_are_quiet() {
             changed_ticks += 1;
         }
     }
-    let trees = engine.frames_built() - built;
+    let trees = engine.stats().frames_built() - built;
     assert!(
         changed_ticks <= 2 && trees <= 2,
         "a settled chat answered {changed_ticks}/120 idle ticks as changed and built {trees} trees — \

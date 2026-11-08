@@ -451,11 +451,11 @@ pub fn seat_ahp(
     clients: Arc<ahp_wire::fs::ClientDirectory>,
     resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 ) {
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(PlaceMintRider(Arc::new(|app, id, payload| {
             if let Some(session) = payload.downcast_ref::<ahp_wire::SessionId>() {
                 let session = session.clone();
-                app.setup(move |store| crate::sessions::remember_session(store, id, session));
+                app.with_store(move |store| crate::sessions::remember_session(store, id, session));
             }
         })));
         store.put(NavigateExporter(Arc::new(classify_navigate)));
@@ -466,7 +466,7 @@ pub fn seat_ahp(
         .cloned()
         .unwrap_or_default();
     let fs = (languages, clients, resource_uris);
-    app.setup(move |store| {
+    app.with_store(move |store| {
         store.put(himark_ffi::host::HostChrome {
             on_pick_folders: Some(Arc::new(|app, bridge| {
                 app.register_handler::<crate::higent::folder_grant::PickFoldersEffect>(

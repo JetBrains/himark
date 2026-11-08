@@ -6,8 +6,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::*;
@@ -136,7 +134,7 @@ fn boot(
         }
     }
     app.register_handler::<documents::watch::SubscribeEffect>(StubWatch);
-    app.observe_file_changes();
+    app.with_store(documents::watch::Watching::install);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {

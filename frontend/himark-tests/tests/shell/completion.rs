@@ -4,8 +4,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::*;
@@ -528,7 +526,7 @@ fn lsp_completion_serves_code_panes() {
     ));
     assert!(!completion_open(&app));
 
-    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), window)
+    let trigger = workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), window)
         .into_iter()
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")

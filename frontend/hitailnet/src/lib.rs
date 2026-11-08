@@ -167,7 +167,7 @@ pub fn install(
             ))));
         })
     };
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(TailnetFaceState::default());
         store.put(TailnetFlows {
             connect: Arc::new(move || {

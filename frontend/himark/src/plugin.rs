@@ -47,7 +47,6 @@ pub fn install_all(
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
     plugins: &[Box<dyn Plugin>],
 ) -> PluginContext {
-    use crate::app_ext::AppExt;
 
     let mut languages = ::editor::reparse::SyntaxLanguages::new();
     let mut enrichers = ::editor::enrich::Enrichers::new();

@@ -114,7 +114,7 @@ pub fn session_commands(
 /// cell, the session rekey, the uri stamp. The workbench adds its
 /// windows' workspace adoption on top.
 pub fn set_local_host(app: &mut Himark, host: ahp_wire::client::HostId) {
-    app.setup(|store| {
+    app.with_store(|store| {
         let previous = store
             .get::<ahp_wire::client::LocalHost>()
             .and_then(|local| local.0);
@@ -134,7 +134,7 @@ pub fn register_client(
     client: ahp_wire::client::Client,
 ) -> ahp_wire::client::HostId {
     let mut minted = ahp_wire::client::HostId::LOCAL;
-    app.setup(|store| {
+    app.with_store(|store| {
         store.update::<ahp_wire::client::Servers>(|servers| minted = servers.mint(client));
     });
     minted
@@ -159,7 +159,7 @@ pub fn bound_session(
 /// and the `@`-mention context over the session folders — what
 /// `Himark::bare` used to hardwire.
 pub fn install_residents(app: &mut Himark) {
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(ahp_session::session::state::Hosts::default());
         store.put(ahp_wire::client::Servers::default());
         ::editor::completion::Mentions::install(store, |store, location| {
@@ -201,7 +201,7 @@ pub fn register_agent_server(
     client: ahp_wire::client::Client,
 ) -> ahp_wire::client::HostId {
     let id = register_client(app, client.clone());
-    app.setup(|store| {
+    app.with_store(|store| {
         ahp_session::session::agents::Agents::seed(store, id, name);
         ahp_session::session::state::Hosts::install_uris(
             store,

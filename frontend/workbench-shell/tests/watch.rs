@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::app::Himark;
-use himark::app_ext::AppExt as _;
 use workbench_shell::app::WorkbenchShell as _;
 use workbench_shell::app_ext::AppExt as _;
 use workbench_shell::test_driver;
@@ -750,7 +749,7 @@ fn opens_watch_and_events_refetch() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     app.register_handler::<SubscribeEffect>(StubWatch);
     app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
-    app.observe_file_changes();
+    app.with_store(documents::watch::Watching::install);
     let window = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -769,7 +768,7 @@ fn opens_watch_and_events_refetch() {
     };
 
     let documents = app.sole_documents();
-    assert!(himark::app_ext::AppExt::perform_command(
+    assert!(himark::app::Himark::perform_command(
         &mut app,
         workbench_shell::shell::opened(
             window,
@@ -797,7 +796,7 @@ fn opens_watch_and_events_refetch() {
     );
 
     *disk.lock().expect("disk") = "alpha\nexternal\n".to_owned();
-    assert!(himark::app_ext::AppExt::perform_command(
+    assert!(himark::app::Himark::perform_command(
         &mut app,
         himark::app::AppCommand::FileChanged(Subscription(7))
     ));
@@ -837,7 +836,7 @@ fn the_palette_reload_follows_the_disk() {
     };
 
     let documents = app.sole_documents();
-    assert!(himark::app_ext::AppExt::perform_command(
+    assert!(himark::app::Himark::perform_command(
         &mut app,
         workbench_shell::shell::opened(
             window,
@@ -855,7 +854,7 @@ fn the_palette_reload_follows_the_disk() {
     settle(&mut app);
 
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
-    assert!(himark::app_ext::AppExt::perform_command(
+    assert!(himark::app::Himark::perform_command(
         &mut app,
         workbench_shell::shell::windowed(window, Arc::new(ReloadDocument)),
     ));

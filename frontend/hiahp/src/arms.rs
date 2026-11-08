@@ -394,7 +394,7 @@ pub fn mount_place(
 ) -> Option<ViewBridgeId> {
     let minted = himark::mounts::mount_place(app, place)?;
     if let Some(session) = session {
-        app.setup(|store| crate::sessions::remember_session(store, minted, session));
+        app.with_store(|store| crate::sessions::remember_session(store, minted, session));
     }
     Some(minted)
 }

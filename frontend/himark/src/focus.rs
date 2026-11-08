@@ -118,7 +118,7 @@ impl Himark {
             // Typing on a mounted road asks a caret-follow the
             // engine can't scroll — park it for the host.
             if id.is_mounted() {
-                self.park_reveal(id, reveal);
+                self.push_reveal(id, reveal);
             }
         }
         if !handled.commands.is_empty() {

@@ -9,8 +9,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use std::sync::Arc;
@@ -19,7 +17,6 @@ use imba::store::Store;
 
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt as _;
 
 fn located(
     kind: editor::location::ResourceType,

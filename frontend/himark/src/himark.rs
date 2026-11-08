@@ -139,7 +139,6 @@ pub struct Himark {
     /// settle pulse's; the quiet commit lets the clock and the
     /// paint reuse it). Per instance, so parallel test engines
     /// never count into each other.
-    pub(crate) frames_built: u64,
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
@@ -268,6 +267,12 @@ impl AppFonts {
     }
 }
 
+/// What one dispatched event changed.
+pub struct DispatchOutcome {
+    pub needs_redraw: bool,
+    pub pointer: imba::event::PointerShape,
+}
+
 impl Himark {
     /// The BARE engine: store, ui, effects, the editor environment
     /// — and not one workbench wire. Shells add their own dressing
@@ -317,7 +322,6 @@ impl Himark {
             bridges: std::collections::HashMap::new(),
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
-            frames_built: 0,
             pending_file_events: Vec::new(),
             pending_watch_deaths: Vec::new(),
             pending_reveals: Vec::new(),
@@ -368,11 +372,6 @@ impl Himark {
         &self.workshop
     }
 
-    /// The one-tree-per-frame probe (see `frames_built`).
-    pub fn frames_built(&self) -> u64 {
-        self.frames_built
-    }
-
     /// The empty-entity housekeeping, run after every batch — the
     /// one thing the old gather/scatter rite still did. The hooks
     /// are registered (the AHP plugin sweeps its empty sessions).
@@ -381,13 +380,6 @@ impl Himark {
         for hook in &hooks {
             hook(&mut self.store);
         }
-        self.invalidate_frames();
-    }
-
-    /// The one `&mut store` door outside the batch loop: mutate,
-    /// then outdate every standing frame.
-    pub fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
-        mutate(&mut self.store);
         self.invalidate_frames();
     }
 
@@ -413,6 +405,33 @@ impl Himark {
     /// reactions, to become each bridge's own reaction to the
     /// outcome as the lanes and tails get registered instead of
     /// named).
+    /// One command as its own batch.
+    pub fn perform_command(&mut self, command: crate::perform::AppCommand) -> bool {
+        self.perform_batch(vec![command])
+    }
+
+    pub fn register_command(&mut self, command: Arc<dyn crate::commands::HimarkCommand>) -> bool {
+        self.perform_command(crate::perform::AppCommand::Register(command))
+    }
+
+    pub fn register_syntax_languages(
+        &mut self,
+        languages: ::editor::reparse::SyntaxLanguages,
+    ) -> bool {
+        self.perform_command(crate::perform::AppCommand::RegisterLanguages(languages))
+    }
+
+    pub fn register_enrichers(&mut self, enrichers: ::editor::enrich::Enrichers) -> bool {
+        self.perform_command(crate::perform::AppCommand::RegisterEnrichers(enrichers))
+    }
+
+    pub fn register_diff_policy(
+        &mut self,
+        policy: std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
+    ) -> bool {
+        self.perform_command(crate::perform::AppCommand::RegisterDiffPolicy(policy))
+    }
+
     pub fn perform_batch(&mut self, commands: Vec<crate::perform::AppCommand>) -> bool {
         use crate::perform::AppCommand;
 
@@ -569,12 +588,11 @@ impl Himark {
         )])
     }
 
-    /// The catalog epoch: moved means re-snapshot. Today it rides
-    /// the store's frame revision — an over-approximation (any
-    /// batch bumps it, catalog or not); snapshots are cheap, so a
-    /// spurious re-read costs a few clones. Tightens when the fold
-    /// gets its own counter.
-    pub fn sessions_epoch(&self) -> u64 {
+    /// The frame revision: bumped by every store mutation. Standing
+    /// frames compare against it; snapshot readers (the session
+    /// catalog) re-read when it moved — an over-approximation, and
+    /// cheap.
+    pub fn revision(&self) -> u64 {
         self.revision
     }
 
@@ -643,7 +661,7 @@ impl Himark {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());
             }
-            self.frames_built += 1;
+            self.stats.count_frame_built();
             let arena = slot.spare_arena.take().unwrap_or_default();
             let layout = slot.bridge.layout(
                 &self.store,
@@ -669,33 +687,19 @@ impl Himark {
         slot.frame.as_mut().map(|frame| (frame, size))
     }
 
-    /// One timed event into a bridge — the shell entry point: the
-    /// dispatch, and the latency stamp when it answered.
-    pub fn dispatch_bridge_timed(
-        &mut self,
-        id: ViewBridgeId,
-        event: imba::event::Event<'_>,
-        size: Option<gfx::Size>,
-        event_started_at: f64,
-    ) -> bool {
-        let handled = self.dispatch_bridge(id, event, size).0;
-        if handled {
-            self.stats.mark_latency_event_start(event_started_at);
-        }
-        handled
-    }
-
-    /// Dispatch, and beside the redraw flag the shape the pointer
-    /// takes: a move hit-tests first and the hit's answer IS the
-    /// shape — derived per event; the shell applies it and nothing
-    /// stores it.
+    /// Dispatch one event into a view. The outcome carries the
+    /// redraw flag and, for pointer moves, the pointer shape the
+    /// hit answered — derived per event, stored nowhere.
+    /// `event_started_at` (seconds, the shell's clock) feeds the
+    /// input-latency statistic; pass 0.0 when unknown.
     pub fn dispatch_bridge(
         &mut self,
         id: ViewBridgeId,
         event: imba::event::Event<'_>,
         size: Option<gfx::Size>,
-    ) -> (bool, imba::event::PointerShape) {
-        let (hit, shape) = match &event {
+        event_started_at: f64,
+    ) -> DispatchOutcome {
+        let (hit, pointer) = match &event {
             imba::event::Event::MouseMove { point, mods } => self.dispatch_bridge_event(
                 id,
                 imba::event::Event::HitTest {
@@ -708,7 +712,14 @@ impl Himark {
             _ => (false, imba::event::PointerShape::Default),
         };
         let (changed, _) = self.dispatch_bridge_event(id, event, size);
-        (changed || hit, shape)
+        let needs_redraw = changed || hit;
+        if needs_redraw && event_started_at != 0.0 {
+            self.stats.mark_latency_event_start(event_started_at);
+        }
+        DispatchOutcome {
+            needs_redraw,
+            pointer,
+        }
     }
 
     fn dispatch_bridge_event(
@@ -843,7 +854,7 @@ impl Himark {
                                 slot.map(|slot| slot.size),
                             );
                         }
-                        self.park_reveal(id, reveal);
+                        self.push_reveal(id, reveal);
                         parked = true;
                     }
                 }
@@ -958,7 +969,7 @@ impl Himark {
         // that reached the top dies as it always did.
         let parked = match handled.reveal.filter(|_| id.is_mounted()) {
             Some(reveal) => {
-                self.park_reveal(id, reveal);
+                self.push_reveal(id, reveal);
                 true
             }
             None => false,
@@ -987,7 +998,7 @@ impl Himark {
             return;
         };
         if let Some(reveal) = handled.reveal.filter(|_| id.is_mounted()) {
-            self.park_reveal(id, reveal);
+            self.push_reveal(id, reveal);
         }
         if !handled.commands.is_empty() {
             self.perform_batch(handled.commands);
@@ -1061,7 +1072,7 @@ impl Himark {
     /// parent's frame and stands overlay #index's content alone.
     /// Recursive popovers are normal — this bridge exports its own
     /// bubbled overlays like any other.
-    pub fn mint_overlay(&mut self, parent: ViewBridgeId, index: usize) -> Option<ViewBridgeId> {
+    pub fn mount_overlay(&mut self, parent: ViewBridgeId, index: usize) -> Option<ViewBridgeId> {
         // The positional index names an overlay ONLY in this frame's
         // set — translate it to the stable identity (host, nth of
         // that host) now, so the mount keeps re-deriving the SAME
@@ -1138,19 +1149,26 @@ impl Himark {
     }
 
 
-    /// Perform a REGISTERED command at an origin bridge — the C
-    /// door's and the palette's shared road: the origin view's own
-    /// walk answers first (its presentables carry their bindings),
-    /// the global registry rides behind it over `AtOrigin`.
-    pub fn perform_registered_at(&mut self, origin: ViewBridgeId, id: &str) -> bool {
+    /// Perform a REGISTERED command, by id, at an origin view — the
+    /// C door's and the palette's shared road: the origin view's own
+    /// focus walk answers first (its presentables carry their
+    /// bindings), the global registry rides behind it over
+    /// `AtOrigin`. `None` performs with no origin (internally the
+    /// zero id, the engine's established no-origin value).
+    pub fn perform_command_at(&mut self, origin: Option<ViewBridgeId>, id: &str) -> bool {
         let ui = self.ui.clone();
         let store = self.store.clone();
         let command = {
-            let chain = self
-                .bridges
-                .get(&origin)
+            let chain = origin
+                .and_then(|origin| self.bridges.get(&origin))
                 .and_then(|slot| slot.bridge.view().focus(&store, ui.as_ref()))
-                .map(|data| crate::focus::bind_mounted(&store, origin, data));
+                .map(|data| {
+                    crate::focus::bind_mounted(
+                        &store,
+                        origin.expect("a focus chain implies an origin"),
+                        data,
+                    )
+                });
             let bound = chain.as_ref().map(|data| data.bindings.clone());
             chain
                 .map(|data| data.commands)
@@ -1162,7 +1180,10 @@ impl Himark {
                     crate::commands::Commands::of(&store).find(id).cloned().map(
                         |command| match bound {
                             Some(bound) => crate::perform::AppCommand::Bound(bound, command),
-                            None => crate::perform::AppCommand::AtOrigin(origin, command),
+                            None => crate::perform::AppCommand::AtOrigin(
+                                origin.unwrap_or(ViewBridgeId::from_raw(0)),
+                                command,
+                            ),
                         },
                     )
                 })
@@ -1285,14 +1306,14 @@ impl Himark {
     /// Re-seat the shell, wrapping the one seated now — the native
     /// callback DECORATES the chain (claim some place kinds, pass
     /// the rest through), it never replaces it.
-    pub fn seat_shell(&mut self, wrap: impl FnOnce(Arc<dyn Shell>) -> Arc<dyn Shell>) {
+    pub fn wrap_shell(&mut self, wrap: impl FnOnce(Arc<dyn Shell>) -> Arc<dyn Shell>) {
         let seated = self
             .store
             .get::<ShellSeat>()
             .map(|seat| seat.0.clone())
             .expect("a shell is seated at boot");
         let wrapped = wrap(seated);
-        self.setup(|store| store.put(ShellSeat(wrapped)));
+        self.with_store(|store| store.put(ShellSeat(wrapped)));
     }
 
     /// A mounted slot's last drawn size — the event roads'
@@ -1306,7 +1327,8 @@ impl Himark {
             .flatten()
     }
 
-    /// Every mounted bridge — the shell's animation clock fans out
+    /// Every MOUNTED bridge (the host-composed views; window-root
+    /// bridges are excluded) — the shell's animation clock fans out
     /// over these the way it does over windows.
     pub fn mounted_ids(&self) -> Vec<ViewBridgeId> {
         self.bridges
@@ -1321,7 +1343,11 @@ impl Himark {
     /// window's bridge by the window's own raw id, so the C
     /// surface's handles stay stable. New composition layers use
     /// [`Himark::mount`]; this door exists for the adapter alone.
-    pub fn mount_as(&mut self, id: ViewBridgeId, view: std::sync::Arc<dyn crate::bridge::BridgeView>) {
+    pub fn mount_at(
+        &mut self,
+        id: ViewBridgeId,
+        view: std::sync::Arc<dyn crate::bridge::BridgeView>,
+    ) {
         self.bridges.entry(id).or_insert_with(|| Mounted::new(view));
     }
 
@@ -1480,7 +1506,7 @@ impl Himark {
         self.bridges.get(&id)?.staged_frame.as_ref()
     }
 
-    pub fn park_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
+    pub fn push_reveal(&mut self, id: ViewBridgeId, reveal: imba::event::Reveal) {
         match self
             .pending_reveals
             .iter_mut()
@@ -1516,6 +1542,9 @@ impl Himark {
     /// The thread-safe command door — see [`crate::effects::Poster`].
     /// Handed out before attach, usable after: the cell fills when
     /// the host attaches.
+    /// For POSTING `AppCommand`s from any thread (the wire pumps,
+    /// the host callbacks). For invoking effect handlers directly,
+    /// see `effect_caller`.
     pub fn poster(&self) -> crate::effects::Poster {
         self.poster.clone()
     }
@@ -1529,6 +1558,9 @@ impl Himark {
         self.handlers.register::<E>(handler);
     }
 
+    /// For INVOKING registered effect handlers outside a batch (a
+    /// background task that needs an answer). For posting commands,
+    /// see `poster`.
     pub fn effect_caller(&self) -> imba::effect::EffectCaller {
         let handlers = Arc::downgrade(&self.handlers);
         imba::effect::EffectCaller::new(Arc::new(move |type_id, payload| {
@@ -1577,24 +1609,11 @@ impl Himark {
         }
     }
 
-    pub fn observe_file_changes(&mut self) {
-        self.setup(documents::watch::Watching::install);
-    }
-
-    /// Install the edge's BASE RESOLVER: working location → base ref,
-    /// answered synchronously from store truth at ask time.
-    pub fn observe_stripe_bases(
-        &mut self,
-        resolve: std::sync::Arc<dyn documents::diffs::StripeBaseResolver>,
-    ) {
-        self.setup(move |store| documents::diffs::StripeBases::install(store, resolve.clone()));
-    }
-
     pub fn register_editor_command(
         &mut self,
         command: Arc<dyn editor::dynamic::DynamicEditorCommand>,
     ) {
-        self.setup(|store| ::editor::dynamic::EditorCommands::register(store, command));
+        self.with_store(|store| ::editor::dynamic::EditorCommands::register(store, command));
     }
 
     /// Commands that act on the COLLECTION — handed the pane's ids at
@@ -1603,7 +1622,7 @@ impl Himark {
         &mut self,
         command: Arc<dyn documents::dynamic::DocumentCommand>,
     ) {
-        self.setup(|store| documents::dynamic::DocumentCommands::register(store, command));
+        self.with_store(|store| documents::dynamic::DocumentCommands::register(store, command));
     }
 
     pub(crate) fn refresh_chrome(&mut self, theme: &::editor::theme::Theme) {

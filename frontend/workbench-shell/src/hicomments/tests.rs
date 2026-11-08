@@ -7,8 +7,6 @@ use crate::app::WorkbenchShell as _;
 use crate::test_support::TestSupport as _;
 #[allow(unused_imports)]
 use crate::app_ext::AppExt as _;
-#[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
 use ::comments::view::{CommentCommand, CommentView, RemoveComment};
 
 use super::*;
@@ -27,7 +25,6 @@ use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
 use himark::opening::OpenedDocument;
-use himark::app_ext::AppExt;
 
 fn document_location(name: &str) -> editor::location::ResourceLocation {
     editor::location::ResourceLocation::new(
@@ -88,7 +85,7 @@ fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::Wind
 }
 
 fn invoke(app: &mut Himark, window: ::workbench::window::WindowId, id: &str) {
-    let command = crate::app::palette_commands(app.store(), &app.ui_handle(), window)
+    let command = crate::app::palette_commands(app.store(), &app.ui_ctx(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")

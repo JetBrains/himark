@@ -15,7 +15,6 @@ use imba::event::{Event, MouseButton};
 
 use crate::app::WorkbenchShell as _;
 use crate::app_ext::AppExt as _;
-use himark::app_ext::AppExt as _;
 
 use himark::bridge::ViewBridgeId;
 
@@ -84,7 +83,7 @@ impl WindowEngine for HimarkEngine {
             .unwrap_or_default()
             .0;
         if compose {
-            himark::app_ext::AppExt::perform_command(
+            himark::app::Himark::perform_command(
                 self,
                 crate::shell::windowed(
                     window,
@@ -285,18 +284,16 @@ impl WindowEngine for HimarkEngine {
 /// Seat the capability-gated chrome: what `himark_set_host`
 /// registers when the host callbacks carry pickers or a clipboard.
 pub fn seat_host_chrome(app: &mut himark::app::Himark) {
-    app.setup(|store| {
+    app.with_store(|store| {
         store.put(himark_ffi::host::HostChrome {
             on_pick_folders: None,
             on_share: None,
             on_agent_filesystem: None,
             on_pick_files: Some(Arc::new(|app| {
-                use himark::app_ext::AppExt as _;
-                app.register_command(Arc::new(crate::pickers::OpenFilePicker));
+                                app.register_command(Arc::new(crate::pickers::OpenFilePicker));
             })),
             on_clipboard: Some(Arc::new(|app| {
-                use himark::app_ext::AppExt as _;
-                app.register_command(Arc::new(crate::higent::drawer::ShareHost));
+                                app.register_command(Arc::new(crate::higent::drawer::ShareHost));
                 app.register_command(Arc::new(crate::higent::drawer::ShareHostTailnet));
             })),
         })

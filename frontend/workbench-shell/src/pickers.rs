@@ -20,7 +20,6 @@ use crate::app::bound_window;
 use crate::workspace::open_locations;
 use crate::app::WorkbenchShell as _;
 use crate::app_ext::AppExt as _;
-use himark::app_ext::AppExt as _;
 
 pub struct OpenFilePicker;
 

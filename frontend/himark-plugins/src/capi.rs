@@ -16,7 +16,6 @@ pub use himark::app::AppFonts;
 /// The engine, its C surface and every symbol the header speaks —
 /// re-exported whole so the staticlib carries them and the tests
 /// keep their vocabulary.
-pub use himark::app_ext::AppExt;
 pub use himark_ffi::*;
 pub use workbench_shell::capi::*;
 
@@ -114,7 +113,7 @@ pub fn production_engine_at(data_dir: Option<std::path::PathBuf>) -> HimarkEngin
         Arc::new(desktop::connector::DesktopConnector);
     let (mut engine, wires) =
         with_plugins(AppFonts::platform(), &plugins(), Arc::clone(&connector));
-    engine.setup(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
+    engine.with_store(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         let _ = host_discovery::autostart();

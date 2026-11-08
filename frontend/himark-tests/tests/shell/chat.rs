@@ -4,8 +4,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::dock::{entity, located, settle, show_dock};
@@ -15,7 +13,6 @@ use hikit::modal::ModalView;
 use himark::app::AppCommand;
 use himark::app::AppFonts;
 use himark::app::Himark;
-use himark::app_ext::AppExt;
 use workbench_shell::test_driver;
 use imba::anim::AnimationClock;
 use imba::constraints::Constraints;

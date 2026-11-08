@@ -4,8 +4,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use super::*;
@@ -102,7 +100,7 @@ fn palette_commands_follow_the_modal_focus() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
     let ids = |app: &Himark| -> Vec<&'static str> {
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .iter()
             .map(|command| command.id)
             .collect()
@@ -193,7 +191,7 @@ fn palette_commands_follow_the_modal_focus() {
     );
 
     let close =
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .remove(0)
             .command;
     app.perform_batch(vec![close]);
@@ -225,7 +223,7 @@ fn palette_commands_follow_the_modal_focus() {
 
     assert_eq!(app.pane_count(), 1);
     let split =
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .into_iter()
             .find(|command| command.id == "workbench.split-pane")
             .expect("the split action")
@@ -272,7 +270,7 @@ fn registered_commands_present_and_dispatch_by_id() {
 
     app.register_command(std::sync::Arc::new(Probe));
     let ids: Vec<&str> =
-        workbench_shell::app::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .iter()
             .map(|command| command.id)
             .collect();

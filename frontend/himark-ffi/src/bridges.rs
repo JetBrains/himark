@@ -335,7 +335,10 @@ pub unsafe extern "C" fn himark_perform_command(
     let Some(id) = std::ffi::CStr::from_ptr(id).to_str().ok() else {
         return false;
     };
-    engine.perform_registered_at(ViewBridgeId::from_raw(bridge.raw), id)
+    engine.perform_command_at(
+        (bridge.raw != 0).then(|| ViewBridgeId::from_raw(bridge.raw)),
+        id,
+    )
 }
 
 /// One event into one window bridge, through the engine's own
@@ -374,7 +377,7 @@ pub unsafe extern "C" fn himark_bridge_event(
                 n => n.min(u8::MAX as u32) as u8,
             };
             changed(
-                app.dispatch_bridge_timed(
+                app.dispatch_bridge(
                     id,
                     Event::MouseDown {
                         point: Point::new(x, y),
@@ -384,13 +387,13 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ) || flushed,
+                ).needs_redraw || flushed,
             )
         }
         OwnedEvent::SecondaryDown { x, y, mods } => {
             let flushed = app.flush_scroll(id);
             changed(
-                app.dispatch_bridge_timed(
+                app.dispatch_bridge(
                     id,
                     Event::MouseDown {
                         point: Point::new(x, y),
@@ -400,58 +403,63 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ) || flushed,
+                ).needs_redraw || flushed,
             )
         }
-        OwnedEvent::MouseDrag { x, y, mods } => changed(app.dispatch_bridge_timed(
-            id,
-            Event::MouseDrag {
-                point: Point::new(x, y),
-                mods: map_mods(mods),
-            },
-            None,
-            0.0,
-        )),
+        OwnedEvent::MouseDrag { x, y, mods } => changed(
+            app.dispatch_bridge(
+                id,
+                Event::MouseDrag {
+                    point: Point::new(x, y),
+                    mods: map_mods(mods),
+                },
+                None,
+                0.0,
+            )
+            .needs_redraw,
+        ),
         OwnedEvent::MouseUp { x, y } => {
             let flushed = app.flush_scroll(id);
             changed(
-                app.dispatch_bridge_timed(
+                app.dispatch_bridge(
                     id,
                     Event::MouseUp {
                         point: Point::new(x, y),
                     },
                     None,
                     0.0,
-                ) || flushed,
+                ).needs_redraw || flushed,
             )
         }
         OwnedEvent::MouseMove { x, y, mods } => {
-            let (moved, shape) = app.dispatch_bridge(
+            let outcome = app.dispatch_bridge(
                 id,
                 Event::MouseMove {
                     point: Point::new(x, y),
                     mods: map_mods(mods),
                 },
                 None,
+                0.0,
             );
             pointed(Some(Pointed {
-                changed: moved,
-                shape,
+                changed: outcome.needs_redraw,
+                shape: outcome.pointer,
             }))
         }
-        OwnedEvent::MouseLeft => changed(app.dispatch_bridge(id, Event::window_left(), None).0),
+        OwnedEvent::MouseLeft => changed(app.dispatch_bridge(id, Event::window_left(), None, 0.0).needs_redraw),
         OwnedEvent::ModifiersChanged { x, y, mods } => {
-            let (moved, shape) = app.dispatch_bridge(
+            let outcome = app.dispatch_bridge(
                 id,
                 Event::MouseMove {
                     point: Point::new(x, y),
                     mods: map_mods(mods),
                 },
                 None,
+                0.0,
             );
             pointed(Some(Pointed {
-                changed: moved,
-                shape,
+                changed: outcome.needs_redraw,
+                shape: outcome.pointer,
             }))
         }
         OwnedEvent::Scroll {
@@ -475,7 +483,7 @@ pub unsafe extern "C" fn himark_bridge_event(
                 return changed(flushed);
             };
             changed(
-                app.dispatch_bridge_timed(
+                app.dispatch_bridge(
                     id,
                     Event::KeyDown {
                         key,
@@ -483,14 +491,13 @@ pub unsafe extern "C" fn himark_bridge_event(
                     },
                     None,
                     0.0,
-                ) || flushed,
+                ).needs_redraw || flushed,
             )
         }
         OwnedEvent::TextInput { text } => {
             let flushed = app.flush_scroll(id);
             changed(
-                app.dispatch_bridge_timed(id, Event::TextInput { text: &text }, None, 0.0)
-                    || flushed,
+                app.dispatch_bridge(id, Event::TextInput { text: &text }, None, 0.0).needs_redraw || flushed,
             )
         }
     }
@@ -692,7 +699,7 @@ pub unsafe extern "C" fn himark_frame_event(
                 id.raw()
             );
         }
-        engine.park_reveal(id, reveal);
+        engine.push_reveal(id, reveal);
     }
     if !handled.commands.is_empty() {
         engine.perform_batch(handled.commands);
@@ -850,7 +857,7 @@ pub unsafe extern "C" fn himark_frame_paint(
                 id.raw()
             );
         }
-        engine.park_reveal(id, reveal);
+        engine.push_reveal(id, reveal);
         if handled.commands.is_empty() {
             return true;
         }
@@ -883,7 +890,7 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, bridge:
 pub unsafe extern "C" fn himark_sessions_epoch(engine: *mut HimarkEngine) -> u64 {
     engine
         .as_ref()
-        .map_or(0, |engine| engine.sessions_epoch())
+        .map_or(0, |engine| engine.revision())
 }
 
 
@@ -1172,7 +1179,7 @@ pub unsafe extern "C" fn himark_overlay_mint(
     };
     match engine
         
-        .mint_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
+        .mount_overlay(himark::bridge::ViewBridgeId::from_raw(bridge.raw), index)
     {
         Some(id) => HimarkBridge { raw: id.raw() },
         None => HimarkBridge { raw: 0 },
@@ -1245,7 +1252,7 @@ pub fn seat_callback_shell(
     ctx: *mut c_void,
     on_navigate: HimarkNavigateFn,
 ) {
-    engine.seat_shell(move |next| {
+    engine.wrap_shell(move |next| {
         std::sync::Arc::new(CallbackShell {
             ctx: ShellCtx(ctx),
             on_navigate,

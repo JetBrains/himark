@@ -86,7 +86,7 @@ impl himark::plugin::Plugin for ShellPlugin {
         if !crate::app::install_shell_furniture(app) {
             return;
         }
-        app.seat_shell(|next| Arc::new(ChromeFrontend { next }));
+        app.wrap_shell(|next| Arc::new(ChromeFrontend { next }));
     }
 }
 

@@ -25,8 +25,7 @@ mod app {
     use gfx::Painter as _;
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use himark::app_ext::AppExt;
-    use skia_safe::{
+        use skia_safe::{
         gpu::{
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
             SurfaceOrigin,

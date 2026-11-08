@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod app;
-pub mod app_ext;
 pub mod bridge;
 pub mod commands;
 pub mod effects;

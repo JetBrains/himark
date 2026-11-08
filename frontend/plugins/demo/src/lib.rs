@@ -42,8 +42,7 @@ pub struct DemoPlugin;
 
 impl himark::plugin::Plugin for DemoPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        use himark::app_ext::AppExt;
-        app.register_command(std::sync::Arc::new(tree_demo::OpenTreeDemo));
+                app.register_command(std::sync::Arc::new(tree_demo::OpenTreeDemo));
         app.register_command(std::sync::Arc::new(OpenMonsterDemo));
         app.register_command(std::sync::Arc::new(OpenWallOfTextDemo));
         // The FFI door's lookups — the debug harness opens these by
@@ -51,7 +50,7 @@ impl himark::plugin::Plugin for DemoPlugin {
         // surface (ffi is gated off wasm): the registration folds
         // with the door.
         #[cfg(not(target_arch = "wasm32"))]
-        app.setup(|store| {
+        app.with_store(|store| {
             himark::demo_docs::DemoDocs::register(
                 store,
                 "torture sample",

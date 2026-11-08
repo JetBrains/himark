@@ -6,8 +6,6 @@ use workbench_shell::app::WorkbenchShell as _;
 #[allow(unused_imports)]
 use workbench_shell::app_ext::AppExt as _;
 #[allow(unused_imports)]
-use himark::app_ext::AppExt as _;
-#[allow(unused_imports)]
 use workbench_shell::test_support::TestSupport as _;
 
 use std::{
@@ -1337,7 +1335,7 @@ fn where_do_heights_diverge() {
 fn tree_demo_panel_toggles_through_clicks() {
     let (mut app, _arriving) = boot();
 
-    himark::app_ext::AppExt::register_command(
+    himark::app::Himark::register_command(
         &mut app,
         std::sync::Arc::new(crate::tree_demo::OpenTreeDemo),
     );

@@ -16,8 +16,7 @@ pub(crate) use editor::{
 };
 
 pub(crate) use documents::entity_view::EditorIdView;
-pub(crate) use himark::app_ext::AppExt;
-
+pub(crate) 
 fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
         std::sync::OnceLock::new();

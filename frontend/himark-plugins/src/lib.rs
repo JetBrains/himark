@@ -228,7 +228,7 @@ pub fn wire_doors(
         },
     ));
 
-    app.setup(|store| store.put(hiahp::engine::WireClients(Arc::clone(&clients))));
+    app.with_store(|store| store.put(hiahp::engine::WireClients(Arc::clone(&clients))));
 
     // hicode's definition ask routes over the wire — the HOST
     // registers it, closed over its client directory.
@@ -241,7 +241,7 @@ pub fn wire_doors(
         let clients = clients.clone();
         let handle = runtime.clone();
         let connector = Arc::clone(&connector);
-        app.setup(|store| {
+        app.with_store(|store| {
             hiahp::higent::flows::AgentFlows::install_add_host(
                 store,
                 Arc::new(move |store, url| {
@@ -266,7 +266,7 @@ pub fn wire_doors(
         });
     }
 
-    app.setup(|store| {
+    app.with_store(|store| {
         documents::OpenDocuments::install_hook(
             store,
             Arc::new(docsync::DocsyncHook {
@@ -311,7 +311,7 @@ pub fn wire_doors(
     app.register_handler::<documents::watch::UnsubscribeEffect>(fsroute::RouteUnsubscribe {
         directory: Arc::clone(&clients),
     });
-    app.observe_file_changes();
+    app.with_store(documents::watch::Watching::install);
 
     Wires {
         clients,
