@@ -159,6 +159,11 @@ pub fn autostart_himark_host() -> Option<String> {
 /// flow and the filesystem routes. Callers hand the connector and
 /// the plugin list; the workbench boot and the iOS boot differ only
 /// in those.
+/// Native targets only: it rides the engine's OWNED tokio runtime
+/// (`Himark::runtime`), which does not exist on wasm — the web
+/// shell boots through `install_all` + `wire_doors` with its wire
+/// thread's own handle instead.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn install_host(
     app: &mut Himark,
     connector: Arc<dyn ahp_wire::transport::Connector>,
