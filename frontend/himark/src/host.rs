@@ -344,19 +344,13 @@ impl Himark {
         else {
             return false;
         };
-        // The view's live viewport when its composition tracks one
-        // (the workbench window); the last drawn size otherwise.
-        let live = self
+        // The slot's last drawn size — the layout's own.
+        let Some(size) = self
             .bridges
             .get(&id)
-            .and_then(|slot| slot.bridge.view().live_viewport(&self.store))
-            .or_else(|| {
-                self.bridges
-                    .get(&id)
-                    .map(|slot| slot.size)
-                    .filter(|size| size.width > 0.0)
-            });
-        let Some(size) = live else {
+            .map(|slot| slot.size)
+            .filter(|size| size.width > 0.0)
+        else {
             // The bridge is gone; its deltas die with it.
             if std::env::var_os("HIMARK_TRACE_SCROLL").is_some() {
                 eprintln!("[scroll] flush {}: NO viewport — deltas die", id.raw());

@@ -39,20 +39,16 @@ impl Himark {
         // that key — it never re-decides focus. The fold runs over
         // the bridge's standing frame (a window rides its bridge
         // slot like any mount); the view walks ITSELF for the seat
-        // (`WorkbenchView::focus` is the window's walk). A window's
-        // live viewport keys the rebuild; a mount folds at the LAST
-        // DRAWN size — rebuilt first if a batch quiesced it, or an
-        // ask landing between draws answers "no focus" and the host
-        // keyboard drops.
+        // (`WorkbenchView::focus` is the window's walk). The frame
+        // folds at the slot's LAST DRAWN size — the layout's own —
+        // rebuilt first if a batch quiesced it, or an ask landing
+        // between draws answers "no focus" and the host keyboard
+        // drops.
         let ui = self.ui.clone();
         let mut f = Some(f);
         let mut answer = None;
         let performed = {
-            let live = self
-                .bridges
-                .get(&id)
-                .and_then(|slot| slot.bridge.view().live_viewport(&self.store));
-            self.mounted_frame(id, live, false)?;
+            self.mounted_frame(id, None, false)?;
             let slot = self.bridges.get_mut(&id)?;
             let crate::himark::Mounted { bridge, frame, .. } = slot;
             let frame = frame.as_mut()?;

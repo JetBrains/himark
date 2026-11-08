@@ -1097,11 +1097,6 @@ impl himark::bridge::BridgeView for WorkbenchView {
 
     /// The window's entity tracks the host viewport — the engine's
     /// IME fold rebuilds at it, exactly as the window dispatch does.
-    fn live_viewport(&self, store: &Store) -> Option<Size> {
-        ::workbench::window::Windows::window_ref(store, self.window)
-            .map(|entity| entity.viewport_size())
-    }
-
     /// A window root paints its own ground; the surface stays
     /// opaque.
     fn clears_backdrop(&self) -> bool {

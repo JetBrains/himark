@@ -125,15 +125,6 @@ pub trait BridgeView: Send + Sync {
         None
     }
 
-    /// The LIVE viewport the view's host composition tracks, when
-    /// the view owns one — the workbench window answers its
-    /// entity's; a bare mount answers `None` and rides its last
-    /// drawn size. The engine's IME fold keys its rebuild on it.
-    fn live_viewport(&self, store: &Store) -> Option<gfx::Size> {
-        let _ = store;
-        None
-    }
-
     /// Whether the engine clears the canvas to TRANSPARENT before
     /// painting this view — a mounted island composes over the
     /// host's backdrop; a window root paints its own ground and
