@@ -19,6 +19,8 @@ use himark_gpui::{BridgeView, Engine};
 use workbench_shell::app::WorkbenchShell as _;
 use workbench_shell::app_ext::AppExt as _;
 
+mod host;
+
 /// Everything this host installs — the engine set plus the
 /// workbench chrome, the same list the C staticlib assembles.
 fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
@@ -37,7 +39,7 @@ fn plugins() -> Vec<Box<dyn himark::plugin::Plugin>> {
 
 /// The production engine: the shared boot plus the outward dialing
 /// that belongs to a shipping entry alone.
-fn compose() -> (Himark, himark_plugins::Wires) {
+fn compose() -> (Himark, himark_plugins::Wires, host::HostAsks) {
     let data_root = hitailnet::data_root(None);
     // The tailnet-aware connector: ts.net and CGNAT destinations go
     // through the embedded node (started lazily on the first such
@@ -60,20 +62,26 @@ fn compose() -> (Himark, himark_plugins::Wires) {
         &plugins(),
     );
 
+    // The capability-gated chrome, seated before the host callbacks
+    // land — the same seats `himark_plugins::capi::with_plugins`
+    // takes for the C shells. Without them there is no file/folder
+    // picker, no Share command, and their effects have no handler.
+    workbench_shell::capi::seat_host_chrome(&mut app);
+    hiahp::capi::seat_ahp(
+        &mut app,
+        Arc::clone(&wires.languages),
+        Arc::clone(&wires.clients),
+        Arc::clone(&wires.resource_uris),
+    );
+    let mut app = himark_ffi::assemble(app);
+    app.with_store(|store| store.put(workbench_shell::capi::ComposeNewWindows(true)));
+    // The host's callbacks: gpui's pickers, clipboard and browser;
+    // the agent host serves the filesystem (its routes seat here).
+    let (callbacks, asks) = host::callbacks();
+    himark_ffi::install_host_callbacks(&mut app, callbacks);
+
     let _ = host_discovery::autostart();
     host_discovery::logging::init("app");
-
-    // The agent-host filesystem routes — every capability, through
-    // the one door the C shell uses too.
-    hiahp::agent_fs::install_routes(
-        &mut app,
-        true,
-        true,
-        true,
-        &wires.languages,
-        &wires.clients,
-        &wires.resource_uris,
-    );
 
     // The outward hosts — dialed here, never in a test's engine.
     let runtime = app.runtime();
@@ -101,7 +109,7 @@ fn compose() -> (Himark, himark_plugins::Wires) {
 
     hitailnet::install(&mut app, &wires.clients, tailnet, connector, data_root);
 
-    (app, wires)
+    (app, wires, asks)
 }
 
 fn main() {
@@ -120,7 +128,7 @@ fn main() {
 
     let _ = himark_plugins::agent_host_autostart();
 
-    let (mut app, wires) = compose();
+    let (mut app, wires, asks) = compose();
     let window = app.add_window();
     for (index, (name, source)) in documents.into_iter().enumerate() {
         let languages = Arc::clone(&wires.languages);
@@ -133,6 +141,11 @@ fn main() {
 
     Application::new().run(move |cx: &mut App| {
         let engine = Engine::adopt(app, cx);
+        cx.spawn({
+            let engine = engine.clone();
+            async move |cx| host::serve(asks, engine, cx).await
+        })
+        .detach();
 
         let bounds = Bounds::centered(None, size(px(1200.0), px(800.0)), cx);
         cx.open_window(
