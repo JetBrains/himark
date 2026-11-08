@@ -8413,7 +8413,7 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
         if needed == 0 {
             return None;
         }
-        let mut buffer = vec![0i8; needed];
+        let mut buffer = vec![0 as std::ffi::c_char; needed];
         let written = unsafe {
             himark_plugins::himark_cut(
                 engine,
