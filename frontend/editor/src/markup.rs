@@ -1195,7 +1195,7 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
 
 /// The context an inlay MEASURE runs with: the real store and a
 /// WARM UiCtx, threaded from whoever is handed them — the view layer
-/// on the UI thread, the Workshop on effect workers. Minting a cold
+/// on the UI thread, the BackgroundLayout on effect workers. Minting a cold
 /// ctx per measure was the classic cold-cache bug: every probe
 /// re-resolved typefaces (docs/ui/location-list.md postmortem,
 /// 2026-09-20).
@@ -2320,7 +2320,7 @@ impl Inlay {
     }
 
     /// Measure with the HANDED context — the caller's warm store
-    /// and UiCtx (the view layer's on the UI thread, the Workshop's
+    /// and UiCtx (the view layer's on the UI thread, the BackgroundLayout's
     /// on effect workers). Never mint one here: a per-measure cold
     /// ctx re-resolves typefaces on every probe.
     pub(crate) fn size(

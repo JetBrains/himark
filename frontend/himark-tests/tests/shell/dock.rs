@@ -563,10 +563,10 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     }
     let first = workbench_shell::workspace::entity_session(&entity(&app));
     let minted = std::sync::Arc::new(Mutex::new(None));
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(Switch(std::sync::Arc::clone(&minted))),
-    )));
+    )]));
     assert!(
         entity(&app).dock_panel().is_none(),
         "a fresh session has no dock"
@@ -585,7 +585,7 @@ fn the_dock_and_the_families_ride_their_session_across_switches() {
     );
 
     let back = std::sync::Arc::new(Mutex::new(Some(first)));
-    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(Switch(back)),)));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(Switch(back)),)]));
     let restored = entity(&app);
     assert!(restored.dock_panel().is_some(), "the dock rode its session");
     assert!(
@@ -617,10 +617,10 @@ pub(super) fn located(name: &str) -> editor::location::ResourceLocation {
 
 pub(super) fn show_dock(app: &mut Himark, label: &'static str, owner: &'static str) {
     let window = app.sole_window();
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(ShowStubDock { label, owner }),
-    )));
+    )]));
 }
 
 pub(super) fn settle(app: &mut Himark, surface: &mut skia_safe::Surface) {

@@ -167,7 +167,7 @@ fn add_editor(
 }
 
 /// Drive the repair lane to completion the way the engine would: the
-/// batch's launched repair effects run on the workshop and land back
+/// batch's launched repair effects run on the background_layout and land back
 /// through `perform`, until nothing more launches. Layout repair is
 /// budgeted, so a comparison against a fresh build must settle first.
 fn drain_repairs(
@@ -177,7 +177,7 @@ fn drain_repairs(
     mut batch: Batch<EditorCommand>,
 ) {
     let ui = test_ui();
-    let mut workshop = None;
+    let mut background_layout = None;
     let mut rounds = 0;
     loop {
         let launched: Vec<_> = batch
@@ -198,11 +198,11 @@ fn drain_repairs(
         assert!(rounds < 16, "the repair lane must converge");
         rounds += 1;
         batch = Batch::new();
-        let workshop = workshop.get_or_insert_with(|| crate::test_document::test_workshop(theme()));
+        let background_layout = background_layout.get_or_insert_with(|| crate::test_document::test_workshop(theme()));
         for effect in launched {
             let (value, lift) = effect.into_payload().split();
             let repair = value.downcast::<RepairEffect>().expect("a repair effect");
-            let handler = RepairHandler(std::sync::Arc::clone(workshop));
+            let handler = RepairHandler(std::sync::Arc::clone(background_layout));
             let outcome: Box<dyn std::any::Any + Send + Sync> = Box::new(block_on(Box::pin(
                 async move { handler.handle(*repair).await },
             )));

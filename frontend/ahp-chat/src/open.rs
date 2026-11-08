@@ -37,10 +37,10 @@ pub fn document_for(
 
 /// The chat's diff cell, built off the UI thread: fetch both sides over
 /// the client, then run the seeded pair recipe (two parses, the diff, the
-/// marks) in the workshop. The cell only lays the editors.
+/// marks) in the background_layout. The cell only lays the editors.
 pub struct BuildFileEditHandler {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::env::Workshop>,
+    pub background_layout: Arc<editor::env::BackgroundLayout>,
     pub languages: Arc<editor::reparse::SyntaxLanguages>,
     pub diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 }
@@ -59,8 +59,8 @@ impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandl
             })
             .await
             .ok_or_else(|| "the build was cancelled".to_owned())??;
-        let theme = self.workshop.theme();
-        Ok(self.workshop.with_ctx(|store, ui| {
+        let theme = self.background_layout.theme();
+        Ok(self.background_layout.with_ctx(|store, ui| {
             crate::file_edit::build_file_edit(
                 &effect.name,
                 &contents,
@@ -82,7 +82,7 @@ impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandl
 #[derive(Clone)]
 pub struct DiffOpenShop {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::env::Workshop>,
+    pub background_layout: Arc<editor::env::BackgroundLayout>,
     pub languages: Arc<editor::reparse::SyntaxLanguages>,
 }
 
@@ -107,14 +107,14 @@ impl DiffOpenShop {
                     .await
                     .flatten();
                 let present = text.is_some();
-                let document = self.workshop.with_ctx(|store, ui| {
+                let document = self.background_layout.with_ctx(|store, ui| {
                     document_for(
                         &self.languages,
                         location.name(),
                         text.as_deref().unwrap_or(""),
                         store,
                         ui,
-                        &self.workshop.theme(),
+                        &self.background_layout.theme(),
                     )
                 });
                 (
@@ -160,7 +160,7 @@ impl EffectHandler<documents::diff_views::OpenDiffPairEffect> for OpenDiffPairHa
 /// fetches, both documents, the Myers pass and the mark prep all run
 /// here, off the UI thread; the landing only mounts editors.
 pub struct BuildDocumentHandler(
-    pub Arc<editor::env::Workshop>,
+    pub Arc<editor::env::BackgroundLayout>,
     pub Arc<editor::reparse::SyntaxLanguages>,
 );
 

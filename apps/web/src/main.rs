@@ -374,11 +374,7 @@ mod app {
                 plugins.extend(workbench_shell::plugins());
                 plugins
             };
-            let installed = himark::plugin::install_all(
-                &mut state,
-                std::sync::Arc::new(myersdiff::Myers),
-                &plugins,
-            );
+            let installed = himark::plugin::install_all(&mut state, &plugins);
             #[cfg(not(target_feature = "atomics"))]
             let _ = &installed;
 
@@ -452,7 +448,7 @@ mod app {
                     // The in-page tailnet: the command loads the Go
                     // wasm node and logs in; discovery turns its
                     // netmap into host rows dialed tailnet://…:7298.
-                    state.register_command(std::sync::Arc::new(crate::tailnet::ConnectTailnet));
+                    state.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(crate::tailnet::ConnectTailnet))]);
                     crate::tailnet::spawn_discovery(
                         handle.clone(),
                         posted.clone(),
@@ -476,10 +472,10 @@ mod app {
             }
             let window = state.add_window();
 
-            state.perform_command(workbench_shell::shell::windowed(
+            state.perform_batch(vec![workbench_shell::shell::windowed(
                 window,
                 std::sync::Arc::new(workbench_shell::higent::open_session::OpenNewSession { host: None }),
-            ));
+            )]);
 
             #[cfg(target_feature = "atomics")]
             {

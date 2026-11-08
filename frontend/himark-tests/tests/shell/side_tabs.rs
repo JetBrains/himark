@@ -223,10 +223,10 @@ fn dump_files_tab_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(ShowFiles { filter: None }),
-    )));
+    )]));
     super::dock::settle(&mut app, &mut surface);
     write_png(&mut surface, format!("{dir}/files-tab.png"));
 }
@@ -246,12 +246,12 @@ fn dump_files_tab_filtering_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(ShowFiles {
             filter: Some("carg"),
         }),
-    )));
+    )]));
     super::dock::settle(&mut app, &mut surface);
     write_png(&mut surface, format!("{dir}/files-tab-filtering.png"));
 }
@@ -411,7 +411,7 @@ fn dump_find_tab_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     register_tabs(&mut app);
-    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(ShowFind))));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(ShowFind))]));
     super::dock::settle(&mut app, &mut surface);
     write_png(&mut surface, format!("{dir}/find-tab.png"));
 }

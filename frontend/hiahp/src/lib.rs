@@ -69,16 +69,16 @@ pub fn install_build_handler(
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
-    let workshop = Arc::clone(app.workshop());
+    let background_layout = Arc::clone(app.background_layout());
     let caller = app.effect_caller();
     app.register_handler::<documents::BuildDocumentEffect>(::ahp_chat::open::BuildDocumentHandler(
-        Arc::clone(&workshop),
+        Arc::clone(&background_layout),
         Arc::clone(&languages),
     ));
     app.register_handler::<ahp_chat::file_edit::BuildFileEditEffect>(
         ::ahp_chat::open::BuildFileEditHandler {
             caller,
-            workshop,
+            background_layout,
             languages,
             diff_policy,
         },
@@ -92,16 +92,16 @@ pub fn install_open_handlers(
     diff_policy: Arc<dyn editor::diff::DiffPolicy>,
 ) {
     let caller = app.effect_caller();
-    let workshop = Arc::clone(app.workshop());
+    let background_layout = Arc::clone(app.background_layout());
     app.register_handler::<OpenByLocationEffect>(OpenByLocationHandler {
         caller: caller.clone(),
-        workshop: Arc::clone(&workshop),
+        background_layout: Arc::clone(&background_layout),
         languages: Arc::clone(&languages),
     });
     let _ = &diff_policy;
     let shop = ::ahp_chat::open::DiffOpenShop {
         caller,
-        workshop,
+        background_layout,
         languages,
     };
     app.register_handler::<himark::opening::OpenDiffByLocationsEffect>(
@@ -221,7 +221,7 @@ impl OpenDiffPair {
 
 pub(crate) struct OpenByLocationHandler {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::env::Workshop>,
+    pub background_layout: Arc<editor::env::BackgroundLayout>,
     pub languages: Arc<editor::reparse::SyntaxLanguages>,
 }
 
@@ -235,14 +235,14 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
             .await;
         match fetched.flatten() {
             Some(text) => {
-                let document = self.workshop.with_ctx(|store, ui| {
+                let document = self.background_layout.with_ctx(|store, ui| {
                     ::ahp_chat::open::document_for(
                         &self.languages,
                         effect.location.name(),
                         &text,
                         store,
                         ui,
-                        &self.workshop.theme(),
+                        &self.background_layout.theme(),
                     )
                 });
                 himark::opening::opened(

@@ -112,7 +112,7 @@ fn displaced_handles_drop_and_their_rows_survive() {
 fn the_peeker_lists_previews_and_selects_widgets() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    app.register_command(std::sync::Arc::new(TogglePeeker));
+    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
     let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
     app.draw_window(
         app.sole_window(),

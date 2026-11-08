@@ -81,7 +81,7 @@ pub struct EnrichCx<'a> {
 }
 
 /// Where a derive gets its inlay-measure ctx: the UI thread hands
-/// its own pair in; the effect handler lends its kept Workshop pair.
+/// its own pair in; the effect handler lends its kept BackgroundLayout pair.
 /// Never minted per call — see `UiCtx::dont_use_too_slow`.
 #[doc(hidden)]
 pub enum MeasureCtx<'a> {
@@ -89,7 +89,7 @@ pub enum MeasureCtx<'a> {
         store: &'a imba::store::Store,
         ui: &'a imba::ui::UiCtx,
     },
-    Kept(Arc<crate::env::Workshop>),
+    Kept(Arc<crate::env::BackgroundLayout>),
 }
 
 impl MeasureCtx<'_> {
@@ -100,14 +100,14 @@ impl MeasureCtx<'_> {
     ) -> R {
         match self {
             MeasureCtx::Handed { store, ui } => f(crate::markup::InlayMeasure { width, store, ui }),
-            MeasureCtx::Kept(workshop) => workshop.measure(width, f),
+            MeasureCtx::Kept(background_layout) => background_layout.measure(width, f),
         }
     }
 
     pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx) -> R) -> R {
         match self {
             MeasureCtx::Handed { store, ui } => f(store, ui),
-            MeasureCtx::Kept(workshop) => workshop.with_ctx(f),
+            MeasureCtx::Kept(background_layout) => background_layout.with_ctx(f),
         }
     }
 }
@@ -236,7 +236,7 @@ impl imba::effect::Effect for EnrichEffect {
 }
 
 pub struct EnrichHandler {
-    pub workshop: Arc<crate::env::Workshop>,
+    pub background_layout: Arc<crate::env::BackgroundLayout>,
     pub caller: imba::effect::EffectCaller,
 }
 
@@ -248,11 +248,11 @@ impl imba::effect::EffectHandler<EnrichEffect> for EnrichHandler {
 
 impl EnrichHandler {
     pub async fn run(&self, work: EnrichWork) -> EnrichOutcome {
-        let theme = self.workshop.theme();
+        let theme = self.background_layout.theme();
         run_work(
             work,
             &theme,
-            MeasureCtx::Kept(self.workshop.clone()),
+            MeasureCtx::Kept(self.background_layout.clone()),
             self.caller.clone(),
         )
         .await
@@ -301,8 +301,8 @@ mod tests {
         crate::theme::embedded()
     }
 
-    fn workshop() -> Arc<crate::env::Workshop> {
-        Arc::new(crate::env::Workshop::new(
+    fn background_layout() -> Arc<crate::env::BackgroundLayout> {
+        Arc::new(crate::env::BackgroundLayout::new(
             crate::parley_line::shaper(crate::test_document::test_ui())
                 .world()
                 .clone(),
@@ -429,7 +429,7 @@ mod tests {
 
     fn land(effect: EnrichEffect) -> crate::editor_view::EditorCommand {
         let handler = EnrichHandler {
-            workshop: workshop(),
+            background_layout: background_layout(),
             caller: imba::effect::EffectCaller::disconnected(),
         };
         imba::effect::block_on(Box::pin(async move { handler.handle(effect).await }))
@@ -556,7 +556,7 @@ mod tests {
         batch: imba::effect::Batch<crate::editor_view::EditorCommand>,
     ) {
         use imba::effect::EffectHandler;
-        let workshop = workshop();
+        let background_layout = background_layout();
         let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         let mut pending = batch.surviving_launches();
@@ -568,7 +568,7 @@ mod tests {
             let effect = value
                 .downcast::<crate::repair::RepairEffect>()
                 .expect("a landing's tail is repair work");
-            let handler = crate::repair::RepairHandler(Arc::clone(&workshop));
+            let handler = crate::repair::RepairHandler(Arc::clone(&background_layout));
             let command =
                 imba::effect::block_on(Box::pin(async move { handler.handle(*effect).await }));
             let mut batch = imba::effect::Batch::new();

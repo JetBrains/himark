@@ -79,7 +79,7 @@ impl RepairEffect {
 
 const WORKER_REPAIR_BUDGET: f32 = 60_000.0;
 
-pub struct RepairHandler(pub std::sync::Arc<crate::env::Workshop>);
+pub struct RepairHandler(pub std::sync::Arc<crate::env::BackgroundLayout>);
 
 impl EffectHandler<RepairEffect> for RepairHandler {
     async fn handle(&self, effect: RepairEffect) -> EditorCommand {

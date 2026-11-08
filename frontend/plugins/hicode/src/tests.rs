@@ -60,7 +60,7 @@ fn app_with_located_document(source: &str) -> (Himark, workbench::window::Window
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
     let window = app.add_window();
-    assert!(app.perform_command(workbench_shell::app::opened(
+    assert!(app.perform_batch(vec![workbench_shell::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -71,7 +71,7 @@ fn app_with_located_document(source: &str) -> (Himark, workbench::window::Window
             target: None,
             focus: false,
         },
-    )));
+    )]));
     (app, window)
 }
 
@@ -81,7 +81,7 @@ fn invoke(app: &mut Himark, window: workbench::window::WindowId, id: &str) {
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
         .command;
-    assert!(app.perform_command(command));
+    assert!(app.perform_batch(vec![command]));
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
             .any(|presentable| presentable.id == "code.definition")
     };
     assert!(!listed(&app), "the startup scratch has no location");
-    assert!(app.perform_command(workbench_shell::app::opened(
+    assert!(app.perform_batch(vec![workbench_shell::app::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -106,7 +106,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     assert!(listed(&app), "the located editor offers it");
 }
 

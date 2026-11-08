@@ -37,7 +37,7 @@ fn land(
     text: &str,
     col: Option<u32>,
 ) {
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -53,7 +53,7 @@ fn land(
             }),
             focus: false,
         },
-    )));
+    )]));
 }
 
 fn depths(app: &Himark) -> (usize, usize) {

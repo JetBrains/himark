@@ -353,7 +353,7 @@ impl imba::effect::Effect for ReparseEffect {
     type Result = crate::editor_view::EditorCommand;
 }
 
-pub struct ReparseHandler(pub std::sync::Arc<crate::env::Workshop>);
+pub struct ReparseHandler(pub std::sync::Arc<crate::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<ReparseEffect> for ReparseHandler {
     async fn handle(&self, effect: ReparseEffect) -> crate::editor_view::EditorCommand {

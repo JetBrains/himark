@@ -157,7 +157,7 @@ pub fn bound_session(
 
 /// The session RESIDENTS a boot installs: the hosts/servers cells
 /// and the `@`-mention context over the session folders — what
-/// `Himark::bare` used to hardwire.
+/// `Himark::new` used to hardwire.
 pub fn install_residents(app: &mut Himark) {
     app.with_store(|store| {
         store.put(ahp_session::session::state::Hosts::default());

@@ -526,8 +526,16 @@ pub unsafe extern "C" fn himark_bridge_draw(
         // still applies the standing deltas before the frame.
         let flushed = engine.flush_scroll(id);
         engine
-            
-            .draw_mounted(id, canvas, gfx::Size::new(width, height))
+            .dispatch_bridge(
+                id,
+                Event::Paint {
+                    canvas,
+                    focused: true,
+                },
+                Some(gfx::Size::new(width, height)),
+                0.0,
+            )
+            .needs_redraw
             || flushed
     })
 }
@@ -547,7 +555,7 @@ pub unsafe extern "C" fn himark_bridge_layout(
         return false;
     };
     let id = ViewBridgeId::from_raw(bridge.raw);
-    if !engine.stage_layout(id, Size::new(width, height)) {
+    if !engine.layout(id, Size::new(width, height)) {
         refuse("bridge", bridge.raw);
         return false;
     }
@@ -566,7 +574,7 @@ pub unsafe extern "C" fn himark_layout_size(
     let Some(engine) = engine.as_ref() else {
         return false;
     };
-    let Some(size) = engine.stage_layout_size(ViewBridgeId::from_raw(bridge.raw)) else {
+    let Some(size) = engine.layout_size(ViewBridgeId::from_raw(bridge.raw)) else {
         refuse("layout (size)", bridge.raw);
         return false;
     };
@@ -594,7 +602,7 @@ pub unsafe extern "C" fn himark_layout_realize(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    if !engine.stage_realize(
+    if !engine.realize(
         ViewBridgeId::from_raw(bridge.raw),
         Rect::from_xywh(x, y, width, height),
     ) {
@@ -609,7 +617,7 @@ pub unsafe extern "C" fn himark_layout_release(engine: *mut HimarkEngine, bridge
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    if !engine.stage_layout_release(ViewBridgeId::from_raw(bridge.raw)) {
+    if !engine.discard_layout(ViewBridgeId::from_raw(bridge.raw)) {
         refuse("layout (release)", bridge.raw);
     }
 }
@@ -639,7 +647,7 @@ pub unsafe extern "C" fn himark_frame_event(
     };
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.stage_frame(ViewBridgeId::from_raw(bridge.raw)) else {
+        let Some(stage) = engine.realized_frame(ViewBridgeId::from_raw(bridge.raw)) else {
             refuse("frame", bridge.raw);
             return false;
         };
@@ -730,7 +738,7 @@ pub unsafe extern "C" fn himark_frame_offer_scroll(
     let Some(engine) = engine.as_mut() else {
         return false;
     };
-    engine.offer_stage_scroll(
+    engine.offer_scroll(
         ViewBridgeId::from_raw(bridge.raw),
         x,
         y,
@@ -809,7 +817,7 @@ pub unsafe extern "C" fn himark_frame_paint(
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
-        let Some(stage) = engine.stage_frame(ViewBridgeId::from_raw(bridge.raw)) else {
+        let Some(stage) = engine.realized_frame(ViewBridgeId::from_raw(bridge.raw)) else {
             refuse("frame", bridge.raw);
             return false;
         };
@@ -879,7 +887,7 @@ pub unsafe extern "C" fn himark_frame_release(engine: *mut HimarkEngine, bridge:
     let Some(engine) = engine.as_mut() else {
         return;
     };
-    let _ = engine.stage_frame_release(ViewBridgeId::from_raw(bridge.raw));
+    let _ = engine.recycle_frame(ViewBridgeId::from_raw(bridge.raw));
 }
 
 // ─── the session surface: query + control (docs/ui/himark-ffi.md) ───
@@ -1330,5 +1338,23 @@ pub unsafe extern "C" fn himark_bridge_unmount(engine: *mut HimarkEngine, bridge
 /// boot; the wakes carry everything after.
 #[no_mangle]
 pub unsafe extern "C" fn himark_sync(engine: *mut HimarkEngine) -> bool {
-    engine.as_mut().map_or(false, |engine| engine.sync())
+    // One no-op batch: the batch-end lanes run (hosts connect, the
+    // catalog lists) for a shell with no first paint to trigger
+    // them. The no-op command exists because an empty batch
+    // returns without running the lanes.
+    struct Nudge;
+    impl imba::command::DynamicOnceCommand for Nudge {
+        fn perform(
+            self: Box<Self>,
+            _store: &mut imba::store::Store,
+            _ui: &imba::ui::UiCtx,
+            _fx: &mut imba::command::Fx<'_>,
+        ) {
+        }
+    }
+    engine.as_mut().map_or(false, |engine| {
+        engine.perform_batch(vec![himark::app::AppCommand::Verb(
+            imba::command::Verb::once(Nudge),
+        )])
+    })
 }

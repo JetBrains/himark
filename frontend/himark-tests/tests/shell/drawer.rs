@@ -657,10 +657,10 @@ fn dump_sessions_drawer_screenshot() {
         ));
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(workbench_shell::higent::drawer::ToggleAgentsView),
-    )));
+    )]));
     super::dock::settle(&mut app, &mut surface);
     // Opening the drawer nudges every host; the seeded states stand
     // again over whatever the nudge reached.

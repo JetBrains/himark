@@ -76,7 +76,7 @@ fn seeded_feed(app: &mut Himark, name: &str) -> (imba::store::Id<LocationLists>,
 fn a_search_pick_washes_the_opened_editor() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -87,7 +87,7 @@ fn a_search_pick_washes_the_opened_editor() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     let (lists, feed) = seeded_feed(&mut app, "hit.md");
 
     // The already-open pick path: the wash lands through the
@@ -100,19 +100,19 @@ fn a_search_pick_washes_the_opened_editor() {
     )
     .expect("the document is open");
     assert!(
-        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
             locations::views::WashDocument {
                 lists,
                 feed,
                 document: washed,
             }
-        ),)))
+        ),))])
     );
     // Requests drain on the next content tick, as in the live app.
-    assert!(app.perform_command(workbench_shell::shell::content(
+    assert!(app.perform_batch(vec![workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
-    )));
+    )]));
     let row = LocationLists::row(app.store(), lists, feed).expect("the feed");
     assert_eq!(row.washes.size(), 1, "the opened document is washed");
     let (document, (_, pushed)) = row.washes.iter().next().expect("the wash");
@@ -127,9 +127,9 @@ fn a_search_pick_washes_the_opened_editor() {
     let wire = state_wire(&app);
     let _ = window;
     assert!(
-        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
             DisposeFeed { wire, feed }
-        ),)))
+        ),))])
     );
     assert!(LocationLists::row(app.store(), lists, feed).is_none());
     assert!(
@@ -148,7 +148,7 @@ fn a_pick_before_the_open_washes_at_registration() {
     // The async-open path: the pick notes the pending wash; the
     // document hook converts it when registration lands.
     LocationLists::note_wash(&mut app.store_mut(), lists, located("late.md"), feed);
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -159,11 +159,11 @@ fn a_pick_before_the_open_washes_at_registration() {
             target: None,
             focus: false,
         },
-    )));
-    assert!(app.perform_command(workbench_shell::shell::content(
+    )]));
+    assert!(app.perform_batch(vec![workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
-    )));
+    )]));
     let row = LocationLists::row(app.store(), lists, feed).expect("the feed");
     assert_eq!(
         row.washes.size(),

@@ -42,11 +42,8 @@ pub struct PluginContext {
 /// palette rows keep the order their plugins stand in). Returns the
 /// context so the host can keep the shared sets for its own late
 /// wiring (capability-gated routes re-use the languages).
-pub fn install_all(
-    app: &mut Himark,
-    diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
-    plugins: &[Box<dyn Plugin>],
-) -> PluginContext {
+pub fn install_all(app: &mut Himark, plugins: &[Box<dyn Plugin>]) -> PluginContext {
+    let diff_policy: Arc<dyn ::editor::diff::DiffPolicy> = Arc::new(myersdiff::Myers);
 
     let mut languages = ::editor::reparse::SyntaxLanguages::new();
     let mut enrichers = ::editor::enrich::Enrichers::new();
@@ -55,9 +52,11 @@ pub fn install_all(
         plugin.enrichers(&mut enrichers);
     }
     let shared = Arc::new(languages.clone());
-    app.register_syntax_languages(languages);
-    app.register_enrichers(enrichers);
-    app.register_diff_policy(Arc::clone(&diff_policy));
+    app.perform_batch(vec![
+        crate::app::AppCommand::RegisterLanguages(languages),
+        crate::app::AppCommand::RegisterEnrichers(enrichers),
+        crate::app::AppCommand::RegisterDiffPolicy(Arc::clone(&diff_policy)),
+    ]);
     let cx = PluginContext {
         languages: shared,
         diff_policy,

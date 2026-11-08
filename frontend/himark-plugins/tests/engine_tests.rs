@@ -7487,10 +7487,10 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             workbench_shell::app::switch_session(store, window, target, fx);
         }
     }
-    assert!(engine.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         engine.sole_window(),
         std::sync::Arc::new(SwitchScratch),
-    )));
+    )]));
     pump(&mut engine, &mut surface);
     assert_ne!(current(&engine), created, "the scratch took the window");
 
@@ -8900,10 +8900,10 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Open(file.clone()))
-    )));
+    )]));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
             engine.store(),
@@ -8922,7 +8922,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     .find(|presentable| presentable.id == "code.implementations")
     .expect("the located editor offers implementations")
     .command;
-    assert!(engine.perform_command(command));
+    assert!(engine.perform_batch(vec![command]));
 
     let lists = workbench_shell::workspace::entity_state(
         workbench::window::Windows::window_ref(engine.store(), engine.sole_window())
@@ -8969,7 +8969,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     .find(|presentable| presentable.id == "code.references")
     .expect("the located editor offers references")
     .command;
-    assert!(engine.perform_command(command));
+    assert!(engine.perform_batch(vec![command]));
     settle_until(&mut engine, "the references resolved", |engine| {
         locations::LocationLists::search(engine.store(), lists)
             .and_then(|next| locations::LocationLists::row(engine.store(), lists, next))
@@ -8997,12 +8997,12 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
     let window = WindowEngine::open_window(&mut engine);
     // The capability gate normally registers these when the seat
     // serves searchLocations; the KEY ROAD under test is the same.
-    engine.register_command(std::sync::Arc::new(
+    engine.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(
         workbench_shell::hisearch::ToggleSearchView,
-    ));
-    engine.register_command(std::sync::Arc::new(
+    ))]);
+    engine.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(
         workbench_shell::hisearch::FocusSearchView,
-    ));
+    ))]);
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(
@@ -9284,10 +9284,10 @@ fn published_diagnostics_squiggle_the_open_document() {
             workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Open(file.clone()))
-    )));
+    )]));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(
             engine.store(),
@@ -9427,10 +9427,10 @@ fn published_diagnostics_squiggle_the_open_document() {
             documents::OpenDocuments::put_document(store, documents_id, document_id, document);
         }
     }
-    assert!(engine.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Clear(engine.sole_documents(), file.clone()))
-    )));
+    )]));
     settle(&mut engine);
     let cleared = snapshot(&mut engine, &mut surface);
     assert_ne!(
@@ -9547,11 +9547,11 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
             Measured::Framed => gfx::Size::new(WIDTH, FRAME),
         };
         assert!(
-            engine.stage_layout(bridge, ask),
+            engine.layout(bridge, ask),
             "{name}: the mounted stage refused to lay"
         );
         let size = engine
-            .stage_layout_size(bridge)
+            .layout_size(bridge)
             .unwrap_or_else(|| panic!("{name}: the laid stage has no size"));
         assert!(
             size.width.is_finite() && size.height.is_finite(),
@@ -9564,7 +9564,7 @@ fn every_mounted_place_answers_inside_the_band_it_was_handed() {
                 "{name}: a framed sheet fills its frame, answered {size:?}"
             );
         }
-        engine.stage_layout_release(bridge);
+        engine.discard_layout(bridge);
         measured.push((name, size.height));
     }
     eprintln!("[mounted-sizing] {measured:?}");
@@ -9623,10 +9623,14 @@ fn a_late_files_tree_stands_on_the_followed_file() {
         &mut engine,
         "the standing follow parks the reveal",
         |engine| {
-            let _ = engine.draw_mounted(
+            let _ = engine.dispatch_bridge(
                 tree,
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                gfx::Size::new(320.0, 40.0),
+                imba::event::Event::Paint {
+                    canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                    focused: true,
+                },
+                Some(gfx::Size::new(320.0, 40.0)),
+                0.0,
             );
             // The reveal rides the CLOCK road, and the MOUNTED clock is
             // the engine tick — the shell's display link, not the
@@ -9654,7 +9658,7 @@ fn a_mermaid_document_diagrams_through_the_engine() {
 }
 
 /// The HOSTED road: the sample opened from disk through the host
-/// pick — fetch, off-thread build in the workshop store, location
+/// pick — fetch, off-thread build in the background_layout store, location
 /// registration — the exact lane the shells ride.
 #[test]
 fn a_hosted_sample_file_diagrams() {
@@ -10165,11 +10169,10 @@ fn a_bare_engine_mounts_a_scrolled_editor() {
         }
     }
 
-    let mut app = himark::app::Himark::bare(AppFonts::embedded(), Arc::new(NoShell));
+    let mut app = himark::app::Himark::new(AppFonts::embedded(), Arc::new(NoShell), Vec::new());
     app.install_host_loop();
     let wired = himark::plugin::install_all(
         &mut app,
-        Arc::new(myersdiff::Myers),
         &himark_plugins::engine_plugins(),
     );
     let languages = wired.languages;
@@ -10243,10 +10246,14 @@ fn a_bare_engine_mounts_a_scrolled_editor() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
     gfx_skia::SkiaCanvas::new(surface.canvas()).clear(gfx::Color::WHITE);
     app.flush_scroll(bridge);
-    let _ = app.draw_mounted(
+    let _ = app.dispatch_bridge(
         bridge,
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
+        imba::event::Event::Paint {
+            canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            focused: true,
+        },
+        Some(size),
+        0.0,
     );
     let image = surface.image_snapshot();
     let pixels = image.peek_pixels().expect("pixels");
@@ -10412,10 +10419,10 @@ fn squiggles_follow_the_language_server_across_a_host_restart() {
             workbench_shell::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.perform_command(workbench_shell::shell::windowed(
+    assert!(engine.perform_batch(vec![workbench_shell::shell::windowed(
         wid(window),
         Arc::new(Open(file.clone()))
-    )));
+    )]));
     settle_until(&mut engine, "lib.rs opened", |engine| {
         documents::OpenDocuments::by_location(engine.store(), engine.sole_documents(), &file)
             .is_some()

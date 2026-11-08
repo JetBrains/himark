@@ -36,11 +36,11 @@ pub fn test_ui() -> &'static imba::ui::UiCtx {
     UI.with(|ui| *ui)
 }
 
-pub fn test_workshop(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::Workshop> {
-    // The test thread's world, so a workshop built here shapes with
+pub fn test_workshop(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::BackgroundLayout> {
+    // The test thread's world, so a background_layout built here shapes with
     // the same faces the test ctx does.
     let world = crate::parley_line::shaper(test_ui()).world().clone();
-    std::sync::Arc::new(crate::env::Workshop::new(world, theme))
+    std::sync::Arc::new(crate::env::BackgroundLayout::new(world, theme))
 }
 
 /// TEST SUPPORT: no production caller outside this crate.

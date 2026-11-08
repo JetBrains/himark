@@ -65,10 +65,10 @@ fn attach_bare_host() -> (Himark, TestHost) {
     let mut app = workbench_shell::app::workbench_app(app_fonts());
     let _ = app.add_window();
 
-    app.register_command(Arc::new(peeker::TogglePeeker));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(peeker::TogglePeeker))]);
     let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
-    app.register_syntax_languages(himarkdown::markdown_languages(languages));
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(languages))]);
     let (posted, arriving) = mpsc::channel::<AppCommand>();
     let (signal, work) = mpsc::channel::<()>();
     let runner = app.attach_host(
@@ -1253,10 +1253,10 @@ fn resize_repair_matches_fresh_layout() {
     );
     let mut batch = imba::effect::Batch::new();
     document.resize(editor, 1128.0, 0, store, ui, &theme, &mut batch.effects());
-    let workshop = workbench_shell::test_support::test_workshop(theme.clone());
+    let background_layout = workbench_shell::test_support::test_workshop(theme.clone());
     for effect in workbench_shell::test_support::surviving_launches(batch) {
         if let editor::editor_view::EditorCommand::ApplyRepair(items) =
-            workbench_shell::test_support::handle_effect(effect, &workshop)
+            workbench_shell::test_support::handle_effect(effect, &background_layout)
         {
             for item in items {
                 document.apply_repair(item, &theme);
@@ -1335,10 +1335,7 @@ fn where_do_heights_diverge() {
 fn tree_demo_panel_toggles_through_clicks() {
     let (mut app, _arriving) = boot();
 
-    himark::app::Himark::register_command(
-        &mut app,
-        std::sync::Arc::new(crate::tree_demo::OpenTreeDemo),
-    );
+    &mut app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(crate::tree_demo::OpenTreeDemo))]);
     let window = app.sole_window();
     let mut surface = gfx_skia::raster_tuple((800, 600)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));

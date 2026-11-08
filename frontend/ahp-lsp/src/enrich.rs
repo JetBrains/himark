@@ -525,7 +525,7 @@ pub fn sync(store: &mut Store, wire: imba::store::Id<EnrichWire>, fx: &mut Fx<'_
         // The text the server answers FOR: its positions are
         // line/col in this revision, and nothing else.
         let revision = entry.revision();
-        // Snapshots for the WORKSHOP build: the markup and its diff
+        // Snapshots for the BACKGROUND_LAYOUT build: the markup and its diff
         // against the standing layer are made off the ui thread —
         // tens of thousands of spans per delivery froze it. Sound
         // because one ask stands per document (a relaunch cancels
@@ -584,7 +584,7 @@ struct TokensLanded {
     document: DocumentId,
     /// The revision the ask was made at — see `apply`.
     revision: u64,
-    /// The layer and its change set, BUILT IN THE WORKSHOP against
+    /// The layer and its change set, BUILT IN THE BACKGROUND_LAYOUT against
     /// the ask-time snapshots; the landing only swaps and reshapes.
     built: Option<(Markup, Vec<std::ops::Range<u32>>)>,
 }
@@ -735,7 +735,7 @@ fn apply(
     OpenDocuments::put_document(store, documents, document_id, document);
 }
 
-/// Land a layer the WORKSHOP already built: `apply` minus the build
+/// Land a layer the BACKGROUND_LAYOUT already built: `apply` minus the build
 /// and the diff — the ui thread only swaps and reshapes. The same
 /// revision gate guards it, which is also what makes the ask-time
 /// snapshots the diff was computed against sound.
@@ -785,7 +785,7 @@ fn land(
 
 /// The semantic layer against the text the ask was made for: one
 /// styled span per token, clamped; a token off the end (an older
-/// text) drops. Pure over its snapshot — the WORKSHOP builds it.
+/// text) drops. Pure over its snapshot — the BACKGROUND_LAYOUT builds it.
 fn semantic_markup(text: &text::text::Text, spans: &[SemanticSpan]) -> Markup {
     let mut builder = Markup::builder();
     let mut view = text.view();

@@ -118,10 +118,10 @@ fn dock_seeded_comments(app: &mut Himark) -> imba::store::Id<::comments::Comment
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(ShowComments(comments)),
-    )));
+    )]));
     comments
 }
 

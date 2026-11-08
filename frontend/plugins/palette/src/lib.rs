@@ -564,7 +564,7 @@ pub struct PalettePlugin;
 
 impl himark::plugin::Plugin for PalettePlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.register_command(std::sync::Arc::new(TogglePalette));
+                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePalette))]);
         // The COMMAND PALETTE: one view, both roads. The workbench
         // opens it as a modal over a window; a mounted host mints
         // it as a place, and the engine walks that session's views

@@ -17,7 +17,7 @@ use workbench_shell::app_ext::AppExt;
 fn boot() -> Himark {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    app.register_command(std::sync::Arc::new(TogglePeeker));
+    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
     app
 }
 
@@ -37,7 +37,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         )
     };
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(workbench_shell::app::opened(
+        assert!(app.perform_batch(vec![workbench_shell::app::opened(
             app.sole_window(),
             workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
@@ -48,7 +48,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
                 target: None,
                 focus: false,
             },
-        )));
+        )]));
     };
 
     open(&mut app, "beta", "beta body");
@@ -261,7 +261,7 @@ fn dump_jump_screenshot() {
                 .map(|segment| segment.to_string())
                 .collect::<Vec<_>>(),
         );
-        assert!(app.perform_command(workbench_shell::app::opened(
+        assert!(app.perform_batch(vec![workbench_shell::app::opened(
             app.sole_window(),
             workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
@@ -272,7 +272,7 @@ fn dump_jump_screenshot() {
                 target: None,
                 focus: false,
             },
-        )));
+        )]));
     }
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     app.draw_window(

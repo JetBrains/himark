@@ -1516,7 +1516,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
 
     let source: String = (0..200).map(|n| format!("line {n}\n")).collect();
     let target = LineCol { line: 150, col: 5 }..LineCol { line: 150, col: 7 };
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -1527,7 +1527,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
             target: Some(target),
             focus: false,
         },
-    )));
+    )]));
 
     let expected = source
         .lines()
@@ -1546,7 +1546,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
         "the scroll-to-caret is armed on mount"
     );
 
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -1557,7 +1557,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     assert_eq!(app.focused_caret_byte(), Some(0));
     assert_eq!(app.focused_reveal_pending(), Some(false));
 }
@@ -2076,7 +2076,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
         text::text::Text::from_string_exact(&source),
         editor::markup::Markup::new(),
     );
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -2087,7 +2087,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
             target: None,
             focus: true,
         },
-    )));
+    )]));
     let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
         for tick in 0..10 {
             let _ = workbench_shell::test_driver::animate(

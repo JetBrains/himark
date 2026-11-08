@@ -77,7 +77,7 @@ fn location() -> ResourceLocation {
 }
 
 fn open_file(app: &mut Himark) -> documents::DocumentId {
-    app.perform_command(workbench_shell::shell::opened(
+    app.perform_batch(vec![workbench_shell::shell::opened(
         app.sole_window(),
         workbench_shell::app::OpenedDocument {
             documents: app.sole_documents(),
@@ -88,7 +88,7 @@ fn open_file(app: &mut Himark) -> documents::DocumentId {
             target: None,
             focus: false,
         },
-    ));
+    )]);
     let mut surface = gfx_skia::raster_tuple((800, 600)).unwrap();
     app.draw_window(
         app.sole_window(),
@@ -187,7 +187,7 @@ fn scratch_save_is_unavailable_without_a_picker() {
 #[test]
 fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
     let (mut app, runner, arriving, writes) = setup(true);
-    app.register_command(Arc::new(SaveAll));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(SaveAll))]);
     let window = app.sole_window();
 
     let named = |name: &str| {
@@ -198,7 +198,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         )
     };
     let open = |app: &mut Himark, name: &str| -> documents::DocumentId {
-        app.perform_command(workbench_shell::shell::opened(
+        app.perform_batch(vec![workbench_shell::shell::opened(
             app.sole_window(),
             workbench_shell::app::OpenedDocument {
                 documents: app.sole_documents(),
@@ -209,7 +209,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
                 target: None,
                 focus: false,
             },
-        ));
+        )]);
         let mut surface = gfx_skia::raster_tuple((800, 600)).unwrap();
         app.draw_window(
             app.sole_window(),

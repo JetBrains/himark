@@ -20,10 +20,10 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(std::sync::Arc::new(TogglePeeker));
+    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
     let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
-    app.register_syntax_languages(himarkdown::markdown_languages(languages));
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(languages))]);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {

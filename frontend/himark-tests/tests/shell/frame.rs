@@ -66,7 +66,7 @@ fn dump_frame_screenshot() {
             workbench_shell::app::switch_session(store, window, target, fx)
         }
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(EnterSession))));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(EnterSession))]));
     let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
     let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
@@ -134,7 +134,7 @@ fn dump_frame_screenshot() {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(window, Arc::new(OpenDoc))));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(OpenDoc))]));
     super::dock::settle(&mut app, &mut surface);
     // The side column's tabs, as the shell registers them.
     for (order, (label, command)) in [
@@ -167,12 +167,12 @@ fn dump_frame_screenshot() {
     // The chat column mid-slide: MaximizeTree rolls it off the left
     // edge over the dock's slide time; a frame 64ms in shows it
     // partly gone and the tree widened to where it shows.
-    assert!(app.perform_command(workbench_shell::shell::content(
+    assert!(app.perform_batch(vec![workbench_shell::shell::content(
         window,
         ::workbench::window::WindowCommand::Base(
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
         ),
-    )));
+    )]));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     let _ = workbench_shell::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));

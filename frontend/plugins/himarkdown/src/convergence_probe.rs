@@ -136,8 +136,8 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     assert_eq!(live, fresh, "incremental layout diverged from from-scratch");
 }
 
-fn test_cx_for_probe() -> std::sync::Arc<editor::env::Workshop> {
-    std::sync::Arc::new(editor::env::Workshop::new(
+fn test_cx_for_probe() -> std::sync::Arc<editor::env::BackgroundLayout> {
+    std::sync::Arc::new(editor::env::BackgroundLayout::new(
         editor::parley_line::world(),
         editor::theme::embedded(),
     ))

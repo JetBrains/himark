@@ -8,7 +8,7 @@ pub struct WatchPlugin;
 
 impl himark::plugin::Plugin for WatchPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.register_command(std::sync::Arc::new(ReloadDocument));
+                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(ReloadDocument))]);
     }
 }
 

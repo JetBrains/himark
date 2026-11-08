@@ -67,7 +67,7 @@ impl AppExt for Himark {
         else {
             return false;
         };
-        self.perform_command(command)
+        self.perform_batch(vec![command])
     }
 
     fn add_document(
@@ -86,7 +86,7 @@ impl AppExt for Himark {
             };
             state.documents()
         };
-        self.perform_command(crate::shell::opened(
+        self.perform_batch(vec![crate::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -97,7 +97,7 @@ impl AppExt for Himark {
                 target: None,
                 focus: false,
             },
-        ))
+        )])
     }
 
     fn new_scratch(&mut self, window: ::workbench::window::WindowId) -> bool {
@@ -120,13 +120,13 @@ impl AppExt for Himark {
             + Sync
             + 'static,
     ) -> bool {
-        self.perform_command(crate::shell::open_async(
+        self.perform_batch(vec![crate::shell::open_async(
             window,
             name,
             primary,
             location,
             Box::new(build),
-        ))
+        )])
     }
 
     fn open_panel(
@@ -134,7 +134,7 @@ impl AppExt for Himark {
         window: ::workbench::window::WindowId,
         panel: Box<dyn hikit::panel::DynPanelView>,
     ) -> bool {
-        self.perform_command(crate::shell::open_panel(window, panel))
+        self.perform_batch(vec![crate::shell::open_panel(window, panel)])
     }
 
     fn open_modal(
@@ -142,11 +142,11 @@ impl AppExt for Himark {
         window: ::workbench::window::WindowId,
         modal: Box<dyn ModalView>,
     ) -> bool {
-        self.perform_command(crate::shell::open_modal(window, modal))
+        self.perform_batch(vec![crate::shell::open_modal(window, modal)])
     }
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool {
-        self.perform_command(crate::shell::close_modal(window))
+        self.perform_batch(vec![crate::shell::close_modal(window)])
     }
 
 

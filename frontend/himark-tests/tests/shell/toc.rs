@@ -69,7 +69,7 @@ fn the_outline_derives_lands_and_jumps() {
     );
     let window = app.sole_window();
     let (source, document) = outlined_document();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -80,7 +80,7 @@ fn the_outline_derives_lands_and_jumps() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
 
     assert!(app.perform_registered(window, "toc.toggle"));
     let mut view = ::workbench::window::Windows::window_ref(app.store(), window)
@@ -148,7 +148,7 @@ fn the_outline_derives_lands_and_jumps() {
         panic!("the pick performs the jump");
     };
     let command = workbench_shell::app::verb_command(app.sole_window(), verb).expect("a performable verb");
-    assert!(app.perform_command(command));
+    assert!(app.perform_batch(vec![command]));
     let (document_id, editor_id) = app.focused_editor_id();
     let caret =
         documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), document_id)
@@ -385,7 +385,7 @@ fn outline_speedsearch_filters_steps_and_clears() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -396,7 +396,7 @@ fn outline_speedsearch_filters_steps_and_clears() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     assert!(app.perform_registered(window, "toc.toggle"));
     let mut view = ::workbench::window::Windows::window_ref(app.store(), window)
         .expect("window")
@@ -499,7 +499,7 @@ fn speedsearch_arrows_step_the_matches() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -510,7 +510,7 @@ fn speedsearch_arrows_step_the_matches() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     assert!(app.perform_registered(window, "toc.toggle"));
     let mut view = ::workbench::window::Windows::window_ref(app.store(), window)
         .expect("window")
@@ -649,7 +649,7 @@ fn outline_folds_survive_relandings() {
     );
     let window = app.sole_window();
     let (_source, document) = outlined_document();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -660,7 +660,7 @@ fn outline_folds_survive_relandings() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     assert!(app.perform_registered(window, "toc.toggle"));
     let mut view = ::workbench::window::Windows::window_ref(app.store(), window)
         .expect("window")
@@ -792,7 +792,7 @@ fn dump_contents_drawer_screenshot() {
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -803,7 +803,7 @@ fn dump_contents_drawer_screenshot() {
             target: None,
             focus: true,
         },
-    )));
+    )]));
     {
         let (document_id, editor) = app.focused_editor_id();
         let mut document =
@@ -897,10 +897,10 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
             ::workbench::window::Windows::put(store, window, entity);
         }
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         std::sync::Arc::new(StandDrawer(view.clone())),
-    )));
+    )]));
     view
 }
 
@@ -915,7 +915,7 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
     );
     let window = app.sole_window();
     let (document, caret) = server_outline();
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -926,7 +926,7 @@ fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
             target: None,
             focus: true,
         },
-    )));
+    )]));
     {
         let (document_id, editor) = app.focused_editor_id();
         let mut document =

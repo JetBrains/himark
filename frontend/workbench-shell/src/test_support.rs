@@ -514,7 +514,7 @@ pub fn surviving_launches<R: 'static>(
 
 pub fn handle_effect<R: 'static>(
     effect: imba::effect::AnyEffect<R>,
-    workshop: &std::sync::Arc<::editor::env::Workshop>,
+    background_layout: &std::sync::Arc<::editor::env::BackgroundLayout>,
 ) -> R {
     use imba::effect::{block_on, EffectHandler};
     let payload = effect.into_payload();
@@ -523,14 +523,14 @@ pub fn handle_effect<R: 'static>(
         .downcast::<::editor::repair::RepairEffect>()
     {
         Ok(effect) => {
-            let handler = ::editor::repair::RepairHandler(std::sync::Arc::clone(workshop));
+            let handler = ::editor::repair::RepairHandler(std::sync::Arc::clone(background_layout));
             Box::new(block_on(Box::pin(
                 async move { handler.handle(*effect).await },
             )))
         }
         Err(value) => match value.downcast::<::editor::reparse::ReparseEffect>() {
             Ok(effect) => {
-                let handler = ::editor::reparse::ReparseHandler(std::sync::Arc::clone(workshop));
+                let handler = ::editor::reparse::ReparseHandler(std::sync::Arc::clone(background_layout));
                 Box::new(block_on(Box::pin(
                     async move { handler.handle(*effect).await },
                 )))
@@ -538,7 +538,7 @@ pub fn handle_effect<R: 'static>(
             Err(value) => match value.downcast::<::editor::enrich::EnrichEffect>() {
                 Ok(effect) => {
                     let handler = ::editor::enrich::EnrichHandler {
-                        workshop: std::sync::Arc::clone(workshop),
+                        background_layout: std::sync::Arc::clone(background_layout),
                         caller: imba::effect::EffectCaller::disconnected(),
                     };
                     Box::new(block_on(Box::pin(
@@ -549,7 +549,7 @@ pub fn handle_effect<R: 'static>(
                 {
                     Ok(effect) => {
                         let handler = ::editor::scroll_stripe::ScrollStripeHandler(
-                            std::sync::Arc::clone(workshop),
+                            std::sync::Arc::clone(background_layout),
                         );
                         Box::new(block_on(Box::pin(
                             async move { handler.handle(*effect).await },
@@ -559,7 +559,7 @@ pub fn handle_effect<R: 'static>(
                         match value.downcast::<::editor::split_diff::RepairDiffEffect>() {
                             Ok(effect) => {
                                 let handler = ::editor::split_diff::RepairDiffHandler(
-                                    std::sync::Arc::clone(workshop),
+                                    std::sync::Arc::clone(background_layout),
                                 );
                                 Box::new(block_on(Box::pin(async move {
                                     handler.handle(*effect).await
@@ -577,7 +577,7 @@ pub fn handle_effect<R: 'static>(
                                 Err(value) => match value.downcast::<crate::app::OpenEffect>() {
                                     Ok(effect) => {
                                         let handler = crate::app::OpenHandler(
-                                            std::sync::Arc::clone(workshop),
+                                            std::sync::Arc::clone(background_layout),
                                         );
                                         Box::new(block_on(Box::pin(async move {
                                             handler.handle(*effect).await
@@ -595,8 +595,8 @@ pub fn handle_effect<R: 'static>(
     lift(outcome).expect("a notification lands nothing — this harness drives only landing effects")
 }
 
-pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::env::Workshop> {
-    std::sync::Arc::new(::editor::env::Workshop::new(
+pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::env::BackgroundLayout> {
+    std::sync::Arc::new(::editor::env::BackgroundLayout::new(
         ::editor::parley_line::world(),
         theme,
     ))

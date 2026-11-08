@@ -118,7 +118,7 @@ fn boot(
 ) {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    app.register_command(Arc::new(TogglePeeker));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(TogglePeeker))]);
     app.register_handler::<FindEffect>(StubFind);
     app.register_handler::<FetchDocumentEffect>(StubFetch(Arc::clone(fetches)));
     app.register_handler::<BuildDocumentEffect>(StubBuild);

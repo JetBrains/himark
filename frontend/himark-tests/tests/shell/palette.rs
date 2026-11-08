@@ -268,7 +268,7 @@ fn registered_commands_present_and_dispatch_by_id() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
     );
 
-    app.register_command(std::sync::Arc::new(Probe));
+    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(Probe))]);
     let ids: Vec<&str> =
         workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .iter()

@@ -62,14 +62,14 @@ impl editor::dynamic::DynamicEditorCommand for SelectRange {
 
 fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::WindowId) {
     let mut app = crate::app::workbench_app(AppFonts::embedded());
-    app.register_syntax_languages(himarkdown::markdown_languages(
+    app.perform_batch(vec![himark::app::AppCommand::RegisterLanguages(himarkdown::markdown_languages(
         editor::reparse::SyntaxLanguages::new(),
-    ));
+    ))]);
     // `comments.add` arrives via the session ceremony (a scoped,
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
-    assert!(app.perform_command(crate::shell::opened(
+    assert!(app.perform_batch(vec![crate::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -80,7 +80,7 @@ fn app_with_located_document(source: &str) -> (Himark, ::workbench::window::Wind
             target: None,
             focus: false,
         },
-    )));
+    )]));
     (app, window)
 }
 
@@ -90,7 +90,7 @@ fn invoke(app: &mut Himark, window: ::workbench::window::WindowId, id: &str) {
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
         .command;
-    assert!(app.perform_command(command));
+    assert!(app.perform_batch(vec![command]));
 }
 
 fn commented_document(app: &Himark) -> (documents::DocumentId, Vec<(InlayKey, Range<u32>)>) {
@@ -171,14 +171,14 @@ fn remove_comment_clears_the_card_and_returns_focus() {
 
     let _ = window;
     assert!(
-        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(
             std::sync::Arc::new(RemoveComment {
                 comments: app.sole_family().comments(),
                 document,
                 key: inlays[0].0,
                 annotation: None,
             }),
-        )))
+        ))])
     );
 
     let doc = documents::OpenDocuments::document(app.store(), app.sole_documents(), document)
@@ -243,10 +243,10 @@ fn typing_lands_in_the_card_not_the_host_document() {
     );
     assert_eq!(view.text(), "looks wrong", "the card holds the comment");
 
-    let workshop = crate::test_support::test_workshop(editor::theme::embedded());
+    let background_layout = crate::test_support::test_workshop(editor::theme::embedded());
     let mut pending = crate::test_support::surviving_launches(batch);
     while let Some(effect) = pending.pop() {
-        let landing = crate::test_support::handle_effect(effect, &workshop);
+        let landing = crate::test_support::handle_effect(effect, &background_layout);
         let mut batch = imba::effect::Batch::new();
         imba::View::perform(&mut view, &mut store, &ui, landing, &mut batch.effects());
         pending.extend(crate::test_support::surviving_launches(batch));
@@ -285,12 +285,12 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert_eq!(ids.len(), 1, "the record registered");
 
     assert!(
-        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(
+        app.perform_batch(vec![AppCommand::Verb(imba::command::Verb::Dynamic(
             std::sync::Arc::new(comments::view::SendComments {
                 comments: app.sole_family().comments(),
                 ids: ids.clone(),
             }),
-        )))
+        ))])
     );
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "the card stands");
@@ -309,18 +309,18 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         &ids,
         Err("wire died".to_owned()),
     );
-    assert!(app.perform_command(crate::shell::content(
+    assert!(app.perform_batch(vec![crate::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
-    )));
+    )]));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
     comments::Comments::sent_outcome(&mut app.store_mut(), comments, &ids, Ok(()));
-    assert!(app.perform_command(crate::shell::content(
+    assert!(app.perform_batch(vec![crate::shell::content(
         window,
         ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
-    )));
+    )]));
     assert!(
         comments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),
         "the sent comment's record is consumed"

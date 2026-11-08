@@ -105,7 +105,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -222,7 +222,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -328,7 +328,7 @@ fn identical_documents_settle_spacer_free() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -407,7 +407,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -501,7 +501,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -625,7 +625,7 @@ fn typed_insertions_paint_washes() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -742,7 +742,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -862,7 +862,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -1129,7 +1129,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -1251,7 +1251,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -1503,16 +1503,16 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     );
 
     let mut pending = Vec::new();
-    let workshop = workbench_shell::test_support::test_workshop(theme.clone());
+    let background_layout = workbench_shell::test_support::test_workshop(theme.clone());
     for effect in held {
-        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
         pending.extend(perform(&mut document, command));
     }
     let mut rounds = 0;
     while let Some(effect) = pending.pop() {
         rounds += 1;
         assert!(rounds < 200, "repairs must quiesce");
-        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
         pending.extend(perform(&mut document, command));
     }
 
@@ -1539,7 +1539,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -1812,7 +1812,7 @@ fn an_edited_markdown_pair_settles_aligned() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -2012,7 +2012,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
 
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let hits: Arc<std::sync::Mutex<Vec<(String, String)>>> = Arc::default();
     app.register_editor_command(Arc::new(Probe(Arc::clone(&hits))));
@@ -2024,7 +2024,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         )
     };
     for (name, body) in [("left.md", "left body\n"), ("right.md", "right body\n")] {
-        assert!(app.perform_command(workbench_shell::shell::opened(
+        assert!(app.perform_batch(vec![workbench_shell::shell::opened(
             window,
             himark::opening::OpenedDocument {
                 documents: app.sole_documents(),
@@ -2035,7 +2035,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
                 target: None,
                 focus: false,
             },
-        )));
+        )]));
     }
     assert!(app.perform_registered(window, "diff.open"));
 
@@ -2044,7 +2044,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         .find(|presentable| presentable.id == "test.probe")
         .expect("the diff half offers the registered command")
         .command;
-    assert!(app.perform_command(command));
+    assert!(app.perform_batch(vec![command]));
 
     let hits = hits.lock().expect("probe log");
     assert_eq!(hits.len(), 1, "one dispatch, at one half");
@@ -2173,7 +2173,7 @@ fn a_settled_diff_pane_goes_quiet() {
     let fonts = himark::app::AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(std::sync::Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(OpenDiff))]);
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
         std::sync::Arc::new(move |command| {
@@ -2242,7 +2242,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -2329,7 +2329,7 @@ fn the_unified_view_switches_between_split_and_inline() {
                 .find(|presentable| presentable.id == "diff.toggle-layout")
                 .expect("the pane offers the layout toggle")
                 .command;
-        assert!(app.perform_command(command));
+        assert!(app.perform_batch(vec![command]));
     };
     toggle(&mut app);
     settle(&mut app, &mut surface);
@@ -2434,7 +2434,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -2495,7 +2495,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
             .find(|presentable| presentable.id == "diff.toggle-layout")
             .expect("the pane offers the layout toggle")
             .command;
-    assert!(app.perform_command(toggle));
+    assert!(app.perform_batch(vec![toggle]));
     settle(&mut app, &mut surface);
 
     let paint_floor_ms = |app: &mut Himark, surface: &mut skia_safe::Surface| -> f64 {
@@ -4992,7 +4992,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         editor::location::ResourceLocation,
         editor::document::Document,
     )>| {
-        assert!(app.perform_command(workbench_shell::shell::windowed(
+        assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
             window,
             Arc::new(hicode::ApplyNavigation {
                 outcome: hicode::NavigationOutcome {
@@ -5005,7 +5005,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
                     built,
                 },
             }),
-        )));
+        )]));
     };
 
     // 1. The diffed file itself: inside the row, fold lifted.
@@ -5236,7 +5236,7 @@ fn completion_serves_a_canvas_diff_face() {
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")
         .command;
-    assert!(app.perform_command(trigger));
+    assert!(app.perform_batch(vec![trigger]));
     assert!(completion_open(&app), "the explicit ask opened on the face");
     settle(&mut app, &mut surface);
     // The popup PAINTS: the rows below the clicked line (y 240, one
@@ -5583,10 +5583,10 @@ fn an_added_file_dresses_despite_a_landing_during_its_first_dressing() {
         &gfx_skia::SkiaCanvas::new(surface.canvas()),
         size,
     );
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(Land(documents, right)),
-    )));
+    )]));
 
     let dressed = |app: &Himark| -> bool {
         OpenDocuments::diff_view_ref(app.store(), documents, pair)

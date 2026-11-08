@@ -147,7 +147,7 @@ impl Document {
 }
 
 /// `built_before_card`, anywhere: pure construction on clones, so the
-/// workshop builds card sets off the UI thread
+/// background_layout builds card sets off the UI thread
 /// (`BuildBeforeCardsEffect`) and a landing only pushes them.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn built_card(
@@ -219,7 +219,7 @@ pub(crate) fn built_card(
 /// The card BLOCKS a diff operation calls for: the host's hard-line
 /// anchors, each with the base span its card frames — adjacent
 /// fragments coalesce under the block cap. One walk, shared by the
-/// sync expansion and the workshop build.
+/// sync expansion and the background_layout build.
 pub(crate) fn card_blocks(
     right_text: &Text,
     base_text: &Text,
@@ -687,7 +687,7 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
     }
 }
 
-/// The inline face's before-cards, built in the WORKSHOP: the block
+/// The inline face's before-cards, built in the BACKGROUND_LAYOUT: the block
 /// walk and every card's document, fragment and complete layout are
 /// pure construction over snapshots (persistent clones), so the UI
 /// thread pays only the landing's `push_inlays` — one splice, one
@@ -712,7 +712,7 @@ impl imba::effect::Effect for BuildBeforeCardsEffect {
     type Result = crate::unified_diff::UnifiedDiffCommand;
 }
 
-pub struct BuildBeforeCardsHandler(pub std::sync::Arc<crate::env::Workshop>);
+pub struct BuildBeforeCardsHandler(pub std::sync::Arc<crate::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<BuildBeforeCardsEffect> for BuildBeforeCardsHandler {
     async fn handle(

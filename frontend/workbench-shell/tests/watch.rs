@@ -768,9 +768,7 @@ fn opens_watch_and_events_refetch() {
     };
 
     let documents = app.sole_documents();
-    assert!(himark::app::Himark::perform_command(
-        &mut app,
-        workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -781,8 +779,7 @@ fn opens_watch_and_events_refetch() {
                 target: None,
                 focus: false,
             },
-        )
-    ));
+        )]));
     settle(&mut app);
 
     let entity = OpenDocuments::list(app.store(), app.sole_documents())
@@ -796,10 +793,7 @@ fn opens_watch_and_events_refetch() {
     );
 
     *disk.lock().expect("disk") = "alpha\nexternal\n".to_owned();
-    assert!(himark::app::Himark::perform_command(
-        &mut app,
-        himark::app::AppCommand::FileChanged(Subscription(7))
-    ));
+    assert!(app.perform_batch(vec![himark::app::AppCommand::FileChanged(Subscription(7))]));
     settle(&mut app);
     let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0)
         .expect("the document");
@@ -836,9 +830,7 @@ fn the_palette_reload_follows_the_disk() {
     };
 
     let documents = app.sole_documents();
-    assert!(himark::app::Himark::perform_command(
-        &mut app,
-        workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents,
@@ -849,15 +841,11 @@ fn the_palette_reload_follows_the_disk() {
                 target: None,
                 focus: false,
             },
-        )
-    ));
+        )]));
     settle(&mut app);
 
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
-    assert!(himark::app::Himark::perform_command(
-        &mut app,
-        workbench_shell::shell::windowed(window, Arc::new(ReloadDocument)),
-    ));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(window, Arc::new(ReloadDocument))]));
     settle(&mut app);
 
     let entity = OpenDocuments::list(app.store(), app.sole_documents())

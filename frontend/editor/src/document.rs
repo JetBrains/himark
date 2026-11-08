@@ -2448,7 +2448,7 @@ impl Document {
             && Self::repair_theme_lands(&editor.layout, repaired, theme)
     }
 
-    /// A repaired layout wears the theme the Workshop shaped it under.
+    /// A repaired layout wears the theme the BackgroundLayout shaped it under.
     /// It lands when that is the standing layout's theme (a repair, or
     /// a half riding a pair landing unchanged) — or the theme the app
     /// wears NOW: for an editor that never paints (the halves behind a

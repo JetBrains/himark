@@ -44,7 +44,7 @@ pub enum UnifiedDiffCommand {
         byte: u32,
     },
 
-    /// The workshop finished the inline face's before-cards
+    /// The background_layout finished the inline face's before-cards
     /// (`BuildBeforeCardsEffect`): push them if the dressing and the
     /// host text still stand where the launch saw them — a moved pair
     /// drops the set, and the next dressing's refresh re-expands.
@@ -183,7 +183,7 @@ impl UnifiedDiffView {
                 fx,
             )
         });
-        // The cards build in the WORKSHOP off snapshots — the set for
+        // The cards build in the BACKGROUND_LAYOUT off snapshots — the set for
         // a monster diff cost half a second constructed here on the
         // frame. The landing (`BeforeCards`) pushes them whole, one
         // coalesced repair, guarded by the dressing's seq and the

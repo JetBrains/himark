@@ -51,8 +51,8 @@ fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
     *DOCS.get_or_init(imba::store::Id::mint)
 }
 
-fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
-    std::sync::Arc::new(editor::env::Workshop::new(
+fn test_cx() -> std::sync::Arc<editor::env::BackgroundLayout> {
+    std::sync::Arc::new(editor::env::BackgroundLayout::new(
         editor::parley_line::world(),
         test_theme(),
     ))

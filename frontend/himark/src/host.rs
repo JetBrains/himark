@@ -421,7 +421,7 @@ impl Himark {
     /// consume it; `false` hands the wheel back to the host's
     /// scroller, which owns the vertical physics on the stage road.
     #[allow(clippy::too_many_arguments)]
-    pub fn offer_stage_scroll(
+    pub fn offer_scroll(
         &mut self,
         id: crate::bridge::ViewBridgeId,
         x: f32,
@@ -431,7 +431,7 @@ impl Himark {
         phase: ScrollPhase,
         viewport: gfx::Rect,
     ) -> bool {
-        if self.stage_frame(id).is_none() {
+        if self.realized_frame(id).is_none() {
             return false;
         }
         // Frames are one-pass; the gesture stream keys by the view,
@@ -447,7 +447,7 @@ impl Himark {
         }
         let gesture = std::rc::Rc::clone(&state.gesture);
         let result = {
-            let Some(stage) = self.stage_frame(id) else {
+            let Some(stage) = self.realized_frame(id) else {
                 return false;
             };
             stage.handle(

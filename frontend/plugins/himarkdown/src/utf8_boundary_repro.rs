@@ -22,8 +22,8 @@ fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
     std::sync::Arc::new(markdown_languages(editor::reparse::SyntaxLanguages::new()))
 }
 
-fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
-    std::sync::Arc::new(editor::env::Workshop::new(
+fn test_cx() -> std::sync::Arc<editor::env::BackgroundLayout> {
+    std::sync::Arc::new(editor::env::BackgroundLayout::new(
         editor::parley_line::world(),
         test_theme(),
     ))
@@ -228,7 +228,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         &mut batch.effects(),
     );
 
-    let cx = std::sync::Arc::new(editor::env::Workshop::new(
+    let cx = std::sync::Arc::new(editor::env::BackgroundLayout::new(
         editor::parley_line::world(),
         theme.clone(),
     ));

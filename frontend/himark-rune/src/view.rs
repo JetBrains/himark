@@ -259,10 +259,14 @@ impl<S: 'static> rune::Compositor<S> for BridgeCompositor {
                     f.ui.srgb_blend(),
                     instance.params[3],
                 );
-                app.draw_mounted(
+                app.dispatch_bridge(
                     self.bridge,
-                    &recorder,
-                    gfx::Size::new(rect[2].max(1.0), rect[3].max(1.0)),
+                    imba::event::Event::Paint {
+                        canvas: &recorder,
+                        focused: true,
+                    },
+                    Some(gfx::Size::new(rect[2].max(1.0), rect[3].max(1.0))),
+                    0.0,
                 );
                 recorder.finish()
             };

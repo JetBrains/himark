@@ -169,13 +169,14 @@ pub fn markdown_scratch() -> Document {
     /// The workbench SHELL's boot: the bare engine plus everything
 /// window-shaped — the windows catalog, the windowed commands,
 /// the workbench registry roads. A shell that composes its own
-/// frame boots `Himark::bare` and mounts the views it needs.
+/// frame boots `Himark::new` and mounts the views it needs.
 pub fn workbench_app(fonts: AppFonts) -> Himark {
-    let mut app = Himark::bare(
+    let mut app = Himark::new(
         fonts,
         std::sync::Arc::new(MountFrontend {
             next: WorkbenchFrontend,
         }),
+        Vec::new(),
     );
     // The boot only COMPOSES: every registration lives in a
     // plugin's install. The workbench set goes in here (production
@@ -264,9 +265,9 @@ pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
         app.batch_tail(label)
     });
     // The workbench's own open road (the build-closure flavor,
-    // `open_async`): its handler rides the shared workshop.
-    let workshop = std::sync::Arc::clone(app.workshop());
-    app.register_handler::<OpenEffect>(OpenHandler(workshop));
+    // `open_async`): its handler rides the shared background_layout.
+    let background_layout = std::sync::Arc::clone(app.background_layout());
+    app.register_handler::<OpenEffect>(OpenHandler(background_layout));
     // The drawer ROADS are standing shell wiring (the chat roads,
     // and the fold-back after a host lands — only a WINDOW gesture
     // re-opens the side slot; a mounted origin no-ops). The agents
@@ -376,8 +377,8 @@ impl WorkbenchShell for Himark {
     }
 
     /// The window's bridge slot, minted on first touch — windows
-    /// ride the ONE bridge road (`mounted_frame`, `handle_mounted`,
-    /// `draw_mounted`); this adapter is the only party that knows a
+    /// ride the ONE bridge road (`mounted_frame`, `dispatch_bridge`);
+    /// this adapter is the only party that knows a
     /// window id lives inside.
     fn ensure_window_slot(&mut self, window: WindowId) -> himark::bridge::ViewBridgeId {
         let id = himark::bridge::ViewBridgeId::from_raw(window.raw());
@@ -389,7 +390,7 @@ impl WorkbenchShell for Himark {
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
         let _ = window;
         self.with_store(mutate);
-        self.sweep();
+        self.run_cleanup_hooks();
     }
 
     fn window_ids(&self) -> Vec<WindowId> {
@@ -469,7 +470,17 @@ impl WorkbenchShell for Himark {
         size: Size,
     ) -> bool {
         let (id, live) = self.window_origin(window, size);
-        let reconciled = self.draw_mounted(id, canvas, size);
+        let reconciled = self
+            .dispatch_bridge(
+                id,
+                imba::event::Event::Paint {
+                    canvas,
+                    focused: true,
+                },
+                Some(size),
+                0.0,
+            )
+            .needs_redraw;
         if live.is_some() {
             // The stats HUD paints OVER the window's tree; per-frame
             // numbers never ride a store walk.
@@ -715,7 +726,7 @@ impl Effect for OpenEffect {
     type Result = AppCommand;
 }
 
-pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::env::Workshop>);
+pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
     async fn handle(&self, effect: OpenEffect) -> AppCommand {

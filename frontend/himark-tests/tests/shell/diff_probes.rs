@@ -86,7 +86,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -185,7 +185,7 @@ fn probe_pair(left: String, right: String) {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -515,7 +515,7 @@ fn scroll_soak_for_profiling() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    app.register_command(Arc::new(OpenDiff));
+    app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenDiff))]);
     himarkdown::register_handlers(&mut app);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(

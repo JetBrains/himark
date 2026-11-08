@@ -46,7 +46,7 @@ fn resolved(before: &str, after: &str) -> Cell {
         CellCommand::ResolveDiff(Ok(built)),
         &mut batch.effects(),
     );
-    // The resolve launches the before-cards build into the WORKSHOP
+    // The resolve launches the before-cards build into the BACKGROUND_LAYOUT
     // (`BuildBeforeCardsEffect`); the app's worker runs it and lands
     // the command. Here the test plays the worker, synchronously.
     for command in pump_workshop(batch, &store) {
@@ -63,7 +63,7 @@ fn resolved(before: &str, after: &str) -> Cell {
 fn pump_workshop<R: 'static>(batch: imba::effect::Batch<R>, store: &Store) -> Vec<R> {
     use editor::before_inlay::{BuildBeforeCardsEffect, BuildBeforeCardsHandler};
     use imba::effect::EffectHandler as _;
-    let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+    let background_layout = std::sync::Arc::new(editor::env::BackgroundLayout::new(
         imba::shape::FontWorld::new(),
         env::Themes::of(store),
     ));
@@ -73,9 +73,9 @@ fn pump_workshop<R: 'static>(batch: imba::effect::Batch<R>, store: &Store) -> Ve
         .filter_map(|effect| {
             let (payload, lift) = effect.into_payload().split();
             let effect = payload.downcast::<BuildBeforeCardsEffect>().ok()?;
-            let workshop = workshop.clone();
+            let background_layout = background_layout.clone();
             let command = imba::effect::block_on(Box::pin(async move {
-                BuildBeforeCardsHandler(workshop).handle(*effect).await
+                BuildBeforeCardsHandler(background_layout).handle(*effect).await
             }));
             lift(Box::new(command))
         })

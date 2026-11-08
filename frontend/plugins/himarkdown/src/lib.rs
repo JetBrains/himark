@@ -968,7 +968,7 @@ fn keep_non_overlapping(tokens: Vec<InlineToken>) -> Vec<InlineToken> {
 
 pub fn register_handlers(app: &mut himark::app::Himark) {
     app.register_handler::<table::TableRelayoutEffect>(table::TableRelayoutHandler(
-        std::sync::Arc::clone(app.workshop()),
+        std::sync::Arc::clone(app.background_layout()),
     ));
 }
 
@@ -1002,11 +1002,11 @@ trait RunReparse {
 #[cfg(test)]
 impl RunReparse for editor::reparse::ReparseWork {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome {
-        let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+        let background_layout = std::sync::Arc::new(editor::env::BackgroundLayout::new(
             editor::parley_line::world(),
             editor::theme::embedded(),
         ));
-        editor::reparse::ReparseHandler(workshop).reparse(self)
+        editor::reparse::ReparseHandler(background_layout).reparse(self)
     }
 }
 

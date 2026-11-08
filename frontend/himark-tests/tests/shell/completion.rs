@@ -233,10 +233,10 @@ fn the_at_completion_serves_markdown_panes() {
             workbench_shell::app::switch_session(store, window, self.0.clone(), fx)
         }
     }
-    assert!(app.perform_command(workbench_shell::shell::windowed(
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(EnterSeeded(session.clone()))
-    )));
+    )]));
 
     let markdown = editor::document::Document::new(
         text::text::Text::from_string_exact("hello world "),
@@ -246,7 +246,7 @@ fn the_at_completion_serves_markdown_panes() {
         editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -261,7 +261,7 @@ fn the_at_completion_serves_markdown_panes() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
 
@@ -337,7 +337,7 @@ fn the_at_completion_serves_markdown_panes() {
     ));
     assert!(!completion_open(&app), "Escape closed the popup");
 
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -352,7 +352,7 @@ fn the_at_completion_serves_markdown_panes() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
     assert!(test_driver::type_text(&mut app, "@"));
     assert!(
@@ -422,7 +422,7 @@ fn lsp_completion_serves_code_panes() {
         std::sync::Arc::new(|| {}),
     );
 
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -437,7 +437,7 @@ fn lsp_completion_serves_code_panes() {
             target: None,
             focus: false,
         },
-    )));
+    )]));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
 
@@ -531,7 +531,7 @@ fn lsp_completion_serves_code_panes() {
         .find(|presentable| presentable.id == "completion.trigger")
         .expect("the trigger command registered")
         .command;
-    assert!(app.perform_command(trigger));
+    assert!(app.perform_batch(vec![trigger]));
     assert!(completion_open(&app), "the explicit ask opened");
     pump(&mut app, &mut surface);
     assert_eq!(

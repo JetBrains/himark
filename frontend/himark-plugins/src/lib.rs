@@ -176,7 +176,7 @@ pub fn install_host(
     let post: Arc<dyn Fn(AppCommand) + Send + Sync> =
         Arc::new(move |command| poster.post(command));
     let runtime = app.runtime();
-    let installed = himark::plugin::install_all(app, Arc::new(myersdiff::Myers), plugins);
+    let installed = himark::plugin::install_all(app, plugins);
     wire_doors(
         app,
         runtime,

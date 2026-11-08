@@ -126,12 +126,12 @@ pub(crate) fn orphan(type_id: std::any::TypeId) {
     eprintln!("[himark] dropping effect: no handler registered for {type_id:?}");
 }
 
-pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::editor::env::Workshop>) {
+pub(crate) fn register_builtins(handlers: &Arc<Handlers>, background_layout: &Arc<::editor::env::BackgroundLayout>) {
     handlers.register::<::editor::repair::RepairEffect>(::editor::repair::RepairHandler(
-        Arc::clone(workshop),
+        Arc::clone(background_layout),
     ));
     handlers.register::<::editor::reparse::ReparseEffect>(::editor::reparse::ReparseHandler(
-        Arc::clone(workshop),
+        Arc::clone(background_layout),
     ));
     {
         let registry = Arc::downgrade(handlers);
@@ -139,18 +139,18 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
             registry.upgrade()?.call_future(type_id, payload)
         }));
         handlers.register::<::editor::enrich::EnrichEffect>(::editor::enrich::EnrichHandler {
-            workshop: Arc::clone(workshop),
+            background_layout: Arc::clone(background_layout),
             caller,
         });
     }
     handlers.register::<::editor::split_diff::RepairDiffEffect>(
-        ::editor::split_diff::RepairDiffHandler(Arc::clone(workshop)),
+        ::editor::split_diff::RepairDiffHandler(Arc::clone(background_layout)),
     );
     handlers.register::<::editor::before_inlay::BuildBeforeCardsEffect>(
-        ::editor::before_inlay::BuildBeforeCardsHandler(Arc::clone(workshop)),
+        ::editor::before_inlay::BuildBeforeCardsHandler(Arc::clone(background_layout)),
     );
     handlers.register::<::editor::scroll_stripe::ScrollStripeEffect>(
-        ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(workshop)),
+        ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(background_layout)),
     );
     handlers
         .register::<documents::diffs::DiffNormalizeEffect>(documents::diffs::DiffNormalizeHandler);

@@ -5328,7 +5328,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
     );
 
     // Drive the repair lane to completion, the way the engine would.
-    let workshop = std::sync::Arc::new(crate::env::Workshop::new(
+    let background_layout = std::sync::Arc::new(crate::env::BackgroundLayout::new(
         crate::parley_line::shaper(crate::test_document::test_ui())
             .world()
             .clone(),
@@ -5358,7 +5358,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
             let repair = value
                 .downcast::<crate::repair::RepairEffect>()
                 .expect("a repair effect");
-            let handler = crate::repair::RepairHandler(std::sync::Arc::clone(&workshop));
+            let handler = crate::repair::RepairHandler(std::sync::Arc::clone(&background_layout));
             let outcome: Box<dyn std::any::Any + Send + Sync> = Box::new(block_on(Box::pin(
                 async move { handler.handle(*repair).await },
             )));

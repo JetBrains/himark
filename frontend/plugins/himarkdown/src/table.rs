@@ -1137,7 +1137,7 @@ impl imba::effect::Effect for TableRelayoutEffect {
     type Result = TableCommand;
 }
 
-pub(crate) struct TableRelayoutHandler(pub std::sync::Arc<editor::env::Workshop>);
+pub(crate) struct TableRelayoutHandler(pub std::sync::Arc<editor::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<TableRelayoutEffect> for TableRelayoutHandler {
     async fn handle(&self, effect: TableRelayoutEffect) -> TableCommand {

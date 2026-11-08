@@ -240,7 +240,7 @@ pub fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
 pub(crate) struct Performer<'app> {
     pub(crate) pending_file_events: &'app mut Vec<documents::watch::Subscription>,
     pub(crate) pending_watch_deaths: &'app mut Vec<documents::watch::Subscription>,
-    pub(crate) workshop: &'app Arc<::editor::env::Workshop>,
+    pub(crate) background_layout: &'app Arc<::editor::env::BackgroundLayout>,
     pub(crate) bridges:
         &'app mut std::collections::HashMap<crate::bridge::ViewBridgeId, crate::himark::Mounted>,
 }
@@ -370,7 +370,7 @@ impl Performer<'_> {
             }
             AppCommand::RegisterEnrichers(enrichers) => {
                 let enrichers = std::sync::Arc::new(enrichers);
-                self.workshop.install_enrichers(enrichers.clone());
+                self.background_layout.install_enrichers(enrichers.clone());
                 store.put(::editor::env::Enrichers(enrichers));
             }
         }

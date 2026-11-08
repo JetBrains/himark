@@ -84,7 +84,7 @@ pub struct DiffViewState {
 
     pair_repair_token: Option<imba::effect::CancellationToken>,
 
-    /// The in-flight workshop build of the inline face's before-cards
+    /// The in-flight background_layout build of the inline face's before-cards
     /// (`BuildBeforeCardsEffect`) — a relaunch cancels the stale set.
     cards_token: Option<imba::effect::CancellationToken>,
 
@@ -1427,7 +1427,7 @@ pub struct RepairDiffEffect {
     seq: u64,
 }
 
-pub struct RepairDiffHandler(pub std::sync::Arc<crate::env::Workshop>);
+pub struct RepairDiffHandler(pub std::sync::Arc<crate::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
     async fn handle(&self, effect: RepairDiffEffect) -> SplitDiffCommand {

@@ -17,7 +17,7 @@ impl himark::plugin::Plugin for ChromePlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
         
-                app.register_command(Arc::new(ToggleChangesView));
+                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(ToggleChangesView))]);
         app.register_toolbar_button(toolbar_button());
     }
 }

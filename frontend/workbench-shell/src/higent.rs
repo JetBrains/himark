@@ -25,8 +25,8 @@ impl himark::plugin::Plugin for AgentsPlugin {
     fn install(&self, app: &mut crate::app::Himark, _cx: &himark::plugin::PluginContext) {
         use crate::app::WorkbenchShell as _;
         
-                app.register_command(std::sync::Arc::new(drawer::ToggleAgentsView));
-        app.register_command(std::sync::Arc::new(new_chat::NewChat));
+                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(drawer::ToggleAgentsView))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(new_chat::NewChat))]);
         app.register_toolbar_button(drawer::toolbar_button());
     }
 }

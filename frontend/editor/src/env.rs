@@ -52,7 +52,13 @@ pub fn ui_typeface(
     gfx::font::default_typeface(style).or_else(|| Some(crate::embedded_fonts::typeface()))
 }
 
-pub struct Workshop {
+/// Everything a background thread needs to lay text out the same
+/// way the UI thread does: the font world, the current theme, and
+/// the installed enrichment passes, behind locks. Effect handlers
+/// that build documents or cards off the UI thread take this
+/// instead of reaching for the real store and `UiCtx`, which are
+/// single-threaded.
+pub struct BackgroundLayout {
     theme: std::sync::Mutex<crate::theme::Theme>,
     /// The effect handler's OWN measure ctx — a store seeded with
     /// the current theme plus a warm `UiCtx`, kept for the
@@ -65,11 +71,11 @@ pub struct Workshop {
     enrichers: std::sync::Mutex<Option<std::sync::Arc<crate::enrich::Enrichers>>>,
 }
 
-unsafe impl Send for Workshop {}
-unsafe impl Sync for Workshop {}
+unsafe impl Send for BackgroundLayout {}
+unsafe impl Sync for BackgroundLayout {}
 
-impl Workshop {
-    /// The workshop lays text out on ITS thread, so its kept ctx
+impl BackgroundLayout {
+    /// The background_layout lays text out on ITS thread, so its kept ctx
     /// carries the same font world the UI thread shapes with —
     /// handed in, never fetched from a global. A world of its own
     /// would mean a second system font scan and a second typeface
@@ -86,16 +92,16 @@ impl Workshop {
         }
     }
 
-    /// Mirror the app's enrichment passes into the workshop's measure
+    /// Mirror the app's enrichment passes into the background_layout's measure
     /// store — background builds (`with_ctx`) pick them up through
     /// `env::Enrichers::of` like any store reader.
     pub fn install_enrichers(&self, enrichers: std::sync::Arc<crate::enrich::Enrichers>) {
         self.measure
             .lock()
-            .expect("workshop measure")
+            .expect("background_layout measure")
             .0
             .put(Enrichers(enrichers.clone()));
-        *self.enrichers.lock().expect("workshop enrichers") = Some(enrichers);
+        *self.enrichers.lock().expect("background_layout enrichers") = Some(enrichers);
     }
 
     /// Run `f` with this handler's measure ctx.
@@ -104,7 +110,7 @@ impl Workshop {
         width: f32,
         f: impl FnOnce(crate::markup::InlayMeasure<'_>) -> R,
     ) -> R {
-        let kept = self.measure.lock().expect("workshop measure");
+        let kept = self.measure.lock().expect("background_layout measure");
         let (store, ui) = &*kept;
         f(crate::markup::InlayMeasure { width, store, ui })
     }
@@ -112,22 +118,22 @@ impl Workshop {
     /// Run `f` with this handler's kept (store, ui) pair directly —
     /// for callees that take the pair rather than a ready measure.
     pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx) -> R) -> R {
-        let kept = self.measure.lock().expect("workshop measure");
+        let kept = self.measure.lock().expect("background_layout measure");
         f(&kept.0, &kept.1)
     }
 
     pub fn theme(&self) -> crate::theme::Theme {
-        self.theme.lock().expect("workshop theme").clone()
+        self.theme.lock().expect("background_layout theme").clone()
     }
 
     pub fn set_theme(&self, theme: crate::theme::Theme) {
         let mut seeded = imba::store::Store::new();
         Themes::set(&mut seeded, theme.clone());
-        if let Some(enrichers) = self.enrichers.lock().expect("workshop enrichers").clone() {
+        if let Some(enrichers) = self.enrichers.lock().expect("background_layout enrichers").clone() {
             seeded.put(Enrichers(enrichers));
         }
-        self.measure.lock().expect("workshop measure").0 = seeded;
-        *self.theme.lock().expect("workshop theme") = theme;
+        self.measure.lock().expect("background_layout measure").0 = seeded;
+        *self.theme.lock().expect("background_layout theme") = theme;
     }
 }
 

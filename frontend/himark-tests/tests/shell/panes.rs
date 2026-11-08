@@ -206,7 +206,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 
     let open = |app: &mut Himark, name: &str, text: &str| {
         let document = plain_document(text);
-        assert!(app.perform_command(workbench_shell::shell::opened(
+        assert!(app.perform_batch(vec![workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),
@@ -217,7 +217,7 @@ fn navigation_back_and_forward_walk_pane_history() {
                 target: None,
                 focus: false,
             },
-        )));
+        )]));
     };
     open(&mut app, "a.md", "alpha\n");
     assert_eq!(app.focused_document_text().as_deref(), Some("alpha\n"));
@@ -264,7 +264,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             .caret_byte(editor)
     };
     let before_jump = caret(&app);
-    assert!(app.perform_command(workbench_shell::shell::opened(
+    assert!(app.perform_batch(vec![workbench_shell::shell::opened(
         window,
         OpenedDocument {
             documents: app.sole_documents(),
@@ -280,7 +280,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             ),
             focus: false,
         },
-    )));
+    )]));
     assert_eq!(app.focused_document_text().as_deref(), Some("ybeta\n"));
     assert_eq!(caret(&app), 3, "the jump moved the caret in place");
     assert!(app.perform_registered(window, "navigation.back"));
@@ -313,7 +313,7 @@ fn close_widget_walks_the_pane_history() {
     );
     let window = app.sole_window();
     let open = |app: &mut Himark, name: &str, text: &str| {
-        assert!(app.perform_command(workbench_shell::shell::opened(
+        assert!(app.perform_batch(vec![workbench_shell::shell::opened(
             window,
             OpenedDocument {
                 documents: app.sole_documents(),
@@ -324,7 +324,7 @@ fn close_widget_walks_the_pane_history() {
                 target: None,
                 focus: false,
             },
-        )));
+        )]));
     };
 
     open(&mut app, "a.md", "alpha\n");

@@ -349,7 +349,16 @@ impl Render for BridgeView {
                             // still applies the standing coalesced
                             // scroll before the frame.
                             let flushed = app.flush_scroll(bridge);
-                            app.draw_mounted(bridge, &painter, gfx::Size::new(width, height))
+                            app.dispatch_bridge(
+                                bridge,
+                                Event::Paint {
+                                    canvas: &painter,
+                                    focused: true,
+                                },
+                                Some(gfx::Size::new(width, height)),
+                                0.0,
+                            )
+                            .needs_redraw
                                 || flushed
                         };
                         drop(painter);

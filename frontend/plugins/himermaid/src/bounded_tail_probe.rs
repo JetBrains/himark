@@ -26,7 +26,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &theme(),
     );
 
-    let workshop = workbench_shell::test_support::test_workshop(theme());
+    let background_layout = workbench_shell::test_support::test_workshop(theme());
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         900.0,
@@ -69,7 +69,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     while let Some(effect) = pending.pop() {
         rounds += 1;
         assert!(rounds < 10_000, "the bounded tail must converge");
-        let command = workbench_shell::test_support::handle_effect(effect, &workshop);
+        let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
         imba::View::perform(&mut view, &mut store, &ui, command, &mut batch.effects());
         pending.extend(workbench_shell::test_support::surviving_launches(std::mem::replace(
             &mut batch,

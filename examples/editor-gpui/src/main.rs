@@ -58,13 +58,13 @@ fn main() {
 
     // The BARE engine: store, ui, effects, the editor environment —
     // and not one workbench wire.
-    let mut app = Himark::bare(AppFonts::platform(), Arc::new(NoShell));
+    let mut app = Himark::new(AppFonts::platform(), Arc::new(NoShell), Vec::new());
     app.install_host_loop();
 
     // The engine plugin set — grammars and language facts collect
     // into the one languages set every document parses against.
     let plugins = himark_plugins::engine_plugins();
-    let wired = himark::plugin::install_all(&mut app, Arc::new(myersdiff::Myers), &plugins);
+    let wired = himark::plugin::install_all(&mut app, &plugins);
     let languages = wired.languages;
 
     // Register the document into a FRESH collection — no session

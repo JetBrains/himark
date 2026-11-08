@@ -1905,7 +1905,7 @@ pub struct PeekerPlugin;
 
 impl himark::plugin::Plugin for PeekerPlugin {
     fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
-                app.register_command(std::sync::Arc::new(TogglePeeker));
+                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
         app.register_bridge_arm(std::sync::Arc::new(|app, place| {
             let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();

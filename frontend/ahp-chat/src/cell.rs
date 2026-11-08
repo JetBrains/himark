@@ -253,7 +253,7 @@ fn markdown_document(text: text::text::Text, kind: CellKind) -> editor::document
 }
 
 /// One side of an edit as a document with its syntax. The parsers are
-/// HANDED IN: this runs in the workshop's bare build store (off the UI
+/// HANDED IN: this runs in the background_layout's bare build store (off the UI
 /// thread), which knows no languages.
 pub(crate) fn side_document(
     text: text::text::Text,

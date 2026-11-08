@@ -38,7 +38,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         at += 1;
     }
 
-    let workshop = editor::test_document::test_workshop(theme.clone());
+    let background_layout = editor::test_document::test_workshop(theme.clone());
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         900.0,
@@ -76,7 +76,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
                 for effect in pending {
                     rounds += 1;
                     assert!(rounds < 10_000, "the tail must converge");
-                    let command = workbench_shell::test_support::handle_effect(effect, &workshop);
+                    let command = workbench_shell::test_support::handle_effect(effect, &background_layout);
                     imba::View::perform(view, store, &ui, command, &mut batch.effects());
                 }
             }

@@ -37,7 +37,7 @@ impl himark::plugin::Plugin for TerminalPlugin {
                 app.register_handler::<NewTerminalEffect>(SessionTerminalHandler {
             poster: app.poster(),
         });
-        app.register_command(Arc::new(OpenTerminal));
+        app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenTerminal))]);
         // The MOUNTED arm: a native shell shows the ready terminal
         // as its own bridge.
         app.register_bridge_arm(Arc::new(|app, place| {

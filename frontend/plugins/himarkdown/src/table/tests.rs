@@ -173,11 +173,11 @@ fn resize_relayout_round_trips_through_the_effect() {
         "the same wanted width relaunches nothing"
     );
 
-    let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+    let background_layout = std::sync::Arc::new(editor::env::BackgroundLayout::new(
         editor::parley_line::world(),
         theme.clone(),
     ));
-    let handler = TableRelayoutHandler(workshop);
+    let handler = TableRelayoutHandler(background_layout);
     let (value, _lift) = launched
         .into_iter()
         .next()

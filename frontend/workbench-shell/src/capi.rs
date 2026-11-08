@@ -83,13 +83,10 @@ impl WindowEngine for HimarkEngine {
             .unwrap_or_default()
             .0;
         if compose {
-            himark::app::Himark::perform_command(
-                self,
-                crate::shell::windowed(
-                    window,
-                    std::sync::Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
-                ),
-            );
+            self.perform_batch(vec![crate::shell::windowed(
+                window,
+                std::sync::Arc::new(crate::higent::open_session::OpenNewSession { host: None }),
+            )]);
         }
         ViewBridgeId::from_raw(window.raw())
     }
@@ -290,11 +287,11 @@ pub fn seat_host_chrome(app: &mut himark::app::Himark) {
             on_share: None,
             on_agent_filesystem: None,
             on_pick_files: Some(Arc::new(|app| {
-                                app.register_command(Arc::new(crate::pickers::OpenFilePicker));
+                                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::pickers::OpenFilePicker))]);
             })),
             on_clipboard: Some(Arc::new(|app| {
-                                app.register_command(Arc::new(crate::higent::drawer::ShareHost));
-                app.register_command(Arc::new(crate::higent::drawer::ShareHostTailnet));
+                                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::higent::drawer::ShareHost))]);
+                app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(crate::higent::drawer::ShareHostTailnet))]);
             })),
         })
     });

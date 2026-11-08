@@ -38,12 +38,12 @@ pub(crate) struct Mounted {
     /// Set on a POPOVER's slot: the bridge whose overlay this view
     /// stands. The popover window is content-sized, but the
     /// re-derivation inside must run at the PARENT'S size — both
-    /// layout roads substitute the parent slot's standing size for
+    /// layout roads substitute the parent slot's current size for
     /// the shell's constraints.
     pub(crate) overlay_parent: Option<ViewBridgeId>,
 
     /// The last realized widget tree, derived at `revision` ×
-    /// `size` — the standing frame events replay against between
+    /// `size` — the retained frame that events replay against between
     /// store batches.
     pub(crate) frame: Option<crate::bridge::Frame>,
     pub(crate) revision: u64,
@@ -53,13 +53,13 @@ pub(crate) struct Mounted {
     /// A stage client never fills `frame`, but the IME fold needs
     /// one — `mounted_frame` rebuilds at `size` and realizes this
     /// band, so the folded geometry matches what is on screen.
-    pub(crate) stage_viewport: Option<gfx::Rect>,
+    pub(crate) realized_viewport: Option<gfx::Rect>,
 
     /// One warm arena from the last recycled frame.
     pub(crate) spare_arena: Option<Box<imba::arena::Arena>>,
 
-    /// The C shell's two-step draw: `stage_layout` keeps the measured
-    /// layout here, `stage_realize` consumes it into `staged_frame`,
+    /// The C shell's two-step draw: `layout` keeps the measured
+    /// layout here, `realize` consumes it into `staged_frame`,
     /// paint/events read it, release recycles it. At most one of each
     /// per view — the shell's calls are strictly sequential, so there
     /// is nothing for an id to tell apart.
@@ -77,7 +77,7 @@ impl Mounted {
             frame: None,
             revision: 0,
             size: gfx::Size::new(-1.0, -1.0),
-            stage_viewport: None,
+            realized_viewport: None,
             spare_arena: None,
             staged_layout: None,
             staged_frame: None,
@@ -145,7 +145,7 @@ pub struct Himark {
 
     handlers: Arc<crate::effects::Handlers>,
 
-    pub(crate) workshop: Arc<::editor::env::Workshop>,
+    pub(crate) background_layout: Arc<::editor::env::BackgroundLayout>,
 
     /// The registered BATCH LANES — reactions that run after every
     /// batch's queue drains, store in hand (the AHP session syncs
@@ -237,7 +237,7 @@ impl<F: FnMut(&mut Himark, &str, bool) + 'static> BatchTail for F {
 
 /// THE FONT WORLD the app shapes with, built once at boot. Every
 /// `UiCtx` the engine mints is handed this one — the UI thread's
-/// and the workshop's alike — so the system scan happens once and
+/// and the background_layout's alike — so the system scan happens once and
 /// the typeface bridge is answered once, for everyone.
 pub struct AppFonts {
     world: ::editor::parley_line::FontWorld,
@@ -274,11 +274,15 @@ pub struct DispatchOutcome {
 }
 
 impl Himark {
-    /// The BARE engine: store, ui, effects, the editor environment
-    /// — and not one workbench wire. Shells add their own dressing
-    /// over this (`crate::app`'s `Himark::new` is the workbench
-    /// shell's boot).
-    pub fn bare(fonts: AppFonts, shell: Arc<dyn Shell>) -> Self {
+    /// The one constructor: store, ui, effects, the editor
+    /// environment, and the given plugins installed — no window
+    /// vocabulary. Shells compose on top (the workbench boot adds
+    /// its furniture; the examples pass the engine plugin list).
+    pub fn new(
+        fonts: AppFonts,
+        shell: Arc<dyn Shell>,
+        plugins: Vec<Box<dyn crate::plugin::Plugin>>,
+    ) -> Self {
         let total_started = crate::startup_profile::start();
         // A platform without system fonts (the web) must still
         // answer `default_typeface` — the embedded face stands in.
@@ -303,14 +307,14 @@ impl Himark {
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
 
-        let workshop = Arc::new(::editor::env::Workshop::new(
+        let background_layout = Arc::new(::editor::env::BackgroundLayout::new(
             fonts.world(),
             ::editor::env::Themes::of(&store),
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());
-        crate::effects::register_builtins(&handlers, &workshop);
+        crate::effects::register_builtins(&handlers, &background_layout);
         store.put(ShellSeat(shell));
-        let engine = Self {
+        let mut engine = Self {
             store,
             ui,
             poster: crate::effects::Poster::default(),
@@ -318,7 +322,7 @@ impl Himark {
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
             effects: crate::effects::EffectLauncher::new(),
             handlers,
-            workshop,
+            background_layout,
             bridges: std::collections::HashMap::new(),
             next_mount: crate::bridge::MOUNT_BASE,
             revision: 0,
@@ -337,7 +341,8 @@ impl Himark {
             sweep_hooks: Vec::new(),
             unmount_hooks: Vec::new(),
         };
-        crate::startup_profile::log("Himark::bare", total_started);
+        crate::plugin::install_all(&mut engine, &plugins);
+        crate::startup_profile::log("Himark::new", total_started);
         engine
     }
 
@@ -368,14 +373,16 @@ impl Himark {
         &mut self.stats
     }
 
-    pub fn workshop(&self) -> &Arc<::editor::env::Workshop> {
-        &self.workshop
+    pub fn background_layout(&self) -> &Arc<::editor::env::BackgroundLayout> {
+        &self.background_layout
     }
 
-    /// The empty-entity housekeeping, run after every batch — the
-    /// one thing the old gather/scatter rite still did. The hooks
-    /// are registered (the AHP plugin sweeps its empty sessions).
-    pub fn sweep(&mut self) {
+    /// Run the registered cleanup hooks (plugins remove their empty
+    /// entities here — the AHP plugin drops sessions with nothing
+    /// left in them), then bump the revision so live frames rebuild.
+    /// Runs after every batch; public because the workbench shell
+    /// also runs it when it closes a window.
+    pub fn run_cleanup_hooks(&mut self) {
         let hooks = self.sweep_hooks.clone();
         for hook in &hooks {
             hook(&mut self.store);
@@ -391,7 +398,7 @@ impl Himark {
         answer
     }
 
-    /// The store moved on: every standing frame is now stale. The
+    /// The store moved on: every retained frame is now stale. The
     /// bump is the whole invalidation — each bridge rebuilds
     /// lazily, against the store as it stands when next asked.
     pub fn invalidate_frames(&mut self) {
@@ -405,33 +412,6 @@ impl Himark {
     /// reactions, to become each bridge's own reaction to the
     /// outcome as the lanes and tails get registered instead of
     /// named).
-    /// One command as its own batch.
-    pub fn perform_command(&mut self, command: crate::perform::AppCommand) -> bool {
-        self.perform_batch(vec![command])
-    }
-
-    pub fn register_command(&mut self, command: Arc<dyn crate::commands::HimarkCommand>) -> bool {
-        self.perform_command(crate::perform::AppCommand::Register(command))
-    }
-
-    pub fn register_syntax_languages(
-        &mut self,
-        languages: ::editor::reparse::SyntaxLanguages,
-    ) -> bool {
-        self.perform_command(crate::perform::AppCommand::RegisterLanguages(languages))
-    }
-
-    pub fn register_enrichers(&mut self, enrichers: ::editor::enrich::Enrichers) -> bool {
-        self.perform_command(crate::perform::AppCommand::RegisterEnrichers(enrichers))
-    }
-
-    pub fn register_diff_policy(
-        &mut self,
-        policy: std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
-    ) -> bool {
-        self.perform_command(crate::perform::AppCommand::RegisterDiffPolicy(policy))
-    }
-
     pub fn perform_batch(&mut self, commands: Vec<crate::perform::AppCommand>) -> bool {
         use crate::perform::AppCommand;
 
@@ -451,7 +431,7 @@ impl Himark {
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
             pending_watch_deaths: &mut self.pending_watch_deaths,
-            workshop: &self.workshop,
+            background_layout: &self.background_layout,
             bridges: &mut self.bridges,
         };
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
@@ -507,7 +487,7 @@ impl Himark {
         let mut performer = crate::perform::Performer {
             pending_file_events: &mut self.pending_file_events,
             pending_watch_deaths: &mut self.pending_watch_deaths,
-            workshop: &self.workshop,
+            background_layout: &self.background_layout,
             bridges: &mut self.bridges,
         };
         loop {
@@ -529,7 +509,7 @@ impl Himark {
         let probe_perform = probe.elapsed();
         self.store = store;
         if all_quiet {
-            // The QUIET commit: the standing frames stay TRUE — no
+            // The QUIET commit: the retained frames stay valid — no
             // revision bump, so the settle pulse's observations do
             // not outdate the tree the pulse itself just built. ONE
             // tree serves the pulse, the clock and the paint.
@@ -537,7 +517,7 @@ impl Himark {
                 eprintln!("[batch] {label}: quiet commit");
             }
         } else {
-            self.sweep();
+            self.run_cleanup_hooks();
         }
         let probe_commit = probe.elapsed().saturating_sub(probe_perform);
         if batch.take_settle() {
@@ -569,29 +549,10 @@ impl Himark {
         true
     }
 
-    /// One empty batch, for a shell with no first paint to
-    /// trigger it: the batch-end lanes run — hosts connect, the
-    /// catalog lists — and the effect road takes over from there.
-    pub fn sync(&mut self) -> bool {
-        struct Nudge;
-        impl imba::command::DynamicOnceCommand for Nudge {
-            fn perform(
-                self: Box<Self>,
-                _store: &mut Store,
-                _ui: &UiCtx,
-                _fx: &mut imba::command::Fx<'_>,
-            ) {
-            }
-        }
-        self.perform_batch(vec![crate::perform::AppCommand::Verb(
-            imba::command::Verb::once(Nudge),
-        )])
-    }
-
-    /// The frame revision: bumped by every store mutation. Standing
-    /// frames compare against it; snapshot readers (the session
-    /// catalog) re-read when it moved — an over-approximation, and
-    /// cheap.
+    /// The frame revision: bumped by every store mutation. Live
+    /// frames compare against it and rebuild when it moved;
+    /// snapshot readers (the session catalog) re-read — an
+    /// over-approximation, and cheap.
     pub fn revision(&self) -> u64 {
         self.revision
     }
@@ -602,34 +563,18 @@ impl Himark {
     /// but for views the host composes directly. `size` sets a
     /// new layout size (the draw road); `None` reuses the last
     /// drawn one (the event road between paints).
+    /// `allow_stale` skips the rebuild-on-revision check: clock
+    /// ticks and wheel deltas advance widget state, not geometry,
+    /// and may ride a one-frame-stale tree; pointer and key events
+    /// hit-test geometry and must not.
     pub(crate) fn mounted_frame(
         &mut self,
         id: ViewBridgeId,
         size: Option<gfx::Size>,
-    ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
-        self.mounted_frame_inner(id, size, false)
-    }
-
-    /// The STANDING frame as it stands — rebuilt only when there is
-    /// none at all. The clock and the wheel advance STATE, not
-    /// geometry; letting them ride a one-frame-stale tree spares a
-    /// full layout+realize walk per tick (the stage road rebuilds
-    /// for the paint anyway — that walk is the one that matters).
-    pub(crate) fn mounted_frame_standing(
-        &mut self,
-        id: ViewBridgeId,
-    ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
-        self.mounted_frame_inner(id, None, true)
-    }
-
-    fn mounted_frame_inner(
-        &mut self,
-        id: ViewBridgeId,
-        size: Option<gfx::Size>,
-        standing: bool,
+        allow_stale: bool,
     ) -> Option<(&mut crate::bridge::Frame, gfx::Size)> {
         let revision = self.revision;
-        // A popover slot's layout runs at the PARENT'S standing
+        // A popover slot's layout runs at the PARENT'S current
         // size, against a freshly pinned parent; its own `size`
         // stays the content-shaped cache key.
         let host_size = self.overlay_host_size(id);
@@ -656,7 +601,7 @@ impl Himark {
         // the revision, an idle engine stands (no batches, no
         // rebuilds) and each batch buys ONE rebuild at the next tick.
         let fresh =
-            slot.frame.is_some() && slot.revision == revision && (standing || slot.size == size);
+            slot.frame.is_some() && slot.revision == revision && (allow_stale || slot.size == size);
         if !fresh {
             if let Some(frame) = slot.frame.take() {
                 slot.spare_arena = Some(frame.recycle());
@@ -672,7 +617,7 @@ impl Himark {
             // A stage client's shadow realizes the band the HOST
             // shows; the retained road realizes its whole rect.
             let viewport = slot
-                .stage_viewport
+                .realized_viewport
                 .unwrap_or_else(|| gfx::Rect::from_size(size));
             let mut frame = layout.realize(viewport);
             let anchors = frame.exported_overlays();
@@ -699,36 +644,53 @@ impl Himark {
         size: Option<gfx::Size>,
         event_started_at: f64,
     ) -> DispatchOutcome {
-        let (hit, pointer) = match &event {
-            imba::event::Event::MouseMove { point, mods } => self.dispatch_bridge_event(
-                id,
-                imba::event::Event::HitTest {
-                    point: *point,
-                    miss: false,
-                    mods: *mods,
-                },
-                size,
-            ),
-            _ => (false, imba::event::PointerShape::Default),
-        };
-        let (changed, _) = self.dispatch_bridge_event(id, event, size);
-        let needs_redraw = changed || hit;
-        if needs_redraw && event_started_at != 0.0 {
+        let (changed, pointer) = self.dispatch_event(id, event, size);
+        if changed && event_started_at != 0.0 {
             self.stats.mark_latency_event_start(event_started_at);
         }
         DispatchOutcome {
-            needs_redraw,
+            needs_redraw: changed,
             pointer,
         }
     }
 
-    fn dispatch_bridge_event(
+    /// The dispatch body. One arm per event family: pointer moves
+    /// hit-test first (the hit answers the pointer shape), keyboard
+    /// input walks the focus chain with the keymap as fallback,
+    /// paint clears the backdrop and applies against the frame,
+    /// everything else applies against the frame directly.
+    fn dispatch_event(
         &mut self,
         id: ViewBridgeId,
         event: imba::event::Event<'_>,
         size: Option<gfx::Size>,
     ) -> (bool, imba::event::PointerShape) {
         use imba::event::{Event, EventResult};
+        // A pointer move hit-tests first: the hit's answer is the
+        // pointer shape, and a changed hit owes a redraw even when
+        // the move itself changes nothing. The move then falls
+        // through to the ordinary frame application below.
+        let (hit, hit_pointer) = match &event {
+            Event::MouseMove { point, mods } => {
+                let (hit, pointer) = self.dispatch_event(
+                    id,
+                    Event::HitTest {
+                        point: *point,
+                        miss: false,
+                        mods: *mods,
+                    },
+                    size,
+                );
+                (hit, Some(pointer))
+            }
+            _ => (false, None),
+        };
+        if let Event::Paint { canvas, .. } = &event {
+            return (
+                self.paint(id, *canvas, size),
+                imba::event::PointerShape::Default,
+            );
+        }
         let clock = matches!(event, Event::AnimationClock { .. });
         let key_down = match event {
             Event::KeyDown { key, mods } => Some((key, mods)),
@@ -820,7 +782,7 @@ impl Himark {
                 };
                 (result, fallback)
             }
-            _ => (self.handle_mounted(id, &event, size), None),
+            _ => (self.apply_event_to_frame(id, &event, size), None),
         };
 
         if let Some(command) = fallback {
@@ -828,13 +790,13 @@ impl Himark {
                 eprintln!("[keys] fallback performs the bound command");
             }
             return (
-                self.perform_batch(vec![command]),
-                imba::event::PointerShape::Default,
+                self.perform_batch(vec![command]) || hit,
+                hit_pointer.unwrap_or_default(),
             );
         }
 
         match result {
-            EventResult::Ignored => (false, imba::event::PointerShape::Default),
+            EventResult::Ignored => (hit, hit_pointer.unwrap_or_default()),
             EventResult::Handled(handled) => {
                 let shape = handled.pointer.unwrap_or_default();
                 // A mounted view's reveal is the HOST's to scroll —
@@ -850,7 +812,7 @@ impl Himark {
                                 "[reveal] parked (mounted dispatch) bridge {} {:?} band {:?} size {:?}",
                                 id.raw(),
                                 reveal,
-                                slot.and_then(|slot| slot.stage_viewport),
+                                slot.and_then(|slot| slot.realized_viewport),
                                 slot.map(|slot| slot.size),
                             );
                         }
@@ -869,16 +831,17 @@ impl Himark {
                         self.perform_batch(handled.commands) || parked
                     }
                 };
-                (changed, shape)
+                (changed || hit, hit_pointer.unwrap_or(shape))
             }
         }
     }
 
-    /// One event into a bridge, against its standing frame. `size`
-    /// is the host's live viewport when it knows one (the window
-    /// road's dispatch passes it; geometry events rebuild at it);
-    /// `None` rides the last drawn size.
-    pub(crate) fn handle_mounted(
+    /// Apply one event against a view's frame and answer the raw
+    /// `EventResult` — no focus routing, no command performing;
+    /// `dispatch_event` and the fan-outs layer those on top. `size`
+    /// is the host's live viewport when it knows one; `None` reuses
+    /// the last drawn size.
+    pub(crate) fn apply_event_to_frame(
         &mut self,
         id: ViewBridgeId,
         event: &imba::event::Event<'_>,
@@ -889,18 +852,15 @@ impl Himark {
         // at every stage realize), not the whole content — the
         // views read it: reveal_satisfied must see what's actually
         // on screen or a caret-follow settles without ever asking.
-        let band = self.bridges.get(&id).and_then(|slot| slot.stage_viewport);
+        let band = self.bridges.get(&id).and_then(|slot| slot.realized_viewport);
         // Clock ticks and wheel deltas advance widget STATE; they
-        // ride the standing frame as-is. Pointer and key events
+        // ride the retained frame as-is. Pointer and key events
         // hit-test geometry — those get the fresh rebuild.
         let stale_ok = matches!(
             event,
             imba::event::Event::AnimationClock { .. } | imba::event::Event::Scroll { .. }
         );
-        let frame_and_size = match stale_ok {
-            true => self.mounted_frame_standing(id),
-            false => self.mounted_frame(id, size),
-        };
+        let frame_and_size = self.mounted_frame(id, size.filter(|_| !stale_ok), stale_ok);
         let Some((frame, size)) = frame_and_size else {
             if trace {
                 eprintln!("[mount] {id:?}: event against no frame");
@@ -930,14 +890,11 @@ impl Himark {
         result
     }
 
-    /// Paint a bridge into the host's canvas at the host's size —
-    /// one road for windows and mounts alike.
-    pub fn draw_mounted(
-        &mut self,
-        id: ViewBridgeId,
-        canvas: &gfx::Canvas<'_>,
-        size: gfx::Size,
-    ) -> bool {
+    /// The paint arm of `dispatch_event` — one road for windows
+    /// and mounts alike. Clears the backdrop for views that want
+    /// it, applies `Event::Paint` against the frame, parks a
+    /// mounted view's reveal and performs the answered commands.
+    fn paint(&mut self, id: ViewBridgeId, canvas: &gfx::Canvas<'_>, size: Option<gfx::Size>) -> bool {
         // TRANSPARENT floor, like the stage road: the HOST behind
         // a mounted view owns the background (a glass island, the
         // document floor's color). A window root paints its own
@@ -950,7 +907,7 @@ impl Himark {
             canvas.clear(gfx::Color::TRANSPARENT);
         }
         let result = {
-            let Some((frame, size)) = self.mounted_frame(id, Some(size)) else {
+            let Some((frame, size)) = self.mounted_frame(id, size, false) else {
                 return false;
             };
             frame.handle(
@@ -1012,9 +969,9 @@ impl Himark {
     pub(crate) fn fan_theme_changed(&mut self) {
         let theme = ::editor::env::Themes::of(&self.store);
         self.refresh_chrome(&theme);
-        self.workshop.set_theme(theme);
+        self.background_layout.set_theme(theme);
         for id in self.bridge_ids() {
-            let result = self.handle_mounted(id, &imba::event::Event::ThemeChanged, None);
+            let result = self.apply_event_to_frame(id, &imba::event::Event::ThemeChanged, None);
             self.run_fanned(id, result);
         }
     }
@@ -1022,7 +979,7 @@ impl Himark {
     /// The file-event fan-out, to every bridge.
     pub(crate) fn fan_file_events(&mut self, event: &documents::watch::FilesChanged) {
         for id in self.bridge_ids() {
-            let result = self.handle_mounted(id, &imba::event::Event::UserEvent(event), None);
+            let result = self.apply_event_to_frame(id, &imba::event::Event::UserEvent(event), None);
             self.run_fanned(id, result);
         }
     }
@@ -1043,7 +1000,7 @@ impl Himark {
         while self.settle_requested && rounds < 3 {
             self.settle_requested = false;
             for id in self.bridge_ids() {
-                let result = self.handle_mounted(id, &imba::event::Event::Settle, None);
+                let result = self.apply_event_to_frame(id, &imba::event::Event::Settle, None);
                 self.run_fanned(id, result);
             }
             rounds += 1;
@@ -1113,7 +1070,7 @@ impl Himark {
     }
 
     /// The parent view a popover slot pins before laying out, with
-    /// the parent's standing band — the slice the re-derivation
+    /// the parent's current band — the slice the re-derivation
     /// realizes, never the whole content.
     fn overlay_parent_pin(
         &self,
@@ -1124,10 +1081,10 @@ impl Himark {
     )> {
         let parent = self.bridges.get(&id)?.overlay_parent?;
         let slot = self.bridges.get(&parent)?;
-        Some((slot.bridge.view_rc(), slot.stage_viewport))
+        Some((slot.bridge.view_rc(), slot.realized_viewport))
     }
 
-    /// A popover slot lays out at its PARENT'S standing size — the
+    /// A popover slot lays out at its PARENT'S current size — the
     /// popover window is content-sized, and tight constraints at
     /// that size would collapse the re-derivation inside.
     fn overlay_host_size(&self, id: ViewBridgeId) -> Option<gfx::Size> {
@@ -1288,7 +1245,7 @@ impl Himark {
         if !died.is_empty() {
             let event = documents::watch::WatchesDied(std::sync::Arc::new(died));
             for id in self.bridge_ids() {
-                let result = self.handle_mounted(id, &imba::event::Event::UserEvent(&event), None);
+                let result = self.apply_event_to_frame(id, &imba::event::Event::UserEvent(&event), None);
                 self.run_fanned(id, result);
             }
         }
@@ -1318,7 +1275,7 @@ impl Himark {
 
     /// A mounted slot's last drawn size — the event roads'
     /// viewport stand-in where a window would answer with its own
-    /// (the mounted dispatch arm routes against the standing frame
+    /// (the mounted dispatch arm routes against the retained frame
     /// and ignores the passed size; this keeps those roads from
     /// treating "no window viewport" as "gone").
     pub fn mounted_viewport(&self, id: ViewBridgeId) -> Option<gfx::Size> {
@@ -1407,20 +1364,20 @@ impl Himark {
         true
     }
 
-    // ── the staged two-step draw (the C surface delegates here).
-    // The shell cannot hold the Rust objects across the ABI, so the
-    // engine keeps them on the slot: `staged_layout` from
-    // `stage_layout`, consumed by `stage_realize` into
-    // `staged_frame`, read by paint/events, recycled by release.
-    // At most one of each per view — the shell's calls are strictly
-    // sequential and never span a call site.
+    // ── the two-step draw the C shell drives. The shell cannot
+    // hold the Rust objects across the ABI, so the engine keeps
+    // them on the slot: `layout` fills `staged_layout`, `realize`
+    // consumes it into `staged_frame`, paint and events read it,
+    // `recycle_frame` returns its buffer. At most one of each per
+    // view — the shell's calls are strictly sequential and never
+    // span a call site.
 
-    /// Run layout at `size` and keep the result as the view's
-    /// staged layout (replacing any previous one). False when no
-    /// such view is mounted.
-    pub fn stage_layout(&mut self, id: ViewBridgeId, size: gfx::Size) -> bool {
+    /// Run layout at `size` and keep the result on the view's slot
+    /// (replacing any previous one). False when no such view is
+    /// mounted.
+    pub fn layout(&mut self, id: ViewBridgeId, size: gfx::Size) -> bool {
         // A popover slot ignores the shell's (content-sized) ask
-        // and lays out at the parent's standing size, against a
+        // and lays out at the parent's current size, against a
         // freshly pinned parent.
         let size = self.overlay_host_size(id).unwrap_or(size);
         let pin = self.overlay_parent_pin(id);
@@ -1463,7 +1420,7 @@ impl Himark {
         true
     }
 
-    pub fn stage_layout_size(&self, id: ViewBridgeId) -> Option<gfx::Size> {
+    pub fn layout_size(&self, id: ViewBridgeId) -> Option<gfx::Size> {
         self.bridges
             .get(&id)?
             .staged_layout
@@ -1471,9 +1428,9 @@ impl Himark {
             .map(crate::bridge::BridgeLayout::size)
     }
 
-    /// Consume the staged layout into the staged frame, realized
-    /// for `viewport`. False when no layout is staged.
-    pub fn stage_realize(&mut self, id: ViewBridgeId, viewport: gfx::Rect) -> bool {
+    /// Consume the kept layout into a frame realized for
+    /// `viewport`. False when no layout is kept.
+    pub fn realize(&mut self, id: ViewBridgeId, viewport: gfx::Rect) -> bool {
         let Some(slot) = self.bridges.get_mut(&id) else {
             return false;
         };
@@ -1482,10 +1439,10 @@ impl Himark {
         };
         let mut frame = staged.realize(viewport);
         if id.is_mounted() {
-            slot.stage_viewport = Some(viewport);
+            slot.realized_viewport = Some(viewport);
             // The paint road is the per-frame rebuild now — the
             // bubbled overlay anchors must move with it, or a
-            // popover's presence lags the standing frame.
+            // popover's presence lags the retained frame.
             let anchors = frame.exported_overlays();
             if anchors != slot.overlay_anchors {
                 slot.overlay_anchors = anchors;
@@ -1496,13 +1453,15 @@ impl Himark {
         true
     }
 
-    pub fn stage_layout_release(&mut self, id: ViewBridgeId) -> bool {
+    /// Drop the kept layout without realizing it (the measure-only
+    /// road: the shell asked for a size and nothing else).
+    pub fn discard_layout(&mut self, id: ViewBridgeId) -> bool {
         self.bridges
             .get_mut(&id)
             .is_some_and(|slot| slot.staged_layout.take().is_some())
     }
 
-    pub fn stage_frame(&self, id: ViewBridgeId) -> Option<&crate::bridge::Frame> {
+    pub fn realized_frame(&self, id: ViewBridgeId) -> Option<&crate::bridge::Frame> {
         self.bridges.get(&id)?.staged_frame.as_ref()
     }
 
@@ -1517,7 +1476,10 @@ impl Himark {
         }
     }
 
-    pub fn stage_frame_release(&mut self, id: ViewBridgeId) -> bool {
+    /// Drop the realized frame and keep its buffer for the next
+    /// layout. The VIEW is untouched — it lives until `unmount`;
+    /// this only ends one paint pass.
+    pub fn recycle_frame(&mut self, id: ViewBridgeId) -> bool {
         let Some(slot) = self.bridges.get_mut(&id) else {
             return false;
         };
@@ -1658,6 +1620,6 @@ impl std::ops::DerefMut for StoreMut<'_> {
 #[cfg(any(test, feature = "test-support"))]
 impl Drop for StoreMut<'_> {
     fn drop(&mut self) {
-        self.app.sweep();
+        self.app.run_cleanup_hooks();
     }
 }

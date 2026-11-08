@@ -64,10 +64,10 @@ fn main() {
 
     // The BARE engine + the engine plugin set — identical to the
     // gpui example: the adapter is the only line that differs.
-    let mut app = Himark::bare(AppFonts::platform(), Arc::new(NoShell));
+    let mut app = Himark::new(AppFonts::platform(), Arc::new(NoShell), Vec::new());
     app.install_host_loop();
     let plugins = himark_plugins::engine_plugins();
-    let wired = himark::plugin::install_all(&mut app, Arc::new(myersdiff::Myers), &plugins);
+    let wired = himark::plugin::install_all(&mut app, &plugins);
     let languages = wired.languages;
 
     let documents = imba::store::Id::<documents::OpenDocuments>::mint();

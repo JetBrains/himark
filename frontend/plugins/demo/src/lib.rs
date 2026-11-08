@@ -42,9 +42,9 @@ pub struct DemoPlugin;
 
 impl himark::plugin::Plugin for DemoPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-                app.register_command(std::sync::Arc::new(tree_demo::OpenTreeDemo));
-        app.register_command(std::sync::Arc::new(OpenMonsterDemo));
-        app.register_command(std::sync::Arc::new(OpenWallOfTextDemo));
+                app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(tree_demo::OpenTreeDemo))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(OpenMonsterDemo))]);
+        app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(OpenWallOfTextDemo))]);
         // The FFI door's lookups — the debug harness opens these by
         // name through `himark_open_demo`. The web shell has no C
         // surface (ffi is gated off wasm): the registration folds

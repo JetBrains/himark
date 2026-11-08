@@ -52,7 +52,7 @@ impl Himark {
                 .bridges
                 .get(&id)
                 .and_then(|slot| slot.bridge.view().live_viewport(&self.store));
-            self.mounted_frame(id, live)?;
+            self.mounted_frame(id, live, false)?;
             let slot = self.bridges.get_mut(&id)?;
             let crate::himark::Mounted { bridge, frame, .. } = slot;
             let frame = frame.as_mut()?;

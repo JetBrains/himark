@@ -226,7 +226,7 @@ impl imba::effect::Effect for ScrollStripeEffect {
     type Result = StripeOutcome;
 }
 
-pub struct ScrollStripeHandler(pub Arc<crate::env::Workshop>);
+pub struct ScrollStripeHandler(pub Arc<crate::env::BackgroundLayout>);
 
 impl imba::effect::EffectHandler<ScrollStripeEffect> for ScrollStripeHandler {
     async fn handle(&self, effect: ScrollStripeEffect) -> StripeOutcome {

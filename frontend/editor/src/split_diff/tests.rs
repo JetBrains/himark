@@ -5,27 +5,27 @@ use super::*;
 
 fn run_effect(
     effect: imba::effect::AnyEffect<SplitDiffCommand>,
-    workshop: &std::sync::Arc<crate::env::Workshop>,
+    background_layout: &std::sync::Arc<crate::env::BackgroundLayout>,
 ) -> SplitDiffCommand {
     use imba::effect::{block_on, EffectHandler};
     let (value, lift) = effect.into_payload().split();
     let outcome: Box<dyn std::any::Any + Send + Sync> = match value.downcast::<RepairDiffEffect>() {
         Ok(effect) => {
-            let handler = RepairDiffHandler(std::sync::Arc::clone(workshop));
+            let handler = RepairDiffHandler(std::sync::Arc::clone(background_layout));
             Box::new(block_on(Box::pin(
                 async move { handler.handle(*effect).await },
             )))
         }
         Err(value) => match value.downcast::<crate::repair::RepairEffect>() {
             Ok(effect) => {
-                let handler = crate::repair::RepairHandler(std::sync::Arc::clone(workshop));
+                let handler = crate::repair::RepairHandler(std::sync::Arc::clone(background_layout));
                 Box::new(block_on(Box::pin(
                     async move { handler.handle(*effect).await },
                 )))
             }
             Err(value) => match value.downcast::<crate::reparse::ReparseEffect>() {
                 Ok(effect) => {
-                    let handler = crate::reparse::ReparseHandler(std::sync::Arc::clone(workshop));
+                    let handler = crate::reparse::ReparseHandler(std::sync::Arc::clone(background_layout));
                     Box::new(block_on(Box::pin(
                         async move { handler.handle(*effect).await },
                     )))
@@ -37,8 +37,8 @@ fn run_effect(
     lift(outcome).expect("a notification lands nothing — this harness drives only landing effects")
 }
 
-fn test_workshop() -> std::sync::Arc<crate::env::Workshop> {
-    std::sync::Arc::new(crate::env::Workshop::new(
+fn test_workshop() -> std::sync::Arc<crate::env::BackgroundLayout> {
+    std::sync::Arc::new(crate::env::BackgroundLayout::new(
         crate::parley_line::shaper(crate::test_document::test_ui())
             .world()
             .clone(),
@@ -89,10 +89,10 @@ fn launches(
 fn drain(view: &mut SplitDiffView, effects: Vec<imba::effect::AnyEffect<SplitDiffCommand>>) {
     let ui = UiCtx::dont_use_too_slow();
     let mut store = Store::new();
-    let workshop = test_workshop();
+    let background_layout = test_workshop();
     let mut pending = effects;
     while let Some(effect) = pending.pop() {
-        let command = run_effect(effect, &workshop);
+        let command = run_effect(effect, &background_layout);
         pending.extend(perform_collect(view, &mut store, &ui, command));
     }
 }
@@ -335,7 +335,7 @@ fn typing_and_landings_keep_the_pair_aligned() {
     );
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
-    let workshop = test_workshop();
+    let background_layout = test_workshop();
 
     let mut pending: Vec<imba::effect::AnyEffect<SplitDiffCommand>> = Vec::new();
     for step in 0..6 {
@@ -352,7 +352,7 @@ fn typing_and_landings_keep_the_pair_aligned() {
 
         if step % 2 == 1 {
             if let Some(effect) = pending.pop() {
-                let command = run_effect(effect, &workshop);
+                let command = run_effect(effect, &background_layout);
                 let more = perform_collect(&mut view, &mut store, &ui, command);
                 pending.extend(more);
                 assert_aligned(&view);
@@ -361,7 +361,7 @@ fn typing_and_landings_keep_the_pair_aligned() {
     }
 
     while let Some(effect) = pending.pop() {
-        let command = run_effect(effect, &workshop);
+        let command = run_effect(effect, &background_layout);
         pending.extend(perform_collect(&mut view, &mut store, &ui, command));
     }
     assert_aligned(&view);
@@ -441,7 +441,7 @@ fn a_stale_repair_landing_must_not_revert_spacers() {
     let mut view = pair(&left_source, &right_source, 240.0);
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
-    let workshop = test_workshop();
+    let background_layout = test_workshop();
 
     let viewport = || EditorCommand::Viewport {
         width: 240.0,
@@ -514,7 +514,7 @@ fn a_stale_repair_landing_must_not_revert_spacers() {
     assert_aligned(&view);
 
     for effect in held {
-        let command = run_effect(effect, &workshop);
+        let command = run_effect(effect, &background_layout);
         let _ = perform_collect(&mut view, &mut store, &ui, command);
     }
     assert_aligned(&view);
@@ -713,7 +713,7 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
         "longish-token-that-wraps",
     ];
     let ui = UiCtx::dont_use_too_slow();
-    let workshop = test_workshop();
+    let background_layout = test_workshop();
 
     for seed in 0..40u64 {
         for _ in 0..seed {
@@ -801,13 +801,13 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
 
             if next() % 3 == 0 {
                 if let Some(effect) = pending.pop() {
-                    let command = run_effect(effect, &workshop);
+                    let command = run_effect(effect, &background_layout);
                     pending.extend(perform_collect(&mut view, &mut store, &ui, command));
                 }
             }
 
             while let Some(effect) = pending.pop() {
-                let command = run_effect(effect, &workshop);
+                let command = run_effect(effect, &background_layout);
                 pending.extend(perform_collect(&mut view, &mut store, &ui, command));
             }
             assert_aligned(&view);
@@ -857,7 +857,7 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
         }
 
         while let Some(effect) = pending.pop() {
-            let command = run_effect(effect, &workshop);
+            let command = run_effect(effect, &background_layout);
             pending.extend(perform_collect(&mut view, &mut store, &ui, command));
         }
         assert_aligned(&view);
@@ -1064,8 +1064,8 @@ fn the_plain_repair_lane_skips_pair_managed_halves() {
         let repair = value
             .downcast::<crate::repair::RepairEffect>()
             .expect("the pending lane is one repair effect");
-        let workshop = test_workshop();
-        let handler = crate::repair::RepairHandler(workshop);
+        let background_layout = test_workshop();
+        let handler = crate::repair::RepairHandler(background_layout);
         covered.extend(handler.repairs(*repair).into_iter().map(|r| r.editor));
     }
     assert!(covered.contains(&pane), "the pane still repairs plainly");
@@ -1481,7 +1481,7 @@ fn a_width_mismatched_pane_idles_instead_of_livelocking() {
 
     let ui = UiCtx::dont_use_too_slow();
     let mut store = Store::new();
-    let workshop = test_workshop();
+    let background_layout = test_workshop();
     let mut batch = imba::effect::Batch::new();
     {
         let mut fx = batch.effects();
@@ -1497,7 +1497,7 @@ fn a_width_mismatched_pane_idles_instead_of_livelocking() {
             rounds < 16,
             "the pair lane relaunched off its own landing — the livelock"
         );
-        let command = run_effect(effect, &workshop);
+        let command = run_effect(effect, &background_layout);
         effects.extend(perform_collect(&mut view, &mut store, &ui, command));
     }
     assert!(
@@ -1619,8 +1619,8 @@ fn a_removed_fold_survives_rederivation() {
     assert_eq!(strips(&view).len(), 0, "the ban survives the re-derivation");
 }
 
-fn workshop_wearing(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::Workshop> {
-    std::sync::Arc::new(crate::env::Workshop::new(
+fn workshop_wearing(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::BackgroundLayout> {
+    std::sync::Arc::new(crate::env::BackgroundLayout::new(
         crate::parley_line::shaper(crate::test_document::test_ui())
             .world()
             .clone(),
@@ -1637,7 +1637,7 @@ fn shaped_theme_of(view: &EditorView) -> String {
 
 /// The halves behind a deferred inline face never paint, so no
 /// paint-born retheme reaches them: after the app switches theme
-/// their layouts still wear the old name while the Workshop shapes
+/// their layouts still wear the old name while the BackgroundLayout shapes
 /// every repair under the new one. Refusing that landing against the
 /// standing layout's name left `repair_pending` set — the lane
 /// relaunched off every refused landing, forever (two chat diff
@@ -1668,10 +1668,10 @@ fn a_repair_shaped_under_the_current_theme_lands_over_a_stale_one() {
     assert_eq!(effects.len(), 1, "the keystroke pended a pair repair");
     assert_eq!(shaped_theme_of(&view.left), dark.name());
 
-    // …then the app switches: store and Workshop wear light, the
+    // …then the app switches: store and BackgroundLayout wear light, the
     // halves' layouts (never painted, never rethemed) still dark.
     crate::env::Themes::set(&mut store, light.clone());
-    let workshop = workshop_wearing(light.clone());
+    let background_layout = workshop_wearing(light.clone());
     let mut rounds = 0;
     while let Some(effect) = effects.pop() {
         rounds += 1;
@@ -1679,7 +1679,7 @@ fn a_repair_shaped_under_the_current_theme_lands_over_a_stale_one() {
             rounds < 8,
             "the pair lane relaunched off its own refused landing — the theme livelock"
         );
-        let command = run_effect(effect, &workshop);
+        let command = run_effect(effect, &background_layout);
         effects.extend(perform_collect(&mut view, &mut store, &ui, command));
     }
     assert_eq!(

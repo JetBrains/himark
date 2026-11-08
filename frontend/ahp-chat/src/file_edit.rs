@@ -104,7 +104,7 @@ pub struct BuiltFileEdit {
 
 /// The seeded pair recipe, off-thread. `name` names the language (the
 /// edited file's own name); `parsers` and `differ` are passed in because
-/// the build context is the workshop's bare store, not the app's.
+/// the build context is the background_layout's bare store, not the app's.
 pub(crate) fn build_file_edit(
     name: &str,
     contents: &ahp_wire::client::FileEditContents,
