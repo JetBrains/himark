@@ -109,9 +109,11 @@ pub trait Shell: Send + Sync {
     ) -> bool;
 }
 
-/// The seated shell — a boot resident like every road.
+/// The store's record of the installed [`Shell`] — a newtype only
+/// because the store is keyed by type. `wrap_shell` replaces it;
+/// `navigate_origin` reads it.
 #[derive(Clone)]
-pub struct ShellSeat(pub Arc<dyn Shell>);
+pub struct InstalledShell(pub Arc<dyn Shell>);
 
 pub struct Himark {
     /// THE store — one, global, always live. Hosts, Windows and
@@ -183,12 +185,12 @@ pub struct Himark {
     /// canvas's row reveal before the host drained it.
     pub(crate) pending_reveals: Vec<(ViewBridgeId, imba::event::Reveal)>,
 
-    /// External place arms (plugins) — `mount_place` consults them
+    /// The registered view-bridge factories — `mount_place` asks them
     /// after its own.
     /// The palette plugin's view factory (`register_palette`).
     pub(crate) palette: Option<crate::mounts::PaletteFactory>,
 
-    pub(crate) bridge_place_arms: Vec<crate::mounts::BridgePlaceArm>,
+    pub(crate) view_bridge_factories: Vec<crate::mounts::ViewBridgeFactory>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
@@ -313,7 +315,7 @@ impl Himark {
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());
         crate::effects::register_builtins(&handlers, &background_layout);
-        store.put(ShellSeat(shell));
+        store.put(InstalledShell(shell));
         let mut engine = Self {
             store,
             ui,
@@ -330,7 +332,7 @@ impl Himark {
             pending_watch_deaths: Vec::new(),
             pending_reveals: Vec::new(),
             palette: None,
-            bridge_place_arms: Vec::new(),
+            view_bridge_factories: Vec::new(),
             settle_requested: false,
             settling: false,
             scroll_states: std::collections::HashMap::new(),
@@ -1156,19 +1158,20 @@ impl Himark {
 
     /// The palette's VIEW, from the plugin that owns it — the
     /// engine hands it the session's commands and gets a modal
-    /// back. Registered at boot, like a place arm; `palette` sits
+    /// back. Registered at boot, like a view-bridge factory; `palette` sits
     /// above this crate and cannot be named from here.
     pub fn register_palette(&mut self, make: crate::mounts::PaletteFactory) {
         self.palette = Some(make);
     }
 
-    /// A plugin's place arm — consulted by `mount_place` after the
-    /// built-in arms.
-    /// Register a place arm — a plugin's answer to a place, any
-    /// mount shape (see `mounts::BridgePlaceArm`): the arm mints
-    /// through `Himark::mount` itself.
-    pub fn register_bridge_arm(&mut self, arm: crate::mounts::BridgePlaceArm) {
-        self.bridge_place_arms.push(arm);
+    /// Register a view-bridge factory — a plugin's answer to a
+    /// navigation place (see `mounts::ViewBridgeFactory`); the
+    /// factory mounts through `Himark::mount` itself.
+    pub fn register_view_bridge_factory(
+        &mut self,
+        factory: crate::mounts::ViewBridgeFactory,
+    ) {
+        self.view_bridge_factories.push(factory);
     }
 
     pub fn palette_factory(&self) -> Option<crate::mounts::PaletteFactory> {
@@ -1266,11 +1269,11 @@ impl Himark {
     pub fn wrap_shell(&mut self, wrap: impl FnOnce(Arc<dyn Shell>) -> Arc<dyn Shell>) {
         let seated = self
             .store
-            .get::<ShellSeat>()
+            .get::<InstalledShell>()
             .map(|seat| seat.0.clone())
             .expect("a shell is seated at boot");
         let wrapped = wrap(seated);
-        self.with_store(|store| store.put(ShellSeat(wrapped)));
+        self.with_store(|store| store.put(InstalledShell(wrapped)));
     }
 
     /// A mounted slot's last drawn size — the event roads'

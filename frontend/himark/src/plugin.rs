@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The plugin door: a crate registers its own pieces — grammars,
-//! enrichment passes, commands, effect handlers, place arms,
+//! enrichment passes, commands, effect handlers, view-bridge factories,
 //! factories — instead of a host hand-wiring them at boot. The host
 //! keeps what is genuinely its own (FFI, wake/drain, the client
 //! directory, capability-gated routes) and installs everything else
@@ -24,7 +24,7 @@ pub trait Plugin {
     /// Enrichment passes, collected into the one registry.
     fn enrichers(&self, _enrichers: &mut ::editor::enrich::Enrichers) {}
 
-    /// Commands, effect handlers, hooks, place arms, factories.
+    /// Commands, effect handlers, hooks, view-bridge factories.
     fn install(&self, _app: &mut Himark, _cx: &PluginContext) {}
 }
 

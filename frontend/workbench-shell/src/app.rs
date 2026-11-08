@@ -202,12 +202,12 @@ pub fn workbench_app(fonts: AppFonts) -> Himark {
 /// own follow-ups skip too).
 pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
     #[derive(Clone)]
-    struct ShellSeated;
-    if app.store().get::<ShellSeated>().is_some() {
+    struct ShellInstalled;
+    if app.store().get::<ShellInstalled>().is_some() {
         return false;
     }
     app.with_store(|store| {
-        store.put(ShellSeated);
+        store.put(ShellInstalled);
         store.put_entity(crate::shell::shell_id(), crate::shell::WorkbenchShell);
         crate::builtins::register_builtins(store);
         ::workbench::navigation::Navigators::register_windowed(

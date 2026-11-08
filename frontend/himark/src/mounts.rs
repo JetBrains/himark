@@ -185,10 +185,13 @@ pub type PaletteFactory = std::sync::Arc<
 
 /// An EXTERNAL BRIDGE arm: a plugin answers a place with a mounted
 /// view of ANY shape — it mints through `Himark::mount` itself
-/// (the AHP plugin's whole session vocabulary registers here).
-/// Registered at boot (`Himark::register_bridge_arm`);
-/// `mount_place` consults these before the modal arms.
-pub type BridgePlaceArm = std::sync::Arc<
+/// A plugin's answer to a navigation place: recognize the place
+/// kind, build and mount the view, answer its id — `None` passes
+/// to the next factory (the AHP plugin's whole session vocabulary
+/// registers one). Registered at boot
+/// (`Himark::register_view_bridge_factory`); `mount_place` asks
+/// them in registration order.
+pub type ViewBridgeFactory = std::sync::Arc<
     dyn Fn(
         &mut crate::himark::Himark,
         &hikit::navigation::NavigationLocation,
@@ -554,13 +557,11 @@ pub fn mount_place(
     app: &mut crate::himark::Himark,
     place: &hikit::navigation::NavigationLocation,
 ) -> Option<ViewBridgeId> {
-    // The EXTERNAL BRIDGE arms — plugins answering with any mount
-    // shape (the AHP plugin's session vocabulary).
-    let bridge_arms = app.bridge_place_arms.clone();
-    for arm in bridge_arms {
-        let minted = arm(app, place);
-        if minted.is_some() {
-            return minted;
+    let factories = app.view_bridge_factories.clone();
+    for factory in factories {
+        let mounted = factory(app, place);
+        if mounted.is_some() {
+            return mounted;
         }
     }
     eprintln!("[mount] no view answers this place — refused");

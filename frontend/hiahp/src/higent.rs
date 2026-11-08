@@ -21,7 +21,7 @@ pub struct SessionsPlugin;
 impl himark::plugin::Plugin for SessionsPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         use std::sync::Arc;
-        app.register_bridge_arm(Arc::new(|app, place| {
+        app.register_view_bridge_factory(Arc::new(|app, place| {
             let place = place.place::<crate::places::SessionsPlace>()?;
             let showing = place.0.clone();
             app.mount(move |store, ui, id, _fx| {

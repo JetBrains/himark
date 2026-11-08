@@ -16,7 +16,7 @@ use himark::bridge::ViewBridgeId;
 
 /// Register the session vocabulary with the engine.
 pub fn install_arms(app: &mut Himark) {
-    app.register_bridge_arm(Arc::new(|app, place| mint_session_place(app, place)));
+    app.register_view_bridge_factory(Arc::new(|app, place| mint_session_place(app, place)));
 }
 
 /// Mint the view a SESSION place names, plus the ready places whose

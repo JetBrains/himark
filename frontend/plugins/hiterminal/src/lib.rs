@@ -40,7 +40,7 @@ impl himark::plugin::Plugin for TerminalPlugin {
         app.perform_batch(vec![himark::app::AppCommand::Register(Arc::new(OpenTerminal))]);
         // The MOUNTED arm: a native shell shows the ready terminal
         // as its own bridge.
-        app.register_bridge_arm(Arc::new(|app, place| {
+        app.register_view_bridge_factory(Arc::new(|app, place| {
             let place = place.place::<TerminalViewPlace>()?.clone();
             app.mount(move |_store, _ui, id, _fx| {
                 Some(himark::mounts::panel_mount(

@@ -1899,14 +1899,14 @@ pub fn build(
 /// The peeker as a plugin: the toggle command and the go-to-file
 /// face on the MOUNTED road — the peeker whole (query, results,
 /// preview, the FSP search behind them), answered as an external
-/// place arm. The peeker crate sits above himark, so himark cannot
+/// view-bridge factory. The peeker crate sits above himark, so himark cannot
 /// name it itself.
 pub struct PeekerPlugin;
 
 impl himark::plugin::Plugin for PeekerPlugin {
     fn install(&self, app: &mut Himark, _cx: &himark::plugin::PluginContext) {
                 app.perform_batch(vec![himark::app::AppCommand::Register(std::sync::Arc::new(TogglePeeker))]);
-        app.register_bridge_arm(std::sync::Arc::new(|app, place| {
+        app.register_view_bridge_factory(std::sync::Arc::new(|app, place| {
             let place = place.place::<hiahp::places::PeekerPlace>()?;
             let key = place.0.clone();
             app.mount(move |store, ui, id, fx| {
