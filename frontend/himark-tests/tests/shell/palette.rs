@@ -413,7 +413,7 @@ fn keymap_chords_resolve_through_the_palette_surface() {
         "backspace fired the rebound undo, not a delete"
     );
 
-    himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::embedded());
+    himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::macos());
     assert!(workbench_shell::test_driver::key(
         &mut app,
         Key::Char('Z'),

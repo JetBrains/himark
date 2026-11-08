@@ -48,6 +48,9 @@ fn compose() -> (Himark, himark_plugins::Wires) {
     let connector: Arc<dyn ahp_wire::transport::Connector> = tailnet.clone();
 
     let mut app = workbench_shell::app::workbench_app(AppFonts::platform());
+    // The platform's keymap — this shell runs on macOS and Linux
+    // both, and the engine's own fallback is the macOS map.
+    himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::native());
     let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
         Arc::new(ahp_wire::uris::FileUris);
     let wires = himark_plugins::install_host(

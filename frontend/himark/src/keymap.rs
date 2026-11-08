@@ -22,7 +22,14 @@ impl Chord {
         Self { key, mods }
     }
 
-    fn display(&self) -> String {
+    fn display(&self, style: ChordStyle) -> String {
+        match style {
+            ChordStyle::MacGlyphs => self.display_mac(),
+            ChordStyle::PcText => self.display_pc(),
+        }
+    }
+
+    fn display_mac(&self) -> String {
         let mut out = String::new();
         if self.mods.control {
             out.push('⌃');
@@ -51,9 +58,45 @@ impl Chord {
             Key::PageDown => out.push('⇟'),
             Key::Delete => out.push('⌦'),
             Key::F(n) => out.push_str(&format!("F{n}")),
+            Key::Char(' ') => out.push_str("Space"),
             Key::Char(c) => out.push(c.to_ascii_uppercase()),
         }
         out
+    }
+
+    fn display_pc(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if self.mods.control {
+            parts.push("Ctrl".into());
+        }
+        if self.mods.alt {
+            parts.push("Alt".into());
+        }
+        if self.mods.shift {
+            parts.push("Shift".into());
+        }
+        if self.mods.command {
+            parts.push("Super".into());
+        }
+        parts.push(match self.key {
+            Key::Backspace => "Backspace".into(),
+            Key::Enter => "Enter".into(),
+            Key::Left => "Left".into(),
+            Key::Right => "Right".into(),
+            Key::Up => "Up".into(),
+            Key::Down => "Down".into(),
+            Key::Escape => "Esc".into(),
+            Key::Tab => "Tab".into(),
+            Key::Home => "Home".into(),
+            Key::End => "End".into(),
+            Key::PageUp => "PgUp".into(),
+            Key::PageDown => "PgDn".into(),
+            Key::Delete => "Del".into(),
+            Key::F(n) => format!("F{n}"),
+            Key::Char(' ') => "Space".into(),
+            Key::Char(c) => c.to_ascii_uppercase().to_string(),
+        });
+        parts.join("+")
     }
 
     fn parse(chord: &str) -> Result<Self, String> {
@@ -107,20 +150,73 @@ impl Chord {
     }
 }
 
+/// How a chord prints back to the user: the macOS glyph string
+/// (`⇧⌘T`) or the PC text form (`Ctrl+Shift+T`). Each embedded
+/// keymap names its own; a parsed one takes the platform's.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChordStyle {
+    MacGlyphs,
+    PcText,
+}
+
+impl ChordStyle {
+    /// The build platform's style: glyphs on Apple hosts and the web
+    /// build (whose default keymap is the macOS map), text elsewhere.
+    pub fn native() -> Self {
+        match cfg!(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_family = "wasm"
+        )) {
+            true => ChordStyle::MacGlyphs,
+            false => ChordStyle::PcText,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Keymap {
     bindings: HashMap<Chord, Arc<str>>,
+    style: ChordStyle,
 }
 
 impl Keymap {
-    pub fn embedded() -> Self {
-        static EMBEDDED: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
-        EMBEDDED
-            .get_or_init(|| {
-                Self::from_json(include_str!("../assets/keymap.json"))
-                    .expect("the embedded keymap must parse")
+    /// The embedded macOS keymap — command-key chords, and the
+    /// engine's fallback when no shell installed a map (the C shells
+    /// are AppKit/UIKit and say nothing).
+    pub fn macos() -> Self {
+        static MACOS: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
+        MACOS
+            .get_or_init(|| Self {
+                style: ChordStyle::MacGlyphs,
+                ..Self::from_json(include_str!("../assets/keymap-macos.json"))
+                    .expect("the embedded macOS keymap must parse")
             })
             .clone()
+    }
+
+    /// The embedded Linux keymap — control-key chords (Super belongs
+    /// to the window manager), PC movement anchors (ctrl-arrows for
+    /// words, Home/End family for lines and the document).
+    pub fn linux() -> Self {
+        static LINUX: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
+        LINUX
+            .get_or_init(|| Self {
+                style: ChordStyle::PcText,
+                ..Self::from_json(include_str!("../assets/keymap-linux.json"))
+                    .expect("the embedded Linux keymap must parse")
+            })
+            .clone()
+    }
+
+    /// The build platform's embedded keymap — what a shell that runs
+    /// on more than one platform installs at boot. The web build
+    /// keeps the macOS map until its shell says otherwise.
+    pub fn native() -> Self {
+        match ChordStyle::native() {
+            ChordStyle::MacGlyphs => Self::macos(),
+            ChordStyle::PcText => Self::linux(),
+        }
     }
 
     pub fn from_json(json: &str) -> Result<Self, String> {
@@ -130,7 +226,10 @@ impl Keymap {
         for (chord, id) in raw {
             bindings.insert(Chord::parse(&chord)?, Arc::from(id.as_str()));
         }
-        Ok(Self { bindings })
+        Ok(Self {
+            bindings,
+            style: ChordStyle::native(),
+        })
     }
 
     pub fn command(&self, key: Key, mods: Modifiers) -> Option<&str> {
@@ -147,13 +246,13 @@ impl Keymap {
         self.bindings
             .iter()
             .find(|(_, held)| held.as_ref() == id)
-            .map(|(chord, _)| chord.display())
+            .map(|(chord, _)| chord.display(self.style))
     }
 
     pub fn shortcuts_by_id(&self) -> std::collections::HashMap<Arc<str>, String> {
         self.bindings
             .iter()
-            .map(|(chord, id)| (Arc::clone(id), chord.display()))
+            .map(|(chord, id)| (Arc::clone(id), chord.display(self.style)))
             .collect()
     }
 }
@@ -169,15 +268,15 @@ impl Keymaps {
     pub fn of(store: &Store) -> Keymap {
         crate::registry::Registry::of(store)
             .and_then(|registry| registry.keymap.clone())
-            .unwrap_or_else(Keymap::embedded)
+            .unwrap_or_else(Keymap::macos)
     }
 
     pub fn binding_of(store: &Store, key: Key, mods: Modifiers) -> Option<Arc<str>> {
         match crate::registry::Registry::of(store).and_then(|registry| registry.keymap.as_ref()) {
             Some(keymap) => keymap.binding(key, mods),
             None => {
-                static EMBEDDED: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
-                EMBEDDED.get_or_init(Keymap::embedded).binding(key, mods)
+                static FALLBACK: std::sync::OnceLock<Keymap> = std::sync::OnceLock::new();
+                FALLBACK.get_or_init(Keymap::macos).binding(key, mods)
             }
         }
     }
@@ -239,12 +338,39 @@ mod tests {
     }
 
     #[test]
-    fn the_embedded_keymap_parses() {
-        let keymap = Keymap::embedded();
-        let mods = Modifiers {
+    fn the_embedded_keymaps_parse() {
+        let command = Modifiers {
             command: true,
             ..Default::default()
         };
-        assert_eq!(keymap.command(Key::Char('z'), mods), Some("editor.undo"));
+        let control = Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            Keymap::macos().command(Key::Char('z'), command),
+            Some("editor.undo")
+        );
+        assert_eq!(
+            Keymap::linux().command(Key::Char('z'), control),
+            Some("editor.undo")
+        );
+        assert_eq!(
+            Keymap::linux().command(Key::Char('z'), command),
+            None,
+            "the Linux map binds nothing to Super — the window manager owns it"
+        );
+    }
+
+    #[test]
+    fn each_keymap_displays_in_its_own_style() {
+        assert_eq!(
+            Keymap::macos().shortcut("editor.redo").as_deref(),
+            Some("⇧⌘Z")
+        );
+        assert_eq!(
+            Keymap::linux().shortcut("editor.redo").as_deref(),
+            Some("Ctrl+Shift+Z")
+        );
     }
 }

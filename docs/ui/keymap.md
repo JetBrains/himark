@@ -26,12 +26,15 @@ and the id resolves only when an editor on the focus path OFFERS it.
 No focus predicates in the keymap, no per-surface tables — offering is
 the context, exactly as it is for the palette.
 
-## 2. The file
+## 2. The files
 
-`frontend/himark/assets/keymap.json`, embedded via `include_str!` —
-the theme recipe verbatim (embedded default, serde parse to
-`Result<_, String>`, no disk read). A flat object; a representative
-slice:
+`frontend/himark/assets/keymap-macos.json` and `keymap-linux.json`,
+embedded via `include_str!` — the theme recipe verbatim (embedded
+pairs, serde parse to `Result<_, String>`, no disk read). Separate
+maps because the platforms disagree on more than one modifier's name:
+Super belongs to the window manager on Linux, words move on
+ctrl-arrows there, the document's ends live on ctrl-Home/End. A flat
+object; a representative slice of the macOS map:
 
 ```json
 {
@@ -82,18 +85,24 @@ pub struct Chord { key: imba::event::Key, mods: imba::event::Modifiers }
 pub struct Keymap { bindings: HashMap<Chord, Arc<str>> }
 
 impl Keymap {
-    pub fn embedded() -> Self;                       // include_str! + expect
+    pub fn macos() -> Self;                          // include_str! + expect
+    pub fn linux() -> Self;
+    pub fn native() -> Self;                         // the build platform's pick
     pub fn from_json(&str) -> Result<Self, String>;  // the theme shape
 }
 ```
 
 Store singleton `Keymaps` beside `Themes`: `Keymaps::binding_of(store,
-key, mods)` answers the bound id, falling back to `embedded()`;
-`Keymaps::set` installs a replacement map — the override door. No
-worker mirror — the keymap is UI-thread-only.
+key, mods)` answers the bound id, falling back to `macos()` (the C
+shells are AppKit/UIKit and install nothing); `Keymaps::set` installs
+a replacement map — the override door, and how a shell that runs on
+more than one platform (the gpui shell) declares its own at boot:
+`Keymaps::set(store, Keymap::native())`. No worker mirror — the
+keymap is UI-thread-only.
 
 The table also runs in reverse: `Chord::display` formats a chord back
-to its glyph form (`⌘⇧T`), and `shortcuts_by_id` hands the palette its
+in the keymap's own `ChordStyle` — mac glyphs (`⇧⌘T`) or PC text
+(`Ctrl+Shift+T`) — and `shortcuts_by_id` hands the palette its
 shortcut column — the display never drifts from the binding because it
 IS the binding.
 
@@ -162,7 +171,7 @@ a `PresentableCommand` on the focus path (`caret_surface` in
 frontend/editor/src/editor_view.rs), movements as `editor.move-*` /
 `editor.select-*` pairs: a chord is exact, so a selecting motion is
 its own id and the payload carries the shift. The default chords live
-in keymap.json beside the command chords — palette-visible,
+in the keymap files beside the command chords — palette-visible,
 rebindable, and open to emacs-style alternatives (`ctrl-a` →
 `editor.move-line-start` is one user line). Escape collapses carets by
 conditional OFFERING, not conditional handling:
@@ -170,31 +179,37 @@ conditional OFFERING, not conditional handling:
 a selection exist, so the chord stays unconsumed otherwise and bubbles
 outward.
 
-## The default keymap
+## The default keymaps
 
-The default keymap lives in `frontend/himark/assets/keymap.json`. `cmd` is
-the Command key on macOS and Control on Linux and Windows.
+The default keymaps live in `frontend/himark/assets/keymap-macos.json`
+and `keymap-linux.json`. The command chords, side by side:
 
-| Shortcut | Action |
-|---|---|
-| `cmd-n` | New document |
-| `cmd-o` | Open (macOS app) |
-| `cmd-s` | Save |
-| `cmd-w` / `cmd-shift-w` | Close document / close pane |
-| `cmd-shift-d` | Split pane |
-| `cmd-p` | Peeker (file switcher) |
-| `cmd-shift-p` | Command palette |
-| `cmd-f`, `cmd-g`, `cmd-shift-g` | Find, next, previous |
-| `cmd-shift-f` | Search in files |
-| `cmd-t` | Table of contents |
-| `cmd-e` | Files tree |
-| `cmd-i` | Chat composer |
-| `cmd-r` | Changes view |
-| `cmd-shift-c` | Comments view |
-| `cmd-shift-u` | Switch session |
-| `cmd-[` / `cmd-]` | Navigate back / forward |
-| `cmd-d` / `cmd-shift-l` | Select next / all occurrences |
-| `cmd-alt-up` / `cmd-alt-down` | Add caret above / below |
-| `alt-z` | Toggle soft wrap |
+| macOS | Linux | Action |
+|---|---|---|
+| `cmd-n` | `ctrl-n` | New document |
+| `cmd-o` | — | Open (macOS app) |
+| `cmd-s` | `ctrl-s` | Save |
+| `cmd-w` / `cmd-shift-w` | `ctrl-w` / `ctrl-shift-w` | Close document / close pane |
+| `cmd-shift-d` | `ctrl-shift-d` | Split pane |
+| `cmd-p` | `ctrl-p` | Peeker (file switcher) |
+| `cmd-shift-p` | `ctrl-shift-p` | Command palette |
+| `cmd-f`, `cmd-g`, `cmd-shift-g` | `ctrl-f`, `ctrl-g`/`f3`, `ctrl-shift-g`/`shift-f3` | Find, next, previous |
+| `cmd-shift-f` | `ctrl-shift-f` | Search in files |
+| `cmd-t` | `ctrl-t` | Table of contents |
+| `cmd-e` | `ctrl-e` | Files tree |
+| `cmd-i` | `ctrl-i` | Chat composer |
+| `cmd-r` | `ctrl-r` | Changes view |
+| `cmd-shift-c` | `ctrl-shift-c` | Comments view |
+| `cmd-shift-u` | `ctrl-shift-u` | Switch session |
+| `cmd-[` / `cmd-]` | `alt-left` / `alt-right` | Navigate back / forward |
+| `cmd-d` / `cmd-shift-l` | `ctrl-d` / `ctrl-shift-l` | Select next / all occurrences |
+| `cmd-alt-up` / `cmd-alt-down` | `ctrl-shift-up` / `ctrl-shift-down` | Add caret above / below |
+| `alt-z` | `alt-z` | Toggle soft wrap |
+
+The movement set differs the PC way: words on `ctrl-left`/`ctrl-right`
+(the mac's `alt`-arrows), line ends on Home/End alone, the document's
+ends on `ctrl-home`/`ctrl-end` (the mac's `cmd`-verticals), word
+deletion on `ctrl-backspace`/`ctrl-delete`. Nothing binds Super — the
+window manager owns it.
 | `ctrl-space` | Trigger completion |
 | `cmd-enter` | Open in full |
