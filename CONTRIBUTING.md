@@ -49,17 +49,21 @@ CI runs the tests with [cargo-nextest](https://nexte.st):
 
 ```sh
 cargo install cargo-nextest
-cargo nextest run --workspace --exclude linux --locked --all-targets --profile ci   # macOS
-cargo nextest run --workspace --exclude macos --locked --all-targets --profile ci   # Linux
+cargo nextest run --workspace --locked --all-targets \
+    --features himark-plugins/capi --profile ci
 ```
+
+The `himark-plugins/capi` feature matters: the integration suites in
+`frontend/himark-plugins/tests` declare it as a required feature and are
+silently skipped without it.
 
 A few tests are marked `#[ignore]` because they need a real Claude login or
 produce screenshots. Run them explicitly with `cargo test -- --ignored` when
 you want them.
 
-`cargo build` skips the platform shells. Build those explicitly with
-`cargo build -p linux`, `cargo build -p windows`, or the platform scripts
-described below.
+`cargo build` skips the platform shells. Build the gpui shell explicitly
+with `cargo build -p himark-desktop`; the Apple and web apps build through
+the platform scripts described below.
 
 ## The agent host
 
@@ -130,11 +134,13 @@ cd apps/himark-apple
 
 `build.sh mac` does the following:
 
-1. Copies the engine's C header from `frontend/frontend-host/include/himark.h`.
+1. Copies the C headers from the crates that generate them
+   (`frontend/himark-ffi/include/himark.h` and its siblings).
 2. Sparse-clones the pinned Skia headers into `target/skia-headers/` on the
    first run. The Objective-C++ Metal bridge needs them; the prebuilt Skia
    archive only carries libraries.
-3. Runs `cargo build -p frontend-host --release` for the host architecture and
+3. Runs `cargo build -p himark-plugins --features skia-shell --release` for
+   the host architecture and
    reads the exact Skia library directory from cargo's build-script output
    into `Generated-macOS.xcconfig`, so the app links the same Skia the
    engine was built with.
@@ -158,6 +164,51 @@ library that cargo produced and does not rebuild it.
 Open files with **File > Open** (`Cmd+O`). On macOS you can also run the
 Rust gpui shell (`cargo run -p himark-desktop`) as a
 quick way to test the engine without Xcode.
+
+## Linux
+
+The gpui shell is the Rust-native desktop app; on Linux it is the only
+shell. It runs on Wayland and X11.
+
+### Prerequisites
+
+Beyond the common prerequisites above, the system libraries gpui and the
+font stack link against (package names for Debian/Ubuntu; CI installs this
+exact list):
+
+```sh
+sudo apt-get install -y clang libfontconfig1-dev libfreetype6-dev \
+    libwayland-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+    pkg-config
+```
+
+### Build and run
+
+```sh
+cargo build -p agent-host         # the backend, into the same target dir
+cargo run -p himark-desktop       # the app; it finds and starts the host
+```
+
+The shell autostarts `himark-agent-host` using the lookup order described
+in [the agent host](#the-agent-host) section — building both into one
+target directory is all a development setup needs. Rebuild the host and
+restart the app to pick the new build up.
+
+## Windows
+
+Not yet. What stands in the way, concretely:
+
+- the gpui shell wires the embedded Tailscale node unconditionally, and
+  that node (and `frontend/desktop`'s transports) are Unix-only — the
+  `himark-desktop` crate does not compile on Windows today;
+- the agent host allocates PTYs through `rustix-openpty` and listens on a
+  Unix socket, both Unix-only; Windows needs ConPTY and a named-pipe or
+  TCP transport;
+- the gpui Windows backend is untried here.
+
+The engine itself is platform-neutral. If you want to take a piece of
+this, start by gating the tailnet wiring in `apps/desktop/src/main.rs`
+the way `frontend/himark-plugins` gates its native-only entry points.
 
 ## iOS
 

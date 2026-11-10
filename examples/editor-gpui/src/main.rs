@@ -13,29 +13,11 @@
 
 use std::sync::Arc;
 
-use himark::app::{AppFonts, Himark, Shell};
+use himark::app::{AppFonts, Himark, NoShell};
 use himark_gpui::gpui::{
     px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions,
 };
 use himark_gpui::{BridgeView, Engine};
-
-/// A shell that claims no places: every open from the editor
-/// (goto-definition into another file, a peek) is DECLINED — the
-/// example shows one document, and showing is all it does.
-struct NoShell;
-
-impl Shell for NoShell {
-    fn navigate(
-        &self,
-        _origin: himark::bridge::ViewBridgeId,
-        _place: hikit::navigation::NavigationLocation,
-        _store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
-        _fx: &mut imba::command::Fx<'_>,
-    ) -> bool {
-        false
-    }
-}
 
 fn main() {
     let (name, source) = std::env::args_os()

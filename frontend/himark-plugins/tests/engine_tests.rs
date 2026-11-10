@@ -10086,21 +10086,11 @@ fn canvas_landing_of_large_diffs_spares_the_ui_thread() {
 /// example (`himark-gpui/examples/editor.rs`), headless.
 #[test]
 fn a_bare_engine_mounts_a_scrolled_editor() {
-    struct NoShell;
-    impl himark::app::Shell for NoShell {
-        fn navigate(
-            &self,
-            _origin: himark::bridge::ViewBridgeId,
-            _place: hikit::navigation::NavigationLocation,
-            _store: &mut imba::store::Store,
-            _ui: &imba::ui::UiCtx,
-            _fx: &mut imba::command::Fx<'_>,
-        ) -> bool {
-            false
-        }
-    }
-
-    let mut app = himark::app::Himark::new(AppFonts::embedded(), Arc::new(NoShell), Vec::new());
+    let mut app = himark::app::Himark::new(
+        AppFonts::embedded(),
+        Arc::new(himark::app::NoShell),
+        Vec::new(),
+    );
     app.install_host_loop();
     let wired = himark::plugin::install_all(&mut app, &himark_plugins::engine_plugins());
     let languages = wired.languages;

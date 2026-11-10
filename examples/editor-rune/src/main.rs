@@ -12,25 +12,9 @@
 
 use std::sync::Arc;
 
-use himark::app::{AppFonts, Himark, Shell};
+use himark::app::{AppFonts, Himark, NoShell};
 use himark_rune::rune::{self, el};
 use himark_rune::{BridgeView, Engine};
-
-/// A shell that claims no places — the example shows one document.
-struct NoShell;
-
-impl Shell for NoShell {
-    fn navigate(
-        &self,
-        _origin: himark::bridge::ViewBridgeId,
-        _place: hikit::navigation::NavigationLocation,
-        _store: &mut imba::store::Store,
-        _ui: &imba::ui::UiCtx,
-        _fx: &mut imba::command::Fx<'_>,
-    ) -> bool {
-        false
-    }
-}
 
 struct EditorApp {
     view: BridgeView,

@@ -1,0 +1,20 @@
+[package]
+name = "hello-gpui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# The SMALLEST embedding: an empty editor in a gpui window — what a
+# library consumer writes before anything else.
+[dependencies]
+himark = { path = "../../frontend/himark" }
+himark-gpui = { path = "../../frontend/himark-gpui" }
+imba = { path = "../../frontend/imba" }
+documents = { path = "../../frontend/documents" }
+editor = { path = "../../frontend/editor" }
+text = { path = "../../frontend/text" }
+himarkdown = { path = "../../frontend/plugins/himarkdown" }
+
+[[bin]]
+name = "hello-gpui"
+path = "src/main.rs"

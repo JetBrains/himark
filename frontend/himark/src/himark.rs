@@ -109,6 +109,26 @@ pub trait Shell: Send + Sync {
     ) -> bool;
 }
 
+/// A [`Shell`] that declines every navigation — for embeddings
+/// that show mounted views and nothing else (the example editors,
+/// headless tests). Opens the engine would otherwise route to a
+/// workbench (go-to-definition into another file, a peek) are
+/// dropped with a log line.
+pub struct NoShell;
+
+impl Shell for NoShell {
+    fn navigate(
+        &self,
+        _origin: ViewBridgeId,
+        _place: hikit::navigation::NavigationLocation,
+        _store: &mut Store,
+        _ui: &UiCtx,
+        _fx: &mut imba::command::Fx<'_>,
+    ) -> bool {
+        false
+    }
+}
+
 /// The store's record of the installed [`Shell`] — a newtype only
 /// because the store is keyed by type. `wrap_shell` replaces it;
 /// `navigate_origin` reads it.

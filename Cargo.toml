@@ -69,6 +69,7 @@ members = [
     "apps/desktop",
     "apps/web/tools/grammar-pack",
     "examples/editor-gpui",
+    "examples/hello-gpui",
     "vendor/difftastic-core",
     "vendor/fsp-types",
     "vendor/ghostty-sys",
