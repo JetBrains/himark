@@ -138,7 +138,7 @@ pub(crate) struct Server {
 #[derive(Clone)]
 pub(crate) struct SyncedDocument {
     pub(crate) version: i64,
-    pub(crate) uid: Option<Uid>,
+    pub(crate) uid: Uid,
 }
 
 struct Outbox {
@@ -248,8 +248,8 @@ impl Server {
         let synced = self.synced.lock().expect("lsp synced");
         let document = synced.get(uri)?;
         match version {
-            Some(version) if version == document.version => document.uid,
-            None => document.uid,
+            Some(version) if version == document.version => Some(document.uid),
+            None => Some(document.uid),
             _ => None,
         }
     }
@@ -268,13 +268,7 @@ impl Server {
                 "text": text,
             }}),
         );
-        synced.insert(
-            uri.to_owned(),
-            SyncedDocument {
-                version: 1,
-                uid: Some(uid),
-            },
-        );
+        synced.insert(uri.to_owned(), SyncedDocument { version: 1, uid });
     }
 
     pub(crate) fn document_changed(&self, uri: &str, operation: &TextOperation, uid: Uid) {
@@ -283,7 +277,7 @@ impl Server {
             return;
         };
         document.version += 1;
-        document.uid = Some(uid);
+        document.uid = uid;
         let changes: Vec<Value> = operation
             .replacements
             .iter()
@@ -335,32 +329,6 @@ impl Server {
         self.notify(
             "textDocument/didClose",
             json!({ "textDocument": { "uri": uri } }),
-        );
-    }
-
-    pub(crate) fn ensure_open_from_disk(&self, uri: &str, path: &Path) {
-        let mut synced = self.synced.lock().expect("lsp synced");
-        if synced.contains_key(uri) {
-            return;
-        }
-        let Ok(text) = std::fs::read_to_string(path) else {
-            return;
-        };
-        self.notify(
-            "textDocument/didOpen",
-            json!({ "textDocument": {
-                "uri": uri,
-                "languageId": language_of(uri),
-                "version": 0,
-                "text": text,
-            }}),
-        );
-        synced.insert(
-            uri.to_owned(),
-            SyncedDocument {
-                version: 0,
-                uid: None,
-            },
         );
     }
 

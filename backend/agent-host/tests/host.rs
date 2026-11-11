@@ -3501,6 +3501,61 @@ async fn channel_documents_feed_the_language_server_and_diagnostics_flow() {
     assert_eq!(held["version"], uid(0xed17).as_str(), "{snapshot}");
 }
 
+/// A pull is a pull: it forwards to the language server and opens
+/// NOTHING — document sync is the feed lane's alone. The old
+/// from-disk shadow open here raced the lane, kept whatever the disk
+/// held at pull time as the server's baseline, and every later
+/// didChange shifted the server's copy off the mirror (the
+/// 2026-10-23 and 2026-11-11 shifted-highlight screenshots).
+#[tokio::test]
+async fn an_lsp_pull_never_opens_the_document_for_the_server() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
+
+    let diagnostics = client
+        .request("lsp/diagnostics", json!({"channel": session}))
+        .await;
+    let diagnostics_channel = diagnostics["channel"]
+        .as_str()
+        .expect("a channel")
+        .to_owned();
+    client
+        .request("subscribe", json!({"channel": diagnostics_channel}))
+        .await;
+
+    // A pull for a document nobody opened: forwarded verbatim.
+    client
+        .request(
+            "lsp/textDocument/hover",
+            json!({"channel": session, "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": 0, "character": 3},
+            }}),
+        )
+        .await;
+
+    // The agent rewrites the file; only then does a client open it.
+    let path = uri.strip_prefix("file://").expect("a file uri").to_owned();
+    std::fs::write(&path, "fn answer() -> u32 { 43 }\n").expect("rewritten");
+    let opened = client
+        .request("openDocument", json!({"channel": session, "uri": uri}))
+        .await;
+    let v0 = opened["version"].as_str().expect("uid").to_owned();
+
+    // The FIRST text the server hears for this uri is the mirror's,
+    // under the mirror's uid. A shadow open at pull time would land
+    // an earlier publish carrying the stale disk text and no uid.
+    let action = client.next_action(&diagnostics_channel).await;
+    assert_eq!(action["version"], v0.as_str(), "{action}");
+    assert!(
+        action["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("43"),
+        "the didOpen carried the mirror text: {action}"
+    );
+}
+
 #[tokio::test]
 async fn lsp_cancellation_reaches_the_language_server() {
     let dir = tempfile::tempdir().expect("tempdir");

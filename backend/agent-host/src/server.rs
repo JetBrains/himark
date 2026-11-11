@@ -4117,14 +4117,6 @@ impl Host {
             );
         };
 
-        if let Some(uri) = forwarded
-            .pointer("/textDocument/uri")
-            .and_then(Value::as_str)
-        {
-            if let Some(path) = crate::uris::file_path(uri) {
-                server.ensure_open_from_disk(uri, &path);
-            }
-        }
         if !server.ready().await {
             return rpc::failure(
                 id,
@@ -4219,15 +4211,6 @@ impl Host {
                 format!("the language server for {} is dead", root.display()),
             );
         };
-        if let Some(uri) = forwarded
-            .pointer("/textDocument/uri")
-            .and_then(Value::as_str)
-        {
-            if let Some(path) = crate::uris::file_path(uri) {
-                server.ensure_open_from_disk(uri, &path);
-            }
-        }
-
         let channel = self.mint_locations(connection);
         let host = Arc::clone(self);
         let fan_out = channel.clone();
