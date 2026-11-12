@@ -34,6 +34,7 @@ fn annotations_channel(session: &str) -> Uri {
     format!("{session}/annotations")
 }
 
+#[derive(Clone)]
 pub enum Discovery {
     Explicit(String),
 
@@ -196,12 +197,17 @@ pub struct WireHost {
     /// must WAIT for that one connection — not dial its own: two dials
     /// are two connections, the second carries no feeds, and whichever
     /// stores last orphans the other's subscriptions.
-    reconnecting: Mutex<()>,
+    reconnecting: Arc<tokio::sync::Mutex<()>>,
 
     /// Rung when a connection becomes ACTIVE. Polls that found no
     /// connection wait on this (or a backoff) before re-arming.
     connected: Arc<tokio::sync::Notify>,
-    next_turn: AtomicU64,
+    next_turn: Arc<AtomicU64>,
+
+    /// A background dial is already on its way (`kick_dial`) — the
+    /// re-arming polls of a dead wire ask every few seconds, and one
+    /// task waiting on the dial is enough.
+    dialing: Arc<std::sync::atomic::AtomicBool>,
     discovery: Discovery,
 
     runtime: tokio::runtime::Handle,
@@ -240,6 +246,12 @@ struct Active {
     /// The host's suggested browse root, as `initialize` answered it
     /// — read into `RootInfo` by `connect`.
     default_directory: Option<String>,
+
+    /// The host's identity (`_meta.hostName`, `_meta.os`), as
+    /// `initialize` answered it — read into `RootInfo` by `connect`.
+    machine: Option<String>,
+    os: Option<String>,
+    identity: Option<String>,
 
     root: Mutex<Option<Arc<RootFeed>>>,
 
@@ -300,9 +312,10 @@ impl WireHost {
         tracing::info!(target: "ahp_wire", client = %tag, ?discovery, "client opened");
         Self {
             state: Arc::new(Mutex::new(Arc::new(WireState::default()))),
-            reconnecting: Mutex::new(()),
+            reconnecting: Arc::new(tokio::sync::Mutex::new(())),
             connected: Arc::new(tokio::sync::Notify::new()),
-            next_turn: AtomicU64::new(1),
+            next_turn: Arc::new(AtomicU64::new(1)),
+            dialing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             discovery,
             runtime,
             tag,
@@ -358,22 +371,65 @@ impl WireHost {
     {
         let slot = OneShot::new();
         let filler = slot.clone();
-        let active = match self.ensure_active() {
-            Ok(active) => active,
-            Err(error) => {
-                filler.fill(Err(error));
-                return RunFuture { slot };
-            }
-        };
         let tag = self.tag.clone();
+        // The connection is ACQUIRED ON THE RUNTIME, never on the
+        // caller's thread: the caller is the app's one effect worker,
+        // and a dial to a dead host (15 seconds of timeout) parked
+        // there held every other host's effects behind it — a
+        // directory listing on a live host waited out a dead one's
+        // connect (2026-11-12).
+        let live = self.try_active();
+        let me = self.twin();
         self.runtime.spawn(async move {
-            let outcome = work(active).await;
+            let active = match live {
+                Some(active) => Ok(active),
+                None => me.acquire().await,
+            };
+            let outcome = match active {
+                Ok(active) => work(active).await,
+                Err(error) => Err(error),
+            };
             if let Err(error) = &outcome {
                 tracing::warn!(target: "ahp_wire", client = %tag, %error, "client call failed");
             }
             filler.fill(outcome);
         });
         RunFuture { slot }
+    }
+
+    /// A second handle on the SAME wire: every field is shared state
+    /// (or immutable wiring), so a task on the runtime can dial and
+    /// reconnect for the handle the callers hold.
+    fn twin(&self) -> WireHost {
+        WireHost {
+            state: Arc::clone(&self.state),
+            reconnecting: Arc::clone(&self.reconnecting),
+            connected: Arc::clone(&self.connected),
+            next_turn: Arc::clone(&self.next_turn),
+            dialing: Arc::clone(&self.dialing),
+            discovery: self.discovery.clone(),
+            runtime: self.runtime.clone(),
+            tag: self.tag.clone(),
+            client_id: self.client_id.clone(),
+            last_seen: Arc::clone(&self.last_seen),
+            connector: Arc::clone(&self.connector),
+        }
+    }
+
+    /// Start a reconnect in the background unless one is already on
+    /// its way — what a poll with no connection does before it parks
+    /// on the unconnected road: the dial happens on the runtime, the
+    /// poll's caller never waits for it.
+    fn kick_dial(&self) {
+        if self.dialing.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return;
+        }
+        let me = self.twin();
+        self.runtime.spawn(async move {
+            let _ = me.acquire().await;
+            me.dialing
+                .store(false, std::sync::atomic::Ordering::Release);
+        });
     }
 
     fn run_ask<T, F>(&self, work: impl FnOnce(Arc<Active>) -> F + Send + 'static) -> RunFuture<T>
@@ -497,26 +553,18 @@ impl WireHost {
             .filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
     }
 
-    fn ensure_active(&self) -> Result<Arc<Active>, String> {
+    /// The live connection, dialing one if there is none — ASYNC, a
+    /// task of the runtime's: no thread ever waits on a dial. ONE
+    /// reconnect at a time (`reconnecting`); whoever waited behind it
+    /// re-reads `active` — the reconnect they waited for is theirs,
+    /// its failure too.
+    async fn acquire(&self) -> Result<Arc<Active>, String> {
         let live = |active: &Arc<Active>| !active.dead.load(std::sync::atomic::Ordering::Relaxed);
         if let Some(active) = self.try_active() {
             return Ok(active);
         }
-        // A RUNTIME WORKER stops here: the dial below — and its
-        // timeout — are driven by this very runtime (one worker).
-        // Parking that worker on `reconnecting` freezes the reactor,
-        // the in-flight dial never resolves and never times out, and
-        // every other caller wedges behind the lock — the sampled
-        // 2026-10-05 deadlock (main thread included). The pollers all
-        // have an unconnected road; errors here ride the normal lanes.
-        if tokio::runtime::Handle::try_current().is_ok() {
-            return Err("connection down — reconnect pending".to_owned());
-        }
-        // Dead or absent: ONE reconnect at a time. Whoever waited here
-        // re-reads `active` — the reconnect they waited for is theirs,
-        // its failure too.
         let seen = self.snapshot().attempts.finished;
-        let _reconnecting = self.reconnecting.lock().expect("wire reconnecting");
+        let _reconnecting = self.reconnecting.lock().await;
         let world = self.snapshot();
         if let Some(active) = world.active.as_ref().filter(|active| live(active)) {
             return Ok(Arc::clone(active));
@@ -533,7 +581,7 @@ impl WireHost {
         if previous.is_some() {
             tracing::warn!(target: "ahp_wire", client = %self.tag, "connection DEAD — reconnecting");
         }
-        let outcome = self.connect_fresh(&previous);
+        let outcome = self.connect_fresh(&previous).await;
         self.swap(|state| {
             state.attempts.finished += 1;
             state.attempts.failed = outcome.as_ref().err().cloned();
@@ -640,8 +688,14 @@ impl WireHost {
         }
     }
 
-    fn connect_fresh(&self, previous: &Option<Arc<Active>>) -> Result<Arc<Active>, String> {
-        let url = match self.discover_url() {
+    async fn connect_fresh(&self, previous: &Option<Arc<Active>>) -> Result<Arc<Active>, String> {
+        // Discovery may read a lockfile or start a daemon: off the
+        // reactor.
+        let finder = self.twin();
+        let found = tokio::task::spawn_blocking(move || finder.discover_url())
+            .await
+            .unwrap_or_else(|join| Err(format!("discover task: {join}")));
+        let url = match found {
             Ok(url) => url,
             Err(error) => {
                 tracing::error!(target: "ahp_wire", client = %self.tag, %error, "discover failed");
@@ -649,11 +703,6 @@ impl WireHost {
             }
         };
         tracing::info!(target: "ahp_wire", client = %self.tag, %url, "connecting");
-
-        if tokio::runtime::Handle::try_current().is_ok() {
-            tracing::error!(target: "ahp_wire", client = %self.tag, "connect refused: requested from the runtime itself");
-            return Err("wire connect requested from the runtime itself".to_owned());
-        }
 
         let tag = self.tag.clone();
         let dead = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -669,7 +718,7 @@ impl WireHost {
         let dial_url = url.clone();
         let dial_tag = tag.clone();
         let last_seen = Arc::clone(&self.last_seen);
-        let client = self.runtime.block_on(async {
+        let client = {
             tokio::time::timeout(connect_deadline, async {
                 let transport = connector
                     .dial(dial_url, dial_tag.clone(), transport_dead)
@@ -717,11 +766,20 @@ impl WireHost {
                     )
                     .await
                     .map_err(|error| format!("configChanged: {error}"))?;
-                Ok::<_, String>((client, initialized.default_directory))
+                let meta_word = |key: &str| {
+                    initialized
+                        .meta
+                        .as_ref()
+                        .and_then(|meta| meta.get(key))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned)
+                };
+                let identity = (meta_word("hostName"), meta_word("os"), meta_word("hostId"));
+                Ok::<_, String>((client, initialized.default_directory, identity))
             })
             .await
-        });
-        let (client, default_directory) = match client {
+        };
+        let (client, default_directory, (machine, os, identity)) = match client {
             Ok(outcome) => outcome?,
             Err(_) => {
                 tracing::error!(
@@ -756,13 +814,14 @@ impl WireHost {
             died: tokio::sync::Notify::new(),
             feeds: Mutex::new(feeds),
             default_directory,
+            machine,
+            os,
+            identity,
             root: Mutex::new(root),
             agents: Mutex::new(agents),
         });
         if previous.is_some() {
-            match self.runtime.block_on(async {
-                tokio::time::timeout(connect_deadline, self.resume(&active)).await
-            }) {
+            match tokio::time::timeout(connect_deadline, self.resume(&active)).await {
                 Ok(outcome) => outcome?,
                 Err(_) => {
                     tracing::error!(
@@ -1229,6 +1288,9 @@ impl SessionClient for WireHost {
                     return Ok(RootInfo {
                         agents: active.agents.lock().expect("wire agents").clone(),
                         default_directory: active.default_directory.clone(),
+                        machine: active.machine.clone(),
+                        os: active.os.clone(),
+                        identity: active.identity.clone(),
                     });
                 }
             }
@@ -1248,6 +1310,9 @@ impl SessionClient for WireHost {
             Ok(RootInfo {
                 agents,
                 default_directory: active.default_directory.clone(),
+                machine: active.machine.clone(),
+                os: active.os.clone(),
+                identity: active.identity.clone(),
             })
         }))
     }
@@ -1275,11 +1340,14 @@ impl SessionClient for WireHost {
     }
 
     fn poll_root(&self) -> ClientFuture<Vec<ServerEvent>> {
-        let found = self.ensure_active().ok().and_then(|active| {
+        let found = self.try_active().and_then(|active| {
             let feed = active.root.lock().expect("wire root").clone()?;
             Some((active, feed))
         });
         let Some((active, feed)) = found else {
+            if self.try_active().is_none() {
+                self.kick_dial();
+            }
             tracing::info!(target: "ahp_wire", client = %self.tag, "root poll waiting: not connected");
             return self.poll_unconnected();
         };
@@ -1528,17 +1596,14 @@ impl ChatClient for WireHost {
         cursor: Option<String>,
     ) -> ClientFuture<Result<TurnsPage, String>> {
         let chat = chat.into_string();
-        let feed = self.ensure_active().and_then(|active| {
-            active
+        Box::pin(self.run_ask(move |active| async move {
+            let feed = active
                 .feeds
                 .lock()
                 .expect("wire feeds")
                 .get(&chat)
                 .cloned()
-                .ok_or_else(|| format!("not subscribed: {chat}"))
-        });
-        Box::pin(self.run_ask(move |active| async move {
-            let feed = feed?;
+                .ok_or_else(|| format!("not subscribed: {chat}"))?;
             let capture = feed.arm_turns_capture();
             let result: Result<serde_json::Value, _> = active
                 .client
@@ -2595,7 +2660,10 @@ impl WireHost {
     /// relaunch does), and a task parked on the feed would go on to
     /// take the next batch for nobody.
     fn poll_channel(&self, channel: Uri) -> ClientFuture<Vec<StateAction>> {
-        let Ok(active) = self.ensure_active() else {
+        let Some(active) = self.try_active() else {
+            // The dial is the runtime's; this poll parks on the
+            // unconnected road and re-arms when it lands.
+            self.kick_dial();
             return self.poll_unconnected();
         };
         let tag = self.tag.clone();
@@ -2929,26 +2997,62 @@ mod tests {
         )
     }
 
-    /// A RUNTIME WORKER never parks on the reconnect lock and never
-    /// dials: the dial and its own timeout are driven by this runtime
-    /// (one worker in production), so parking it freezes the reactor
-    /// and the in-flight dial never resolves NOR times out — the
-    /// 2026-10-05 deadlock: main thread (terminal resize mid-paint),
-    /// executor (mid-dial, holding the lock) and the sole worker all
-    /// wedged forever.
+    /// A dial that never answers — a host that is down behind a
+    /// name that still resolves (a tailnet peer gone dark).
+    struct HangingDial;
+    impl crate::transport::Connector for HangingDial {
+        fn dial(
+            &self,
+            _url: String,
+            _tag: String,
+            _dead: Arc<std::sync::atomic::AtomicBool>,
+        ) -> crate::transport::Dialing {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    /// NO THREAD WAITS ON A DIAL. The caller of an ask is the app's
+    /// one effect worker: a dial parked there (15 seconds of timeout
+    /// against a dead host) held every other host's effects behind
+    /// it — a directory listing on a live host waited out a dead
+    /// tailnet peer's connect (2026-11-12). The dial is a task of the
+    /// runtime's; asks and polls against a dead wire return at once
+    /// and resolve when the dial does. One worker, as in production:
+    /// nothing may park it either (the 2026-10-05 deadlock).
     #[test]
-    fn a_runtime_worker_never_dials_or_parks_for_a_reconnect() {
+    fn an_ask_on_a_dead_wire_never_blocks_its_caller() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
             .build()
             .expect("runtime");
-        let host = down_host(&runtime);
-        let outcome = runtime.block_on(async { host.ensure_active() });
-        assert!(
-            outcome.is_err(),
-            "on the runtime, a dead connection is an ERROR, not a wait"
+        let host = WireHost::at(
+            runtime.handle().clone(),
+            Arc::new(HangingDial),
+            "ws://nowhere:1/",
         );
+        let started = std::time::Instant::now();
+        let connect = crate::client::SessionClient::connect(&host);
+        let root = crate::client::SessionClient::poll_root(&host);
+        let channel = host.poll_channel("ahp-session:/x".to_owned());
+        let listing = crate::client::SessionClient::list_sessions(&host, None);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "four asks against a hanging dial returned after {:?} — a caller waited on the dial",
+            started.elapsed()
+        );
+        // The runtime's one worker is free while the dial hangs.
+        let free = runtime.block_on(async {
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                tokio::spawn(async { 7 }).await
+            })
+            .await
+        });
+        assert!(
+            matches!(free, Ok(Ok(7))),
+            "the reactor is not parked on the dial"
+        );
+        drop((connect, root, channel, listing));
     }
 
     /// The gesture asks — a keystroke into a terminal, a resize
