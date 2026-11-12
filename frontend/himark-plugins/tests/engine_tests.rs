@@ -7446,6 +7446,34 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     );
     let created = current(&engine);
 
+    // A session nobody prompted is a PLACEHOLDER the drawer hides;
+    // an EXISTING session has had its first word — the host retitles
+    // it on that prompt, and the catalog hears.
+    assert!(workbench_shell::test_driver::type_text(
+        &mut engine,
+        "an existing session"
+    ));
+    assert!(workbench_shell::test_driver::key(
+        &mut engine,
+        imba::event::Key::Enter,
+        imba::event::Modifiers {
+            command: true,
+            ..Default::default()
+        }
+    ));
+    let titled = |engine: &HimarkEngine| {
+        ahp_session::session::state::Hosts::host(engine.store(), created.host)
+            .and_then(|host| host.summary(&created.session).cloned())
+            .is_some_and(|summary| !ahp_session::session::summary::is_placeholder(&summary))
+    };
+    let mut waited = 0;
+    while !titled(&engine) && waited < 200 {
+        pump(&mut engine, &mut surface);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        waited += 1;
+    }
+    assert!(titled(&engine), "the first prompt retitled the session");
+
     struct SwitchScratch;
     impl himark::commands::HimarkCommand for SwitchScratch {
         fn id(&self) -> &'static str {
