@@ -65,9 +65,41 @@ fn folder_location(
     .filter(|location| !location.path().is_empty())
 }
 
+/// The folders a host's sessions work in, most recently used first
+/// and each once — what a NEW session on that host is likely to
+/// want. Raw folder uris, as the summaries carry them; the live
+/// mirror's folders count too (a channel may have moved ahead of its
+/// summary).
+pub fn host_recent_folders(store: &Store, host: ahp_wire::client::HostId) -> Vec<String> {
+    let Some(record) = Hosts::host_ref(store, host) else {
+        return Vec::new();
+    };
+    let mut sessions: Vec<&ahp_types::state::SessionSummary> = record.sessions.iter().collect();
+    sessions.sort_by_key(|summary| std::cmp::Reverse(super::summary::modified_stamp(summary)));
+    let mut seen = std::collections::HashSet::new();
+    let mut folders = Vec::new();
+    let mut take = |folder: &str| {
+        if !folder.is_empty() && seen.insert(folder.to_owned()) {
+            folders.push(folder.to_owned());
+        }
+    };
+    for summary in sessions {
+        let session = ahp_wire::client::SessionUri::new(summary.resource.clone());
+        if let Some(channel) = record.states.get(&session) {
+            for folder in channel.working_directories.iter() {
+                take(folder);
+            }
+        }
+        for folder in summary.working_directories.iter().flatten() {
+            take(folder);
+        }
+    }
+    folders
+}
+
 /// A folder's short name — the last path segment, which is what a row
 /// has room for. Trailing slashes are not a segment.
-pub(crate) fn folder_label(folder: &str) -> String {
+pub fn folder_label(folder: &str) -> String {
     let trimmed = folder.trim_end_matches('/');
     let name = trimmed.rsplit('/').next().filter(|name| !name.is_empty());
     name.unwrap_or(trimmed).to_owned()

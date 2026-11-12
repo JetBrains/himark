@@ -43,7 +43,7 @@ fn the_sessions_subscription_runs_without_any_view() {
         ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>> {
             Box::pin(std::future::ready(Ok(ahp_wire::client::RootInfo {
                 agents: Vec::new(),
-                default_directory: None,
+                ..Default::default()
             })))
         }
 
@@ -144,8 +144,13 @@ fn the_sessions_subscription_runs_without_any_view() {
     );
 }
 
+/// "Add host" lives in the header, not in the rows: it opens a
+/// two-way menu — the tailnet, or a URL. The URL way stands the
+/// field; Enter dispatches the add-host verb; Escape at either step
+/// leaves nothing behind.
 #[test]
-fn the_add_host_row_takes_a_url_and_dispatches() {
+fn the_add_host_menu_takes_a_url_and_dispatches() {
+    use ahp_session::session::drawer::AgentsCommand;
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
@@ -168,45 +173,62 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
         &ui,
         workbench_shell::higent::drawer::drawer_asks(window),
     );
-    {
-        let mut boot: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
-            imba::effect::Batch::new();
-        imba::View::perform(
-            &mut panel,
-            &mut store,
-            &ui,
-            ahp_session::session::drawer::AgentsCommand::Boot,
-            &mut boot.effects(),
-        );
-    }
-    let rows = panel.rows();
-    let index = rows
-        .iter()
-        .position(|(label, _)| label == "+ Add Host…")
-        .expect("the add-host row stands");
-    let mut batch = imba::effect::Batch::new();
-    panel.activate(&mut store, &ui, index, &mut batch.effects());
-    assert_eq!(
-        panel.add_host_text().as_deref(),
-        Some(""),
-        "picking the row stands the URL input"
+    use imba::View;
+    let mut batch: imba::effect::Batch<AgentsCommand> = imba::effect::Batch::new();
+    panel.perform(&mut store, &ui, AgentsCommand::Boot, &mut batch.effects());
+    assert!(
+        !panel
+            .rows()
+            .iter()
+            .any(|(label, _)| label.contains("Add Host")),
+        "no add-host row stands among the lines: {:?}",
+        panel.rows()
     );
 
-    use imba::View;
     panel.perform(
         &mut store,
         &ui,
-        ahp_session::session::drawer::AgentsCommand::AddHostInput(
-            ::editor::editor_view::EditorCommand::InsertText {
-                text: "ws://example:7/?tkn=t".to_owned(),
-            },
-        ),
+        AgentsCommand::AddHost,
+        &mut batch.effects(),
+    );
+    assert_eq!(
+        panel.add_host_menu(),
+        Some(vec![
+            "Connect to tailnet".to_owned(),
+            "Enter URL…".to_owned()
+        ]),
+        "the header word opens the two-way menu"
+    );
+    assert!(
+        panel.add_host_text().is_none(),
+        "the menu is not yet the field"
+    );
+
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::EnterHostUrl,
+        &mut batch.effects(),
+    );
+    assert!(panel.add_host_menu().is_none(), "the pick closes the menu");
+    assert_eq!(
+        panel.add_host_text().as_deref(),
+        Some(""),
+        "the URL way stands the input"
+    );
+
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::AddHostInput(::editor::editor_view::EditorCommand::InsertText {
+            text: "ws://example:7/?tkn=t".to_owned(),
+        }),
         &mut batch.effects(),
     );
     panel.perform(
         &mut store,
         &ui,
-        ahp_session::session::drawer::AgentsCommand::SubmitAddHost,
+        AgentsCommand::SubmitAddHost,
         &mut batch.effects(),
     );
     assert!(panel.add_host_text().is_none(), "Enter clears the input");
@@ -223,15 +245,80 @@ fn the_add_host_row_takes_a_url_and_dispatches() {
         "the capability received the URL"
     );
 
-    panel.activate(&mut store, &ui, index, &mut batch.effects());
     panel.perform(
         &mut store,
         &ui,
-        ahp_session::session::drawer::AgentsCommand::CancelAddHost,
+        AgentsCommand::AddHost,
         &mut batch.effects(),
     );
-    assert!(panel.add_host_text().is_none());
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::CancelAddHost,
+        &mut batch.effects(),
+    );
+    assert!(panel.add_host_menu().is_none() && panel.add_host_text().is_none());
     assert!(hikit::modal::ModalView::take_request(&mut panel).is_none());
+
+    // The tailnet way with no embedder flow installed: the ask is
+    // noted (the status line says connecting), nothing is dispatched.
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::AddHost,
+        &mut batch.effects(),
+    );
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::ConnectTailnet,
+        &mut batch.effects(),
+    );
+    assert!(panel.add_host_menu().is_none());
+    assert!(hikit::modal::ModalView::take_request(&mut panel).is_none());
+}
+
+/// The tailnet way fires the embedder's connect flow when one is
+/// installed — the drawer never knows tailscale, only the flow.
+#[test]
+fn the_add_host_menu_s_tailnet_way_fires_the_connect_flow() {
+    use ahp_session::session::drawer::AgentsCommand;
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
+    let _ = app.add_window();
+    let window = app.sole_window();
+    let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    {
+        let asked = asked.clone();
+        app.store_mut().put(ahp_session::tailnet::TailnetFlows {
+            connect: std::sync::Arc::new(move || {
+                asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }),
+            resume: std::sync::Arc::new(|| {}),
+        });
+    }
+    let mut store = app.store_mut().clone();
+    let ui = ::editor::test_document::test_ui();
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        workbench_shell::higent::drawer::drawer_asks(window),
+    );
+    use imba::View;
+    let mut batch: imba::effect::Batch<AgentsCommand> = imba::effect::Batch::new();
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::AddHost,
+        &mut batch.effects(),
+    );
+    panel.perform(
+        &mut store,
+        &ui,
+        AgentsCommand::ConnectTailnet,
+        &mut batch.effects(),
+    );
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(panel.add_host_menu().is_none());
 }
 
 /// One summary as the catalog carries it — idle and read unless the
@@ -267,13 +354,13 @@ fn stamp_ago(ago: std::time::Duration) -> String {
     humantime::format_rfc3339_seconds(std::time::SystemTime::now() - ago).to_string()
 }
 
-/// The sessions are ONE recency list across hosts and folders: the
-/// repo column carries the first folder's name (or the host's), the
-/// age column leads with the turn's state when it wants a look, and
-/// the hosts that are not connected stand in the foot — picking one
-/// nudges a connect.
+/// Hosts are HEADINGS, each with its own "New session"; under a host
+/// stand the sessions live right now (a running or blocked turn) or
+/// open in this client, each with its folders; the rest follow as
+/// older rows. A host that is not connected wears its state word and
+/// a "Reconnect" — picking its heading nudges a connect.
 #[test]
-fn the_drawer_lists_sessions_by_recency_with_their_repo() {
+fn the_drawer_groups_sessions_under_their_hosts() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
@@ -286,15 +373,19 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
         host,
         ahp_session::session::state::HostStatus::Connected,
     );
+    ahp_session::session::agents::Agents::set_identity(
+        &mut store,
+        host,
+        Some("studio".to_owned()),
+        Some("macOS".to_owned()),
+        None,
+    );
     ahp_session::session::agents::Agents::seed(&mut store, offline, "Far Host");
     ahp_session::session::agents::Agents::set_status(
         &mut store,
         offline,
         ahp_session::session::state::HostStatus::Failed("unreachable".to_owned()),
     );
-    let name = ahp_session::session::agents::Agents::record(&store, host)
-        .expect("the host record")
-        .name;
     const HIMARK: &str = "file:///dev/himark";
     const DOCS: &str = "file:///dev/docs";
     let hours = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 3600));
@@ -303,15 +394,17 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
         host,
         vec![
             summary_at("older himark", &[HIMARK], &hours(24 * 30), 33),
-            // Changed since last viewed: no word, a brighter title.
+            // Changed since last viewed: no word, the attention mark.
             summary_at("stray", &[], &hours(24 * 3), 1),
             // The last turn failed.
             summary_at("docs session", &[DOCS], &hours(24 * 2), 34),
-            // A turn is streaming.
+            // A turn is streaming — live.
             summary_at("fresh himark", &[HIMARK], &hours(2), 40),
-            // Blocked on the user's answer; the first folder names it.
+            // Blocked on the user's answer — live, both folders named.
             summary_at("pair", &[HIMARK, DOCS], &hours(1), 56),
             summary_at("pair reversed", &[DOCS, HIMARK], &hours(24 * 10), 33),
+            // A newborn placeholder nobody prompted: not a session yet.
+            summary_at("New Session", &[HIMARK], &hours(0), 33),
         ],
         true,
     );
@@ -332,33 +425,42 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
         &mut batch.effects(),
     );
 
-    let line =
-        |repo: &str, word: &str, age: &str| (repo.to_owned(), word.to_owned(), age.to_owned());
+    let line = |detail: &str, word: &str, trail: &str| {
+        (detail.to_owned(), word.to_owned(), trail.to_owned())
+    };
     assert_eq!(
         panel.lines(),
         vec![
-            line("", "TODAY", ""),
-            line("himark", "pair", "needs you · 1h"),
+            // The heading wears the machine's name and OS, not the label.
+            line("macOS", "studio", "New session"),
+            line("himark · docs", "pair", "needs you · 1h"),
             line("himark", "fresh himark", "working · 2h"),
-            line("", "THIS WEEK", ""),
+            // The older rows group by their folders, newest group first.
+            line("", "docs", ""),
             line("docs", "docs session", "failed · 2d"),
-            line(&name, "stray", "3d"),
-            line("", "EARLIER", ""),
-            line("docs", "pair reversed", "10d"),
+            line("", "no folder", ""),
+            line("no folder", "stray", "3d"),
+            line("", "docs · himark", ""),
+            line("docs · himark", "pair reversed", "10d"),
+            line("", "himark", ""),
             line("himark", "older himark", "30d"),
-            line(&name, "+ New Session…", ""),
-            line("", "+ Add Host…", ""),
-            line("", "Far Host", ""),
+            line("offline", "Far Host", "Reconnect"),
             line("", "unreachable", ""),
         ],
     );
     assert_eq!(
         panel.rows().get(11),
         Some(&("Far Host — offline".to_owned(), 0)),
-        "the foot names the host and its state"
+        "the heading names the host and its state"
     );
+    assert_eq!(
+        panel.rows().get(4).map(|(_, depth)| *depth),
+        Some(2),
+        "a grouped row stands one deeper than its heading"
+    );
+    assert_eq!(panel.new_session_row(host), Some(0));
 
-    // Picking the offline host asks for a connect.
+    // Picking the offline host's heading asks for a connect.
     panel.activate(&mut store, &ui, 11, &mut batch.effects());
     assert!(
         matches!(
@@ -367,6 +469,88 @@ fn the_drawer_lists_sessions_by_recency_with_their_repo() {
         ),
         "the pick nudges the host"
     );
+    // Picking the connected host's heading asks for a new session.
+    panel.activate(&mut store, &ui, 0, &mut batch.effects());
+    assert!(matches!(
+        hikit::modal::ModalView::take_request(&mut panel),
+        Some(ModalRequest::Perform(_))
+    ));
+}
+
+/// Past the preview, a host's older sessions fold under "Older · N":
+/// the word toggles between show all and show less, and the fold
+/// line keeps the cursor across the toggle.
+#[test]
+fn the_older_fold_shows_all_and_then_less() {
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
+    let _ = app.add_window();
+    let window = app.sole_window();
+    let mut store = app.store_mut().clone();
+    let host = ahp_wire::SessionId::local_default(&store).host;
+    ahp_session::session::agents::Agents::seed(&mut store, host, "Test Host");
+    ahp_session::session::agents::Agents::set_status(
+        &mut store,
+        host,
+        ahp_session::session::state::HostStatus::Connected,
+    );
+    let days = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 86_400 + 60));
+    let sessions: Vec<_> = (1..=8)
+        .map(|day| summary_at(&format!("day {day}"), &["file:///dev/x"], &days(day), 33))
+        .collect();
+    ahp_session::session::agents::Agents::add_sessions(&mut store, host, sessions, true);
+
+    let ui = ::editor::test_document::test_ui();
+    let mut panel = ahp_session::session::drawer::AgentsPanel::open(
+        &store,
+        &ui,
+        workbench_shell::higent::drawer::drawer_asks(window),
+    );
+    let mut batch: imba::effect::Batch<ahp_session::session::drawer::AgentsCommand> =
+        imba::effect::Batch::new();
+    use imba::View;
+    panel.perform(
+        &mut store,
+        &ui,
+        ahp_session::session::drawer::AgentsCommand::Boot,
+        &mut batch.effects(),
+    );
+    let words = |panel: &ahp_session::session::drawer::AgentsPanel| -> Vec<(String, String)> {
+        panel
+            .lines()
+            .into_iter()
+            .map(|(_, word, trail)| (word, trail))
+            .collect()
+    };
+    let fold = panel.fold_row(host).expect("the fold stands");
+    assert_eq!(fold, 1, "the fold follows the heading");
+    let shown = words(&panel);
+    assert_eq!(shown[1], ("Older".to_owned(), "show all".to_owned()));
+    assert_eq!(panel.lines()[1].0, "8", "the fold counts the older rows");
+    // One folders group heads the preview; the preview counts rows,
+    // not headings.
+    assert_eq!(shown[2].0, "x", "the group is headed by its folders");
+    assert_eq!(
+        shown.len(),
+        1 + 1 + 1 + 5,
+        "five preview under the fold: {shown:?}"
+    );
+    assert_eq!(shown[3].0, "day 1");
+    assert_eq!(shown[7].0, "day 5");
+
+    panel.activate(&mut store, &ui, fold, &mut batch.effects());
+    let shown = words(&panel);
+    assert_eq!(shown[1], ("Older".to_owned(), "show less".to_owned()));
+    assert_eq!(shown.len(), 1 + 1 + 1 + 8, "show all shows all: {shown:?}");
+    assert_eq!(
+        panel.selected_row(),
+        Some(fold),
+        "the cursor stays on the fold"
+    );
+
+    panel.activate(&mut store, &ui, fold, &mut batch.effects());
+    let shown = words(&panel);
+    assert_eq!(shown[1], ("Older".to_owned(), "show all".to_owned()));
+    assert_eq!(shown.len(), 1 + 1 + 1 + 5);
 }
 
 #[test]
@@ -685,4 +869,268 @@ fn dump_sessions_drawer_screenshot() {
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
         .expect("png");
     std::fs::write(format!("{dir}/sessions-drawer.png"), data.as_bytes()).expect("write");
+}
+
+/// TEST SUPPORT: switch the window to a session directly — what
+/// the drawer's pick does once the session is live here.
+struct SwitchTo(ahp_wire::SessionId);
+impl himark::commands::HimarkCommand for SwitchTo {
+    fn id(&self) -> &'static str {
+        "test.switch-to"
+    }
+    fn name(&self) -> String {
+        "Switch To".to_owned()
+    }
+    fn perform(
+        &self,
+        store: &mut Store,
+        _ui: &UiCtx,
+        bound: &imba::focus::Bindings,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
+        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
+            return;
+        };
+        workbench_shell::app::switch_session(store, window, self.0.clone(), fx);
+    }
+}
+
+/// Picking a session this client already ENTERED switches the window
+/// in the pick's own batch — its workbench is stashed in the window,
+/// so there is nothing to wait for. A session not yet entered goes
+/// out to the host first and the window stays put until it answers.
+#[test]
+fn picking_an_entered_session_switches_in_the_same_batch() {
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
+    let _ = app.add_window();
+    let window = app.sole_window();
+    let host = ahp_wire::SessionId::local_default(app.store()).host;
+    let key = |name: &str| ahp_wire::SessionId {
+        host,
+        session: ahp_wire::client::SessionUri::new(format!("test-session:/{name}")),
+    };
+    {
+        use ahp_session::session::agents::Agents;
+        let mut store = app.store_mut();
+        Agents::seed(&mut store, host, "Test Host");
+        Agents::set_status(
+            &mut store,
+            host,
+            ahp_session::session::state::HostStatus::Connected,
+        );
+        Agents::add_sessions(
+            &mut store,
+            host,
+            vec![
+                summary_at("alpha", &[], "2026-09-22T10:00:00Z", 33),
+                summary_at("beta", &[], "2026-09-22T09:00:00Z", 33),
+                summary_at("gamma", &[], "2026-09-22T08:00:00Z", 33),
+            ],
+            true,
+        );
+        for name in ["alpha", "beta"] {
+            let _ = ahp_session::session::state::Hosts::ensure_state(&mut store, &key(name));
+            Agents::set_channel(
+                &mut store,
+                &key(name),
+                ahp_wire::client::SessionChannel::default(),
+            );
+        }
+    }
+    let session_of = |app: &Himark| workbench_shell::workspace::entity_session(entity(app));
+    assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
+        window,
+        Arc::new(SwitchTo(key("alpha")))
+    )]));
+    assert_eq!(session_of(&app), key("alpha"));
+
+    // The drawer's pick of beta — entered: the window moves now.
+    let pick = |name: &str| {
+        let verb = (workbench_shell::higent::drawer::drawer_asks(window).open_row)(
+            host,
+            ahp_wire::client::SessionUri::new(format!("test-session:/{name}")),
+        );
+        workbench_shell::app::verb_command(window, verb).expect("a performable verb")
+    };
+    assert!(app.perform_batch(vec![pick("beta")]));
+    assert_eq!(
+        session_of(&app),
+        key("beta"),
+        "an entered session switches in the batch"
+    );
+    assert!(app.perform_batch(vec![pick("alpha")]));
+    assert_eq!(session_of(&app), key("alpha"), "and back");
+
+    // gamma was never entered: the pick asks the host, the window waits.
+    assert!(app.perform_batch(vec![pick("gamma")]));
+    assert_eq!(
+        session_of(&app),
+        key("alpha"),
+        "a session not yet entered waits for the host"
+    );
+}
+
+/// Switch between ENTERED sessions, drawer up, over a catalog the
+/// size of a real one — where does the time go?
+/// `cargo test -p himark-tests --release --test shell session_switch_timing -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn session_switch_timing() {
+    let sessions: usize = std::env::var("HIMARK_BENCH_SESSIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(800);
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
+    let _ = app.add_window();
+    let window = app.sole_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
+    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let host = ahp_wire::SessionId::local_default(app.store()).host;
+    let minutes = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 60));
+    {
+        use ahp_session::session::agents::Agents;
+        use ahp_session::session::state::HostStatus;
+        let mut store = app.store_mut();
+        Agents::seed(&mut store, host, "himark Host");
+        Agents::set_status(&mut store, host, HostStatus::Connected);
+        let folders = [
+            "file:///dev/himark-jb",
+            "file:///dev/hikit",
+            "file:///dev/docs",
+        ];
+        let catalog: Vec<_> = (0..sessions)
+            .map(|index| {
+                let mut summary = summary_at(
+                    &format!("session {index} about something or other"),
+                    &[folders[index % folders.len()]],
+                    &minutes(index as u64 * 37),
+                    33,
+                );
+                summary.resource = format!("test-session:/{index}");
+                summary
+            })
+            .collect();
+        Agents::add_sessions(&mut store, host, catalog, true);
+    }
+    let entered: Vec<ahp_wire::SessionId> = (0..3)
+        .map(|index| ahp_wire::SessionId {
+            host,
+            session: ahp_wire::client::SessionUri::new(format!("test-session:/{index}")),
+        })
+        .collect();
+    for key in &entered {
+        let mut store = app.store_mut();
+        let _ = ahp_session::session::state::Hosts::ensure_state(&mut store, key);
+        ahp_session::session::agents::Agents::set_channel(
+            &mut store,
+            key,
+            ahp_wire::client::SessionChannel {
+                working_directories: vec!["file:///dev/himark-jb".to_owned()]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
+        );
+    }
+    let timed = |label: &str, app: &mut Himark, surface: &mut skia_safe::Surface, command| {
+        let started = std::time::Instant::now();
+        assert!(app.perform_batch(vec![command]));
+        let batch = started.elapsed();
+        let mut draws = Vec::new();
+        for tick in 0..60 {
+            let started = std::time::Instant::now();
+            app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+            draws.push(started.elapsed());
+            let busy = test_driver::animate(app, AnimationClock::from_millis(tick as f64 * 32.0));
+            if !busy && tick > 1 {
+                break;
+            }
+        }
+        let total: std::time::Duration = draws.iter().sum();
+        eprintln!(
+            "{label}: batch {:.1} ms, {} draws totalling {:.1} ms (first {:.1} ms, max {:.1} ms)",
+            batch.as_secs_f64() * 1e3,
+            draws.len(),
+            total.as_secs_f64() * 1e3,
+            draws[0].as_secs_f64() * 1e3,
+            draws.iter().max().unwrap().as_secs_f64() * 1e3,
+        );
+    };
+    let switch = |key: &ahp_wire::SessionId| {
+        workbench_shell::shell::windowed(window, Arc::new(SwitchTo(key.clone())))
+    };
+    timed(
+        "enter A (drawer closed)",
+        &mut app,
+        &mut surface,
+        switch(&entered[0]),
+    );
+    timed(
+        "enter B (drawer closed)",
+        &mut app,
+        &mut surface,
+        switch(&entered[1]),
+    );
+    timed(
+        "back to A (drawer closed)",
+        &mut app,
+        &mut surface,
+        switch(&entered[0]),
+    );
+    timed(
+        "open drawer",
+        &mut app,
+        &mut surface,
+        workbench_shell::shell::windowed(
+            window,
+            Arc::new(workbench_shell::higent::drawer::ToggleAgentsView),
+        ),
+    );
+    timed(
+        "to B (drawer up)",
+        &mut app,
+        &mut surface,
+        switch(&entered[1]),
+    );
+    timed(
+        "open drawer again",
+        &mut app,
+        &mut surface,
+        workbench_shell::shell::windowed(
+            window,
+            Arc::new(workbench_shell::higent::drawer::ToggleAgentsView),
+        ),
+    );
+    timed(
+        "to C (drawer up)",
+        &mut app,
+        &mut surface,
+        switch(&entered[2]),
+    );
+    // A catalog event while a session streams: the drawer's refresh.
+    timed(
+        "open drawer once more",
+        &mut app,
+        &mut surface,
+        workbench_shell::shell::windowed(
+            window,
+            Arc::new(workbench_shell::higent::drawer::ToggleAgentsView),
+        ),
+    );
+    {
+        let mut store = app.store_mut();
+        ahp_session::session::agents::Agents::set_status(
+            &mut store,
+            host,
+            ahp_session::session::state::HostStatus::Connected,
+        );
+    }
+    timed(
+        "one catalog event (drawer up)",
+        &mut app,
+        &mut surface,
+        himark::app::AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+            ahp_session::session::driver::RetryHosts,
+        ))),
+    );
 }

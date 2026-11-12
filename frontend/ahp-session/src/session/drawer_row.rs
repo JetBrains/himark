@@ -1,11 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The Sessions drawer's LINES: one recency list read as a three-column
-//! grid — the repo in a right-aligned margin column, the title, the age
-//! — so projects interleave and still read (the Sessions mock). Group
-//! heads, the host foot and the "+ …" affordances are lines too, so the
-//! list's keyboard walk and its flat selection wash cover them all.
+//! The Sessions drawer's LINES (the Sessions mock): a host is a
+//! heading with its kind word and its own action; a session is a
+//! mark in the gutter, a title with its age, and the folders it works
+//! in; the "Older · N" fold parts the live rows from the rest. Every
+//! line is a list row, so the keyboard walk and the flat selection
+//! wash cover them all.
 
 use gfx::{Rect, Size};
 use imba::{
@@ -13,7 +14,7 @@ use imba::{
     constraints::Constraints,
     effect::Effects,
     event::{Event, EventResult},
-    layout::{Alignment, Insets, Layout, LayoutBox, LayoutExt as _, Row},
+    layout::{Alignment, Column, Insets, Layout, LayoutBox, LayoutExt as _, Row},
     store::Store,
     ui::UiCtx,
     Thunk, ThunkBox, View, Widget, WidgetBox,
@@ -35,52 +36,82 @@ pub(crate) enum TitleForm {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum AgeInk {
     Quiet,
-    /// The open session, a running or blocked turn: the live accent.
+    /// The open session, a blocked turn: the live accent.
     Live,
     /// The last turn failed.
     Failed,
 }
 
-#[derive(Clone)]
-pub(crate) enum LineKind {
-    /// A recency group's caps head ("TODAY").
-    Group(&'static str),
-    Session {
-        repo: String,
-        title: String,
-        form: TitleForm,
-        /// Changed since the user last looked — the title takes the
-        /// primary ink instead of the row's quieter one.
-        unviewed: bool,
-        age: String,
-        ink: AgeInk,
-        /// The window's open session: the here row, a size up.
-        here: bool,
-    },
-    /// A host that is not connected: its name and its state's word.
-    Host {
-        name: String,
-        status: String,
-        failed: bool,
-    },
-    /// The host's error, in the margin register under its name.
-    Error(String),
-    /// A quiet "+ …" line in the grid ("+ New Session…" under its
-    /// host's name, "+ Add Host…").
-    Affordance { repo: String, label: String },
+/// The gutter mark: what the session wants from the user.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Mark {
+    None,
+    /// A turn finished (or is blocked) and nobody looked: the live
+    /// dot.
+    Attention,
+    /// A turn is streaming: the quiet ring.
+    Running,
 }
 
-/// The air a line keeps above itself — whitespace groups.
+/// A host heading's state, which picks its inks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum HostState {
+    Connected,
+    Connecting,
+    Failed,
+}
+
+#[derive(Clone)]
+pub(crate) enum LineKind {
+    /// A host heading: the machine's name, its kind word (the OS,
+    /// or its state when it is not connected), and the trailing
+    /// action the heading's activation performs.
+    Host {
+        name: String,
+        kind: String,
+        state: HostState,
+        action: String,
+        /// The mono key after the action, when the gesture has one.
+        key: Option<String>,
+    },
+    /// The host's error, in the margin register under its heading.
+    Error(String),
+    Session {
+        title: String,
+        form: TitleForm,
+        mark: Mark,
+        /// The title takes the attention weight — changed since the
+        /// user last looked.
+        attention: bool,
+        age: String,
+        ink: AgeInk,
+        /// The session's folders, " · "-joined.
+        roots: String,
+        /// The window's open session: the bright title, the live age.
+        here: bool,
+        /// A row under the Older fold: a size down, no folders line
+        /// (its group's heading names them).
+        old: bool,
+        /// Indent steps in from the content edge — the rows under a
+        /// folders heading stand two in.
+        indent: u8,
+    },
+    /// The fold between the live rows and the rest: "Older · N",
+    /// and the word that toggles it.
+    Fold { count: usize, expanded: bool },
+    /// A group heading under the fold: the folders its rows work in
+    /// (" · "-joined), one step in from the fold.
+    Folders(String),
+}
+
+/// The air a line keeps above itself — whitespace groups, a hairline
+/// parts hosts.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Lead {
     None,
-    /// The list's first line.
+    /// The first host's heading: air, no rule.
     Top,
-    /// A group head after the first.
-    Group,
-    /// The first line of the foot: air, then a hairline, then air.
-    Foot,
-    /// A second host in the foot.
+    /// Every host heading after the first: air, a hairline, air.
     Host,
 }
 
@@ -99,33 +130,45 @@ impl DrawerLine {
     /// test projection reads.
     pub(crate) fn text(&self) -> &str {
         match &self.kind {
-            LineKind::Group(caps) => caps,
-            LineKind::Session { title, .. } => title,
             LineKind::Host { name, .. } => name,
             LineKind::Error(error) => error,
-            LineKind::Affordance { label, .. } => label,
+            LineKind::Session { title, .. } => title,
+            LineKind::Fold { .. } => "Older",
+            LineKind::Folders(label) => label,
         }
     }
 
-    /// The margin column's word, when the line has one.
-    pub(crate) fn repo(&self) -> &str {
+    /// The line's second word: a session's folders, a host's kind,
+    /// the fold's count.
+    pub(crate) fn detail(&self) -> String {
         match &self.kind {
-            LineKind::Session { repo, .. } | LineKind::Affordance { repo, .. } => repo,
-            _ => "",
+            LineKind::Session { roots, .. } => roots.clone(),
+            LineKind::Host { kind, .. } => kind.clone(),
+            LineKind::Fold { count, .. } => count.to_string(),
+            LineKind::Error(_) | LineKind::Folders(_) => String::new(),
         }
     }
 
-    pub(crate) fn age(&self) -> &str {
+    /// The trailing word: a session's age, a host's action, the
+    /// fold's toggle.
+    pub(crate) fn trail(&self) -> &str {
         match &self.kind {
             LineKind::Session { age, .. } => age,
-            _ => "",
+            LineKind::Host { action, .. } => action,
+            LineKind::Fold { expanded, .. } => match expanded {
+                true => "show less",
+                false => "show all",
+            },
+            LineKind::Error(_) | LineKind::Folders(_) => "",
         }
     }
 
-    /// Heads (groups, hosts) stand at depth 0; what they head at 1.
+    /// Hosts stand at depth 0, what they head at 1, and under a
+    /// folders heading one deeper.
     pub(crate) fn depth(&self) -> usize {
         match &self.kind {
-            LineKind::Group(_) | LineKind::Host { .. } => 0,
+            LineKind::Host { .. } => 0,
+            LineKind::Session { indent, .. } => 1 + usize::from(*indent).saturating_sub(1),
             _ => 1,
         }
     }
@@ -151,40 +194,34 @@ impl View for DrawerLine {
     ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         // The line body answers no press: an unclaimed click is the
         // LIST's — `Select` then `Activate(Click)`
-        // (docs/ui/list-keyboard.md §2).
+        // (docs/ui/list-keyboard.md §2). A heading's action word is
+        // what its activation DOES, not a button of its own.
         imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             let themes = ::editor::env::Themes::of(store);
             let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
             let rule = themes.part(::editor::theme::InkChrome::KEY).rule.0;
-            // Measuring passes lay rows unbounded; the grid then
+            // Measuring passes lay rows unbounded; the body then
             // takes its natural width.
             let room = (constraints.max.width < f32::MAX / 2.0)
                 .then(|| (constraints.max.width - 2.0 * chrome.inset).max(1.0));
             let body = self.body(arena, store, ui, room);
-            let lead = match self.lead {
-                Lead::None => 0.0,
-                Lead::Top => chrome.top_gap,
-                Lead::Group => chrome.group_gap,
-                Lead::Foot => chrome.foot_gap,
-                Lead::Host => chrome.host_gap,
-            };
             let body: ThunkBox<'a, Self::Command> = match self.lead {
-                // The foot stands apart: a hairline across the
-                // content, its air under it.
-                Lead::Foot => ThunkBox::new(
+                // A host after the first stands apart: air, a
+                // hairline across the content, the heading's own air.
+                Lead::Host => ThunkBox::new(
                     arena,
                     hikit::ui::Hairline::new(rule).top().wrap(
                         imba::layout::fixed(body)
-                            .pad_insets(Insets {
-                                top: chrome.foot_pad,
-                                ..Insets::default()
-                            })
                             .align(Alignment::TopStart)
                             .width(room.unwrap_or(f32::NAN))
                             .layout(arena, constraints.loosen()),
                     ),
                 ),
-                _ => body,
+                Lead::None | Lead::Top => body,
+            };
+            let lead = match self.lead {
+                Lead::None | Lead::Top => 0.0,
+                Lead::Host => chrome.host_rule_gap,
             };
             imba::layout::fixed(body)
                 .pad_insets(Insets {
@@ -209,49 +246,138 @@ impl DrawerLine {
         let themes = ::editor::env::Themes::of(store);
         let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
         let ink = themes.part(::editor::theme::InkChrome::KEY);
-        let meta = hikit::ui::brief(store, ui).sized(chrome.meta_size);
         let loose = Constraints {
             min: Size::default(),
             max: Size::new(room.unwrap_or(f32::MAX), f32::MAX),
         };
+        let brief = hikit::ui::brief(store, ui);
         match &self.kind {
-            LineKind::Group(caps) => hikit::ui::text(&hikit::ui::caps(store, ui), *caps)
-                .pad_insets(Insets {
-                    left: chrome.repo_width + chrome.column_gap,
+            LineKind::Host {
+                name,
+                kind,
+                state,
+                action,
+                key,
+            } => {
+                let connected = *state == HostState::Connected;
+                let name_style = hikit::ui::TextStyle {
+                    font: hikit::fonts::role_font(ui, &chrome.host_name),
+                    color: match connected {
+                        true => ink.ink.0,
+                        false => ink.ink_3.0,
+                    },
+                    tracking: chrome.host_name.tracking,
+                    shaper: imba::layout::TextShaper::of(ui),
+                };
+                let kind_style = brief
+                    .clone()
+                    .sized(chrome.host_kind_size)
+                    .colored(match state {
+                        HostState::Failed => ink.removed.0,
+                        _ => ink.ink_3.0,
+                    });
+                let action_style =
+                    brief
+                        .clone()
+                        .sized(chrome.host_action_size)
+                        .colored(match connected {
+                            true => ink.ink_2.0,
+                            false => ink.placeholder.0,
+                        });
+                let key_style = hikit::ui::margin(store, ui)
+                    .sized(chrome.host_key_size)
+                    .colored(ink.placeholder.0);
+                let kind_word: LayoutBox<'a, std::convert::Infallible> = match state {
+                    HostState::Failed => LayoutBox::new(
+                        arena,
+                        Oblique::new(
+                            hikit::ui::text(&kind_style, kind.clone()),
+                            chrome.oblique_skew,
+                        ),
+                    ),
+                    _ => LayoutBox::new(arena, hikit::ui::text(&kind_style, kind.clone())),
+                };
+                let mut row = Row::new(arena)
+                    .gap(chrome.host_word_gap)
+                    .child_by_baseline(hikit::ui::text(&name_style, name.clone()))
+                    .child_by_baseline(kind_word)
+                    .weighted(1.0, imba::layout::Fill::new().height(0.0))
+                    .child_by_baseline(hikit::ui::text(&action_style, action.clone()));
+                if let Some(key) = key {
+                    row = row.child_by_baseline(
+                        hikit::ui::text(&key_style, key.clone()).pad_insets(Insets {
+                            left: chrome.host_key_gap - chrome.host_word_gap,
+                            ..Insets::default()
+                        }),
+                    );
+                }
+                row.pad_insets(Insets {
+                    top: chrome.host_top,
+                    bottom: chrome.host_bottom,
                     ..Insets::default()
                 })
-                .layout(arena, loose),
+                .width(room.unwrap_or(f32::NAN))
+                .layout(arena, loose)
+            }
+            LineKind::Error(error) => hikit::ui::text(
+                &hikit::ui::margin(store, ui)
+                    .sized(chrome.error_size)
+                    .colored(ink.placeholder.0),
+                error.clone(),
+            )
+            .pad_insets(Insets {
+                left: chrome.error_inset,
+                bottom: chrome.error_gap,
+                ..Insets::default()
+            })
+            .layout(arena, loose),
             LineKind::Session {
-                repo,
                 title,
                 form,
-                unviewed,
+                mark,
+                attention,
                 age,
                 ink: age_ink,
+                roots,
                 here,
+                old,
+                indent,
             } => {
                 let accent = match age_ink {
                     AgeInk::Quiet => ink.ink_3.0,
                     AgeInk::Live => ink.live.0,
                     AgeInk::Failed => ink.removed.0,
                 };
-                let repo_ink = match here {
-                    true => ink.live.0,
-                    false => ink.ink_3.0,
+                let title_size = match old {
+                    true => chrome.old_title_size,
+                    false => chrome.title_size,
                 };
-                let title_style = match (here, form, unviewed) {
-                    (_, TitleForm::Untitled | TitleForm::Command, _) => {
-                        hikit::ui::row(store, ui).colored(ink.ink_3.0)
+                let title_color = match (here, attention, old) {
+                    (true, _, _) | (_, true, _) => ink.ink_bright.0,
+                    (false, false, true) => chrome.old_color.0,
+                    (false, false, false) => chrome.title_color.0,
+                };
+                let title_style = match form {
+                    TitleForm::Untitled | TitleForm::Command => {
+                        brief.clone().sized(title_size).colored(ink.ink_3.0)
                     }
-                    (true, TitleForm::Plain, _) => hikit::ui::TextStyle {
-                        font: hikit::fonts::role_font(ui, &chrome.here_title),
-                        color: ink.ink_bright.0,
-                        tracking: chrome.here_title.tracking,
-                        shaper: imba::layout::TextShaper::of(ui),
-                    },
-                    (false, TitleForm::Plain, true) => hikit::ui::row(store, ui).colored(ink.ink.0),
-                    (false, TitleForm::Plain, false) => {
-                        hikit::ui::row(store, ui).colored(chrome.title_color.0)
+                    TitleForm::Plain => {
+                        let role = ::editor::theme::TypeRole {
+                            size: title_size,
+                            weight: match attention {
+                                true => chrome.attention_weight,
+                                false => 400.0,
+                            },
+                            width: 100.0,
+                            tracking: 0.0,
+                            line_height: 1.0,
+                        };
+                        hikit::ui::TextStyle {
+                            font: hikit::fonts::role_font(ui, &role),
+                            color: title_color,
+                            tracking: 0.0,
+                            shaper: imba::layout::TextShaper::of(ui),
+                        }
                     }
                 };
                 let title: LayoutBox<'a, std::convert::Infallible> = match form {
@@ -266,124 +392,103 @@ impl DrawerLine {
                         ),
                     ),
                 };
-                let (line, top, bottom) = match here {
-                    true => (
-                        chrome.here_line,
-                        chrome.here_pad_top,
-                        chrome.here_pad_bottom,
+                let age_style = brief.clone().sized(chrome.meta_size).colored(accent);
+                let age: ThunkBox<'a, std::convert::Infallible> = match age_ink {
+                    AgeInk::Live if !here => Layout::layout(
+                        Oblique::new(
+                            hikit::ui::text(&age_style, age.clone()),
+                            chrome.oblique_skew,
+                        ),
+                        arena,
+                        loose,
                     ),
-                    false => (chrome.row_line, chrome.row_pad, chrome.row_pad),
+                    _ => Layout::layout(hikit::ui::text(&age_style, age.clone()), arena, loose),
                 };
-                Grid {
-                    repo: hikit::ui::text(&meta.clone().colored(repo_ink), repo.clone()),
-                    title,
-                    age: hikit::ui::text(&meta.clone().colored(accent), age.clone()),
-                    repo_width: chrome.repo_width,
-                    gap: chrome.column_gap,
-                    room,
+                let inset = f32::from(*indent) * chrome.old_indent;
+                let text_room =
+                    room.map(|room| (room - inset - chrome.gutter - chrome.column_gap).max(0.0));
+                let title_width = text_room.map_or(f32::NAN, |room| {
+                    (room - chrome.column_gap - age.size().width).max(0.0)
+                });
+                let head = Row::new(arena)
+                    .gap(chrome.column_gap)
+                    .child_by_baseline(title.width(title_width))
+                    .child_by_baseline(imba::layout::fixed(age))
+                    .align(Alignment::CenterStart)
+                    .height(chrome.row_line);
+                let mut words = Column::new(arena).child(head);
+                if !old && !roots.is_empty() {
+                    let roots_style = brief.clone().sized(chrome.roots_size);
+                    words = words.child(
+                        hikit::ui::text(&roots_style, roots.clone())
+                            .align(Alignment::CenterStart)
+                            .width(text_room.unwrap_or(f32::NAN))
+                            .height(chrome.roots_line),
+                    );
                 }
-                .align(Alignment::CenterStart)
-                .height(line)
-                .pad_insets(Insets {
-                    top,
-                    bottom,
-                    ..Insets::default()
-                })
-                .layout(arena, loose)
-            }
-            LineKind::Affordance { repo, label } => Grid {
-                repo: hikit::ui::text(&meta, repo.clone()),
-                title: LayoutBox::new(
-                    arena,
-                    hikit::ui::text(&hikit::ui::brief(store, ui), label.clone()),
-                ),
-                age: hikit::ui::text(&meta, String::new()),
-                repo_width: chrome.repo_width,
-                gap: chrome.column_gap,
-                room,
-            }
-            .align(Alignment::CenterStart)
-            .height(chrome.row_line)
-            .pad_insets(Insets::xy(0.0, chrome.row_pad))
-            .layout(arena, loose),
-            LineKind::Host {
-                name,
-                status,
-                failed,
-            } => {
-                let name_style = hikit::ui::TextStyle {
-                    font: hikit::fonts::role_font(ui, &chrome.host_name),
-                    color: ink.ink_3.0,
-                    tracking: chrome.host_name.tracking,
-                    shaper: imba::layout::TextShaper::of(ui),
+                let mut gutter = Column::new(arena);
+                let disc = match mark {
+                    Mark::None => None,
+                    Mark::Attention => Some(hikit::ui::Disc::filled(ink.live.0, chrome.mark)),
+                    Mark::Running => Some(hikit::ui::Disc::ring(
+                        ink.ink_3.0,
+                        chrome.mark,
+                        chrome.mark_stroke,
+                    )),
                 };
-                let status_style = hikit::ui::row(store, ui)
-                    .sized(chrome.host_status_size)
-                    .colored(match failed {
-                        true => ink.removed.0,
-                        false => ink.ink_3.0,
-                    });
+                if let Some(disc) = disc {
+                    gutter = gutter.child(disc.pad_insets(Insets {
+                        top: ((chrome.row_line - chrome.mark) * 0.5).max(0.0),
+                        ..Insets::default()
+                    }));
+                }
                 Row::new(arena)
-                    .gap(chrome.host_word_gap)
-                    .child_by_baseline(hikit::ui::text(&name_style, name.clone()))
-                    .child_by_baseline(Oblique::new(
-                        hikit::ui::text(&status_style, status.clone()),
-                        chrome.oblique_skew,
-                    ))
+                    .gap(chrome.column_gap)
+                    .child(gutter.width(chrome.gutter))
+                    .child(words.width(text_room.unwrap_or(f32::NAN)))
+                    .pad_insets(Insets {
+                        left: inset,
+                        top: chrome.row_pad,
+                        right: 0.0,
+                        bottom: chrome.row_pad,
+                    })
                     .layout(arena, loose)
             }
-            LineKind::Error(error) => hikit::ui::text(
-                &hikit::ui::margin(store, ui).sized(chrome.error_size),
-                error.clone(),
-            )
-            .pad_insets(Insets {
-                top: chrome.error_gap,
-                ..Insets::default()
-            })
-            .layout(arena, loose),
+            LineKind::Folders(label) => {
+                hikit::ui::text(&brief.clone().sized(chrome.roots_size), label.clone())
+                    .pad_insets(Insets {
+                        left: chrome.old_indent + chrome.gutter + chrome.column_gap,
+                        top: chrome.group_top,
+                        bottom: chrome.group_bottom,
+                        ..Insets::default()
+                    })
+                    .layout(arena, loose)
+            }
+            LineKind::Fold { count, expanded } => {
+                let word = brief.clone().sized(chrome.fold_size);
+                let toggle = match expanded {
+                    true => "show less",
+                    false => "show all",
+                };
+                Row::new(arena)
+                    .gap(chrome.fold_gap)
+                    .child_by_baseline(hikit::ui::text(&word, "Older"))
+                    .child_by_baseline(hikit::ui::text(
+                        &word.clone().colored(ink.ink_4.0),
+                        count.to_string(),
+                    ))
+                    .weighted(1.0, imba::layout::Fill::new().height(0.0))
+                    .child_by_baseline(hikit::ui::text(&word.clone().colored(ink.ink_2.0), toggle))
+                    .pad_insets(Insets {
+                        left: chrome.gutter + chrome.column_gap,
+                        top: chrome.fold_top,
+                        bottom: chrome.fold_bottom,
+                        ..Insets::default()
+                    })
+                    .width(room.unwrap_or(f32::NAN))
+                    .layout(arena, loose)
+            }
         }
-    }
-}
-
-/// The session grid: the repo right-aligned in its margin column, the
-/// title taking what the age leaves (and ellipsizing there), the age
-/// at the right — one shared baseline.
-struct Grid<'a> {
-    repo: imba::layout::Text,
-    title: LayoutBox<'a, std::convert::Infallible>,
-    age: imba::layout::Text,
-    repo_width: f32,
-    gap: f32,
-    /// The content width, when the line is laid for real.
-    room: Option<f32>,
-}
-
-impl imba::layout::LayoutValue for Grid<'_> {}
-
-impl<'a> Layout<'a, std::convert::Infallible> for Grid<'a> {
-    fn layout(
-        self,
-        arena: &'a Arena,
-        constraints: Constraints,
-    ) -> ThunkBox<'a, std::convert::Infallible> {
-        let Grid {
-            repo,
-            title,
-            age,
-            repo_width,
-            gap,
-            room,
-        } = self;
-        let age = Layout::<std::convert::Infallible>::layout(age, arena, constraints.loosen());
-        let title_width = room.map_or(f32::NAN, |room| {
-            (room - repo_width - 2.0 * gap - age.size().width).max(0.0)
-        });
-        Row::new(arena)
-            .gap(gap)
-            .child_by_baseline(repo.align(Alignment::TopEnd).width(repo_width))
-            .child_by_baseline(title.width(title_width))
-            .child_by_baseline(imba::layout::fixed(age))
-            .layout(arena, constraints)
     }
 }
 

@@ -18,6 +18,17 @@ const ADD_FOLDER: &str = "\u{0}add-folder";
 /// The dirless placeholder: display only.
 const NO_FOLDER: &str = "\u{0}no-folder";
 
+/// What the composer may offer for the session's FOLDER: whether the
+/// session is still newborn (no prompt yet — the one time the combo
+/// shows; afterwards the folder changes through a command), and the
+/// folders this host's sessions recently worked in, most recent
+/// first. Answered by the catalog through `Catalog::folder_picks`.
+#[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
+pub struct FolderPicks {
+    pub fresh: bool,
+    pub recent: Vec<String>,
+}
+
 /// Installed by the SHELL: turns the toolbar's add-folder ask into
 /// the native-picker road — the picker needs a WINDOW, a concept
 /// this crate does not know. The returned command rides
@@ -41,10 +52,9 @@ pub struct SessionToolbar {
     pub edits: Combo,
     pub dir: Combo,
 
-    /// What the dir combo DISPLAYS: the first folder. The combo is a
-    /// menu of the session's folders plus the add action, never a
-    /// selection — any pick snaps the face back to this anchor.
-    dir_anchor: Option<String>,
+    /// The session's folder — its first working directory — for the
+    /// pane's subtitle, whether or not the combo is showing.
+    folder: Option<String>,
 
     pub synced: u64,
 
@@ -79,6 +89,10 @@ pub enum ToolbarAsk {
 
     /// The dir combo's action row: open the native folder picker.
     AddFolder,
+
+    /// A folder picked from the host's recent ones: it becomes THE
+    /// session folder — the previous one goes.
+    SetFolder(String),
 }
 
 impl SessionToolbar {
@@ -92,7 +106,7 @@ impl SessionToolbar {
             effort: compact(Combo::new(store, ui, "EFFORT")),
             edits: compact(Combo::new(store, ui, "EDITS")),
             dir: compact(Combo::new(store, ui, "DIR")),
-            dir_anchor: None,
+            folder: None,
             synced: 0,
             cell_spans: Arc::new((0..5).map(|_| AtomicU64::new(0)).collect()),
             strip_origin: Arc::new(AtomicU64::new(0)),
@@ -101,7 +115,11 @@ impl SessionToolbar {
 }
 
 impl SessionToolbar {
-    pub fn fingerprint(agents: &[ahp_types::state::AgentInfo], session: &SessionChannel) -> u64 {
+    pub fn fingerprint(
+        agents: &[ahp_types::state::AgentInfo],
+        session: &SessionChannel,
+        picks: &FolderPicks,
+    ) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         agents.len().hash(&mut hasher);
@@ -109,7 +127,10 @@ impl SessionToolbar {
         if let Some(config) = &session.config {
             (Arc::as_ptr(config) as usize).hash(&mut hasher);
         }
-        session.working_directories.len().hash(&mut hasher);
+        for folder in session.working_directories.iter() {
+            folder.hash(&mut hasher);
+        }
+        picks.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -119,8 +140,9 @@ impl SessionToolbar {
         ui: &UiCtx,
         agents: &[ahp_types::state::AgentInfo],
         session: &SessionChannel,
+        picks: &FolderPicks,
     ) {
-        self.synced = Self::fingerprint(agents, session);
+        self.synced = Self::fingerprint(agents, session, picks);
         let values = session
             .config
             .as_ref()
@@ -181,49 +203,35 @@ impl SessionToolbar {
             }
         }
 
-        let mut folders: Vec<ComboOption> = session
-            .working_directories
-            .iter()
-            .map(|dir| {
-                let label = dir
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or(dir.as_str())
-                    .to_owned();
-                ComboOption::plain(dir.clone(), label)
-            })
-            .collect();
+        // The session's folder is the first working directory; the
+        // combo offers it only while the session is newborn — once
+        // the first prompt is in, the folder changes through the
+        // add-folder command, and the strip keeps its three words.
+        self.folder = session.working_directories.first().cloned();
+        if !picks.fresh {
+            self.dir.set_options(store, ui, Vec::new());
+            return;
+        }
+        let mut folders: Vec<ComboOption> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for dir in self.folder.iter().chain(picks.recent.iter()) {
+            if seen.insert(dir.clone()) {
+                folders.push(ComboOption::plain(dir.clone(), folder_label(dir)));
+            }
+        }
         if folders.is_empty() {
             folders.push(ComboOption::plain(NO_FOLDER, "No folder"));
         }
         folders.push(ComboOption::plain(ADD_FOLDER, "Add folder…"));
         self.dir.set_options(store, ui, folders);
-        self.dir_anchor = Some(
-            session
-                .working_directories
-                .first()
-                .cloned()
-                .unwrap_or_else(|| NO_FOLDER.to_owned()),
-        );
-        if let Some(anchor) = &self.dir_anchor {
-            self.dir.pick_id(anchor);
-        }
+        self.dir
+            .pick_id(self.folder.as_deref().unwrap_or(NO_FOLDER));
     }
 
     /// WHERE the session works: its first folder's name — the chat
     /// header's subtitle. None while the session has no folder.
     pub(crate) fn folder_name(&self) -> Option<String> {
-        let anchor = self.dir_anchor.as_deref()?;
-        if anchor == NO_FOLDER {
-            return None;
-        }
-        self.dir
-            .options()
-            .into_iter()
-            .find(|option| option.id == anchor)
-            .map(|option| option.label)
+        self.folder.as_deref().map(folder_label)
     }
 
     pub(crate) fn model_selection(&self) -> Option<ahp_types::state::ModelSelection> {
@@ -278,13 +286,18 @@ impl SessionToolbar {
                     self.dir.perform(store, ui, command, fx)
                 });
                 let picked = moved.then(|| self.dir.value()).flatten();
-                // A menu, not a selection: whatever was chosen, the
-                // face snaps back to the anchor.
-                if let Some(anchor) = self.dir_anchor.clone() {
-                    self.dir.pick_id(&anchor);
-                }
+                let current = self.folder.as_deref().unwrap_or(NO_FOLDER);
                 match picked {
-                    Some(option) if option.id == ADD_FOLDER => ToolbarAsk::AddFolder,
+                    Some(option) if option.id == ADD_FOLDER => {
+                        // A verb, not a folder: the face snaps back.
+                        self.dir.pick_id(current);
+                        ToolbarAsk::AddFolder
+                    }
+                    Some(option) if option.id != NO_FOLDER && option.id != current => {
+                        // The pick stands optimistically; the wire's
+                        // answer re-syncs the strip.
+                        ToolbarAsk::SetFolder(option.id)
+                    }
                     _ => ToolbarAsk::None,
                 }
             }
@@ -512,9 +525,120 @@ pub fn sync_effort_for_model(
     }
 }
 
+/// A folder's short name — the last path segment, which is what the
+/// strip has room for. Trailing slashes are not a segment.
+fn folder_label(dir: &str) -> String {
+    let trimmed = dir.trim_end_matches('/');
+    trimmed
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or(trimmed)
+        .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn channel(dirs: &[&str]) -> SessionChannel {
+        SessionChannel {
+            working_directories: dirs.iter().map(|dir| (*dir).to_owned()).collect(),
+            ..SessionChannel::default()
+        }
+    }
+
+    /// The folder combo is the NEWBORN session's: it offers the
+    /// host's recent folders (the session's own first) and the
+    /// picker; a session past its first prompt shows no combo, yet
+    /// still names its folder for the subtitle.
+    #[test]
+    fn the_folder_combo_shows_only_for_a_fresh_session() {
+        let store = imba::store::Store::new();
+        let ui = imba::ui::UiCtx::dont_use_too_slow();
+        let mut toolbar = SessionToolbar::new(&store, &ui);
+        let picks = FolderPicks {
+            fresh: true,
+            recent: vec![
+                "file:///dev/hikit".to_owned(),
+                "file:///dev/himark".to_owned(),
+            ],
+        };
+        toolbar.sync(&store, &ui, &[], &channel(&["file:///dev/himark"]), &picks);
+        let labels: Vec<String> = toolbar
+            .dir
+            .options()
+            .into_iter()
+            .map(|option| option.label)
+            .collect();
+        assert_eq!(labels, vec!["himark", "hikit", "Add folder…"]);
+        assert_eq!(
+            toolbar.dir.value().expect("picked").id,
+            "file:///dev/himark"
+        );
+        assert_eq!(toolbar.folder_name().as_deref(), Some("himark"));
+
+        let settled = FolderPicks {
+            fresh: false,
+            ..picks
+        };
+        toolbar.sync(
+            &store,
+            &ui,
+            &[],
+            &channel(&["file:///dev/himark"]),
+            &settled,
+        );
+        assert!(
+            toolbar.dir.is_empty(),
+            "no combo once the session has spoken"
+        );
+        assert_eq!(toolbar.folder_name().as_deref(), Some("himark"));
+    }
+
+    /// Picking a recent folder asks to SET it — the session keeps one
+    /// folder, so the previous one goes with it; the picker row asks
+    /// for the picker and leaves the face on the current folder.
+    #[test]
+    fn a_folder_pick_asks_to_replace_the_session_folder() {
+        let mut store = imba::store::Store::new();
+        let ui = imba::ui::UiCtx::dont_use_too_slow();
+        let mut toolbar = SessionToolbar::new(&store, &ui);
+        let picks = FolderPicks {
+            fresh: true,
+            recent: vec!["file:///dev/hikit".to_owned()],
+        };
+        toolbar.sync(&store, &ui, &[], &channel(&["file:///dev/himark"]), &picks);
+        let index = |toolbar: &SessionToolbar, id: &str| {
+            toolbar
+                .dir
+                .options()
+                .iter()
+                .position(|option| option.id == id)
+                .expect("the option")
+        };
+        let mut batch = imba::effect::Batch::new();
+        let pick = toolbar.perform(
+            &mut store,
+            &ui,
+            ToolbarCommand::Dir(ComboCommand::Pick(index(&toolbar, "file:///dev/hikit"))),
+            &mut batch.effects(),
+        );
+        assert!(matches!(pick, ToolbarAsk::SetFolder(ref uri) if uri == "file:///dev/hikit"));
+
+        let add = toolbar.perform(
+            &mut store,
+            &ui,
+            ToolbarCommand::Dir(ComboCommand::Pick(index(&toolbar, ADD_FOLDER))),
+            &mut batch.effects(),
+        );
+        assert!(matches!(add, ToolbarAsk::AddFolder));
+        assert_eq!(
+            toolbar.dir.value().expect("picked").id,
+            "file:///dev/himark",
+            "the verb row never stands as the face"
+        );
+    }
 
     fn agent(provider: &str, name: &str, models: &[&str]) -> ahp_types::state::AgentInfo {
         ahp_types::state::AgentInfo {

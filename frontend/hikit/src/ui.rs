@@ -256,6 +256,73 @@ impl Surface {
     }
 }
 
+/// A DISC — the one mark the typographic chrome allows beside words:
+/// an unread dot, a running ring. Filled, or a ring of `stroke`
+/// width; its box is `diameter` square, baseline-less.
+#[derive(Clone, Copy)]
+pub struct Disc {
+    pub color: Color,
+    pub diameter: f32,
+    /// `Some(width)` draws a ring of that stroke; `None` fills.
+    pub stroke: Option<f32>,
+}
+
+impl Disc {
+    pub fn filled(color: Color, diameter: f32) -> Self {
+        Self {
+            color,
+            diameter,
+            stroke: None,
+        }
+    }
+
+    pub fn ring(color: Color, diameter: f32, stroke: f32) -> Self {
+        Self {
+            color,
+            diameter,
+            stroke: Some(stroke),
+        }
+    }
+}
+
+impl imba::layout::LayoutValue for Disc {}
+
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for Disc {
+    fn layout(
+        self,
+        arena: &'a Arena,
+        _constraints: imba::constraints::Constraints,
+    ) -> imba::ThunkBox<'a, Command> {
+        let Disc {
+            color,
+            diameter,
+            stroke,
+        } = self;
+        imba::ThunkBox::new(
+            arena,
+            imba::thunk_ext::ThunkExt::paint_instead(
+                imba::leaf::leaf::<Command>(diameter, diameter),
+                move |_arena, canvas, rect| {
+                    let mut paint = Paint::default();
+                    paint.set_anti_alias(true);
+                    paint.set_color(color);
+                    let mut radius = rect.width().min(rect.height()) * 0.5;
+                    if let Some(stroke) = stroke {
+                        paint.set_stroke(true);
+                        paint.set_stroke_width(stroke);
+                        radius = (radius - stroke * 0.5).max(0.5);
+                    }
+                    let center = (
+                        rect.left + rect.width() * 0.5,
+                        rect.top + rect.height() * 0.5,
+                    );
+                    canvas.draw_circle(center.into(), radius, &paint);
+                },
+            ),
+        )
+    }
+}
+
 /// A FLAT GROUND painter, for `.backdrop(...)`: the page color under
 /// a column, a sheet — the one fill the redesign keeps (no wells).
 pub fn ground(color: Color) -> impl Fn(&Arena, &gfx::Canvas<'_>, Rect) {

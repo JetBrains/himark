@@ -18,6 +18,27 @@ use crate::himark::Himark;
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
+/// The host's BROWSER door, when it has one: open a URL in the
+/// system browser. Seated in the store by whoever holds the host's
+/// callbacks (the C bridge, a Rust shell); absent, a login that needs
+/// the browser is only logged.
+#[derive(Clone)]
+pub struct OpenUrl(pub Arc<dyn Fn(&str) + Send + Sync>);
+
+impl OpenUrl {
+    /// Open `url` through the seated door; answers whether one was
+    /// there.
+    pub fn open(store: &imba::store::Store, url: &str) -> bool {
+        match store.get::<OpenUrl>() {
+            Some(door) => {
+                (door.0)(url);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct WakeSlot {
     callback: Mutex<Option<WakeCallback>>,

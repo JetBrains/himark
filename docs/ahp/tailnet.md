@@ -199,9 +199,31 @@ Console is the tier-3 pattern, but closed and SSH-only.
    are per-process) registers rows at boot; frontend-host's scanner
    polls the client node when its state dir exists (the no-config
    enabled latch), posts discovered mints through the inbox via the
-   shared `mint_agent_server`, and nudges `RetryHosts` when a known
-   host comes back online. Open: expiry countdown UX (needs a
-   product surface), removal/relabel of rows (no such APIs exist).
+   shared `mint_agent_server_at`, and nudges `RetryHosts` when a known
+   host comes back online. The desktop joins from the sessions
+   drawer's *Add host → Connect to tailnet*. *Share Host on Tailnet*
+   enrolls the host's node ALONE — the client node is a second
+   device with a second login, and two browser trips in a row is
+   nonsense, so joining as a client stays its own gesture. A login
+   the user asked for opens in the browser
+   (`himark::host::OpenUrl`, seated from the host callbacks); a
+   saved node whose login merely expired at boot does not pop one.
+   One host, one row: the agent host mints a random IDENTITY once
+   (`host-id` in its data dir; `initialize` `_meta.hostId`) that
+   survives restarts, network moves and the hostname drift a
+   laptop's DHCP name brings — the hostname is never the key. When
+   a connect answers an identity another row already holds (the
+   machine's own host, reached over the socket AND discovered by
+   its tailnet name), the catalog retires one row (`Hosts::
+   retire_duplicate`: the designated local host stays, else the
+   newcomer goes) and the scanner marks the saved row `retired` so
+   no later boot dials it. A URL already seated is never seated
+   twice either (`HostUrls`, which the typed and the saved roads
+   share). The vocabulary the faces read
+   (`TailnetState`, `TailnetFaceState`, `TailnetFlows`) lives in
+   `ahp_session::tailnet`; this crate writes it. Open: expiry
+   countdown UX (needs a product surface), removal/relabel of rows
+   (no such APIs exist).
 3. **iOS.** BUILT: the engine publishes an immutable `TailnetState`
    (off / starting / needs-login / waiting-approval / running) on a
    face the shell reads over the C ABI (`himark_tailnet_*`,

@@ -3733,13 +3733,28 @@ fn drawer_rows(engine: &HimarkEngine) -> Option<Vec<(String, usize)>> {
     Some(drawer_panel(engine)?.rows())
 }
 
-/// The "+ New Session…" line of the himark host — the drawer's grid
-/// carries the host's name in its repo column.
+/// The heading of the first CONNECTED host — the line whose trailing
+/// word is "New session" and whose activation starts one. (A
+/// connected host wears the machine's name the handshake answered,
+/// not the label it registered under.)
 fn host_plus_row(engine: &HimarkEngine) -> Option<usize> {
     drawer_panel(engine)?
         .lines()
         .iter()
-        .position(|(repo, word, _)| repo == "himark Host" && word == "+ New Session…")
+        .position(|(_, _, trail)| trail == "New session")
+}
+
+/// How many hosts stand connected in the drawer.
+fn connected_hosts(engine: &HimarkEngine) -> usize {
+    drawer_panel(engine)
+        .map(|panel| {
+            panel
+                .lines()
+                .iter()
+                .filter(|(_, _, trail)| trail == "New session")
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 /// The session the engine's sole window is working in — the owner a
@@ -3859,9 +3874,7 @@ fn real_claude_answers_through_the_agent_host() {
     loop {
         pump(&mut engine, &mut surface, 1);
         let rows = drawer_rows(&engine).expect("the drawer is up");
-        if rows
-            .iter()
-            .any(|(label, depth)| *depth == 1 && label == "+ New Session…")
+        if host_plus_row(&engine).is_some()
             && !rows.iter().any(|(label, _)| label.contains("connecting…"))
         {
             println!("drawer: {rows:?}");
@@ -3871,11 +3884,14 @@ fn real_claude_answers_through_the_agent_host() {
         assert!(waited < 30, "the live host never connected: {rows:?}");
     }
 
-    let rows = drawer_rows(&engine).expect("the drawer is up");
-    let plus = rows
+    // The LAST connected heading is the live host's (the inert seats
+    // registered before it never connect).
+    let plus = drawer_panel(&engine)
+        .expect("the drawer is up")
+        .lines()
         .iter()
-        .rposition(|(label, _)| label == "+ New Session…")
-        .expect("the + row");
+        .rposition(|(_, _, trail)| trail == "New session")
+        .expect("the host heading");
     pick_drawer_row(&mut engine, plus);
 
     let chat_ready =
@@ -4190,15 +4206,10 @@ fn a_host_added_by_url_connects_over_the_http_face() {
         );
         settle(&mut engine);
         rows = drawer_rows(&engine).expect("the AddHost reopen leaves the drawer up");
-        // A CONNECTED host paints no head row of its own — its name
-        // rides the repo column of its "+ New Session…" affordance;
-        // only disconnected hosts stand in the foot by name.
-        let connected = drawer_panel(&engine).is_some_and(|panel| {
-            panel
-                .lines()
-                .iter()
-                .any(|(repo, word, _)| repo == ws.trim() && word == "+ New Session…")
-        });
+        // The URL-added host's heading: once connected it wears the
+        // "New session" word (and the machine's name, not the URL).
+        let _ = ws.trim();
+        let connected = connected_hosts(&engine) >= 1;
         if connected {
             drop(spawned);
             drop(host);

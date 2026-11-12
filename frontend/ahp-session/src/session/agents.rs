@@ -43,6 +43,29 @@ impl Agents {
         });
     }
 
+    /// Who the host says it is, as the connect answered it. A host
+    /// that says nothing keeps what it had (a reconnect never blanks
+    /// a heading).
+    pub fn set_identity(
+        store: &mut Store,
+        server: HostId,
+        machine: Option<String>,
+        os: Option<String>,
+        identity: Option<String>,
+    ) {
+        Self::update_record(store, server, |record| {
+            if machine.is_some() {
+                record.machine = machine.clone();
+            }
+            if os.is_some() {
+                record.os = os.clone();
+            }
+            if identity.is_some() {
+                record.identity = identity.clone();
+            }
+        });
+    }
+
     /// The host's suggested browse root, as the connect answered it.
     pub(crate) fn set_home(store: &mut Store, server: HostId, home: Option<String>) {
         Self::update_record(store, server, |record| {

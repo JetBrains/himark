@@ -127,6 +127,30 @@ pub(crate) fn open_session_with(
     initial_prompt: Option<String>,
     fx: &mut crate::app::AppFx<'_>,
 ) {
+    // A session this client already ENTERED has its mirror, its
+    // poll chain and (in the window) its stashed workbench: the
+    // switch is one store change, now — no trip to the host, whose
+    // answer would only land the same channel again, and no wire
+    // needed at all. The entry work follows as usual (it is
+    // idempotent) to front the chat.
+    let key = SessionId {
+        host: server,
+        session: session.clone(),
+    };
+    if let Some(channel) = ahp_session::session::agents::Agents::channel(store, &key) {
+        crate::app::switch_session(store, window, key, fx);
+        fx.follow_up(crate::shell::windowed(
+            window,
+            Arc::new(EnterSessionWork {
+                server,
+                session,
+                open_chat,
+                initial_prompt,
+                default_chat: channel.default_chat.clone(),
+            }),
+        ));
+        return;
+    }
     let Some(client) = ahp_wire::client::Servers::client(store, server) else {
         eprintln!("[higent] open-session: unregistered server {server:?}");
         return;

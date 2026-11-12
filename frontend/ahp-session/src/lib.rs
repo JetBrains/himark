@@ -9,3 +9,4 @@
 pub mod chrome;
 pub mod fsroute;
 pub mod session;
+pub mod tailnet;

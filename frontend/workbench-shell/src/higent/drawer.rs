@@ -172,6 +172,10 @@ impl himark::commands::HimarkCommand for ShareHostTailnet {
             })
             .map(move |result| crate::shell::windowed(window, Arc::new(SharedTailnet { result }))),
         );
+        // Sharing enrolls the HOST's node only. The app's own client
+        // node is a separate device with its own login — joining it
+        // here would mean two browser logins in a row — so that stays
+        // the drawer's "Add host → Connect to tailnet".
     }
 }
 

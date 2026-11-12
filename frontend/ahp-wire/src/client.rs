@@ -59,13 +59,23 @@ pub enum ServerEvent {
     AgentsChanged(Vec<AgentInfo>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RootInfo {
     pub agents: Vec<AgentInfo>,
     /// The host's suggested browse root (`InitializeResult.
     /// defaultDirectory`) — the user's home on the reference host;
     /// None when the host offers none. The folder picker opens here.
     pub default_directory: Option<String>,
+    /// Who the host IS, when it says (`InitializeResult._meta`:
+    /// `hostName`, `os`) — the machine's name and its OS word, the
+    /// host list's heading. A host that says nothing keeps the name
+    /// it was registered under.
+    pub machine: Option<String>,
+    pub os: Option<String>,
+    /// The host's stable identity (`_meta.hostId`): minted once by
+    /// the host and kept, so the same host reached by two roads is
+    /// recognized as one. `None` for a host that mints none.
+    pub identity: Option<String>,
 }
 
 #[derive(Clone, Debug)]

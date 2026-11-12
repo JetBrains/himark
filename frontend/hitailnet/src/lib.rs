@@ -34,56 +34,21 @@ use himark::app::AppCommand;
 
 const SCAN_SECONDS: u64 = 15;
 
-/// What a shell renders of the tailnet. Immutable value, replaced
-/// whole.
-#[derive(Clone, PartialEq, Default, Debug)]
-pub enum TailnetState {
-    #[default]
-    Off,
-    Starting,
-    NeedsLogin {
-        auth_url: String,
-    },
-    WaitingApproval,
-    Running,
-}
-
-impl TailnetState {
-    /// The C ABI encoding — integers exist ONLY at this edge.
-    /// Append-only once a header ships.
-    pub fn code(&self) -> u32 {
-        match self {
-            TailnetState::Off => 0,
-            TailnetState::Starting => 1,
-            TailnetState::NeedsLogin { .. } => 2,
-            TailnetState::WaitingApproval => 3,
-            TailnetState::Running => 4,
-        }
-    }
-}
-
-/// The store component the C face reads. Written only by
-/// [`TailnetChanged`].
-#[derive(Clone, PartialEq, Default, Debug)]
-pub struct TailnetFaceState {
-    pub state: TailnetState,
-}
-
-/// The shell's tailnet verbs, installed in the store at boot —
-/// the closures carry what they captured there (the scanner's
-/// channel, the connector, the poster).
-#[derive(Clone)]
-pub struct TailnetFlows {
-    pub connect: Arc<dyn Fn() + Send + Sync>,
-    /// The foregrounding kick: revive a suspension-wedged engine
-    /// and nudge the Failed rows to redial.
-    pub resume: Arc<dyn Fn() + Send + Sync>,
-}
+/// The tailnet vocabulary the faces speak — the state value, the
+/// store component, the flows — is the catalog's
+/// (`ahp_session::tailnet`), so the sessions drawer and the share
+/// command can use it without this crate. This crate WRITES it.
+pub use ahp_session::tailnet::{TailnetFaceState, TailnetFlows, TailnetState};
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct SavedHost {
     name: String,
     url: String,
+    /// The row answered the identity of a host the app already
+    /// had (its own, over the socket): known so discovery does not
+    /// add it again, never registered.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    retired: bool,
 }
 
 /// The data root: the shell's choice, threaded from `himark_create`;
@@ -142,20 +107,35 @@ pub fn install(
     let saved = load(&root);
     let mut known: HashSet<String> = HashSet::new();
     for host in &saved {
-        if !known.insert(host.url.clone()) {
+        if !known.insert(host.url.clone()) || host.retired {
             continue;
         }
         let seat =
             ahp_wire::wire::WireHost::at(app.runtime(), Arc::clone(&connector), host.url.clone());
-        hiahp::engine::register_agent_server(
+        let id = hiahp::engine::register_agent_server(
             app,
             clients,
             &host.name,
             ahp_wire::client::Client::of(Arc::new(seat)),
         );
+        let url = host.url.clone();
+        app.with_store(|store| hiahp::higent::flows::HostUrls::note(store, &url, id));
     }
 
     let (connect, connect_requests) = tokio::sync::mpsc::unbounded_channel::<()>();
+    // A row the catalog retired (one identity, two roads) is marked
+    // in the saved list so the next boot does not dial it.
+    let (retire, retirements) = tokio::sync::mpsc::unbounded_channel::<String>();
+    app.with_store(|store| {
+        ahp_session::session::state::HostRetiredHooks::install(
+            store,
+            Arc::new(move |store, id| {
+                if let Some(url) = hiahp::higent::flows::HostUrls::url_of(store, id) {
+                    let _ = retire.send(url);
+                }
+            }),
+        );
+    });
     let resume = {
         let connector = Arc::clone(&tailnet_connector);
         let runtime = app.runtime();
@@ -192,6 +172,7 @@ pub fn install(
         published: TailnetState::Off,
         connect_requests,
         connect_requested: false,
+        retirements,
     };
     app.runtime().spawn(scanner.run());
 }
@@ -209,6 +190,7 @@ struct Scanner {
     published: TailnetState,
     connect_requests: tokio::sync::mpsc::UnboundedReceiver<()>,
     connect_requested: bool,
+    retirements: tokio::sync::mpsc::UnboundedReceiver<String>,
 }
 
 impl Scanner {
@@ -268,6 +250,7 @@ impl Scanner {
         while let Ok(()) = self.connect_requests.try_recv() {
             self.connect_requested = true;
         }
+        self.mark_retired();
         if self.connect_requested {
             return true;
         }
@@ -276,6 +259,9 @@ impl Scanner {
 
     /// On a change, post the command that writes the store — the
     /// batch is what wakes the shell, which reads the store back.
+    /// A login the USER asked for in this run also opens the browser
+    /// (a saved node whose login merely expired at boot does not pop
+    /// one up unasked).
     fn announce(&mut self, state: TailnetState) {
         if self.published == state {
             return;
@@ -283,12 +269,43 @@ impl Scanner {
         self.published = state.clone();
         self.poster
             .post(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
-                TailnetChanged { state },
+                TailnetChanged {
+                    state,
+                    open_login: self.connect_requested,
+                },
             ))));
+    }
+
+    /// Mark the rows the catalog retired, so neither this run's
+    /// scans nor the next boot seat them again.
+    fn mark_retired(&mut self) {
+        let mut changed = false;
+        while let Ok(url) = self.retirements.try_recv() {
+            self.known.insert(url.clone());
+            match self.saved.iter_mut().find(|host| host.url == url) {
+                Some(host) if !host.retired => {
+                    host.retired = true;
+                    changed = true;
+                }
+                Some(_) => {}
+                None => {
+                    self.saved.push(SavedHost {
+                        name: url.clone(),
+                        url,
+                        retired: true,
+                    });
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            save(&self.root, &self.saved);
+        }
     }
 
     fn digest(&mut self, status: &tailnet::Status) {
         let mut wake_failed_rows = false;
+        self.mark_retired();
         for peer in status.agent_host_peers() {
             let Some((label, url)) = candidate(peer) else {
                 continue;
@@ -297,6 +314,7 @@ impl Scanner {
                 self.saved.push(SavedHost {
                     name: label.clone(),
                     url: url.clone(),
+                    retired: false,
                 });
                 save(&self.root, &self.saved);
                 tracing::info!(target: "tailnet_hosts", %label, %url, "discovered");
@@ -344,10 +362,12 @@ fn candidate(peer: &tailnet::NodeStatus) -> Option<(String, String)> {
     Some((label, url))
 }
 
-/// The scanner's state landing: writes the component the C face
-/// reads.
+/// The scanner's state landing: writes the component the faces read
+/// — and walks the user to the login page when they asked for the
+/// tailnet and the node answered with one.
 struct TailnetChanged {
     state: TailnetState,
+    open_login: bool,
 }
 
 impl imba::command::DynamicCommand for TailnetChanged {
@@ -366,6 +386,11 @@ impl imba::command::DynamicCommand for TailnetChanged {
         _fx: &mut imba::command::Fx<'_>,
     ) {
         store.update::<TailnetFaceState>(|held| held.state = self.state.clone());
+        if let (TailnetState::NeedsLogin { auth_url }, true) = (&self.state, self.open_login) {
+            if !himark::host::OpenUrl::open(store, auth_url) {
+                eprintln!("[tailnet] login needed — open {auth_url}");
+            }
+        }
     }
 }
 
@@ -394,15 +419,21 @@ impl imba::command::DynamicCommand for HostDiscovered {
         _ui: &imba::ui::UiCtx,
         _fx: &mut imba::command::Fx<'_>,
     ) {
+        // A host the user already typed in by this URL IS this host:
+        // one seat, the saved row keeps the label.
+        if hiahp::higent::flows::HostUrls::host_at(store, &self.url).is_some() {
+            return;
+        }
         let seat = ahp_wire::wire::WireHost::at(
             self.runtime.clone(),
             Arc::clone(&self.connector),
             self.url.clone(),
         );
-        hiahp::higent::flows::mint_agent_server(
+        hiahp::higent::flows::mint_agent_server_at(
             store,
             &self.clients,
             &self.name,
+            &self.url,
             ahp_wire::client::Client::of(Arc::new(seat)),
         );
     }
@@ -430,6 +461,26 @@ mod tests {
                 "studio".to_owned(),
                 "ws://himark-studio.tail1.ts.net:7297/".to_owned()
             ))
+        );
+    }
+
+    /// A saved row the catalog retired stays in the file (so the
+    /// scan knows it) but never registers; older files without the
+    /// flag read as live rows.
+    #[test]
+    fn retired_rows_are_remembered_but_not_live() {
+        let rows: Vec<super::SavedHost> = serde_json::from_str(
+            r#"[{"name":"a","url":"ws://a:7297/"},{"name":"b","url":"ws://b:7297/","retired":true}]"#,
+        )
+        .expect("rows parse");
+        assert!(!rows[0].retired);
+        assert!(rows[1].retired);
+        let back = serde_json::to_string(&rows).expect("rows print");
+        assert!(back.contains(r#""retired":true"#));
+        assert_eq!(
+            back.matches("retired").count(),
+            1,
+            "the flag prints only when set"
         );
     }
 

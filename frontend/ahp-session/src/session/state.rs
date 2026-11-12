@@ -21,9 +21,23 @@ pub enum HostStatus {
 
 #[derive(Clone)]
 pub struct Host {
+    /// The name the host was REGISTERED under — the embedder's word
+    /// (a saved label, a URL). The heading prefers `machine` once the
+    /// connect answers it.
     pub name: String,
     pub status: HostStatus,
     pub agents: rpds::VectorSync<AgentInfo>,
+
+    /// Who the host says it is (`RootInfo.machine`, `RootInfo.os`):
+    /// the machine's name and its OS word. `None` until a connect
+    /// answers, or forever for a host that does not say.
+    pub machine: Option<String>,
+    pub os: Option<String>,
+    /// The host's stable identity (`RootInfo.identity`), once a
+    /// connect answers it. Two rows that answer one identity are one
+    /// host reached by two roads; the catalog keeps one
+    /// (`Hosts::retire_duplicate`).
+    pub identity: Option<String>,
 
     /// The host's suggested browse root (a `file:` uri — the user's
     /// home on the reference host), as the connect answered it
@@ -247,6 +261,9 @@ impl Host {
             name,
             status: HostStatus::Idle,
             agents: rpds::VectorSync::new_sync(),
+            machine: None,
+            os: None,
+            identity: None,
             home: None,
             sessions: rpds::VectorSync::new_sync(),
             states: rpds::HashTrieMapSync::new_sync(),
@@ -256,10 +273,38 @@ impl Host {
         }
     }
 
+    /// The heading's word for the host: the machine's own name when
+    /// the connect brought one, else the registered name.
+    pub fn display_name(&self) -> &str {
+        self.machine
+            .as_deref()
+            .filter(|machine| !machine.trim().is_empty())
+            .unwrap_or(&self.name)
+    }
+
     pub fn summary(&self, session: &SessionUri) -> Option<&SessionSummary> {
         self.sessions
             .iter()
             .find(|summary| summary.resource == session.as_str())
+    }
+}
+
+/// What an embedder does when a host row LEAVES the catalog
+/// (`Hosts::retire`): the tailnet scanner marks the saved row so it
+/// is not redialed next boot. Installed at boot, run store-in-hand.
+#[derive(Clone, Default)]
+pub struct HostRetiredHooks(Vec<Arc<dyn Fn(&mut Store, HostId) + Send + Sync>>);
+
+impl HostRetiredHooks {
+    pub fn install(store: &mut Store, hook: Arc<dyn Fn(&mut Store, HostId) + Send + Sync>) {
+        store.update::<HostRetiredHooks>(|hooks| hooks.0.push(hook));
+    }
+
+    fn list(store: &Store) -> Vec<Arc<dyn Fn(&mut Store, HostId) + Send + Sync>> {
+        store
+            .get::<HostRetiredHooks>()
+            .map(|hooks| hooks.0.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -355,6 +400,68 @@ impl Hosts {
             hosts.entries.insert_mut(id, Host::new(name));
             hosts.generation += 1;
         });
+    }
+
+    /// Drop a host's row from the catalog: its order slot, its
+    /// entry, every session state it held. The wire seat behind it
+    /// stays registered (seats are never unminted); nothing lists or
+    /// drains it any more.
+    pub fn retire(store: &mut Store, id: HostId) {
+        let sessions: Vec<ahp_wire::SessionId> = store
+            .get::<Hosts>()
+            .and_then(|hosts| hosts.entries.get(&id))
+            .map(|host| {
+                host.rows
+                    .keys()
+                    .map(|session| ahp_wire::SessionId {
+                        host: id,
+                        session: session.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for session in sessions {
+            Self::dispose_state(store, &session);
+        }
+        store.update::<Hosts>(|hosts| {
+            if hosts.entries.remove_mut(&id) {
+                hosts.order = hosts
+                    .order
+                    .iter()
+                    .copied()
+                    .filter(|held| *held != id)
+                    .collect();
+                hosts.generation += 1;
+            }
+        });
+        for hook in HostRetiredHooks::list(store) {
+            hook(store, id);
+        }
+    }
+
+    /// One host, one row: when `id`'s identity is already another
+    /// row's, one of the two leaves — the designated LOCAL host
+    /// always stays (it is the socket road, the one that works
+    /// offline), else the newcomer goes. Answers the retired row.
+    pub fn retire_duplicate(store: &mut Store, id: HostId) -> Option<HostId> {
+        let identity = Self::host_ref(store, id)?.identity.clone()?;
+        let twin = store.get::<Hosts>()?.order.iter().copied().find(|held| {
+            *held != id
+                && store
+                    .get::<Hosts>()
+                    .and_then(|hosts| hosts.entries.get(held))
+                    .is_some_and(|host| host.identity.as_deref() == Some(identity.as_str()))
+        })?;
+        let local = store
+            .get::<ahp_wire::client::LocalHost>()
+            .and_then(|local| local.0);
+        let retired = match local {
+            Some(local) if local == twin => id,
+            Some(local) if local == id => twin,
+            _ => id,
+        };
+        Self::retire(store, retired);
+        Some(retired)
     }
 
     /// The all-empty housekeeping sweep, run by the shell at batch
@@ -670,6 +777,24 @@ impl Hosts {
                     folders: std::sync::Arc::new(|store, session| {
                         super::folders::session_folders(store, session)
                     }),
+                    folder_picks: std::sync::Arc::new(|store, session| {
+                        // Newborn until the host retitles it on the
+                        // first prompt; a summary not yet landed
+                        // reads as newborn too (the session was just
+                        // created here).
+                        let fresh = Hosts::host_ref(store, session.host)
+                            .and_then(|host| host.summary(&session.session))
+                            .is_none_or(super::summary::is_placeholder);
+                        ahp_chat::session_toolbar::FolderPicks {
+                            fresh,
+                            recent: super::folders::host_recent_folders(store, session.host),
+                        }
+                    }),
+                    session_title: std::sync::Arc::new(|store, session| {
+                        Hosts::host_ref(store, session.host)
+                            .and_then(|host| host.summary(&session.session))
+                            .map(|summary| summary.title.clone())
+                    }),
                 },
             ),
         );
@@ -697,6 +822,7 @@ impl Hosts {
     /// housekeeping over the same retract.
     pub(crate) fn dispose_state(store: &mut Store, session: &ahp_wire::SessionId) {
         let session = &Self::addressed(store, session);
+        super::driver::HostFeeds::forget_session_poll(store, session);
         let Some(state) = store
             .get::<Hosts>()
             .and_then(|hosts| hosts.entries.get(&session.host))

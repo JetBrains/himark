@@ -830,6 +830,14 @@ pub fn install_host_callbacks(app: &mut Himark, callbacks: HimarkHostCallbacks) 
             &bridge,
         )));
     }
+    if callbacks.open_url.is_some() {
+        let door = Arc::clone(&bridge);
+        app.with_store(|store| {
+            store.put(himark::host::OpenUrl(Arc::new(move |url| {
+                door.open_url(url);
+            })));
+        });
+    }
     ffi_seat(app.store()).set_host_bridge(bridge);
 }
 

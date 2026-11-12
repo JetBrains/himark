@@ -27,6 +27,20 @@ use super::state::HostStatus;
 pub(crate) struct HostFeeds {
     drains: rpds::HashTrieMapSync<HostId, CancellationToken>,
     listed: rpds::HashTrieSetSync<HostId>,
+    /// The sessions whose standing poll is in flight — ONE chain per
+    /// session: a re-entry (the drawer pick of a session already
+    /// open) must not start a second drain on the same feed.
+    polls: rpds::HashTrieSetSync<ahp_wire::SessionId>,
+}
+
+impl HostFeeds {
+    /// The session left the catalog: whatever poll it had is no
+    /// longer a chain to guard — a re-entry starts a fresh one.
+    pub(crate) fn forget_session_poll(store: &mut Store, key: &ahp_wire::SessionId) {
+        Self::update(store, |feeds| {
+            feeds.polls.remove_mut(key);
+        });
+    }
 }
 
 impl HostFeeds {
@@ -155,6 +169,12 @@ impl DynamicOnceCommand for Connected {
             Ok(info) => {
                 Agents::set_agents(store, self.server, info.agents);
                 Agents::set_home(store, self.server, info.default_directory);
+                Agents::set_identity(store, self.server, info.machine, info.os, info.identity);
+                // The same host by another road (the local socket
+                // AND its tailnet name): one row stays.
+                if super::state::Hosts::retire_duplicate(store, self.server) == Some(self.server) {
+                    return;
+                }
                 Agents::set_status(store, self.server, HostStatus::Connected);
                 // The tail lane of THIS batch sees Connected and
                 // starts the listing and the drain.
@@ -232,11 +252,21 @@ impl DynamicCommand for ConnectHost {
 /// The session MIRROR's lifeline: one standing long-poll per entered
 /// session, draining the wire's session-channel feed into the local
 /// mirror (`channel::apply_channel_actions`) and re-arming itself.
-/// The chain's one legitimate end is a disposed session.
-pub fn relaunch_session_poll(store: &Store, key: ahp_wire::SessionId, fx: &mut Fx<'_>) {
+/// The chain's one legitimate end is a disposed session. A second
+/// ask while one is in flight is a no-op: one chain per session.
+pub fn relaunch_session_poll(store: &mut Store, key: ahp_wire::SessionId, fx: &mut Fx<'_>) {
     let Some(client) = Servers::client(store, key.host) else {
         return;
     };
+    let in_flight = store
+        .get::<HostFeeds>()
+        .is_some_and(|feeds| feeds.polls.contains(&key));
+    if in_flight {
+        return;
+    }
+    HostFeeds::update(store, |feeds| {
+        feeds.polls.insert_mut(key.clone());
+    });
     fx.push(
         AnyEffect::new(ahp_wire::effects::PollSessionEffect {
             client: client.session.clone(),
@@ -258,6 +288,9 @@ struct SessionActionsLanded {
 
 impl DynamicOnceCommand for SessionActionsLanded {
     fn perform(self: Box<Self>, store: &mut Store, _ui: &UiCtx, fx: &mut Fx<'_>) {
+        // This landing ENDS the in-flight poll; the re-arm below is
+        // the chain's next link.
+        HostFeeds::forget_session_poll(store, &self.key);
         super::channel::apply_channel_actions(store, &self.key, &self.actions, fx);
         if Agents::live_session(store, &self.key).is_some() {
             relaunch_session_poll(store, self.key, fx);

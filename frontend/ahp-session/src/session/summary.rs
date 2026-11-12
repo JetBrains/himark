@@ -51,6 +51,19 @@ pub fn activity(summary: &SessionSummary) -> SessionActivity {
     }
 }
 
+/// The title the agent host gives a session at birth, before its
+/// first prompt names it. A session still wearing it never got a
+/// word: an empty placeholder, not a conversation.
+pub const PLACEHOLDER_TITLE: &str = "New Session";
+
+/// Whether the session is a newborn placeholder — created, never
+/// prompted. The host retitles on the first prompt; until then the
+/// catalog hides it (unless it is the one open in front of the user)
+/// and the composer offers its folder choice.
+pub fn is_placeholder(summary: &SessionSummary) -> bool {
+    summary.title.trim() == PLACEHOLDER_TITLE
+}
+
 /// Whether a turn is live — the bit that decides if the summary's
 /// `activity` line is worth showing.
 pub fn is_running(summary: &SessionSummary) -> bool {

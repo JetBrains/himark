@@ -243,53 +243,79 @@ unsubscribed wire channel's poll re-checks on a short interval
 instead of parking forever — a poll arm can never wedge on
 subscription order.
 
-## The agents drawer
+## The sessions drawer
 
-`higent::AgentsPanel` — a drawer on the RepositoryView recipe
-(docs/ahp/vcs.md): toggle command `agent.toggle-agents`, a toolbar
-button, `TreeItemView` rows. The tree:
+`ahp_session::session::drawer::AgentsPanel` (the Sessions mock,
+2026-11-12): toggle command `agent.toggle-agents`, a toolbar button,
+one `ListView` of `DrawerLine`s under a `ListKeyboardController`
+with speed search over the titles. The column:
 
 ```
-▾ himark Agent Host                    server row: name + status
-    ▸ himark — Reply with the single…  title · status glyph · activity
-    ▸ docs cleanup                     +12 −4      (diff stats badge)
-    ＋ New Session…                     the action row
-▾ VS Code Agent Host
-    …
-＋ Add host…                            the add-by-URL row
+Sessions  3 hosts                         Add host     the column header
+studio  macOS                      New session ⌘N      a host heading
+  ● make the diff folds two-edged              12m     unread: dot, bold title
+    himark-jb · hikit                                   the folders line
+  ○ run the perf suite on main             working     a running turn: ring
+  Older 31 ———————————————————————————— show all       the fold
+    hey                                          4d     older: a size down
+VS Code Agent Host  offline                Reconnect   not connected
+    unreachable at ws://127.0.0.1:52001                 the error, mono
 ```
 
-- **Server rows** carry the seat's display name and its connection
-  status (idle / connecting / connected / failed-with-message). A
-  failed server row shows the error and re-asks `ConnectServerEffect`
-  on activation — reconnect is a click, not a restart.
-- **Boot is the drawer's reconcile** (the mount-reconcile rule):
-  first paint answers `Boot`; for each registered server the panel
-  launches `ConnectServerEffect`, then `ListSessionsEffect` walking
-  cursors (bounded pages — the catalog is small), then holds ONE
-  `PollServerEffect` parked per server, relaunched per landing (the
-  long-poll recipe, drawer edition). Landings MERGE into the store:
-  added prepends, removed drops, changed partial-merges onto the
-  cached summary (protocol semantics: present fields replace).
-  Reconnect re-lists — notifications are not replayed.
-- **Session rows** render the summary: title, a status glyph
-  (`SessionStatus`), the activity line while the agent works, the
-  aggregate `+N −M` badge when the server supplies diff stats. All of
-  it updates live from `root/sessionSummaryChanged`. The himark
-  host's catalog includes the user's terminal-created CLI sessions
-  (`~/.claude/projects`, `~/.codex/sessions`) — opening one resumes
-  it (docs/ahp/agent-host.md §4).
-- **The "+" action row** sits under each server's sessions: `＋ New
-  Session…`. Activation opens THE NEW-SESSION COMPOSER (below) with
-  the row's host preselected. An installed `NewSessionFlow` (a
-  `HostId → command` factory in the `Agents` store) OVERRIDES the
-  composer — the e2e batteries stub the whole create road through
-  it; production installs nothing.
-- **The add-host row** turns into an inline editor on activation:
-  Enter submits the URL through the installed add-host flow, Escape
-  cancels.
+- **Hosts are headings.** The name is the machine's own
+  (`RootInfo.machine`, from the host's `initialize` `_meta.hostName`;
+  the registered label until the handshake answers), the kind word
+  its OS (`_meta.os`; `_meta.hostId` is the host's stable identity,
+  by which the same host reached over two roads keeps ONE row —
+  docs/ahp/tailnet.md) — or its state while it is not connected
+  (connecting…, offline). Activating a connected heading starts a
+  NEW SESSION there (the heading's trailing word says so; ⌘N does
+  the same for the open session's host); activating a failed one
+  re-asks the connect (`ConnectHost`) — reconnect is a click, not a
+  restart. The error stands under the heading in the margin register.
+- **Live rows, then the fold.** Under a host stand the sessions that
+  are live RIGHT NOW — a running or blocked turn — or open in this
+  client (the window's own, or any session this app entered), each
+  with its folders line. Everything else is OLDER: past
+  `fold_preview` rows the "Older · N" line folds them, previewing
+  that many; activating it toggles show all / show less, the cursor
+  staying on the fold. Under the fold the rows GROUP by the folders
+  they work in — a quiet folders heading one step in from the fold,
+  its rows one more — groups in order of their newest row. The gutter mark is the one ornament: a live
+  dot for a turn that finished (or blocked) unlooked-at, a ring for
+  a streaming one. The age column leads with the state word — open,
+  needs you, working, failed.
+- **Placeholders are not sessions.** A session still wearing the
+  host's birth title ("New Session", `summary::is_placeholder`) was
+  created and never prompted; the drawer hides it — except the one
+  open in front of the user.
+- **Boot is the drawer's reconcile**: first paint answers `Boot`,
+  which rebuilds the lines whenever `Hosts::generation` moved. The
+  catalog itself is kept true by the RESIDENT subscription
+  (`session::driver`: connect, list, drain, at every batch tail,
+  view or no view); the drawer only dresses it.
+- **"Add host" lives in the header**, not in the rows. It opens a
+  two-way menu: *Connect to tailnet* fires the embedder's
+  `TailnetFlows::connect` (docs/ahp/tailnet.md — the login opens in
+  the browser, discovery lists the hosts; a status line under the
+  header reports starting / sign in / waiting for approval); *Enter
+  URL…* stands the inline field — Enter submits the URL through the
+  installed add-host flow, Escape cancels.
 - Sessions are never silently disposed by the drawer;
   `DisposeSessionEffect` is in the vocabulary, activation only opens.
+
+### The composer's folder
+
+The session's folder is chosen ONCE, in the composer of a newborn
+session: while the session is still a placeholder (no prompt yet),
+the band's strip carries a DIR combo listing the folders this host's
+sessions recently worked in (`folders::host_recent_folders`, the
+session's own first) and *Add folder…* for the picker. A pick SETS
+the folder — `SessionWorkingDirectorySet` for it, then
+`SessionWorkingDirectoryRemoved` for every folder the session held —
+the composer controls a set of one. Past the first prompt the combo
+is gone; a folder is then ADDED through `session.add-folder` (the
+palette). `Catalog::folder_picks` is how the chat learns both facts.
 
 ## The new-session composer
 

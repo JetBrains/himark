@@ -661,6 +661,76 @@ pub struct Host {
     doc_feed: std::sync::mpsc::Sender<DocumentFeed>,
 }
 
+/// The `initialize` extension slot naming this machine: `hostName`
+/// (the kernel's hostname, `.local` shed) and `os` (a display word).
+/// Clients that do not know the keys ignore them, as the protocol
+/// asks.
+fn host_identity_meta() -> serde_json::Map<String, Value> {
+    let mut meta = serde_json::Map::new();
+    if let Some(id) = host_identity() {
+        meta.insert("hostId".to_owned(), Value::String(id));
+    }
+    if let Some(name) = machine_name() {
+        meta.insert("hostName".to_owned(), Value::String(name));
+    }
+    let os = match std::env::consts::OS {
+        "macos" => "macOS",
+        "linux" => "Linux",
+        "windows" => "Windows",
+        "ios" => "iOS",
+        "android" => "Android",
+        other => other,
+    };
+    meta.insert("os".to_owned(), Value::String(os.to_owned()));
+    meta
+}
+
+/// The host's IDENTITY: a random id minted the first time it is
+/// asked for and kept in the host's data dir (`host-id`) from then
+/// on — stable across restarts, network moves and hostname changes.
+/// Clients that reach the same host by two roads (the local socket,
+/// its tailnet name) see one id and keep one row. `None` only when
+/// there is no data dir to keep it in.
+pub fn host_identity() -> Option<String> {
+    let path = host_discovery::default_dir()?.join("host-id");
+    if let Ok(held) = std::fs::read_to_string(&path) {
+        let held = held.trim();
+        if !held.is_empty() {
+            return Some(held.to_owned());
+        }
+    }
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).ok()?;
+    let id: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // Written once, atomically; a race between two first askers
+    // leaves one id standing, and both read it back next time.
+    let scratch = path.with_extension("new");
+    if std::fs::write(&scratch, &id).is_ok() && std::fs::rename(&scratch, &path).is_ok() {
+        return std::fs::read_to_string(&path)
+            .ok()
+            .map(|held| held.trim().to_owned())
+            .filter(|held| !held.is_empty());
+    }
+    None
+}
+
+/// The kernel's hostname as a display name — "Studio" from
+/// "Studio.local"; `None` when the system has none to give.
+pub fn machine_name() -> Option<String> {
+    let mut buf = [0u8; 256];
+    let raw = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
+    if raw != 0 {
+        return None;
+    }
+    let end = buf.iter().position(|byte| *byte == 0).unwrap_or(buf.len());
+    let name = String::from_utf8_lossy(&buf[..end]).into_owned();
+    let name = name.strip_suffix(".local").unwrap_or(&name).trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
 impl Host {
     pub fn new(config: HostConfig) -> Arc<Self> {
         let store = Store::new(config.data_dir.clone());
@@ -1408,7 +1478,11 @@ impl Host {
                 terminal_command_prefix: None,
                 telemetry: None,
                 automations: None,
-                meta: None,
+                // Who this host IS, for the client's host list: the
+                // machine's name and its OS (the drawer reads
+                // "studio · macOS"). Extension keys, as the protocol
+                // reserves `_meta` for.
+                meta: Some(host_identity_meta()),
             },
         )
     }

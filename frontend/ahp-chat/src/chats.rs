@@ -56,6 +56,17 @@ pub struct Catalog {
             + Send
             + Sync,
     >,
+    /// What the composer may offer for the session's folder: whether
+    /// the session is still newborn, and the host's recent folders.
+    pub folder_picks: std::sync::Arc<
+        dyn Fn(&Store, &ahp_wire::SessionId) -> crate::session_toolbar::FolderPicks + Send + Sync,
+    >,
+    /// The SESSION's title as the catalog carries it — what the pane
+    /// is named by. The chat's own title is its birth title and never
+    /// moves (the host retitles the session on the first prompt, not
+    /// the chat); `None` while the catalog has no summary yet.
+    pub session_title:
+        std::sync::Arc<dyn Fn(&Store, &ahp_wire::SessionId) -> Option<String> + Send + Sync>,
 }
 
 impl Catalog {
@@ -69,6 +80,8 @@ impl Catalog {
             channel: std::sync::Arc::new(|_, _| None),
             note_turn: std::sync::Arc::new(|_, _, _, _| {}),
             folders: std::sync::Arc::new(|_, _| Vec::new()),
+            folder_picks: std::sync::Arc::new(|_, _| Default::default()),
+            session_title: std::sync::Arc::new(|_, _| None),
         }
     }
 }
@@ -515,9 +528,7 @@ impl hikit::panel::PanelView for ChatPane {
     }
 
     fn title(&self, store: &Store) -> String {
-        Chats::chat_ref(store, self.seat.chats, &self.seat.chat)
-            .map(|panel| panel.title_text())
-            .unwrap_or_else(|| "Agent Chat".to_owned())
+        pane_title(store, self.seat.chats, &self.seat.chat)
     }
 
     fn subtitle(&self, store: &Store) -> Option<String> {
@@ -640,9 +651,7 @@ impl PaneSeat {
     }
 
     pub(crate) fn title(&self, store: &Store) -> String {
-        Chats::chat_ref(store, self.chats, &self.chat)
-            .map(|panel| panel.title_text())
-            .unwrap_or_else(|| "Agent Chat".to_owned())
+        pane_title(store, self.chats, &self.chat)
     }
 
     /// No view record yet (panes mint storeless): a blank frame
@@ -671,4 +680,18 @@ impl PaneSeat {
             ),
         )
     }
+}
+
+/// A chat pane's name: the SESSION's title as the catalog carries it
+/// (the host retitles the session on its first prompt), falling back
+/// to the chat's own title — its birth title — while the catalog has
+/// none, and to a plain word with no record at all.
+pub(crate) fn pane_title(store: &Store, chats: imba::store::Id<Chats>, chat: &ChatUri) -> String {
+    let Some(panel) = Chats::chat_ref(store, chats, chat) else {
+        return "Agent Chat".to_owned();
+    };
+    Chats::catalog(store, chats)
+        .and_then(|catalog| (catalog.session_title)(store, &panel.session_id()))
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or_else(|| panel.title_text())
 }

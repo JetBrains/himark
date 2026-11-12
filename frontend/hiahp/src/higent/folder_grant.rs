@@ -7,7 +7,9 @@
 
 use std::sync::Arc;
 
-use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
+use ahp_types::actions::{
+    SessionWorkingDirectoryRemovedAction, SessionWorkingDirectorySetAction, StateAction,
+};
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -117,6 +119,10 @@ impl imba::effect::Effect for PickFoldersEffect {
     type Result = Vec<editor::location::ResourceLocation>;
 }
 
+/// The COMPOSER's folder pick landing: the chosen folder(s) become
+/// the session's, and the folders it held before go — the composer
+/// controls a set of one. (The palette's add-folder command, which
+/// ADDS, lands through `SessionFoldersPicked` in the shell.)
 pub struct ChatFoldersPicked {
     pub server: HostId,
     pub session: SessionUri,
@@ -149,17 +155,45 @@ impl imba::command::DynamicCommand for ChatFoldersPicked {
             );
             return;
         };
-        for location in &self.locations {
-            let directory = uris.uri_of(location).as_str().to_owned();
-            let channel = self.session.as_channel();
-            eprintln!("[higent] granting folder {directory} to {channel}");
+        let granted: Vec<String> = self
+            .locations
+            .iter()
+            .map(|location| uris.uri_of(location).as_str().to_owned())
+            .collect();
+        let key = ahp_wire::SessionId {
+            host: self.server,
+            session: self.session.clone(),
+        };
+        let held: Vec<String> = ahp_session::session::agents::Agents::channel(store, &key)
+            .map(|channel| channel.working_directories.iter().cloned().collect())
+            .unwrap_or_default();
+        let mut actions: Vec<StateAction> = granted
+            .iter()
+            .map(|directory| {
+                StateAction::SessionWorkingDirectorySet(SessionWorkingDirectorySetAction {
+                    directory: directory.clone(),
+                })
+            })
+            .collect();
+        // The grants go first, so the session is never folderless in
+        // between.
+        actions.extend(
+            held.into_iter()
+                .filter(|directory| !granted.contains(directory))
+                .map(|directory| {
+                    StateAction::SessionWorkingDirectoryRemoved(
+                        SessionWorkingDirectoryRemovedAction { directory },
+                    )
+                }),
+        );
+        let channel = self.session.as_channel();
+        eprintln!("[higent] setting folders {granted:?} on {channel}");
+        for action in actions {
             fx.push(
                 AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                     client: client.session.clone(),
-                    channel,
-                    action: StateAction::SessionWorkingDirectorySet(
-                        SessionWorkingDirectorySetAction { directory },
-                    ),
+                    channel: channel.clone(),
+                    action,
                 })
                 .map(|result| imba::command::Verb::Dynamic(Arc::new(ChatGrantAck { result }))),
             );

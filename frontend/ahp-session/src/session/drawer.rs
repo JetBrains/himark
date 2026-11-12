@@ -1,13 +1,24 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The Sessions drawer (the Sessions mock): the header names the
+//! column, counts the hosts and offers "Add host"; each host is a
+//! heading with its own "New session"; under it the sessions that are
+//! live right now or open in this client, then the "Older · N" fold
+//! over the rest. One list, one keyboard walk, speed search over the
+//! titles. The catalog it dresses is kept true by the resident
+//! subscription (`driver`); the drawer only reads it.
+
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use ahp_types::state::SessionSummary;
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionUri;
+use hikit::combo::ComboOption;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
+use hikit::menu::{MenuCommand, MenuView};
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
 type DrawerRowsCommand =
@@ -32,32 +43,35 @@ use imba::{
 };
 
 use super::agents::Agents;
-use super::drawer_row::{AgeInk, DrawerLine, Lead, LineKind, TitleForm};
+use super::drawer_row::{AgeInk, DrawerLine, HostState, Lead, LineKind, Mark, TitleForm};
 use super::state::HostStatus;
-use super::summary::{self, Recency, SessionActivity};
+use super::summary::{self, SessionActivity};
+use crate::tailnet::{TailnetFaceState, TailnetFlows, TailnetState};
 use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum AgentKey {
-    /// A host that is not connected — picking it nudges a connect.
-    Server(HostId),
-    /// A recency group's head. Keyed like every line so the keyboard
-    /// walk counts lines one for one.
-    Group(Recency),
-    Session(HostId, SessionUri),
-
-    NewSession(HostId),
-
+    /// A host's heading. Activating it starts a session on a
+    /// connected host and nudges a connect on one that is not.
+    Host(HostId),
+    /// The host's error line.
     Note(HostId),
-
-    AddHost,
+    Session(HostId, SessionUri),
+    /// The host's "Older · N" fold; activating it toggles.
+    Fold(HostId),
+    /// A folders heading under the fold, keyed by its label.
+    Folders(HostId, String),
 }
 
 type Lines = ScrollView<ListView<DrawerLine, AgentKey>>;
 
-/// Speed-search over the drawer's session titles — group heads, hosts,
-/// notes and the "+ …" affordances stay out of the match set. Keys
-/// ascend with the lines, so zipping pairs each key with its line.
+/// The add-host menu's rows.
+const ADD_TAILNET: &str = "tailnet";
+const ADD_URL: &str = "url";
+
+/// Speed-search over the drawer's session titles — hosts, notes and
+/// folds stay out of the match set. Keys ascend with the lines, so
+/// zipping pairs each key with its line.
 #[derive(Clone)]
 struct SessionSearcher;
 
@@ -86,17 +100,6 @@ impl hikit::list_keyboard::Searcher for SessionSearcher {
     }
 }
 
-impl AgentsPanel {
-    /// What the add-host field takes off the lines' height.
-    fn adding_height(&self, store: &Store) -> f32 {
-        let chrome = ::editor::env::Themes::of(store).part(crate::chrome::SessionsChrome::KEY);
-        match &self.adding {
-            Some(input) => input.content_height() + 2.0 * chrome.row_pad,
-            None => 0.0,
-        }
-    }
-}
-
 /// TEST SUPPORT: no production caller outside this crate.
 #[derive(Clone)]
 #[doc(hidden)]
@@ -111,10 +114,22 @@ pub enum AgentsCommand {
 
     Dismiss,
 
-    /// The head's NEW — a fresh session where the open one lives
-    /// (else the first connected host): the affordance a long
-    /// history buried as a "+ New Session…" row below the fold.
+    /// ⌘N from the drawer: a fresh session where the open one lives
+    /// (else the first connected host).
     NewHere,
+
+    /// The header's "Add host": the two-way menu — join the tailnet,
+    /// or type a URL.
+    AddHost,
+
+    AddHostMenu(MenuCommand),
+
+    /// The menu's first way: the embedder's tailnet connect flow
+    /// (the login opens in the browser; discovery lists the hosts).
+    ConnectTailnet,
+
+    /// The menu's second way: the URL field.
+    EnterHostUrl,
 
     AddHostInput(EditorCommand),
 
@@ -128,13 +143,25 @@ impl std::fmt::Display for AgentsCommand {
         match self {
             AgentsCommand::Rows(command) => command.fmt(out),
             AgentsCommand::AddHostInput(command) => command.fmt(out),
+            AgentsCommand::AddHostMenu(command) => command.fmt(out),
             AgentsCommand::Boot => out.write_str("agents boot"),
             AgentsCommand::Dismiss => out.write_str("agents dismiss"),
             AgentsCommand::NewHere => out.write_str("agents new here"),
+            AgentsCommand::AddHost => out.write_str("add host"),
+            AgentsCommand::ConnectTailnet => out.write_str("connect tailnet"),
+            AgentsCommand::EnterHostUrl => out.write_str("enter host url"),
             AgentsCommand::SubmitAddHost => out.write_str("submit add host"),
             AgentsCommand::CancelAddHost => out.write_str("cancel add host"),
         }
     }
+}
+
+/// The add-host gesture in flight: the two-way menu, or the URL
+/// field it opened.
+#[derive(Clone)]
+enum Adding {
+    Menu(MenuView),
+    Url(EditorView),
 }
 
 pub struct AgentsPanel {
@@ -144,7 +171,15 @@ pub struct AgentsPanel {
     /// paint-side ask fires while this lags `Hosts::generation`.
     seen: Option<u64>,
 
-    adding: Option<EditorView>,
+    /// The hosts whose Older fold is open.
+    expanded: HashSet<HostId>,
+
+    adding: Option<Adding>,
+
+    /// The user asked for the tailnet from this drawer: while the
+    /// node has not yet reported, the status line says so.
+    tailnet_asked: bool,
+
     request: Option<ModalRequest>,
 }
 
@@ -154,7 +189,9 @@ impl Clone for AgentsPanel {
             list: self.list.clone(),
             asks: Arc::clone(&self.asks),
             seen: self.seen,
+            expanded: self.expanded.clone(),
             adding: self.adding.clone(),
+            tailnet_asked: self.tailnet_asked,
 
             request: None,
         }
@@ -179,7 +216,9 @@ pub struct DrawerAsks {
 
 impl AgentsPanel {
     pub fn open(store: &Store, ui: &UiCtx, asks: Arc<DrawerAsks>) -> Self {
-        let panel = Self {
+        // The first fill happens on Boot (perform has the UiCtx the
+        // row measurement needs).
+        Self {
             list: ListKeyboardController::searchable(
                 ScrollView::new(
                     ListView::empty().with_selection(hikit::rows::selection_style(store)),
@@ -190,17 +229,16 @@ impl AgentsPanel {
             ),
             asks,
             seen: None,
+            expanded: HashSet::new(),
             adding: None,
+            tailnet_asked: false,
             request: None,
-        };
-        // The first fill happens on Boot (perform has the UiCtx the
-        // row measurement needs).
-        panel
+        }
     }
 
-    /// TEST SUPPORT: each line's word and depth — heads (groups,
-    /// hosts) at 0, what they head at 1. A host that is not connected
-    /// reads "name — state".
+    /// TEST SUPPORT: each line's word and depth — hosts at 0, what
+    /// they head at 1. A host reads "name — kind" (its OS, or its
+    /// state while it is not connected).
     pub fn rows(&self) -> Vec<(String, usize)> {
         self.list
             .inner()
@@ -208,7 +246,7 @@ impl AgentsPanel {
             .rows()
             .map(|line| {
                 let text = match &line.kind {
-                    LineKind::Host { name, status, .. } => format!("{name} — {status}"),
+                    LineKind::Host { name, kind, .. } => format!("{name} — {kind}"),
                     _ => line.text().to_owned(),
                 };
                 (text, line.depth())
@@ -216,7 +254,9 @@ impl AgentsPanel {
             .collect()
     }
 
-    /// TEST SUPPORT: each line's grid — (repo, word, age).
+    /// TEST SUPPORT: each line's three words — (detail, word, trail):
+    /// a session's (folders, title, age), a host's (kind, name,
+    /// action), a fold's (count, "Older", toggle).
     #[doc(hidden)]
     pub fn lines(&self) -> Vec<(String, String, String)> {
         self.list
@@ -225,22 +265,34 @@ impl AgentsPanel {
             .rows()
             .map(|line| {
                 (
-                    line.repo().to_owned(),
+                    line.detail(),
                     line.text().to_owned(),
-                    line.age().to_owned(),
+                    line.trail().to_owned(),
                 )
             })
             .collect()
     }
 
-    /// TEST SUPPORT: the line a host's "+ New Session…" stands on.
+    /// TEST SUPPORT: the line a host's heading stands on — the row
+    /// whose activation starts a new session there.
     #[doc(hidden)]
     pub fn new_session_row(&self, host: HostId) -> Option<usize> {
         let range = self
             .list
             .inner()
             .content()
-            .row_range(&AgentKey::NewSession(host))?;
+            .row_range(&AgentKey::Host(host))?;
+        Some(range.start)
+    }
+
+    /// TEST SUPPORT: the line a host's Older fold stands on.
+    #[doc(hidden)]
+    pub fn fold_row(&self, host: HostId) -> Option<usize> {
+        let range = self
+            .list
+            .inner()
+            .content()
+            .row_range(&AgentKey::Fold(host))?;
         Some(range.start)
     }
 
@@ -271,100 +323,137 @@ impl AgentsPanel {
         Some(range.start)
     }
 
-    /// Rebuild the lines from the catalog: every connected host's
-    /// sessions in ONE list, most recent first, cut into recency
-    /// groups; then the "+ …" affordances; then the foot naming the
-    /// hosts that are not connected.
+    /// TEST SUPPORT: the add-host menu's rows while it is up.
+    #[doc(hidden)]
+    pub fn add_host_menu(&self) -> Option<Vec<String>> {
+        match &self.adding {
+            Some(Adding::Menu(_)) => Some(vec![
+                "Connect to tailnet".to_owned(),
+                "Enter URL…".to_owned(),
+            ]),
+            _ => None,
+        }
+    }
+
+    /// Rebuild the lines from the catalog: host by host, the heading,
+    /// its error, the live rows (running, or open in this client),
+    /// then the Older fold over the rest — and under it, while
+    /// folded, a short preview. Placeholders (a session created and
+    /// never prompted) stay out, except the one open in front of the
+    /// user.
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let cursor = self.list.inner().content().cursor().cloned();
         let here = self.open_session_key(store);
         let now = std::time::SystemTime::now();
         let hosts = Agents::list(store);
-
-        // Sessions interleave across hosts and projects: the repo
-        // column says whose each one is.
-        let mut sessions: Vec<(HostId, &str, &SessionSummary)> = hosts
-            .iter()
-            .filter(|(_, record)| matches!(record.status, HostStatus::Connected))
-            .flat_map(|(server, record)| {
-                record
-                    .sessions
-                    .iter()
-                    .map(move |summary| (*server, record.name.as_str(), summary))
-            })
-            .collect();
-        sessions.sort_by_key(|(_, _, summary)| std::cmp::Reverse(summary::modified_stamp(summary)));
+        let preview = ::editor::env::Themes::of(store)
+            .part(crate::chrome::SessionsChrome::KEY)
+            .fold_preview;
 
         let mut slice: ListSlice<DrawerLine, AgentKey> = ListSlice::new();
         let push = |slice: &mut ListSlice<DrawerLine, AgentKey>, key, kind, lead| {
             slice.push_keyed(key, DrawerLine::new(kind, lead), store, ui);
         };
-        let mut group = None;
-        for (server, host_name, summary) in sessions {
-            let recency = summary::recency(now, summary);
-            if group != Some(recency) {
-                let lead = match group {
-                    None => Lead::Top,
-                    Some(_) => Lead::Group,
-                };
-                push(
-                    &mut slice,
-                    AgentKey::Group(recency),
-                    LineKind::Group(recency.caps()),
-                    lead,
-                );
-                group = Some(recency);
-            }
-            let key = AgentKey::Session(server, SessionUri::new(summary.resource.clone()));
-            let line = session_line(now, host_name, summary, here.as_ref() == Some(&key));
-            push(&mut slice, key, line, Lead::None);
-        }
-
-        let mut lead = match group {
-            Some(_) => Lead::Group,
-            None => Lead::Top,
-        };
+        let mut lead = Lead::Top;
         for (server, record) in hosts.iter() {
-            if !matches!(record.status, HostStatus::Connected) {
-                continue;
-            }
-            let line = LineKind::Affordance {
-                repo: record.name.clone(),
-                label: "+ New Session…".to_owned(),
+            let (state, kind, action, key) = match &record.status {
+                HostStatus::Connected => (
+                    HostState::Connected,
+                    record.os.clone().unwrap_or_default(),
+                    "New session",
+                    Some("⌘N".to_owned()),
+                ),
+                HostStatus::Idle | HostStatus::Connecting => {
+                    (HostState::Connecting, "connecting…".to_owned(), "", None)
+                }
+                HostStatus::Failed(_) => {
+                    (HostState::Failed, "offline".to_owned(), "Reconnect", None)
+                }
             };
-            push(&mut slice, AgentKey::NewSession(*server), line, lead);
-            lead = Lead::None;
-        }
-        let line = LineKind::Affordance {
-            repo: String::new(),
-            label: "+ Add Host…".to_owned(),
-        };
-        push(&mut slice, AgentKey::AddHost, line, lead);
-
-        // The foot: hosts that are not connected, set apart by a
-        // hairline — their name, their state, their error.
-        let mut lead = Lead::Foot;
-        for (server, record) in hosts.iter() {
-            let (status, failed, error) = match &record.status {
-                HostStatus::Connected => continue,
-                HostStatus::Idle | HostStatus::Connecting => ("connecting…", false, None),
-                HostStatus::Failed(error) => ("offline", true, Some(error.clone())),
-            };
-            let line = LineKind::Host {
-                name: record.name.clone(),
-                status: status.to_owned(),
-                failed,
-            };
-            push(&mut slice, AgentKey::Server(*server), line, lead);
-            if let Some(error) = error {
+            push(
+                &mut slice,
+                AgentKey::Host(*server),
+                LineKind::Host {
+                    name: record.display_name().to_owned(),
+                    kind,
+                    state,
+                    action: action.to_owned(),
+                    key,
+                },
+                lead,
+            );
+            lead = Lead::Host;
+            if let HostStatus::Failed(error) = &record.status {
                 push(
                     &mut slice,
                     AgentKey::Note(*server),
-                    LineKind::Error(error),
+                    LineKind::Error(error.clone()),
                     Lead::None,
                 );
             }
-            lead = Lead::Host;
+
+            let mut sessions: Vec<&SessionSummary> = record
+                .sessions
+                .iter()
+                .filter(|summary| {
+                    let key = AgentKey::Session(*server, SessionUri::new(summary.resource.clone()));
+                    !summary::is_placeholder(summary) || here.as_ref() == Some(&key)
+                })
+                .collect();
+            sessions.sort_by_key(|summary| std::cmp::Reverse(summary::modified_stamp(summary)));
+            let (live, older): (Vec<_>, Vec<_>) = sessions.into_iter().partition(|summary| {
+                let uri = SessionUri::new(summary.resource.clone());
+                here.as_ref() == Some(&AgentKey::Session(*server, uri.clone()))
+                    || summary::is_running(summary)
+                    || record.states.contains_key(&uri)
+            });
+            for summary in live {
+                let key = AgentKey::Session(*server, SessionUri::new(summary.resource.clone()));
+                let line = session_line(now, summary, here.as_ref() == Some(&key), false, 0);
+                push(&mut slice, key, line, Lead::None);
+            }
+            let expanded = self.expanded.contains(server);
+            let shown: &[&SessionSummary] = match older.len() > preview {
+                true => {
+                    push(
+                        &mut slice,
+                        AgentKey::Fold(*server),
+                        LineKind::Fold {
+                            count: older.len(),
+                            expanded,
+                        },
+                        Lead::None,
+                    );
+                    match expanded {
+                        true => &older,
+                        false => &older[..preview],
+                    }
+                }
+                false => &older,
+            };
+            // Grouped by folders, groups in order of their newest row
+            // (the rows are already newest-first).
+            let mut groups: Vec<(String, Vec<&SessionSummary>)> = Vec::new();
+            for summary in shown {
+                let label = folders_label(summary);
+                match groups.iter_mut().find(|(held, _)| *held == label) {
+                    Some((_, rows)) => rows.push(summary),
+                    None => groups.push((label, vec![summary])),
+                }
+            }
+            for (label, rows) in groups {
+                push(
+                    &mut slice,
+                    AgentKey::Folders(*server, label.clone()),
+                    LineKind::Folders(label),
+                    Lead::None,
+                );
+                for summary in rows {
+                    let key = AgentKey::Session(*server, SessionUri::new(summary.resource.clone()));
+                    let line = session_line(now, summary, false, true, 2);
+                    push(&mut slice, key, line, Lead::None);
+                }
+            }
         }
 
         let len = self.list.inner().content().len();
@@ -411,18 +500,23 @@ impl AgentsPanel {
         _fx: &mut Effects<'_, AgentsCommand>,
     ) {
         match key {
-            AgentKey::Server(server) => {
-                if matches!(
-                    Agents::record(store, *server).map(|record| record.status),
-                    Some(HostStatus::Failed(_)) | Some(HostStatus::Idle)
-                ) {
-                    // The nudge rides the verb drain: connecting is the
-                    // resident subscription's job, not the drawer's.
-                    self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
-                        std::sync::Arc::new(super::driver::ConnectHost(*server)),
-                    )));
+            AgentKey::Host(server) => {
+                match Agents::record(store, *server).map(|record| record.status) {
+                    Some(HostStatus::Connected) => {
+                        self.request = Some(ModalRequest::Perform((self.asks.new_session)(
+                            store, *server,
+                        )));
+                    }
+                    Some(HostStatus::Failed(_)) | Some(HostStatus::Idle) => {
+                        // The nudge rides the verb drain: connecting is the
+                        // resident subscription's job, not the drawer's.
+                        self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
+                            std::sync::Arc::new(super::driver::ConnectHost(*server)),
+                        )));
+                        self.refresh(store, ui);
+                    }
+                    Some(HostStatus::Connecting) | None => {}
                 }
-                self.refresh(store, ui);
             }
             AgentKey::Session(server, session) => {
                 self.list.inner_mut().content_mut().select_only(key.clone());
@@ -432,57 +526,76 @@ impl AgentsPanel {
                     session.clone(),
                 )));
             }
-            AgentKey::NewSession(server) => {
-                self.request = Some(ModalRequest::Perform((self.asks.new_session)(
-                    store, *server,
-                )));
+            AgentKey::Fold(server) => {
+                // The toggle re-lays the rows under it; the cursor
+                // stays on the fold line through the refresh.
+                self.list.inner_mut().content_mut().select_only(key.clone());
+                if !self.expanded.remove(server) {
+                    self.expanded.insert(*server);
+                }
+                self.refresh(store, ui);
             }
-            AgentKey::Group(_) | AgentKey::Note(_) => {}
-            AgentKey::AddHost => {
-                let mut input =
-                    EditorView::input_styled(600.0, store, ui, ::editor::theme::StyleId::Field);
-                input.focus_text();
-                self.adding = Some(input);
-            }
+            AgentKey::Note(_) | AgentKey::Folders(..) => {}
         }
     }
 
     #[doc(hidden)]
     pub fn add_host_text(&self) -> Option<String> {
-        let input = self.adding.as_ref()?;
+        let Some(Adding::Url(input)) = self.adding.as_ref() else {
+            return None;
+        };
         let text = input.document.text();
         let end = text.byte_count().min(u32::MAX as usize) as u32;
         Some(text.view().substring(0..end))
     }
+
+    /// What the add-host field takes off the lines' height.
+    fn adding_height(&self, store: &Store) -> f32 {
+        let chrome = ::editor::env::Themes::of(store).part(crate::chrome::SessionsChrome::KEY);
+        match &self.adding {
+            Some(Adding::Url(input)) => input.content_height() + 2.0 * chrome.row_pad,
+            Some(Adding::Menu(_)) | None => 0.0,
+        }
+    }
+
+    /// The tailnet status line's word, while the node is on its way.
+    fn tailnet_word(&self, store: &Store) -> Option<&'static str> {
+        let state = TailnetFaceState::of(store);
+        match (&state, self.tailnet_asked) {
+            (TailnetState::Off, true) => Some("Tailnet: connecting…"),
+            _ => state.progress_word(),
+        }
+    }
 }
 
-/// A session's line: the repo (its first folder's name, else its
-/// host's), its title — or an italic stand-in — and the age column,
-/// which leads with a word when the session wants a look: "open" for
-/// the window's own, the turn's state otherwise. What the states ARE
-/// is the session's to say (`summary::activity`); this is their dress.
+/// A session's line: its title — or an italic stand-in — its folders,
+/// the gutter mark, and the age column, which leads with a word when
+/// the session wants a look: "open" for the window's own, the turn's
+/// state otherwise. What the states ARE is the session's to say
+/// (`summary::activity`); this is their dress.
 fn session_line(
     now: std::time::SystemTime,
-    host_name: &str,
     summary: &SessionSummary,
     here: bool,
+    old: bool,
+    indent: u8,
 ) -> LineKind {
-    let repo = summary
-        .working_directories
-        .as_ref()
-        .and_then(|folders| folders.first())
-        .map(|folder| super::folders::folder_label(folder))
-        .unwrap_or_else(|| host_name.to_owned());
+    let roots = folders_label(summary);
     let (title, form) = match summary.title.trim() {
         "" => ("untitled".to_owned(), TitleForm::Untitled),
         title if title.starts_with('/') => (summary::label(summary), TitleForm::Command),
         _ => (summary::label(summary), TitleForm::Plain),
     };
     let activity = summary::activity(summary);
+    let mark = match activity {
+        SessionActivity::Working => Mark::Running,
+        SessionActivity::Blocked | SessionActivity::Unviewed => Mark::Attention,
+        SessionActivity::Failed | SessionActivity::Quiet => Mark::None,
+    };
     let (word, ink) = match (here, activity) {
         (true, _) => (Some("open"), AgeInk::Live),
         (false, SessionActivity::Blocked) => (Some("needs you"), AgeInk::Live),
-        (false, SessionActivity::Working) => (Some("working"), AgeInk::Live),
+        (false, SessionActivity::Working) => (Some("working"), AgeInk::Quiet),
         (false, SessionActivity::Failed) => (Some("failed"), AgeInk::Failed),
         (false, SessionActivity::Unviewed | SessionActivity::Quiet) => (None, AgeInk::Quiet),
     };
@@ -493,13 +606,35 @@ fn session_line(
         .collect::<Vec<_>>()
         .join(" · ");
     LineKind::Session {
-        repo,
         title,
         form,
-        unviewed: activity == SessionActivity::Unviewed,
+        mark,
+        attention: matches!(
+            activity,
+            SessionActivity::Unviewed | SessionActivity::Blocked
+        ),
         age,
         ink,
+        roots,
         here,
+        old,
+        indent,
+    }
+}
+
+/// A session's folders as one label — each folder's short name,
+/// " · "-joined; a session with none reads "no folder".
+fn folders_label(summary: &SessionSummary) -> String {
+    let label = summary
+        .working_directories
+        .iter()
+        .flatten()
+        .map(|folder| super::folders::folder_label(folder))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    match label.is_empty() {
+        true => "no folder".to_owned(),
+        false => label,
     }
 }
 
@@ -512,28 +647,44 @@ impl View for AgentsPanel {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, AgentsCommand> {
         use imba::focus::FocusData;
-        if let Some(input) = &self.adding {
-            let own = FocusData {
-                on_key: Some(Box::new(|key, _mods| match key {
-                    InputKey::Enter => EventResult::command(AgentsCommand::SubmitAddHost),
-                    InputKey::Escape => EventResult::command(AgentsCommand::CancelAddHost),
-                    _ => EventResult::Ignored,
-                })),
-                ..FocusData::default()
-            };
-            return own.merge_under(input.focus_data(store, ui).map(AgentsCommand::AddHostInput));
+        match &self.adding {
+            Some(Adding::Url(input)) => {
+                let own = FocusData {
+                    on_key: Some(Box::new(|key, _mods| match key {
+                        InputKey::Enter => EventResult::command(AgentsCommand::SubmitAddHost),
+                        InputKey::Escape => EventResult::command(AgentsCommand::CancelAddHost),
+                        _ => EventResult::Ignored,
+                    })),
+                    ..FocusData::default()
+                };
+                own.merge_under(input.focus_data(store, ui).map(AgentsCommand::AddHostInput))
+            }
+            Some(Adding::Menu(menu)) => {
+                let own = FocusData {
+                    on_key: Some(Box::new(|key, _mods| match key {
+                        InputKey::Escape => EventResult::command(AgentsCommand::CancelAddHost),
+                        _ => EventResult::Ignored,
+                    })),
+                    ..FocusData::default()
+                };
+                own.merge_under(menu.focus_data(store, ui).map(AgentsCommand::AddHostMenu))
+            }
+            None => {
+                // The key table is the controller's; the surface keeps
+                // only its own dismissal.
+                let searching = self.list.searching();
+                let own = FocusData {
+                    on_key: Some(Box::new(move |key, _mods| match key {
+                        InputKey::Escape if !searching => {
+                            EventResult::command(AgentsCommand::Dismiss)
+                        }
+                        _ => EventResult::Ignored,
+                    })),
+                    ..FocusData::default()
+                };
+                own.merge_under(self.list.focus_data(store, ui).map(AgentsCommand::Rows))
+            }
         }
-        // The key table is the controller's; the surface keeps only
-        // its own dismissal (and the add-host mode above).
-        let searching = self.list.searching();
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::command(AgentsCommand::Dismiss),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.list.focus_data(store, ui).map(AgentsCommand::Rows))
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
@@ -599,8 +750,44 @@ impl View for AgentsPanel {
             AgentsCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
+            AgentsCommand::AddHost => {
+                self.adding = Some(Adding::Menu(MenuView::new(
+                    store,
+                    ui,
+                    vec![
+                        ComboOption::plain(ADD_TAILNET, "Connect to tailnet"),
+                        ComboOption::plain(ADD_URL, "Enter URL…"),
+                    ],
+                )));
+            }
+            AgentsCommand::AddHostMenu(command) => {
+                let Some(Adding::Menu(menu)) = self.adding.as_mut() else {
+                    return;
+                };
+                match menu.picked(&command).as_deref() {
+                    Some(ADD_TAILNET) => self.perform(store, ui, AgentsCommand::ConnectTailnet, fx),
+                    Some(ADD_URL) => self.perform(store, ui, AgentsCommand::EnterHostUrl, fx),
+                    Some(_) => self.adding = None,
+                    None => fx.scope(AgentsCommand::AddHostMenu, |fx| {
+                        menu.perform(store, ui, command, fx)
+                    }),
+                }
+            }
+            AgentsCommand::ConnectTailnet => {
+                self.adding = None;
+                self.tailnet_asked = true;
+                if !TailnetFlows::connect(store) {
+                    eprintln!("[sessions] no tailnet flow installed — this shell cannot join one");
+                }
+            }
+            AgentsCommand::EnterHostUrl => {
+                let mut input =
+                    EditorView::input_styled(600.0, store, ui, ::editor::theme::StyleId::Field);
+                input.focus_text();
+                self.adding = Some(Adding::Url(input));
+            }
             AgentsCommand::AddHostInput(command) => {
-                let Some(input) = self.adding.as_mut() else {
+                let Some(Adding::Url(input)) = self.adding.as_mut() else {
                     return;
                 };
                 fx.scope(AgentsCommand::AddHostInput, |fx| {
@@ -638,37 +825,46 @@ impl View for AgentsPanel {
             // The panel's FLOOR and its width belong to the window
             // slot that stands this view up (`hikit::modal::Paneled`)
             // — a mounted host draws its own island. The drawer draws
-            // its own HEAD: its name at the text edge and NEW at the
-            // trailing edge — the create affordance a long history
-            // buried as a "+ New Session…" row below the fold.
-            let ink = ::editor::env::Themes::of(store).part(::editor::theme::InkChrome::KEY);
-            let window = ::editor::env::Themes::of(store).part(::editor::theme::WindowChrome::KEY);
-            let live = hikit::ui::brief(store, ui).colored(ink.live.0);
-            let head = imba::layout::Row::new(arena)
-                .child_by_baseline(hikit::ui::text(&hikit::ui::caps(store, ui), "SESSIONS"))
-                .weighted(1.0, imba::layout::Fill::new().height(0.0))
-                .child_by_baseline(hikit::ui::text(&live, "new").on_event(
-                    |_arena: &Arena, event: &Event<'_>, _size| match event {
-                        Event::MouseDown { .. } => EventResult::command(AgentsCommand::NewHere),
-                        _ => EventResult::Ignored,
-                    },
-                ))
-                .pad_insets(imba::layout::Insets {
-                    left: window.side_text_edge,
-                    right: window.side_trailing,
-                    top: hikit::ui::space::L,
-                    bottom: hikit::ui::space::M,
-                });
+            // its own HEAD: the column header every column wears —
+            // the name, the host count, the "Add host" word.
+            let themes = ::editor::env::Themes::of(store);
+            let chrome = themes.part(crate::chrome::SessionsChrome::KEY);
+            let ink = themes.part(::editor::theme::InkChrome::KEY);
+            let host_count = Agents::list(store).len();
+            let header = hikit::header::ColumnHeader::new(arena, store, ui, chrome.inset)
+                .title("Sessions")
+                .subtitle(match host_count {
+                    1 => "1 host".to_owned(),
+                    count => format!("{count} hosts"),
+                })
+                .button("Add host", || AgentsCommand::AddHost);
+            let head_height = header.band_height();
             let head = imba::layout::Layout::layout(
-                head,
+                header,
                 arena,
-                Constraints {
-                    min: Size::new(size.width, 0.0),
-                    max: Size::new(size.width, f32::INFINITY),
-                },
+                Constraints::tight(Size::new(size.width, head_height)),
             );
-            let head_height = imba::Thunk::size(&head).height;
-            let rows_top = head_height + 1.0;
+
+            // The tailnet's progress, while a node is on its way.
+            let status = self.tailnet_word(store).map(|word| {
+                let style = hikit::ui::brief(store, ui).sized(chrome.status_size);
+                imba::layout::Layout::layout(
+                    hikit::ui::text(&style, word)
+                        .align(imba::layout::Alignment::CenterStart)
+                        .sized(
+                            (size.width - 2.0 * chrome.inset).max(1.0),
+                            chrome.status_line,
+                        )
+                        .pad_insets(imba::layout::Insets {
+                            left: chrome.inset,
+                            ..Default::default()
+                        }),
+                    arena,
+                    Constraints::tight(Size::new(size.width, chrome.status_line)).loosen(),
+                )
+            });
+            let status_height = status.as_ref().map_or(0.0, |_| chrome.status_line);
+            let rows_top = head_height + status_height;
 
             let mut panel = container(arena, size);
             let adding_height = self.adding_height(store);
@@ -682,29 +878,54 @@ impl View for AgentsPanel {
             )
             .map(AgentsCommand::Rows);
             panel.place_boxed(0.0, 0.0, head);
-            panel.place_boxed(
-                0.0,
-                head_height,
-                imba::layout::Layout::layout(
-                    hikit::ui::rule_h(ink.rule.0, size.width),
-                    arena,
-                    Constraints::tight(Size::new(size.width, 1.0)),
-                ),
-            );
-            panel.place(0.0, rows_top, rows);
-            if let Some(input) = &self.adding {
-                panel.place(
-                    0.0,
-                    size.height - adding_height,
-                    self.add_host_field(arena, store, ui, input, size.width),
-                );
+            if let Some(status) = status {
+                panel.place_boxed(0.0, head_height, status);
             }
+            panel.place(0.0, rows_top, rows);
+            match &self.adding {
+                Some(Adding::Url(input)) => {
+                    panel.place(
+                        0.0,
+                        size.height - adding_height,
+                        self.add_host_field(arena, store, ui, input, size.width),
+                    );
+                }
+                Some(Adding::Menu(menu)) => {
+                    // A press anywhere else closes the menu; the menu
+                    // itself stands under the header's trailing word.
+                    let catcher = leaf::<AgentsCommand>(size.width, size.height).event(
+                        |_arena, event, _size| match event {
+                            Event::MouseDown { .. } => {
+                                EventResult::command(AgentsCommand::CancelAddHost)
+                            }
+                            _ => EventResult::Ignored,
+                        },
+                    );
+                    panel.place(0.0, 0.0, catcher);
+                    let combo = themes.part(hikit::chrome::ComboChrome::KEY);
+                    let width = menu
+                        .widest(store, ui)
+                        .max(combo.menu_min_width)
+                        .min((size.width - 2.0 * chrome.inset).max(1.0));
+                    let height = menu.len() as f32 * combo.menu_row_height + 2.0;
+                    let menu = imba::layout::Layout::layout(
+                        menu.display(arena, store, ui),
+                        arena,
+                        Constraints::tight(Size::new(width, height)),
+                    )
+                    .map(AgentsCommand::AddHostMenu);
+                    panel.place(size.width - chrome.inset - width, head_height, menu);
+                }
+                None => {}
+            }
+            let _ = ink;
 
             overlay.place(0.0, 0.0, panel);
 
             // The key table lives in the controller's own overlay;
-            // the surface keeps its add-host mode and dismissal.
+            // the surface keeps its add-host modes and dismissal.
             let adding = self.adding.is_some();
+            let url_field = matches!(self.adding, Some(Adding::Url(_)));
             let searching = self.list.searching();
             let keymap = leaf::<AgentsCommand>(size.width, size.height).event(
                 move |_arena, event, _size| {
@@ -713,7 +934,7 @@ impl View for AgentsPanel {
                             Event::KeyDown {
                                 key: InputKey::Enter,
                                 ..
-                            } => EventResult::command(AgentsCommand::SubmitAddHost),
+                            } if url_field => EventResult::command(AgentsCommand::SubmitAddHost),
                             Event::KeyDown {
                                 key: InputKey::Escape,
                                 ..

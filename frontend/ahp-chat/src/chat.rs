@@ -1518,7 +1518,8 @@ impl ChatPanel {
                 };
                 if let Some(channel) = (self.catalog.channel)(store, &self.session_id()) {
                     let agents = (self.catalog.agents)(store, self.server);
-                    view.band.toolbar.sync(store, ui, &agents, &channel);
+                    let picks = (self.catalog.folder_picks)(store, &self.session_id());
+                    view.band.toolbar.sync(store, ui, &agents, &channel, &picks);
                 }
                 self.views.insert_mut(id, view);
             }
@@ -1577,6 +1578,46 @@ impl ChatPanel {
                         {
                             let request = (road.0)(self.server, self.session.clone());
                             imba::command::Requests::push(store, request);
+                        }
+                    }
+
+                    crate::session_toolbar::ToolbarAsk::SetFolder(folder) => {
+                        // ONE folder: the pick is granted, every other
+                        // folder the session held is revoked. The
+                        // grant goes first so the session is never
+                        // folderless in between.
+                        let Some(client) = self.client(store) else {
+                            return;
+                        };
+                        let held: Vec<String> = (self.catalog.channel)(store, &self.session_id())
+                            .map(|channel| channel.working_directories.iter().cloned().collect())
+                            .unwrap_or_default();
+                        let mut actions = vec![StateAction::SessionWorkingDirectorySet(
+                            ahp_types::actions::SessionWorkingDirectorySetAction {
+                                directory: folder.clone(),
+                            },
+                        )];
+                        actions.extend(held.into_iter().filter(|dir| *dir != folder).map(|dir| {
+                            StateAction::SessionWorkingDirectoryRemoved(
+                                ahp_types::actions::SessionWorkingDirectoryRemovedAction {
+                                    directory: dir,
+                                },
+                            )
+                        }));
+                        for action in actions {
+                            fx.push(
+                                AnyEffect::new(DispatchChatActionEffect {
+                                    client: client.session.clone(),
+                                    channel: self.session.as_channel(),
+                                    action,
+                                })
+                                .map(|result| {
+                                    ChatPanelCommand::Dispatched {
+                                        undo_queue: None,
+                                        result,
+                                    }
+                                }),
+                            );
                         }
                     }
 
@@ -1729,7 +1770,8 @@ impl ChatPanel {
         let toolbar_stale = (self.catalog.channel)(store, &self.session_id())
             .map(|channel| {
                 let agents = (self.catalog.agents)(store, self.server);
-                crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel)
+                let picks = (self.catalog.folder_picks)(store, &self.session_id());
+                crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel, &picks)
             })
             .is_some_and(|fingerprint| fingerprint != view.band.toolbar.synced);
         let band = view.band.display(
@@ -1823,7 +1865,10 @@ impl ChatPanel {
                 let toolbar_stale = (self.catalog.channel)(store, &self.session_id())
                     .map(|channel| {
                         let agents = (self.catalog.agents)(store, self.server);
-                        crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel)
+                        let picks = (self.catalog.folder_picks)(store, &self.session_id());
+                        crate::session_toolbar::SessionToolbar::fingerprint(
+                            &agents, &channel, &picks,
+                        )
                     })
                     .is_some_and(|fingerprint| fingerprint != view.band.toolbar.synced);
 

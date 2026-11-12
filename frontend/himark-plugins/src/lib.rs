@@ -246,6 +246,11 @@ pub fn wire_doors(
             hiahp::higent::flows::AgentFlows::install_add_host(
                 store,
                 Arc::new(move |store, url| {
+                    // A URL already seated (saved, discovered) is that
+                    // host — no second seat.
+                    if let Some(id) = hiahp::higent::flows::HostUrls::host_at(store, url) {
+                        return Some(id);
+                    }
                     let client =
                         ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::at(
                             handle.clone(),
@@ -256,10 +261,11 @@ pub fn wire_doors(
                     // a batch, where the application's store is taken
                     // out; a mint through the app would be clobbered
                     // by the put-back.
-                    Some(hiahp::higent::flows::mint_agent_server(
+                    Some(hiahp::higent::flows::mint_agent_server_at(
                         store,
                         &clients,
                         url.trim(),
+                        url,
                         client,
                     ))
                 }),

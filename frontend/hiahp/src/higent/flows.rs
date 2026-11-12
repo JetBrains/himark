@@ -33,6 +33,55 @@ pub fn mint_agent_server(
     id
 }
 
+/// Which URL each dialed host was minted at — so a host that
+/// arrives by a second road (typed, then discovered on the tailnet;
+/// saved, then typed again) is recognized instead of seated twice.
+/// Hosts without a URL (the local socket, the VS Code discovery) are
+/// not here.
+#[derive(Clone, Default)]
+pub struct HostUrls(rpds::HashTrieMapSync<String, HostId>);
+
+impl HostUrls {
+    pub fn note(store: &mut Store, url: &str, id: HostId) {
+        let url = url.trim().to_owned();
+        store.update::<HostUrls>(|urls| {
+            urls.0.insert_mut(url, id);
+        });
+    }
+
+    /// The host already seated at `url`, if any.
+    pub fn host_at(store: &Store, url: &str) -> Option<HostId> {
+        store.get::<HostUrls>()?.0.get(url.trim()).copied()
+    }
+
+    /// The URL a host was seated at, if it came by one.
+    pub fn url_of(store: &Store, id: HostId) -> Option<String> {
+        store
+            .get::<HostUrls>()?
+            .0
+            .iter()
+            .find_map(|(url, held)| (*held == id).then(|| url.clone()))
+    }
+}
+
+/// `mint_agent_server` for a host dialed at a URL: the seat, the row,
+/// and the URL noted — unless that URL is already a host, which is
+/// then the answer.
+pub fn mint_agent_server_at(
+    store: &mut Store,
+    clients: &ahp_wire::fs::ClientDirectory,
+    name: &str,
+    url: &str,
+    client: ahp_wire::client::Client,
+) -> HostId {
+    if let Some(id) = HostUrls::host_at(store, url) {
+        return id;
+    }
+    let id = mint_agent_server(store, clients, name, client);
+    HostUrls::note(store, url, id);
+    id
+}
+
 pub(crate) type AddHostFlow = Arc<dyn Fn(&mut Store, &str) -> Option<HostId> + Send + Sync>;
 
 #[derive(Clone, Default)]

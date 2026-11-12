@@ -197,3 +197,55 @@ fn disposal_retracts_every_session_entity() {
     Hosts::sweep_empty(&mut store);
     assert!(Hosts::state(&store, &home).is_none());
 }
+
+/// One host, one row: two rows that answer the same identity are the
+/// same host by two roads. The designated LOCAL row always stays;
+/// otherwise the newcomer leaves. The retired row's hook fires, the
+/// generation moves, and a row with no identity is nobody's twin.
+#[test]
+fn a_second_row_with_the_same_identity_is_retired() {
+    use super::agents::Agents;
+    use super::state::HostRetiredHooks;
+    let mut store = store();
+    let socket = HostId::LOCAL;
+    let tailnet = HostId::from_raw(7);
+    let other = HostId::from_raw(9);
+    Agents::seed(&mut store, socket, "himark Agent Host");
+    Agents::seed(&mut store, tailnet, "andreys-macbook-pro");
+    Agents::seed(&mut store, other, "studio");
+    store.put(ahp_wire::client::LocalHost(Some(socket)));
+    let retired = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    {
+        let retired = retired.clone();
+        HostRetiredHooks::install(
+            &mut store,
+            std::sync::Arc::new(move |_store, id| retired.lock().expect("log").push(id)),
+        );
+    }
+    let before = Hosts::generation(&store);
+
+    // The tailnet row answers first, then the socket row answers the
+    // same id: the socket row is local, so the TAILNET row goes.
+    Agents::set_identity(&mut store, tailnet, None, None, Some("abc".to_owned()));
+    assert_eq!(Hosts::retire_duplicate(&mut store, tailnet), None);
+    Agents::set_identity(&mut store, socket, None, None, Some("abc".to_owned()));
+    assert_eq!(Hosts::retire_duplicate(&mut store, socket), Some(tailnet));
+    let ids: Vec<HostId> = Hosts::list(&store).into_iter().map(|(id, _)| id).collect();
+    assert_eq!(ids, vec![socket, other]);
+    assert_eq!(*retired.lock().expect("log"), vec![tailnet]);
+    assert!(Hosts::generation(&store) > before);
+
+    // A newcomer twinning a non-local row leaves itself.
+    Agents::set_identity(&mut store, other, None, None, Some("xyz".to_owned()));
+    let late = HostId::from_raw(11);
+    Agents::seed(&mut store, late, "studio again");
+    Agents::set_identity(&mut store, late, None, None, Some("xyz".to_owned()));
+    assert_eq!(Hosts::retire_duplicate(&mut store, late), Some(late));
+    assert!(Hosts::host(&store, other).is_some());
+    assert!(Hosts::host(&store, late).is_none());
+
+    // No identity, no twin.
+    let mute = HostId::from_raw(13);
+    Agents::seed(&mut store, mute, "VS Code Agent Host");
+    assert_eq!(Hosts::retire_duplicate(&mut store, mute), None);
+}
