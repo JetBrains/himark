@@ -34,7 +34,14 @@ fn main() {
         let body = text::text::Text::from_string_exact("");
         let document =
             editor::document::Document::from_language(body, "md", &languages, store, &ui, &theme);
-        documents::OpenDocuments::register(store, documents, document, None, "untitled.md".to_owned(), 0)
+        documents::OpenDocuments::register(
+            store,
+            documents,
+            document,
+            None,
+            "untitled.md".to_owned(),
+            0,
+        )
     });
     let bridge = himark::mounts::mount_scrolling_editor(&mut app, documents, document)
         .expect("the editor bridge");
