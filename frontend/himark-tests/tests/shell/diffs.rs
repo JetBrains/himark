@@ -3226,6 +3226,151 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     }
 }
 
+/// THE UNSAVEABLE FILE (2026-11-12): a commit canvas compares two
+/// blobs of that revision, and the header's open used to hand the
+/// after-blob to an ordinary pane — a document that takes typing and
+/// that no host can store. The open lands on the file as it stands
+/// now.
+#[test]
+fn a_commit_canvas_header_opens_the_current_file_not_the_blob() {
+    type Asked = Arc<std::sync::Mutex<Vec<editor::location::ResourceLocation>>>;
+    struct RecordingOpen(Asked);
+    impl imba::effect::EffectHandler<himark::opening::OpenByLocationEffect> for RecordingOpen {
+        async fn handle(
+            &self,
+            effect: himark::opening::OpenByLocationEffect,
+        ) -> himark::app::AppCommand {
+            self.0.lock().expect("asked").push(effect.location.clone());
+            himark::opening::opened(
+                effect.origin,
+                himark::opening::OpenedDocument {
+                    documents: effect.documents,
+                    name: effect.location.name().to_owned(),
+                    document: ::editor::test_document::plain_document("the file today"),
+                    location: Some(effect.location),
+                    primary: effect.primary,
+                    target: effect.target,
+                    focus: effect.focus,
+                },
+            )
+        }
+    }
+
+    let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
+    let asked = Asked::default();
+    app.register_handler::<himark::opening::OpenByLocationEffect>(RecordingOpen(Arc::clone(
+        &asked,
+    )));
+    let _ = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+
+    let path = || vec!["proj".to_owned(), "a.md".to_owned()];
+    let working = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("test"),
+        path(),
+    );
+    let blob = |revision: &str| {
+        changesview::hichanges::before_ref_location("test", &format!("git:/{revision}"), path())
+    };
+    let file = ::canvas::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: blob("parent"),
+        new: blob("abc123"),
+        added: Some(1),
+        removed: Some(1),
+        updated: 1,
+    };
+    let side = |body: &str| {
+        editor::document::Document::new(
+            text::text::Text::from_string_exact(body),
+            editor::markup::Markup::new(),
+        )
+    };
+    let built = prepared_pair(
+        file.old.clone(),
+        side("one\n"),
+        file.new.clone(),
+        side("One\n"),
+        1100.0,
+    );
+    let canvas = {
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            changes,
+            CanvasSource::Commit {
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+                id: changesview::hichanges::Revision::new("abc123"),
+            },
+            file,
+            built,
+        )
+    };
+    let panel = face_panel(&mut app, canvas);
+    assert!(app.open_panel(app.sole_window(), panel));
+
+    let size = gfx::Size::new(1100.0, 1500.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 1500)).expect("surface");
+    let mut settle = |app: &mut Himark| {
+        for _ in 0..12 {
+            let _ = workbench_shell::test_driver::animate(
+                app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = app.draw_window_sized(
+                app.sole_window(),
+                &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                size,
+            );
+        }
+    };
+    settle(&mut app);
+
+    // The band's "Open source" word, trailing at the right inset.
+    // No commit block was read here, so the head above the band is
+    // its insets alone.
+    let (x, y) = {
+        let theme = editor::env::Themes::of(app.store());
+        let diff = theme.part(::hikit::chrome::DiffChrome::KEY);
+        let brief = hikit::ui::brief(app.store(), &app.ui_ctx());
+        let word = brief.shaper.advance(&brief.font, "Open source");
+        (
+            1100.0 - diff.band_pad_right - word * 0.5,
+            theme.part(::hikit::chrome::ToolbarChrome::KEY).height
+                + diff.commit_pad_top
+                + diff.commit_pad_bottom
+                + ::canvas::diff_header::file_band_height(app.store()) * 0.5,
+        )
+    };
+    let _ = workbench_shell::test_driver::click(&mut app, x, y, 1100.0, 1500.0);
+    let _ = workbench_shell::test_driver::mouse_up(&mut app, x, y);
+    settle(&mut app);
+
+    assert_eq!(
+        *asked.lock().expect("asked"),
+        [working],
+        "the open asked for the current file, never a revision's blob"
+    );
+}
+
 /// THE FLICKER REGRESSION: a landed pair is a SEED, and its dressing
 /// (honest markup, folds, the inline face) arrives in later batches.
 /// The row must NOT show the undressed body in between — it wears the

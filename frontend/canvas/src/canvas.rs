@@ -1401,12 +1401,18 @@ impl Canvas {
         match action {
             HeaderAction::OpenFile => {
                 if let Some(file) = self.files.get(key) {
+                    // A commit's side is that revision's blob — nothing
+                    // saves to it. The open lands on the file as it
+                    // stands now, the same answer the diff editor's
+                    // own open gives.
+                    let location = changesview::hichanges::working_copy(&file.new)
+                        .unwrap_or_else(|| file.new.clone());
                     // Land on the caret the row's diff editor holds —
                     // cmd-enter continues where the user was reading,
                     // like the standalone split-diff pane. The shell
                     // supplies the window at the drain.
                     self.request = Some(hikit::panel::PanelRequest::OpenAt(
-                        file.new.clone(),
+                        location,
                         self.row_caret(store, key),
                     ));
                 }
