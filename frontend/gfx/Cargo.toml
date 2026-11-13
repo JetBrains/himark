@@ -7,6 +7,6 @@ edition = "2021"
 # `imba-gpui`. The two below are fontations — the same engine parley
 # shapes with — for face metadata, advances, and system lookup.
 [dependencies]
-skrifa = "0.44"
+skrifa = "0.46"
 fontique = { version = "0.12", features = ["system", "fontconfig-dlopen"] }
 unicode-script = "0.5"
