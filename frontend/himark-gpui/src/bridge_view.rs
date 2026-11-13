@@ -66,8 +66,9 @@ impl BridgeView {
     }
 
     /// One event into this bridge, through Himark's own dispatch —
-    /// no key codes, no masks, the slot's standing size.
-    fn dispatch(&self, event: Event<'_>, cx: &mut Context<Self>) {
+    /// no key codes, no masks, the slot's standing size. Answers
+    /// whether the engine took it.
+    fn dispatch(&self, event: Event<'_>, cx: &mut Context<Self>) -> bool {
         let at = self.now();
         let outcome = self
             .engine
@@ -77,6 +78,7 @@ impl BridgeView {
         if outcome.needs_redraw {
             cx.notify();
         }
+        outcome.needs_redraw
     }
 
     fn dispatch_pointed(&self, event: Event<'_>, cx: &mut Context<Self>) {
@@ -234,7 +236,7 @@ impl Render for BridgeView {
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
                     let point = device_point(event.position, window.scale_factor());
                     this.pointer.set(point);
-                    this.dispatch(
+                    let taken = this.dispatch(
                         Event::MouseDown {
                             point,
                             button: imba::event::MouseButton::Left,
@@ -243,6 +245,12 @@ impl Render for BridgeView {
                         },
                         cx,
                     );
+                    // A press the engine took is spent; a MISS bubbles
+                    // to the embedding view (the window's titlebar
+                    // drag rides it, as on macOS).
+                    if taken {
+                        cx.stop_propagation();
+                    }
                 }),
             )
             .on_mouse_down(

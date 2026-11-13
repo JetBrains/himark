@@ -106,14 +106,32 @@ impl std::fmt::Display for ToolbarCommand {
 
 /// Where the chat section's first word starts: past the platform
 /// semaphore (the clearance the shell wrote) and never short of the
-/// chrome's own lead inset.
+/// chrome's own lead inset — or, on a host with a bare leading edge,
+/// its trailing inset.
 pub(crate) fn leading_inset(store: &Store, ui: &UiCtx) -> f32 {
     let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY);
     let clearance = ui
         .get::<crate::toolbar::ChromeClearance>()
         .map(|clearance| clearance.0)
         .unwrap_or(0.0);
-    chrome.lead_inset.max(clearance)
+    let inset = match ui.get::<::hikit::chrome::BareLeadingEdge>() {
+        Some(_) => chrome.trailing_inset,
+        None => chrome.lead_inset,
+    };
+    inset.max(clearance)
+}
+
+/// Where the rightmost section's last word ends short of the band's
+/// right edge: past the host's window buttons (the trailing
+/// clearance the shell wrote) and never short of the chrome's own
+/// trailing inset.
+pub(crate) fn trailing_inset(store: &Store, ui: &UiCtx) -> f32 {
+    let chrome = ::editor::env::Themes::of(store).part(::hikit::chrome::ToolbarChrome::KEY);
+    let clearance = ui
+        .get::<::hikit::chrome::ChromeTrailingClearance>()
+        .map(|clearance| clearance.get())
+        .unwrap_or(0.0);
+    chrome.trailing_inset.max(clearance)
 }
 
 /// The static band: three sections over the body's columns. It
@@ -130,6 +148,9 @@ struct Natural {
     lead: f32,
     words: f32,
     count: usize,
+    /// The section's trailing inset — the chrome's, or past the
+    /// host's window buttons for the rightmost section.
+    trailing: Option<f32>,
 }
 
 impl Natural {
@@ -138,7 +159,13 @@ impl Natural {
             lead,
             words: 0.0,
             count: 0,
+            trailing: None,
         }
+    }
+
+    fn trailing(mut self, inset: f32) -> Self {
+        self.trailing = Some(inset);
+        self
     }
 
     /// A tab's slot — the title rank's width, whatever rank it
@@ -152,7 +179,7 @@ impl Natural {
         self.lead
             + self.words
             + chrome.tab_gap * self.count.saturating_sub(1) as f32
-            + chrome.trailing_inset
+            + self.trailing.unwrap_or(chrome.trailing_inset)
     }
 }
 
@@ -206,7 +233,8 @@ impl Toolbar {
             theme
                 .part(::editor::theme::WindowChrome::KEY)
                 .side_text_edge,
-        );
+        )
+        .trailing(trailing_inset(store, ui));
         for button in ToolbarButtons::of(store).tabs() {
             natural.tab(&styles, button.label);
         }
@@ -293,8 +321,10 @@ impl Toolbar {
             .dock()
             .filter(|dock| dock.target_width() > 0.0)
             .map(|dock| dock.owner());
-        let mut natural = Natural::new(window.side_text_edge);
-        let mut side_section = Header::new(arena, store, ui, window.side_text_edge);
+        let trailing = trailing_inset(store, ui);
+        let mut natural = Natural::new(window.side_text_edge).trailing(trailing);
+        let mut side_section =
+            Header::new(arena, store, ui, window.side_text_edge).trailing_inset(trailing);
         for button in buttons.tabs() {
             let active = owner == Some(button.command);
             natural.tab(&styles, button.label);
