@@ -93,6 +93,31 @@ impl Default for ToolbarChrome {
 #[derive(Clone, Copy, Default)]
 pub struct ChromeClearance(pub f32);
 
+/// The host stands nothing at the toolbar's leading edge (no traffic
+/// lights — the Linux shell's window buttons sit trailing): the band
+/// leads at its trailing inset, symmetric with the right edge,
+/// instead of the theme's `lead_inset`. Written once at boot.
+#[derive(Clone, Copy, Default)]
+pub struct BareLeadingEdge;
+
+/// The host chrome inset the toolbar's TRAILING edge clears (the
+/// window buttons a client-decorated Linux window draws itself) —
+/// the trailing twin of [`ChromeClearance`]. A cell, because a UiCtx
+/// slot is set once and the shell learns the buttons only after the
+/// compositor configures the window.
+#[derive(Default)]
+pub struct ChromeTrailingClearance(std::cell::Cell<f32>);
+
+impl ChromeTrailingClearance {
+    pub fn get(&self) -> f32 {
+        self.0.get()
+    }
+
+    pub fn set(&self, width: f32) {
+        self.0.set(width);
+    }
+}
+
 impl ChatChrome {
     pub const KEY: Key<ChatChrome> = Key::new("chat");
 }

@@ -13,13 +13,16 @@ use std::sync::Arc;
 use himark::app::{AppFonts, Himark};
 use himark::bridge::ViewBridgeId;
 use himark_gpui::gpui::{
-    px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions,
+    px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowDecorations,
+    WindowOptions,
 };
 use himark_gpui::{BridgeView, Engine};
 use workbench_shell::app::WorkbenchShell as _;
 use workbench_shell::app_ext::AppExt as _;
 
 mod host;
+mod window_buttons;
+mod window_frame;
 
 /// Everything this host installs — the engine set plus the
 /// workbench chrome, the same list the C staticlib assembles.
@@ -53,6 +56,10 @@ fn compose() -> (Himark, himark_plugins::Wires, host::HostAsks) {
     // The platform's keymap — this shell runs on macOS and Linux
     // both, and the engine's own fallback is the macOS map.
     himark::keymap::Keymaps::set(&mut app.store_mut(), himark::keymap::Keymap::native());
+    // Linux draws its window buttons trailing (`window_buttons`):
+    // nothing stands at the toolbar's leading edge.
+    #[cfg(target_os = "linux")]
+    app.ui_ctx().set(hikit::chrome::BareLeadingEdge);
     let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
         Arc::new(ahp_wire::uris::FileUris);
     let wires = himark_plugins::install_host(
@@ -151,11 +158,16 @@ fn main() {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                // Wayland only: gpui otherwise reports server-side
+                // decorations even where the compositor draws none
+                // (GNOME), and the frame would draw no buttons.
+                window_decorations: Some(WindowDecorations::Client),
                 ..Default::default()
             },
             |_, cx| {
                 cx.activate(true);
-                cx.new(|cx| BridgeView::new(engine, bridge, cx))
+                let view = cx.new(|cx| BridgeView::new(engine.clone(), bridge, cx));
+                cx.new(|_| window_frame::WindowFrame::new(engine, view))
             },
         )
         .expect("the himark window");

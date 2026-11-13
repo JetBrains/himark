@@ -15,6 +15,7 @@ workbench-shell = { path = "../../frontend/workbench-shell", features = ["capi"]
 hitailnet = { path = "../../frontend/hitailnet" }
 desktop = { path = "../../frontend/desktop" }
 editor = { path = "../../frontend/editor" }
+hikit = { path = "../../frontend/hikit" }
 myersdiff = { path = "../../frontend/myersdiff" }
 ahp-wire = { path = "../../frontend/ahp-wire" }
 ahp-session = { path = "../../frontend/ahp-session" }

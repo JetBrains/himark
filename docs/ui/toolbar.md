@@ -42,7 +42,13 @@ away, the chat hides whatever the room.
 
 The chat section's first word starts past the platform semaphore
 (`ChromeClearance`, written by the shell) and never short of
-`ToolbarChrome::lead_inset`; the main section's text edge is
+`ToolbarChrome::lead_inset` — or, where the shell marks the leading
+edge bare (`BareLeadingEdge`: Linux, whose window buttons sit
+trailing), never short of `ToolbarChrome::trailing_inset`, the band
+symmetric. The side section's last word ends past the shell's window
+buttons (`ChromeTrailingClearance`, a cell the shell updates once the
+compositor configures the window) and never short of
+`ToolbarChrome::trailing_inset`. The main section's text edge is
 `WindowChrome::code_text_edge` from its rule, the side section's
 `WindowChrome::side_text_edge`.
 

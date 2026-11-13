@@ -76,20 +76,32 @@ pub struct ColumnHeader<'a, Command> {
     /// The trailing group, left to right, ending `trailing_inset`
     /// short of the right edge.
     trailing: Vec<(f32, Item<'a, Command>)>,
+    /// How far short of the right edge the trailing group ends —
+    /// the chrome's own inset unless host chrome stands there.
+    trailing_inset: f32,
 }
 
 impl<'a, Command: 'a> ColumnHeader<'a, Command> {
     pub fn new(arena: &'a Arena, store: &Store, ui: &UiCtx, lead: f32) -> Self {
         let theme = editor::env::Themes::of(store);
         let _ = arena;
+        let chrome = theme.part(crate::chrome::ToolbarChrome::KEY);
         Self {
-            chrome: theme.part(crate::chrome::ToolbarChrome::KEY),
+            trailing_inset: chrome.trailing_inset,
+            chrome,
             ground: theme.part(::editor::theme::InkChrome::KEY).ground.0,
             styles: HeaderStyles::of(store, ui),
             lead,
             leading: Vec::new(),
             trailing: Vec::new(),
         }
+    }
+
+    /// End the trailing group `inset` short of the right edge — the
+    /// rightmost header clears the host's window buttons.
+    pub fn trailing_inset(mut self, inset: f32) -> Self {
+        self.trailing_inset = inset;
+        self
     }
 
     pub fn styles(&self) -> &HeaderStyles {
@@ -237,10 +249,11 @@ impl<'a, Command: 'a> Layout<'a, Command> for ColumnHeader<'a, Command> {
             lead,
             leading,
             trailing,
+            trailing_inset,
         } = self;
         let width = constraints.max.width.max(1.0);
         let height = chrome.height;
-        let room = (width - lead - chrome.trailing_inset).max(1.0);
+        let room = (width - lead - trailing_inset).max(1.0);
         // One Row, one baseline group: the leading words, a flexible
         // gap, the trailing words. The gap is MAIN-AXIS only so the
         // group's extent stays the words' (the ListRow rule).
