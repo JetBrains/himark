@@ -594,7 +594,7 @@ async fn a_model_pick_from_the_other_harness_switches_provider() {
                 "message": {
                     "text": "hello again",
                     "origin": {"kind": "user"},
-                    "model": {"id": "claude-fable-5", "config": {"thinkingLevel": "low"}},
+                    "model": {"id": "claude-fable-5-2", "config": {"thinkingLevel": "low"}},
                 },
             }),
         )
@@ -605,7 +605,7 @@ async fn a_model_pick_from_the_other_harness_switches_provider() {
     let back = argv(&log[1]);
     assert!(
         back.windows(2)
-            .any(|pair| pair == ["--model", "claude-fable-5"]),
+            .any(|pair| pair == ["--model", "claude-fable-5-2"]),
         "{back:?}"
     );
     assert!(
@@ -623,7 +623,7 @@ async fn a_model_pick_from_the_other_harness_switches_provider() {
     );
     let manifest = manifest_of();
     assert_eq!(manifest["provider"], "claude");
-    assert_eq!(manifest["model"], "claude-fable-5");
+    assert_eq!(manifest["model"], "claude-fable-5-2");
     let _ = session;
 }
 
@@ -3661,7 +3661,7 @@ async fn session_config_resolves_and_creation_honors_it() {
     assert!(
         models[0]["configSchema"]["properties"]["thinkingLevel"]["enum"]
             .as_array()
-            .is_some_and(|levels| levels.len() == 4),
+            .is_some_and(|levels| levels.len() == 5),
         "each model carries the EFFORT schema"
     );
 
@@ -3695,7 +3695,7 @@ async fn session_config_resolves_and_creation_honors_it() {
                 "provider": "claude",
                 "workingDirectories": [format!("file://{}", repo.display())],
                 "config": {"isolation": "folder", "permissionMode": "acceptEdits", "worktree": true},
-                "model": {"id": "claude-fable-5", "config": {"thinkingLevel": "max"}},
+                "model": {"id": "claude-fable-5-2", "config": {"thinkingLevel": "max"}},
             }),
         )
         .await;

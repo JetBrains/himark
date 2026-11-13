@@ -153,10 +153,10 @@ fn claude_card() -> AgentInfo {
 
 fn claude_models() -> Vec<ahp_types::state::SessionModelInfo> {
     [
-        ("claude-fable-5", "Fable"),
-        ("claude-opus-5", "Opus"),
-        ("claude-sonnet-5", "Sonnet"),
-        ("claude-haiku-4-5-20251001", "Haiku"),
+        ("claude-fable-5-2", "Fable"),
+        ("claude-opus-5-5", "Opus"),
+        ("claude-sonnet-5-5", "Sonnet"),
+        ("claude-haiku-5-5", "Haiku"),
     ]
     .into_iter()
     .map(|(id, name)| ahp_types::state::SessionModelInfo {
@@ -169,8 +169,8 @@ fn claude_models() -> Vec<ahp_types::state::SessionModelInfo> {
         supports_vision: Some(true),
         policy_state: None,
         config_schema: Some(thinking_schema(
-            &["low", "medium", "high", "max"],
-            &["Low", "Medium", "High", "Max"],
+            &["low", "medium", "high", "xhigh", "max"],
+            &["Low", "Medium", "High", "Extra high", "Max"],
             "high",
         )),
         meta: None,
