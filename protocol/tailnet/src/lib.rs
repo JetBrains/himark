@@ -264,6 +264,7 @@ impl TailnetListener {
         let node = Arc::clone(&self.node);
         let listener = self.listener;
         let (fd, remote) = tokio::task::spawn_blocking(move || {
+            use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
             let mut conn: libtailscale_sys::tailscale_conn = 0;
             unsafe {
                 check(
@@ -271,12 +272,16 @@ impl TailnetListener {
                     libtailscale_sys::tailscale_accept(listener, &mut conn),
                     "accept",
                 )?;
+                // From here the conn is ours: a connection whose
+                // caller cannot be named is CLOSED, never left open
+                // and silent for the peer to wait on.
+                let conn = std::os::fd::OwnedFd::from_raw_fd(conn);
                 let mut buffer = [0u8; 256];
                 check(
                     node.sd,
                     libtailscale_sys::tailscale_getremoteaddr(
                         listener,
-                        conn,
+                        conn.as_raw_fd(),
                         buffer.as_mut_ptr().cast(),
                         buffer.len(),
                     ),
@@ -286,7 +291,7 @@ impl TailnetListener {
                 let remote: IpAddr = String::from_utf8_lossy(&buffer[..end])
                     .parse()
                     .map_err(|error| format!("remote addr parse: {error}"))?;
-                Ok::<_, String>((conn, remote))
+                Ok::<_, String>((conn.into_raw_fd(), remote))
             }
         })
         .await

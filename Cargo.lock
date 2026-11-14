@@ -5370,8 +5370,6 @@ dependencies = [
 [[package]]
 name = "libtailscale-sys"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0285ec5d2b6a8ef32b87055a85447f47c05264108e598ffcd33fc122ca9850a0"
 dependencies = [
  "cc",
 ]

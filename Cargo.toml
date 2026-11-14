@@ -145,3 +145,8 @@ opt-level = 2
 [patch.crates-io]
 skia-bindings = { path = "vendor/skia-bindings-0.153.3" }
 tree-sitter = { path = "vendor/tree-sitter-0.26.8" }
+# libtailscale filed an accepted connection's remote address under
+# the fd number the SENDING side held; the accepting side looks it up
+# under the number it received. The copy here sends the address with
+# the fd (libtailscale/tailscale.{go,c}, tsnetctest covers it).
+libtailscale-sys = { path = "vendor/libtailscale-sys-0.2.2" }
