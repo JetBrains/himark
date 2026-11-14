@@ -68,8 +68,7 @@ stream of `history/*` actions:
 Subscribing a URI that is not a history URI answers `-32001` (NO
 SUCH CHANNEL). The first subscribe lazily creates the channel entry
 (initial state: `status: "computing"`, empty window), arms a
-content-comparing poll watch (750 ms interval) on the repository's
-reflog signal, and kicks an asynchronous recompute; the entry and
+file watch on the repository's reflog signal, and kicks an asynchronous recompute; the entry and
 its watch persist for the server's lifetime once created. Every
 recompute — the initial one, a watcher tick, a commit — lands as a
 fresh `history/reset` (§3.1): rewrites are re-emits, never patches.

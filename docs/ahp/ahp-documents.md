@@ -200,8 +200,9 @@ interface OpenDocumentResult {
   document.
 
 Opening a mirrored document also makes the server the mirror's reload
-authority (§6): it arms a content-comparing poll watch (400 ms
-interval) on the mirrored file and announces the document to the
+authority (§6): it arms a file watch on the mirrored file — one that
+also sees writes made while the writer keeps the file open — and
+announces the document to the
 session's language services (`textDocument/didOpen`, see the LSP
 extension).
 

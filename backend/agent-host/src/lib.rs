@@ -21,6 +21,7 @@ pub(crate) mod tailnet_face;
 pub mod testing;
 mod trace;
 mod uris;
+mod watch;
 
 pub(crate) fn uuid_v4() -> String {
     let seed = std::time::SystemTime::now()

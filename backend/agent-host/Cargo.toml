@@ -21,8 +21,8 @@ url = "2"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 himark-text = { path = "../../frontend/text", package = "text" }
 humantime = "2"
+jetbrains-fswatcher = "1"
 libc = "0.2"
-notify = "8"
 rpds = "1"
 rustix = { version = "1", features = ["termios"] }
 rustix-openpty = "0.2"

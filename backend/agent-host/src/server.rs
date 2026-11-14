@@ -579,14 +579,14 @@ struct ChangesetEntry {
     state: ChangesetState,
     folder: PathBuf,
 
-    _watch: Option<Arc<notify::PollWatcher>>,
+    _watch: Option<Arc<crate::watch::Watch>>,
 }
 
 #[derive(Clone)]
 struct HistoryEntry {
     state: himark_ahp_ext_types::history::HistoryState,
     folder: PathBuf,
-    _watch: Option<Arc<notify::PollWatcher>>,
+    _watch: Option<Arc<crate::watch::Watch>>,
 }
 
 /// One `ahp-locations:/…` channel: a per-request result stream
@@ -646,7 +646,7 @@ struct State {
 
 #[derive(Clone)]
 struct WatchEntry {
-    _watcher: Arc<notify::PollWatcher>,
+    _watcher: Arc<crate::watch::Watch>,
     root: Uri,
 }
 
@@ -2972,40 +2972,33 @@ impl Host {
         let channel = format!("ahp-resource-watch:/{}", crate::uuid_v4());
         let host = std::sync::Arc::downgrade(self);
         let fan_out = channel.clone();
-        let watcher = notify::PollWatcher::new(
-            move |outcome: notify::Result<notify::Event>| {
-                let Ok(event) = outcome else { return };
-                let Some(host) = host.upgrade() else { return };
-                let items: Vec<Value> = event
-                    .paths
-                    .iter()
-                    .map(|path| {
-                        serde_json::json!({
-                            "uri": crate::uris::file_uri(&path),
-                            "type": "updated",
-                        })
-                    })
-                    .collect();
-                host.apply(
-                    &fan_out,
-                    StateAction::ResourceWatchChanged(
-                        ahp_types::actions::ResourceWatchChangedAction {
-                            changes: serde_json::json!({ "items": items }),
-                        },
-                    ),
-                );
-            },
-            notify::Config::default().with_poll_interval(std::time::Duration::from_millis(400)),
-        );
-        let mut watcher = match watcher {
-            Ok(watcher) => watcher,
-            Err(error) => return rpc::failure(id, INTERNAL, error.to_string()),
-        };
-        if let Err(error) =
-            notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::NonRecursive)
-        {
-            return rpc::failure(id, -32002, error.to_string());
+        // The spec's watch is of an existing resource; the watcher
+        // itself would happily wait for the path to appear.
+        if let Err(error) = std::fs::symlink_metadata(&path) {
+            return rpc::failure(id, -32002, format!("{}: {error}", path.display()));
         }
+        let watcher = crate::watch::watch(&path, crate::watch::Scope::Entry, move |event| {
+            let Some(host) = host.upgrade() else { return };
+            let (path, change) = match event {
+                crate::watch::Event::Dirty { path, .. } => (path, "updated"),
+                crate::watch::Event::Rescan { path } => (path, "updated"),
+                crate::watch::Event::Removed { path } => (path, "deleted"),
+            };
+            let items = [serde_json::json!({
+                "uri": crate::uris::file_uri(&path),
+                "type": change,
+            })];
+            host.apply(
+                &fan_out,
+                StateAction::ResourceWatchChanged(ahp_types::actions::ResourceWatchChangedAction {
+                    changes: serde_json::json!({ "items": items }),
+                }),
+            );
+        });
+        let watcher = match watcher {
+            Ok(watcher) => watcher,
+            Err(error) => return rpc::failure(id, INTERNAL, error),
+        };
         self.update(|state| {
             state.watches.insert_mut(
                 channel.clone(),
@@ -3722,24 +3715,11 @@ impl Host {
                 .and_then(|signal| {
                     let host = Arc::downgrade(self);
                     let recompute = channel.clone();
-                    let watcher = notify::PollWatcher::new(
-                        move |outcome: notify::Result<notify::Event>| {
-                            let Ok(_) = outcome else { return };
-                            let Some(host) = host.upgrade() else { return };
-                            host.recompute_changes(&recompute);
-                        },
-                        notify::Config::default()
-                            .with_compare_contents(true)
-                            .with_poll_interval(std::time::Duration::from_millis(750)),
-                    );
-                    let mut watcher = watcher.ok()?;
-                    notify::Watcher::watch(
-                        &mut watcher,
-                        &signal,
-                        notify::RecursiveMode::NonRecursive,
-                    )
-                    .ok()?;
-                    Some(watcher)
+                    crate::watch::watch(&signal, crate::watch::Scope::Entry, move |_| {
+                        let Some(host) = host.upgrade() else { return };
+                        host.recompute_changes(&recompute);
+                    })
+                    .ok()
                 });
             self.update(|state| {
                 state.changesets.insert_mut(
@@ -3858,23 +3838,13 @@ impl Host {
         };
         let host = Arc::downgrade(self);
         let target = channel.clone();
-        let watcher = notify::PollWatcher::new(
-            move |outcome: notify::Result<notify::Event>| {
-                let Ok(_) = outcome else { return };
-                let Some(host) = host.upgrade() else { return };
-                host.reload_mirror(&target);
-            },
-            notify::Config::default()
-                .with_compare_contents(true)
-                .with_poll_interval(std::time::Duration::from_millis(400)),
-        );
-        let Ok(mut watcher) = watcher else {
+        let watcher = crate::watch::watch(&path, crate::watch::Scope::OpenFile, move |_| {
+            let Some(host) = host.upgrade() else { return };
+            host.reload_mirror(&target);
+        });
+        let Ok(watcher) = watcher else {
             return;
         };
-        if notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::NonRecursive).is_err()
-        {
-            return;
-        }
         self.update(|state| {
             state.mirror_watches.insert_mut(
                 channel.clone(),
@@ -4934,24 +4904,11 @@ impl Host {
                 .and_then(|signal| {
                     let host = Arc::downgrade(self);
                     let recompute = channel.clone();
-                    let watcher = notify::PollWatcher::new(
-                        move |outcome: notify::Result<notify::Event>| {
-                            let Ok(_) = outcome else { return };
-                            let Some(host) = host.upgrade() else { return };
-                            host.recompute_history(&recompute);
-                        },
-                        notify::Config::default()
-                            .with_compare_contents(true)
-                            .with_poll_interval(std::time::Duration::from_millis(750)),
-                    );
-                    let mut watcher = watcher.ok()?;
-                    notify::Watcher::watch(
-                        &mut watcher,
-                        &signal,
-                        notify::RecursiveMode::NonRecursive,
-                    )
-                    .ok()?;
-                    Some(watcher)
+                    crate::watch::watch(&signal, crate::watch::Scope::Entry, move |_| {
+                        let Some(host) = host.upgrade() else { return };
+                        host.recompute_history(&recompute);
+                    })
+                    .ok()
                 });
             self.update(|state| {
                 state.histories.insert_mut(
