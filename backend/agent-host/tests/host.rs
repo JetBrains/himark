@@ -3348,6 +3348,72 @@ async fn a_mirrored_document_opens_idempotently_and_disposes() {
     assert_ne!(fresh["document"], channel.as_str(), "a fresh document");
 }
 
+/// A connection that dies without unsubscribing is the last
+/// subscriber leaving all the same: its document, the mirror's file
+/// watch and its resource watch are disposed (ahp-documents.md §4.4).
+/// They used to outlive the connection for the host's lifetime — 350
+/// stranded watchers after a week of app restarts (2026-11-13).
+#[tokio::test]
+async fn a_closed_connection_disposes_its_documents_and_watches() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = dir.path().join("notes.md");
+    std::fs::write(&file, "# notes\n").unwrap();
+    let host = host_at(dir.path());
+    let uri = format!("file://{}", file.display());
+    let initialize = json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"});
+
+    let mut dying = Client::connect(host.clone()).await;
+    dying.request("initialize", initialize.clone()).await;
+    let opened = dying
+        .request(
+            "openDocument",
+            json!({"channel": "hihost-fs:/local", "uri": uri}),
+        )
+        .await;
+    let document = opened["document"].as_str().expect("a channel").to_owned();
+    dying
+        .request("subscribe", json!({"channel": document}))
+        .await;
+    let created = dying
+        .request(
+            "createResourceWatch",
+            json!({"channel": "hihost-fs:/local", "uri": format!("file://{}", dir.path().display())}),
+        )
+        .await;
+    let watch = created["channel"].as_str().expect("a watch").to_owned();
+    dying.request("subscribe", json!({"channel": watch})).await;
+    drop(dying);
+
+    // Probe without subscribing — a probe that subscribes and leaves
+    // would dispose the channel itself. A live document reopens at
+    // its own channel; a disposed one reopens fresh.
+    let mut client = Client::connect(host.clone()).await;
+    client.request("initialize", initialize).await;
+    let mut reopened = String::new();
+    for _ in 0..200 {
+        let answer = client
+            .request(
+                "openDocument",
+                json!({"channel": "hihost-fs:/local", "uri": uri}),
+            )
+            .await;
+        reopened = answer["document"].as_str().expect("a channel").to_owned();
+        if reopened != document {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_ne!(reopened, document, "the document outlived its connection");
+    // The close disposed everything in one step: the watch is gone too.
+    let refused = client
+        .request_any("subscribe", json!({"channel": watch}))
+        .await;
+    assert!(
+        refused["error"]["code"].is_i64(),
+        "the watch outlived its connection: {refused}"
+    );
+}
+
 async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::server::Host>, Client, String, String) {
     let root = dir.join("code");
     std::fs::create_dir_all(&root).expect("mkdir");

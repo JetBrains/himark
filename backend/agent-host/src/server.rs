@@ -390,6 +390,57 @@ fn subscribe_outbox(state: &mut State, channel: &Uri, connection: u64, outbox: &
     state.subscribers.insert_mut(channel.clone(), rows);
 }
 
+/// A channel's last subscriber left — by `unsubscribe` or by its
+/// connection closing: dispose what lived for the audience. The
+/// resource watch, the changeset, the locations stream, and the
+/// document with its mirror association and file watch
+/// (docs/ahp/ahp-documents.md §4.4). Answers the mirrors dropped, as
+/// (working directories, resource), for the caller to close on the
+/// document feed INSIDE the same lock (see `DocumentFeed`).
+fn dispose_unsubscribed(state: &mut State, channel: &Uri) -> Vec<(Vec<String>, Uri)> {
+    let mut closed: Vec<(Vec<String>, Uri)> = Vec::new();
+    state.watches.remove_mut(channel);
+    state.changesets.remove_mut(channel);
+
+    // A locations channel dies with its audience: the entry's
+    // REMOVAL is the cancel — producers leash on its presence
+    // (docs/ahp/ahp-locations.md §2.3).
+    if state.locations.contains_key(channel) {
+        state.locations.remove_mut(channel);
+        state.subscribers.remove_mut(channel);
+    }
+
+    let owners: Vec<Uri> = state
+        .sessions
+        .iter()
+        .filter(|(_, session)| session.documents.contains_key(channel))
+        .map(|(uri, _)| uri.clone())
+        .collect();
+    state.mirror_watches.remove_mut(channel);
+    for uri in owners {
+        let mut session = state.sessions[&uri].clone();
+        session.documents.remove_mut(channel);
+        session.disk_texts.remove_mut(channel);
+        let mirrors: Vec<Uri> = session
+            .mirrors
+            .iter()
+            .filter(|(_, held)| *held == channel)
+            .map(|(resource, _)| resource.clone())
+            .collect();
+        let dirs = session
+            .state
+            .working_directories
+            .clone()
+            .unwrap_or_default();
+        for resource in mirrors {
+            session.mirrors.remove_mut(&resource);
+            closed.push((dirs.clone(), resource));
+        }
+        state.sessions.insert_mut(uri, session);
+    }
+    closed
+}
+
 fn drop_subscriber(
     subscribers: &rpds::VectorSync<(u64, Outbox)>,
     connection: u64,
@@ -1231,6 +1282,24 @@ impl Host {
                 state.subscribers.remove_mut(&channel);
             }
 
+            // A dying connection is its subscriptions' unsubscribe:
+            // every channel it leaves subscriber-less is disposed
+            // exactly as `unsubscribe` would — its watches used to
+            // outlive it for the host's lifetime (2026-11-13).
+            // ORDER LAW: enqueue inside the lock (see `DocumentFeed`).
+            for channel in &touched {
+                let emptied = state
+                    .subscribers
+                    .get(channel)
+                    .is_none_or(|rows| rows.is_empty());
+                if !emptied {
+                    continue;
+                }
+                for (dirs, uri) in dispose_unsubscribed(state, channel) {
+                    let _ = self.doc_feed.send(DocumentFeed::Close { dirs, uri });
+                }
+            }
+
             let search = state
                 .searches
                 .get(&connection)
@@ -1650,48 +1719,10 @@ impl Host {
                 None => true,
             };
 
-            let mut closed: Vec<(Vec<String>, Uri)> = Vec::new();
-            if empty {
-                state.watches.remove_mut(channel);
-                state.changesets.remove_mut(channel);
-
-                // A locations channel dies with its audience: the
-                // entry's REMOVAL is the cancel — producers leash on
-                // its presence (docs/ahp/ahp-locations.md §2.3).
-                if state.locations.contains_key(channel) {
-                    state.locations.remove_mut(channel);
-                    state.subscribers.remove_mut(channel);
-                }
-
-                let owners: Vec<Uri> = state
-                    .sessions
-                    .iter()
-                    .filter(|(_, session)| session.documents.contains_key(channel))
-                    .map(|(uri, _)| uri.clone())
-                    .collect();
-                state.mirror_watches.remove_mut(channel);
-                for uri in owners {
-                    let mut session = state.sessions[&uri].clone();
-                    session.documents.remove_mut(channel);
-                    session.disk_texts.remove_mut(channel);
-                    let mirrors: Vec<Uri> = session
-                        .mirrors
-                        .iter()
-                        .filter(|(_, held)| *held == channel)
-                        .map(|(resource, _)| resource.clone())
-                        .collect();
-                    let dirs = session
-                        .state
-                        .working_directories
-                        .clone()
-                        .unwrap_or_default();
-                    for resource in mirrors {
-                        session.mirrors.remove_mut(&resource);
-                        closed.push((dirs.clone(), resource));
-                    }
-                    state.sessions.insert_mut(uri, session);
-                }
-            }
+            let closed = match empty {
+                true => dispose_unsubscribed(state, channel),
+                false => Vec::new(),
+            };
             // The dropped mirrors leave the language server too —
             // kept open, their text would shadow the files and
             // serve stale positions until the host dies. ORDER LAW:
