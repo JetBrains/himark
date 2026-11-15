@@ -598,12 +598,29 @@ impl Document {
     }
 
     /// The link span under a byte — a [`crate::theme::StyleId::Reference`]
-    /// span the tree-sitter pass emitted for an identifier. One
-    /// stabbing query over the parse markup; `None` on plain text,
-    /// keywords, literals.
+    /// span the tree-sitter pass emitted for an identifier, or a
+    /// [`crate::theme::StyleId::Link`] span (a markdown link's text).
+    /// One stabbing query over the parse markup; `None` on plain
+    /// text, keywords, literals.
     pub fn link_range_at(&self, byte: u32) -> Option<Range<u32>> {
-        crate::markup::OverlaidMarkup::plain(syntax_markup(&self.syntax))
-            .styled_range_at(byte, |id| id == crate::theme::StyleId::Reference)
+        self.link_at(byte).map(|link| link.range)
+    }
+
+    /// The link under a byte with its kind — a written link's text
+    /// wins over a reference inside it.
+    pub fn link_at(&self, byte: u32) -> Option<crate::link::Link> {
+        use crate::link::{Link, LinkKind};
+        use crate::theme::StyleId;
+        let markup = crate::markup::OverlaidMarkup::plain(syntax_markup(&self.syntax));
+        [
+            (StyleId::Link, LinkKind::Written),
+            (StyleId::Reference, LinkKind::Reference),
+        ]
+        .into_iter()
+        .find_map(|(style, kind)| {
+            let range = markup.styled_range_at(byte, |id| id == style)?;
+            Some(Link { range, kind })
+        })
     }
 
     fn ensure_enrich_slot(&mut self, key: EnrichKey) -> EnrichSlot {
@@ -1701,6 +1718,8 @@ impl Document {
 
             EditorCommand::Hover(_) => {}
             EditorCommand::HoverLink(range) => self.set_hovered_link(editor, range),
+            // The view hands a resolved target to the door.
+            EditorCommand::FollowLink(_) => {}
             // The editor's own assists perform at the view
             // (`EditorView::perform`); nothing reaches the text.
             EditorCommand::Find(_)
@@ -3480,6 +3499,7 @@ fn editor_command_label(command: &crate::editor_view::EditorCommand) -> &'static
         E::DragEnd => "DragEnd",
         E::Hover(_) => "Hover",
         E::HoverLink(_) => "HoverLink",
+        E::FollowLink(_) => "FollowLink",
         E::Move { .. } => "Move",
         E::Viewport { .. } => "Viewport",
         E::ViewportTop(_) => "ViewportTop",

@@ -110,7 +110,7 @@ impl himark::commands::HimarkCommand for OpenEditedFile {
                 store,
                 ui,
                 origin,
-                himark::places::DocumentPlace {
+                himark::places::SourcePlace {
                     location,
                     target: None,
                     focus: true,

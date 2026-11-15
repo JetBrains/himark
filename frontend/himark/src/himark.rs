@@ -1604,6 +1604,11 @@ impl Himark {
         self.with_store(|store| ::editor::dynamic::EditorCommands::register(store, command));
     }
 
+    /// What a kind of link points at (`editor::link`).
+    pub fn register_link_resolver(&mut self, resolver: Arc<dyn editor::link::LinkResolver>) {
+        self.with_store(|store| ::editor::link::LinkResolvers::register(store, resolver));
+    }
+
     /// Commands that act on the COLLECTION — handed the pane's ids at
     /// dispatch (docs/entities.md law 3), never resolving an owner.
     pub fn register_document_command(

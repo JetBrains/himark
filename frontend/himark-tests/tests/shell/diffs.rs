@@ -5003,7 +5003,7 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     assert!(documents::OpenDocuments::pair_ids(&app.store(), app.sole_documents()).is_empty());
 }
 
-/// Code navigation FROM a canvas diff stays in the canvas: a target
+/// Navigation to a document FROM a canvas diff stays in the canvas: a target
 /// in the diffed file goes to the byte in the row's face (lifting a
 /// fold over it), a target in another file of the canvas reveals
 /// that row and goes to the byte there, and only a target outside
@@ -5013,7 +5013,28 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
     use documents::OpenDocuments;
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let window = app.add_window();
-    app.register_document_command(Arc::new(hicode::GoDefinition));
+    // The open road's fetch, stubbed: an unopened target lands built.
+    struct StubOpen;
+    impl imba::effect::EffectHandler<himark::opening::OpenByLocationEffect> for StubOpen {
+        async fn handle(
+            &self,
+            effect: himark::opening::OpenByLocationEffect,
+        ) -> himark::app::AppCommand {
+            himark::opening::opened(
+                effect.origin,
+                himark::opening::OpenedDocument {
+                    documents: effect.documents,
+                    name: effect.location.name().to_owned(),
+                    document: ::editor::test_document::plain_document("fn c() {}\n"),
+                    location: Some(effect.location),
+                    primary: effect.primary,
+                    target: effect.target,
+                    focus: effect.focus,
+                },
+            )
+        }
+    }
+    app.register_handler::<himark::opening::OpenByLocationEffect>(StubOpen);
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -5159,31 +5180,21 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         "the identical tail is folded over the target"
     );
     let panes_before = app.pane_count();
-    let navigate = |app: &mut Himark,
-                    target: editor::location::ResourceLocation,
-                    line: u32,
-                    built: Vec<(
-        editor::location::ResourceLocation,
-        editor::document::Document,
-    )>| {
+    let navigate = |app: &mut Himark, target: editor::location::ResourceLocation, line: u32| {
         assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
             window,
-            Arc::new(hicode::ApplyNavigation {
-                outcome: hicode::NavigationOutcome {
-                    title: "Definitions".to_owned(),
-                    targets: Some(vec![hicode::CodeTarget {
-                        location: target,
-                        range: documents::text_ext::LineCol { line, col: 5 }
-                            ..documents::text_ext::LineCol { line, col: 9 },
-                    }]),
-                    built,
-                },
+            workbench_shell::links::open_target(editor::link::LinkTarget::Location {
+                location: target,
+                range: Some(
+                    documents::text_ext::LineCol { line, col: 5 }
+                        ..documents::text_ext::LineCol { line, col: 9 },
+                ),
             }),
         )]));
     };
 
     // 1. The diffed file itself: inside the row, fold lifted.
-    navigate(&mut app, file_a.new.clone(), 61, Vec::new());
+    navigate(&mut app, file_a.new.clone(), 61);
     settle(&mut app);
     assert_eq!(app.pane_count(), panes_before, "no editor pane opened");
     let document = OpenDocuments::document_ref(app.store(), documents, right_a).expect("a");
@@ -5210,7 +5221,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
         )
     };
     let scroll_before = canvas_view(&app).probe_scroll_top(app.store());
-    navigate(&mut app, file_b.new.clone(), 1, Vec::new());
+    navigate(&mut app, file_b.new.clone(), 1);
     settle(&mut app);
     assert!(
         canvas_view(&app).probe_scroll_top(app.store()) > scroll_before,
@@ -5227,15 +5238,7 @@ fn navigation_from_a_canvas_diff_stays_in_the_canvas() {
 
     // 3. An unchanged file: not in the canvas, an editor opens on it.
     let elsewhere = location("c.rs", editor::location::ResourceType::document());
-    navigate(
-        &mut app,
-        elsewhere,
-        0,
-        vec![(
-            location("c.rs", editor::location::ResourceType::document()),
-            ::editor::test_document::plain_document("fn c() {}\n"),
-        )],
-    );
+    navigate(&mut app, elsewhere, 0);
     settle(&mut app);
     assert_eq!(
         app.focused_document_text().as_deref(),

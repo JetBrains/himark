@@ -235,6 +235,7 @@ pub(crate) fn install_shell_furniture(app: &mut Himark) -> bool {
             registry.drawer_button = Some(crate::toc::toolbar_button());
         });
         store.put(::workbench::window::Windows::default());
+        crate::links::install(store);
         // The workbench answers origin bindings for the origins
         // that ride a window's raw id: the REAL walk, not just
         // the root facts — a windowed mint resolves the same
@@ -817,6 +818,22 @@ impl himark::himark::Shell for MountFrontend {
             return self.next.navigate(origin, place, store, ui, fx);
         }
         let _rides = ::workbench::window::WindowId::from_raw(origin.raw());
+        // A mount shows no diff to stay in: the document's own view
+        // IS the document place.
+        if let Some(place) = place.place::<himark::places::SourcePlace>() {
+            let document = himark::places::DocumentPlace {
+                location: place.location.clone(),
+                target: place.target.clone(),
+                focus: place.focus,
+            };
+            return self.navigate(
+                origin,
+                hikit::navigation::NavigationLocation::new(document),
+                store,
+                ui,
+                fx,
+            );
+        }
         if let Some(place) = place.place::<himark::places::DocumentPlace>() {
             let session = hiahp::sessions::session_of(store, origin);
             if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
@@ -905,10 +922,49 @@ impl himark::himark::Shell for WorkbenchFrontend {
         fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         let window = ::workbench::window::WindowId::from_raw(origin.raw());
+        // To SEE a document from a diff that shows it is to stay in
+        // the diff; anything else is the document's own view.
         if let Some(place) = place.place::<himark::places::DocumentPlace>() {
             let Some(state) = crate::workspace::session_state(store, window) else {
                 return false;
             };
+            if crate::links::land_in_diff(store, ui, window, state.documents(), place, fx) {
+                return true;
+            }
+            let own = himark::places::SourcePlace {
+                location: place.location.clone(),
+                target: place.target.clone(),
+                focus: place.focus,
+            };
+            return self.navigate(
+                origin,
+                hikit::navigation::NavigationLocation::new(own),
+                store,
+                ui,
+                fx,
+            );
+        }
+        if let Some(place) = place.place::<himark::places::SourcePlace>() {
+            let Some(state) = crate::workspace::session_state(store, window) else {
+                return false;
+            };
+            // Already open: the READY place, no fetch.
+            if let Some(document) =
+                documents::OpenDocuments::by_location(store, state.documents(), &place.location)
+            {
+                let ready = himark::places::OpenDocumentPlace {
+                    document,
+                    target: place.target.clone(),
+                    focus: place.focus,
+                };
+                return self.navigate(
+                    origin,
+                    hikit::navigation::NavigationLocation::new(ready),
+                    store,
+                    ui,
+                    fx,
+                );
+            }
             // The landing is an AppCommand; the verb lane carries
             // it home through the shell-payload road.
             fx.push(

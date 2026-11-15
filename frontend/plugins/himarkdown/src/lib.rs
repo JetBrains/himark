@@ -8,6 +8,7 @@ mod checkbox;
 pub mod chrome;
 pub mod fence_embed;
 pub mod image;
+pub mod link;
 pub mod table;
 
 use editor::document::Document;
@@ -991,6 +992,7 @@ impl himark::plugin::Plugin for MarkdownPlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
         register_handlers(app);
         app.register_editor_command(std::sync::Arc::new(table::InsertTable));
+        app.register_link_resolver(std::sync::Arc::new(link::MarkdownLinks));
     }
 }
 

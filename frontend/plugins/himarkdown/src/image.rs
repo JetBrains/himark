@@ -197,7 +197,7 @@ fn scan_images(text: &str, base: u32) -> Vec<ImageRef> {
     refs
 }
 
-fn target(destination: &str) -> String {
+pub(crate) fn target(destination: &str) -> String {
     let trimmed = destination.trim();
     let bare = match trimmed.strip_prefix('<') {
         Some(rest) => rest.split('>').next().unwrap_or(rest),

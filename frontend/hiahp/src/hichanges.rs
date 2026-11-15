@@ -183,7 +183,7 @@ impl himark::commands::HimarkCommand for ShowWorkingCopy {
                 store,
                 ui,
                 origin,
-                himark::places::DocumentPlace {
+                himark::places::SourcePlace {
                     location: self.location.clone(),
                     target: Some(self.target.clone()),
                     focus: true,

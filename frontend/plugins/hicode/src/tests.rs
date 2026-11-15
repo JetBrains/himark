@@ -40,18 +40,13 @@ fn identifier_at_clips_the_word_under_the_caret() {
     assert_eq!(identifier_at(&mut empty.view(), 0), "");
 }
 
-struct StubNavigation {
+struct StubDefinition {
     targets: Option<Vec<CodeTarget>>,
-    built: Vec<(ResourceLocation, Document)>,
 }
 
-impl imba::effect::EffectHandler<CodeNavigationEffect> for StubNavigation {
-    async fn handle(&self, effect: CodeNavigationEffect) -> NavigationOutcome {
-        NavigationOutcome {
-            title: effect.title,
-            targets: self.targets.clone(),
-            built: self.built.clone(),
-        }
+impl imba::effect::EffectHandler<FindDefinitionEffect> for StubDefinition {
+    async fn handle(&self, _effect: FindDefinitionEffect) -> Option<Vec<CodeTarget>> {
+        self.targets.clone()
     }
 }
 
@@ -113,12 +108,11 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
 #[test]
 fn a_single_open_target_navigates_with_the_caret_revealed() {
     let (mut app, window) = app_with_located_document("hello\nworld\nagain");
-    app.register_handler::<CodeNavigationEffect>(StubNavigation {
+    app.register_handler::<FindDefinitionEffect>(StubDefinition {
         targets: Some(vec![CodeTarget {
             location: document_location("a.rs"),
             range: lc(1, 2)..lc(1, 5),
         }]),
-        built: Vec::new(),
     });
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -135,45 +129,6 @@ fn a_single_open_target_navigates_with_the_caret_revealed() {
     }
     assert_eq!(app.focused_caret_byte(), Some(8), "line 1 col 2");
     assert_eq!(app.focused_reveal_pending(), Some(true));
-}
-
-#[test]
-fn a_single_unopened_target_registers_its_prefetched_build() {
-    let (mut app, window) = app_with_located_document("hello");
-    let far = document_location("far.rs");
-    app.register_handler::<CodeNavigationEffect>(StubNavigation {
-        targets: Some(vec![CodeTarget {
-            location: far.clone(),
-            range: lc(1, 0)..lc(1, 4),
-        }]),
-        built: vec![(far, plain_document("alpha\nbeta\ngamma"))],
-    });
-    let (posted, arriving) = mpsc::channel();
-    let runner = app.attach_host(
-        Arc::new(move |command| {
-            let _ = posted.send(command);
-        }),
-        Arc::new(|| {}),
-    );
-    let documents_before = app.document_count();
-
-    invoke(&mut app, window, "code.definition");
-    runner.run();
-    while let Ok(command) = arriving.try_recv() {
-        app.perform_batch(vec![command]);
-    }
-    assert_eq!(
-        app.focused_document_text().as_deref(),
-        Some("alpha\nbeta\ngamma"),
-        "the prefetched build opened"
-    );
-    assert_eq!(app.focused_caret_byte(), Some(6), "line 1 col 0");
-    assert_eq!(app.focused_reveal_pending(), Some(true));
-    assert_eq!(
-        app.document_count(),
-        documents_before,
-        "the target registered; the jumped-from clean document released"
-    );
 }
 
 /// A seat that serves ONLY the locations trio: subscribe answers a

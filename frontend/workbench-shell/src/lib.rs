@@ -23,6 +23,7 @@ pub mod hifiles;
 pub mod higent;
 pub mod hihistory;
 pub mod hisearch;
+pub mod links;
 pub mod modal;
 pub mod pane_rows;
 #[cfg(feature = "capi")]

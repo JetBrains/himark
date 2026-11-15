@@ -485,7 +485,7 @@ fn fence_info(view: &mut text::text_view::TextView, node: tree_sitter::Node) -> 
     None
 }
 
-fn split_fragment(spec: &str) -> (&str, Option<(u32, u32)>) {
+pub(crate) fn split_fragment(spec: &str) -> (&str, Option<(u32, u32)>) {
     let Some((path, fragment)) = spec.split_once('#') else {
         return (spec, None);
     };
@@ -497,7 +497,7 @@ fn split_fragment(spec: &str) -> (&str, Option<(u32, u32)>) {
     (path, lines)
 }
 
-fn resolve(base: &ResourceLocation, path: &str) -> Option<ResourceLocation> {
+pub(crate) fn resolve(base: &ResourceLocation, path: &str) -> Option<ResourceLocation> {
     let mut segments: Vec<String> = base.path().to_vec();
     segments.pop();
     for part in path.split('/') {

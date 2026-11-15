@@ -23,6 +23,7 @@ pub mod find;
 pub mod fold;
 pub mod hover;
 pub mod linecol;
+pub mod link;
 pub mod location;
 pub mod markup;
 pub mod parley_line;

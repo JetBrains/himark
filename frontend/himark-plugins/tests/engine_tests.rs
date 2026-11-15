@@ -9118,6 +9118,78 @@ fn a_test_engine_registers_no_outward_hosts() {
     );
 }
 
+/// A markdown link rides the SAME cmd-click road as a code reference:
+/// the caret set, then the registered link follower — which hands an
+/// external destination to the host's browser door.
+#[test]
+fn cmd_click_on_a_markdown_link_opens_the_browser() {
+    let (_host, mut engine, window, fs) = hosted_engine();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let body = "see [site](https://example.com) here\n";
+    open_picked(&mut engine, &_host.seat, window, &fs, &["page.md"], body);
+    let _ = engine.draw(
+        window,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        900.0,
+        700.0,
+        1.0,
+    );
+    let start = body.find("site").unwrap() as u32;
+    settle_until(&mut engine, "the parse landed the link span", |engine| {
+        let (document_id, _) = engine.focused_editor_id();
+        documents::OpenDocuments::document_ref(engine.store(), engine.sole_documents(), document_id)
+            .is_some_and(|entry| entry.link_range_at(start + 1) == Some(start..start + 4))
+    });
+    let _ = engine.draw(
+        window,
+        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        900.0,
+        700.0,
+        1.0,
+    );
+
+    let opened = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let door = Arc::clone(&opened);
+    engine
+        .store_mut()
+        .put(himark::host::OpenUrl(Arc::new(move |url| {
+            door.lock().unwrap().push(url.to_owned());
+        })));
+
+    let sole = engine.sole_window();
+    let (x, y, w, h) = engine
+        .with_ime_client(
+            himark::bridge::ViewBridgeId::from_raw(sole.raw()),
+            |client| client.first_rect(start, start + 4),
+        )
+        .expect("focused editor")
+        .expect("the link text is on screen");
+
+    let pointed = engine.mouse_move(window, x + w * 0.5, y + h * 0.5, HIMARK_MOD_COMMAND);
+    assert_eq!(pointed.shape, PointerShape::Pointer, "a link is a hand");
+
+    assert!(engine.mouse_down(window, x + w * 0.5, y + h * 0.5, 0, 1));
+    settle(&mut engine);
+    assert!(
+        opened.lock().unwrap().is_empty(),
+        "a plain click only sets the caret"
+    );
+
+    assert!(engine.mouse_down(
+        window,
+        x + w * 0.5,
+        y + h * 0.5,
+        HIMARK_MOD_COMMAND,
+        1
+    ));
+    settle(&mut engine);
+    assert_eq!(
+        *opened.lock().unwrap(),
+        vec!["https://example.com".to_owned()],
+        "the cmd-click hands the destination to the browser door"
+    );
+}
+
 #[test]
 fn cmd_hover_marks_the_link_under_the_pointer() {
     let (_host, mut engine, window, fs) = hosted_engine();

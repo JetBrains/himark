@@ -20,6 +20,19 @@ pub struct DocumentPlace {
 
 impl Place for DocumentPlace {}
 
+/// A located document's OWN view — its editor, never a diff that
+/// happens to show it. What "open source" on a diff asks for; a
+/// `DocumentPlace` only asks to see the document, and a shell may
+/// answer that from the diff the gesture came from.
+#[derive(Clone, PartialEq)]
+pub struct SourcePlace {
+    pub location: editor::location::ResourceLocation,
+    pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
+    pub focus: bool,
+}
+
+impl Place for SourcePlace {}
+
 /// Show a document ALREADY OPEN in its collection — an open's
 /// landing half, and a modal's "show this one".
 #[derive(Clone, PartialEq)]

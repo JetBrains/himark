@@ -10,12 +10,8 @@ use documents::text_ext::LineCol;
 use documents::OpenDocuments;
 use editor::document::Document;
 use editor::location::ResourceLocation;
-use himark::app::AppFx;
-use himark::commands::HimarkCommand;
 use imba::{effect::Effect, store::Store};
 use text::text_view::TextView;
-
-const MAX_FETCHED_TARGETS: usize = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodeTarget {
@@ -39,101 +35,16 @@ impl Effect for FindDefinitionEffect {
     type Result = Option<Vec<CodeTarget>>;
 }
 
-pub struct CodeNavigationEffect {
-    pub folders: Vec<ResourceLocation>,
-    pub location: ResourceLocation,
-    pub position: LineCol,
-
-    pub title: String,
-
-    pub open: Vec<ResourceLocation>,
-}
-
-pub struct NavigationOutcome {
-    pub title: String,
-    pub targets: Option<Vec<CodeTarget>>,
-    pub built: Vec<(ResourceLocation, Document)>,
-}
-
-impl std::fmt::Display for CodeNavigationEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "navigate code /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for CodeNavigationEffect {
-    type Result = NavigationOutcome;
-}
-
-pub struct CodeNavigationHandler {
-    pub caller: imba::effect::EffectCaller,
-}
-
-impl imba::effect::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
-    async fn handle(&self, effect: CodeNavigationEffect) -> NavigationOutcome {
-        let targets = self
-            .caller
-            .call(FindDefinitionEffect {
-                folders: effect.folders.clone(),
-                location: effect.location.clone(),
-                position: effect.position,
-            })
-            .await
-            .flatten();
-
-        let mut built = Vec::new();
-        if let Some(targets) = &targets {
-            let mut wanted: Vec<ResourceLocation> = Vec::new();
-            for target in targets {
-                if effect.open.contains(&target.location) || wanted.contains(&target.location) {
-                    continue;
-                }
-                wanted.push(target.location.clone());
-            }
-            for location in wanted.into_iter().take(MAX_FETCHED_TARGETS) {
-                let Some(text) = self
-                    .caller
-                    .call(documents::FetchDocumentEffect {
-                        location: location.clone(),
-                    })
-                    .await
-                    .flatten()
-                else {
-                    continue;
-                };
-                if let Some(built_document) = self
-                    .caller
-                    .call(documents::BuildDocumentEffect {
-                        location: location.clone(),
-                        text,
-                    })
-                    .await
-                {
-                    built.push((location, built_document.document));
-                }
-            }
-        }
-
-        NavigationOutcome {
-            title: effect.title,
-            targets,
-            built,
-        }
-    }
-}
-
 pub mod lsproute;
 
-/// Code navigation as a plugin: the gather handler and the go-to
-/// document commands. The wire route for the definition ask stays
+/// Code navigation as a plugin: the reference-link resolver and the
+/// go-to document commands. The wire route for the definition ask stays
 /// the host's (it closes over its client directory).
 pub struct CodePlugin;
 
 impl himark::plugin::Plugin for CodePlugin {
     fn install(&self, app: &mut himark::app::Himark, _cx: &himark::plugin::PluginContext) {
-        app.register_handler::<CodeNavigationEffect>(CodeNavigationHandler {
-            caller: app.effect_caller(),
-        });
+        app.register_link_resolver(std::sync::Arc::new(DefinitionResolver));
         app.register_document_command(std::sync::Arc::new(GoDefinition));
         app.register_document_command(std::sync::Arc::new(GoReferences));
         app.register_document_command(std::sync::Arc::new(GoImplementations));
@@ -143,163 +54,60 @@ impl himark::plugin::Plugin for CodePlugin {
     }
 }
 
-/// The landing half of a navigation ask — public so a shell test can
-/// hand a canvas a fixed outcome without a language server.
-#[doc(hidden)]
-pub struct ApplyNavigation {
-    pub outcome: NavigationOutcome,
+/// What a reference points at: its definition, asked of the
+/// language server. A definition ask answering several targets is
+/// rare; the first wins.
+pub struct DefinitionResolver;
+
+fn definition_ask(
+    store: &Store,
+    document: &Document,
+    byte: u32,
+    location: &ResourceLocation,
+) -> editor::link::LinkResolution {
+    let position = line_col_at(&mut document.text().view(), byte as usize);
+    editor::link::LinkResolution::Pending(
+        imba::effect::AnyEffect::new(FindDefinitionEffect {
+            folders: workspace_folders(store),
+            location: location.clone(),
+            position,
+        })
+        .map(|targets| {
+            let target = targets?.into_iter().next()?;
+            Some(editor::link::LinkTarget::Location {
+                location: target.location,
+                range: Some(target.range),
+            })
+        }),
+    )
 }
 
-impl HimarkCommand for ApplyNavigation {
-    fn id(&self) -> &'static str {
-        "code.apply-navigation"
-    }
-    fn name(&self) -> String {
-        "Apply Code Navigation".to_owned()
-    }
-    fn perform(
+impl editor::link::LinkResolver for DefinitionResolver {
+    fn claims(
         &self,
-        store: &mut imba::store::Store,
-        ui: &imba::ui::UiCtx,
-        bound: &imba::focus::Bindings,
-        fx: &mut himark::app::AppFx<'_>,
-    ) {
-        // A definition ask answering several targets is rare; the
-        // first wins. Fanning results out belongs to the peek/dock
-        // surfaces (docs/ui/location-list.md), not a fetched panel.
-        let Some(target) = self
-            .outcome
-            .targets
-            .as_ref()
-            .and_then(|targets| targets.first())
-        else {
-            return;
-        };
-        // A MOUNTED origin bound: no window, no panes — hand the
-        // shell the target as a `DocumentPlace` and ride the
-        // standing open road (`MountFrontend` resolves it against
-        // the mount's session; the opened landing re-navigates
-        // READY). The stay-in-the-diff refinement is the windowed
-        // road's; there every target opens the document.
-        if let Some(&origin) = bound.bound::<himark::bridge::ViewBridgeId>() {
-            if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
-                eprintln!(
-                    "[nav] ApplyNavigation windowless: targets {:?}",
-                    self.outcome.targets.as_ref().map(|targets| targets.len())
-                );
-            }
-            let place = himark::places::DocumentPlace {
-                location: target.location.clone(),
-                target: Some(target.range.clone()),
-                focus: true,
-            };
-            fx.scope(himark::app::AppCommand::Verb, |fx| {
-                workbench_shell::shell::navigate_origin(store, ui, origin, place, fx)
-            });
-            return;
-        }
-        let Some(window) = workbench_shell::app::bound_window(self.id(), bound) else {
-            return;
-        };
-        navigate(store, ui, window, target, &self.outcome.built, fx);
+        _document: &Document,
+        link: &editor::link::Link,
+        location: Option<&ResourceLocation>,
+    ) -> bool {
+        link.kind == editor::link::LinkKind::Reference
+            && location.is_some_and(|location| !location.is_synthetic())
     }
-}
 
-fn navigate(
-    store: &mut Store,
-    ui: &imba::ui::UiCtx,
-    window: workbench::window::WindowId,
-    target: &CodeTarget,
-    built: &[(ResourceLocation, Document)],
-    fx: &mut AppFx<'_>,
-) {
-    let Some(documents) =
-        workbench_shell::workspace::session_state(store, window).map(|state| state.documents())
-    else {
-        return;
-    };
-    // From a diff, STAY in the diff when the target lives there: the
-    // same file goes to the byte (lifting a fold over it), another
-    // file of the canvas reveals its row; only a target outside the
-    // diff opens an editor.
-    let landing = workbench::window::Windows::window_ref(store, window).and_then(|entity| {
-        match entity.workbench().root.focused_pane() {
-            workbench::workbench_node::Panel::Plugin(view) => {
-                canvas::canvases::diff_landing(store, view.as_any(), documents, &target.location)
-            }
-            workbench::workbench_node::Panel::Editor(_) => None,
-        }
-    });
-    if let Some(landing) = landing {
-        if let Some((changes, canvas, key)) = landing.reveal {
-            canvas::canvases::Canvases::set_reveal(store, changes, canvas, key);
-        }
-        if let Some(pair) = landing.pair {
-            let byte = OpenDocuments::diff_view_ref(store, documents, pair)
-                .map(|held| held.right.document())
-                .and_then(|right| OpenDocuments::document_ref(store, documents, right))
-                .map(|document| {
-                    documents::text_ext::offset_at(&mut document.text().view(), target.range.start)
-                        as u32
-                });
-            if let Some(byte) = byte {
-                fx.scope(
-                    move |command| {
-                        himark::app::AppCommand::Verb(imba::command::Verb::at(documents, command))
-                    },
-                    |fx| documents::diff_views::go_to(store, documents, ui, pair, byte, fx),
-                );
-            }
-        }
-        return;
+    fn resolve(
+        &self,
+        store: &Store,
+        document: &Document,
+        link: &editor::link::Link,
+        location: Option<&ResourceLocation>,
+    ) -> Option<editor::link::LinkResolution> {
+        Some(definition_ask(store, document, link.range.start, location?))
     }
-    let document_id = match OpenDocuments::by_location(store, documents, &target.location) {
-        Some(document) => document,
-        None => {
-            let Some((_, document)) = built
-                .iter()
-                .find(|(location, _)| *location == target.location)
-            else {
-                return;
-            };
-            OpenDocuments::register(
-                store,
-                documents,
-                document.clone(),
-                Some(target.location.clone()),
-                target.location.name().to_owned(),
-                document.revision(),
-            )
-        }
-    };
-    let Some(mut window_entity) = workbench::window::Windows::window(store, window) else {
-        return;
-    };
-    fx.scope(himark::app::AppCommand::Verb, |fx| {
-        window_entity.show_document(
-            store,
-            ui,
-            window,
-            document_id,
-            Some(target.range.clone()),
-            false,
-            fx,
-        )
-    });
-    workbench::window::Windows::put(store, window, window_entity);
-
-    fx.scope(himark::app::AppCommand::Verb, |fx| {
-        documents::lanes::sync_document_watches(store, documents, fx)
-    });
-    fx.scope(himark::app::AppCommand::Verb, |fx| {
-        documents::lanes::sync_stripe_bases(store, documents, ui, fx)
-    });
 }
 
 pub struct GoDefinition;
 
-/// The navigation commands close over the pane's ids (docs/entities.md
-/// law 3): the open set they hand the ask is the collection they run in.
+/// The palette's road to the same ask a cmd-click on a reference
+/// makes — at the caret, whatever stands there.
 impl documents::dynamic::DocumentCommand for GoDefinition {
     fn id(&self) -> &'static str {
         "code.definition"
@@ -307,31 +115,20 @@ impl documents::dynamic::DocumentCommand for GoDefinition {
     fn name(&self) -> String {
         "Go to Definition".to_owned()
     }
-    fn follows_link(&self) -> bool {
-        true
-    }
     fn perform(
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        documents: imba::store::Id<OpenDocuments>,
+        _documents: imba::store::Id<OpenDocuments>,
         _document_id: documents::DocumentId,
         document: &mut Document,
         editor: editor::editor::EditorId,
         location: &ResourceLocation,
-        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
-        navigation(
-            self.id(),
-            store,
-            documents,
-            document,
-            editor,
-            location,
-            payload,
-            fx,
-        );
+        let ask = definition_ask(store, document, document.caret_byte(editor), location);
+        editor::link::follow(store, ask, fx);
     }
 }
 
@@ -433,55 +230,6 @@ fn stream_navigation(
             position,
         }),
     );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn navigation(
-    id: &'static str,
-    store: &mut Store,
-    documents: imba::store::Id<OpenDocuments>,
-    document: &mut Document,
-    editor: editor::editor::EditorId,
-    location: &ResourceLocation,
-    payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-    fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
-) {
-    if std::env::var_os("HIMARK_TRACE_NAV").is_some() {
-        eprintln!("[nav] {} asked (payload? {})", id, payload.is_some());
-    }
-    let Some(payload) = payload else {
-        let caret = document.caret_byte(editor) as usize;
-        let mut view = document.text().view();
-        let position = line_col_at(&mut view, caret);
-        let ident = identifier_at(&mut view, caret);
-        let title = match ident.is_empty() {
-            false => format!("Definitions of `{ident}`"),
-            true => "Definitions".to_owned(),
-        };
-        let open = OpenDocuments::list(store, documents)
-            .into_iter()
-            .filter_map(|(_, entity)| entity.location().cloned())
-            .collect();
-        let _ = fx.push(
-            imba::effect::AnyEffect::new(CodeNavigationEffect {
-                folders: workspace_folders(store),
-                location: location.clone(),
-                position,
-                title,
-                open,
-            })
-            .map(move |outcome| editor::editor_view::EditorCommand::Dynamic {
-                id,
-                payload: Some(editor::dynamic::DynPayload::new(outcome)),
-            }),
-        );
-        return;
-    };
-    let Ok(outcome) = payload.downcast::<NavigationOutcome>() else {
-        return;
-    };
-
-    himark::commands::AppRequests::push(store, Arc::new(ApplyNavigation { outcome: *outcome }));
 }
 
 fn workspace_folders(store: &Store) -> Vec<ResourceLocation> {

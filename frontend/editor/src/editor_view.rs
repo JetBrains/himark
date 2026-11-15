@@ -58,9 +58,8 @@ pub enum ClickKind {
 
     Line,
 
-    /// A cmd-click: a caret set that ALSO asks to follow the link
-    /// under the point — the editor itself only moves the caret; the
-    /// follow is the document-collection layer's to interpret.
+    /// A cmd-click: a caret set that ALSO follows the link under the
+    /// point (`crate::link`).
     Link,
 }
 
@@ -166,6 +165,10 @@ pub enum EditorCommand {
     /// shell's pointer shape; never emitted while the answer stands.
     HoverLink(Option<std::ops::Range<u32>>),
 
+    /// A pending link resolution landed (`crate::link::follow_at`):
+    /// the target goes to the door; `None` found nothing.
+    FollowLink(Option<crate::link::LinkTarget>),
+
     /// The animation clock while the hover rests toward its ask.
     Tick(imba::anim::AnimationClock),
 
@@ -252,6 +255,7 @@ impl std::fmt::Display for EditorCommand {
             EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
             EditorCommand::Hover(_) => out.write_str("hover"),
             EditorCommand::HoverLink(_) => out.write_str("hover link"),
+            EditorCommand::FollowLink(_) => out.write_str("follow link"),
             EditorCommand::Tick(_) => out.write_str("tick"),
             EditorCommand::Find(command) => command.fmt(out),
             EditorCommand::Completion(command) => command.fmt(out),
@@ -1046,6 +1050,12 @@ impl View for EditorView {
             EditorCommand::Tick(now) => {
                 return self.document.hover_tick(self.editor, now, fx);
             }
+            EditorCommand::FollowLink(target) => {
+                if let Some(target) = target {
+                    crate::link::LinkDoor::open(store, target);
+                }
+                return;
+            }
             // The owner's signal; the text is already written.
             EditorCommand::MentionPicked(_) => return,
             _ => {}
@@ -1055,6 +1065,13 @@ impl View for EditorView {
             _ => None,
         };
         let clicked = matches!(command, EditorCommand::Click { .. });
+        let link_clicked = matches!(
+            command,
+            EditorCommand::Click {
+                kind: ClickKind::Link,
+                ..
+            }
+        );
         let hovered = match &command {
             EditorCommand::Hover(point) => Some(*point),
             _ => None,
@@ -1105,6 +1122,18 @@ impl View for EditorView {
         let base_revision = self.document.revision();
         let text_before = self.document.text().clone();
         self.document.perform(store, ui, self.editor, command, fx);
+
+        // A cmd-click is a caret set first (above); the link under
+        // the fresh caret is then followed.
+        if link_clicked {
+            crate::link::follow_at(
+                store,
+                &self.document,
+                self.document.caret_byte(self.editor),
+                location.as_ref(),
+                fx,
+            );
+        }
 
         if self.document.revision() != base_revision {
             if let Some(location) = self.location.as_ref().filter(|l| !l.is_synthetic()) {
@@ -1937,15 +1966,14 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 EventResult::command(EditorCommand::DragEnd)
             }
 
-            Event::HitTest { point, miss, mods } if self.location.is_some() => {
+            Event::HitTest { point, miss, mods } => {
                 let inside = !miss && Rect::from_size(self.size).contains(*point);
-                let hover = EditorCommand::Hover(inside.then_some(*point));
 
                 // The hovered link, resolved against the view the hit
-                // test already sees: a Reference span under a
-                // command-held pointer. Only the TRANSITION commands —
-                // the standing answer re-tests to itself and stays
-                // silent.
+                // test already sees: a link span some resolver claims
+                // under a command-held pointer. Only the TRANSITION
+                // commands — the standing answer re-tests to itself
+                // and stays silent.
                 let desired = match inside && mods.command {
                     true => self
                         .document()
@@ -1957,9 +1985,24 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                             self.shared.ui,
                             &self.shared.theme,
                         )
-                        .and_then(|byte| self.document().link_range_at(byte)),
+                        .and_then(|byte| {
+                            crate::link::claimed_at(
+                                self.shared.store,
+                                self.document(),
+                                byte,
+                                self.location,
+                            )
+                        })
+                        .map(|link| link.range),
                     false => None,
                 };
+                let moved = desired != self.document().hovered_link(self.editor());
+                // An editor with no location has no hover assist: it
+                // answers only for a link, and otherwise stays out of
+                // the hit test as it always did.
+                if self.location.is_none() && desired.is_none() && !moved {
+                    return EventResult::Ignored;
+                }
                 // The pointer shape rides the answer: a link under the
                 // pointer is a hand, anything else the arrow — derived
                 // from THIS hit test, never stored.
@@ -1967,10 +2010,13 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                     true => imba::event::PointerShape::Pointer,
                     false => imba::event::PointerShape::Default,
                 };
-                let commands = match desired == self.document().hovered_link(self.editor()) {
-                    true => vec![hover],
-                    false => vec![hover, EditorCommand::HoverLink(desired)],
-                };
+                let mut commands = Vec::new();
+                if self.location.is_some() {
+                    commands.push(EditorCommand::Hover(inside.then_some(*point)));
+                }
+                if moved {
+                    commands.push(EditorCommand::HoverLink(desired));
+                }
                 EventResult::pointer(shape, commands)
             }
             _ => EventResult::Ignored,

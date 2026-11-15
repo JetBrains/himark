@@ -104,7 +104,7 @@ impl crate::commands::HimarkCommand for OpenCanvasFile {
                 store,
                 ui,
                 origin,
-                crate::places::DocumentPlace {
+                crate::places::SourcePlace {
                     location: self.location.clone(),
                     target: self.target.clone(),
                     focus: true,
