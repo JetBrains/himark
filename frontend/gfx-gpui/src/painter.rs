@@ -112,14 +112,8 @@ struct State {
     stack: Vec<Frame>,
 }
 
-/// gpui's `GlyphId` field is `pub(crate)` — there is no public way
-/// to hand the renderer a raw glyph id, which is this backend's
-/// whole text road. It is `#[repr(C)]` over one `u32`, so until a
-/// constructor lands upstream, transmute — the version is pinned to
-/// `=0.2.2` in Cargo.toml for exactly this reason.
 fn glyph_id(id: u16) -> gpui::GlyphId {
-    const _: () = assert!(std::mem::size_of::<gpui::GlyphId>() == std::mem::size_of::<u32>());
-    unsafe { std::mem::transmute::<u32, gpui::GlyphId>(id as u32) }
+    gpui::GlyphId(id as u32)
 }
 
 fn color(color: gfx::Color) -> Hsla {
@@ -596,11 +590,25 @@ impl gfx::Painter for GpuiPainter<'_> {
         match clip {
             Some(bounds) => {
                 window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                    let _ = shaped.paint(top, ascent + descent, window, cx);
+                    let _ = shaped.paint(
+                        top,
+                        ascent + descent,
+                        gpui::TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
                 });
             }
             None => {
-                let _ = shaped.paint(top, ascent + descent, window, cx);
+                let _ = shaped.paint(
+                    top,
+                    ascent + descent,
+                    gpui::TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
             }
         }
     }
@@ -633,7 +641,7 @@ impl gfx::Painter for GpuiPainter<'_> {
         };
         let bounds = self.to_bounds(dst);
         self.with_mask(move |window| {
-            let _ = window.paint_image(bounds, Corners::default(), rendered, 0, false);
+            let _ = window.paint_image(bounds, bounds, Corners::default(), rendered, 0, false);
         });
     }
 
@@ -653,9 +661,10 @@ impl gfx::Painter for GpuiPainter<'_> {
             offset: point(px(0.0), px(0.0)),
             blur_radius: self.to_len(sigma * 2.0),
             spread_radius: px(0.0),
+            inset: false,
         };
         self.with_mask(move |window| {
-            window.paint_shadows(bounds, Corners::all(radius), &[shadow]);
+            window.paint_drop_shadows(bounds, Corners::all(radius), &[shadow]);
         });
     }
 }

@@ -15,7 +15,7 @@ use gfx_gpui::{GpuiPainter, PainterCaches};
 use gpui::{
     canvas, div, prelude::*, ClipboardItem, Context, FocusHandle, KeyDownEvent,
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollDelta,
-    ScrollWheelEvent, TouchPhase, Window,
+    ScrollEvent, TouchPhase, Window,
 };
 use himark::bridge::ViewBridgeId;
 use himark::host::ScrollPhase;
@@ -197,7 +197,7 @@ impl BridgeView {
 impl Render for BridgeView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.focus.is_focused(window) {
-            window.focus(&self.focus);
+            window.focus(&self.focus, cx);
         }
 
         let engine = self.engine.clone();
@@ -287,7 +287,7 @@ impl Render for BridgeView {
                     this.dispatch_pointed(Event::MouseMove { point, mods }, cx);
                 }
             }))
-            .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+            .on_scroll(cx.listener(|this, event: &ScrollEvent, window, cx| {
                 let scale = window.scale_factor();
                 let point = device_point(event.position, scale);
                 this.pointer.set(point);
@@ -306,6 +306,7 @@ impl Render for BridgeView {
                             TouchPhase::Started => ScrollPhase::Began,
                             TouchPhase::Moved => ScrollPhase::Changed,
                             TouchPhase::Ended => ScrollPhase::Ended,
+                            TouchPhase::Cancelled => ScrollPhase::Cancelled,
                         },
                     ),
                     ScrollDelta::Lines(lines) => (

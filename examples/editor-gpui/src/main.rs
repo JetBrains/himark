@@ -14,9 +14,7 @@
 use std::sync::Arc;
 
 use himark::app::{AppFonts, Himark, NoShell};
-use himark_gpui::gpui::{
-    px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions,
-};
+use himark_gpui::gpui::{px, size, App, AppContext as _, Bounds, WindowBounds, WindowOptions};
 use himark_gpui::{BridgeView, Engine};
 
 fn main() {
@@ -83,7 +81,7 @@ fn main() {
     let bridge = himark::mounts::mount_scrolling_editor(&mut app, documents, document)
         .expect("the editor bridge");
 
-    Application::new().run(move |cx: &mut App| {
+    himark_gpui::application().run(move |cx: &mut App| {
         let engine = Engine::adopt(app, cx);
 
         let bounds = Bounds::centered(None, size(px(900.0), px(700.0)), cx);

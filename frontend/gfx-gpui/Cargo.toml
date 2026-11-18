@@ -7,11 +7,10 @@ license = "Apache-2.0"
 [dependencies]
 gfx = { path = "../gfx" }
 gfx-faces = { path = "../gfx-faces" }
-# Pinned exactly: painter.rs transmutes gpui::GlyphId (no public
-# constructor in 0.2.2) — bump deliberately, checking that type.
-# runtime_shaders: compile the Metal shaders at runtime — the build
-# machine needs no Xcode Metal Toolchain. Only consulted on macOS.
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+# Pinned exactly: gpui-pre is a weekly crates.io snapshot of zed's
+# main (the official `gpui` crate stopped at 0.2.2) — no semver
+# promise between snapshots, bump deliberately.
+gpui = { package = "gpui-pre", version = "=0.3.13" }
 image = "0.25"
 smallvec = "1"
 # True variable-font instancing: CoreText renders a data-loaded

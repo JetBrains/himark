@@ -146,7 +146,7 @@ fn main() {
     }
     let bridge = ViewBridgeId::from_raw(window.raw());
 
-    Application::new().run(move |cx: &mut App| {
+    himark_gpui::application().run(move |cx: &mut App| {
         let engine = Engine::adopt(app, cx);
         cx.spawn({
             let engine = engine.clone();

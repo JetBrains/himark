@@ -19,3 +19,10 @@ pub use engine::Engine;
 /// The embedding app's gpui — re-exported so a shell binary needs
 /// only this crate for the view side.
 pub use gpui;
+
+/// The gpui application on this OS's platform — since gpui 0.3 the
+/// platform half is its own crate, so `Application::new()` is gone;
+/// a shell binary starts here.
+pub fn application() -> gpui::Application {
+    gpui_platform::application()
+}

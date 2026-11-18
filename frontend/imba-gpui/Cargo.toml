@@ -7,4 +7,4 @@ license = "Apache-2.0"
 [dependencies]
 imba = { path = "../imba" }
 gfx = { path = "../gfx" }
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+gpui = { package = "gpui-pre", version = "=0.3.13" }

@@ -10,5 +10,9 @@ imba-gpui = { path = "../imba-gpui" }
 gfx-gpui = { path = "../gfx-gpui" }
 imba = { path = "../imba" }
 gfx = { path = "../gfx" }
-gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+gpui = { package = "gpui-pre", version = "=0.3.13" }
+# The platform half (windows, text system, renderer) is its own crate
+# since gpui 0.3. runtime_shaders: compile the Metal shaders at
+# runtime — the build machine needs no Xcode Metal Toolchain.
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.13", features = ["runtime_shaders", "font-kit"] }
 futures = "0.3"
