@@ -10,10 +10,16 @@ gfx-faces = { path = "../gfx-faces" }
 # Pinned exactly: gpui-pre is a weekly crates.io snapshot of zed's
 # main (the official `gpui` crate stopped at 0.2.2) — no semver
 # promise between snapshots, bump deliberately.
-gpui = { package = "gpui-pre", version = "=0.3.13" }
+gpui = { package = "gpui-pre", version = "=0.3.13", default-features = false }
 image = "0.25"
 smallvec = "1"
+anyhow = "1"
 # True variable-font instancing: CoreText renders a data-loaded
 # variable font's DEFAULT MASTER, ignoring fvar defaults, so each
 # chrome instance is pinned into static outlines before registering.
 hb-subset = { version = "0.3", features = ["bundled"] }
+
+# The pixel test renders a painted scene offscreen through gpui's
+# Metal renderer — offscreen rendering sits behind test-support.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+gpui_apple = { package = "gpui-pre-apple", version = "=0.3.13", features = ["font-kit", "runtime_shaders", "test-support"] }

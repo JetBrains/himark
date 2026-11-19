@@ -12,6 +12,15 @@
 //! Variable faces are pinned to static instances before they meet
 //! gpui's font store (see `instance.rs` for why).
 
+mod faces;
 mod painter;
+mod scene;
+mod transform;
 
 pub use painter::{GpuiPainter, PainterCaches};
+pub use scene::{ScenePainter, SceneText};
+
+/// The scene, atlas and text-system vocabulary a host of
+/// [`ScenePainter`] needs — re-exported so it depends on this crate
+/// alone.
+pub use gpui;

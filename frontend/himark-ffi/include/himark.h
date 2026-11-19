@@ -88,6 +88,16 @@ typedef struct HimarkPlugins HimarkPlugins;
 #define HIMARK_FORM_PHONE 1
 
 /**
+ * What every surface of one shell shares: the text system (fonts
+ * register once and resolve to the same ids everywhere) and the
+ * pool its renderers draw instance buffers from. The shell creates
+ * one and makes its surfaces from it; nothing here is global.
+ */
+typedef struct HimarkRenderContext HimarkRenderContext;
+
+typedef struct HimarkSurface HimarkSurface;
+
+/**
  * `Himark` IS the engine — the C handle is it; this alias is the
  * opaque name the header has always spoken.
  */
@@ -566,5 +576,44 @@ void himark_bridge_unmount(HimarkEngine *engine, HimarkBridge bridge);
  * boot; the wakes carry everything after.
  */
 bool himark_sync(HimarkEngine *engine);
+
+const HimarkRenderContext *himark_render_context_create(void);
+
+/**
+ * Releases the shell's hold; surfaces made from the context keep
+ * it alive until they are destroyed themselves.
+ */
+void himark_render_context_destroy(const HimarkRenderContext *context);
+
+/**
+ * A surface over the shell's `CAMetalLayer`; the renderer retains
+ * the layer. Null when Metal refuses.
+ */
+HimarkSurface *himark_surface_create(const HimarkRenderContext *context, void *ca_metal_layer);
+
+void himark_surface_destroy(HimarkSurface *surface);
+
+/**
+ * Paint the window bridge and present it. `width`/`height` are the
+ * layer's drawable size in pixels.
+ */
+bool himark_surface_bridge_draw(HimarkEngine *engine,
+                                HimarkBridge bridge,
+                                HimarkSurface *surface,
+                                float width,
+                                float height,
+                                float scale);
+
+/**
+ * Paint the realized slice and present it.
+ */
+bool himark_surface_frame_paint(HimarkEngine *engine,
+                                HimarkBridge bridge,
+                                HimarkSurface *surface,
+                                float x,
+                                float y,
+                                float width,
+                                float height,
+                                float scale);
 
 #endif  /* HIMARK_H */

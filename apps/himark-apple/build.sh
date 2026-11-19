@@ -46,14 +46,14 @@ ensure_skia_headers() {
 
 resolve() {
   local target_flag="$1" lib_dir="$2" out="$3" qualifier="${4:-}" append="${5:-}" xcode_arch="${6:-}"
-  echo "==> cargo build -p himark-plugins --features skia-shell --release $target_flag"
-  ( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release $target_flag >/dev/null )
+  echo "==> cargo build -p himark-plugins --features skia-shell,metal-shell --release $target_flag"
+  ( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release $target_flag >/dev/null )
 
   local SKIA EXTRA
   {
     read -r SKIA
     read -r EXTRA
-  } < <( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release $target_flag \
+  } < <( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release $target_flag \
            --message-format=json 2>/dev/null | python3 -c "
 import sys, json
 out=None; extra=[]

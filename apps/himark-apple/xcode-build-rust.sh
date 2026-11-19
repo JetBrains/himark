@@ -60,8 +60,8 @@ rustup target list --installed | grep -qx "$RUST_TARGET" || {
 # compiles its own runtime/cgo with -Werror (see build.sh).
 export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }-Wno-sign-compare"
 
-echo "==> cargo build -p himark-plugins --features skia-shell --release --target $RUST_TARGET"
-( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release --target "$RUST_TARGET" )
+echo "==> cargo build -p himark-plugins --features skia-shell,metal-shell --release --target $RUST_TARGET"
+( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release --target "$RUST_TARGET" )
 
 # The FFI header the bridging header includes — keep it the build's.
 cp "$ROOT/frontend/himark-ffi/include/himark.h" ./himark.h
@@ -77,7 +77,7 @@ cp "$ROOT/frontend/hiahp/include/himark-ahp.h" ./himark-ahp.h
 # against a stale skia).
 # (The reader DRAINS stdin — an early break would SIGPIPE cargo and
 # pipefail would read that as the build failing.)
-SKIA="$(cd "$ROOT" && cargo build -p himark-plugins --features skia-shell --release --target "$RUST_TARGET" \
+SKIA="$(cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release --target "$RUST_TARGET" \
   --message-format=json 2>/dev/null | python3 -c "
 import sys, json
 out = None

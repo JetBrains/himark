@@ -14,6 +14,8 @@ use std::sync::Arc;
 pub mod bridges;
 pub use crate::bridges::himark_perform_command;
 pub mod host;
+#[cfg(all(feature = "metal-shell", any(target_os = "macos", target_os = "ios")))]
+pub mod surface;
 pub use host::{HimarkHostCallbacks, HimarkLocation};
 
 use himark::app::Himark;

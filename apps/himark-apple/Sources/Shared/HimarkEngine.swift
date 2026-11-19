@@ -69,6 +69,10 @@ final class HimarkEngine {
 
     var raw: OpaquePointer { engine }
 
+    /// What this engine's surfaces share (text system, renderer
+    /// buffers) — every bridge view makes its surface from it.
+    let renderContext = RenderContext()
+
     /// Minted lazily so `self` is whole; main-thread only, like
     /// every tick road.
     private(set) lazy var frameClock = EngineFrameClock { [unowned self] nowMs in
@@ -455,6 +459,15 @@ final class HimarkEngine {
         return reconciling ? .reconciling : .painted
     }
 
+    /// The gpui-renderer road: the engine paints into the surface's
+    /// scene and the surface presents — no canvas crosses over.
+    func renderBridge(bridge: HimarkBridge, into surface: MetalSurface,
+                      pixelWidth w: Int32, pixelHeight h: Int32, scale: Float) -> RenderPass {
+        let reconciling = himark_surface_bridge_draw(
+            engine, bridge, surface.raw, Float(w), Float(h), scale)
+        return reconciling ? .reconciling : .painted
+    }
+
     @discardableResult func tick(nowMs: Double) -> Bool { himark_animation_tick(engine, nowMs) }
     func toolbarHeight() -> Float {
         himark_toolbar_height(engine)
@@ -596,6 +609,38 @@ final class HimarkEngine {
                                  count: needed)
         let written = Int(himark_selection_rects(engine, bridge, range, &rects, UInt(needed)))
         return written == needed ? rects : []
+    }
+}
+
+/// gpui's Metal renderer over a layer this shell owns: the layer's
+/// geometry and drawable size stay the view's, the renderer only
+/// fills and presents drawables (inside the caller's transaction).
+final class MetalSurface {
+    let raw: OpaquePointer
+
+    init?(context: RenderContext, layer: CAMetalLayer) {
+        guard let raw = himark_surface_create(
+            context.raw, Unmanaged.passUnretained(layer).toOpaque())
+        else { return nil }
+        self.raw = raw
+    }
+
+    deinit {
+        himark_surface_destroy(raw)
+    }
+}
+
+/// What the shell's surfaces share — the text system and the
+/// renderers' buffer pool. One per engine, handed to each surface.
+final class RenderContext {
+    let raw: OpaquePointer
+
+    init() {
+        raw = himark_render_context_create()
+    }
+
+    deinit {
+        himark_render_context_destroy(raw)
     }
 }
 

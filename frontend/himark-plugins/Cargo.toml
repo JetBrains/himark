@@ -36,6 +36,9 @@ skia-shell = [
     "dep:gfx-skia",
     "himark-ffi/skia-shell",
 ]
+# The apple staticlib draws through gpui's Metal renderer over a
+# layer the shell owns — no canvas crosses the C ABI.
+metal-shell = ["capi", "himark-ffi/metal-shell"]
 
 [dependencies]
 himark-ffi = { path = "../himark-ffi", optional = true }

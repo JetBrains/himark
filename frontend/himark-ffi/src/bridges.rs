@@ -31,9 +31,9 @@ use std::sync::{LazyLock, Mutex};
 
 use gfx::{Point, Rect, Size};
 use himark::bridge::ViewBridgeId;
-// Only the skia-shell feature's paint doors speak the canvas —
-// keep the import with them, not the default build.
-#[cfg(feature = "skia-shell")]
+// Only the paint doors speak the canvas — keep the import with
+// them, not the default build.
+#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
 use gfx::Canvas;
 use imba::event::{Event, EventResult, MouseButton};
 
@@ -535,28 +535,40 @@ pub unsafe extern "C" fn himark_bridge_draw(
     height: f32,
     _scale: f32,
 ) -> bool {
-    if engine.is_null() || canvas.is_null() {
+    if canvas.is_null() {
         return false;
     }
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
     engine.as_mut().map_or(false, |engine| {
-        let id = ViewBridgeId::from_raw(bridge.raw);
-        // A shell that draws without ticking (tests, direct renders)
-        // still applies the standing deltas before the frame.
-        let flushed = engine.flush_scroll(id);
-        engine
-            .dispatch_bridge(
-                id,
-                Event::Paint {
-                    canvas,
-                    focused: true,
-                },
-                Some(gfx::Size::new(width, height)),
-                0.0,
-            )
-            .needs_redraw
-            || flushed
+        bridge_draw(engine, bridge, canvas, width, height)
     })
+}
+
+/// The window bridge's paint, whatever the canvas is over.
+#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
+pub(crate) fn bridge_draw(
+    engine: &mut HimarkEngine,
+    bridge: HimarkBridge,
+    canvas: &Canvas<'_>,
+    width: f32,
+    height: f32,
+) -> bool {
+    let id = ViewBridgeId::from_raw(bridge.raw);
+    // A shell that draws without ticking (tests, direct renders)
+    // still applies the standing deltas before the frame.
+    let flushed = engine.flush_scroll(id);
+    engine
+        .dispatch_bridge(
+            id,
+            Event::Paint {
+                canvas,
+                focused: true,
+            },
+            Some(gfx::Size::new(width, height)),
+            0.0,
+        )
+        .needs_redraw
+        || flushed
 }
 
 // ─── the stage road ───
@@ -833,6 +845,20 @@ pub unsafe extern "C" fn himark_frame_paint(
         return false;
     };
     let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
+    frame_paint(engine, bridge, canvas, x, y, width, height)
+}
+
+/// The realized slice's paint, whatever the canvas is over.
+#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
+pub(crate) fn frame_paint(
+    engine: &mut HimarkEngine,
+    bridge: HimarkBridge,
+    canvas: &Canvas<'_>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) -> bool {
     let viewport = Rect::from_xywh(x, y, width, height);
     let result = {
         let Some(stage) = engine.realized_frame(ViewBridgeId::from_raw(bridge.raw)) else {

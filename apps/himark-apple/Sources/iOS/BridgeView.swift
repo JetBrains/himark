@@ -7,7 +7,7 @@ import QuartzCore
 
 /// One bridge in one UIView: the GENERIC host-side wrapper
 /// (docs/himark-core.md — a shell is the engine plus some number
-/// of mounted views). It owns the metal layer and skia surface,
+/// of mounted views). It owns the metal layer and its surface,
 /// feeds the bridge through the normalized event handles, paints
 /// it with the bridge draw, and points UIKit's text input at the
 /// bridge. It creates NOTHING: the engine and the bridge are
@@ -39,7 +39,7 @@ class HimarkBridgeView: UIView {
     lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
 
     var pixelScale: CGFloat { metalLayer.contentsScale }
-    private var surface: SkiaMetalSurface!
+    private var surface: MetalSurface!
     private var link: CADisplayLink?
     private var needsRedraw = true
 
@@ -75,7 +75,7 @@ class HimarkBridgeView: UIView {
         metalLayer.contentsScale = UIScreen.main.scale
         layer.addSublayer(metalLayer)
 
-        surface = SkiaMetalSurface(layer: metalLayer, device: device)
+        surface = MetalSurface(context: engine.renderContext, layer: metalLayer)
 
         // The engine clock's fan-out: a tick that moved ANY state
         // owes every view a frame, not just the view whose link
@@ -386,21 +386,14 @@ class HimarkBridgeView: UIView {
         guard himark_layout_realize(
             raw, bridgeId, ox, oy, Float(bounds.width * scale), Float(bounds.height * scale))
         else { return }
-        if let canvas = surface.begin(pixelWidth: w, pixelHeight: h) {
-            let changed = himark_frame_paint(
-                raw, bridgeId, canvas, ox, oy,
-                Float(bounds.width * scale), Float(bounds.height * scale))
-            surface.end()
-            if OverlayHostView.traceOverlay {
-                NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) changed \(changed)")
-            }
-            if changed { needsRedraw = true }
-            himark_frame_release(raw, bridgeId)
-        } else {
-            // Starved — nothing painted, retry owed.
-            himark_frame_release(raw, bridgeId)
-            needsRedraw = true
+        let changed = himark_surface_frame_paint(
+            raw, bridgeId, surface.raw, ox, oy,
+            Float(bounds.width * scale), Float(bounds.height * scale), Float(scale))
+        if OverlayHostView.traceOverlay {
+            NSLog("[overlay] slice bridge \(bridgeId.raw): \(w)x\(h) at (\(ox),\(oy)) changed \(changed)")
         }
+        if changed { needsRedraw = true }
+        himark_frame_release(raw, bridgeId)
     }
 
     /// The stage road: layout at (width, ∞), content size off the
@@ -422,14 +415,9 @@ class HimarkBridgeView: UIView {
         guard himark_layout_realize(
             raw, bridgeId, 0, offsetY, Float(visible.width * scale), Float(visible.height * scale))
         else { return false }
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h) else {
-            himark_frame_release(raw, bridgeId)
-            return false
-        }
-        let changed = himark_frame_paint(
-            raw, bridgeId, canvas, 0, offsetY,
-            Float(visible.width * scale), Float(visible.height * scale))
-        surface.end()
+        let changed = himark_surface_frame_paint(
+            raw, bridgeId, surface.raw, 0, offsetY,
+            Float(visible.width * scale), Float(visible.height * scale), Float(scale))
         if changed {
             needsRedraw = true
         }

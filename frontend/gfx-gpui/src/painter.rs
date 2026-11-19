@@ -16,78 +16,20 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use gpui::{
-    fill, point, px, quad, App, Background, BorderStyle, Bounds, BoxShadow, ContentMask, Corners,
-    Edges, FontId, Hsla, Pixels, Point, RenderImage, SharedString, TextRun, Window,
+    fill, point, px, quad, App, BorderStyle, Bounds, BoxShadow, ContentMask, Corners, Edges,
+    FontId, Hsla, Pixels, Point, SharedString, TextRun, Window,
 };
-use smallvec::smallvec;
 
-/// Backend state that outlives a frame: resolved faces and uploaded
-/// images. Keyed by gfx's ids, owned by the root view.
+use crate::faces::{self, color};
+use crate::transform::Transform;
+
+/// Backend state that outlives a frame: resolved faces, keyed by
+/// gfx's ids, owned by the root view.
 #[derive(Default)]
 pub struct PainterCaches {
     fonts: HashMap<gfx::FaceId, FontId>,
-    images: HashMap<u32, Arc<RenderImage>>,
-}
-
-/// Row-major 2D affine: `x' = a·x + c·y + e`, `y' = b·x + d·y + f`.
-#[derive(Clone, Copy)]
-struct Mat {
-    a: f32,
-    b: f32,
-    c: f32,
-    d: f32,
-    e: f32,
-    f: f32,
-}
-
-impl Mat {
-    const IDENTITY: Mat = Mat {
-        a: 1.0,
-        b: 0.0,
-        c: 0.0,
-        d: 1.0,
-        e: 0.0,
-        f: 0.0,
-    };
-
-    fn concat(self, l: Mat) -> Mat {
-        Mat {
-            a: self.a * l.a + self.c * l.b,
-            b: self.b * l.a + self.d * l.b,
-            c: self.a * l.c + self.c * l.d,
-            d: self.b * l.c + self.d * l.d,
-            e: self.a * l.e + self.c * l.f + self.e,
-            f: self.b * l.e + self.d * l.f + self.f,
-        }
-    }
-
-    fn apply(&self, x: f32, y: f32) -> (f32, f32) {
-        (
-            self.a * x + self.c * y + self.e,
-            self.b * x + self.d * y + self.f,
-        )
-    }
-
-    /// Translation and positive scale only — the fast lane where a
-    /// rect stays a rect.
-    fn axis_aligned(&self) -> bool {
-        self.b == 0.0 && self.c == 0.0 && self.a > 0.0 && self.d > 0.0
-    }
-
-    /// The uniform magnitude for widths and radii.
-    fn scale(&self) -> f32 {
-        ((self.a * self.d - self.b * self.c).abs()).sqrt()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Frame {
-    matrix: Mat,
-    /// The intersected clip, in window-logical pixels.
-    clip: Option<Bounds<Pixels>>,
 }
 
 /// Borrows its window for the frame — `Canvas<'a>` carries the
@@ -104,25 +46,7 @@ pub struct GpuiPainter<'a> {
     /// gpui speaks logical.
     scale: f32,
     caches: Rc<RefCell<PainterCaches>>,
-    state: RefCell<State>,
-}
-
-struct State {
-    current: Frame,
-    stack: Vec<Frame>,
-}
-
-fn glyph_id(id: u16) -> gpui::GlyphId {
-    gpui::GlyphId(id as u32)
-}
-
-fn color(color: gfx::Color) -> Hsla {
-    Hsla::from(gpui::Rgba {
-        r: color.r() as f32 / 255.0,
-        g: color.g() as f32 / 255.0,
-        b: color.b() as f32 / 255.0,
-        a: color.a() as f32 / 255.0,
-    })
+    transform: Transform,
 }
 
 impl<'a> GpuiPainter<'a> {
@@ -139,13 +63,7 @@ impl<'a> GpuiPainter<'a> {
             origin,
             scale,
             caches,
-            state: RefCell::new(State {
-                current: Frame {
-                    matrix: Mat::IDENTITY,
-                    clip: None,
-                },
-                stack: Vec::new(),
-            }),
+            transform: Transform::new(),
         }
     }
 
@@ -160,8 +78,7 @@ impl<'a> GpuiPainter<'a> {
 
     /// A local device-pixel point to window-logical.
     fn to_window(&self, x: f32, y: f32) -> Point<Pixels> {
-        let m = self.state.borrow().current.matrix;
-        let (dx, dy) = m.apply(x, y);
+        let (dx, dy) = self.transform.point(x, y);
         point(
             self.origin.x + px(dx / self.scale),
             self.origin.y + px(dy / self.scale),
@@ -185,12 +102,26 @@ impl<'a> GpuiPainter<'a> {
 
     /// Widths, radii, font sizes: device-local scalar to logical.
     fn to_len(&self, length: f32) -> Pixels {
-        let m = self.state.borrow().current.matrix;
-        px(length * m.scale() / self.scale)
+        px(length * self.transform.magnitude() / self.scale)
+    }
+
+    /// The clip, device pixels to window-logical.
+    fn clip(&self) -> Option<Bounds<Pixels>> {
+        let clip = self.transform.clip()?;
+        let logical = |x: f32, y: f32| {
+            point(
+                self.origin.x + px(x / self.scale),
+                self.origin.y + px(y / self.scale),
+            )
+        };
+        Some(Bounds::from_corners(
+            logical(clip.left, clip.top),
+            logical(clip.right, clip.bottom),
+        ))
     }
 
     fn with_mask(&self, paint: impl FnOnce(&mut Window)) {
-        let clip = self.state.borrow().current.clip;
+        let clip = self.clip();
         let mut window = self.window();
         let window: &mut Window = &mut window;
         match clip {
@@ -205,7 +136,7 @@ impl<'a> GpuiPainter<'a> {
     /// border on the quad, outset by half the width to approximate
     /// skia's centered stroke.
     fn paint_quad_styled(&self, rect: gfx::Rect, rx: f32, ry: f32, paint: &gfx::Paint) {
-        if !self.state.borrow().current.matrix.axis_aligned() {
+        if !self.transform.axis_aligned() {
             self.draw_round_rect_as_path(rect, rx.max(ry), paint);
             return;
         }
@@ -275,172 +206,49 @@ impl<'a> GpuiPainter<'a> {
         if let Some(hit) = self.caches.borrow().fonts.get(&face) {
             return *hit;
         }
-        let entry = gfx::face(face);
+        let (bytes, font) = faces::font(face);
         let app = self.app();
         let text_system = app.text_system();
-
-        // A face with variation coords gets its instance BAKED into
-        // the bytes under a unique family (gpui's font-kit matching
-        // never applies axes — see instance.rs); a plain face rides
-        // its own bytes and family name.
-        let (bytes, family, weight) = match gfx_faces::instanced(face.0, &entry) {
-            Some((bytes, family)) => (bytes, family, gpui::FontWeight::default()),
-            None => (
-                entry.data.as_ref().as_ref().to_vec(),
-                entry.family.clone().unwrap_or_default(),
-                entry
-                    .coords
-                    .iter()
-                    .find(|(tag, _)| *tag == u32::from_be_bytes(*b"wght"))
-                    .map(|(_, value)| gpui::FontWeight(*value))
-                    .unwrap_or_default(),
-            ),
-        };
         if let Err(error) = text_system.add_fonts(vec![std::borrow::Cow::Owned(bytes)]) {
-            eprintln!("[himark-gpui] add_fonts({family}): {error}");
+            eprintln!("[himark-gpui] add_fonts({}): {error}", font.family);
         }
-        if std::env::var_os("HIMARK_TRACE_FONTS").is_some() {
-            eprintln!(
-                "[fonts] face {} family={family:?} coords={:?} weight={weight:?}",
-                face.0, entry.coords
-            );
-        }
-        let font = gpui::Font {
-            family: SharedString::from(family),
-            features: Default::default(),
-            fallbacks: None,
-            weight,
-            style: Default::default(),
-        };
         let id = text_system.resolve_font(&font);
         self.caches.borrow_mut().fonts.insert(face, id);
         id
-    }
-
-    fn render_image(&self, image: &gfx::Image) -> Option<Arc<RenderImage>> {
-        image
-            .backend(|image| {
-                let width = image.width();
-                let height = image.height();
-                // gpui's RenderImage is BGRA behind an RGBA-typed
-                // buffer, unpremultiplied — swizzle, and divide the
-                // alpha back out when the raster arrived premultiplied.
-                let mut pixels = image.pixels().to_vec();
-                for px in pixels.chunks_exact_mut(4) {
-                    px.swap(0, 2);
-                    if image.is_premultiplied() && px[3] != 0 && px[3] != 255 {
-                        let a = px[3] as u32;
-                        px[0] = ((px[0] as u32 * 255) / a).min(255) as u8;
-                        px[1] = ((px[1] as u32 * 255) / a).min(255) as u8;
-                        px[2] = ((px[2] as u32 * 255) / a).min(255) as u8;
-                    }
-                }
-                image::RgbaImage::from_raw(width, height, pixels)
-                    .map(|buffer| Arc::new(RenderImage::new(smallvec![image::Frame::new(buffer)])))
-            })
-            .cloned()
-            .flatten()
     }
 }
 
 impl gfx::Painter for GpuiPainter<'_> {
     fn save(&self) {
-        let mut state = self.state.borrow_mut();
-        let current = state.current;
-        state.stack.push(current);
+        self.transform.save();
     }
 
     fn restore(&self) {
-        let mut state = self.state.borrow_mut();
-        if let Some(frame) = state.stack.pop() {
-            state.current = frame;
-        }
+        self.transform.restore();
     }
 
     fn translate(&self, dx: f32, dy: f32) {
-        let mut state = self.state.borrow_mut();
-        state.current.matrix = state.current.matrix.concat(Mat {
-            e: dx,
-            f: dy,
-            ..Mat::IDENTITY
-        });
+        self.transform.translate(dx, dy);
     }
 
     fn scale(&self, sx: f32, sy: f32) {
-        let mut state = self.state.borrow_mut();
-        state.current.matrix = state.current.matrix.concat(Mat {
-            a: sx,
-            d: sy,
-            ..Mat::IDENTITY
-        });
+        self.transform.scale(sx, sy);
     }
 
     fn skew(&self, sx: f32, sy: f32) {
-        let mut state = self.state.borrow_mut();
-        state.current.matrix = state.current.matrix.concat(Mat {
-            b: sy,
-            c: sx,
-            ..Mat::IDENTITY
-        });
+        self.transform.skew(sx, sy);
     }
 
     fn rotate(&self, degrees: f32, pivot: Option<gfx::Point>) {
-        let radians = degrees.to_radians();
-        let (sin, cos) = radians.sin_cos();
-        let rotation = Mat {
-            a: cos,
-            b: sin,
-            c: -sin,
-            d: cos,
-            e: 0.0,
-            f: 0.0,
-        };
-        let local = match pivot {
-            Some(p) => Mat {
-                e: p.x,
-                f: p.y,
-                ..Mat::IDENTITY
-            }
-            .concat(rotation)
-            .concat(Mat {
-                e: -p.x,
-                f: -p.y,
-                ..Mat::IDENTITY
-            }),
-            None => rotation,
-        };
-        let mut state = self.state.borrow_mut();
-        state.current.matrix = state.current.matrix.concat(local);
+        self.transform.rotate(degrees, pivot);
     }
 
     fn clip_rect(&self, rect: gfx::Rect, _anti_alias: bool) {
-        // The app clips to rects under translation only; under a
-        // rare rotated frame the transformed bounds over-approximate.
-        let bounds = self.to_bounds(rect);
-        let mut state = self.state.borrow_mut();
-        state.current.clip = Some(match state.current.clip {
-            Some(clip) => clip.intersect(&bounds),
-            None => bounds,
-        });
+        self.transform.clip_rect(rect);
     }
 
     fn local_clip_bounds(&self) -> Option<gfx::Rect> {
-        let state = self.state.borrow();
-        let clip = state.current.clip?;
-        let m = state.current.matrix;
-        if !m.axis_aligned() {
-            return None;
-        }
-        // Window-logical back to local device: undo origin, scale
-        // up, then invert the axis-aligned matrix.
-        let local = |p: Point<Pixels>| {
-            let dx = f32::from(p.x - self.origin.x) * self.scale;
-            let dy = f32::from(p.y - self.origin.y) * self.scale;
-            ((dx - m.e) / m.a, (dy - m.f) / m.d)
-        };
-        let (left, top) = local(clip.origin);
-        let (right, bottom) = local(clip.bottom_right());
-        Some(gfx::Rect::new(left, top, right, bottom))
+        self.transform.local_clip_bounds()
     }
 
     fn base_layer_size(&self) -> gfx::Size {
@@ -453,7 +261,7 @@ impl gfx::Painter for GpuiPainter<'_> {
     }
 
     fn device_scale(&self) -> f32 {
-        self.state.borrow().current.matrix.scale() // local → device px
+        self.transform.magnitude() // local → device px
     }
 
     fn clear(&self, color_value: gfx::Color) {
@@ -526,11 +334,11 @@ impl gfx::Painter for GpuiPainter<'_> {
             let font_size = self.to_len(run.size);
             for (glyph, position) in &run.glyphs {
                 let at = self.to_window(origin.x + position.x, origin.y + position.y);
-                let clip = self.state.borrow().current.clip;
+                let clip = self.clip();
                 let mut window = self.window();
                 let window: &mut Window = &mut window;
                 let paint_one = |window: &mut Window| {
-                    let glyph = glyph_id(*glyph);
+                    let glyph = gpui::GlyphId(*glyph as u32);
                     if window
                         .paint_glyph(at, font_id, glyph, font_size, glyph_color)
                         .is_err()
@@ -582,7 +390,7 @@ impl gfx::Painter for GpuiPainter<'_> {
         let descent = shaped.descent;
         let at = self.to_window(origin.x, origin.y);
         let top = point(at.x, at.y - ascent);
-        let clip = self.state.borrow().current.clip;
+        let clip = self.clip();
         let mut window = self.window();
         let window: &mut Window = &mut window;
         let mut cx = self.app();
@@ -636,7 +444,7 @@ impl gfx::Painter for GpuiPainter<'_> {
         _sampling: gfx::Sampling,
         _paint: &gfx::Paint,
     ) {
-        let Some(rendered) = self.render_image(image) else {
+        let Some(rendered) = faces::render_image(image) else {
             return;
         };
         let bounds = self.to_bounds(dst);
