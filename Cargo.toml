@@ -150,3 +150,20 @@ tree-sitter = { path = "vendor/tree-sitter-0.26.8" }
 # under the number it received. The copy here sends the address with
 # the fd (libtailscale/tailscale.{go,c}, tsnetctest covers it).
 libtailscale-sys = { path = "vendor/libtailscale-sys-0.2.2" }
+# gpui's wgpu renderer takes its browser surface from a wasm-bindgen
+# canvas, which emscripten does not have. The copy here adds
+# `WgpuContext::new_emscripten` (surface over emscripten's EGL) and
+# gates the two canvas constructors off that target — marked `himark:`
+# in wgpu_context.rs and wgpu_renderer.rs.
+gpui-pre-wgpu = { path = "vendor/gpui-pre-wgpu-0.3.13" }
+# glow depends on web-sys/js-sys/wasm-bindgen for every wasm32 target
+# though its code only uses them off emscripten; linked into an
+# emscripten binary they leave wasm-bindgen imports nothing defines.
+# The copy here differs in Cargo.toml only: those dependencies are
+# gated off emscripten.
+glow = { path = "vendor/glow-0.17.0" }
+# The same fault one level up: wgpu-hal's `gles` feature turned on
+# `wgpu-types/web` (web-sys) for every target, emscripten included.
+# The copy here differs in Cargo.toml only — that one feature edge is
+# gone; a real wasm-bindgen build still gets it through `webgl`.
+wgpu-hal = { path = "vendor/wgpu-hal-30.0.2" }

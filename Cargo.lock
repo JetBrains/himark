@@ -2762,8 +2762,6 @@ dependencies = [
 [[package]]
 name = "glow"
 version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29038e1c483364cc6bb3cf78feee1816002e127c331a1eec55a4d202b9e1adb5"
 dependencies = [
  "js-sys",
  "slotmap",
@@ -3173,8 +3171,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-wgpu"
 version = "0.3.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d1505797c4019f72e65ad5a23c585a3acbe6a574531794e5690d083ee19d3c8"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -9920,7 +9916,8 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-gpui",
+ "gpui-pre-wgpu",
  "hiahp",
  "hibash",
  "hic",
@@ -9979,9 +9976,9 @@ dependencies = [
  "myersdiff",
  "palette 0.1.0",
  "peeker",
+ "pollster 0.4.0",
  "serde",
  "serde_json",
- "skia-safe",
  "text",
  "tokio",
  "tracing",
@@ -10119,8 +10116,6 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a57452fe453658e141aafdb09de1028afa498805fab518238ddf372a518813ff"
 dependencies = [
  "android_system_properties",
  "arrayvec",

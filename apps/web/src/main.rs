@@ -23,15 +23,11 @@ mod app {
     };
 
     use gfx::Painter as _;
+    use gfx_gpui::gpui::{size, DevicePixels, Scene};
+    use gfx_gpui::{ScenePainter, SceneText};
+    use gpui_wgpu::{CosmicTextSystem, WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
     use himark::app::AppFonts;
     use himark::app::Himark;
-    use skia_safe::{
-        gpu::{
-            self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
-            SurfaceOrigin,
-        },
-        ColorType,
-    };
     use workbench_shell::app::WorkbenchShell as _;
     use workbench_shell::app_ext::AppExt as _;
 
@@ -40,26 +36,6 @@ mod app {
     const CALLBACK_THREAD_CALLING: usize = 2;
     const DOM_DELTA_LINE: u32 = 1;
     const DOM_DELTA_PAGE: u32 = 2;
-    const GL_STENCIL_BITS: usize = 8;
-
-    #[repr(C)]
-    struct EmscriptenWebGLContextAttributes {
-        alpha: bool,
-        depth: bool,
-        stencil: bool,
-        antialias: bool,
-        premultiplied_alpha: bool,
-        preserve_drawing_buffer: bool,
-        power_preference: c_int,
-        fail_if_major_performance_caveat: bool,
-        major_version: c_int,
-        minor_version: c_int,
-        enable_extensions_by_default: bool,
-        explicit_swap_control: bool,
-        proxy_context_to_main_thread: c_int,
-        render_via_offscreen_back_buffer: bool,
-        desynchronized: bool,
-    }
 
     #[repr(C)]
     struct EmscriptenKeyboardEvent {
@@ -152,14 +128,6 @@ mod app {
     }
 
     extern "C" {
-        fn emscripten_webgl_init_context_attributes(
-            attributes: *mut EmscriptenWebGLContextAttributes,
-        );
-        fn emscripten_webgl_create_context(
-            target: *const c_char,
-            attributes: *const EmscriptenWebGLContextAttributes,
-        ) -> usize;
-        fn emscripten_webgl_make_context_current(context: usize) -> c_int;
         fn emscripten_get_element_css_size(
             target: *const c_char,
             width: *mut c_double,
@@ -285,38 +253,76 @@ mod app {
 
     pub fn main() {
         unsafe {
-            let mut attributes: EmscriptenWebGLContextAttributes = std::mem::zeroed();
-            emscripten_webgl_init_context_attributes(&mut attributes);
-            attributes.alpha = true;
-            attributes.depth = false;
-            attributes.stencil = true;
-            attributes.antialias = true;
-            attributes.premultiplied_alpha = true;
-            attributes.major_version = 2;
-            attributes.minor_version = 0;
-            attributes.enable_extensions_by_default = true;
-
-            let handle = emscripten_webgl_create_context(CANVAS, &attributes);
-            assert!(handle != 0, "failed to create WebGL context");
-            assert_eq!(
-                emscripten_webgl_make_context_current(handle),
-                0,
-                "failed to make WebGL context current"
-            );
-
-            let interface =
-                interfaces::make_web_gl().expect("failed to create Skia WebGL interface");
-            let context = direct_contexts::make_gl(interface, None)
-                .expect("failed to create Skia direct context");
+            let graphics = Graphics::new();
             // No font fetch: every face the app speaks (Noto Sans,
             // the JetBrains Mono cuts, Bricolage Grotesque) ships in
             // the wasm — the world seeds them on every platform.
             let world = editor::parley_line::world();
-            let app = Box::into_raw(Box::new(WebApp::new(context, world)));
+            let app = Box::into_raw(Box::new(WebApp::new(graphics, world)));
             TEXT_SEAT.store(app, std::sync::atomic::Ordering::Release);
             let app = app.cast::<c_void>();
             emscripten_request_animation_frame(Some(animation_frame), app);
             install_callbacks(app);
+        }
+    }
+
+    // emscripten's EGL is 1.4. wgpu links khronos-egl statically, which
+    // names every 1.5 entry point, but only calls these two for a
+    // window kind emscripten never reports — they exist to link.
+    #[no_mangle]
+    pub extern "C" fn eglGetPlatformDisplay(
+        _platform: u32,
+        _native_display: *mut c_void,
+        _attributes: *const isize,
+    ) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn eglCreatePlatformWindowSurface(
+        _display: *mut c_void,
+        _config: *mut c_void,
+        _native_window: *mut c_void,
+        _attributes: *const isize,
+    ) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+
+    /// gpui's wgpu renderer over the page's canvas (WebGL2 through
+    /// emscripten's EGL), the scene a frame is collected into, and
+    /// the text system the glyphs rasterize through.
+    struct Graphics {
+        /// Held for the renderer's device and queue.
+        _context: WgpuContext,
+        renderer: WgpuRenderer,
+        scene: Scene,
+        text: SceneText,
+    }
+
+    impl Graphics {
+        fn new() -> Self {
+            let prepared = pollster::block_on(WgpuContext::new_emscripten())
+                .expect("failed to reach the canvas through WebGL2");
+            let renderer = WgpuRenderer::new_from_surface(
+                &prepared.context,
+                prepared.surface,
+                WgpuSurfaceConfig {
+                    size: size(DevicePixels(1), DevicePixels(1)),
+                    transparent: false,
+                    preferred_present_mode: None,
+                },
+            )
+            .expect("failed to build the renderer");
+            // No system fonts in a page: every face arrives as bytes.
+            let text = SceneText::new(std::sync::Arc::new(
+                CosmicTextSystem::new_without_system_fonts("Noto Sans"),
+            ));
+            Self {
+                _context: prepared.context,
+                renderer,
+                scene: Scene::default(),
+                text,
+            }
         }
     }
 
@@ -346,7 +352,7 @@ mod app {
         fling: Option<Fling>,
         /// The one browser canvas is one himark window.
         window: workbench::window::WindowId,
-        context: DirectContext,
+        graphics: Graphics,
 
         #[cfg(target_feature = "atomics")]
         arriving: std::sync::mpsc::Receiver<himark::app::AppCommand>,
@@ -358,7 +364,7 @@ mod app {
     }
 
     impl WebApp {
-        fn new(context: DirectContext, world: editor::parley_line::FontWorld) -> Self {
+        fn new(graphics: Graphics, world: editor::parley_line::FontWorld) -> Self {
             let mut state = workbench_shell::app::workbench_app(AppFonts::over(world));
 
             // The browser is the production workbench in a tab: the
@@ -521,7 +527,7 @@ mod app {
                 pan: None,
                 fling: None,
                 window,
-                context,
+                graphics,
                 #[cfg(target_feature = "atomics")]
                 arriving,
                 width: 1,
@@ -544,37 +550,20 @@ mod app {
 
         fn draw(&mut self) -> bool {
             self.resize_canvas();
-            let fb_info = gl::FramebufferInfo {
-                fboid: 0,
-                format: gl::Format::RGBA8.into(),
-                protected: gpu::Protected::No,
-            };
-            let backend_render_target = backend_render_targets::make_gl(
-                (self.width, self.height),
-                None,
-                GL_STENCIL_BITS,
-                fb_info,
-            );
-            let mut surface = surfaces::wrap_backend_render_target(
-                &mut self.context,
-                &backend_render_target,
-                SurfaceOrigin::BottomLeft,
-                ColorType::RGBA8888,
-                None,
-                None,
-            )
-            .expect("failed to wrap default framebuffer");
-
-            let canvas = gfx_skia::SkiaCanvas::new(surface.canvas());
-            canvas.save();
-            let reconciling = self.state.draw_window_sized(
-                self.window,
-                &canvas,
-                gfx::Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
-            );
-            canvas.restore();
-
-            self.context.flush_and_submit_surface(&mut surface, None);
+            let size = gfx::Size::new(self.width.max(1) as f32, self.height.max(1) as f32);
+            let Graphics {
+                renderer,
+                scene,
+                text,
+                ..
+            } = &mut self.graphics;
+            scene.clear();
+            let atlas = renderer.sprite_atlas().clone();
+            let painter = ScenePainter::new(scene, &*atlas, text, size, self.scale);
+            let reconciling = self.state.draw_window_sized(self.window, &painter, size);
+            drop(painter);
+            scene.finish();
+            renderer.draw(scene);
             reconciling
         }
 
@@ -595,6 +584,9 @@ mod app {
                 }
                 self.width = width;
                 self.height = height;
+                self.graphics
+                    .renderer
+                    .update_drawable_size(size(DevicePixels(width), DevicePixels(height)));
                 self.needs_redraw = true;
             }
             if scale != self.scale {

@@ -85,6 +85,9 @@ hikit = { path = "../../frontend/hikit" }
 text = { path = "../../frontend/text" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
-skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl"] }
 gfx = { path = "../../frontend/gfx" }
-gfx-skia = { path = "../../frontend/gfx-skia" }
+# gpui's renderer with no gpui app or window: the scene painter, the
+# wgpu renderer (WebGL2 through emscripten's EGL) and its text system.
+gfx-gpui = { path = "../../frontend/gfx-gpui" }
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.13" }
+pollster = "0.4"
