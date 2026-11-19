@@ -28,8 +28,7 @@ pub(crate) fn assist(
     // line sits ON that line, so probe the byte before it, or the
     // lookup answers the root and no assist fires. A caret after a
     // trailing newline is a fresh empty line and stays assist-free.
-    let after_newline =
-        location.start > 0 && slice(text, location.start - 1..location.start) == "\n";
+    let after_newline = newline_before(text, location.start);
     let probe = match local >= root.end_byte() && local > 0 && !after_newline {
         true => local - 1,
         false => local,
@@ -257,10 +256,23 @@ fn line_of(text: &Text, offset: u32) -> Range<u32> {
 }
 
 fn line_content_end(text: &Text, line: &Range<u32>) -> u32 {
-    if line.end > line.start && slice(text, line.end - 1..line.end) == "\n" {
+    if line.end > line.start && newline_before(text, line.end) {
         return line.end - 1;
     }
     line.end
+}
+
+/// Is the BYTE before `offset` a line feed? Read as a byte, not a
+/// string: it may be the tail of a multi-byte character.
+fn newline_before(text: &Text, offset: u32) -> bool {
+    let mut view = text.view();
+    let offset = (offset as usize).min(view.byte_count());
+    if offset == 0 {
+        return false;
+    }
+    let mut byte = Vec::with_capacity(1);
+    view.byte_range_into(offset - 1, offset, &mut byte);
+    byte == b"\n"
 }
 
 fn slice(text: &Text, range: Range<u32>) -> String {
@@ -332,6 +344,23 @@ mod tests {
         })?;
         let caret_after = assist.caret.expect("markdown assists name their caret");
         Some((applied(source, &assist), caret_after))
+    }
+
+    #[test]
+    fn enter_after_a_multibyte_character_outside_a_list_stays_plain() {
+        // The caret follows "т" (two bytes): the byte before it is
+        // not a character.
+        assert!(assist_on("привет", 12, AssistKind::Enter { soft: false }).is_none());
+    }
+
+    #[test]
+    fn enter_continues_an_item_ending_in_a_multibyte_character() {
+        // An unterminated last line whose final byte is the tail of
+        // "≠" (three bytes).
+        let (text, caret) =
+            assist_on("- ≠", 5, AssistKind::Enter { soft: false }).expect("assists");
+        assert_eq!(text, "- ≠\n- ");
+        assert_eq!(caret, 8);
     }
 
     #[test]

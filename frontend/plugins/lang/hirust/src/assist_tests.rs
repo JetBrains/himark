@@ -123,3 +123,12 @@ fn shift_tab_outdents_the_line() {
     assert_eq!(text, "fn main() {\n    let x = 1;\n}");
     assert_eq!(caret, 16);
 }
+
+#[test]
+fn enter_on_a_last_line_ending_in_a_multibyte_character_breaks() {
+    // Unterminated, and its final byte is the tail of "≠".
+    let (text, caret) =
+        assist_on("// ≠", 6..6, AssistKind::Enter { soft: false }).expect("assists");
+    assert_eq!(text, "// ≠\n");
+    assert_eq!(caret, 7);
+}

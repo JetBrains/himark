@@ -203,10 +203,23 @@ fn line_of(text: &Text, offset: u32) -> Range<u32> {
 }
 
 fn line_content_end(text: &Text, line: &Range<u32>) -> u32 {
-    if line.end > line.start && slice(text, line.end - 1..line.end) == "\n" {
+    if line.end > line.start && newline_before(text, line.end) {
         return line.end - 1;
     }
     line.end
+}
+
+/// Is the BYTE before `offset` a line feed? Read as a byte, not a
+/// string: it may be the tail of a multi-byte character.
+fn newline_before(text: &Text, offset: u32) -> bool {
+    let mut view = text.view();
+    let offset = (offset as usize).min(view.byte_count());
+    if offset == 0 {
+        return false;
+    }
+    let mut byte = Vec::with_capacity(1);
+    view.byte_range_into(offset - 1, offset, &mut byte);
+    byte == b"\n"
 }
 
 fn slice(text: &Text, range: Range<u32>) -> String {
