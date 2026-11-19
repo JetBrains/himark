@@ -15,7 +15,7 @@ members = [
     "frontend/tokenize",
     "frontend/mdparser",
     "frontend/gfx",
-    "frontend/gfx-skia",
+    "frontend/gfx-raster",
     "frontend/gfx-gpui",
     "frontend/gfx-faces",
     "frontend/imba",
@@ -85,7 +85,7 @@ default-members = [
     "frontend/tokenize",
     "frontend/mdparser",
     "frontend/gfx",
-    "frontend/gfx-skia",
+    "frontend/gfx-raster",
     "frontend/gfx-gpui",
     "frontend/gfx-faces",
     "frontend/imba",
@@ -130,6 +130,10 @@ resolver = "2"
 [profile.dev.package."*"]
 opt-level = 3
 
+# The tests' CPU painter: its blend and blur loops run per pixel.
+[profile.dev.package.gfx-raster]
+opt-level = 3
+
 [profile.dev.package.documents]
 opt-level = 2
 
@@ -143,7 +147,6 @@ opt-level = 2
 opt-level = 2
 
 [patch.crates-io]
-skia-bindings = { path = "vendor/skia-bindings-0.153.3" }
 tree-sitter = { path = "vendor/tree-sitter-0.26.8" }
 # libtailscale filed an accepted connection's remote address under
 # the fd number the SENDING side held; the accepting side looks it up

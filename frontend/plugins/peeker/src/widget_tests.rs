@@ -81,11 +81,8 @@ fn seed_terminal_row(app: &mut Himark, title: &str) -> terminals::TerminalId {
 fn displaced_handles_drop_and_their_rows_survive() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let alpha = seed_terminal_row(&mut app, "alpha results");
     let home = app.sole_window_session();
     let terminals =
@@ -115,11 +112,8 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     app.perform_batch(vec![himark::app::AppCommand::Register(
         std::sync::Arc::new(TogglePeeker),
     )]);
-    let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(app.add_document(
         app.sole_window(),
         plain_document("alpha body"),
@@ -130,10 +124,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     assert!(app.open_panel(app.sole_window(), Box::new(StubWidget("beta widget"))));
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let listed = labels(&app).expect("the peeker is up");
     assert!(
         listed.contains(&"beta widget".to_owned()) && listed.contains(&"alpha results".to_owned()),
@@ -144,10 +135,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         imba::event::Key::Escape,
         Default::default()
     ));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert_eq!(mounted_titles(&app), vec!["beta widget"], "pane restored");
     assert!(
         ahp_session::session::state::Hosts::state(app.store(), &app.sole_window_session())
@@ -161,18 +149,12 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "alpha results"
     ));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let listed = labels(&app).expect("still up");
     assert_eq!(listed, vec!["alpha results"], "the filter narrowed to it");
     assert_eq!(
@@ -185,10 +167,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         mounted_titles(&app),

@@ -40,7 +40,7 @@ host-discovery = { path = "../../protocol/host-discovery" }
 gfx = { path = "../gfx" }
 
 [dev-dependencies]
-gfx-skia = { path = "../gfx-skia" }
+gfx-raster = { path = "../gfx-raster" }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 rpds = "1"
 himarkdown = { path = "../plugins/himarkdown" }

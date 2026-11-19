@@ -109,23 +109,15 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         false
     ));
     let size = gfx::Size::new(2000.0, 1200.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let mut surface = gfx_raster::raster_tuple((2000, 1200)).expect("surface");
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..80 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
 
     let mut quiet = 0usize;
@@ -141,11 +133,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
             app.perform_batch(vec![command]);
         }
         perform_total += perform_started.elapsed();
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         if round % 25 == 0 {
             eprintln!(
                 "[idle] round {round}: {arrived} landings, round {:?}",
@@ -213,12 +201,8 @@ fn probe_pair(left: String, right: String) {
     eprintln!("[probe] documents built+added: {:?}", started.elapsed());
 
     let size = gfx::Size::new(1200.0, 900.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let mut surface = gfx_raster::raster_tuple((1200, 900)).expect("surface");
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
 
     let started = Instant::now();
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
@@ -227,29 +211,17 @@ fn probe_pair(left: String, right: String) {
     imba::perf::record("diff-open", "open_ms", open.as_secs_f64() * 1000.0);
 
     let started = Instant::now();
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     eprintln!("[probe] first frame: {:?}", started.elapsed());
 
     workbench_shell::test_driver::click(&mut app, 900.0, 400.0, 1200.0, 900.0);
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     let mut keystrokes = Vec::new();
     for _ in 0..12 {
         let started = Instant::now();
         let _ = workbench_shell::test_driver::type_text(&mut app, "x");
         keystrokes.push(started.elapsed());
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
     keystrokes.sort();
     let p50 = keystrokes[keystrokes.len() / 2];
@@ -264,11 +236,7 @@ fn probe_pair(left: String, right: String) {
     let started = Instant::now();
     for _ in 0..40 {
         let _ = workbench_shell::test_driver::scroll(&mut app, 400.0);
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
     eprintln!("[probe] 40 scroll frames: {:?}", started.elapsed());
 
@@ -277,11 +245,7 @@ fn probe_pair(left: String, right: String) {
         let width = 1200.0 - (step as f32 + 1.0) * 20.0;
         let frame_size = gfx::Size::new(width, 900.0);
         let started = Instant::now();
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            frame_size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), frame_size);
         resize_frames.push(started.elapsed());
 
         runner.run();
@@ -313,21 +277,13 @@ fn probe_pair(left: String, right: String) {
         resize_worst.as_secs_f64() * 1000.0,
     );
 
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
 
     let has_table = right.contains("| Persistent store |");
     if has_table {
         for _ in 0..80 {
             let _ = workbench_shell::test_driver::scroll(&mut app, -2000.0);
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         }
         let cell_focused = |app: &Himark| {
             let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
@@ -396,17 +352,9 @@ fn probe_pair(left: String, right: String) {
         };
 
         let _ = workbench_shell::test_driver::scroll(&mut app, -1_000_000.0);
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         let _ = workbench_shell::test_driver::scroll(&mut app, table_y - 300.0);
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         let _ = viewport_start(&app);
         let mut focused = false;
         'probe: for dy in (-4..=8).map(|step| step * 30) {
@@ -416,11 +364,7 @@ fn probe_pair(left: String, right: String) {
                     continue;
                 }
                 workbench_shell::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
-                let _ = app.draw_window_sized(
-                    app.sole_window(),
-                    &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                    size,
-                );
+                let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
                 if cell_focused(&app) {
                     focused = true;
                     break 'probe;
@@ -435,20 +379,12 @@ fn probe_pair(left: String, right: String) {
         for _ in 0..8 {
             let _ =
                 workbench_shell::test_driver::type_text(&mut app, "grow the row substantially ");
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
             super::diffs::assert_pair_aligned(&app);
         }
         for _ in 0..2 {
             let _ = workbench_shell::test_driver::type_text(&mut app, "\n");
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
             super::diffs::assert_pair_aligned(&app);
         }
     }
@@ -458,11 +394,7 @@ fn probe_pair(left: String, right: String) {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
     super::diffs::assert_pair_aligned(&app);
 
@@ -473,11 +405,7 @@ fn probe_pair(left: String, right: String) {
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         }
     }
     super::diffs::assert_pair_aligned(&app);
@@ -536,23 +464,15 @@ fn scroll_soak_for_profiling() {
     assert!(app.add_document(app.sole_window(), rdoc, "right.md".to_owned(), false));
 
     let size = gfx::Size::new(2000.0, 1200.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let mut surface = gfx_raster::raster_tuple((2000, 1200)).expect("surface");
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..60 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
     eprintln!("[soak] converged; scrolling — sample now");
     let mut paints = Vec::new();
@@ -563,11 +483,7 @@ fn scroll_soak_for_profiling() {
             app.perform_batch(vec![command]);
         }
         let started = std::time::Instant::now();
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         paints.push(started.elapsed());
         if frame % 500 == 499 {
             let mut sorted = paints.clone();
@@ -718,13 +634,9 @@ fn canvas_landing_breakdown_probe() {
     }
 
     let size = gfx::Size::new(1200.0, 900.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1200, 900)).expect("surface");
     let started = Instant::now();
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     eprintln!(
         "[landing] next frame (batch tail: lanes + normalize launch): {:?}",
         started.elapsed()
@@ -750,11 +662,7 @@ fn canvas_landing_breakdown_probe() {
         }
         let landing = started.elapsed();
         let started = Instant::now();
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         eprintln!(
             "[landing] round {round}: worker {worker:?}, {count} landings {landing:?}, frame {:?}",
             started.elapsed()

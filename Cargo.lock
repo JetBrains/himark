@@ -162,7 +162,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "humantime",
  "imba",
@@ -1792,7 +1792,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "himark",
  "himarkdown",
@@ -2051,7 +2051,7 @@ name = "editor"
 version = "0.1.0"
 dependencies = [
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "imba",
  "intervals",
  "myersdiff",
@@ -2278,23 +2278,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "filetime"
-version = "0.2.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
-dependencies = [
- "cfg-if",
- "libc",
-]
-
-[[package]]
 name = "filetree"
 version = "0.1.0"
 dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "imba",
  "rpds",
@@ -2697,12 +2687,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "gfx-skia"
+name = "gfx-raster"
 version = "0.1.0"
 dependencies = [
  "gfx",
- "gfx-faces",
- "skia-safe",
+ "skrifa 0.44.0",
+ "tiny-skia 0.12.0",
 ]
 
 [[package]]
@@ -3559,7 +3549,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "himark",
  "himark-ahp-ext-types",
  "host-discovery",
@@ -3843,7 +3833,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "imba",
  "rpds",
  "serde",
@@ -3891,7 +3881,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "himarkdown",
  "humantime",
@@ -4002,7 +3992,7 @@ dependencies = [
  "editor",
  "filetree",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hiahp",
  "hibash",
  "hic",
@@ -4074,7 +4064,6 @@ dependencies = [
  "rebase",
  "recents",
  "serde_json",
- "skia-safe",
  "tempfile",
  "terminals",
  "text",
@@ -4102,7 +4091,7 @@ dependencies = [
  "editor",
  "filetree",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hiahp",
  "hicode",
  "hikit",
@@ -4117,7 +4106,6 @@ dependencies = [
  "recents",
  "rpds",
  "serde_json",
- "skia-safe",
  "terminals",
  "text",
  "toc",
@@ -4134,7 +4122,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "himark",
  "hisitter",
  "imba",
@@ -4153,7 +4141,7 @@ dependencies = [
  "ahp-session",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "himark",
  "himarkdown",
@@ -4282,7 +4270,7 @@ version = "0.1.0"
 dependencies = [
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "himark",
  "himarkdown",
  "hisitter",
@@ -4905,7 +4893,7 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "image",
  "intervals",
  "parley",
@@ -6312,7 +6300,7 @@ dependencies = [
  "ahp-session",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hikit",
  "himark",
  "imba",
@@ -6482,7 +6470,7 @@ dependencies = [
  "documents",
  "editor",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hiahp",
  "hikit",
  "himark",
@@ -7992,31 +7980,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
-name = "skia-bindings"
-version = "0.153.3"
-dependencies = [
- "bindgen 0.72.1",
- "cc",
- "flate2",
- "heck 0.5.0",
- "pkg-config",
- "regex",
- "serde_json",
- "tar",
- "toml 1.1.4+spec-1.1.0",
-]
-
-[[package]]
-name = "skia-safe"
-version = "0.153.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c61cb643dac43067f3eb76c866635a74377ac0abca0ff2590674e1e295514c3d"
-dependencies = [
- "bitflags 2.13.2",
- "skia-bindings",
-]
-
-[[package]]
 name = "skrifa"
 version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8348,17 +8311,6 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
-
-[[package]]
-name = "tar"
-version = "0.4.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
-dependencies = [
- "filetime",
- "libc",
- "xattr",
-]
 
 [[package]]
 name = "tauri-winrt-notification"
@@ -10761,7 +10713,7 @@ dependencies = [
  "editor",
  "filetree",
  "gfx",
- "gfx-skia",
+ "gfx-raster",
  "hiahp",
  "hikit",
  "himark",
@@ -10813,16 +10765,6 @@ checksum = "502da5464ccd04011667b11c435cb992822c2c0dbde1770c988480d312a0db2e"
 dependencies = [
  "libc",
  "pkg-config",
-]
-
-[[package]]
-name = "xattr"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
-dependencies = [
- "libc",
- "rustix 1.1.6",
 ]
 
 [[package]]

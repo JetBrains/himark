@@ -18,4 +18,4 @@ skrifa = "0.44"
 resvg = "0.48"
 
 [dev-dependencies]
-gfx-skia = { path = "../gfx-skia" }
+gfx-raster = { path = "../gfx-raster" }

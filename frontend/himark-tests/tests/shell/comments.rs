@@ -129,11 +129,8 @@ fn dock_seeded_comments(app: &mut Himark) -> imba::store::Id<::comments::Comment
 fn the_comments_dock_lists_files_and_lines() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1440, 900)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((1440, 900)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let _ = dock_seeded_comments(&mut app);
     super::dock::settle(&mut app, &mut surface);
     let panel = super::dock::entity(&app)
@@ -170,8 +167,8 @@ fn dump_comments_dock_screenshot() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     for (order, (label, command)) in [
         ("History", "history.view"),
         ("Files", "files.tree"),
@@ -192,9 +189,6 @@ fn dump_comments_dock_screenshot() {
     }
     let _ = dock_seeded_comments(&mut app);
     super::dock::settle(&mut app, &mut surface);
-    let data = surface
-        .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/comments-dock.png"), data.as_bytes()).expect("write");
+    let data = surface.snapshot().encode_png().expect("png");
+    std::fs::write(format!("{dir}/comments-dock.png"), &data[..]).expect("write");
 }

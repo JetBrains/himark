@@ -252,8 +252,8 @@ fn the_diagram_paints_real_pixels() {
     );
     let height = document.content_height(editor);
     eprintln!("[mermaid-pixels] content height {height}");
-    let mut surface = gfx_skia::raster_tuple((600, 800)).expect("surface");
-    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+    let mut surface = gfx_raster::raster_tuple((600, 800)).expect("surface");
+    let canvas = &surface.canvas();
     canvas.clear(gfx::Color::WHITE);
     document.paint(
         editor,
@@ -264,9 +264,9 @@ fn the_diagram_paints_real_pixels() {
         ui,
         &theme(),
     );
-    let image = surface.image_snapshot();
-    let pixmap = image.peek_pixels().expect("pixels");
-    let bytes = pixmap.bytes().expect("bytes");
+    let image = surface.snapshot();
+    let pixmap = &image;
+    let bytes = pixmap.bytes();
     let inked = bytes
         .chunks(4)
         .filter(|px| px[0] != 0xff || px[1] != 0xff || px[2] != 0xff)

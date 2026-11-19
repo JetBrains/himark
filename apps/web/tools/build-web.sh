@@ -63,27 +63,6 @@ if [[ -z "${LIBCLANG_PATH:-}" && -d "${EMSDK:-}/upstream/lib" ]] \
     export LIBCLANG_PATH="$EMSDK/upstream/lib"
 fi
 
-python_for_depot_tools=""
-for candidate in /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.10 /usr/bin/python3; do
-    if [[ -x "$candidate" ]]; then
-        python_for_depot_tools="$candidate"
-        break
-    fi
-done
-if [[ -n "$python_for_depot_tools" ]]; then
-    mkdir -p target/web-tools
-    ln -sfn "$python_for_depot_tools" target/web-tools/python
-    ln -sfn "$python_for_depot_tools" target/web-tools/python3
-    export PATH="$PWD/target/web-tools:$PATH"
-fi
-
-export FORCE_SKIA_BUILD=1
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0=core.fsmonitor
-export GIT_CONFIG_VALUE_0=false
-if [[ -d vendor/skia-bindings-0.99.0/skia ]]; then
-    find vendor/skia-bindings-0.99.0/skia -name '*.lock' -delete
-fi
 export EMCC_CFLAGS="-pthread -fPIC"
 # bindgen-at-build-time crates (hb-subset among them) parse the C
 # headers with libclang FOR THE TARGET; without the emscripten

@@ -20,6 +20,7 @@ pub mod font;
 pub mod image;
 pub mod paint;
 pub mod path;
+pub mod transform;
 
 pub use font::{Edging, Font, FontStyle, Typeface};
 pub use geometry::{Color, ISize, Point, Rect, Size};
@@ -28,6 +29,7 @@ pub use paint::{Cap as PaintCap, Join as PaintJoin, Paint, Style as PaintStyle};
 pub use painter::{Painter, Sampling};
 pub use path::{Path, PathBuilder};
 pub use text::{face, face_count, register_face, FaceEntry, FaceId, GlyphRun, TextBlob};
+pub use transform::Transform;
 
 /// THE canvas the widget tree paints into — any backend, behind the
 /// trait. The lifetime is the point: a bare `dyn Painter` alias

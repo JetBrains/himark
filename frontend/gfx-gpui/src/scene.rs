@@ -24,7 +24,7 @@ use gpui::{
 };
 
 use crate::faces::{self, color};
-use crate::transform::Transform;
+use gfx::Transform;
 
 /// The text system and what was resolved through it — one per
 /// process, shared by every surface.

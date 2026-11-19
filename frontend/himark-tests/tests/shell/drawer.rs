@@ -765,8 +765,8 @@ fn dump_sessions_drawer_screenshot() {
         glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
     });
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     let offline = hiahp::engine::register_client(&mut app, ahp_wire::client::inert());
     let host = ahp_wire::SessionId::local_default(app.store()).host;
     const JB: &str = "file:///Users/dev/himark-jb";
@@ -864,11 +864,8 @@ fn dump_sessions_drawer_screenshot() {
         .downcast_ref::<ahp_session::session::drawer::AgentsPanel>()
         .map(|panel| panel.lines());
     eprintln!("{rows:#?}");
-    let data = surface
-        .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/sessions-drawer.png"), data.as_bytes()).expect("write");
+    let data = surface.snapshot().encode_png().expect("png");
+    std::fs::write(format!("{dir}/sessions-drawer.png"), &data[..]).expect("write");
 }
 
 /// TEST SUPPORT: switch the window to a session directly — what
@@ -983,8 +980,8 @@ fn session_switch_timing() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     let host = ahp_wire::SessionId::local_default(app.store()).host;
     let minutes = |count: u64| stamp_ago(std::time::Duration::from_secs(count * 60));
     {
@@ -1032,14 +1029,14 @@ fn session_switch_timing() {
             },
         );
     }
-    let timed = |label: &str, app: &mut Himark, surface: &mut skia_safe::Surface, command| {
+    let timed = |label: &str, app: &mut Himark, surface: &mut gfx_raster::Surface, command| {
         let started = std::time::Instant::now();
         assert!(app.perform_batch(vec![command]));
         let batch = started.elapsed();
         let mut draws = Vec::new();
         for tick in 0..60 {
             let started = std::time::Instant::now();
-            app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+            app.draw_window(window, &surface.canvas());
             draws.push(started.elapsed());
             let busy = test_driver::animate(app, AnimationClock::from_millis(tick as f64 * 32.0));
             if !busy && tick > 1 {

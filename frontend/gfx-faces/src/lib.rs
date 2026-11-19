@@ -53,20 +53,6 @@ extern "C" {
     ) -> i32;
 }
 
-/// A collection member as a STANDALONE face — no pinning, no
-/// renaming: for a backend that instances coords natively (skia)
-/// but cannot open a `.ttc` past index 0 from bytes.
-pub fn standalone_member(entry: &FaceEntry) -> Option<Vec<u8>> {
-    let bytes = entry.data.as_ref().as_ref();
-    let blob = hb_subset::Blob::from_bytes(bytes).ok()?;
-    let face = hb_subset::FontFace::new_with_index(blob, entry.index).ok()?;
-    let mut input = hb_subset::SubsetInput::new().ok()?;
-    input.keep_everything();
-    let member = input.subset_font(&face).ok()?;
-    let out = member.underlying_blob().to_vec();
-    (!out.is_empty()).then_some(out)
-}
-
 /// The instance as STATIC outlines, via harfbuzz's subsetter with
 /// every shaped axis pinned. Nothing short of this renders right:
 /// CoreText shows a data-loaded variable font's default master.

@@ -390,19 +390,13 @@ fn settle_until(
     mut done: impl FnMut(&HimarkEngine) -> bool,
 ) {
     let started = std::time::Instant::now();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
     while !done(engine) {
         assert!(
             started.elapsed() < std::time::Duration::from_secs(10),
             "never settled: {what}"
         );
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(engine);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
@@ -503,17 +497,11 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
 
     // And the WINDOW paints it: the pane's bounded editor repairs its
     // damaged line and the wavy underline reaches the pixels.
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
     let started = std::time::Instant::now();
     let mut painted = 0;
     while started.elapsed() < std::time::Duration::from_secs(10) {
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         painted = squiggle_pixels(&mut surface);
         if painted > 10 {
@@ -529,10 +517,10 @@ fn the_session_open_road_dials_diagnostics_and_squiggles_the_document() {
 
 /// Pixels in the embedded theme's diagnostic_error squiggle color
 /// (#ff5370), tolerant to channel order.
-fn squiggle_pixels(surface: &mut skia_safe::Surface) -> usize {
-    let image = surface.image_snapshot();
-    let pixmap = image.peek_pixels().expect("raster pixels");
-    let bytes = pixmap.bytes().expect("pixel bytes");
+fn squiggle_pixels(surface: &mut gfx_raster::Surface) -> usize {
+    let image = surface.snapshot();
+    let pixmap = &image;
+    let bytes = pixmap.bytes();
     let row_bytes = image.width() as usize * 4;
     (0..image.height() as usize)
         .flat_map(|y| (0..image.width() as usize).map(move |x| (x, y)))
@@ -665,7 +653,7 @@ fn live_host_squiggles_the_opened_file() {
         }),
     )]));
     let started = std::time::Instant::now();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
     while !workbench_shell::workspace::window_session(engine.store(), himark_plugins::wid(window))
         .is_some_and(|key| key.session.as_str() == session)
     {
@@ -673,13 +661,7 @@ fn live_host_squiggles_the_opened_file() {
             started.elapsed() < std::time::Duration::from_secs(30),
             "session never came up"
         );
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
@@ -692,13 +674,7 @@ fn live_host_squiggles_the_opened_file() {
     let started = std::time::Instant::now();
     let mut last = None;
     while started.elapsed() < std::time::Duration::from_secs(20) {
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         std::thread::sleep(std::time::Duration::from_millis(5));
         let now = live_squiggles(&engine, window, &path);
@@ -724,26 +700,14 @@ fn live_host_squiggles_the_opened_file() {
         let started = std::time::Instant::now();
         assert!(engine.perform_command_at(Some(window), "theme.toggle"));
         let performed = started.elapsed();
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         let drawn = started.elapsed();
         // The repairs the toggle owes: drain the worker until quiet.
         let mut rounds = 0;
         loop {
             engine.worker().run_pending();
             let landed = engine.drain();
-            let _ = engine.draw(
-                window,
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                1100.0,
-                800.0,
-                1.0,
-            );
+            let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
             rounds += 1;
             if !landed && engine.queued_landings() == 0 && rounds > 3 {
                 break;
@@ -848,29 +812,12 @@ fn semantic_tokens_and_inlay_hints_dress_the_open_document() {
 
     // The window paints with the hint chip in place: a frame with the
     // layer and a frame after clearing it differ.
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    let frame = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| -> Vec<u8> {
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
+    let frame = |engine: &mut HimarkEngine, surface: &mut gfx_raster::Surface| -> Vec<u8> {
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(engine);
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
-        surface
-            .image_snapshot()
-            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-            .expect("png")
-            .as_bytes()
-            .to_vec()
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
+        surface.snapshot().encode_png().expect("png")
     };
     let with_hint = frame(&mut engine, &mut surface);
     if let Some(dir) = std::env::var_os("HIMARK_SHOT") {
@@ -958,7 +905,7 @@ fn live_canvas_face_serves_completion_and_hover() {
             session: session.clone(),
         }),
     )]));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
     let started = std::time::Instant::now();
     while !workbench_shell::workspace::window_session(engine.store(), himark_plugins::wid(window))
         .is_some_and(|key| key.session.as_str() == session)
@@ -967,13 +914,7 @@ fn live_canvas_face_serves_completion_and_hover() {
             started.elapsed() < std::time::Duration::from_secs(30),
             "session never came up"
         );
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
@@ -1025,13 +966,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     };
     let started = std::time::Instant::now();
     loop {
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         let built = canvas(&engine)
             .map(|view| view.probe_rows(engine.store()))
@@ -1062,13 +997,7 @@ fn live_canvas_face_serves_completion_and_hover() {
     for tick in 0..60 {
         let _ = engine.animation_tick(tick as f64 * 16.0);
         settle(&mut engine);
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
     }
     eprintln!(
         "[live] scroll top {} reveal pending {:?}",
@@ -1095,15 +1024,13 @@ fn live_canvas_face_serves_completion_and_hover() {
         })
         .collect()
     };
-    let shot = |surface: &mut skia_safe::Surface, name: &str| {
+    let shot = |surface: &mut gfx_raster::Surface, name: &str| {
         if let Some(dir) = std::env::var_os("HIMARK_SHOT") {
             let mut path = std::path::PathBuf::from(dir);
             path.push(format!("{name}.png"));
-            let image = surface.image_snapshot();
-            let data = image
-                .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-                .expect("png");
-            std::fs::write(&path, data.as_bytes()).expect("write");
+            let image = surface.snapshot();
+            let data = image.encode_png().expect("png");
+            std::fs::write(&path, &data[..]).expect("write");
         }
     };
     // Click down the column until a non-markdown face takes the
@@ -1113,13 +1040,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         let y = step as f32 * 40.0;
         let _ = engine.mouse_down(window, 700.0, y, 0, 1);
         let _ = engine.mouse_up(window, 700.0, y);
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         settle(&mut engine);
         let ids = roster(&engine);
         eprintln!("[live] click y={y}: roster {ids:?}");
@@ -1187,13 +1108,7 @@ fn live_canvas_face_serves_completion_and_hover() {
         && started.elapsed() < std::time::Duration::from_secs(20)
     {
         settle(&mut engine);
-        let _ = engine.draw(
-            window,
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            1100.0,
-            800.0,
-            1.0,
-        );
+        let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     shot(&mut surface, "completion");
@@ -1243,13 +1158,7 @@ fn live_canvas_face_serves_completion_and_hover() {
             tick += 1;
             let _ = engine.animation_tick(tick as f64 * 50.0);
             settle(&mut engine);
-            let _ = engine.draw(
-                window,
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                1100.0,
-                800.0,
-                1.0,
-            );
+            let _ = engine.draw(window, &surface.canvas(), 1100.0, 800.0, 1.0);
             if hover(&engine).is_some_and(|(_, open)| open) {
                 eprintln!("[live] hover card opened at x={x}");
                 opened = true;

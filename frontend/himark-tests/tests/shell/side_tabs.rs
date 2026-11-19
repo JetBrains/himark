@@ -61,12 +61,10 @@ fn register_tabs(app: &mut Himark) {
     }
 }
 
-fn write_png(surface: &mut skia_safe::Surface, path: String) {
-    let image = surface.image_snapshot();
-    let data = image
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(path, data.as_bytes()).expect("write");
+fn write_png(surface: &mut gfx_raster::Surface, path: String) {
+    let image = surface.snapshot();
+    let data = image.encode_png().expect("png");
+    std::fs::write(path, &data[..]).expect("write");
 }
 
 /// Mounts the files tab over a seeded tree: the listings land as
@@ -220,8 +218,8 @@ fn dump_files_tab_screenshot() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     register_tabs(&mut app);
     assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
@@ -243,8 +241,8 @@ fn dump_files_tab_filtering_screenshot() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     register_tabs(&mut app);
     assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
@@ -408,8 +406,8 @@ fn dump_find_tab_screenshot() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     register_tabs(&mut app);
     assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,

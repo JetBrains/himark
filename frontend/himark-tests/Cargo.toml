@@ -11,7 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 
 [dev-dependencies]
-gfx-skia = { path = "../gfx-skia" }
+gfx-raster = { path = "../gfx-raster" }
 gfx = { path = "../gfx" }
 himark = { path = "../himark", features = ["test-support"] }
 hiahp = { path = "../hiahp" }
@@ -42,7 +42,6 @@ operation = { path = "../operation" }
 recents = { path = "../recents" }
 rpds = "1"
 serde_json = "1"
-skia-safe = "0.153.3"
 terminals = { path = "../terminals" }
 toc = { path = "../toc" }
 text = { path = "../text" }

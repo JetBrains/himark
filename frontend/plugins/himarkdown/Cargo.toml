@@ -21,4 +21,4 @@ hisitter = { path = "../../hisitter" }
 tree-sitter = "0.26.8"
 
 [dev-dependencies]
-gfx-skia = { path = "../../gfx-skia" }
+gfx-raster = { path = "../../gfx-raster" }

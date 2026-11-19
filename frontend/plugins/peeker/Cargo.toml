@@ -25,7 +25,7 @@ text = { path = "../../text" }
 
 [dev-dependencies]
 workbench-shell = { path = "../../workbench-shell", features = ["test-support"] }
-gfx-skia = { path = "../../gfx-skia" }
+gfx-raster = { path = "../../gfx-raster" }
 himark = { path = "../../himark", features = ["test-support"] }
 editor = { path = "../../editor" }
 himarkdown = { path = "../himarkdown" }

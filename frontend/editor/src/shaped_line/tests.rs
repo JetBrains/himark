@@ -157,13 +157,13 @@ fn paint_is_deterministic_and_inked() {
     );
 
     let shoot = |line: &ShapedLine| -> Vec<u8> {
-        let mut surface = gfx_skia::raster_tuple((700, 60)).expect("surface");
-        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+        let mut surface = gfx_raster::raster_tuple((700, 60)).expect("surface");
+        let canvas = &surface.canvas();
         canvas.clear(gfx::Color::WHITE);
         line.paint(canvas, 4.0);
-        let image = surface.image_snapshot();
-        let pixmap = image.peek_pixels().expect("raster pixels");
-        pixmap.bytes().expect("pixel bytes").to_vec()
+        let image = surface.snapshot();
+        let pixmap = &image;
+        pixmap.bytes().to_vec()
     };
 
     let first = shoot(&line);

@@ -304,13 +304,13 @@ fn a_partially_scrolled_painter_keeps_its_true_box() {
         move |_arena, _canvas, rect| seen.set(Some(rect))
     });
     let widget = crate::ThunkBox::new(&arena, thunk).realize(&arena, Rect::from_wh(100.0, 40.0));
-    let mut surface = gfx_skia::raster_tuple((100, 40)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((100, 40)).expect("surface");
 
     let band = Rect::from_ltrb(0.0, 25.0, 100.0, 40.0);
     let _ = widget.handle_event(
         &arena,
         &Event::Paint {
-            canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            canvas: &surface.canvas(),
             focused: true,
         },
         band,
@@ -540,10 +540,10 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
 fn paint_modifiers_control_paint_order() {
     let arena = Arena::default();
     let log = RefCell::new(Vec::new());
-    let mut surface = gfx_skia::raster_tuple((8, 8)).expect("raster surface");
+    let mut surface = gfx_raster::raster_tuple((8, 8)).expect("raster surface");
     let event = Event::Paint {
         focused: true,
-        canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        canvas: &surface.canvas(),
     };
     let widget = crate::eager(PaintTrace { log: &log })
         .paint_below(|_, _, _| log.borrow_mut().push("below"))
@@ -559,10 +559,10 @@ fn paint_modifiers_control_paint_order() {
 fn paint_instead_replaces_inner_paint() {
     let arena = Arena::default();
     let log = RefCell::new(Vec::new());
-    let mut surface = gfx_skia::raster_tuple((8, 8)).expect("raster surface");
+    let mut surface = gfx_raster::raster_tuple((8, 8)).expect("raster surface");
     let event = Event::Paint {
         focused: true,
-        canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        canvas: &surface.canvas(),
     };
     let widget = crate::eager(PaintTrace { log: &log })
         .paint_instead(|_, _, _| {
@@ -1222,7 +1222,7 @@ impl Widget<'_, Command> for WidthReporter {
 
 #[test]
 fn paint_broadcasts_and_merges_every_mismatch() {
-    let mut surface = gfx_skia::raster_tuple((100, 100)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((100, 100)).expect("surface");
     let arena = Arena::default();
     let mut widget = container(&arena, Size::new(100.0, 100.0));
     widget.place(
@@ -1253,7 +1253,7 @@ fn paint_broadcasts_and_merges_every_mismatch() {
         }),
     );
 
-    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+    let canvas = &surface.canvas();
     let result = widget.realize(&arena, root_viewport()).handle_event(
         &arena,
         &Event::Paint {
@@ -1269,7 +1269,7 @@ fn paint_broadcasts_and_merges_every_mismatch() {
 
 #[test]
 fn list_paint_reconciles_stale_row_heights() {
-    let mut surface = gfx_skia::raster_tuple((100, 60)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((100, 60)).expect("surface");
     let mut store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
@@ -1286,7 +1286,7 @@ fn list_paint_reconciles_stale_row_heights() {
             Constraints::tight(Size::new(100.0, 60.0)),
         )
         .realize(&arena, root_viewport());
-        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+        let canvas = &surface.canvas();
         widget
             .handle_event(
                 &arena,
@@ -1310,7 +1310,7 @@ fn list_paint_reconciles_stale_row_heights() {
         Constraints::tight(Size::new(100.0, 60.0)),
     )
     .realize(&arena, root_viewport());
-    let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+    let canvas = &surface.canvas();
     let quiet = widget
         .handle_event(
             &arena,
@@ -1345,7 +1345,7 @@ fn list_scroll_benchmark() {
     )));
     let built = built_started.elapsed();
 
-    let mut surface = gfx_skia::raster_tuple((400, 900)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((400, 900)).expect("surface");
     let mut arena = Arena::default();
     let viewport = Rect::from_size(VIEWPORT);
 
@@ -1384,7 +1384,7 @@ fn list_scroll_benchmark() {
                 Constraints::tight(VIEWPORT),
             )
             .realize(&arena, viewport);
-            let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+            let canvas = &surface.canvas();
             let _ = widget.handle_event(
                 &arena,
                 &Event::Paint {
@@ -1930,7 +1930,7 @@ mod animated_splice {
         let entering = cached_total(&list);
 
         let arena = Arena::default();
-        let mut surface = gfx_skia::raster_tuple((100, 200)).expect("raster surface");
+        let mut surface = gfx_raster::raster_tuple((100, 200)).expect("raster surface");
         let result = {
             let widget = crate::layout::Layout::layout(
                 list.display(&arena, &store, &ui),
@@ -1945,7 +1945,7 @@ mod animated_splice {
                 &arena,
                 &Event::Paint {
                     focused: false,
-                    canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                    canvas: &surface.canvas(),
                 },
                 Rect::from_wh(100.0, 200.0),
             )
@@ -2619,11 +2619,11 @@ fn fallback_script_text_paints_ink_through_the_skia_backend() {
     assert!(total > 0, "the line shaped");
     assert_eq!(notdefs, 0, "fallback covers cyrillic: {families:?}");
 
-    let mut surface = gfx_skia::raster_tuple((300, 48)).expect("surface");
-    let canvas = gfx_skia::SkiaCanvas::new(surface.canvas());
+    let mut surface = gfx_raster::raster_tuple((300, 48)).expect("surface");
+    let canvas = surface.canvas();
     canvas.clear(gfx::Color::WHITE);
     line.paint(&canvas, (4.0, 32.0));
-    let (_, _, pixels) = gfx_skia::rgba(&mut surface);
+    let (_, _, pixels) = surface.rgba();
     let ink = pixels
         .chunks_exact(4)
         .filter(|px| px[0] < 200 && px[1] < 200 && px[2] < 200)

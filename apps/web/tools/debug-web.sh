@@ -68,38 +68,6 @@ if [[ -z "${LIBCLANG_PATH:-}" && -d "${EMSDK:-}/upstream/lib" ]] \
     export LIBCLANG_PATH="$EMSDK/upstream/lib"
 fi
 
-python_for_depot_tools=""
-for candidate in /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.10 /usr/bin/python3; do
-    if [[ -x "$candidate" ]]; then
-        python_for_depot_tools="$candidate"
-        break
-    fi
-done
-if [[ -n "$python_for_depot_tools" ]]; then
-    mkdir -p target/web-tools
-    ln -sfn "$python_for_depot_tools" target/web-tools/python
-    ln -sfn "$python_for_depot_tools" target/web-tools/python3
-    export PATH="$PWD/target/web-tools:$PATH"
-fi
-
-export CARGO_TARGET_DIR="${HIMARK_WEB_DEBUG_TARGET_DIR:-$repo_root/target/web-debug-build}"
-export CARGO_INCREMENTAL=1
-export CARGO_PROFILE_DEV_DEBUG=0
-debug_profile=(
-    --config 'profile.dev.package."*".opt-level=0'
-    --config 'profile.dev.package.documents.opt-level=0'
-    --config 'profile.dev.package.himark.opt-level=0'
-    --config 'profile.dev.package.editor.opt-level=0'
-    --config 'profile.dev.package.himarkdown.opt-level=0'
-)
-
-export FORCE_SKIA_BUILD=1
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0=core.fsmonitor
-export GIT_CONFIG_VALUE_0=false
-if [[ -d vendor/skia-bindings-0.99.0/skia ]]; then
-    find vendor/skia-bindings-0.99.0/skia -name '*.lock' -delete
-fi
 export EMCC_CFLAGS="-pthread -fPIC"
 export CXXFLAGS_wasm32_unknown_emscripten="-fPIC"
 export HIMARK_STRIP_WASM_EXCEPTIONS=1

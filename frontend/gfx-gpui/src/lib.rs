@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The gpui backend of the painting boundary — rendering and
-//! nothing more, `gfx-skia`'s twin. One side speaks `gfx::Painter`,
+//! nothing more, `gfx-raster`'s sibling. One side speaks `gfx::Painter`,
 //! the other gpui scene primitives: quads, lyon-stroked paths, rect
 //! clips as content masks, glyph runs through the atlas, images,
 //! analytic shadows. No imba, no events, no shell — input bridging
@@ -15,7 +15,6 @@
 mod faces;
 mod painter;
 mod scene;
-mod transform;
 
 pub use painter::{GpuiPainter, PainterCaches};
 pub use scene::{ScenePainter, SceneText};

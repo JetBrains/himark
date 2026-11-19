@@ -89,19 +89,19 @@ fn the_at_completion_opens_finds_and_picks() {
         );
         ::workbench::window::Windows::put(&mut store, window, entity);
     }
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(window, &surface.canvas());
 
     let panel = |app: &Himark| -> ahp_chat::chat::ChatPanel {
         ahp_chat::chats::Chats::chat(app.store(), chats, &uri).expect("the panel")
     };
-    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut gfx_raster::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+            app.draw_window(window, &surface.canvas());
             let _ = test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
@@ -264,8 +264,8 @@ fn the_at_completion_serves_markdown_panes() {
             focus: false,
         },
     )]));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(window, &surface.canvas());
 
     let completion_open = |app: &Himark| -> bool {
         let (document, editor) = app.focused_editor_id();
@@ -288,13 +288,13 @@ fn the_at_completion_serves_markdown_panes() {
         let end = view.byte_count();
         view.byte_string(0, end)
     };
-    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut gfx_raster::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+            app.draw_window(window, &surface.canvas());
             let _ = test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
@@ -355,7 +355,7 @@ fn the_at_completion_serves_markdown_panes() {
             focus: false,
         },
     )]));
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    app.draw_window(window, &surface.canvas());
     assert!(test_driver::type_text(&mut app, "@"));
     assert!(
         !completion_open(&app),
@@ -440,8 +440,8 @@ fn lsp_completion_serves_code_panes() {
             focus: false,
         },
     )]));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(window, &surface.canvas());
 
     let completion_open = |app: &Himark| -> bool {
         let (document, editor) = app.focused_editor_id();
@@ -464,13 +464,13 @@ fn lsp_completion_serves_code_panes() {
         let end = view.byte_count();
         view.byte_string(0, end)
     };
-    let pump = |app: &mut Himark, surface: &mut skia_safe::Surface| {
+    let pump = |app: &mut Himark, surface: &mut gfx_raster::Surface| {
         for tick in 0..30 {
             runner.run();
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+            app.draw_window(window, &surface.canvas());
             let _ = test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),

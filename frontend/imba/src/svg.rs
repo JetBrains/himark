@@ -206,11 +206,11 @@ mod tests {
             <rect class="box" x="0" y="0" width="40" height="20"/>
         </svg>"##;
         let view = SvgView::new(svg, Size::new(40.0, 20.0));
-        let mut surface = gfx_skia::raster_tuple((40, 20)).expect("surface");
-        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+        let mut surface = gfx_raster::raster_tuple((40, 20)).expect("surface");
+        let canvas = &surface.canvas();
         canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_wh(40.0, 20.0));
-        let (width, _, pixels) = gfx_skia::rgba(&mut surface);
+        let (width, _, pixels) = surface.rgba();
         let at = ((10 * width + 20) * 4) as usize;
         let (r, g, b) = (pixels[at], pixels[at + 1], pixels[at + 2]);
         assert!(

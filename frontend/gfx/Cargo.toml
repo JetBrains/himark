@@ -3,8 +3,8 @@ name = "gfx"
 version = "0.1.0"
 edition = "2021"
 
-# No renderer here: skia lives behind `gfx-skia`, gpui behind
-# `imba-gpui`. The two below are fontations — the same engine parley
+# No renderer here: gpui lives behind `gfx-gpui`, the tests' CPU
+# painter behind `gfx-raster`. The two below are fontations — the same engine parley
 # shapes with — for face metadata, advances, and system lookup.
 [dependencies]
 skrifa = "0.44"

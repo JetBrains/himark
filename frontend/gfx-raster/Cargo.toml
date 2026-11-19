@@ -1,0 +1,12 @@
+[package]
+name = "gfx-raster"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# `gfx::Painter` on the CPU: tiny-skia fills, skrifa glyph outlines.
+# The tests' paper — deterministic, no GPU, the same on every OS.
+[dependencies]
+gfx = { path = "../gfx" }
+tiny-skia = "0.12"
+skrifa = "0.44"

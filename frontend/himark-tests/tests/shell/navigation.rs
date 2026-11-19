@@ -21,11 +21,8 @@ fn located(name: &str) -> editor::location::ResourceLocation {
 fn app() -> (Himark, ::workbench::window::WindowId) {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     (app, window)
 }

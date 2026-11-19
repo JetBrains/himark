@@ -59,7 +59,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     }
 
     let size = gfx::Size::new(1200.0, 900.0);
-    let mut surface = gfx_skia::raster_tuple((1200, 900)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1200, 900)).expect("surface");
     let settle = |app: &mut Himark| {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
@@ -67,21 +67,13 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }
     };
     settle(&mut app);
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
 
     assert!(
         app.perform_registered(app.sole_window(), "peeker.toggle"),
         "the peeker opens"
     );
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        size,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
 
     for round in 0..40u32 {
         let key = match round % 5 {
@@ -89,11 +81,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
             _ => imba::event::Key::Up,
         };
         let _ = workbench_shell::test_driver::key(&mut app, key, Default::default());
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         if round % 3 == 0 {
             settle(&mut app);
         }
@@ -101,11 +89,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
 
     for _ in 0..8 {
         settle(&mut app);
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
     }
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
@@ -113,11 +97,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     for _ in 0..12 {
         let _ =
             workbench_shell::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
-        let _ = app.draw_window_sized(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-            size,
-        );
+        let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         settle(&mut app);
     }
 }

@@ -263,8 +263,8 @@ fn paint_reports_relayout_while_the_width_lags() {
         min: Size::default(),
         max: Size::new(900.0, f32::MAX),
     };
-    let mut surface = gfx_skia::raster_tuple((1024, 768)).expect("a surface");
-    let paint_commands = |editor: &TableEditor, surface: &mut gfx_skia::skia_safe::Surface| {
+    let mut surface = gfx_raster::raster_tuple((1024, 768)).expect("a surface");
+    let paint_commands = |editor: &TableEditor, surface: &mut gfx_raster::Surface| {
         let widget = imba::layout::Layout::layout(
             imba::View::display(editor, &arena, &store, &ui),
             &arena,
@@ -276,7 +276,7 @@ fn paint_reports_relayout_while_the_width_lags() {
             &widget,
             &arena,
             &Event::Paint {
-                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                canvas: &surface.canvas(),
                 focused: false,
             },
             viewport,

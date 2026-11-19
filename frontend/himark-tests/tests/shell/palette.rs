@@ -94,11 +94,8 @@ fn palette_commands_follow_the_modal_focus() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let ids = |app: &Himark| -> Vec<&'static str> {
         workbench_shell::app::palette_commands(app.store(), &app.ui_ctx(), app.sole_window())
             .iter()
@@ -262,11 +259,8 @@ fn registered_commands_present_and_dispatch_by_id() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     app.perform_batch(vec![himark::app::AppCommand::Register(
         std::sync::Arc::new(Probe),
@@ -354,11 +348,8 @@ fn keymap_chords_resolve_through_the_palette_surface() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let cmd = Modifiers {
         command: true,

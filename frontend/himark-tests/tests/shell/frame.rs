@@ -38,8 +38,8 @@ fn dump_frame_screenshot() {
         glyph: std::sync::Arc::new(|_canvas, _rect, _color| {}),
     });
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
 
     struct EnterSession;
     impl himark::commands::HimarkCommand for EnterSession {
@@ -164,11 +164,9 @@ fn dump_frame_screenshot() {
     super::dock::show_dock(&mut app, "files", "test.files");
     super::dock::settle(&mut app, &mut surface);
 
-    let image = surface.image_snapshot();
-    let data = image
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/frame.png"), data.as_bytes()).expect("write");
+    let image = surface.snapshot();
+    let data = image.encode_png().expect("png");
+    std::fs::write(format!("{dir}/frame.png"), &data[..]).expect("write");
 
     // The chat column mid-slide: MaximizeTree rolls it off the left
     // edge over the dock's slide time; a frame 64ms in shows it
@@ -179,20 +177,17 @@ fn dump_frame_screenshot() {
             ::workbench::workbench::WorkbenchCommand::MaximizeTree
         ),
     )]));
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    app.draw_window(window, &surface.canvas());
     let _ = workbench_shell::test_driver::animate(
         &mut app,
         imba::anim::AnimationClock::from_millis(0.0),
     );
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    app.draw_window(window, &surface.canvas());
     let _ = workbench_shell::test_driver::animate(
         &mut app,
         imba::anim::AnimationClock::from_millis(64.0),
     );
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
-    let data = surface
-        .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/frame-slide.png"), data.as_bytes()).expect("write");
+    app.draw_window(window, &surface.canvas());
+    let data = surface.snapshot().encode_png().expect("png");
+    std::fs::write(format!("{dir}/frame-slide.png"), &data[..]).expect("write");
 }

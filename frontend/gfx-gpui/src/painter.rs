@@ -23,7 +23,7 @@ use gpui::{
 };
 
 use crate::faces::{self, color};
-use crate::transform::Transform;
+use gfx::Transform;
 
 /// Backend state that outlives a frame: resolved faces, keyed by
 /// gfx's ids, owned by the root view.

@@ -26,10 +26,7 @@ Design documentation lives in [docs/](docs/) — start from the
   `bindgen`, which loads libclang. On macOS the Xcode Command Line Tools
   provide it, on Linux install `libclang-dev`, on Windows install LLVM and set
   `LIBCLANG_PATH`.
-- **Network access on the first build.** Cargo fetches crates, and the
-  vendored `skia-bindings` crate downloads a prebuilt Skia archive from the
-  `rust-skia/skia-binaries` GitHub releases for your target. Only the web
-  build compiles Skia from source.
+- **Network access on the first build.** Cargo fetches crates.
 - **git**, used by the Apple and web build scripts.
 
 The workspace is large. A cold `cargo build` takes several minutes; later
@@ -243,13 +240,8 @@ WebSocket.
   [emsdk](https://github.com/emscripten-core/emsdk) and `source emsdk_env.sh`
   so that `EMSDK` is set, or `brew install emscripten` on macOS; the scripts
   detect the Homebrew install and a distro install under `/usr/lib/emscripten`.
-- **Tools for building Skia from source**, which the web target does: `git`,
-  `ninja`, `clang`, and Python 3.10 or 3.11 for Skia's `depot_tools`. The
-  scripts look for `/opt/homebrew/bin/python3.11`, `python3.10`, then
-  `/usr/bin/python3`. On Ubuntu: `apt-get install clang libclang-dev ninja-build pkg-config`.
+- On Ubuntu: `apt-get install clang libclang-dev ninja-build pkg-config`.
 - Optional: `brotli` for `.br` artifacts next to the `.gz` ones.
-
-The first web build compiles Skia for Emscripten and takes a long time.
 
 ### Release build
 
@@ -383,9 +375,6 @@ Signing with a Developer ID and notarizing are not wired up yet; the
   from an older build was running; the shell replaces it automatically. If a
   stale lockfile blocks startup, stop the old process and delete
   `~/.himark/agent-host/host.lock`.
-- **Skia download fails**: the first build needs access to GitHub releases.
-  Set `SKIA_LIBRARY_SEARCH_PATH` to a directory with prebuilt Skia libraries
-  to build offline, or `FORCE_SKIA_BUILD=1` to compile Skia from source.
 - **Linker errors mentioning `__std_min_f` on Windows**: update the MSVC
   toolset to 14.40 or newer.
 - **iOS build fails in `bindgen` with `stdio.h not found`**: run through

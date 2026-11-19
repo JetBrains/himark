@@ -52,13 +52,13 @@ fn parley_shapes_paints_and_answers_geometry() {
     // Paint both roads side by side; the diff metric is the
     // spike's deliverable, printed for the record.
     let paint_to = |painter: &dyn Fn(&gfx::Canvas<'_>)| -> Vec<u8> {
-        let mut surface = gfx_skia::raster_tuple((900, 60)).expect("surface");
-        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+        let mut surface = gfx_raster::raster_tuple((900, 60)).expect("surface");
+        let canvas = &surface.canvas();
         canvas.clear(gfx::Color::WHITE);
         painter(canvas);
-        let image = surface.image_snapshot();
-        let pixmap = image.peek_pixels().expect("pixels");
-        pixmap.bytes().expect("bytes").to_vec()
+        let image = surface.snapshot();
+        let pixmap = &image;
+        pixmap.bytes().to_vec()
     };
 
     let parley_pixels = paint_to(&|canvas| line.paint(canvas, (0.0, 4.0)));

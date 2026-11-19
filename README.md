@@ -114,9 +114,9 @@ Features arrive as plugins — grammars, markdown, diffs, search, the agent sess
 All of it together: a workbench for working with coding agents — agent chat, markdown and code editing, inline diffs, commit history, workspace search, terminals.
 Native on every platform:
 
-- an AppKit/UIKit app on macOS and iOS, rendering through [Skia](https://skia.org) onto Metal;
 - a [gpui](https://www.gpui.rs) app on macOS and Linux;
-- a WebAssembly build in the browser.
+- a UIKit app on iOS, drawing through gpui's Metal renderer;
+- a WebAssembly build in the browser, drawing through gpui's wgpu renderer.
 
 A client can attach to agent hosts on other machines over an embedded [Tailscale](https://tailscale.com) node.
 Logging into a Tailscale account is the whole connectivity story.

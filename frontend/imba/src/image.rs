@@ -173,11 +173,11 @@ mod tests {
     #[test]
     fn the_view_paints_its_pixels() {
         let view = ImageView::new(png()).expect("decodes");
-        let mut surface = gfx_skia::raster_tuple((2, 1)).expect("surface");
-        let canvas = &gfx_skia::SkiaCanvas::new(surface.canvas());
+        let mut surface = gfx_raster::raster_tuple((2, 1)).expect("surface");
+        let canvas = &surface.canvas();
         canvas.clear(gfx::Color::WHITE);
         view.paint(canvas, Rect::from_xywh(0.0, 0.0, 2.0, 1.0));
-        let (_, _, pixels) = gfx_skia::rgba(&mut surface);
+        let (_, _, pixels) = surface.rgba();
         assert_eq!(&pixels[..3], &[255, 0, 0], "the red pixel painted");
     }
 }

@@ -600,14 +600,14 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
                 max: gfx::Size::new(420.0, f32::MAX),
             },
         );
-        let mut surface = skia_safe::surfaces::raster_n32_premul((420, 600)).expect("a surface");
+        let mut surface = gfx_raster::raster_tuple((420, 600)).expect("a surface");
         let viewport = gfx::Rect::from_wh(420.0, 600.0);
         let widget = imba::Thunk::realize(widget, &arena, viewport);
         widget
             .handle_event(
                 &arena,
                 &Event::Paint {
-                    canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                    canvas: &surface.canvas(),
                     focused: true,
                 },
                 viewport,
@@ -798,11 +798,8 @@ fn ime_composition_reaches_the_focused_editor() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let set = app.with_ime_client(app.sole_origin(), |client| {
         client.set_marked_text("\u{306B}\u{307B}", (2, 0), None);
@@ -839,18 +836,12 @@ fn ime_hit_test_answers_only_over_the_focused_text() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("hello", None);
     });
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let (x, y, _, height) = app
         .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 0))
@@ -885,19 +876,13 @@ fn ime_selection_sets_reads_back_and_answers_rects() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text("hello brave world", None);
     });
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let length = app
         .with_ime_client(app.sole_origin(), |client| client.document_length())
         .expect("focused");
@@ -956,27 +941,18 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let mut text = String::new();
     for line in 0..80 {
         text.push_str(&format!("line {line} with some words on it\n"));
     }
     assert!(workbench_shell::test_driver::type_text(&mut app, &text));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let _ = workbench_shell::test_driver::scroll_at(&mut app, 400.0, 300.0, -100_000.0);
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     // At the text's start (past the gutter and the content inset),
     // under the header band.
     let (click_x, click_y) = {
@@ -990,10 +966,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
         )
     };
     let _ = workbench_shell::test_driver::click(&mut app, click_x, click_y, 800.0, 600.0);
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.set_marked_text("\u{306B}", (1, 0), None);
@@ -1019,10 +992,7 @@ fn ime_popup_positions_in_window_coordinates_and_hides() {
     assert!(workbench_shell::test_driver::scroll_at(
         &mut app, 400.0, 300.0, delta
     ));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let scrolled = app
         .with_ime_client(app.sole_origin(), |client| client.first_rect(0, 1))
         .expect("still focused")
@@ -1052,11 +1022,8 @@ fn accent_popup_replaces_the_held_character() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     assert!(workbench_shell::test_driver::type_text(&mut app, "so"));
     assert!(workbench_shell::test_driver::type_text(&mut app, "u"));
@@ -1083,11 +1050,8 @@ fn typing_into_the_empty_startup_document_inserts() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(
         app.with_ime_client(app.sole_origin(), |_| ()).is_some(),
         "the startup editor should have text focus"
@@ -1313,19 +1277,13 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "# A title\n\nSome body text to shape, long enough to wrap around.",
     ));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let height_dark = app.focused_pane_content_height();
     assert!(height_dark > 0.0);
 
@@ -1335,10 +1293,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
         "light",
         "the store's theme swapped"
     );
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     let height_light = app.focused_pane_content_height();
 
     assert!(
@@ -1348,10 +1303,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
     assert_eq!(::editor::env::Themes::of(app.store()).name(), "dark");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(
         (app.focused_pane_content_height() - height_dark).abs() < 0.5,
         "toggling back restores the dark geometry"
@@ -1384,11 +1336,8 @@ fn caret_commands_glide_the_pane_to_the_caret() {
         "tall".to_owned(),
         true
     ));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert_eq!(app.focused_pane_scroll_y(), 0.0);
 
     assert!(test_driver::key(
@@ -1407,10 +1356,7 @@ fn caret_commands_glide_the_pane_to_the_caret() {
             app.perform_batch(vec![command]);
         }
         let busy = test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        );
+        app.draw_window(app.sole_window(), &surface.canvas());
         if busy {
             moved_ticks += 1;
         } else if tick > 0 {
@@ -1455,11 +1401,8 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
         "tall".to_owned(),
         true
     ));
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     assert!(test_driver::key(
         &mut app,
@@ -1476,10 +1419,7 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
             app.perform_batch(vec![command]);
         }
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        );
+        app.draw_window(app.sole_window(), &surface.canvas());
     }
     assert!(app.focused_pane_scroll_y() > 0.0, "the glide started");
 
@@ -1491,10 +1431,7 @@ fn a_manual_scroll_cancels_the_reveal_in_flight() {
             app.perform_batch(vec![command]);
         }
         test_driver::animate(&mut app, AnimationClock::from_millis(tick as f64 * 16.0));
-        app.draw_window(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        );
+        app.draw_window(app.sole_window(), &surface.canvas());
     }
     assert!(
         (app.focused_pane_scroll_y() - after_wheel).abs() < 1.0,
@@ -1570,8 +1507,8 @@ fn clipboard_reaches_the_focused_editor() {
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     let size = gfx::Size::new(800.0, 600.0);
 
     app.dispatch(
@@ -1835,11 +1772,8 @@ fn ime_hit_test_covers_an_empty_document() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert_eq!(
         app.with_ime_client(app.sole_origin(), |client| client.document_length()),
         Some(0),
@@ -1870,11 +1804,8 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     let fonts = AppFonts::embedded();
     let mut app = workbench_shell::app::workbench_app(fonts);
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let mut text = String::new();
     for line in 0..80 {
         text.push_str(&format!("line number {line}\n"));
@@ -1882,10 +1813,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     let _ = app.with_ime_client(app.sole_origin(), |client| {
         client.insert_text(&text, None);
     });
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
 
     let hit = |app: &mut Himark, y: f32| {
         app.with_ime_client(app.sole_origin(), |client| client.char_index_at(400.0, y))
@@ -1893,10 +1821,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
     };
     for scroll in [-100_000.0, 900.0] {
         let _ = workbench_shell::test_driver::scroll_at(&mut app, 400.0, 300.0, scroll);
-        app.draw_window(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        );
+        app.draw_window(app.sole_window(), &surface.canvas());
         for y in [10.0, 30.0, 60.0] {
             assert!(
                 hit(&mut app, y).is_none(),
@@ -1919,15 +1844,11 @@ fn a_window_resize_keeps_the_top_visible_line() {
     // top edge stays the line at the top edge.
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1100, 800)).expect("surface");
     let wide = gfx::Size::new(1100.0, 800.0);
     let narrow = gfx::Size::new(700.0, 800.0);
 
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        wide,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), wide);
     // A long, WRAPPING document: every paragraph long enough that a
     // narrower window changes its row count.
     for index in 0..120 {
@@ -1936,17 +1857,13 @@ fn a_window_resize_keeps_the_top_visible_line() {
             &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
         );
     }
-    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+    let settle = |app: &mut Himark, surface: &mut gfx_raster::Surface, size: gfx::Size| {
         for tick in 0..10 {
             let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         }
     };
     settle(&mut app, &mut surface, wide);
@@ -1990,31 +1907,23 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
     // previous frame's viewport. The drift, if any, compounds here.
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 800)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1300, 800)).expect("surface");
     let wide = gfx::Size::new(1300.0, 800.0);
 
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        wide,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), wide);
     for index in 0..120 {
         let _ = workbench_shell::test_driver::type_text(
             &mut app,
             &format!("paragraph {index} with enough words that a narrower window must rewrap this line onto more rows than the wide one needed\n"),
         );
     }
-    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+    let settle = |app: &mut Himark, surface: &mut gfx_raster::Surface, size: gfx::Size| {
         for tick in 0..10 {
             let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         }
     };
     settle(&mut app, &mut surface, wide);
@@ -2032,7 +1941,7 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
         width -= 8.0;
         let _ = app.draw_window_sized(
             app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            &surface.canvas(),
             gfx::Size::new(width, 800.0),
         );
     }
@@ -2049,7 +1958,7 @@ fn a_live_resize_drags_the_width_through_many_steps_and_the_top_line_holds() {
     for step in 1..=20 {
         let _ = app.draw_window_sized(
             app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            &surface.canvas(),
             gfx::Size::new(width, 800.0 - step as f32 * 10.0),
         );
     }
@@ -2069,13 +1978,9 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
     // closest to the reported window.
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1300, 900)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((1300, 900)).expect("surface");
     let wide = gfx::Size::new(1300.0, 900.0);
-    let _ = app.draw_window_sized(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        wide,
-    );
+    let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), wide);
     let window = app.sole_window();
     let source: String = (0..80)
         .map(|index| {
@@ -2100,17 +2005,13 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
             focus: true,
         },
     )]));
-    let settle = |app: &mut Himark, surface: &mut skia_safe::Surface, size: gfx::Size| {
+    let settle = |app: &mut Himark, surface: &mut gfx_raster::Surface, size: gfx::Size| {
         for tick in 0..10 {
             let _ = workbench_shell::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 16.0),
             );
-            let _ = app.draw_window_sized(
-                app.sole_window(),
-                &gfx_skia::SkiaCanvas::new(surface.canvas()),
-                size,
-            );
+            let _ = app.draw_window_sized(app.sole_window(), &surface.canvas(), size);
         }
     };
     settle(&mut app, &mut surface, wide);
@@ -2127,7 +2028,7 @@ fn a_markdown_pane_resize_keeps_the_top_visible_line() {
         width -= 8.0;
         let _ = app.draw_window_sized(
             app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
+            &surface.canvas(),
             gfx::Size::new(width, 900.0),
         );
     }

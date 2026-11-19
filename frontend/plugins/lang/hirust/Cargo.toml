@@ -12,7 +12,7 @@ hisitter = { path = "../../../hisitter" }
 tree-sitter-rust = "0.24.2"
 
 [dev-dependencies]
-gfx-skia = { path = "../../../gfx-skia" }
+gfx-raster = { path = "../../../gfx-raster" }
 himark = { path = "../../../himark", features = ["test-support"] }
 workbench-shell = { path = "../../../workbench-shell", features = ["test-support"] }
 himarkdown = { path = "../../himarkdown" }

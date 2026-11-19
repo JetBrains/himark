@@ -252,7 +252,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang ninja-build pkg-config
           # Emscripten's libc++ headers need Clang 20 or newer; the distro
-          # libclang (18) cannot parse them when skia-bindings runs bindgen.
+          # libclang (18) cannot parse them when a build script runs bindgen.
           wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh 22

@@ -123,26 +123,17 @@ fn dump_palette_screenshot() {
     app.perform_batch(vec![himark::app::AppCommand::Register(
         std::sync::Arc::new(TogglePalette),
     )]);
-    let mut surface = gfx_skia::raster_tuple((2880, 1800)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(workbench_shell::test_driver::type_text(
         &mut app,
         "the document feed is an ordered lane — the servers hear edits in mirror order"
     ));
     assert!(app.perform_registered(app.sole_window(), "palette.toggle"));
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    app.draw_window(app.sole_window(), &surface.canvas());
     assert!(workbench_shell::test_driver::type_text(&mut app, "sel"));
     for tick in 0..30 {
-        app.draw_window(
-            app.sole_window(),
-            &gfx_skia::SkiaCanvas::new(surface.canvas()),
-        );
+        app.draw_window(app.sole_window(), &surface.canvas());
         let busy = workbench_shell::test_driver::animate(
             &mut app,
             imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
@@ -151,10 +142,7 @@ fn dump_palette_screenshot() {
             break;
         }
     }
-    let data = surface
-        .image_snapshot()
-        .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
+    let data = surface.snapshot().encode_png().expect("png");
     std::fs::create_dir_all(&dir).expect("the shot dir");
-    std::fs::write(format!("{dir}/palette.png"), data.as_bytes()).expect("write");
+    std::fs::write(format!("{dir}/palette.png"), &data[..]).expect("write");
 }

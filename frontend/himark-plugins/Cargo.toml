@@ -114,8 +114,7 @@ workbench-shell = { path = "../workbench-shell", features = ["capi", "test-suppo
 workbench = { path = "../workbench" }
 himark = { path = "../himark", features = ["test-support"] }
 gfx = { path = "../gfx" }
-gfx-skia = { path = "../gfx-skia" }
-skia-safe = "0.153.3"
+gfx-raster = { path = "../gfx-raster" }
 imba = { path = "../imba" }
 editor = { path = "../editor" }
 text = { path = "../text" }

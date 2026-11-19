@@ -47,30 +47,21 @@ fn paint(
     ui: &imba::ui::UiCtx,
 ) -> Raster {
     let height = ((band.end - band.start).ceil() as i32).max(1);
-    let mut surface = gfx_skia::raster_tuple((width, height)).expect("a raster surface");
-    gfx_skia::SkiaCanvas::new(surface.canvas()).clear(CLEAR);
-    surface.canvas().translate((0.0, -band.start));
+    let mut surface = gfx_raster::raster_tuple((width, height)).expect("a raster surface");
+    surface.canvas().clear(CLEAR);
+    surface.canvas().translate(0.0, -band.start);
     document.paint(
         editor,
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
+        &surface.canvas(),
         Rect::from_xywh(0.0, band.start, width as f32, band.end - band.start),
         false,
         store,
         ui,
         &theme(),
     );
-    let image = surface.image_snapshot();
-    let bytes = image
-        .peek_pixels()
-        .expect("raster pixels")
-        .bytes()
-        .expect("pixel bytes")
-        .to_vec();
-    let png = std::env::var_os("HIMARK_PROPERTY_DUMP").and_then(|_| {
-        image
-            .encode(None, gfx_skia::skia_safe::EncodedImageFormat::PNG, 100)
-            .map(|data| data.as_bytes().to_vec())
-    });
+    let image = surface.snapshot();
+    let bytes = image.bytes().to_vec();
+    let png = std::env::var_os("HIMARK_PROPERTY_DUMP").and_then(|_| image.encode_png());
     Raster { width, bytes, png }
 }
 

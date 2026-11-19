@@ -261,17 +261,15 @@ fn dump_history_tab_screenshot() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
     let window = app.sole_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(window, &surface.canvas());
     register_tabs(&mut app);
     assert!(app.perform_batch(vec![workbench_shell::shell::windowed(
         window,
         Arc::new(ShowHistory)
     )]));
     super::dock::settle(&mut app, &mut surface);
-    let image = surface.image_snapshot();
-    let data = image
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/history-tab.png"), data.as_bytes()).expect("write");
+    let image = surface.snapshot();
+    let data = image.encode_png().expect("png");
+    std::fs::write(format!("{dir}/history-tab.png"), &data[..]).expect("write");
 }

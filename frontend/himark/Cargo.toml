@@ -41,7 +41,7 @@ test-support = [
 ]
 
 [dev-dependencies]
-gfx-skia = { path = "../gfx-skia" }
+gfx-raster = { path = "../gfx-raster" }
 editor = { path = "../editor", features = ["test-support"] }
 hikit = { path = "../hikit", features = ["test-support"] }
 changesview = { path = "../changesview", features = ["test-support"] }

@@ -62,11 +62,8 @@ fn run_outline(batch: imba::effect::Batch<::toc::OutlineCommand>) -> Option<::to
 fn the_outline_derives_lands_and_jumps() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (source, document) = outlined_document();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
@@ -175,11 +172,8 @@ fn the_outline_derives_lands_and_jumps() {
 fn a_structureless_pane_offers_no_toc() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     // The toggle may refuse on a structureless pane — what matters
     // is that no panel opens.
@@ -384,11 +378,8 @@ fn outline_speedsearch_filters_steps_and_clears() {
 
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
@@ -498,11 +489,8 @@ fn speedsearch_arrows_step_the_matches() {
 
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
@@ -648,11 +636,8 @@ fn speedsearch_arrows_step_the_matches() {
 fn outline_folds_survive_relandings() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (_source, document) = outlined_document();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
@@ -791,11 +776,8 @@ fn dump_contents_drawer_screenshot() {
     };
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((2880, 1800)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((2880, 1800)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (document, caret) = server_outline();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(
@@ -834,11 +816,8 @@ fn dump_contents_drawer_screenshot() {
     let landed = land_drawer_outline(&mut app);
     super::dock::settle(&mut app, &mut surface);
     eprintln!("{} entries landed", landed.entries().len());
-    let data = surface
-        .image_snapshot()
-        .encode(None, skia_safe::EncodedImageFormat::PNG, None)
-        .expect("png");
-    std::fs::write(format!("{dir}/contents-drawer.png"), data.as_bytes()).expect("write");
+    let data = surface.snapshot().encode_png().expect("png");
+    std::fs::write(format!("{dir}/contents-drawer.png"), &data[..]).expect("write");
 }
 
 /// Derive the open drawer's outline in place (the test app runs no
@@ -914,11 +893,8 @@ fn land_drawer_outline(app: &mut Himark) -> ::toc::OutlineView {
 fn the_contents_drawer_reads_kinds_groups_and_the_caret() {
     let mut app = workbench_shell::app::workbench_app(AppFonts::embedded());
     let _ = app.add_window();
-    let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-    app.draw_window(
-        app.sole_window(),
-        &gfx_skia::SkiaCanvas::new(surface.canvas()),
-    );
+    let mut surface = gfx_raster::raster_tuple((800, 600)).expect("surface");
+    app.draw_window(app.sole_window(), &surface.canvas());
     let window = app.sole_window();
     let (document, caret) = server_outline();
     assert!(app.perform_batch(vec![workbench_shell::shell::opened(

@@ -254,13 +254,13 @@ fn references_stream_into_the_search_dock() {
 
     invoke(&mut app, window, "code.references");
 
-    let mut surface = gfx_skia::raster_tuple((900, 700)).expect("surface");
+    let mut surface = gfx_raster::raster_tuple((900, 700)).expect("surface");
     for _ in 0..4 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = app.draw_window(window, &gfx_skia::SkiaCanvas::new(surface.canvas()));
+        let _ = app.draw_window(window, &surface.canvas());
     }
 
     let entity = workbench::window::Windows::window_ref(app.store(), window).expect("the window");

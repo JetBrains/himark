@@ -759,7 +759,7 @@ mod tests {
     #[test]
     fn speed_search_input_paints_focused_only_while_a_query_stands() {
         let arena = Arena::default();
-        let mut surface = gfx_skia::raster_tuple((1, 1)).expect("surface");
+        let mut surface = gfx_raster::raster_tuple((1, 1)).expect("surface");
         let observed = Cell::new(None);
         let idle = ChainGate {
             inner: PaintFocusProbe(&observed),
@@ -770,7 +770,7 @@ mod tests {
             &idle,
             &arena,
             &Event::Paint {
-                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                canvas: &surface.canvas(),
                 focused: true,
             },
             Rect::from_wh(1.0, 1.0),
@@ -787,7 +787,7 @@ mod tests {
             &searching,
             &arena,
             &Event::Paint {
-                canvas: &gfx_skia::SkiaCanvas::new(surface.canvas()),
+                canvas: &surface.canvas(),
                 focused: true,
             },
             Rect::from_wh(1.0, 1.0),
