@@ -27,19 +27,16 @@ pub struct WindowFrame {
     /// The trailing clearance last written to the engine, in
     /// physical pixels.
     clearance: f32,
-    /// The toolbar height the traffic lights were last centered in,
-    /// in logical pixels.
+    /// The line the traffic lights were last centered on, in
+    /// logical pixels from the window's top.
     #[cfg(target_os = "macos")]
-    lights_band: f32,
+    lights_line: f32,
 }
 
-/// The traffic lights' leading edge: AppKit's own, so they end
-/// short of the toolbar's lead inset.
+/// A standard window button's frame height, as macOS 26 lays the
+/// traffic lights out.
 #[cfg(target_os = "macos")]
-const TRAFFIC_LIGHTS_LEFT: f32 = 9.0;
-/// A standard window button's frame height.
-#[cfg(target_os = "macos")]
-const TRAFFIC_LIGHT_HEIGHT: f32 = 16.0;
+const TRAFFIC_LIGHT_HEIGHT: f32 = 14.0;
 /// The three buttons' span, close's leading edge to zoom's
 /// trailing one, as macOS 26 lays them out (earlier systems are
 /// narrower).
@@ -48,6 +45,9 @@ const TRAFFIC_LIGHTS_WIDTH: f32 = 60.0;
 /// The air between the last button and the toolbar's first word.
 #[cfg(target_os = "macos")]
 const TRAFFIC_LIGHTS_GAP: f32 = 14.0;
+/// A capital's height as a share of the chrome face's size.
+#[cfg(target_os = "macos")]
+const CAP_HEIGHT: f32 = 0.7;
 
 impl WindowFrame {
     pub fn new(engine: Engine, bridge: Entity<BridgeView>) -> Self {
@@ -56,7 +56,7 @@ impl WindowFrame {
             bridge,
             clearance: 0.0,
             #[cfg(target_os = "macos")]
-            lights_band: 0.0,
+            lights_line: 0.0,
         }
     }
 
@@ -79,23 +79,33 @@ impl WindowFrame {
         self.bridge.update(cx, |_, cx| cx.notify());
     }
 
-    /// Stand the traffic lights vertically centered in the toolbar
-    /// band and have the toolbar clear them — again whenever the band's height changes (a theme, a
+    /// The middle of the toolbar words' capitals, in physical pixels
+    /// from the band's top — the line the eye reads the band on,
+    /// which sits below the band's own middle.
+    #[cfg(target_os = "macos")]
+    fn words_line(&self) -> f32 {
+        self.engine.with_app(|app| {
+            let chrome =
+                editor::env::Themes::of(app.store()).part(hikit::chrome::ToolbarChrome::KEY);
+            chrome.title_baseline - chrome.title_size * CAP_HEIGHT / 2.0
+        })
+    }
+
+    /// Stand the traffic lights on the words' line, as far from the
+    /// window's left edge as from its top, and have the toolbar
+    /// clear them — again whenever that line moves (a theme, a
     /// display's scale).
     #[cfg(target_os = "macos")]
-    fn center_traffic_lights(&mut self, band: f32, window: &Window) {
-        if self.lights_band == band || band <= 0.0 {
+    fn place_traffic_lights(&mut self, line: f32, window: &Window) {
+        if self.lights_line == line || line <= 0.0 {
             return;
         }
-        self.lights_band = band;
-        window.set_traffic_light_position(point(
-            px(TRAFFIC_LIGHTS_LEFT),
-            px((band - TRAFFIC_LIGHT_HEIGHT) / 2.0),
-        ));
+        self.lights_line = line;
+        let inset = line - TRAFFIC_LIGHT_HEIGHT / 2.0;
+        window.set_traffic_light_position(point(px(inset), px(inset)));
         // The toolbar leads past the buttons: the host's geometry,
         // in the engine's physical pixels.
-        let clearance = (TRAFFIC_LIGHTS_LEFT + TRAFFIC_LIGHTS_WIDTH + TRAFFIC_LIGHTS_GAP)
-            * window.scale_factor();
+        let clearance = (inset + TRAFFIC_LIGHTS_WIDTH + TRAFFIC_LIGHTS_GAP) * window.scale_factor();
         self.engine
             .with_app(|app| app.set_chrome_clearance(clearance));
     }
@@ -126,7 +136,7 @@ impl Render for WindowFrame {
         };
         self.clear(clearance, cx);
         #[cfg(target_os = "macos")]
-        self.center_traffic_lights(self.toolbar_height() / scale, window);
+        self.place_traffic_lights(self.words_line() / scale, window);
 
         div()
             .size_full()
