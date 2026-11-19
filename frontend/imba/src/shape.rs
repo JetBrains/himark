@@ -104,6 +104,18 @@ impl FontWorld {
         let blob = parley::fontique::Blob::new(Arc::new(bytes));
         let mut template = self.0.template.lock().expect("the font world");
         let registered = template.collection.register_fonts(blob, None);
+        // A registered face also serves as a fallback for the scripts
+        // the app writes in. Fontique's own fallback lists come from
+        // the system; a platform with no system fonts (the web) has
+        // none, and a run its family does not cover shaped to boxes
+        // with a covering face sitting in the world. Appended, so a
+        // system list still answers first.
+        for script in [*b"Latn", *b"Zyyy", *b"Cyrl", *b"Grek"] {
+            template.collection.append_fallbacks(
+                parley::fontique::Script::from_bytes(script),
+                registered.iter().map(|(id, _)| *id),
+            );
+        }
         let mut fallback = self.0.fallback.lock().expect("the world's fallback");
         if fallback.is_none() {
             if let Some((id, _)) = registered.first() {
