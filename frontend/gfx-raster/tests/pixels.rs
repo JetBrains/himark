@@ -143,3 +143,74 @@ fn quads_clips_shapes_and_text_land_where_painted() {
         0
     );
 }
+
+#[test]
+fn a_translucent_rounded_rect_is_seamless_and_round() {
+    let mut surface = gfx_raster::raster(300, 120).expect("surface");
+    {
+        let canvas = surface.canvas();
+        canvas.clear(gfx::Color::from_rgb(255, 255, 255));
+        // Fractional edges and a half-transparent ink: a piece laid
+        // twice, or a gap between pieces, shows as a line.
+        canvas.draw_round_rect(
+            gfx::Rect::new(20.3, 20.6, 270.7, 90.4),
+            12.5,
+            12.5,
+            &paint_of(gfx::Color::from_argb(128, 0, 0, 255)),
+        );
+    }
+    if let Some(path) = std::env::var_os("HIMARK_RASTER_PNG") {
+        std::fs::write(path, surface.encode_png()).expect("the frame saved");
+    }
+    // Every pixel well inside the shape is the same blend.
+    let inside = surface.color_at(150, 55);
+    for y in 22..89 {
+        for x in 34..257 {
+            assert_eq!(surface.color_at(x, y), inside, "a seam at ({x}, {y})");
+        }
+    }
+    for x in 22..269 {
+        for y in 34..77 {
+            assert_eq!(surface.color_at(x, y), inside, "a seam at ({x}, {y})");
+        }
+    }
+    // The corners are cut round: the square's own corner pixel is
+    // untouched, a point on the diagonal inside the arc is inked.
+    let white = gfx::Color::from_rgb(255, 255, 255);
+    for (x, y) in [(21, 21), (269, 21), (21, 89), (269, 89)] {
+        assert_eq!(surface.color_at(x, y), white, "corner ({x}, {y}) is cut");
+    }
+    for (x, y) in [(27, 27), (263, 27), (27, 83), (263, 83)] {
+        assert_eq!(
+            surface.color_at(x, y),
+            inside,
+            "inside the arc at ({x}, {y})"
+        );
+    }
+}
+
+#[test]
+fn a_translucent_pill_is_seamless() {
+    let mut surface = gfx_raster::raster(300, 80).expect("surface");
+    {
+        let canvas = surface.canvas();
+        canvas.clear(gfx::Color::from_rgb(255, 255, 255));
+        // The radius is half the height: no straight side at all.
+        canvas.draw_round_rect(
+            gfx::Rect::new(20.3, 20.0, 270.7, 46.75),
+            13.375,
+            13.375,
+            &paint_of(gfx::Color::from_argb(128, 0, 0, 255)),
+        );
+    }
+    let inside = surface.color_at(150, 33);
+    for x in 36..256 {
+        for y in 21..46 {
+            assert_eq!(surface.color_at(x, y), inside, "a seam at ({x}, {y})");
+        }
+    }
+    let white = gfx::Color::from_rgb(255, 255, 255);
+    assert_eq!(surface.color_at(21, 21), white);
+    assert_eq!(surface.color_at(269, 45), white);
+    assert_ne!(surface.color_at(22, 33), white, "the end's middle is inked");
+}

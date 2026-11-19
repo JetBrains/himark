@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The painter. Shapes are moved to device pixels and handed to
-//! tiny-skia; the clip is one device rect, applied by geometry where
-//! that is exact (rects, glyph and image blits) and by a coverage
-//! mask only when a path or a rounded shape straddles it.
+//! tiny-skia; the clip is one device rect, applied by geometry
+//! throughout: rects and images are intersected with it, and paths
+//! and glyphs are coverage masks blended inside it.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -16,12 +16,10 @@ use tiny_skia::{FillRule, Mask, Path, PathBuilder, Pixmap};
 use crate::glyphs::{self, Face, GlyphMask};
 
 /// What outlives one `canvas()` borrow: the transform and clip
-/// stack, and the mask of the clip it was last built for — rebuilt
-/// only when a straddling shape meets a different clip.
+/// stack.
 #[derive(Default)]
 pub(crate) struct State {
     transform: Transform,
-    clip_mask: RefCell<Option<(gfx::Rect, Mask)>>,
 }
 
 /// Paints into a [`crate::Surface`]. The `Painter` trait paints
@@ -31,18 +29,29 @@ pub struct RasterCanvas<'a> {
     state: &'a State,
 }
 
-/// Where a shape's device bounds sit against the clip.
-enum Against {
-    Outside,
-    Inside,
-    Straddling,
-}
-
-fn solid(color: gfx::Color, anti_alias: bool) -> tiny_skia::Paint<'static> {
-    let mut paint = tiny_skia::Paint::default();
-    paint.set_color_rgba8(color.r(), color.g(), color.b(), color.a());
-    paint.anti_alias = anti_alias;
-    paint
+/// Source-over one ink at one coverage across a run of
+/// premultiplied pixels.
+fn over(run: &mut [[u8; 4]], ink: [u8; 4], covered: f32) {
+    let source = (covered * ink[3] as f32 + 0.5) as u32;
+    match source {
+        0 => {}
+        255.. => run.fill([ink[0], ink[1], ink[2], 255]),
+        _ => {
+            let keep = 255 - source;
+            let add = [
+                ink[0] as u32 * source,
+                ink[1] as u32 * source,
+                ink[2] as u32 * source,
+                source * 255,
+            ];
+            for pixel in run {
+                for channel in 0..4 {
+                    pixel[channel] =
+                        ((add[channel] + pixel[channel] as u32 * keep + 127) / 255) as u8;
+                }
+            }
+        }
+    }
 }
 
 fn device_rect(rect: gfx::Rect) -> Option<tiny_skia::Rect> {
@@ -78,100 +87,186 @@ impl<'a> RasterCanvas<'a> {
         tiny_skia::Transform::from_row(a, b, c, d, e, f)
     }
 
-    fn against(&self, bounds: gfx::Rect) -> Against {
-        let clip = self.clip();
-        if clip.intersect(&bounds).is_none() {
-            return Against::Outside;
-        }
-        let inside = bounds.left >= clip.left
-            && bounds.top >= clip.top
-            && bounds.right <= clip.right
-            && bounds.bottom <= clip.bottom;
-        match inside {
-            true => Against::Inside,
-            false => Against::Straddling,
-        }
-    }
-
-    /// Runs `draw` with the mask of the current clip.
-    fn with_clip_mask(&self, draw: impl FnOnce(&Mask)) {
-        let clip = self.clip();
-        let mut held = self.state.clip_mask.borrow_mut();
-        let stale = !matches!(&*held, Some((built, _)) if *built == clip);
-        if stale {
-            let (width, height) = {
-                let pixmap = self.pixmap.borrow();
-                (pixmap.width(), pixmap.height())
-            };
-            let Some(mut mask) = Mask::new(width, height) else {
-                return;
-            };
-            if let Some(rect) = device_rect(clip) {
-                mask.fill_path(
-                    &PathBuilder::from_rect(rect),
-                    FillRule::Winding,
-                    false,
-                    tiny_skia::Transform::identity(),
-                );
-            }
-            *held = Some((clip, mask));
-        }
-        if let Some((_, mask)) = &*held {
-            draw(mask);
-        }
-    }
-
     /// Fills or strokes a path given in LOCAL coordinates.
     fn draw_local(&self, path: Path, paint: &gfx::Paint) {
-        let Some(path) = path.transform(self.matrix()) else {
-            return;
-        };
-        let fill = solid(paint.color(), paint.is_anti_alias());
-        let stroke = tiny_skia::Stroke {
-            width: (paint.stroke_width() * self.state.transform.magnitude()).max(1.0),
-            line_cap: match paint.stroke_cap() {
-                gfx::PaintCap::Butt => tiny_skia::LineCap::Butt,
-                gfx::PaintCap::Round => tiny_skia::LineCap::Round,
-                gfx::PaintCap::Square => tiny_skia::LineCap::Square,
-            },
-            line_join: match paint.stroke_join() {
-                gfx::PaintJoin::Miter => tiny_skia::LineJoin::Miter,
-                gfx::PaintJoin::Round => tiny_skia::LineJoin::Round,
-                gfx::PaintJoin::Bevel => tiny_skia::LineJoin::Bevel,
-            },
-            ..Default::default()
-        };
+        if let Some(path) = path.transform(self.matrix()) {
+            self.draw_device(path, paint);
+        }
+    }
+
+    /// Fills or strokes a path already in DEVICE pixels: its
+    /// coverage is rasterized into a mask the size of its visible
+    /// part and blended like a glyph — the clip is geometry, and the
+    /// cost follows the pixels actually touched.
+    fn draw_device(&self, path: Path, paint: &gfx::Paint) {
         let (fills, strokes) = match paint.style() {
             gfx::PaintStyle::Fill => (true, false),
             gfx::PaintStyle::Stroke => (false, true),
             gfx::PaintStyle::StrokeAndFill => (true, true),
         };
-        let reach = match strokes {
-            true => stroke.width,
-            false => 1.0,
-        };
-        let bounds = path.bounds();
-        let bounds = gfx::Rect::new(
-            bounds.left() - reach,
-            bounds.top() - reach,
-            bounds.right() + reach,
-            bounds.bottom() + reach,
-        );
-        let identity = tiny_skia::Transform::identity();
-        let draw = |mask: Option<&Mask>| {
-            let mut pixmap = self.pixmap.borrow_mut();
-            if fills {
-                pixmap.fill_path(&path, &fill, FillRule::Winding, identity, mask);
+        let outline = match strokes {
+            true => {
+                let stroke = tiny_skia::Stroke {
+                    width: (paint.stroke_width() * self.state.transform.magnitude()).max(1.0),
+                    line_cap: match paint.stroke_cap() {
+                        gfx::PaintCap::Butt => tiny_skia::LineCap::Butt,
+                        gfx::PaintCap::Round => tiny_skia::LineCap::Round,
+                        gfx::PaintCap::Square => tiny_skia::LineCap::Square,
+                    },
+                    line_join: match paint.stroke_join() {
+                        gfx::PaintJoin::Miter => tiny_skia::LineJoin::Miter,
+                        gfx::PaintJoin::Round => tiny_skia::LineJoin::Round,
+                        gfx::PaintJoin::Bevel => tiny_skia::LineJoin::Bevel,
+                    },
+                    ..Default::default()
+                };
+                path.stroke(&stroke, 1.0)
             }
-            if strokes {
-                pixmap.stroke_path(&path, &fill, &stroke, identity, mask);
-            }
+            false => None,
         };
-        match self.against(bounds) {
-            Against::Outside => {}
-            Against::Inside => draw(None),
-            Against::Straddling => self.with_clip_mask(|mask| draw(Some(mask))),
+        let shapes: [Option<&Path>; 2] = [fills.then_some(&path), outline.as_ref()];
+        let Some(bounds) = shapes
+            .iter()
+            .flatten()
+            .map(|shape| {
+                let bounds = shape.bounds();
+                gfx::Rect::new(bounds.left(), bounds.top(), bounds.right(), bounds.bottom())
+            })
+            .reduce(|all, next| all.union(&next))
+        else {
+            return;
+        };
+        let clip = self.clip();
+        let left = (bounds.left.floor() as i32).max(clip.left.floor() as i32);
+        let top = (bounds.top.floor() as i32).max(clip.top.floor() as i32);
+        let right = (bounds.right.ceil() as i32).min(clip.right.ceil() as i32);
+        let bottom = (bounds.bottom.ceil() as i32).min(clip.bottom.ceil() as i32);
+        if left >= right || top >= bottom {
+            return;
         }
+        let (width, height) = ((right - left) as u32, (bottom - top) as u32);
+        let Some(mut mask) = Mask::new(width, height) else {
+            return;
+        };
+        let placed = tiny_skia::Transform::from_translate(-left as f32, -top as f32);
+        let mut coverage: Option<Vec<u8>> = None;
+        for shape in shapes.into_iter().flatten() {
+            mask.clear();
+            mask.fill_path(shape, FillRule::Winding, paint.is_anti_alias(), placed);
+            // A fill and its stroke are one shape: the union, not
+            // one laid over the other.
+            coverage = Some(match coverage {
+                Some(mut all) => {
+                    for (into, from) in all.iter_mut().zip(mask.data()) {
+                        *into = (*into).max(*from);
+                    }
+                    all
+                }
+                None => mask.data().to_vec(),
+            });
+        }
+        let Some(coverage) = coverage else {
+            return;
+        };
+        self.blend(
+            &GlyphMask {
+                left: 0,
+                top: 0,
+                width,
+                height,
+                coverage,
+            },
+            left,
+            top,
+            paint.color(),
+        );
+    }
+
+    /// A device rect filled inside the clip, written directly: a
+    /// pixel's coverage is how much of it the rect overlaps, so a
+    /// fractional edge is exact and a whole-pixel one is free.
+    fn fill_device_rect(&self, rect: gfx::Rect, paint: &gfx::Paint) {
+        let (l, t, r, b) = match paint.is_anti_alias() {
+            true => (rect.left, rect.top, rect.right, rect.bottom),
+            false => (
+                rect.left.round(),
+                rect.top.round(),
+                rect.right.round(),
+                rect.bottom.round(),
+            ),
+        };
+        let clip = self.clip();
+        let from_x = (l.floor() as i32).max(clip.left.ceil() as i32);
+        let from_y = (t.floor() as i32).max(clip.top.ceil() as i32);
+        let to_x = (r.ceil() as i32).min(clip.right.floor() as i32);
+        let to_y = (b.ceil() as i32).min(clip.bottom.floor() as i32);
+        if from_x >= to_x || from_y >= to_y {
+            return;
+        }
+        // How much of the unit pixel at `at` the span `from..to` covers.
+        let overlap = |at: i32, from: f32, to: f32| {
+            ((at as f32 + 1.0).min(to) - (at as f32).max(from)).clamp(0.0, 1.0)
+        };
+        let color = paint.color();
+        let ink = [color.r(), color.g(), color.b(), color.a()];
+        // The first and last columns may be partly covered; every
+        // column between them is whole.
+        let first = overlap(from_x, l, r);
+        let last = overlap(to_x - 1, l, r);
+        let width = (to_x - from_x) as usize;
+        let mut pixmap = self.pixmap.borrow_mut();
+        let stride = pixmap.width() as usize * 4;
+        let data = pixmap.data_mut();
+        for y in from_y..to_y {
+            let down = overlap(y, t, b);
+            let at = y as usize * stride + from_x as usize * 4;
+            let row = data[at..at + width * 4].as_chunks_mut::<4>().0;
+            match width {
+                1 => over(&mut row[..1], ink, first.min(last) * down),
+                _ => {
+                    over(&mut row[..1], ink, first * down);
+                    over(&mut row[1..width - 1], ink, down);
+                    over(&mut row[width - 1..], ink, last * down);
+                }
+            }
+        }
+    }
+
+    /// An axis-aligned filled rounded rect without one big path: the
+    /// span between the rounded ends is a rect fill and only the two
+    /// ends are curves (a pill is all ends and still splits). The
+    /// pieces meet on whole-pixel columns, so no pixel is covered
+    /// twice and none is left thin. Answers `false` when the shape
+    /// is too narrow to split that way.
+    fn round_rect_in_pieces(&self, rect: gfx::Rect, rx: f32, ry: f32, paint: &gfx::Paint) -> bool {
+        const KAPPA: f32 = 0.552_284_8;
+        let [a, _, _, d, _, _] = self.state.transform.matrix();
+        let placed = self.state.transform.rect(rect);
+        let (rx, ry) = (rx * a, ry * d);
+        let (l, t, r, b) = (placed.left, placed.top, placed.right, placed.bottom);
+        let (x1, x2) = ((l + rx).ceil(), (r - rx).floor());
+        if x1 >= x2 {
+            return false;
+        }
+        self.fill_device_rect(gfx::Rect::new(x1, t, x2, b), paint);
+        let (kx, ky) = (rx * KAPPA, ry * KAPPA);
+        // Each end: from the split column along the top, around
+        // both corners, back along the bottom.
+        let ends = [(x1, l, l + rx, l + rx - kx), (x2, r, r - rx, r - rx + kx)];
+        for (split, edge, arc, control) in ends {
+            let mut builder = PathBuilder::new();
+            builder.move_to(split, t);
+            builder.line_to(arc, t);
+            builder.cubic_to(control, t, edge, t + ry - ky, edge, t + ry);
+            builder.line_to(edge, b - ry);
+            builder.cubic_to(edge, b - ry + ky, control, b, arc, b);
+            builder.line_to(split, b);
+            builder.close();
+            if let Some(path) = builder.finish() {
+                self.draw_device(path, paint);
+            }
+        }
+        true
     }
 
     fn round_rect(&self, rect: gfx::Rect, rx: f32, ry: f32, paint: &gfx::Paint) {
@@ -179,6 +274,12 @@ impl<'a> RasterCanvas<'a> {
         let ry = ry.min(rect.height() / 2.0).max(0.0);
         if rx <= 0.0 || ry <= 0.0 {
             self.rect(rect, paint);
+            return;
+        }
+        if matches!(paint.style(), gfx::PaintStyle::Fill)
+            && self.state.transform.axis_aligned()
+            && self.round_rect_in_pieces(rect, rx, ry, paint)
+        {
             return;
         }
         // Four quarter-ellipses as cubics.
@@ -205,17 +306,7 @@ impl<'a> RasterCanvas<'a> {
         // An axis-aligned fill is clipped by geometry and needs no
         // path at all.
         if matches!(paint.style(), gfx::PaintStyle::Fill) && self.state.transform.axis_aligned() {
-            let Some(visible) = self.state.transform.rect(rect).intersect(&self.clip()) else {
-                return;
-            };
-            if let Some(visible) = device_rect(visible) {
-                self.pixmap.borrow_mut().fill_rect(
-                    visible,
-                    &solid(paint.color(), paint.is_anti_alias()),
-                    tiny_skia::Transform::identity(),
-                    None,
-                );
-            }
+            self.fill_device_rect(self.state.transform.rect(rect), paint);
             return;
         }
         if let Some(rect) = device_rect(rect) {
@@ -394,15 +485,31 @@ impl gfx::Painter for RasterCanvas<'_> {
     }
 
     fn clear(&self, color: gfx::Color) {
-        // A clear REPLACES what the clip covers.
-        let Some(clip) = device_rect(self.clip()) else {
+        // A clear REPLACES what the clip covers, with the color's
+        // premultiplied bytes.
+        let clip = self.clip();
+        let (from_x, to_x) = (clip.left.ceil() as usize, clip.right.floor() as usize);
+        let (from_y, to_y) = (clip.top.ceil() as usize, clip.bottom.floor() as usize);
+        if from_x >= to_x {
             return;
-        };
-        let mut paint = solid(color, false);
-        paint.blend_mode = tiny_skia::BlendMode::Source;
-        self.pixmap
-            .borrow_mut()
-            .fill_rect(clip, &paint, tiny_skia::Transform::identity(), None);
+        }
+        let alpha = color.a() as u32;
+        let scaled = |channel: u8| ((channel as u32 * alpha + 127) / 255) as u8;
+        let ink = [
+            scaled(color.r()),
+            scaled(color.g()),
+            scaled(color.b()),
+            color.a(),
+        ];
+        let mut pixmap = self.pixmap.borrow_mut();
+        let stride = pixmap.width() as usize * 4;
+        let data = pixmap.data_mut();
+        for y in from_y..to_y {
+            let row = &mut data[y * stride + from_x * 4..y * stride + to_x * 4];
+            for pixel in row.as_chunks_mut::<4>().0 {
+                *pixel = ink;
+            }
+        }
     }
 
     fn draw_rect(&self, rect: gfx::Rect, paint: &gfx::Paint) {
