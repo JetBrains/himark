@@ -2,37 +2,34 @@
 # (.github/workflows/tests.yml), so every ignore here carries its
 # justification.
 #
-# Most of the list is the price of the gpui `=0.2.2` pin (see
-# frontend/gfx-gpui/Cargo.toml: the GlyphId transmute keeps it
-# exact): these ride in through gpui's own tree, carry no fix we can
-# take without a gpui bump, and parse no untrusted input on our
-# roads. Re-audit the whole list when the pin moves.
+# Most of the list rides in through gpui (`gpui-pre`, pinned exactly
+# in frontend/gfx-gpui/Cargo.toml): these carry no fix we can take
+# without a gpui bump, and parse no untrusted input on our roads.
+# Re-audit the whole list when the pin moves: empty `ignore`, run
+# `cargo audit --deny warnings`, and keep only what still fires.
 
 [advisories]
 ignore = [
     # ttf-parser is unmaintained (no fix released). Transitive only:
-    # via gpui's cosmic-text/fontdb and via resvg's usvg/fontdb — it
-    # parses fonts we ship or the system provides, not documents.
+    # via gpui's cosmic-text/fontdb and via usvg — it parses fonts we
+    # ship or the system provides, not documents.
     "RUSTSEC-2026-0192",
-    # async-std discontinued — gpui_http_client <- zed-async-tar.
-    "RUSTSEC-2025-0052",
-    # pin-utils unmaintained — the discontinued async-std's own dep,
-    # same chain as above.
-    "RUSTSEC-2026-0441",
-    # instant unmaintained — gpui_util <- futures-lite 1 <- fastrand 1.
-    "RUSTSEC-2024-0384",
-    # paste unmaintained — metal/core-video (gpui's Metal road).
-    "RUSTSEC-2024-0436",
-    # proc-macro-error2 unmaintained — stacksafe-macro <- gpui.
-    "RUSTSEC-2026-0173",
-    # rustls-pemfile unmaintained — zed-reqwest <- gpui_http_client.
-    "RUSTSEC-2025-0134",
-    # rustybuzz unmaintained — usvg (resvg, ours) and gpui; it shapes
-    # text inside SVGs we rasterize from our own markdown/mermaid
-    # road. Drop when resvg moves to harfrust.
+    # rustybuzz unmaintained — usvg (resvg: ours, and gpui's); it
+    # shapes text inside SVGs we rasterize from our own
+    # markdown/mermaid road. Drop when resvg moves to harfrust.
     "RUSTSEC-2026-0206",
+    # paste unmaintained — a proc macro under the image crate's
+    # codecs (exr's pulp, rav1e), which gpui turns on.
+    "RUSTSEC-2024-0436",
     # The zbus family is unmaintained — oo7 (gpui's linux keyring).
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0372",
+    # chrono unmaintained — gpui's own dependency.
+    "RUSTSEC-2026-0543",
+    # humantime unmaintained — OURS: the RFC 3339 stamps of the agent
+    # host and the session summaries. It formats and parses
+    # timestamps we wrote ourselves; replace it when a successor
+    # settles.
+    "RUSTSEC-2026-0542",
 ]
