@@ -161,6 +161,15 @@ fn main() {
                 // decorations even where the compositor draws none
                 // (GNOME), and the frame would draw no buttons.
                 window_decorations: Some(WindowDecorations::Client),
+                // macOS: no system title bar — the workbench toolbar
+                // is the window's top band, and the frame stands the
+                // traffic lights in the lead inset it reserves.
+                #[cfg(target_os = "macos")]
+                titlebar: Some(himark_gpui::gpui::TitlebarOptions {
+                    title: None,
+                    appears_transparent: true,
+                    traffic_light_position: None,
+                }),
                 ..Default::default()
             },
             |_, cx| {
