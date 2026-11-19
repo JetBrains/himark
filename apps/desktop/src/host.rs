@@ -142,16 +142,13 @@ pub async fn serve(asks: HostAsks, engine: Engine, cx: &mut AsyncApp) {
                         prompt: None,
                     })
                 });
-                let paths = match prompt {
-                    Ok(prompt) => match prompt.await {
-                        Ok(Ok(Some(paths))) => paths,
-                        Ok(Err(error)) => {
-                            eprintln!("[host] file picker failed: {error:#}");
-                            Vec::new()
-                        }
-                        _ => Vec::new(),
-                    },
-                    Err(_) => return,
+                let paths = match prompt.await {
+                    Ok(Ok(Some(paths))) => paths,
+                    Ok(Err(error)) => {
+                        eprintln!("[host] file picker failed: {error:#}");
+                        Vec::new()
+                    }
+                    _ => Vec::new(),
                 };
                 let locations = picked_locations(paths);
                 engine.with_app(|app| app.host_picked(request, locations));
@@ -161,16 +158,13 @@ pub async fn serve(asks: HostAsks, engine: Engine, cx: &mut AsyncApp) {
                     .map(PathBuf::from)
                     .unwrap_or_default();
                 let prompt = cx.update(|cx| cx.prompt_for_new_path(&home, Some(&suggested)));
-                let path = match prompt {
-                    Ok(prompt) => match prompt.await {
-                        Ok(Ok(path)) => path,
-                        Ok(Err(error)) => {
-                            eprintln!("[host] save picker failed: {error:#}");
-                            None
-                        }
-                        Err(_) => None,
-                    },
-                    Err(_) => return,
+                let path = match prompt.await {
+                    Ok(Ok(path)) => path,
+                    Ok(Err(error)) => {
+                        eprintln!("[host] save picker failed: {error:#}");
+                        None
+                    }
+                    Err(_) => None,
                 };
                 let picked = path.map(|path| location(&path, ResourceType::document()));
                 engine.with_app(|app| app.host_picked_folder(request, picked));

@@ -13,8 +13,7 @@ use std::sync::Arc;
 use himark::app::{AppFonts, Himark};
 use himark::bridge::ViewBridgeId;
 use himark_gpui::gpui::{
-    px, size, App, AppContext as _, Application, Bounds, WindowBounds, WindowDecorations,
-    WindowOptions,
+    px, size, App, AppContext as _, Bounds, WindowBounds, WindowDecorations, WindowOptions,
 };
 use himark_gpui::{BridgeView, Engine};
 use workbench_shell::app::WorkbenchShell as _;
