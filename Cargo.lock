@@ -851,7 +851,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2660,7 +2660,7 @@ name = "gfx"
 version = "0.1.0"
 dependencies = [
  "fontique",
- "skrifa 0.44.0",
+ "skrifa 0.46.2",
  "unicode-script",
 ]
 
@@ -2691,7 +2691,7 @@ name = "gfx-raster"
 version = "0.1.0"
 dependencies = [
  "gfx",
- "skrifa 0.44.0",
+ "skrifa 0.46.2",
  "tiny-skia 0.12.0",
 ]
 
@@ -4902,7 +4902,7 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skrifa 0.44.0",
+ "skrifa 0.46.2",
 ]
 
 [[package]]
@@ -7195,6 +7195,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.43.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "005c8acf251756c478b0bf402885bfd88a1476020c4c7e6060edc1aa68da38ea"
+dependencies = [
+ "bytemuck",
+ "font-types 0.12.4",
+ "once_cell",
+]
+
+[[package]]
 name = "rebase"
 version = "0.1.0"
 dependencies = [
@@ -8000,6 +8011,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "skrifa"
+version = "0.46.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4febebda507fb889c545a37a135517769d1391941013561292897961d1887d6"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.43.3",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8195,7 +8216,7 @@ version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c2499c2d826531388872b2268718aed907a39bd785ab0dcfe57fab26283f92e"
 dependencies = [
- "skrifa 0.44.0",
+ "skrifa 0.40.0",
  "yazi",
  "zeno",
 ]

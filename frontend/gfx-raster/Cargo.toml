@@ -9,4 +9,4 @@ license = "Apache-2.0"
 [dependencies]
 gfx = { path = "../gfx" }
 tiny-skia = "0.12"
-skrifa = "0.44"
+skrifa = "0.46"
