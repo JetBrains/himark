@@ -14,16 +14,16 @@ use editor::location::{ResourceLocation, ResourceType};
 use imba::store::Store;
 
 pub(crate) fn install(store: &mut Store) {
-    store.put(editor::link::LinkDoor(Arc::new(|store, target| {
-        match target {
+    store.put(editor::link::LinkDoor(Arc::new(
+        |store, target| match target {
             LinkTarget::Url(url) => {
                 if !himark::host::OpenUrl::open(store, &url) {
                     eprintln!("[links] no browser door seated — link dropped: {url}");
                 }
             }
             target => himark::commands::AppRequests::push(store, open_target(target)),
-        }
-    })));
+        },
+    )));
 }
 
 /// The landing half of a followed link — the command the door
@@ -156,14 +156,17 @@ pub(crate) fn land_in_diff(
     if let Some((changes, canvas, key)) = landing.reveal {
         canvas::canvases::Canvases::set_reveal(store, changes, canvas, key);
     }
-    let byte = landing.pair.zip(place.target.as_ref()).and_then(|(pair, target)| {
-        let right = OpenDocuments::diff_view_ref(store, documents, pair)?
-            .right
-            .document();
-        let document = OpenDocuments::document_ref(store, documents, right)?;
-        let byte = documents::text_ext::offset_at(&mut document.text().view(), target.start);
-        Some((pair, byte as u32))
-    });
+    let byte = landing
+        .pair
+        .zip(place.target.as_ref())
+        .and_then(|(pair, target)| {
+            let right = OpenDocuments::diff_view_ref(store, documents, pair)?
+                .right
+                .document();
+            let document = OpenDocuments::document_ref(store, documents, right)?;
+            let byte = documents::text_ext::offset_at(&mut document.text().view(), target.start);
+            Some((pair, byte as u32))
+        });
     if let Some((pair, byte)) = byte {
         fx.scope(
             move |command| imba::command::Verb::at(documents, command),
@@ -187,7 +190,12 @@ mod tests {
         let at = |path: &str| placed(&folder, path).map(|location| location.path().to_vec());
         assert_eq!(
             at("src/main.rs"),
-            Some(vec!["home".into(), "proj".into(), "src".into(), "main.rs".into()])
+            Some(vec![
+                "home".into(),
+                "proj".into(),
+                "src".into(),
+                "main.rs".into()
+            ])
         );
         assert_eq!(at("../x.rs"), Some(vec!["home".into(), "x.rs".into()]));
         assert_eq!(at("/etc/hosts"), Some(vec!["etc".into(), "hosts".into()]));
