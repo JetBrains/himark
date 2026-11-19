@@ -114,61 +114,37 @@ corresponding features are simply unavailable.
 
 ## macOS
 
-The macOS app is an AppKit application that links the engine as a static
-library and renders through Metal.
+The macOS app is the Rust desktop shell (`apps/desktop`): a gpui window
+that renders through Metal.
 
 ### Prerequisites
 
-- Xcode 15 or newer, with the Command Line Tools installed
-  (`xcode-select --install`). The generated project targets macOS 14.
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`.
+- The Xcode Command Line Tools (`xcode-select --install`).
 - The Rust target for your machine (`aarch64-apple-darwin` or
-  `x86_64-apple-darwin`). The build script adds it if missing.
+  `x86_64-apple-darwin`). The bundle script adds it if missing.
 
 ### Build and run
 
 ```sh
-cd apps/himark-apple
-./build.sh mac            # build the engine, the host, the app; then launch it
+cargo run -p himark-desktop      # the app, straight from cargo
+apps/desktop/bundle.sh           # the application bundle; then launches it
 ```
 
-`build.sh mac` does the following:
+`bundle.sh` does the following:
 
-1. Copies the C headers from the crates that generate them
-   (`frontend/himark-ffi/include/himark.h` and its siblings).
-2. Sparse-clones the pinned Skia headers into `target/skia-headers/` on the
-   first run. The Objective-C++ Metal bridge needs them; the prebuilt Skia
-   archive only carries libraries.
-3. Runs `cargo build -p himark-plugins --features skia-shell --release` for
-   the host architecture and
-   reads the exact Skia library directory from cargo's build-script output
-   into `Generated-macOS.xcconfig`, so the app links the same Skia the
-   engine was built with.
-4. Generates `himark.xcodeproj` with XcodeGen and builds the `himark-macOS`
-   scheme in Release into `apps/himark-apple/build/`.
-5. Builds `himark-agent-host` and copies it into the app bundle next to the
-   main executable. If `target/web` exists (see the web section) it is
-   bundled too, so the host can serve the browser app.
-6. Ad-hoc signs the bundle and opens it.
+1. Runs `cargo build -p himark-desktop -p agent-host --release` for the
+   host architecture.
+2. Assembles `target/bundle/himark-macOS.app`: the desktop binary,
+   `himark-agent-host` next to it, and `apps/desktop/Info.plist`. If
+   `target/web` exists (see the web section) it is bundled under
+   `Resources/web`, so the host can serve the browser app.
+3. Ad-hoc signs the bundle and opens it (with `CI` set, it only builds).
 
-To work in Xcode instead, generate the project and open it:
-
-```sh
-./build.sh gen            # also builds the iOS targets; see below
-open himark.xcodeproj     # pick the himark-macOS scheme and press Cmd+R
-```
-
-Re-run `./build.sh gen` after changing the Rust side; Xcode links the static
-library that cargo produced and does not rebuild it.
-
-Open files with **File > Open** (`Cmd+O`). On macOS you can also run the
-Rust gpui shell (`cargo run -p himark-desktop`) as a
-quick way to test the engine without Xcode.
+Open files with **File > Open** (`Cmd+O`).
 
 ## Linux
 
-The gpui shell is the Rust-native desktop app; on Linux it is the only
-shell. It runs on Wayland and X11.
+The same gpui shell is the Linux app. It runs on Wayland and X11.
 
 ### Prerequisites
 
@@ -228,7 +204,7 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 
 ```sh
 cd apps/himark-apple
-./build.sh ios            # or ./build.sh gen: builds device + simulator libraries
+./build.sh                # builds device + simulator libraries, generates the project
 open himark.xcodeproj     # pick the himark-iOS scheme and a simulator, press Cmd+R
 ```
 

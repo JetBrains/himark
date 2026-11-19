@@ -11,7 +11,7 @@ There is exactly one such contract, exposed as one C ABI
 is `include/himark.h`). The DESIGN story of the host — what it is, and how
 deferred work flows across the boundary as effects and external executors —
 is `docs/ahp/host.md`; this document is the concrete surface. Every shell is a
-consumer of it: the Swift macOS/iOS app (`apps/himark-apple`) drives the C
+consumer of it: the Swift iOS app (`apps/himark-apple`) drives the C
 ABI; the Rust shells (winit desktop, web) call the same contract with
 native types instead of over FFI. Neither width is privileged; the C ABI is
 the canonical documented surface.

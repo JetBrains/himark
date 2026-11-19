@@ -5,44 +5,10 @@ options:
   # open. Keep the generated project readable by every Xcode 15 release.
   projectFormat: xcode15_0
   deploymentTarget:
-    macOS: "14.0"
     iOS: "16.0"
   createIntermediateGroups: true
 
 targets:
-  himark-macOS:
-    type: application
-    platform: macOS
-    sources: [Sources/Shared, Sources/macOS]
-    configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
-    # ⌘R builds the Rust staticlib for this SDK first — a stale
-    # libhimark_plugins.a was the silent failure; build.sh stays the
-    # from-scratch and xcconfig-(re)generation road.
-    preBuildScripts:
-      - name: Build Rust (himark-plugins)
-        script: exec "$SRCROOT/xcode-build-rust.sh"
-        shell: /bin/bash
-        basedOnDependencyAnalysis: false
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.himark.mac
-        INFOPLIST_FILE: Info-macOS.plist
-        # The Rust staticlib is HOST-ARCH only (cargo builds one
-        # target), so a universal Release link finds no symbols for
-        # the other slice — build the active arch everywhere.
-        ONLY_ACTIVE_ARCH: YES
-        SWIFT_VERSION: "5.9"
-        # The Rust pre-build phase writes target/ and himark.h.
-        ENABLE_USER_SCRIPT_SANDBOXING: NO
-        SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
-        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
-        CLANG_CXX_LIBRARY: "libc++"
-    frameworks: [AppKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
-    # A GENERATED shared scheme: without one, every regeneration mints
-    # new target UUIDs and Xcode's per-user auto-created schemes die —
-    # the target "disappears" from the scheme picker.
-    scheme: {}
-
   himark-iOS:
     type: application
     platform: iOS
@@ -82,15 +48,3 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
     frameworks: [UIKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
     scheme: {}
-
-# Extra schemes: same targets, Run/Test/Analyze in Release. The per-target
-# `scheme: {}` ones stay Debug for ⌘R; pick these to run optimized Swift.
-schemes:
-  himark-macOS-release:
-    build:
-      targets: { himark-macOS: all }
-    run: { config: Release }
-    test: { config: Release }
-    profile: { config: Release }
-    analyze: { config: Release }
-    archive: { config: Release }

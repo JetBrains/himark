@@ -1,56 +1,37 @@
-# himark — Apple apps (macOS + iOS)
+# himark — the iOS app
 
-> **Which app is which.** `himark-macOS` is THE macOS app: the Rust
-> workbench (every column, header, drawer and sheet drawn by the
-> engine — docs/ui/design-system.md) inside one AppKit window.
-> `himark-iOS` is the SwiftUI shell, kept for iOS only. `himark-desktop`
-> — the SwiftUI shell on macOS — is left behind: it still builds, but
-> the workbench is where macOS work happens.
+> The macOS app is the Rust desktop shell (`apps/desktop`); this
+> project is iOS only.
 
-One Xcode project, two targets (`himark-macOS`, `himark-iOS`), over himark's
-C embedding ABI exported by `crates/himark-api`. Each app owns its window, the Metal
-layer, the display link — and skia and the GPU surface. himark is a headless
-engine: handed an `SkCanvas` and events, answering
-the platform's text-input protocol for input methods.
+One Xcode project, one target (`himark-iOS`), over himark's C embedding
+ABI (`frontend/himark-ffi`, linked as the `himark-plugins` staticlib).
+The app owns its windows, the Metal layers and the display links;
+himark is a headless engine that is handed events and a surface to
+paint, and answers the platform's text-input protocol.
 
 ## Run it
 
 ```
 brew install xcodegen        # one-time
 
-./build.sh mac               # macOS: build + launch (fast — host skia only)
-./build.sh ios               # iOS: build the target (first run builds iOS skia — slow)
-./build.sh gen               # both: generate the project for use in Xcode
-open himark.xcodeproj        # pick a scheme (himark-macOS / himark-iOS) and ⌘R
+./build.sh                   # build device + simulator libraries, generate the project
+open himark.xcodeproj        # pick the himark-iOS scheme and ⌘R
 ```
 
-`build.sh mac` only touches the host (macOS) skia, so it's quick; `ios` and
-`gen` trigger `cargo build --target aarch64-apple-ios`, whose **first** run
-builds/downloads iOS skia and is slow. On its first run, the script also
-checks out the pinned Skia headers under `target/` for the Objective-C++ Metal
-bridge. For each platform it builds
-`himark-api`, resolves *that platform's* skia from the cargo build-script
-JSON, writes the matching xcconfig, and (re)generates the two-target project.
-The macOS path targets the machine's native architecture, even when the active
-Rust toolchain runs under Rosetta; the script installs that Rust target on
-first use.
+`build.sh` builds the staticlib for `aarch64-apple-ios` and
+`aarch64-apple-ios-sim`, resolves each platform's skia from the cargo
+build-script JSON, writes `Generated-iOS.xcconfig`, and (re)generates
+the project. The first run builds/downloads iOS skia and is slow.
 
-## What's shared vs. per-platform
+## Sources
 
 ```
 Sources/
   Shared/
-    HimarkEngine.swift        the engine wrapper — create/render/events/IME,
-                              platform-neutral (CAMetalLayer + Metal only)
-    SkiaMetalBridge/          host-side skia↔Metal (compiles for both)
-  macOS/  HimarkView.swift    NSView + NSTextInputClient + CVDisplayLink; main.swift
-  iOS/    HimarkView.swift    UIView + UIKeyInput + CADisplayLink; AppDelegate.swift
+    HimarkEngine.swift        the engine wrapper — create/render/events/IME
+    SkiaMetalBridge/          host-side skia↔Metal
+  iOS/                        UIKit views, the SwiftUI shell, text input
 ```
-
-The engine, the ABI, and the skia bridge are identical across platforms —
-`CAMetalLayer`/`MTLDevice` and himark's C ABI are all cross-platform. Only
-the view adapter differs: AppKit's `NSTextInputClient` and `CVDisplayLink`
-vs. UIKit's text input and `CADisplayLink`.
 
 ## The one build constraint: one shared skia per platform
 
@@ -84,14 +65,3 @@ keeps the desktop pair. The native words read the same files
 section) and set in the bundled Bricolage Grotesque, so nothing in
 `RootView.swift` names a size or a color. The system appearance drives
 both halves (`AppHost.follow(appearance:)`).
-
-## Status of the iOS target
-
-The macOS app is the complete reference (full IME via `NSTextInputClient`,
-mouse, scroll, live-resize). The iOS view renders, takes touches (→ click),
-a pan (→ scroll), and basic typing via `UIKeyInput`. Full `UITextInput`/IME
-on iOS is a follow-up — the *engine* already supports marked text; only the
-iOS adapter is basic for now.
-
-`crates/ios` (the old Rust iOS staticlib shell) is now redundant — the iOS
-target consumes `himark-api` like macOS does.

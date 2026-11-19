@@ -10,29 +10,15 @@ SKIA_BINDINGS_DIR="$(ls -d "$ROOT"/vendor/skia-bindings-* | sort -V | tail -n 1)
 # bridge headers come straight from it, version-matched by construction.
 SKIA_HEADERS_DIR="$SKIA_BINDINGS_DIR/skia"
 
+# The simulator slice runs on the host's architecture.
 case "$(uname -m)" in
-  arm64)
-    MACOS_RUST_TARGET="aarch64-apple-darwin"
-    MACOS_XCODE_ARCH="arm64"
-    ;;
-  x86_64)
-    MACOS_RUST_TARGET="x86_64-apple-darwin"
-    MACOS_XCODE_ARCH="x86_64"
-    ;;
+  arm64) SIMULATOR_ARCH="arm64" ;;
+  x86_64) SIMULATOR_ARCH="x86_64" ;;
   *)
     echo "unsupported macOS architecture: $(uname -m)" >&2
     exit 1
     ;;
 esac
-
-ensure_rust_target() {
-  if rustup target list --installed | grep -qx "$MACOS_RUST_TARGET"; then
-    return
-  fi
-
-  echo "==> rustup target add $MACOS_RUST_TARGET"
-  rustup target add "$MACOS_RUST_TARGET"
-}
 
 ensure_skia_headers() {
   if [[ -f "$SKIA_HEADERS_DIR/include/core/SkCanvas.h" \
@@ -91,9 +77,7 @@ cp "$ROOT/frontend/himark-ffi/include/himark.h" ./himark.h
 cp "$ROOT/frontend/workbench-shell/include/himark-shell.h" ./himark-shell.h
 cp "$ROOT/frontend/himark-plugins/include/himark-host.h" ./himark-host.h
 cp "$ROOT/frontend/hitailnet/include/himark-tailnet.h" ./himark-tailnet.h
-ACTION="${1:-gen}"
 ensure_skia_headers
-ensure_rust_target
 
 export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--sysroot $(xcrun --sdk iphoneos --show-sdk-path)"
 export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="--sysroot $(xcrun --sdk iphonesimulator --show-sdk-path) --target=arm64-apple-ios-simulator"
@@ -102,47 +86,15 @@ export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="--sysroot $(xcrun --sdk i
 # in gcc_darwin_arm64.c fails the cross build without this.
 export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }-Wno-sign-compare"
 
-resolve "--target $MACOS_RUST_TARGET" "$ROOT/target/$MACOS_RUST_TARGET/release" Generated-macOS.xcconfig "" "" "$MACOS_XCODE_ARCH"
-
-if [ "$ACTION" = "gen" ] || [ "$ACTION" = "ios" ]; then
-  resolve "--target aarch64-apple-ios" "$ROOT/target/aarch64-apple-ios/release" Generated-iOS.xcconfig "[sdk=iphoneos*]"
-  resolve "--target aarch64-apple-ios-sim" "$ROOT/target/aarch64-apple-ios-sim/release" Generated-iOS.xcconfig "[sdk=iphonesimulator*]" append
-  {
-    echo "ARCHS[sdk=iphoneos*] = arm64"
-    echo "ARCHS[sdk=iphonesimulator*] = $MACOS_XCODE_ARCH"
-  } >> Generated-iOS.xcconfig
-fi
-[ -f Generated-iOS.xcconfig ] || echo "// run ./build.sh ios to build the iOS target" > Generated-iOS.xcconfig
+resolve "--target aarch64-apple-ios" "$ROOT/target/aarch64-apple-ios/release" Generated-iOS.xcconfig "[sdk=iphoneos*]"
+resolve "--target aarch64-apple-ios-sim" "$ROOT/target/aarch64-apple-ios-sim/release" Generated-iOS.xcconfig "[sdk=iphonesimulator*]" append
+{
+  echo "ARCHS[sdk=iphoneos*] = arm64"
+  echo "ARCHS[sdk=iphonesimulator*] = $SIMULATOR_ARCH"
+} >> Generated-iOS.xcconfig
 
 command -v xcodegen >/dev/null || { echo "install XcodeGen: brew install xcodegen"; exit 1; }
 xcodegen generate
-echo "generated himark.xcodeproj (targets: himark-macOS, himark-iOS)"
+echo "generated himark.xcodeproj (target: himark-iOS)"
 
-case "$ACTION" in
-  mac)
-    rm -rf "build/Build/Products/Release/himark-macOS.app/Contents/MacOS/web"
-    xcodebuild -project himark.xcodeproj -scheme himark-macOS -configuration Release \
-      -derivedDataPath build \
-      HIMARK_VERSION="${HIMARK_VERSION:-0.1}" \
-      HIMARK_BUILD_NUMBER="${HIMARK_BUILD_NUMBER:-1}" \
-      build | tail -5
-    ( cd "$ROOT" && cargo build -p agent-host --release --target "$MACOS_RUST_TARGET" >/dev/null )
-    APP="build/Build/Products/Release/himark-macOS.app"
-    cp "$ROOT/target/$MACOS_RUST_TARGET/release/himark-agent-host" "$APP/Contents/MacOS/"
-    if [ -d "$ROOT/target/web" ]; then
-      rm -rf "$APP/Contents/Resources/web"
-      mkdir -p "$APP/Contents/Resources"
-      cp -R "$ROOT/target/web" "$APP/Contents/Resources/web"
-    else
-      echo "note: no target/web — build the page with apps/web/tools/build-web.sh first"
-    fi
-    codesign --force --sign - "$APP/Contents/MacOS/himark-agent-host" 2>/dev/null || true
-    codesign --force --sign - "$APP" 2>/dev/null || true
-    if [ -n "${CI:-}" ]; then
-      echo "built $APP"
-    else
-      open "$APP"
-    fi ;;
-  ios)
-    echo "iOS built for aarch64-apple-ios; select the himark-iOS scheme in Xcode to run on a device/simulator." ;;
-esac
+echo "iOS built for aarch64-apple-ios; select the himark-iOS scheme in Xcode to run on a device/simulator."

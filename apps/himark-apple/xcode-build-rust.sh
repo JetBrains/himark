@@ -2,12 +2,11 @@
 # Copyright © 2026 JetBrains s.r.o.
 # SPDX-License-Identifier: Apache-2.0
 #
-# The Xcode PRE-BUILD phase (project.yml seats it on both targets):
+# The Xcode PRE-BUILD phase (project.yml seats it on the target):
 # build the Rust staticlib for the SDK being built, so ⌘R alone is
 # enough after a Rust change — linking a stale libhimark_plugins.a was
 # the silent failure this kills. `./build.sh` stays the road for the
-# from-scratch setup, the xcconfig generation and the macOS bundle's
-# extras (agent-host, the web site).
+# from-scratch setup and the xcconfig generation.
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(cd ../.. && pwd)"
@@ -25,14 +24,7 @@ export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin
 unset SDKROOT
 export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 
-case "${PLATFORM_NAME:-macosx}" in
-  macosx)
-    case "$(uname -m)" in
-      arm64) RUST_TARGET="aarch64-apple-darwin" ;;
-      x86_64) RUST_TARGET="x86_64-apple-darwin" ;;
-      *) echo "error: unsupported host architecture $(uname -m)" >&2; exit 1 ;;
-    esac
-    ;;
+case "${PLATFORM_NAME:-}" in
   iphoneos)
     RUST_TARGET="aarch64-apple-ios"
     export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--sysroot $(xcrun --sdk iphoneos --show-sdk-path)"
@@ -95,7 +87,7 @@ case "${LIBRARY_SEARCH_PATHS:-}" in
   *)
     echo "error: the generated xcconfig's link paths are STALE — skia now lives at" >&2
     echo "       $SKIA" >&2
-    echo "       run ./build.sh (gen covers macOS+iOS) and build again." >&2
+    echo "       run ./build.sh and build again." >&2
     exit 1
     ;;
 esac

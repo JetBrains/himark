@@ -235,9 +235,6 @@ jobs:
             Cargo.lock
             apps/web/tailnet-wasm/go.sum
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
 
@@ -249,17 +246,15 @@ jobs:
           cache-targets: true
 
       - name: Build application bundle
-        working-directory: apps/himark-apple
         env:
           HIMARK_VERSION: ${{ needs.version.outputs.version }}
           HIMARK_BUILD_NUMBER: ${{ github.run_number }}
-        run: ./build.sh mac
+        run: apps/desktop/bundle.sh
 
       # Archive before uploading to preserve executable permissions and symlinks.
       - name: Archive native app
         run: |
-          tar -C apps/himark-apple/build/Build/Products/Release \
-            -cf native-app.tar himark-macOS.app
+          tar -C target/bundle -cf native-app.tar himark-macOS.app
 
       - name: Upload native app
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
