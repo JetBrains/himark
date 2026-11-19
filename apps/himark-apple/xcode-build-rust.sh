@@ -52,8 +52,8 @@ rustup target list --installed | grep -qx "$RUST_TARGET" || {
 # compiles its own runtime/cgo with -Werror (see build.sh).
 export CGO_CFLAGS="${CGO_CFLAGS:+$CGO_CFLAGS }-Wno-sign-compare"
 
-echo "==> cargo build -p himark-plugins --features skia-shell,metal-shell --release --target $RUST_TARGET"
-( cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release --target "$RUST_TARGET" )
+echo "==> cargo build -p himark-plugins --features metal-shell --release --target $RUST_TARGET"
+( cd "$ROOT" && cargo build -p himark-plugins --features metal-shell --release --target "$RUST_TARGET" )
 
 # The FFI header the bridging header includes — keep it the build's.
 cp "$ROOT/frontend/himark-ffi/include/himark.h" ./himark.h
@@ -61,33 +61,3 @@ cp "$ROOT/frontend/workbench-shell/include/himark-shell.h" ./himark-shell.h
 cp "$ROOT/frontend/himark-plugins/include/himark-host.h" ./himark-host.h
 cp "$ROOT/frontend/hitailnet/include/himark-tailnet.h" ./himark-tailnet.h
 cp "$ROOT/frontend/hiahp/include/himark-ahp.h" ./himark-ahp.h
-
-# The skia-bindings out-dir rotates with dependency bumps, and the
-# xcconfig's link paths were evaluated BEFORE this phase ran: when
-# they no longer match the build on disk, fail LOUDLY with the remedy
-# instead of letting the link fail cryptically (or worse, succeed
-# against a stale skia).
-# (The reader DRAINS stdin — an early break would SIGPIPE cargo and
-# pipefail would read that as the build failing.)
-SKIA="$(cd "$ROOT" && cargo build -p himark-plugins --features skia-shell,metal-shell --release --target "$RUST_TARGET" \
-  --message-format=json 2>/dev/null | python3 -c "
-import sys, json
-out = None
-for line in sys.stdin:
-    try: m = json.loads(line)
-    except Exception: continue
-    if out is None and m.get('reason') == 'build-script-executed' \
-            and 'skia-bindings' in m.get('package_id', ''):
-        out = m['out_dir'] + '/skia'
-print(out or '')
-")"
-[ -n "$SKIA" ] || { echo "error: skia-bindings out dir not found in cargo's output" >&2; exit 1; }
-case "${LIBRARY_SEARCH_PATHS:-}" in
-  *"$SKIA"*) ;;
-  *)
-    echo "error: the generated xcconfig's link paths are STALE — skia now lives at" >&2
-    echo "       $SKIA" >&2
-    echo "       run ./build.sh and build again." >&2
-    exit 1
-    ;;
-esac

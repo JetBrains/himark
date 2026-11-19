@@ -208,11 +208,10 @@ cd apps/himark-apple
 open himark.xcodeproj     # pick the himark-iOS scheme and a simulator, press Cmd+R
 ```
 
-The script builds `frontend-host` for `aarch64-apple-ios` and
+The script builds `himark-plugins` for `aarch64-apple-ios` and
 `aarch64-apple-ios-sim`, writes both library paths into
 `Generated-iOS.xcconfig` with SDK qualifiers, and regenerates the project.
-The first iOS build is slow because cargo downloads and prepares the iOS
-Skia archive. The script points `bindgen` at the iOS SDK sysroots through
+The script points `bindgen` at the iOS SDK sysroots through
 `BINDGEN_EXTRA_CLANG_ARGS_*`, so the QuickJS bindings generate without extra
 setup. Running on a physical device needs a signing team set in Xcode.
 

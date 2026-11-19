@@ -363,18 +363,6 @@ bool himark_perform_command(HimarkEngine *engine, HimarkBridge bridge, const cha
 HimarkPointed himark_bridge_event(HimarkEngine *engine, HimarkBridge bridge, HimarkEvent event);
 
 /**
- * Paint the window bridge into the host's canvas — the canvas is
- * borrowed payload for this one call, the only pointer shape the
- * normalized surface allows.
- */
-bool himark_bridge_draw(HimarkEngine *engine,
-                        HimarkBridge bridge,
-                        void *canvas,
-                        float width,
-                        float height,
-                        float _scale);
-
-/**
  * display → layout: the SIZED stage, as a handle. 0 refuses an
  * unmounted bridge.
  */
@@ -451,17 +439,6 @@ bool himark_take_reveal(HimarkEngine *engine,
                         float *out_width,
                         float *out_height,
                         uint32_t *out_placement);
-
-/**
- * Paint the realized slice into the host's canvas.
- */
-bool himark_frame_paint(HimarkEngine *engine,
-                        HimarkBridge bridge,
-                        void *canvas,
-                        float x,
-                        float y,
-                        float width,
-                        float height);
 
 /**
  * Release the frame; its arena goes home warm to the bridge it

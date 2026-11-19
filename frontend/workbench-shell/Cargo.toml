@@ -15,7 +15,6 @@ rpds = "1"
 ahp-docsync = { path = "../ahp-docsync" }
 ahp-lsp = { path = "../ahp-lsp" }
 canvas = { path = "../canvas" }
-gfx-skia = { path = "../gfx-skia" }
 myersdiff = { path = "../myersdiff" }
 operation = { path = "../operation" }
 rebase = { path = "../rebase" }
@@ -41,6 +40,7 @@ host-discovery = { path = "../../protocol/host-discovery" }
 gfx = { path = "../gfx" }
 
 [dev-dependencies]
+gfx-skia = { path = "../gfx-skia" }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 rpds = "1"
 himarkdown = { path = "../plugins/himarkdown" }

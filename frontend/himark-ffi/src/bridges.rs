@@ -33,7 +33,7 @@ use gfx::{Point, Rect, Size};
 use himark::bridge::ViewBridgeId;
 // Only the paint doors speak the canvas — keep the import with
 // them, not the default build.
-#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
+#[cfg(feature = "metal-shell")]
 use gfx::Canvas;
 use imba::event::{Event, EventResult, MouseButton};
 
@@ -522,30 +522,8 @@ pub unsafe extern "C" fn himark_bridge_event(
     }
 }
 
-/// Paint the window bridge into the host's canvas — the canvas is
-/// borrowed payload for this one call, the only pointer shape the
-/// normalized surface allows.
-#[cfg(feature = "skia-shell")]
-#[no_mangle]
-pub unsafe extern "C" fn himark_bridge_draw(
-    engine: *mut HimarkEngine,
-    bridge: HimarkBridge,
-    canvas: *mut c_void,
-    width: f32,
-    height: f32,
-    _scale: f32,
-) -> bool {
-    if canvas.is_null() {
-        return false;
-    }
-    let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
-    engine.as_mut().map_or(false, |engine| {
-        bridge_draw(engine, bridge, canvas, width, height)
-    })
-}
-
-/// The window bridge's paint, whatever the canvas is over.
-#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
+/// The window bridge's paint into the surface's canvas.
+#[cfg(feature = "metal-shell")]
 pub(crate) fn bridge_draw(
     engine: &mut HimarkEngine,
     bridge: HimarkBridge,
@@ -826,30 +804,8 @@ pub unsafe extern "C" fn himark_take_reveal(
     true
 }
 
-/// Paint the realized slice into the host's canvas.
-#[cfg(feature = "skia-shell")]
-#[no_mangle]
-pub unsafe extern "C" fn himark_frame_paint(
-    engine: *mut HimarkEngine,
-    bridge: HimarkBridge,
-    canvas: *mut c_void,
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
-) -> bool {
-    if canvas.is_null() {
-        return false;
-    }
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    let canvas: &Canvas<'_> = &gfx_skia::SkiaCanvas::new(&*(canvas as *const skia_safe::Canvas));
-    frame_paint(engine, bridge, canvas, x, y, width, height)
-}
-
-/// The realized slice's paint, whatever the canvas is over.
-#[cfg(any(feature = "skia-shell", feature = "metal-shell"))]
+/// The realized slice's paint into the surface's canvas.
+#[cfg(feature = "metal-shell")]
 pub(crate) fn frame_paint(
     engine: &mut HimarkEngine,
     bridge: HimarkBridge,

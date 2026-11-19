@@ -28,14 +28,6 @@ capi = [
     "dep:tracing",
     "hiahp/capi",
 ]
-# The apple staticlib draws through skia canvases crossing the C
-# ABI; a shell with its own painter (gpui) never enables this.
-skia-shell = [
-    "capi",
-    "dep:skia-safe",
-    "dep:gfx-skia",
-    "himark-ffi/skia-shell",
-]
 # The apple staticlib draws through gpui's Metal renderer over a
 # layer the shell owns — no canvas crosses the C ABI.
 metal-shell = ["capi", "himark-ffi/metal-shell"]
@@ -50,8 +42,6 @@ peeker = { path = "../plugins/peeker", optional = true }
 demo = { path = "../plugins/demo", optional = true }
 hiscript = { path = "../hiscript", optional = true }
 tracing = { version = "0.1", optional = true }
-gfx-skia = { path = "../gfx-skia", optional = true }
-skia-safe = { version = "0.153.3", optional = true }
 himark = { path = "../himark" }
 hiahp = { path = "../hiahp" }
 editor = { path = "../editor" }
@@ -115,13 +105,6 @@ hir = { path = "../plugins/lang/hir" }
 hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
 tokio = { version = "1", default-features = false, features = ["rt"] }
-
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-# GRAPHITE, no ganesh: the Apple shells render through
-# SkiaMetalBridge.mm on Skia's successor backend. No prebuilt
-# exists for graphite+textlayout — CI builds Skia from source
-# until our own binary cache lands.
-skia-safe = { version = "0.153.3", features = ["metal", "graphite"], optional = true }
 
 [build-dependencies]
 cbindgen = "0.29.4"

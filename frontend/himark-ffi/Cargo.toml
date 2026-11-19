@@ -13,8 +13,6 @@ documents = { path = "../documents" }
 hikit = { path = "../hikit" }
 myersdiff = { path = "../myersdiff" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
-gfx-skia = { path = "../gfx-skia", optional = true }
-skia-safe = { version = "0.153", optional = true }
 gfx-gpui = { path = "../gfx-gpui", optional = true }
 
 # gpui's Metal renderer and CoreText text system, with no gpui app
@@ -28,6 +26,5 @@ objc2-quartz-core = { version = "0.3", optional = true }
 cbindgen = "0.29.4"
 
 [features]
-skia-shell = ["dep:skia-safe", "dep:gfx-skia"]
 # The apple shells draw through gpui's renderer over a layer they own.
 metal-shell = ["dep:gfx-gpui", "dep:gpui_apple", "dep:objc2-quartz-core"]

@@ -18,10 +18,13 @@ brew install xcodegen        # one-time
 open himark.xcodeproj        # pick the himark-iOS scheme and ⌘R
 ```
 
-`build.sh` builds the staticlib for `aarch64-apple-ios` and
-`aarch64-apple-ios-sim`, resolves each platform's skia from the cargo
-build-script JSON, writes `Generated-iOS.xcconfig`, and (re)generates
-the project. The first run builds/downloads iOS skia and is slow.
+`build.sh` builds the staticlib (`himark-plugins`, feature
+`metal-shell`) for `aarch64-apple-ios` and `aarch64-apple-ios-sim`,
+writes `Generated-iOS.xcconfig`, and (re)generates the project.
+
+Bridges draw through gpui's Metal renderer: each bridge view owns a
+`CAMetalLayer`, the engine paints into a scene and the renderer
+presents it (`frontend/himark-ffi/src/surface.rs`). No skia is linked.
 
 ## Sources
 
@@ -29,25 +32,8 @@ the project. The first run builds/downloads iOS skia and is slow.
 Sources/
   Shared/
     HimarkEngine.swift        the engine wrapper — create/render/events/IME
-    SkiaMetalBridge/          host-side skia↔Metal
   iOS/                        UIKit views, the SwiftUI shell, text input
 ```
-
-## The one build constraint: one shared skia per platform
-
-The bridge creates the `SkCanvas`; `himark-api` paints into it. The
-`SkCanvas*` crossing `himark_draw` must belong to one skia — so each target
-links *the exact skia `himark-api` built for that platform*. `build.sh`
-resolves it from the per-target cargo output (`target/release` for macOS,
-`target/aarch64-apple-ios/release` for iOS) and points the xcconfig there.
-`himark-api` builds skia with the `metal` feature so that libskia includes
-the Metal backend the bridge needs. The skia frameworks differ by platform
-(macOS `ApplicationServices` vs. iOS `CoreGraphics`/`CoreText`) and are read
-from each build's own link declarations, so the xcconfigs are correct per
-platform without hardcoding.
-
-> **First iOS build is slow:** `cargo build --target aarch64-apple-ios`
-> builds/downloads iOS skia the first time.
 
 ## The iOS shell's chrome
 

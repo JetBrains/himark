@@ -3902,7 +3902,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "skia-safe",
  "text",
  "toc",
  "tokio",
@@ -3955,14 +3954,12 @@ dependencies = [
  "editor",
  "gfx",
  "gfx-gpui",
- "gfx-skia",
  "gpui-pre-apple",
  "hikit",
  "himark",
  "imba",
  "myersdiff",
  "objc2-quartz-core 0.3.2",
- "skia-safe",
  "tokio",
 ]
 

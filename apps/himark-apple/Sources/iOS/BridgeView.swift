@@ -354,9 +354,7 @@ class HimarkBridgeView: UIView {
         } else {
             switch engine.renderBridge(bridge: bridgeId, into: surface,
                                        pixelWidth: w, pixelHeight: h, scale: Float(scale)) {
-            case .reconciling, .starved:
-                // Starved: no drawable, nothing painted — retry owed,
-                // or the view shows stale pixels until the next event.
+            case .reconciling:
                 needsRedraw = true
             case .painted:
                 break

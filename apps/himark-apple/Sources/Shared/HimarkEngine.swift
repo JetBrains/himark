@@ -442,25 +442,10 @@ final class HimarkEngine {
         case reconciling
         /// Painted, quiet.
         case painted
-        /// No drawable this frame: NOTHING painted. The pass must be
-        /// retried, or the view shows stale pixels until the next
-        /// event happens to request a frame — conflating this with
-        /// "painted, quiet" was the stuck-highlight bug.
-        case starved
     }
 
-    func renderBridge(bridge: HimarkBridge, into surface: SkiaMetalSurface,
-                      pixelWidth w: Int32, pixelHeight h: Int32, scale: Float,
-                      coupled: Bool = true) -> RenderPass {
-        guard let canvas = surface.begin(pixelWidth: w, pixelHeight: h, coupled: coupled)
-        else { return .starved }
-        let reconciling = himark_bridge_draw(engine, bridge, canvas, Float(w), Float(h), scale)
-        surface.end()
-        return reconciling ? .reconciling : .painted
-    }
-
-    /// The gpui-renderer road: the engine paints into the surface's
-    /// scene and the surface presents — no canvas crosses over.
+    /// The engine paints into the surface's scene and the surface
+    /// presents — no canvas crosses over.
     func renderBridge(bridge: HimarkBridge, into surface: MetalSurface,
                       pixelWidth w: Int32, pixelHeight h: Int32, scale: Float) -> RenderPass {
         let reconciling = himark_surface_bridge_draw(
@@ -642,38 +627,4 @@ final class RenderContext {
     deinit {
         himark_render_context_destroy(raw)
     }
-}
-
-final class SkiaMetalSurface {
-    private let skia: OpaquePointer
-
-    init(layer: CAMetalLayer, device: MTLDevice) {
-        skia = skia_metal_create(Unmanaged.passUnretained(layer).toOpaque(),
-                                 Unmanaged.passUnretained(device).toOpaque())
-    }
-
-    deinit {
-        skia_metal_destroy(skia)
-    }
-
-    /// `coupled` must be decided BEFORE the drawable is vended —
-    /// it latches the layer's presentsWithTransaction for this
-    /// frame's drawable. Pass the same value to `end`.
-    func begin(pixelWidth w: Int32, pixelHeight h: Int32, coupled: Bool = true) -> UnsafeMutableRawPointer? {
-        skia_metal_begin(skia, w, h, coupled)
-    }
-
-    /// ONE PRESENT DISCIPLINE: inside the transaction, on this
-    /// thread. The async road (a0c6635e) let a still frame hand its
-    /// drawable to the submit queue and return, which read well on
-    /// a scroll and was ruinous on a drag: the layer's
-    /// `presentsWithTransaction` is a MODE, and flipping it per
-    /// frame while a present is still pending leaves
-    /// `nextDrawable` waiting out CoreAnimation's one-second
-    /// timeout, over and over. Measured over 240 resize steps:
-    /// 51.9s mixing the roads, 4.6s coupled throughout.
-    func end() {
-        skia_metal_end(skia)
-    }
-
 }
