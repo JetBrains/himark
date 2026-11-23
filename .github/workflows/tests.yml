@@ -331,7 +331,7 @@ jobs:
 
       - name: Publish test report
         if: always() && hashFiles('test-reports/**/*.xml') != ''
-        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d
+        uses: mikepenz/action-junit-report@a16be3a69023e9bd7e748ede768b3282ea7b30ce
         with:
           check_name: Test reports
           report_paths: test-reports/**/*.xml
