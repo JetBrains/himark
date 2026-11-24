@@ -62,10 +62,21 @@ pub struct Document {
     /// sweep's whole input from the markup side (docs/editor/scroll-stripe.md).
     scroll_stripe_generation: u64,
 
-    markups: rpds::HashTrieMapSync<MarkupId, Markup>,
+    /// One entry per feature layer on this document (diagnostics, a
+    /// diff wash, an editor's own overlay) — few, so a plain map
+    /// behind an `Arc`, like `fragments`.
+    markups: std::sync::Arc<std::collections::HashMap<MarkupId, Markup>>,
 
-    fragments:
-        rpds::HashTrieMapSync<FragmentSetId, intervals::Intervals<crate::markup::IntervalId, ()>>,
+    /// One entry per windowed editor onto this document (a fence
+    /// embed, a before-card, a completion's cover) — a handful, so a
+    /// plain map behind an `Arc`: a document clone shares it, a write
+    /// copies the few entries.
+    fragments: std::sync::Arc<
+        std::collections::HashMap<
+            FragmentSetId,
+            intervals::Intervals<crate::markup::IntervalId, ()>,
+        >,
+    >,
     /// The next key a fragment mints from: one counter for every set,
     /// so adding a fragment never scans the set for a free key.
     next_fragment_key: u32,
@@ -127,12 +138,13 @@ impl Document {
     pub fn new(text: Text, markup: Markup) -> Self {
         #[cfg(any(test, feature = "test-support"))]
         BORN.with(|born| born.set(born.get() + 1));
-        let mut markups = rpds::HashTrieMapSync::new_sync();
+        let mut markups = std::collections::HashMap::new();
         if !markup.is_empty() {
             let mut markup = markup;
             markup.set_scope(crate::markup::MarkupScope::Document);
-            markups.insert_mut(MarkupId::mint(), markup);
+            markups.insert(MarkupId::mint(), markup);
         }
+        let markups = std::sync::Arc::new(markups);
         Self {
             text,
             parsed_revision: 0,
@@ -143,7 +155,7 @@ impl Document {
             markup_changes: rpds::QueueSync::new_sync(),
             scroll_stripe_generation: 0,
             markups,
-            fragments: rpds::HashTrieMapSync::new_sync(),
+            fragments: Default::default(),
             next_fragment_key: 0,
             diffs: rpds::HashTrieMapSync::new_sync(),
             editors: rpds::HashTrieMapSync::new_sync(),
@@ -362,7 +374,7 @@ impl Document {
             return false;
         };
         let previous = overlay.set_unhide(line.clone());
-        self.markups.insert_mut(overlay_id, overlay);
+        std::sync::Arc::make_mut(&mut self.markups).insert(overlay_id, overlay);
         let changed: Vec<Range<u32>> = std::iter::once(line.clone())
             .chain(previous.clone())
             .collect();
@@ -505,27 +517,19 @@ impl Document {
         });
 
         let mut view = self.text.view();
-        self.markups = self
-            .markups
-            .iter()
-            .map(|(id, markup)| {
-                let mut markup = markup.clone();
+        if !self.markups.is_empty() {
+            for markup in std::sync::Arc::make_mut(&mut self.markups).values_mut() {
                 restyled.extend(markup.edit(operation, &mut view, 0));
-                (*id, markup)
-            })
-            .collect();
+            }
+        }
         drop(view);
         let restyled = lines_holding(&self.text, restyled);
 
-        self.fragments = self
-            .fragments
-            .iter()
-            .map(|(set, tree)| {
-                let mut tree = tree.clone();
+        if !self.fragments.is_empty() {
+            for tree in std::sync::Arc::make_mut(&mut self.fragments).values_mut() {
                 tree.edit(crate::markup::interval_steps(operation));
-                (*set, tree)
-            })
-            .collect();
+            }
+        }
 
         self.diffs = self
             .diffs
@@ -636,7 +640,7 @@ impl Document {
         if key.editor.is_none() {
             entry.set_scope(crate::markup::MarkupScope::Document);
         }
-        self.markups.insert_mut(markup, entry);
+        std::sync::Arc::make_mut(&mut self.markups).insert(markup, entry);
         if let Some(editor) = key.editor {
             self.show_markup(editor, markup);
         }
@@ -941,7 +945,7 @@ impl Document {
                     .cloned()
                     .expect("a feature-layer key names a registered markup");
                 let result = f(&mut markup);
-                self.markups.insert_mut(id, markup);
+                std::sync::Arc::make_mut(&mut self.markups).insert(id, markup);
                 result
             }
             MarkupLayer::Syntax => {
@@ -1078,12 +1082,14 @@ impl Document {
 
     pub fn add_fragment_set(&mut self) -> FragmentSetId {
         let id = FragmentSetId::mint();
-        self.fragments.insert_mut(id, intervals::Intervals::new());
+        std::sync::Arc::make_mut(&mut self.fragments).insert(id, intervals::Intervals::new());
         id
     }
 
     pub fn remove_fragment_set(&mut self, set: FragmentSetId) {
-        self.fragments.remove_mut(&set);
+        if self.fragments.contains_key(&set) {
+            std::sync::Arc::make_mut(&mut self.fragments).remove(&set);
+        }
     }
 
     /// A fragment that follows the text: an insert at either edge
@@ -1108,14 +1114,16 @@ impl Document {
         range: Range<u32>,
         greedy: bool,
     ) -> FragmentKey {
-        let Some(tree) = self.fragments.get(&set) else {
+        if !self.fragments.contains_key(&set) {
             debug_assert!(false, "add_fragment into a set that was never allocated");
             return FragmentKey {
                 set,
                 key: crate::markup::IntervalId(0),
             };
-        };
-        let mut tree = tree.clone();
+        }
+        let tree = std::sync::Arc::make_mut(&mut self.fragments)
+            .get_mut(&set)
+            .expect("the set stands: checked above");
         let key = crate::markup::IntervalId(self.next_fragment_key);
         self.next_fragment_key = self.next_fragment_key.wrapping_add(1);
         tree.insert([intervals::Interval {
@@ -1125,7 +1133,6 @@ impl Document {
             key,
             value: (),
         }]);
-        self.fragments.insert_mut(set, tree);
         FragmentKey { set, key }
     }
 
@@ -1196,7 +1203,7 @@ impl Document {
     pub fn ensure_document_markup(&mut self, id: MarkupId) {
         let mut markup = self.markups.get(&id).cloned().unwrap_or_else(Markup::new);
         markup.set_scope(crate::markup::MarkupScope::Document);
-        self.markups.insert_mut(id, markup);
+        std::sync::Arc::make_mut(&mut self.markups).insert(id, markup);
     }
 
     pub fn push_inlay(
@@ -1312,7 +1319,7 @@ impl Document {
     }
 
     fn view_extras<'a>(
-        markups: &'a rpds::HashTrieMapSync<MarkupId, Markup>,
+        markups: &'a std::collections::HashMap<MarkupId, Markup>,
         editor: &Editor,
     ) -> Vec<(MarkupId, &'a Markup)> {
         editor
@@ -1383,7 +1390,7 @@ impl Document {
         {
             self.editors.remove_mut(&editor);
             for id in owned {
-                self.markups.remove_mut(&id);
+                std::sync::Arc::make_mut(&mut self.markups).remove(&id);
             }
 
             let stale: Vec<EnrichKey> = self
@@ -1395,7 +1402,7 @@ impl Document {
             for key in stale {
                 if let Some(slot) = self.enrich.get(&key) {
                     let markup = slot.markup;
-                    self.markups.remove_mut(&markup);
+                    std::sync::Arc::make_mut(&mut self.markups).remove(&markup);
                 }
                 self.enrich.remove_mut(&key);
             }
@@ -3004,8 +3011,8 @@ impl Document {
         // untinted) and projected onto the scroll track; the
         // normalize lane refreshes it from then on.
         let markup = MarkupId::mint();
-        self.markups
-            .insert_mut(markup, crate::diff::hunk_markup(&operation, &self.text));
+        std::sync::Arc::make_mut(&mut self.markups)
+            .insert(markup, crate::diff::hunk_markup(&operation, &self.text));
         self.scroll_stripe_generation += 1;
         self.diffs.insert_mut(
             id,
@@ -3138,7 +3145,7 @@ impl Document {
 
     pub fn add_markup(&mut self) -> MarkupId {
         let id = MarkupId::mint();
-        self.markups.insert_mut(id, Markup::new());
+        std::sync::Arc::make_mut(&mut self.markups).insert(id, Markup::new());
         id
     }
 
@@ -3173,7 +3180,7 @@ impl Document {
         if self.stripes_markup(id) {
             self.scroll_stripe_generation += 1;
         }
-        self.markups.insert_mut(id, replacement);
+        std::sync::Arc::make_mut(&mut self.markups).insert(id, replacement);
 
         if changed.is_empty() {
             return;
@@ -3199,7 +3206,7 @@ impl Document {
         if self.stripes_markup(id) {
             self.scroll_stripe_generation += 1;
         }
-        self.markups.remove_mut(&id);
+        std::sync::Arc::make_mut(&mut self.markups).remove(&id);
         for editor in self.editors.keys().copied().collect::<Vec<_>>() {
             let Some(state) = self.editors.get_mut(&editor) else {
                 continue;
