@@ -242,15 +242,17 @@ impl SyntaxLanguages {
         let mut folds = old
             .map(|old| old.folds.clone())
             .unwrap_or_else(intervals::Intervals::new);
+        let mut next_key = old.map_or(0, |old| old.next_key);
         crate::markup::splice_intervals(
             &mut folds,
+            &mut next_key,
             &changed,
             fold_pushes.into_iter().map(|range| (range, ())),
         );
         let mut outline = old
             .map(|old| old.outline.clone())
             .unwrap_or_else(intervals::Intervals::new);
-        crate::markup::splice_intervals(&mut outline, &changed, outline_pushes);
+        crate::markup::splice_intervals(&mut outline, &mut next_key, &changed, outline_pushes);
         let sites = language.sites(text, range, tree.as_ref());
         Some((
             Syntax {
@@ -259,6 +261,7 @@ impl SyntaxLanguages {
                 markup,
                 folds,
                 outline,
+                next_key,
             },
             invalidated,
             sites,

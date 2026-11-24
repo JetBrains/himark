@@ -215,13 +215,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     let mut store = test_store();
     let mut document = plain_document("alpha\nbeta\n");
     document.install_syntax(
-        ::editor::markup::Syntax {
-            language: "test".to_owned(),
-            tree: None,
-            markup: editor::markup::Markup::new(),
-            folds: Default::default(),
-            outline: Default::default(),
-        },
+        ::editor::markup::Syntax::new("test", None, editor::markup::Markup::new()),
         &[],
     );
     let saved = document.revision();

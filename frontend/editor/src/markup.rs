@@ -425,6 +425,10 @@ pub struct Syntax {
     pub folds: Intervals<IntervalId, ()>,
 
     pub outline: Intervals<IntervalId, OutlineItem>,
+    /// The next key `folds` and `outline` mint from: one counter for
+    /// both lanes, carried from parse to parse, so a new interval's
+    /// key never needs a scan of the standing ones.
+    pub(crate) next_key: u32,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -438,27 +442,32 @@ pub struct OutlineItem {
 /// short of the change — an overlap test would keep it beside its
 /// successor. The harvests that feed `replacement` re-emit every node
 /// touching a changed range, so nothing removed here goes missing.
+///
+/// Each invalidated range is one ranged query — the standing
+/// intervals away from the change are never visited — and the new
+/// keys come off `next_key`, the syntax's counter.
 pub(crate) fn splice_intervals<V: Clone>(
     tree: &mut Intervals<IntervalId, V>,
+    next_key: &mut u32,
     invalidated: &[Range<u32>],
     replacement: impl IntoIterator<Item = (Range<u32>, V)>,
 ) {
-    let mut stale = Vec::new();
-    let mut next = 0u32;
-    for entry in tree.query(0..u32::MAX, Order::Ascending) {
-        next = next.max(entry.key.0.saturating_add(1));
-        if invalidated
-            .iter()
-            .any(|range| entry.range.start <= range.end && range.start <= entry.range.end)
-        {
-            stale.push(*entry.key);
+    let mut stale: std::collections::HashSet<IntervalId> = std::collections::HashSet::new();
+    for range in invalidated {
+        // One byte each way, so the query's overlap reaches what the
+        // range only touches; the exact test follows.
+        let reach = range.start.saturating_sub(1)..range.end.saturating_add(1);
+        for entry in tree.query(reach, Order::Ascending) {
+            if entry.range.start <= range.end && range.start <= entry.range.end {
+                stale.insert(*entry.key);
+            }
         }
     }
     tree.remove(stale.iter());
     tree.insert(replacement.into_iter().filter_map(|(range, value)| {
         (range.start < range.end).then(|| {
-            let key = IntervalId(next);
-            next = next.wrapping_add(1);
+            let key = IntervalId(*next_key);
+            *next_key = next_key.wrapping_add(1);
             Interval {
                 range,
                 greedy_left: false,
@@ -472,13 +481,8 @@ pub(crate) fn splice_intervals<V: Clone>(
 
 impl Syntax {
     pub fn push_outline_item(&mut self, range: Range<u32>, item: OutlineItem) -> IntervalId {
-        let next = self
-            .outline
-            .query(0..u32::MAX, Order::Ascending)
-            .map(|entry| entry.key.0.saturating_add(1))
-            .max()
-            .unwrap_or(0);
-        let key = IntervalId(next);
+        let key = IntervalId(self.next_key);
+        self.next_key = self.next_key.wrapping_add(1);
         self.outline.insert([Interval {
             range,
             greedy_left: false,
@@ -514,6 +518,7 @@ impl Syntax {
             markup,
             folds: Intervals::new(),
             outline: Intervals::new(),
+            next_key: 0,
         }
     }
 }
@@ -526,6 +531,7 @@ impl Clone for Syntax {
             markup: self.markup.clone(),
             folds: self.folds.clone(),
             outline: self.outline.clone(),
+            next_key: self.next_key,
         }
     }
 }
