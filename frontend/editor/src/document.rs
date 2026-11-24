@@ -66,6 +66,9 @@ pub struct Document {
 
     fragments:
         rpds::HashTrieMapSync<FragmentSetId, intervals::Intervals<crate::markup::IntervalId, ()>>,
+    /// The next key a fragment mints from: one counter for every set,
+    /// so adding a fragment never scans the set for a free key.
+    next_fragment_key: u32,
 
     diffs: rpds::HashTrieMapSync<crate::diff::DiffId, crate::diff::Diff>,
 
@@ -141,6 +144,7 @@ impl Document {
             scroll_stripe_generation: 0,
             markups,
             fragments: rpds::HashTrieMapSync::new_sync(),
+            next_fragment_key: 0,
             diffs: rpds::HashTrieMapSync::new_sync(),
             editors: rpds::HashTrieMapSync::new_sync(),
             repair_token: None,
@@ -1111,14 +1115,9 @@ impl Document {
                 key: crate::markup::IntervalId(0),
             };
         };
-        use intervals::IntervalQuery as _;
         let mut tree = tree.clone();
-        let next = tree
-            .query(0..u32::MAX, intervals::Order::Ascending)
-            .map(|entry| entry.key.0.saturating_add(1))
-            .max()
-            .unwrap_or(0);
-        let key = crate::markup::IntervalId(next);
+        let key = crate::markup::IntervalId(self.next_fragment_key);
+        self.next_fragment_key = self.next_fragment_key.wrapping_add(1);
         tree.insert([intervals::Interval {
             range,
             greedy_left: greedy,
