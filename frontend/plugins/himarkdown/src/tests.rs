@@ -2442,3 +2442,183 @@ fn document_from_markdown_populates_the_full_outline() {
         .collect();
     assert_eq!(after, vec!["One", "Two", "Three"], "the reparse keeps them");
 }
+
+/// The outline after an edit and its reparse is the outline a fresh
+/// parse of the same text gives: one item per section, never a stale
+/// twin left enclosing (or enclosed by) its successor.
+#[test]
+fn the_outline_after_an_edit_is_the_fresh_outline() {
+    let store = &imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let outline = |document: &::editor::document::Document| -> Vec<(std::ops::Range<u32>, String)> {
+        document
+            .outline_items()
+            .into_iter()
+            .map(|(_, _, range, item)| (range, item.title))
+            .collect()
+    };
+    let source = "# One\n\ntext\n\n## Two\n\nmore\n\n# Three\n\nlast";
+    let len = source.len() as u32;
+    let two = source.find("## Two").expect("two") as u32;
+    let three = source.find("# Three").expect("three") as u32;
+    let edits: Vec<(&str, operation::operation::Operation)> = vec![
+        (
+            "typing at the end of the document",
+            operation::operation::Operation::insert_in(len, len, "x"),
+        ),
+        (
+            "typing inside a paragraph",
+            operation::operation::Operation::insert_in(len, 9, "x"),
+        ),
+        (
+            "typing at a section's start",
+            operation::operation::Operation::insert_in(len, two, "x"),
+        ),
+        (
+            "a new line before a heading",
+            operation::operation::Operation::insert_in(len, three, "para\n\n"),
+        ),
+        (
+            "deleting at the end of the document",
+            operation::operation::Operation::delete_in(len, len - 1, "t"),
+        ),
+        (
+            "deleting a heading's marker",
+            operation::operation::Operation::delete_in(len, two, "## "),
+        ),
+        (
+            "typing at the very start",
+            operation::operation::Operation::insert_in(len, 0, "x"),
+        ),
+    ];
+    for (what, edit) in edits {
+        let mut document = document_from_markdown(source, store, ui, &test_theme());
+        // The same keystroke several times over: a leak compounds.
+        let mut edit = edit;
+        for round in 0..3 {
+            document.edit(
+                &edit,
+                store,
+                ui,
+                &test_theme(),
+                &mut imba::effect::Batch::new().effects(),
+            );
+            let outcome = editor::reparse::ReparseWork::capture(&document, test_languages())
+                .expect("reparse")
+                .run_reparse();
+            document.apply_reparse_outcome(
+                outcome,
+                store,
+                ui,
+                &test_theme(),
+                &mut imba::effect::Batch::new().effects(),
+            );
+            let text = {
+                let mut view = document.text().view();
+                let count = view.byte_count();
+                view.byte_string(0, count)
+            };
+            let fresh = document_from_markdown(&text, store, ui, &test_theme());
+            assert_eq!(
+                outline(&document),
+                outline(&fresh),
+                "{what}, round {round}: {text:?}"
+            );
+            // Rebase the edit onto the new text: same offset, new length.
+            let grown = text.len() as u32;
+            edit = match edit.iter().find_map(|op| match op {
+                operation::op::Op::Insert(text) => Some((true, text.to_string())),
+                operation::op::Op::Delete(text) => Some((false, text.to_string())),
+                _ => None,
+            }) {
+                Some((true, inserted)) => {
+                    let at = match what {
+                        "typing at the end of the document" => grown,
+                        "typing inside a paragraph" => 9,
+                        "typing at a section's start" => {
+                            text.find("## Two").map_or(0, |at| at as u32)
+                        }
+                        "a new line before a heading" => {
+                            text.find("# Three").map_or(0, |at| at as u32)
+                        }
+                        _ => 0,
+                    };
+                    operation::operation::Operation::insert_in(grown, at, inserted)
+                }
+                _ => break,
+            };
+        }
+    }
+}
+
+/// The same law under a run of arbitrary small edits landing on one
+/// document: after each reparse the outline is the fresh one.
+#[test]
+fn the_outline_survives_a_run_of_edits() {
+    let store = &imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
+    let outline = |document: &::editor::document::Document| -> Vec<(std::ops::Range<u32>, String)> {
+        document
+            .outline_items()
+            .into_iter()
+            .map(|(_, _, range, item)| (range, item.title))
+            .collect()
+    };
+    let source = "# One\n\ntext\n\n## Two\n\n- a\n- b\n\n```rust\nfn x() {}\n```\n\n### Deep\n\nmore\n\n# Three\n\nlast\n";
+    let pieces = ["x", "\n", "# ", "\n\n## New\n\n", " ", "#"];
+    let mut document = document_from_markdown(source, store, ui, &test_theme());
+    let mut seed = 0x9e3779b97f4a7c15u64;
+    let mut next = move |bound: usize| {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((seed >> 33) as usize) % bound.max(1)
+    };
+    for round in 0..300 {
+        let text = {
+            let mut view = document.text().view();
+            let count = view.byte_count();
+            view.byte_string(0, count)
+        };
+        let len = text.len();
+        let edit = if next(3) == 0 && len > 4 {
+            let at = next(len - 1);
+            let span = (1 + next(3)).min(len - at);
+            operation::operation::Operation::delete_in(len as u32, at as u32, &text[at..at + span])
+        } else {
+            operation::operation::Operation::insert_in(
+                len as u32,
+                next(len + 1) as u32,
+                pieces[next(pieces.len())],
+            )
+        };
+        document.edit(
+            &edit,
+            store,
+            ui,
+            &test_theme(),
+            &mut imba::effect::Batch::new().effects(),
+        );
+        let outcome = editor::reparse::ReparseWork::capture(&document, test_languages())
+            .expect("reparse")
+            .run_reparse();
+        document.apply_reparse_outcome(
+            outcome,
+            store,
+            ui,
+            &test_theme(),
+            &mut imba::effect::Batch::new().effects(),
+        );
+        let text = {
+            let mut view = document.text().view();
+            let count = view.byte_count();
+            view.byte_string(0, count)
+        };
+        let fresh = document_from_markdown(&text, store, ui, &test_theme());
+        assert_eq!(
+            outline(&document),
+            outline(&fresh),
+            "round {round}: {text:?}"
+        );
+    }
+}

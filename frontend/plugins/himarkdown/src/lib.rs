@@ -750,7 +750,9 @@ fn section_outline_item(text: &Text, title: &Range<u32>) -> Option<editor::marku
 fn collect_sections(node: Node<'_>, range: &Range<u32>, out: &mut Vec<(Range<u32>, Range<u32>)>) {
     let start = node.start_byte() as u32;
     let end = node.end_byte() as u32;
-    if end <= range.start || start >= range.end {
+    // Touching counts (see `splice_intervals`): the removal of the old
+    // items and this harvest must agree on which sections changed.
+    if end < range.start || start > range.end {
         return;
     }
     if node.kind() == "section" {

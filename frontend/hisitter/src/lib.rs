@@ -310,6 +310,13 @@ fn intersects_changed(changed: &[Range<u32>], start: u32, end: u32) -> bool {
     changed.get(at).is_some_and(|range| range.start < end)
 }
 
+/// Does the node's span touch any changed range? Folds and outline
+/// items harvest on touching, as `splice_intervals` removes on it.
+fn touches_changed(changed: &[Range<u32>], start: u32, end: u32) -> bool {
+    let at = changed.partition_point(|range| range.end < start);
+    changed.get(at).is_some_and(|range| range.start <= end)
+}
+
 /// ONE iterative pre-order walk — a `TreeCursor` whose own stack is
 /// the traversal context — collecting every tree-derived product at
 /// once: identifier leaves as link candidates, fold interiors,
@@ -334,9 +341,13 @@ fn harvest_structure(
         let start = node.start_byte() as u32;
         let end = node.end_byte() as u32;
         let mut descend = false;
-        if intersects_changed(&changed, start, end) {
+        if touches_changed(&changed, start, end) {
             if node.child_count() == 0 {
-                if start < end && node.is_named() && node.kind().contains("identifier") {
+                if start < end
+                    && node.is_named()
+                    && node.kind().contains("identifier")
+                    && intersects_changed(&changed, start, end)
+                {
                     out.links.push(start..end);
                 }
             } else {

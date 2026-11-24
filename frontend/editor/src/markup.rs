@@ -432,6 +432,12 @@ pub struct OutlineItem {
     pub title: String,
 }
 
+/// Replaces the intervals the invalidated ranges TOUCH with the
+/// replacement. Touching, not overlapping: text typed at a node's end
+/// grows the new node, while its old interval (not greedy) stays
+/// short of the change — an overlap test would keep it beside its
+/// successor. The harvests that feed `replacement` re-emit every node
+/// touching a changed range, so nothing removed here goes missing.
 pub(crate) fn splice_intervals<V: Clone>(
     tree: &mut Intervals<IntervalId, V>,
     invalidated: &[Range<u32>],
@@ -443,7 +449,7 @@ pub(crate) fn splice_intervals<V: Clone>(
         next = next.max(entry.key.0.saturating_add(1));
         if invalidated
             .iter()
-            .any(|range| entry.range.start < range.end && range.start < entry.range.end)
+            .any(|range| entry.range.start <= range.end && range.start <= entry.range.end)
         {
             stale.push(*entry.key);
         }
